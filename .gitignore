@@ -30,6 +30,11 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# local logs
+*.log
+*.err.log
+dev*.log
+
 # env files (can opt-in for committing if needed)
 .env*
 
@@ -39,3 +44,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# uploaded scans (local storage)
+/public/scans/*
+!/public/scans/.gitkeep
+
+# python cache (ocr service)
+**/__pycache__/
+*.pyc
+
+/src/generated/prisma

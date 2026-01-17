@@ -13,8 +13,29 @@ pnpm dev
 # or
 bun dev
 ```
+# inicializar docker para el servicio OCR dee scaneo
+docker-compose -f docker-compose.ocr.yml up -d --build
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+## Cobros (Bold)
+
+Endpoints:
+
+- `POST /api/billing/bold/link`: crea un Payment Link y retorna `url` para redirección.
+- `POST /api/billing/bold/webhook`: recibe eventos de Bold y sincroniza el estado del pago + la vigencia del plan.
+
+Variables de entorno:
+
+- `BOLD_IDENTITY_KEY`: API key para crear payment links.
+- `BOLD_WEBHOOK_SECRET`: secret para validar `x-bold-signature` en webhooks.
+- `BOLD_VERIFY_WEBHOOK`: por defecto `true`. En local puedes poner `false` para probar sin firma.
+- `APP_URL`: URL pública de la app (recomendado en producción). Se usa para construir el callback al dashboard.
+
+Notas:
+
+- Bold exige `https://` para `callback_url`, por eso en local normalmente no se envía.
+- La vigencia del plan se controla por `Empresa.planValidUntil` y se extiende 1 mes / 1 año cuando llega `SALE_APPROVED`.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

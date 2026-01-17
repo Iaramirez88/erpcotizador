@@ -1,0 +1,294 @@
+import { auth } from '@/lib/auth'
+import { redirect } from 'next/navigation'
+import { prisma } from '@/lib/prisma'
+import { ensureDefaultSedeForEmpresa, getOrCreateDefaultEmpresa } from '@/lib/rbac'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { ModuleKey, AccessLevel, SedeRole } from '@prisma/client'
+
+export const runtime = 'nodejs'
+
+const MODULES: ModuleKey[] = [
+  'DASHBOARD',
+  'COTIZADOR',
+  'COTIZACIONES',
+  'CLIENTES',
+  'MATERIALES',
+  'PROVEEDORES',
+  'COMPRAS',
+  'ORDENES',
+  'ESCANEOS',
+  'REPORTES',
+  'NOTIFICACIONES',
+  'CONFIG',
+]
+
+const ACCESS: AccessLevel[] = ['NONE', 'READ', 'WRITE', 'ADMIN']
+const SEDE_ROLES: SedeRole[] = ['ADMIN', 'MANAGER', 'MEMBER', 'READER']
+
+export default async function PermisosPage() {
+  const session = await auth()
+  if (!session) redirect('/auth/login')
+
+  const empresa = await getOrCreateDefaultEmpresa()
+  await ensureDefaultSedeForEmpresa(empresa.id, session.user.id)
+
+  const myAdmin = await prisma.sedeMembership.findFirst({
+    where: {
+      userId: session.user.id,
+      sede: { empresaId: empresa.id },
+      role: { in: ['ADMIN', 'MANAGER'] },
+    },
+    select: { id: true },
+  })
+
+  if (session.user.role !== 'ADMIN' && !myAdmin) {
+    redirect('/dashboard')
+  }
+
+  const sedes = await prisma.sede.findMany({
+    where: { empresaId: empresa.id },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, nombre: true, codigo: true },
+  })
+
+  const activeSedeId = sedes[0]?.id
+
+  async function createSede(formData: FormData) {
+    'use server'
+    const session2 = await auth()
+    if (!session2) return
+
+    const nombre = String(formData.get('nombre') || '').trim()
+    const codigo = String(formData.get('codigo') || '').trim()
+
+    if (!nombre) return
+
+    const empresa2 = await getOrCreateDefaultEmpresa()
+
+    const anyAdmin2 =
+      session2.user.role === 'ADMIN' ||
+      !!(await prisma.sedeMembership.findFirst({
+        where: {
+          userId: session2.user.id,
+          sede: { empresaId: empresa2.id },
+          role: { in: ['ADMIN', 'MANAGER'] },
+        },
+        select: { id: true },
+      }))
+
+    if (!anyAdmin2) return
+
+    await prisma.sede.create({
+      data: {
+        empresaId: empresa2.id,
+        nombre,
+        codigo: codigo || null,
+      },
+    })
+  }
+
+  async function addMember(formData: FormData) {
+    'use server'
+    const session2 = await auth()
+    if (!session2) return
+    const sedeId = String(formData.get('sedeId') || '')
+    const email = String(formData.get('email') || '').trim().toLowerCase()
+    const role = String(formData.get('role') || 'READER') as SedeRole
+
+    if (!sedeId || !email) return
+    if (!SEDE_ROLES.includes(role)) return
+
+    const admin = await prisma.sedeMembership.findUnique({
+      where: { sedeId_userId: { sedeId, userId: session2.user.id } },
+      select: { role: true },
+    })
+    if (session2.user.role !== 'ADMIN' && admin?.role !== 'ADMIN' && admin?.role !== 'MANAGER') return
+
+    const user = await prisma.user.findUnique({ where: { email } })
+    if (!user) return
+
+    await prisma.sedeMembership.upsert({
+      where: { sedeId_userId: { sedeId, userId: user.id } },
+      create: { sedeId, userId: user.id, role },
+      update: { role },
+    })
+  }
+
+  async function setModuleAccess(formData: FormData) {
+    'use server'
+    const session2 = await auth()
+    if (!session2) return
+
+    const sedeId = String(formData.get('sedeId') || '')
+    const email = String(formData.get('email') || '').trim().toLowerCase()
+    const moduleKey = String(formData.get('module') || '') as ModuleKey
+    const level = String(formData.get('level') || '') as AccessLevel
+
+    if (!sedeId || !email) return
+    if (!MODULES.includes(moduleKey)) return
+    if (!ACCESS.includes(level)) return
+
+    const admin = await prisma.sedeMembership.findUnique({
+      where: { sedeId_userId: { sedeId, userId: session2.user.id } },
+      select: { role: true },
+    })
+    if (session2.user.role !== 'ADMIN' && admin?.role !== 'ADMIN' && admin?.role !== 'MANAGER') return
+
+    const user = await prisma.user.findUnique({ where: { email } })
+    if (!user) return
+
+    await prisma.userModuleAccess.upsert({
+      where: { sedeId_userId_module: { sedeId, userId: user.id, module: moduleKey } },
+      create: { sedeId, userId: user.id, module: moduleKey, level },
+      update: { level },
+    })
+  }
+
+  const activeSede = activeSedeId
+    ? await prisma.sede.findUnique({
+        where: { id: activeSedeId },
+        select: { id: true, nombre: true },
+      })
+    : null
+
+  const members = activeSedeId
+    ? await prisma.sedeMembership.findMany({
+        where: { sedeId: activeSedeId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, role: true, user: { select: { email: true, name: true } } },
+      })
+    : []
+
+  const permisos = activeSedeId
+    ? await prisma.userModuleAccess.findMany({
+        where: { sedeId: activeSedeId },
+        orderBy: [{ userId: 'asc' }, { module: 'asc' }],
+        select: { id: true, module: true, level: true, user: { select: { email: true, name: true } } },
+      })
+    : []
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Permisos por sede</h1>
+        <p className="text-sm text-muted-foreground">
+          Administra sedes, miembros y accesos por módulo.
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Crear sede</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form action={createSede} className="flex flex-col gap-3 max-w-md">
+            <input
+              name="nombre"
+              placeholder="Nombre (ej: Principal, Norte, Medellín)"
+              className="border rounded px-3 py-2"
+            />
+            <input
+              name="codigo"
+              placeholder="Código (opcional)"
+              className="border rounded px-3 py-2"
+            />
+            <Button type="submit">Crear</Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Miembros ({activeSede?.nombre ?? '—'})</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form action={addMember} className="grid gap-2 max-w-lg">
+            <input type="hidden" name="sedeId" value={activeSedeId ?? ''} />
+            <input name="email" placeholder="Email del usuario" className="border rounded px-3 py-2" />
+            <select name="role" className="border rounded px-3 py-2">
+              {SEDE_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+            <Button type="submit" variant="outline">Agregar/Actualizar miembro</Button>
+          </form>
+
+          <div className="grid gap-2">
+            {members.map((m) => (
+              <div key={m.id} className="flex items-center justify-between border rounded px-3 py-2">
+                <div>
+                  <div className="font-medium">{m.user.name ?? m.user.email}</div>
+                  <div className="text-xs text-muted-foreground">{m.user.email}</div>
+                </div>
+                <div className="text-sm">{m.role}</div>
+              </div>
+            ))}
+            {members.length === 0 && <div className="text-sm text-muted-foreground">Sin miembros.</div>}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Permisos por módulo ({activeSede?.nombre ?? '—'})</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form action={setModuleAccess} className="grid gap-2 max-w-lg">
+            <input type="hidden" name="sedeId" value={activeSedeId ?? ''} />
+            <input name="email" placeholder="Email del usuario" className="border rounded px-3 py-2" />
+            <select name="module" className="border rounded px-3 py-2">
+              {MODULES.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+            <select name="level" className="border rounded px-3 py-2">
+              {ACCESS.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <Button type="submit" variant="outline">Guardar permiso</Button>
+          </form>
+
+          <div className="grid gap-2">
+            {permisos.map((p) => (
+              <div key={p.id} className="flex items-center justify-between border rounded px-3 py-2">
+                <div>
+                  <div className="font-medium">{p.user.name ?? p.user.email}</div>
+                  <div className="text-xs text-muted-foreground">{p.user.email}</div>
+                </div>
+                <div className="text-sm">{p.module}: {p.level}</div>
+              </div>
+            ))}
+            {permisos.length === 0 && <div className="text-sm text-muted-foreground">Sin permisos explícitos.</div>}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Sedes</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-2">
+            {sedes.map((s) => (
+              <div key={s.id} className="flex items-center justify-between border rounded px-3 py-2">
+                <div>
+                  <div className="font-medium">{s.nombre}</div>
+                  <div className="text-xs text-muted-foreground">{s.codigo ?? '—'}</div>
+                </div>
+                <div className="text-xs text-muted-foreground">{s.id}</div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

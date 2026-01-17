@@ -1,0 +1,18 @@
+services:
+  ocr:
+    build:
+      context: ./services/ocr
+    ports:
+      - "8001:8001"
+    environment:
+      # Opcional: proteger el servicio con API key (debe coincidir con OCR_SERVICE_API_KEY en Next.js)
+      OCR_SERVICE_API_KEY: ${OCR_SERVICE_API_KEY:-}
+
+      # Opcional: LLM OpenAI-compatible (ej: Ollama)
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-llama3.1:8b}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+
+      # Reduce checks/ruido en algunos entornos
+      DISABLE_MODEL_SOURCE_CHECK: ${DISABLE_MODEL_SOURCE_CHECK:-True}
+    restart: unless-stopped

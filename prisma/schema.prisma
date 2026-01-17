@@ -1,0 +1,1005 @@
+// Schema de Base de Datos - SGDigital Cotizador Inteligente
+// Generado: Diciembre 2025
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// MÓDULO DE AUTENTICACIÓN Y USUARIOS
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          UserRole  @default(USER)
+  empresaId     String?
+  empresa       Empresa?  @relation(fields: [empresaId], references: [id])
+
+  // Preferencias de UI (menú, reportes)
+  uiPreference UiPreference?
+
+  // Plantilla PDF de cotización (configurable por usuario)
+  cotizacionTemplate CotizacionTemplate?
+
+  // Relaciones NextAuth
+  accounts Account[]
+  sessions Session[]
+
+  // Relaciones del negocio
+  cotizaciones Cotizacion[]
+  ordenes      OrdenTrabajo[]
+
+  // Escaneo de documentos (IA/OCR)
+  documentScans DocumentScan[] @relation("ScanCreatedBy")
+  approvedScans DocumentScan[] @relation("ScanApprovedBy")
+
+  // Compras
+  comprasCreadas     Compra[] @relation("CompraCreadaPor")
+  comprasAutorizadas Compra[] @relation("CompraAutorizadoPor")
+  comprasRecibidas   Compra[] @relation("CompraRecibidoPor")
+
+  // Seguridad: verificación de email y restablecimiento de contraseña
+  emailVerificationCodes EmailVerificationCode[]
+  passwordResetTokens    PasswordResetToken[]
+
+  // RBAC por sede / equipos
+  sedeMemberships SedeMembership[]
+  teamMemberships TeamMember[]
+  moduleAccess    UserModuleAccess[]
+
+  // Notificaciones
+  notifications Notification[]
+
+  // Inventario
+  inventoryMovements InventoryMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model EmailVerificationCode {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  email     String
+  codeHash  String
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([userId])
+  @@map("email_verification_codes")
+}
+
+model PasswordResetToken {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  email     String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model CotizacionTemplate {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  settings Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("cotizacion_templates")
+}
+
+model UiPreference {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  nav    Json @default("{}")
+  report Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ui_preferences")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+  VENDEDOR
+  PRODUCCION
+  CLIENTE
+}
+
+// ============================================
+// PLANES / SUSCRIPCIÓN (MVP)
+// ============================================
+
+enum PlanTier {
+  BASIC
+  MEDIO
+  INTERMEDIO
+  FULL
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum BillingProvider {
+  BOLD
+}
+
+enum BillingInvoiceStatus {
+  PENDING
+  PAID
+  REJECTED
+  VOID
+  EXPIRED
+}
+
+// ============================================
+// RBAC POR SEDE (MVP)
+// ============================================
+
+enum SedeRole {
+  ADMIN
+  MANAGER
+  MEMBER
+  READER
+}
+
+enum TeamRole {
+  LEAD
+  MEMBER
+}
+
+enum ModuleKey {
+  DASHBOARD
+  COTIZADOR
+  COTIZACIONES
+  CLIENTES
+  MATERIALES
+  PROVEEDORES
+  COMPRAS
+  ORDENES
+  ESCANEOS
+  REPORTES
+  NOTIFICACIONES
+  CONFIG
+}
+
+enum AccessLevel {
+  NONE
+  READ
+  WRITE
+  ADMIN
+}
+
+// ============================================
+// NOTIFICACIONES (MVP)
+// ============================================
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+// ============================================
+// INVENTARIO (MVP)
+// ============================================
+
+enum InventoryMovementType {
+  IN
+  OUT
+  ADJUST
+}
+
+// ============================================
+// MÓDULO DE EMPRESA
+// ============================================
+
+model Empresa {
+  id        String  @id @default(cuid())
+  nombre    String
+  nit       String  @unique
+  direccion String?
+  telefono  String?
+  email     String?
+  logo      String?
+
+  planTier     PlanTier     @default(FULL)
+  billingCycle BillingCycle @default(MONTHLY)
+
+  // Vigencia del acceso por plan (Bold no expone suscripciones recurrentes públicas en docs;
+  // se maneja por periodo pagado y renovaciones).
+  planValidUntil DateTime?
+
+  stripeCustomerId         String?
+  stripeSubscriptionId     String?
+  stripePriceId            String?
+  stripeSubscriptionStatus String?
+  stripeCurrentPeriodEnd   DateTime?
+  stripeCancelAtPeriodEnd  Boolean   @default(false)
+
+  billingInvoices BillingInvoice[]
+
+  inventoryMovements InventoryMovement[]
+
+  usuarios   User[]
+  clientes   Cliente[]
+  materiales Material[]
+  maquinas   Maquina[]
+
+  proveedores Proveedor[]
+  compras     Compra[]
+
+  sedes         Sede[]
+  notifications Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("empresas")
+}
+
+model InventoryMovement {
+  id        String                @id @default(cuid())
+  empresaId String
+  empresa   Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  materialId String
+  material   Material             @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  type      InventoryMovementType
+  // Delta aplicado (IN: positivo, OUT: negativo, ADJUST: diferencia)
+  quantity  Float
+
+  stockBefore Float
+  stockAfter  Float
+
+  note String?
+
+  createdById String?
+  createdBy   User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([empresaId, createdAt])
+  @@index([materialId, createdAt])
+  @@map("inventory_movements")
+}
+
+model BillingInvoice {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  provider BillingProvider      @default(BOLD)
+  status   BillingInvoiceStatus @default(PENDING)
+
+  planTier     PlanTier
+  billingCycle BillingCycle
+
+  currency    String @default("COP")
+  amountCOP   Int
+  discountPct Int    @default(0)
+
+  externalReference String @unique
+
+  boldPaymentLinkId String? @unique
+  boldCheckoutUrl   String?
+  boldPaymentId     String?
+  boldEventId       String?
+  boldType          String?
+
+  expiresAt DateTime?
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([empresaId, status])
+  @@index([externalReference])
+  @@map("billing_invoices")
+}
+
+// ============================================
+// SEDES / EQUIPOS / PERMISOS (MVP)
+// ============================================
+
+model Sede {
+  id     String  @id @default(cuid())
+  nombre String
+  codigo String?
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  memberships   SedeMembership[]
+  teams         Team[]
+  moduleAccess  UserModuleAccess[]
+  notifications Notification[]
+
+  cotizaciones  Cotizacion[]   @relation("SedeCotizaciones")
+  ordenes       OrdenTrabajo[] @relation("SedeOrdenes")
+  compras       Compra[]       @relation("SedeCompras")
+  documentScans DocumentScan[] @relation("SedeScans")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId])
+  @@map("sedes")
+}
+
+model SedeMembership {
+  id     String   @id @default(cuid())
+  sedeId String
+  userId String
+  role   SedeRole @default(READER)
+
+  sede Sede @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sedeId, userId])
+  @@index([userId])
+  @@map("sede_memberships")
+}
+
+model Team {
+  id          String  @id @default(cuid())
+  sedeId      String
+  nombre      String
+  descripcion String?
+
+  sede    Sede         @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+  members TeamMember[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sedeId])
+  @@map("teams")
+}
+
+model TeamMember {
+  id     String   @id @default(cuid())
+  teamId String
+  userId String
+  role   TeamRole @default(MEMBER)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+model UserModuleAccess {
+  id     String      @id @default(cuid())
+  sedeId String
+  userId String
+  module ModuleKey
+  level  AccessLevel @default(READ)
+
+  sede Sede @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sedeId, userId, module])
+  @@index([userId])
+  @@map("user_module_access")
+}
+
+// ============================================
+// NOTIFICACIONES (MVP)
+// ============================================
+
+model Notification {
+  id    String           @id @default(cuid())
+  type  NotificationType @default(INFO)
+  title String
+  body  String?
+
+  empresaId String?
+  empresa   Empresa? @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  sedeId String?
+  sede   Sede?   @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([empresaId])
+  @@index([sedeId])
+  @@map("notifications")
+}
+
+// ============================================
+// MÓDULO DE CLIENTES
+// ============================================
+
+model Cliente {
+  id            String  @id @default(cuid())
+  nombre        String
+  tipoDocumento String // NIT, CC, CE
+  documento     String  @unique
+  email         String?
+  telefono      String?
+  celular       String?
+  direccion     String?
+  ciudad        String?
+  departamento  String?
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id])
+
+  cotizaciones Cotizacion[]
+  ordenes      OrdenTrabajo[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("clientes")
+}
+
+// ============================================
+// MÓDULO DE COTIZACIONES (FASE 1)
+// ============================================
+
+model Cotizacion {
+  id          String   @id @default(cuid())
+  numero      String   @unique // COT-2025-0001
+  fecha       DateTime @default(now())
+  validezDias Int      @default(15)
+
+  // Multi-sede (MVP): opcional para compatibilidad con registros antiguos
+  sedeId String?
+  sede   Sede?   @relation("SedeCotizaciones", fields: [sedeId], references: [id])
+
+  // Tracking de envíos
+  emailSentCount     Int      @default(0)
+  whatsappSentCount  Int      @default(0)
+  lastEmailSentAt    DateTime?
+  lastWhatsappSentAt DateTime?
+
+  clienteId String
+  cliente   Cliente @relation(fields: [clienteId], references: [id])
+
+  vendedorId String
+  vendedor   User   @relation(fields: [vendedorId], references: [id])
+
+  items ItemCotizacion[]
+
+  subtotal  Float @default(0)
+  descuento Float @default(0)
+  iva       Float @default(0)
+  total     Float @default(0)
+
+  estado        EstadoCotizacion @default(BORRADOR)
+  observaciones String?          @db.Text
+
+  // Conversión a orden
+  orden OrdenTrabajo? @relation("CotizacionOrden")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("cotizaciones")
+  @@index([sedeId])
+}
+
+model ItemCotizacion {
+  id           String     @id @default(cuid())
+  cotizacionId String
+  cotizacion   Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+
+  descripcion String
+  cantidad    Float
+  unidad      String // m2, unidad, ml
+
+  // Dimensiones
+  ancho Float?
+  alto  Float?
+  area  Float? // Calculado automáticamente
+
+  // Materiales
+  materialId String?
+  material   Material? @relation(fields: [materialId], references: [id])
+
+  // Acabados
+  laminado    Boolean @default(false)
+  troquelado  Boolean @default(false)
+  instalacion Boolean @default(false)
+
+  // Costos
+  costoMaterial    Float @default(0)
+  costoImpresion   Float @default(0)
+  costoAcabados    Float @default(0)
+  costoInstalacion Float @default(0)
+  precioUnitario   Float
+  subtotal         Float
+
+  orden Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("items_cotizacion")
+}
+
+enum EstadoCotizacion {
+  BORRADOR
+  ENVIADA
+  APROBADA
+  RECHAZADA
+  VENCIDA
+  CONVERTIDA
+}
+
+// ============================================
+// MÓDULO DE MATERIALES Y PRECIOS
+// ============================================
+
+model Material {
+  id        String       @id @default(cuid())
+  nombre    String
+  tipo      TipoMaterial
+  categoria String?
+
+  // Especificaciones
+  ancho   Float? // En cm
+  largo   Float? // En cm o metros
+  espesor Float? // En mm
+  color   String?
+
+  // Precios
+  precioM2     Float?
+  precioMetro  Float?
+  precioUnidad Float?
+  precioCompra Float?
+
+  // Stock
+  stockActual  Float  @default(0)
+  stockMinimo  Float  @default(0)
+  unidadMedida String // m2, ml, unidad
+
+  proveedor     String?
+  observaciones String? @db.Text
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id])
+
+  items ItemCotizacion[]
+
+  quantityDiscounts MaterialQuantityDiscount[]
+
+  inventoryMovements InventoryMovement[]
+
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("materiales")
+}
+
+model MaterialQuantityDiscount {
+  id        String   @id @default(cuid())
+  materialId String
+  material  Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  // Descuento aplicable cuando cantidad >= minQty
+  minQty      Float
+  discountPct Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([materialId, minQty])
+  @@index([materialId])
+  @@map("material_quantity_discounts")
+}
+
+enum TipoMaterial {
+  VINILO
+  LONA
+  BANNER
+  MICROPERFORADO
+  ONE_WAY
+  ADHESIVO
+  PAPEL
+  CARTULINA
+  FOAM
+  ACRILICO
+  PVC
+  OTRO
+}
+
+// ============================================
+// MÓDULO DE ÓRDENES DE TRABAJO (FASE 2)
+// ============================================
+
+model OrdenTrabajo {
+  id           String    @id @default(cuid())
+  numero       String    @unique // OT-2025-0001
+  fecha        DateTime  @default(now())
+  fechaEntrega DateTime?
+
+  // Multi-sede (MVP): opcional para compatibilidad con registros antiguos
+  sedeId String?
+  sede   Sede?   @relation("SedeOrdenes", fields: [sedeId], references: [id])
+
+  clienteId String
+  cliente   Cliente @relation(fields: [clienteId], references: [id])
+
+  vendedorId String
+  vendedor   User   @relation(fields: [vendedorId], references: [id])
+
+  // Referencia a cotización
+  cotizacionId String?     @unique
+  cotizacion   Cotizacion? @relation("CotizacionOrden", fields: [cotizacionId], references: [id])
+
+  // Valores financieros
+  subtotal  Float @default(0)
+  descuento Float @default(0)
+  iva       Float @default(0)
+  total     Float @default(0)
+
+  // Proceso de producción
+  etapas EtapaProduccion[]
+
+  estado    EstadoOrden @default(PENDIENTE)
+  prioridad Prioridad   @default(NORMAL)
+
+  observaciones  String? @db.Text
+  archivosDiseno Json? // URLs de archivos
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ordenes_trabajo")
+  @@index([sedeId])
+}
+
+model EtapaProduccion {
+  id      String       @id @default(cuid())
+  ordenId String
+  orden   OrdenTrabajo @relation(fields: [ordenId], references: [id], onDelete: Cascade)
+
+  nombre    String // Diseño, Preprensa, Impresión, Acabados, Entrega
+  secuencia Int // Orden de la etapa (1, 2, 3, etc.)
+
+  maquinaId String?
+  maquina   Maquina? @relation(fields: [maquinaId], references: [id])
+
+  estado EstadoEtapa @default(PENDIENTE)
+
+  fechaInicio    DateTime?
+  fechaFin       DateTime?
+  tiempoEstimado Int? // En minutos
+  tiempoReal     Int? // En minutos
+
+  responsable   String?
+  observaciones String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("etapas_produccion")
+}
+
+model Maquina {
+  id     String  @id @default(cuid())
+  nombre String
+  tipo   String // Plotter, Impresora, Laminadora, etc.
+  marca  String?
+  modelo String?
+
+  anchoMax  Float? // En cm
+  velocidad Float? // m2/hora
+
+  estado EstadoMaquina @default(DISPONIBLE)
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id])
+
+  etapas EtapaProduccion[]
+
+  activa    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("maquinas")
+}
+
+enum EstadoOrden {
+  PENDIENTE
+  EN_DISENO
+  EN_PRODUCCION
+  EN_ACABADOS
+  LISTA_ENTREGA
+  ENTREGADA
+  CANCELADA
+}
+
+enum EstadoEtapa {
+  PENDIENTE
+  EN_PROCESO
+  COMPLETADA
+  DETENIDA
+}
+
+enum EstadoMaquina {
+  DISPONIBLE
+  EN_USO
+  MANTENIMIENTO
+  FUERA_SERVICIO
+}
+
+enum Prioridad {
+  BAJA
+  NORMAL
+  ALTA
+  URGENTE
+}
+
+// ============================================
+// MÓDULO DE ESCANEO (IA/OCR) - FACTURAS/COTIZACIONES
+// ============================================
+
+enum ScanDocumentType {
+  FACTURA
+  COTIZACION
+}
+
+enum ScanProvider {
+  PADDLEOCR
+  TESSERACT
+}
+
+enum ScanStatus {
+  PENDIENTE
+  PROCESADO
+  FALLIDO
+  APROBADO
+}
+
+// ============================================
+// MÓDULO DE PROVEEDORES Y COMPRAS
+// ============================================
+
+enum EstadoCompra {
+  BORRADOR
+  REGISTRADA
+  ANULADA
+}
+
+model Proveedor {
+  id            String  @id @default(cuid())
+  nombre        String
+  nit           String? @unique
+  telefono      String?
+  direccion     String?
+  email         String?
+  contacto      String?
+  ciudad        String?
+  departamento  String?
+  observaciones String? @db.Text
+  activo        Boolean @default(true)
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id])
+
+  compras Compra[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([nombre])
+  @@index([empresaId])
+  @@map("proveedores")
+}
+
+model Compra {
+  id          String       @id @default(cuid())
+  fechaCompra DateTime     @default(now())
+  estado      EstadoCompra @default(BORRADOR)
+
+  // Multi-sede (MVP): opcional para compatibilidad con registros antiguos
+  sedeId String?
+  sedeRef Sede?  @relation("SedeCompras", fields: [sedeId], references: [id])
+
+  // Proveedor (permitimos snapshot para reportes y para casos donde aún no exista un proveedor maestro)
+  proveedorId        String?
+  proveedor          Proveedor? @relation(fields: [proveedorId], references: [id])
+  proveedorNombre    String
+  proveedorTelefono  String?
+  proveedorDireccion String?
+
+  // Recepción
+  recibidoPorId     String?
+  recibidoPor       User?   @relation("CompraRecibidoPor", fields: [recibidoPorId], references: [id])
+  recibidoPorNombre String?
+
+  // Documentos
+  numeroPedido  String?
+  numeroOrden   String?
+  numeroFactura String?
+
+  // Totales (para reportes)
+  subtotalSinIva Float @default(0)
+  iva            Float @default(0)
+  descuentoTotal Float @default(0)
+  subtotalConIva Float @default(0)
+  total          Float @default(0)
+
+  // Contexto
+  sede          String?
+  observaciones String? @db.Text
+
+  // Autorización
+  autorizado     Boolean   @default(false)
+  autorizadoAt   DateTime?
+  autorizadoById String?
+  autorizadoBy   User?     @relation("CompraAutorizadoPor", fields: [autorizadoById], references: [id])
+
+  // Auditoría
+  userId    String
+  user      User    @relation("CompraCreadaPor", fields: [userId], references: [id], onDelete: Cascade)
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id])
+
+  items CompraItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([fechaCompra])
+  @@index([estado])
+  @@index([autorizado])
+  @@index([empresaId])
+  @@index([proveedorNombre])
+  @@map("compras")
+  @@index([sedeId])
+}
+
+model CompraItem {
+  id       String @id @default(cuid())
+  compraId String
+  compra   Compra @relation(fields: [compraId], references: [id], onDelete: Cascade)
+
+  descripcion    String
+  cantidad       Float   @default(1)
+  unidad         String?
+  precioUnitario Float   @default(0)
+  descuento      Float   @default(0)
+  subtotalSinIva Float   @default(0)
+  iva            Float   @default(0)
+  total          Float   @default(0)
+  observaciones  String? @db.Text
+
+  orden Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([compraId])
+  @@map("items_compra")
+}
+
+model DocumentScan {
+  id       String           @id @default(cuid())
+  tipo     ScanDocumentType
+  provider ScanProvider
+  status   ScanStatus       @default(PENDIENTE)
+
+  // Multi-sede (MVP): opcional para compatibilidad con registros antiguos
+  sedeId String?
+  sede   Sede?   @relation("SedeScans", fields: [sedeId], references: [id])
+
+  capturePercent Float @default(0)
+  pageCount      Int   @default(1)
+
+  approved     Boolean   @default(false)
+  approvedAt   DateTime?
+  approvedById String?
+  approvedBy   User?     @relation("ScanApprovedBy", fields: [approvedById], references: [id])
+
+  userId String
+  user   User   @relation("ScanCreatedBy", fields: [userId], references: [id], onDelete: Cascade)
+
+  originalFileName String?
+  storedFileName   String?
+  mimeType         String
+  fileUrl          String
+
+  extractedText String? @db.Text
+  extractedData Json?
+  error         String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([status, approved])
+  @@map("document_scans")
+  @@index([sedeId])
+}
