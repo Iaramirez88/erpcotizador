@@ -6,12 +6,15 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { formatCurrency } from "@/lib/utils"
+import { LitografiaQuoteDialog } from "@/components/litografia/litografia-quote-dialog"
 import {
   PaperSizePreview,
   getPaperSize,
@@ -61,10 +64,22 @@ interface ItemCotizacion {
   observaciones: string
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {}
+}
+
 export default function CotizadorPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const cotizacionIdParam = searchParams.get("id")
+
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [materiales, setMateriales] = useState<Material[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingCotizacion, setIsLoadingCotizacion] = useState(false)
+
+  const [litografiaOpen, setLitografiaOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   // Datos de la cotización
   const [clienteId, setClienteId] = useState("")
@@ -107,6 +122,118 @@ export default function CotizadorPage() {
     fetchClientes()
     fetchMateriales()
   }, [])
+
+  useEffect(() => {
+    const id = cotizacionIdParam?.trim() || null
+    if (!id) {
+      setEditingId(null)
+      return
+    }
+    if (editingId === id) return
+
+    const load = async () => {
+      setIsLoadingCotizacion(true)
+      try {
+        const res = await fetch(`/api/cotizaciones/${id}`, { cache: "no-store" })
+        const data = await res.json()
+        if (!res.ok || !data?.success) {
+          alert(data?.error || "No se pudo cargar la cotización")
+          router.push("/dashboard/cotizador")
+          return
+        }
+
+        const cot = data.data as {
+          id: string
+          clienteId: string
+          descuento?: number
+          validezDias?: number
+          observaciones?: string | null
+          items?: unknown[]
+        }
+
+        setEditingId(cot.id)
+        setClienteId(String(cot.clienteId || ""))
+        setDescuento(typeof cot.descuento === "number" ? cot.descuento : Number(cot.descuento || 0))
+        setValidezDias(String(cot.validezDias ?? 15))
+
+        const obsRaw = String(cot.observaciones || "").trim()
+        if (obsRaw) {
+          const parts = obsRaw.split(/\n\n+/)
+          const maybeDesc = (parts[0] || "").trim()
+          const maybeEntrega = parts.find((p) => /^Tiempo de entrega:/i.test(p.trim()))
+          const entregaValue = maybeEntrega ? maybeEntrega.replace(/^Tiempo de entrega:\s*/i, "").trim() : ""
+          const rest = parts
+            .filter((p) => p.trim() && p.trim() !== maybeDesc && p !== maybeEntrega)
+            .join("\n\n")
+            .trim()
+
+          setDescripcion(maybeDesc)
+          setTiempoEntrega(entregaValue)
+          setObservaciones(rest)
+        } else {
+          setDescripcion("")
+          setTiempoEntrega("")
+          setObservaciones("")
+        }
+
+        const mappedItems: ItemCotizacion[] = Array.isArray(cot.items)
+          ? cot.items.map((raw: unknown) => {
+              const it = asRecord(raw)
+              const matRec = asRecord(it.material)
+              const material = it.material
+                ? {
+                    id: String(matRec.id || ""),
+                    nombre: String(matRec.nombre || ""),
+                    tipo: String(matRec.tipo || ""),
+                    precioM2: typeof matRec.precioM2 === "number" ? matRec.precioM2 : null,
+                    precioMetro: typeof matRec.precioMetro === "number" ? matRec.precioMetro : null,
+                    precioUnidad: typeof matRec.precioUnidad === "number" ? matRec.precioUnidad : null,
+                    unidadMedida: String(matRec.unidadMedida || "unidad"),
+                    quantityDiscounts: [],
+                  }
+                : null
+
+              const cantidadRaw = it.cantidad
+              const precioUnitarioRaw = it.precioUnitario
+              const subtotalRaw = it.subtotal
+
+              return {
+                id: String(it.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`),
+                descripcion: String(it.descripcion || ""),
+                materialId: it.materialId ? String(it.materialId) : null,
+                material,
+                cantidad: typeof cantidadRaw === "number" ? cantidadRaw : parseFloat(String(cantidadRaw || 1)) || 1,
+                ancho: it.ancho != null ? Number(it.ancho) : null,
+                alto: it.alto != null ? Number(it.alto) : null,
+                m2: it.area != null ? Number(it.area) : null,
+                precioUnitario:
+                  typeof precioUnitarioRaw === "number" ? precioUnitarioRaw : parseFloat(String(precioUnitarioRaw || 0)) || 0,
+                subtotal: typeof subtotalRaw === "number" ? subtotalRaw : parseFloat(String(subtotalRaw || 0)) || 0,
+                laminado: Boolean(it.laminado),
+                troquelado: Boolean(it.troquelado),
+                instalacion: Boolean(it.instalacion),
+                costoLaminado: 0,
+                costoTroquelado: 0,
+                costoInstalacion: it.costoInstalacion != null ? Number(it.costoInstalacion) : 0,
+                observaciones: "",
+              }
+            })
+          : []
+
+        setItems(mappedItems)
+        setShowItemForm(false)
+      } catch (e) {
+        console.error("Error al cargar cotización:", e)
+        alert("Error al cargar la cotización")
+        router.push("/dashboard/cotizador")
+      } finally {
+        setIsLoadingCotizacion(false)
+      }
+    }
+
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cotizacionIdParam])
 
   useEffect(() => {
     calcularTotales()
@@ -230,8 +357,8 @@ export default function CotizadorPage() {
 
   const agregarItem = () => {
     const material = materiales.find(m => m.id === itemForm.materialId)
-    if (!itemForm.descripcion || !material) {
-      alert('Completa todos los campos requeridos')
+    if (!material) {
+      alert('Selecciona un material')
       return
     }
 
@@ -241,9 +368,16 @@ export default function CotizadorPage() {
     const precioUnitario = parseFloat(itemForm.precioUnitario) || 0
     const subtotal = precioUnitario * cantidad
 
+    const descripcionItem = (() => {
+      const raw = (itemForm.descripcion || "").trim()
+      if (raw) return raw
+      const dims = ancho && alto ? ` (${ancho}×${alto} cm)` : ""
+      return `${material.nombre}${dims}`
+    })()
+
     const nuevoItem: ItemCotizacion = {
       id: Date.now().toString(),
-      descripcion: itemForm.descripcion,
+      descripcion: descripcionItem,
       materialId: itemForm.materialId,
       material,
       cantidad,
@@ -264,6 +398,38 @@ export default function CotizadorPage() {
     setItems([...items, nuevoItem])
     setShowItemForm(false)
     resetItemForm()
+  }
+
+  const agregarItemLitografia = (payload: {
+    descripcion: string
+    cantidad: number
+    unidad: string
+    desperdicioPct: number
+    precioUnitario: number
+    subtotal: number
+  }) => {
+    const nuevoItem: ItemCotizacion = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      descripcion: payload.descripcion,
+      materialId: null,
+      material: null,
+      cantidad: payload.cantidad,
+      ancho: null,
+      alto: null,
+      m2: null,
+      precioUnitario: payload.precioUnitario,
+      subtotal: payload.subtotal,
+      laminado: false,
+      troquelado: false,
+      instalacion: false,
+      costoLaminado: 0,
+      costoTroquelado: 0,
+      costoInstalacion: 0,
+      observaciones: `Litografía • unidad=${payload.unidad}${payload.desperdicioPct ? ` • desperdicio=${payload.desperdicioPct}%` : ""}`,
+    }
+
+    setItems((prev) => [...prev, nuevoItem])
+    setShowItemForm(false)
   }
 
   const eliminarItem = (id: string) => {
@@ -311,8 +477,10 @@ export default function CotizadorPage() {
 
     setIsLoading(true)
     try {
-      const response = await fetch('/api/cotizaciones', {
-        method: 'POST',
+      const url = editingId ? `/api/cotizaciones/${editingId}` : '/api/cotizaciones'
+      const method = editingId ? 'PATCH' : 'POST'
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -349,8 +517,11 @@ export default function CotizadorPage() {
       const data = await response.json()
 
       if (data.success) {
-        alert(`Cotización ${data.data.numero} creada exitosamente!`)
-        // Limpiar formulario
+        const numero = data?.data?.numero
+        alert(editingId ? `Cotización ${numero || ''} actualizada exitosamente!` : `Cotización ${numero || ''} creada exitosamente!`)
+        // Limpiar / salir de edición
+        router.push('/dashboard/cotizador')
+        setEditingId(null)
         setClienteId("")
         setDescripcion("")
         setItems([])
@@ -396,14 +567,74 @@ export default function CotizadorPage() {
     }))
   }
 
+  const resetCotizador = () => {
+    setEditingId(null)
+    setClienteId("")
+    setDescripcion("")
+    setValidezDias("15")
+    setTiempoEntrega("")
+    setObservaciones("")
+    setItems([])
+    setShowItemForm(false)
+    resetItemForm()
+    setSubtotal(0)
+    setDescuento(0)
+    setIva(0)
+    setTotal(0)
+  }
+
   return (
     <div className="space-y-6">
+      <LitografiaQuoteDialog
+        open={litografiaOpen}
+        onOpenChange={setLitografiaOpen}
+        onAddItem={agregarItemLitografia}
+      />
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Cotizador Inteligente</h1>
-        <p className="text-muted-foreground">
-          Crea cotizaciones con cálculo automático de precios
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Cotizador Inteligente</h1>
+            <p className="text-muted-foreground">
+              {isLoadingCotizacion
+                ? 'Cargando cotización…'
+                : editingId
+                  ? `Editando cotización (${editingId})`
+                  : 'Crea cotizaciones con cálculo automático de precios'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm" type="button">
+              <Link href="/dashboard/cotizaciones">Historial</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm" type="button">
+              <Link href="/dashboard/cotizaciones/plantilla">Editar plantilla</Link>
+            </Button>
+            <Button
+              size="sm"
+              type="button"
+              onClick={() => {
+                router.push('/dashboard/cotizador')
+                resetCotizador()
+              }}
+            >
+              Nueva cotización
+            </Button>
+            {editingId ? (
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                onClick={() => {
+                  router.push('/dashboard/cotizador')
+                  resetCotizador()
+                }}
+              >
+                Cancelar edición
+              </Button>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -473,12 +704,25 @@ export default function CotizadorPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Items de la Cotización</CardTitle>
-                <Button onClick={() => setShowItemForm(true)} size="sm">
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Agregar Item
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={() => {
+                      setShowItemForm(false)
+                      setLitografiaOpen(true)
+                    }}
+                  >
+                    Cotizador Litografía
+                  </Button>
+                  <Button onClick={() => setShowItemForm(true)} size="sm">
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Agregar Item
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -847,11 +1091,15 @@ export default function CotizadorPage() {
 
               <Button 
                 onClick={guardarCotizacion}
-                disabled={isLoading || !clienteId || items.length === 0}
+                disabled={isLoading || isLoadingCotizacion || !clienteId || items.length === 0}
                 className="w-full"
                 size="lg"
               >
-                {isLoading ? 'Guardando...' : 'Guardar Cotización'}
+                {isLoading
+                  ? 'Guardando...'
+                  : editingId
+                    ? 'Actualizar cotización'
+                    : 'Guardar Cotización'}
               </Button>
             </CardContent>
           </Card>

@@ -32,7 +32,7 @@ async function getOrCreateEmpresaIdForUser(userId: string): Promise<string> {
 
 export async function GET(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.MATERIALES, 'READ')
+    const access = await requireApiAccess('INVENTARIO' as ModuleKey, 'READ')
     if (!access.ok) return access.response
 
     const empresaId = await getOrCreateEmpresaIdForUser(access.userId)
@@ -40,16 +40,19 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const materialId = searchParams.get('materialId') || undefined
     const type = searchParams.get('type') || undefined
+    const warehouseId = searchParams.get('warehouseId') || undefined
     const limit = Math.min(200, Math.max(1, Number(searchParams.get('limit') || 50)))
 
     const where: {
       empresaId: string
       materialId?: string
       type?: InventoryMovementType
+      warehouseId?: string
     } = { empresaId }
 
     if (materialId) where.materialId = materialId
     if (type && isMovementType(type)) where.type = type
+    if (warehouseId) where.warehouseId = warehouseId
 
     const movements = await prisma.inventoryMovement.findMany({
       where,
@@ -64,6 +67,7 @@ export async function GET(request: Request) {
         note: true,
         createdAt: true,
         material: { select: { id: true, nombre: true, unidadMedida: true } },
+        warehouse: { select: { id: true, nombre: true } },
         createdBy: { select: { id: true, name: true, email: true } },
       },
     })
@@ -80,18 +84,20 @@ type PostBody =
       materialId: string
       type: 'IN' | 'OUT'
       quantity: number
+      warehouseId?: string
       note?: string
     }
   | {
       materialId: string
       type: 'ADJUST'
       newStock: number
+      warehouseId?: string
       note?: string
     }
 
 export async function POST(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.MATERIALES, 'WRITE')
+    const access = await requireApiAccess('INVENTARIO' as ModuleKey, 'WRITE')
     if (!access.ok) return access.response
 
     const empresaId = await getOrCreateEmpresaIdForUser(access.userId)
@@ -99,9 +105,25 @@ export async function POST(request: Request) {
     const body = (await request.json().catch(() => null)) as Partial<PostBody> | null
     const materialId = typeof body?.materialId === 'string' ? body.materialId : ''
     const type = body?.type
+    const warehouseId = typeof (body as { warehouseId?: unknown })?.warehouseId === 'string' ? (body as { warehouseId?: string }).warehouseId : null
 
     if (!materialId || !isMovementType(type)) {
       return NextResponse.json({ error: 'Body inválido. Esperado: { materialId, type, ... }' }, { status: 400 })
+    }
+
+    if (warehouseId) {
+      const wh = await prisma.inventoryWarehouse.findUnique({
+        where: { id: warehouseId },
+        select: { id: true, empresaId: true, sedeId: true },
+      })
+
+      if (!wh || wh.empresaId !== empresaId) {
+        return NextResponse.json({ error: 'Sede no encontrada' }, { status: 404 })
+      }
+
+      if (wh.sedeId && wh.sedeId !== access.sedeId) {
+        return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
+      }
     }
 
     const material = await prisma.material.findUnique({
@@ -113,7 +135,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Material no encontrado' }, { status: 404 })
     }
 
-    const stockBefore = material.stockActual
+    const stockBeforeGlobal = material.stockActual
+    const stockBeforeWarehouse = warehouseId
+      ? await (async () => {
+          const existing = await prisma.inventoryStock.findUnique({
+            where: { warehouseId_materialId: { warehouseId, materialId } },
+            select: { quantity: true },
+          })
+
+          if (existing) return existing.quantity
+
+          // Si aún no hay stock distribuido por bodegas para este material,
+          // inicializamos la bodega seleccionada con el stock global.
+          const anyStock = await prisma.inventoryStock.findFirst({
+            where: { materialId },
+            select: { id: true },
+          })
+
+          return anyStock ? 0 : stockBeforeGlobal
+        })()
+      : null
+
+    const stockBefore = warehouseId ? stockBeforeWarehouse! : stockBeforeGlobal
     let delta = 0
     let stockAfter = stockBefore
 
@@ -139,18 +182,34 @@ export async function POST(request: Request) {
       delta = stockAfter - stockBefore
     }
 
+    const globalAfter = stockBeforeGlobal + delta
+    if (globalAfter < 0) {
+      return NextResponse.json({ error: 'Stock global resultante inválido' }, { status: 400 })
+    }
+
     const note = typeof body?.note === 'string' ? body.note.trim() : null
 
     const result = await prisma.$transaction(async (tx) => {
+      if (warehouseId) {
+        await tx.inventoryStock.upsert({
+          where: { warehouseId_materialId: { warehouseId, materialId } },
+          create: { warehouseId, materialId, quantity: stockAfter },
+          update: { quantity: stockAfter },
+          select: { id: true },
+        })
+      }
+
       const updatedMaterial = await tx.material.update({
         where: { id: materialId },
-        data: { stockActual: stockAfter },
+        data: { stockActual: globalAfter },
         select: { id: true, stockActual: true, nombre: true, unidadMedida: true },
       })
 
       const movement = await tx.inventoryMovement.create({
         data: {
           empresaId,
+          sedeId: access.sedeId,
+          warehouseId,
           materialId,
           type,
           quantity: delta,

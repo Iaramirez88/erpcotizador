@@ -1,0 +1,128 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sgdigital}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sgdigital}
+      POSTGRES_DB: ${POSTGRES_DB:-sgdigital}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    # No exponer Postgres público en producción. Usa SSH tunnel si necesitas acceso.
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    # No exponer Redis público en producción.
+    restart: unless-stopped
+
+  ocr:
+    build:
+      context: ./services/ocr
+    environment:
+      OCR_SERVICE_API_KEY: ${OCR_SERVICE_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-llama3.1:8b}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      DISABLE_MODEL_SOURCE_CHECK: ${DISABLE_MODEL_SOURCE_CHECK:-True}
+    # No exponer OCR público en producción (se consume internamente por app/worker).
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["npx", "prisma", "migrate", "deploy"]
+    restart: "no"
+
+  app:
+    build:
+      context: .
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      APP_URL: ${APP_URL:-}
+      SHARE_TOKEN_SECRET: ${SHARE_TOKEN_SECRET:-}
+
+      OCR_SERVICE_URL: ${OCR_SERVICE_URL:-http://ocr:8001}
+      OCR_SERVICE_API_KEY: ${OCR_SERVICE_API_KEY:-}
+
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+
+      BOLD_IDENTITY_KEY: ${BOLD_IDENTITY_KEY:-}
+      BOLD_WEBHOOK_SECRET: ${BOLD_WEBHOOK_SECRET:-}
+      BOLD_VERIFY_WEBHOOK: ${BOLD_VERIFY_WEBHOOK:-true}
+
+      # Spaces/S3 (opcional; si no se define S3_BUCKET, se usa disco local)
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      ocr:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"
+    volumes:
+      - scans_data:/app/public/scans
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      OCR_SERVICE_URL: ${OCR_SERVICE_URL:-http://ocr:8001}
+      OCR_SERVICE_API_KEY: ${OCR_SERVICE_API_KEY:-}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      OCR_WORKER_CONCURRENCY: ${OCR_WORKER_CONCURRENCY:-2}
+
+      # Spaces/S3 (opcional)
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      ocr:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    command: ["npm", "run", "worker:ocr"]
+    volumes:
+      - scans_data:/app/public/scans
+    restart: unless-stopped
+
+volumes:
+  db_data:
+  redis_data:
+  scans_data:

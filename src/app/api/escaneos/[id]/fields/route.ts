@@ -43,6 +43,27 @@ function deepSet(obj: Record<string, unknown>, path: string, value: unknown) {
   cursor[parts[parts.length - 1]] = value
 }
 
+function deepGet(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split(".").map((p) => p.trim()).filter(Boolean)
+  if (parts.length === 0) return undefined
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cursor: any = obj
+  for (const key of parts) {
+    if (!cursor || typeof cursor !== "object") return undefined
+    cursor = cursor[key]
+  }
+  return cursor
+}
+
+function jsonEqual(a: unknown, b: unknown): boolean {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b)
+  } catch {
+    return false
+  }
+}
+
 export async function GET(_request: Request, context: RouteContext) {
   const access = await requireApiAccess(ModuleKey.ESCANEOS, 'READ')
   if (!access.ok) return access.response
@@ -108,16 +129,45 @@ export async function PATCH(request: Request, context: RouteContext) {
   // También aplicamos la corrección sobre extractedData.semantic.structured.* para que el UI lo refleje.
   const semantic = asPlainObject(extractedObj.semantic)
   const structured = asPlainObject(semantic.structured)
+  const previousStructuredValue = deepGet(structured, path)
   deepSet(structured, path, body.value ?? null)
   semantic.structured = structured
   extractedObj.semantic = semantic
 
-  const updated = await prisma.documentScan.update({
-    where: { id: scan.id },
-    data: {
-      extractedData: extractedObj as Prisma.InputJsonValue,
-    },
-  })
+  const nextValue = body.value ?? null
+  const confirmed = body.confirm !== false
+  const shouldLogFeedback = !jsonEqual(previousStructuredValue, nextValue) || confirmed
+
+  const [updated] = await prisma.$transaction([
+    prisma.documentScan.update({
+      where: { id: scan.id },
+      data: {
+        extractedData: extractedObj as Prisma.InputJsonValue,
+      },
+    }),
+    ...(shouldLogFeedback
+      ? [
+          prisma.documentScanFieldFeedback.create({
+            data: {
+              scanId: scan.id,
+              userId,
+              sedeId: access.sedeId,
+              source: "UI_SINGLE",
+              path,
+              confirmed,
+              previousValue:
+                previousStructuredValue === undefined || previousStructuredValue === null
+                  ? Prisma.DbNull
+                  : (previousStructuredValue as Prisma.InputJsonValue),
+              newValue:
+                nextValue === undefined || nextValue === null
+                  ? Prisma.DbNull
+                  : (nextValue as Prisma.InputJsonValue),
+            },
+          }),
+        ]
+      : []),
+  ])
 
   return NextResponse.json({ success: true, data: updated })
 }

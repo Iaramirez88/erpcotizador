@@ -32,8 +32,35 @@ interface Cliente {
   ciudad?: string | null
   departamento?: string | null
   createdAt: string
+  segmento?: "POTENCIAL" | "OCASIONAL" | "FRECUENTE"
+  ultimaActividadAt?: string | null
   _count?: {
     cotizaciones: number
+    ordenes?: number
+  }
+}
+
+type ClienteSegmento = NonNullable<Cliente["segmento"]>
+
+const SEGMENTOS: Array<{ value: "" | "POTENCIAL" | "OCASIONAL" | "FRECUENTE"; label: string }> = [
+  { value: "", label: "Todos" },
+  { value: "POTENCIAL", label: "Potenciales" },
+  { value: "OCASIONAL", label: "Ocasionales" },
+  { value: "FRECUENTE", label: "Frecuentes" },
+]
+
+const SEGMENTO_LABEL: Record<ClienteSegmento, string> = {
+  POTENCIAL: "Potencial",
+  OCASIONAL: "Ocasional",
+  FRECUENTE: "Frecuente",
+}
+
+function fmtDate(date: string | null | undefined) {
+  if (!date) return "—"
+  try {
+    return new Intl.DateTimeFormat("es-CO", { dateStyle: "medium" }).format(new Date(date))
+  } catch {
+    return String(date)
   }
 }
 
@@ -41,6 +68,7 @@ export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState("")
+  const [segmentoFiltro, setSegmentoFiltro] = useState<"" | "POTENCIAL" | "OCASIONAL" | "FRECUENTE">("")
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -54,16 +82,18 @@ export default function ClientesPage() {
     celular: "",
     direccion: "",
     ciudad: "",
-    departamento: ""
+    departamento: "",
+    segmento: "" as "" | ClienteSegmento,
   })
 
   // Cargar clientes
   const fetchClientes = async () => {
     setIsLoading(true)
     try {
-      const url = search 
-        ? `/api/clientes?search=${encodeURIComponent(search)}`
-        : '/api/clientes'
+      const params = new URLSearchParams()
+      if (search) params.set('search', search)
+      if (segmentoFiltro) params.set('segmento', segmentoFiltro)
+      const url = params.toString() ? `/api/clientes?${params.toString()}` : '/api/clientes'
 
       const response = await fetch(url)
       const data = await response.json()
@@ -81,7 +111,7 @@ export default function ClientesPage() {
   useEffect(() => {
     fetchClientes()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search])
+  }, [search, segmentoFiltro])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -130,7 +160,8 @@ export default function ClientesPage() {
       celular: cliente.celular || "",
       direccion: cliente.direccion || "",
       ciudad: cliente.ciudad || "",
-      departamento: cliente.departamento || ""
+      departamento: cliente.departamento || "",
+      segmento: (cliente.segmento || "") as "" | ClienteSegmento,
     })
     setIsModalOpen(true)
   }
@@ -167,7 +198,8 @@ export default function ClientesPage() {
       celular: "",
       direccion: "",
       ciudad: "",
-      departamento: ""
+      departamento: "",
+      segmento: "" as "" | ClienteSegmento,
     })
   }
 
@@ -181,14 +213,16 @@ export default function ClientesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Clientes</h1>
+          <h1 className="text-3xl font-bold tracking-tight" data-tour="clientes-title">Clientes</h1>
           <p className="text-muted-foreground">
             Gestiona tu base de datos de clientes
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <ImportDialog module="clientes" title="Importar clientes" />
-          <Button onClick={openNewClienteModal}>
+          <span data-tour="clientes-import">
+            <ImportDialog module="clientes" title="Importar clientes" />
+          </span>
+          <Button onClick={openNewClienteModal} data-tour="clientes-new">
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
@@ -200,13 +234,29 @@ export default function ClientesPage() {
       {/* Búsqueda */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <div className="flex-1">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2">
               <Input
+                data-tour="clientes-search"
                 placeholder="Buscar por nombre, documento o email..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
+            </div>
+
+            <div className="space-y-1">
+              <Label>Segmento</Label>
+              <select
+                value={segmentoFiltro}
+                onChange={(e) => setSegmentoFiltro(e.target.value as (typeof SEGMENTOS)[number]["value"])}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                {SEGMENTOS.map((s) => (
+                  <option key={s.value || 'ALL'} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </CardContent>
@@ -241,9 +291,12 @@ export default function ClientesPage() {
                   <tr className="text-left">
                     <th className="pb-3 font-medium">Nombre</th>
                     <th className="pb-3 font-medium">Documento</th>
+                    <th className="pb-3 font-medium">Segmento</th>
                     <th className="pb-3 font-medium">Contacto</th>
                     <th className="pb-3 font-medium">Ciudad</th>
                     <th className="pb-3 font-medium text-center">Cotizaciones</th>
+                    <th className="pb-3 font-medium text-center">Órdenes</th>
+                    <th className="pb-3 font-medium">Última actividad</th>
                     <th className="pb-3 font-medium text-right">Acciones</th>
                   </tr>
                 </thead>
@@ -262,6 +315,21 @@ export default function ClientesPage() {
                           <p className="font-mono text-sm">{cliente.documento}</p>
                         </div>
                       </td>
+
+                      <td className="py-4">
+                        <span
+                          className={
+                            "text-xs px-2 py-1 rounded border " +
+                            (cliente.segmento === "FRECUENTE"
+                              ? "bg-green-50 text-green-700 border-green-200"
+                              : cliente.segmento === "OCASIONAL"
+                                ? "bg-blue-50 text-blue-700 border-blue-200"
+                                : "bg-slate-50 text-slate-700 border-slate-200")
+                          }
+                        >
+                          {cliente.segmento ? SEGMENTO_LABEL[cliente.segmento] : "—"}
+                        </span>
+                      </td>
                       <td className="py-4 text-sm">
                         {cliente.celular || cliente.telefono || 'Sin teléfono'}
                       </td>
@@ -272,6 +340,16 @@ export default function ClientesPage() {
                         <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 text-sm font-medium">
                           {cliente._count?.cotizaciones || 0}
                         </span>
+                      </td>
+
+                      <td className="py-4 text-center">
+                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-700 text-sm font-medium">
+                          {cliente._count?.ordenes || 0}
+                        </span>
+                      </td>
+
+                      <td className="py-4 text-sm">
+                        {fmtDate(cliente.ultimaActividadAt)}
                       </td>
                       <td className="py-4">
                         <div className="flex justify-end gap-2">
@@ -328,6 +406,30 @@ export default function ClientesPage() {
                   required
                   placeholder="Nombre del cliente"
                 />
+              </div>
+
+              {/* Segmento */}
+              <div className="col-span-2">
+                <Label htmlFor="segmento">Tipo de cliente (segmento)</Label>
+                <select
+                  id="segmento"
+                  value={formData.segmento}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      segmento: e.target.value as ("" | ClienteSegmento),
+                    })
+                  }
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                >
+                  <option value="">Automático (según actividad)</option>
+                  <option value="POTENCIAL">Potencial</option>
+                  <option value="OCASIONAL">Ocasional</option>
+                  <option value="FRECUENTE">Frecuente</option>
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Si lo dejas en automático, el sistema lo calcula por cotizaciones/órdenes.
+                </p>
               </div>
 
               {/* Tipo Documento */}

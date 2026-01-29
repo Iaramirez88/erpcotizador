@@ -3,15 +3,14 @@
  * 
  * Barra lateral de navegación del dashboard
  */
-
 "use client"
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
-import { NavSettingsDialog } from "@/components/dashboard/nav-settings-dialog"
 import { useUiStore } from "@/lib/ui-store"
+import { Building2 } from "lucide-react"
 
 interface SidebarProps {
   user: {
@@ -48,20 +47,11 @@ const navigation: NavItem[] = [
     )
   },
   {
-    name: "Cotizaciones",
-    href: "/dashboard/cotizaciones",
+    name: "Litografía",
+    href: "/dashboard/litografia",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    )
-  },
-  {
-    name: "Plantilla Cotización",
-    href: "/dashboard/cotizaciones/plantilla",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a4 4 0 00-4 4v10a2 2 0 002 2h4a2 2 0 002-2V10a4 4 0 00-4-4zm-4 6h8" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6M7 17h10M8 21h8M6 3h12v14H6V3z" />
       </svg>
     )
   },
@@ -84,11 +74,20 @@ const navigation: NavItem[] = [
     )
   },
   {
-    name: "Materiales",
+    name: "Productos",
     href: "/dashboard/materiales",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+      </svg>
+    )
+  },
+  {
+    name: "Terminados",
+    href: "/dashboard/terminados",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2l9 4.5v11L12 22 3 17.5v-11L12 2zm0 0v20M3 6.5l9 4.5 9-4.5" />
       </svg>
     )
   },
@@ -102,6 +101,59 @@ const navigation: NavItem[] = [
           strokeLinejoin="round"
           strokeWidth={2}
           d="M7 20h10a2 2 0 002-2V8a2 2 0 00-2-2h-1.5a2.5 2.5 0 00-5 0H9a2 2 0 00-2 2v10a2 2 0 002 2zm3-14a1 1 0 112 0h-2z"
+        />
+      </svg>
+    ),
+  },
+  {
+    name: "Traslados",
+    href: "/dashboard/inventario/traslados",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"
+        />
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M13 7l4 5-4 5"
+        />
+      </svg>
+    ),
+  },
+  {
+    name: "Remisiones",
+    href: "/dashboard/remisiones",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9 12h6m-6 4h6m3-10H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V8a2 2 0 00-2-2zm-7-2h2a2 2 0 012 2v0H9v0a2 2 0 012-2z"
+        />
+      </svg>
+    ),
+  },
+  {
+    name: "Sedes",
+    href: "/dashboard/bodegas",
+    icon: <Building2 />,
+  },
+  {
+    name: "Facturación",
+    href: "/dashboard/pos",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M3 7h18M6 11h12M6 15h6M6 19h12"
         />
       </svg>
     ),
@@ -157,6 +209,9 @@ export default function Sidebar({ user }: SidebarProps) {
   const mobileNavOpen = useUiStore((s) => s.mobileNavOpen)
   const setMobileNavOpen = useUiStore((s) => s.setMobileNavOpen)
 
+  const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed)
+  const toggleSidebarCollapsed = useUiStore((s) => s.toggleSidebarCollapsed)
+
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
 
   useEffect(() => {
@@ -183,15 +238,6 @@ export default function Sidebar({ user }: SidebarProps) {
     return navigation.filter((it) => navPrefs[it.href] !== false)
   }, [navPrefs])
 
-  async function saveNav(next: Record<string, boolean>) {
-    setNavPrefs(next)
-    await fetch('/api/ui-preferences', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nav: next }),
-    }).catch(() => null)
-  }
-
   return (
     <>
       {/* Backdrop (mobile) */}
@@ -206,26 +252,49 @@ export default function Sidebar({ user }: SidebarProps) {
       <aside
         className={cn(
           "bg-slate-950 text-slate-100 border-r border-slate-800 flex flex-col",
-          "fixed inset-y-0 left-0 z-50 w-72 md:w-64 md:static",
+          "fixed inset-y-0 left-0 z-50 md:static",
+          sidebarCollapsed ? "w-20" : "w-72 md:w-64",
           "transform transition-transform md:translate-x-0",
           mobileNavOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
         {/* Logo */}
         <div className="p-4 border-b border-slate-800">
-          <div className="flex items-center space-x-3">
+          <div className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "space-x-3")}>
             <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-primary-foreground text-lg font-bold shadow-sm">
               SG
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-50">SGDigital</h1>
-              <p className="text-xs text-slate-400">Cotizador Pro</p>
-            </div>
+            {!sidebarCollapsed ? (
+              <div>
+                <h1 className="text-xl font-bold text-slate-50">SGDigital</h1>
+                <p className="text-xs text-slate-400">Cotizador Pro</p>
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              className={cn(
+                "hidden md:inline-flex ml-auto h-9 w-9 items-center justify-center rounded-md border border-slate-800 text-slate-200 hover:bg-slate-800/40",
+                sidebarCollapsed ? "ml-0" : ""
+              )}
+              onClick={toggleSidebarCollapsed}
+              title={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
+              aria-label={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d={sidebarCollapsed ? "M9 5l7 7-7 7" : "M15 19l-7-7 7-7"}
+                />
+              </svg>
+            </button>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        <nav className={cn("flex-1 p-3 space-y-1 overflow-y-auto", sidebarCollapsed ? "px-2" : "px-3")}>
           {visibleNavigation.map((item) => {
             const isActive = pathname === item.href
 
@@ -240,48 +309,46 @@ export default function Sidebar({ user }: SidebarProps) {
                     ? "bg-slate-800/60 text-white"
                     : "text-slate-200 hover:bg-slate-800/40"
                 )}
+                title={sidebarCollapsed ? item.name : undefined}
               >
-                <div className="flex items-center space-x-3">
+                <div className={cn("flex items-center", sidebarCollapsed ? "justify-center w-full" : "space-x-3")}>
                   {item.icon}
-                  <span className="font-medium">{item.name}</span>
+                  {!sidebarCollapsed ? <span className="font-medium">{item.name}</span> : null}
                 </div>
-                {item.badge && (
+                {!sidebarCollapsed && item.badge ? (
                   <span className="px-2 py-1 text-xs font-medium bg-slate-800 text-slate-200 rounded">
                     {item.badge}
                   </span>
-                )}
+                ) : null}
               </Link>
             )
           })}
         </nav>
 
         {/* User Info + Cambiar contraseña */}
-        <div className="p-4 border-t border-slate-800">
-          <div className="mb-3">
-            <NavSettingsDialog
-              items={navigation.map((n) => ({ name: n.name, href: n.href }))}
-              value={navPrefs ?? {}}
-              onSave={saveNav}
-            />
-          </div>
-          <div className="flex items-center space-x-3">
+        <div className={cn("p-4 border-t border-slate-800", sidebarCollapsed ? "px-2" : "px-4")}>
+          <div className={cn("flex items-center space-x-3", sidebarCollapsed ? "justify-center" : "")}>
             <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-200 font-medium">
               {user.name?.charAt(0).toUpperCase()}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-100 truncate">{user.name}</p>
-              <p className="text-xs text-slate-400 truncate">{user.email}</p>
+            {!sidebarCollapsed ? (
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-100 truncate">{user.name}</p>
+                <p className="text-xs text-slate-400 truncate">{user.email}</p>
+              </div>
+            ) : null}
+          </div>
+          {!sidebarCollapsed ? (
+            <div className="mt-4">
+              <Link
+                href="/auth/change-password"
+                onClick={() => setMobileNavOpen(false)}
+                className="text-xs text-sky-300 hover:underline font-medium"
+              >
+                Cambiar contraseña
+              </Link>
             </div>
-          </div>
-          <div className="mt-4">
-            <Link
-              href="/auth/change-password"
-              onClick={() => setMobileNavOpen(false)}
-              className="text-xs text-sky-300 hover:underline font-medium"
-            >
-              Cambiar contraseña
-            </Link>
-          </div>
+          ) : null}
         </div>
       </aside>
     </>

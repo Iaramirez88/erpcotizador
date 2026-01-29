@@ -1,0 +1,8 @@
+-- DropIndex
+DROP INDEX "litografia_flyer_rates_empresaId_formatoKey_tintas_activo_idx";
+
+-- RenameIndex
+ALTER INDEX "litografia_flyer_rates_empresaId_formatoKey_tintas_paperRateId_" RENAME TO "litografia_flyer_rates_empresaId_formatoKey_tintas_paperRat_idx";
+
+-- RenameIndex
+ALTER INDEX "litografia_flyer_rates_empresaId_formatoKey_tintas_tirajeMi_pap" RENAME TO "litografia_flyer_rates_empresaId_formatoKey_tintas_tirajeMi_key";

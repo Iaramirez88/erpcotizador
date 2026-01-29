@@ -42,6 +42,7 @@ const TEMPLATE_HEADERS: Record<ImportModule, string[]> = {
     'stockActual',
     'stockMinimo',
     'unidadMedida',
+    'tipoProducto',
     'proveedor',
     'observaciones',
     'activo',

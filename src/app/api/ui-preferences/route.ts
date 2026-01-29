@@ -21,13 +21,18 @@ type ReportPrefs = {
   }
 }
 
+type TutorialPrefs = {
+  seen?: Record<string, boolean>
+}
+
 function defaultPrefs() {
   const nav: NavPrefs = {}
   const report: ReportPrefs = {
     sections: { kpis: true, ventas: true, topClientes: true, documentos: true, compras: true },
     charts: { ventasMensuales: true, documentosPorTipo: true, comprasPorProveedor: true },
   }
-  return { nav, report }
+  const tutorial: TutorialPrefs = { seen: {} }
+  return { nav, report, tutorial }
 }
 
 async function resolveUserIdFromSession(session: { user?: { id?: string; email?: string | null } }) {
@@ -52,7 +57,7 @@ export async function GET() {
   const userId = await resolveUserIdFromSession(session)
   if (!userId) return NextResponse.json({ success: false, error: 'Sesión inválida' }, { status: 401 })
 
-  const pref = await prisma.uiPreference.findUnique({ where: { userId }, select: { nav: true, report: true } })
+  const pref = await prisma.uiPreference.findUnique({ where: { userId }, select: { nav: true, report: true, tutorial: true } })
   const defaults = defaultPrefs()
 
   return NextResponse.json({
@@ -60,6 +65,7 @@ export async function GET() {
     data: {
       nav: (pref?.nav as unknown) ?? defaults.nav,
       report: (pref?.report as unknown) ?? defaults.report,
+      tutorial: (pref?.tutorial as unknown) ?? defaults.tutorial,
     },
   })
 }
@@ -80,6 +86,7 @@ export async function PUT(req: NextRequest) {
 
   const nav = isPlainObject(body.nav) ? (body.nav as NavPrefs) : undefined
   const report = isPlainObject(body.report) ? (body.report as ReportPrefs) : undefined
+  const tutorial = isPlainObject(body.tutorial) ? (body.tutorial as TutorialPrefs) : undefined
 
   const updated = await prisma.uiPreference.upsert({
     where: { userId },
@@ -87,13 +94,15 @@ export async function PUT(req: NextRequest) {
       userId,
       nav: (nav ?? defaults.nav) as never,
       report: (report ?? defaults.report) as never,
+      tutorial: (tutorial ?? defaults.tutorial) as never,
     },
     update: {
       nav: (nav ?? undefined) as never,
       report: (report ?? undefined) as never,
+      tutorial: (tutorial ?? undefined) as never,
     },
-    select: { nav: true, report: true },
+    select: { nav: true, report: true, tutorial: true },
   })
 
-  return NextResponse.json({ success: true, data: { nav: updated.nav, report: updated.report } })
+  return NextResponse.json({ success: true, data: { nav: updated.nav, report: updated.report, tutorial: updated.tutorial } })
 }

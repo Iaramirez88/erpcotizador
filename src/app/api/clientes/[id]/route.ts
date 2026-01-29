@@ -10,6 +10,23 @@ import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
 import { ModuleKey } from "@prisma/client"
 
+type ClienteSegmento = "POTENCIAL" | "OCASIONAL" | "FRECUENTE"
+
+function normalizeSegmento(value: unknown): ClienteSegmento | null {
+  if (value == null || value === "") return null
+  const s = String(value).trim().toUpperCase()
+  if (s === "POTENCIAL" || s === "OCASIONAL" || s === "FRECUENTE") return s
+  return null
+}
+
+function computeSegment(opts: { cotizaciones: number; ordenes: number }): ClienteSegmento {
+  const cot = Math.max(0, opts.cotizaciones || 0)
+  const ord = Math.max(0, opts.ordenes || 0)
+  if (cot === 0 && ord === 0) return "POTENCIAL"
+  if (ord >= 3 || cot >= 5) return "FRECUENTE"
+  return "OCASIONAL"
+}
+
 interface RouteContext {
   params: Promise<{
     id: string
@@ -52,9 +69,17 @@ export async function GET(
       )
     }
 
+    const cotizaciones = cliente._count?.cotizaciones ?? 0
+    const ordenes = cliente._count?.ordenes ?? 0
+    const segmentoCalc = computeSegment({ cotizaciones, ordenes })
+    const segmentoFinal = (cliente as { segmento?: ClienteSegmento | null }).segmento ?? segmentoCalc
+
     return NextResponse.json({
       success: true,
-      data: cliente
+      data: {
+        ...cliente,
+        segmento: segmentoFinal,
+      }
     })
 
   } catch (error) {
@@ -77,6 +102,9 @@ export async function PUT(
 
     const { id } = await context.params
     const body = await request.json()
+
+    const hasSegmento = Object.prototype.hasOwnProperty.call(body, "segmento")
+    const segmentoManual = hasSegmento ? normalizeSegmento(body.segmento) : null
 
     // Verificar si el cliente existe
     const clienteExistente = await prisma.cliente.findUnique({
@@ -116,7 +144,8 @@ export async function PUT(
         celular: body.celular,
         direccion: body.direccion,
         ciudad: body.ciudad,
-        departamento: body.departamento
+        departamento: body.departamento,
+        ...(hasSegmento ? { segmento: segmentoManual } : {}),
       }
     })
 

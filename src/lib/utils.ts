@@ -50,6 +50,22 @@ export function formatDateShort(date: Date | string): string {
 }
 
 /**
+ * Normaliza y muestra la unidad de medida de manera amigable.
+ * - m2 / m² -> m²
+ * - ml / m / metro -> m
+ * - unidad / und / u -> und
+ */
+export function formatUnidadMedidaLabel(unidadMedida: unknown): string {
+  if (unidadMedida === null || unidadMedida === undefined) return ""
+  const raw = String(unidadMedida).trim()
+  const u = raw.toLowerCase()
+  if (u === "m2" || u === "m²") return "m²"
+  if (u === "ml" || u === "m" || u === "metro") return "m"
+  if (u === "unidad" || u === "und" || u === "u") return "und"
+  return raw
+}
+
+/**
  * Genera un número de cotización único
  */
 export function generarNumeroCotizacion(numero: number): string {

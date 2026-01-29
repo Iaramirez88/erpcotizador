@@ -13,24 +13,8 @@ import { validatePassword } from "@/lib/password-policy"
 import { randomDigits, sha256Hex } from "@/lib/auth-tokens"
 import { sendEmail } from "@/lib/email"
 
-type EmailVerificationCodeDelegate = {
-  create: (args: unknown) => unknown
-}
-
 export async function POST(request: Request) {
   try {
-    const emailVerificationCode = (prisma as unknown as { emailVerificationCode?: EmailVerificationCodeDelegate })
-      .emailVerificationCode
-    if (!emailVerificationCode) {
-      return NextResponse.json(
-        {
-          error:
-            'Modelo Prisma EmailVerificationCode no disponible. Ejecuta `npx prisma generate` y reinicia el servidor.',
-        },
-        { status: 500 }
-      )
-    }
-
     // Obtener datos del body
     const body: unknown = await request.json()
     const { name, email, password } = (body ?? {}) as {
@@ -84,7 +68,7 @@ export async function POST(request: Request) {
     const codeHash = sha256Hex(code)
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 min
 
-    await emailVerificationCode.create({
+    await prisma.emailVerificationCode.create({
       data: {
         userId: user.id,
         email: normalizedEmail,

@@ -1,5 +1,10 @@
 # 🚀 Guía de Instalación y Configuración
 
+## ✅ Requisitos previos
+
+- Node.js recomendado: `22.22.0` (ver `.nvmrc`). En Windows esto evita errores de Prisma (WASM) al ejecutar `npx prisma generate`.
+- PostgreSQL (local/nube/docker) y `DATABASE_URL` configurada.
+
 ## 📦 Paso 1: Instalar Dependencias
 
 Abre la terminal en la carpeta del proyecto y ejecuta:
@@ -88,7 +93,7 @@ docker run --name postgres-sgdigital \
 
 2. **Crear las tablas en la base de datos**:
    ```bash
-   npx prisma db push
+   npx prisma migrate dev
    ```
 
    O si prefieres usar migraciones (recomendado para producción):
@@ -199,6 +204,15 @@ cotizador-inteligente/
 ### Error: "Module not found"
 - Ejecuta: `npm install`
 - Ejecuta: `npx prisma generate`
+
+### Error (Windows): Prisma WASM / `externref` al generar
+- Solución recomendada: usa Node `22.22.0` (ver `.nvmrc`) y vuelve a ejecutar `npx prisma generate`.
+
+## 🧪 Checks rápidos
+
+- Typecheck: `npm run typecheck`
+- Smoke cotizaciones + PDF: `npm run smoke:cotizaciones`
+- Concurrencia consecutivo por sede: `npm run test:cotizacion-sequence`
 
 ### Error: "NEXTAUTH_SECRET must be provided"
 - Genera un secreto como se indicó arriba

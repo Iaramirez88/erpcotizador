@@ -14,6 +14,9 @@ const MODULES: ModuleKey[] = [
   'COTIZACIONES',
   'CLIENTES',
   'MATERIALES',
+  'INVENTARIO',
+  'REMISIONES',
+  'POS',
   'PROVEEDORES',
   'COMPRAS',
   'ORDENES',
@@ -25,6 +28,20 @@ const MODULES: ModuleKey[] = [
 
 const ACCESS: AccessLevel[] = ['NONE', 'READ', 'WRITE', 'ADMIN']
 const SEDE_ROLES: SedeRole[] = ['ADMIN', 'MANAGER', 'MEMBER', 'READER']
+
+const SEDE_ROLE_LABEL: Record<SedeRole, string> = {
+  ADMIN: 'Administrador',
+  MANAGER: 'Editor',
+  MEMBER: 'Editor',
+  READER: 'Lectura',
+}
+
+const ACCESS_LABEL: Record<AccessLevel, string> = {
+  NONE: 'Sin acceso',
+  READ: 'Lectura',
+  WRITE: 'Editor',
+  ADMIN: 'Administrador',
+}
 
 export default async function PermisosPage() {
   const session = await auth()
@@ -145,6 +162,47 @@ export default async function PermisosPage() {
     })
   }
 
+  async function setGlobalAccess(formData: FormData) {
+    'use server'
+    const session2 = await auth()
+    if (!session2) return
+
+    const email = String(formData.get('email') || '').trim().toLowerCase()
+    const level = String(formData.get('level') || '') as AccessLevel
+
+    if (!email) return
+    if (!ACCESS.includes(level)) return
+
+    const empresa2 = await getOrCreateDefaultEmpresa()
+
+    const anyAdmin2 =
+      session2.user.role === 'ADMIN' ||
+      !!(await prisma.sedeMembership.findFirst({
+        where: {
+          userId: session2.user.id,
+          sede: { empresaId: empresa2.id },
+          role: { in: ['ADMIN', 'MANAGER'] },
+        },
+        select: { id: true },
+      }))
+
+    if (!anyAdmin2) return
+
+    const user = await prisma.user.findUnique({ where: { email } })
+    if (!user) return
+
+    if (level === 'NONE') {
+      await prisma.userGlobalAccess.delete({ where: { userId: user.id } }).catch(() => null)
+      return
+    }
+
+    await prisma.userGlobalAccess.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, empresaId: empresa2.id, level },
+      update: { level },
+    })
+  }
+
   const activeSede = activeSedeId
     ? await prisma.sede.findUnique({
         where: { id: activeSedeId },
@@ -168,14 +226,57 @@ export default async function PermisosPage() {
       })
     : []
 
+  const globalAccess = await prisma.userGlobalAccess.findMany({
+    where: { empresaId: empresa.id },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, level: true, user: { select: { email: true, name: true } } },
+  })
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Permisos por sede</h1>
+        <h1 className="text-2xl font-bold">Permisos</h1>
         <p className="text-sm text-muted-foreground">
-          Administra sedes, miembros y accesos por módulo.
+          Define permisos generales (todas las sedes) y permisos por sede/módulo.
         </p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Permisos generales (todas las sedes)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form action={setGlobalAccess} className="grid gap-2 max-w-lg">
+            <input name="email" placeholder="Email del usuario" className="border rounded px-3 py-2" />
+            <select name="level" className="border rounded px-3 py-2">
+              {ACCESS.map((l) => (
+                <option key={l} value={l}>
+                  {ACCESS_LABEL[l]}
+                </option>
+              ))}
+            </select>
+            <Button type="submit" variant="outline">Guardar permiso general</Button>
+            <div className="text-xs text-muted-foreground">
+              Nota: si un usuario tiene rol por sede, ese rol puede sobreescribir el permiso general.
+            </div>
+          </form>
+
+          <div className="grid gap-2">
+            {globalAccess.map((ga) => (
+              <div key={ga.id} className="flex items-center justify-between border rounded px-3 py-2">
+                <div>
+                  <div className="font-medium">{ga.user.name ?? ga.user.email}</div>
+                  <div className="text-xs text-muted-foreground">{ga.user.email}</div>
+                </div>
+                <div className="text-sm">{ACCESS_LABEL[ga.level]}</div>
+              </div>
+            ))}
+            {globalAccess.length === 0 && (
+              <div className="text-sm text-muted-foreground">Sin permisos generales.</div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -209,7 +310,7 @@ export default async function PermisosPage() {
             <select name="role" className="border rounded px-3 py-2">
               {SEDE_ROLES.map((r) => (
                 <option key={r} value={r}>
-                  {r}
+                  {SEDE_ROLE_LABEL[r]}
                 </option>
               ))}
             </select>
@@ -223,7 +324,7 @@ export default async function PermisosPage() {
                   <div className="font-medium">{m.user.name ?? m.user.email}</div>
                   <div className="text-xs text-muted-foreground">{m.user.email}</div>
                 </div>
-                <div className="text-sm">{m.role}</div>
+                <div className="text-sm">{SEDE_ROLE_LABEL[m.role]}</div>
               </div>
             ))}
             {members.length === 0 && <div className="text-sm text-muted-foreground">Sin miembros.</div>}
@@ -249,7 +350,7 @@ export default async function PermisosPage() {
             <select name="level" className="border rounded px-3 py-2">
               {ACCESS.map((l) => (
                 <option key={l} value={l}>
-                  {l}
+                  {ACCESS_LABEL[l]}
                 </option>
               ))}
             </select>
@@ -263,7 +364,7 @@ export default async function PermisosPage() {
                   <div className="font-medium">{p.user.name ?? p.user.email}</div>
                   <div className="text-xs text-muted-foreground">{p.user.email}</div>
                 </div>
-                <div className="text-sm">{p.module}: {p.level}</div>
+                <div className="text-sm">{p.module}: {ACCESS_LABEL[p.level]}</div>
               </div>
             ))}
             {permisos.length === 0 && <div className="text-sm text-muted-foreground">Sin permisos explícitos.</div>}

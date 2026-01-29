@@ -6,7 +6,7 @@
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { deleteScanFile } from "@/lib/scan-file-storage"
+import { deleteScanObject } from "@/lib/scan-storage"
 import { requireApiAccess } from "@/lib/api-rbac"
 import { ModuleKey } from "@prisma/client"
 
@@ -64,7 +64,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
     }
 
     await prisma.documentScan.delete({ where: { id: scan.id } })
-    await deleteScanFile({ storedFileName: scan.storedFileName, fileUrl: scan.fileUrl })
+    await deleteScanObject({ storedFileName: scan.storedFileName, fileUrl: scan.fileUrl })
 
     return NextResponse.json({ success: true })
   } catch (error) {

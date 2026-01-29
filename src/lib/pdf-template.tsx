@@ -11,9 +11,12 @@ import {
 interface Material {
   nombre: string
   tipo: string
+  imagenUrl?: string | null
 }
 
 interface ItemCotizacion {
+  descripcion?: string | null
+  unidad?: string | null
   cantidad: number
   ancho: number | null
   alto: number | null
@@ -23,6 +26,8 @@ interface ItemCotizacion {
   laminado: boolean
   troquelado: boolean
   instalacion: boolean
+  costoInstalacion?: number
+  imagenUrl?: string | null
   material: Material | null
 }
 
@@ -33,6 +38,9 @@ interface CotizacionPDFProps {
     validezDias: number
     estado?: string
     observaciones?: string | null
+    garantia?: string | null
+    paymentMethods?: string[]
+    boldCheckoutUrl?: string | null
     cliente: {
       nombre: string
       email?: string | null
@@ -148,6 +156,10 @@ function createStyles(t: CotizacionTemplateSettings) {
     col3: { width: '15%' },
     col4: { width: '20%' },
     col5: { width: '15%', textAlign: 'right' },
+
+    colU1: { width: '70%' },
+    colU2: { width: '15%' },
+    colU3: { width: '15%', textAlign: 'right' },
     totals: {
       marginTop: 10,
       alignItems: 'flex-end',
@@ -206,6 +218,18 @@ function createStyles(t: CotizacionTemplateSettings) {
       fontSize: Math.max(t.typography.baseFontSize - 2, 8),
       color: t.colors.mutedText,
     },
+    itemTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 2,
+    },
+    itemImage: {
+      width: 28,
+      height: 28,
+      objectFit: 'cover',
+      borderRadius: 3,
+      marginRight: 6,
+    },
   })
 }
 
@@ -223,9 +247,33 @@ export default function CotizacionPDF({ cotizacion, template }: CotizacionPDFPro
   const locale = t.currency.locale
   const currency = t.currency.currency
 
+  const getUnitKey = (u: unknown): 'm2' | 'ml' | 'unidad' => {
+    const unit = String(u ?? '').trim().toLowerCase()
+    if (unit === 'm2' || unit === 'm²') return 'm2'
+    if (unit === 'ml' || unit === 'm' || unit === 'metro') return 'ml'
+    return 'unidad'
+  }
+
+  const getUnitLabel = (key: 'm2' | 'ml' | 'unidad') => {
+    if (key === 'm2') return 'm²'
+    if (key === 'ml') return 'm'
+    return 'und'
+  }
+
+  const metrajeItems = cotizacion.items.filter((it) => {
+    const key = getUnitKey(it.unidad)
+    return key === 'm2' || key === 'ml'
+  })
+  const unidadItems = cotizacion.items.filter((it) => getUnitKey(it.unidad) === 'unidad')
+
   const observacion = (cotizacion.observaciones ?? '').trim()
   const nota = (cotizacion.notas ?? '').trim()
   const observacionesTexto = [observacion, nota].filter(Boolean).join('\n')
+  const garantiaTexto = (cotizacion.garantia ?? '').trim()
+  const paymentMethodsTexto = Array.isArray(cotizacion.paymentMethods)
+    ? cotizacion.paymentMethods.map((x) => String(x || '').trim()).filter(Boolean).join(', ')
+    : ''
+  const boldUrlTexto = (cotizacion.boldCheckoutUrl ?? '').trim()
 
   return (
     <Document>
@@ -303,42 +351,119 @@ export default function CotizacionPDF({ cotizacion, template }: CotizacionPDFPro
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Detalle de Productos/Servicios</Text>
-          <View style={styles.table}>
-            <View style={styles.tableHeader}>
-              <Text style={styles.col1}>Material</Text>
-              <Text style={styles.col2}>Ancho (m)</Text>
-              <Text style={styles.col3}>Alto (m)</Text>
-              <Text style={styles.col4}>M² / Cant</Text>
-              <Text style={styles.col5}>Subtotal</Text>
-            </View>
-            {cotizacion.items.map((item, index) => (
-              <View key={index} style={index % 2 === 0 ? styles.tableRow : styles.tableRowAlt}>
-                <View style={styles.col1}>
-                  <Text>{item.material?.nombre || 'N/A'}</Text>
-                  <Text style={styles.smallMuted}>
-                    {formatCurrency(item.precioUnitario, locale, currency)}/m²
-                  </Text>
-                  {(item.laminado || item.troquelado || item.instalacion) ? (
-                    <Text style={styles.smallMuted}>
-                      {[
-                        item.laminado && 'Laminado',
-                        item.troquelado && 'Troquelado',
-                        item.instalacion && 'Instalación',
-                      ]
-                        .filter(Boolean)
-                        .join(', ')}
-                    </Text>
-                  ) : null}
-                </View>
-                <Text style={styles.col2}>{(item.ancho ?? 0).toFixed(2)}</Text>
-                <Text style={styles.col3}>{(item.alto ?? 0).toFixed(2)}</Text>
-                <Text style={styles.col4}>
-                  {(item.metrosCuadrados ?? 0).toFixed(2)} m² × {item.cantidad}
-                </Text>
-                <Text style={styles.col5}>{formatCurrency(item.subtotal, locale, currency)}</Text>
+
+          {metrajeItems.length > 0 ? (
+            <View style={styles.table}>
+              {unidadItems.length > 0 ? <Text style={styles.smallMuted}>Ítems por metraje</Text> : null}
+              <View style={styles.tableHeader}>
+                <Text style={styles.col1}>Material</Text>
+                <Text style={styles.col2}>Ancho (m)</Text>
+                <Text style={styles.col3}>Alto (m)</Text>
+                <Text style={styles.col4}>Medida / Cant</Text>
+                <Text style={styles.col5}>Subtotal</Text>
               </View>
-            ))}
-          </View>
+
+              {metrajeItems.map((item, index) => {
+                const unitKey = getUnitKey(item.unidad)
+                const unitLabel = getUnitLabel(unitKey)
+                const title = (item.descripcion ?? '').trim() || item.material?.nombre || 'Ítem'
+                const showMaterialName = item.material?.nombre && item.material.nombre !== title
+                const medida = Number(item.metrosCuadrados ?? 0)
+                const imageSrc = item.imagenUrl || item.material?.imagenUrl || null
+
+                return (
+                  <View key={index} style={index % 2 === 0 ? styles.tableRow : styles.tableRowAlt}>
+                    <View style={styles.col1}>
+                      <View style={styles.itemTitleRow}>
+                        {imageSrc ? <Image style={styles.itemImage} src={imageSrc} /> : null}
+                        <Text>{title}</Text>
+                      </View>
+                      {showMaterialName ? <Text style={styles.smallMuted}>{item.material?.nombre}</Text> : null}
+                      <Text style={styles.smallMuted}>
+                        {formatCurrency(item.precioUnitario, locale, currency)}/{unitLabel}
+                      </Text>
+                      {item.laminado || item.troquelado || item.instalacion ? (
+                        <Text style={styles.smallMuted}>
+                          {[
+                            item.laminado && 'Laminado',
+                            item.troquelado && 'Troquelado',
+                            item.instalacion &&
+                              `Instalación${
+                                (item.costoInstalacion ?? 0) > 0
+                                  ? ` (${formatCurrency(item.costoInstalacion ?? 0, locale, currency)})`
+                                  : ''
+                              }`,
+                          ]
+                            .filter(Boolean)
+                            .join(', ')}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text style={styles.col2}>{(item.ancho ?? 0).toFixed(2)}</Text>
+                    <Text style={styles.col3}>{(item.alto ?? 0).toFixed(2)}</Text>
+                    <Text style={styles.col4}>
+                      {unitKey === 'ml'
+                        ? `${medida.toFixed(2)} m × ${item.cantidad}`
+                        : `${medida.toFixed(2)} m² × ${item.cantidad}`}
+                    </Text>
+                    <Text style={styles.col5}>{formatCurrency(item.subtotal, locale, currency)}</Text>
+                  </View>
+                )
+              })}
+            </View>
+          ) : null}
+
+          {unidadItems.length > 0 ? (
+            <View style={styles.table}>
+              {metrajeItems.length > 0 ? <Text style={styles.smallMuted}>Ítems por unidad</Text> : null}
+              <View style={styles.tableHeader}>
+                <Text style={styles.colU1}>Descripción</Text>
+                <Text style={styles.colU2}>Cant</Text>
+                <Text style={styles.colU3}>Subtotal</Text>
+              </View>
+
+              {unidadItems.map((item, index) => {
+                const unitKey = getUnitKey(item.unidad)
+                const unitLabel = getUnitLabel(unitKey)
+                const title = (item.descripcion ?? '').trim() || item.material?.nombre || 'Ítem'
+                const showMaterialName = item.material?.nombre && item.material.nombre !== title
+                const imageSrc = item.imagenUrl || item.material?.imagenUrl || null
+
+                return (
+                  <View key={index} style={index % 2 === 0 ? styles.tableRow : styles.tableRowAlt}>
+                    <View style={styles.colU1}>
+                      <View style={styles.itemTitleRow}>
+                        {imageSrc ? <Image style={styles.itemImage} src={imageSrc} /> : null}
+                        <Text>{title}</Text>
+                      </View>
+                      {showMaterialName ? <Text style={styles.smallMuted}>{item.material?.nombre}</Text> : null}
+                      <Text style={styles.smallMuted}>
+                        {formatCurrency(item.precioUnitario, locale, currency)}/{unitLabel}
+                      </Text>
+                      {item.laminado || item.troquelado || item.instalacion ? (
+                        <Text style={styles.smallMuted}>
+                          {[
+                            item.laminado && 'Laminado',
+                            item.troquelado && 'Troquelado',
+                            item.instalacion &&
+                              `Instalación${
+                                (item.costoInstalacion ?? 0) > 0
+                                  ? ` (${formatCurrency(item.costoInstalacion ?? 0, locale, currency)})`
+                                  : ''
+                              }`,
+                          ]
+                            .filter(Boolean)
+                            .join(', ')}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text style={styles.colU2}>{item.cantidad}</Text>
+                    <Text style={styles.colU3}>{formatCurrency(item.subtotal, locale, currency)}</Text>
+                  </View>
+                )
+              })}
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.totals}>
@@ -355,6 +480,30 @@ export default function CotizacionPDF({ cotizacion, template }: CotizacionPDFPro
             <Text>{formatCurrency(cotizacion.total, locale, currency)}</Text>
           </View>
         </View>
+
+        {(garantiaTexto || paymentMethodsTexto || boldUrlTexto) ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Condiciones</Text>
+            {paymentMethodsTexto ? (
+              <View style={styles.row}>
+                <Text style={styles.label}>Formas de pago:</Text>
+                <Text style={styles.value}>{paymentMethodsTexto}</Text>
+              </View>
+            ) : null}
+            {boldUrlTexto ? (
+              <View style={styles.row}>
+                <Text style={styles.label}>Link de pago:</Text>
+                <Text style={styles.value}>{boldUrlTexto}</Text>
+              </View>
+            ) : null}
+            {garantiaTexto ? (
+              <View style={styles.row}>
+                <Text style={styles.label}>Garantía:</Text>
+                <Text style={styles.value}>{garantiaTexto}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         {t.toggles.showObservaciones && observacionesTexto ? (
           <View style={styles.observaciones}>

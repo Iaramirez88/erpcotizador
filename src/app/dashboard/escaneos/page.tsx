@@ -85,6 +85,23 @@ function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
 }
 
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : []
+}
+
+function n(value: unknown): number {
+  const num = typeof value === "number" ? value : Number(value)
+  return Number.isFinite(num) ? num : 0
+}
+
+function formatMoneyCop(value: number): string {
+  try {
+    return new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(value)
+  } catch {
+    return value.toLocaleString("es-CO")
+  }
+}
+
 function getAtPath(obj: Record<string, unknown>, path: string): unknown {
   const parts = path.split(".").filter(Boolean)
   let cur: unknown = obj
@@ -273,7 +290,7 @@ export default function EscaneosPage() {
       }
 
       setScanModalState("success")
-      setScanModalMessage("Escaneo exitoso")
+      setScanModalMessage(String(data?.message || "Escaneo en cola para procesamiento"))
 
       // Limpiar input file para permitir re-subir el mismo archivo sin refrescar.
       setFile(null)
@@ -813,6 +830,14 @@ export default function EscaneosPage() {
               const confirmation = asObject(extractedData.confirmation)
               const fields = asObject(confirmation.fields)
 
+              const structuredItemsRaw = asArray((structured as Record<string, unknown>).items)
+              const structuredItems = structuredItemsRaw
+                .map((it) => (it && typeof it === "object" ? (it as Record<string, unknown>) : null))
+                .filter(Boolean) as Array<Record<string, unknown>>
+
+              const totalExtracted = String(getAtPath(structured, "monetary.total") ?? "")
+              const totalFromItems = structuredItems.reduce((sum, it) => sum + n(it.amount), 0)
+
               const fileUrl = String(detailsScan.fileUrl || "")
               const mimeType = String(detailsScan.mimeType || "")
               const isPdf = mimeType.includes("pdf") || fileUrl.toLowerCase().endsWith(".pdf")
@@ -1091,6 +1116,51 @@ export default function EscaneosPage() {
                       </div>
                     </div>
 
+                    {structuredItems.length ? (
+                      <div className="rounded-md border p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-medium">Ítems detectados</p>
+                          <div className="text-xs text-muted-foreground">
+                            Total ítems: <span className="font-medium">{formatMoneyCop(totalFromItems)}</span>
+                            {totalExtracted ? (
+                              <>
+                                {" "}· Total extraído: <span className="font-medium">{formatMoneyCop(n(totalExtracted))}</span>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="overflow-auto">
+                          <table className="min-w-full text-sm">
+                            <thead>
+                              <tr className="text-left text-gray-600 border-b">
+                                <th className="py-2 pr-3">Descripción</th>
+                                <th className="py-2 pr-3">Cant.</th>
+                                <th className="py-2 pr-3">Precio</th>
+                                <th className="py-2 pr-2">Importe</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {structuredItems.slice(0, 50).map((it, idx) => (
+                                <tr key={idx} className="border-b last:border-b-0">
+                                  <td className="py-2 pr-3 text-gray-900">{String(it.description ?? "") || "—"}</td>
+                                  <td className="py-2 pr-3 text-gray-700">{String(it.qty ?? "") || "—"}</td>
+                                  <td className="py-2 pr-3 text-gray-700">
+                                    {it.unitPrice != null && String(it.unitPrice).trim() ? formatMoneyCop(n(it.unitPrice)) : "—"}
+                                  </td>
+                                  <td className="py-2 pr-2 font-medium">{formatMoneyCop(n(it.amount))}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {structuredItems.length > 50 ? (
+                          <p className="text-xs text-muted-foreground">Mostrando 50 ítems (hay más).</p>
+                        ) : null}
+                      </div>
+                    ) : null}
+
                     <div className="grid gap-3 md:grid-cols-2">
                       {BASIC_FIELD_DEFS.map((f) => {
                         const current = getAtPath(structured, f.path)
@@ -1109,7 +1179,38 @@ export default function EscaneosPage() {
                             onMouseLeave={() => setActiveField((cur) => (cur === f.path ? null : cur))}
                             onFocus={() => setActiveField(f.path)}
                           >
-                            <Label>{f.label}</Label>
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Label className="truncate">{f.label}</Label>
+                                <span
+                                  className={
+                                    "text-[11px] px-2 py-0.5 rounded-full border shrink-0 " +
+                                    (isConfirmed
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                      : "bg-amber-50 text-amber-700 border-amber-200")
+                                  }
+                                  title={
+                                    isConfirmed
+                                      ? `Confirmado${confirmed?.confirmedAt ? `: ${new Date(confirmed.confirmedAt).toLocaleString()}` : ""}`
+                                      : "Pendiente"
+                                  }
+                                >
+                                  {isConfirmed ? "Confirmado" : "Pendiente"}
+                                </span>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={!canEditFields || isConfirming}
+                                className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
+                                onClick={() => {
+                                  if (isConfirming) return
+                                  patchField(f.path, fieldDrafts[f.path] ?? "")
+                                }}
+                              >
+                                {isConfirming ? "Confirmando…" : isConfirmed ? "Reconfirmar" : "Confirmar"}
+                              </Button>
+                            </div>
                             <Input
                               value={fieldDrafts[f.path] ?? (typeof value === "string" || typeof value === "number" ? String(value) : "")}
                               disabled={!canEditFields}
@@ -1124,36 +1225,6 @@ export default function EscaneosPage() {
                                 Evidencia: <span className="font-mono">{evidenceText}</span>
                               </p>
                             ) : null}
-
-                            <div className="flex items-center justify-between gap-2">
-                              <span
-                                className={
-                                  "text-[11px] px-2 py-0.5 rounded-full border " +
-                                  (isConfirmed
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                    : "bg-amber-50 text-amber-700 border-amber-200")
-                                }
-                                title={
-                                  isConfirmed
-                                    ? `Confirmado${confirmed?.confirmedAt ? `: ${new Date(confirmed.confirmedAt).toLocaleString()}` : ""}`
-                                    : "Pendiente"
-                                }
-                              >
-                                {isConfirmed ? "Confirmado" : "Pendiente"}
-                              </span>
-                              <Button
-                                type="button"
-                                size="sm"
-                                disabled={!canEditFields || isConfirming}
-                                className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
-                                onClick={() => {
-                                  if (isConfirming) return
-                                  patchField(f.path, fieldDrafts[f.path] ?? "")
-                                }}
-                              >
-                                {isConfirming ? "Confirmando…" : isConfirmed ? "Reconfirmar" : "Confirmar"}
-                              </Button>
-                            </div>
                           </div>
                         )
                       })}
@@ -1190,7 +1261,38 @@ export default function EscaneosPage() {
                               onMouseLeave={() => setActiveField((cur) => (cur === f.path ? null : cur))}
                               onFocus={() => setActiveField(f.path)}
                             >
-                              <Label>{f.label}</Label>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Label className="truncate">{f.label}</Label>
+                                  <span
+                                    className={
+                                      "text-[11px] px-2 py-0.5 rounded-full border shrink-0 " +
+                                      (isConfirmed
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                        : "bg-amber-50 text-amber-700 border-amber-200")
+                                    }
+                                    title={
+                                      isConfirmed
+                                        ? `Confirmado${confirmed?.confirmedAt ? `: ${new Date(confirmed.confirmedAt).toLocaleString()}` : ""}`
+                                        : "Pendiente"
+                                    }
+                                  >
+                                    {isConfirmed ? "Confirmado" : "Pendiente"}
+                                  </span>
+                                </div>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  disabled={!canEditFields || isConfirming}
+                                  className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
+                                  onClick={() => {
+                                    if (isConfirming) return
+                                    patchField(f.path, fieldDrafts[f.path] ?? "")
+                                  }}
+                                >
+                                  {isConfirming ? "Confirmando…" : isConfirmed ? "Reconfirmar" : "Confirmar"}
+                                </Button>
+                              </div>
                               <Input
                                 value={
                                   fieldDrafts[f.path] ??
@@ -1208,36 +1310,6 @@ export default function EscaneosPage() {
                                   Evidencia: <span className="font-mono">{evidenceText}</span>
                                 </p>
                               ) : null}
-
-                              <div className="flex items-center justify-between gap-2">
-                                <span
-                                  className={
-                                    "text-[11px] px-2 py-0.5 rounded-full border " +
-                                    (isConfirmed
-                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                      : "bg-amber-50 text-amber-700 border-amber-200")
-                                  }
-                                  title={
-                                    isConfirmed
-                                      ? `Confirmado${confirmed?.confirmedAt ? `: ${new Date(confirmed.confirmedAt).toLocaleString()}` : ""}`
-                                      : "Pendiente"
-                                  }
-                                >
-                                  {isConfirmed ? "Confirmado" : "Pendiente"}
-                                </span>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  disabled={!canEditFields || isConfirming}
-                                  className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity"
-                                  onClick={() => {
-                                    if (isConfirming) return
-                                    patchField(f.path, fieldDrafts[f.path] ?? "")
-                                  }}
-                                >
-                                  {isConfirming ? "Confirmando…" : isConfirmed ? "Reconfirmar" : "Confirmar"}
-                                </Button>
-                              </div>
                             </div>
                           )
                         })}

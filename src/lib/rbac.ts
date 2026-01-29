@@ -58,11 +58,20 @@ export async function ensureDefaultSedeForEmpresa(empresaId: string, userId: str
   })
 
   if (!existingMembership) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, globalAccess: { select: { level: true } } },
+    })
+
+    const globalLevel = user?.globalAccess?.level ?? 'NONE'
+    const roleFromGlobal: SedeRole =
+      globalLevel === 'ADMIN' ? 'ADMIN' : globalLevel === 'WRITE' ? 'MEMBER' : globalLevel === 'READ' ? 'READER' : 'READER'
+
     await prisma.sedeMembership.create({
       data: {
         sedeId: sede.id,
         userId,
-        role: membershipCount === 0 ? 'ADMIN' : 'READER',
+        role: membershipCount === 0 || user?.role === UserRole.ADMIN ? 'ADMIN' : roleFromGlobal,
       },
     })
   }
@@ -91,17 +100,20 @@ export async function getEffectiveAccess(args: {
 }): Promise<AccessLevel> {
   const user = await prisma.user.findUnique({
     where: { id: args.userId },
-    select: { role: true },
+    select: { role: true, globalAccess: { select: { level: true } } },
   })
 
   if (user?.role === UserRole.ADMIN) return 'ADMIN'
+
+  const globalBase: AccessLevel = user?.globalAccess?.level ?? 'NONE'
 
   const membership = await prisma.sedeMembership.findUnique({
     where: { sedeId_userId: { sedeId: args.sedeId, userId: args.userId } },
     select: { role: true },
   })
 
-  const base = membership ? sedeRoleToBaseAccess(membership.role) : 'NONE'
+  // Regla: si hay rol por sede, ese manda; si no, aplica el nivel general.
+  const base = membership ? sedeRoleToBaseAccess(membership.role) : globalBase
 
   const explicit = await prisma.userModuleAccess.findUnique({
     where: {

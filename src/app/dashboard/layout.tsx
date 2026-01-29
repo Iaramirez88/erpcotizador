@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import Sidebar from "@/components/dashboard/sidebar"
 import Header from "@/components/dashboard/header"
+import { TourProvider } from "@/components/tour/tour-provider"
 
 export default async function DashboardLayout({
   children,
@@ -22,20 +23,22 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      {/* Sidebar */}
-      <Sidebar user={session.user} />
+    <TourProvider>
+      <div className="flex min-h-screen bg-gray-50">
+        {/* Sidebar */}
+        <Sidebar user={session.user} />
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <Header user={session.user} />
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Header */}
+          <Header user={session.user} />
 
-        {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
-          {children}
-        </main>
+          {/* Page Content */}
+          <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </TourProvider>
   )
 }

@@ -10,6 +10,20 @@ import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
 import { ModuleKey } from "@prisma/client"
 
+function normalizeUnidadMedida(value: unknown): 'm2' | 'ml' | 'unidad' {
+  const u = String(value ?? '').trim().toLowerCase()
+  if (u === 'm2' || u === 'm²') return 'm2'
+  if (u === 'ml' || u === 'm' || u === 'metro') return 'ml'
+  return 'unidad'
+}
+
+function toPositiveNumberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return null
+  return n
+}
+
 interface RouteContext {
   params: Promise<{
     id: string
@@ -67,6 +81,23 @@ export async function PUT(
     const { id } = await context.params
     const body = await request.json()
 
+    const imagenUrlNorm = typeof body.imagenUrl === 'string' ? body.imagenUrl.trim() : null
+
+    const unidad = normalizeUnidadMedida(body.unidadMedida)
+    const isActive = body.activo !== false
+
+    const precioM2N = unidad === 'm2' ? toPositiveNumberOrNull(body.precioM2) : null
+    const precioMetroN = unidad === 'ml' ? toPositiveNumberOrNull(body.precioMetro) : null
+    const precioUnidadN = unidad === 'unidad' ? toPositiveNumberOrNull(body.precioUnidad) : null
+
+    const precioCobro = precioM2N ?? precioMetroN ?? precioUnidadN
+    if (isActive && !(precioCobro !== null && precioCobro > 0)) {
+      return NextResponse.json(
+        { error: "Debes indicar un precio de venta válido según la unidad de cobro (m², ml o unidad)." },
+        { status: 400 }
+      )
+    }
+
     const materialExistente = await prisma.material.findUnique({
       where: { id }
     })
@@ -91,20 +122,21 @@ export async function PUT(
           nombre: body.nombre,
           tipo: body.tipo,
           categoria: body.categoria,
+          imagenUrl: imagenUrlNorm || null,
           ancho: body.ancho ? parseFloat(body.ancho) : null,
           largo: body.largo ? parseFloat(body.largo) : null,
           espesor: body.espesor ? parseFloat(body.espesor) : null,
           color: body.color,
-          precioM2: body.precioM2 ? parseFloat(body.precioM2) : null,
-          precioMetro: body.precioMetro ? parseFloat(body.precioMetro) : null,
-          precioUnidad: body.precioUnidad ? parseFloat(body.precioUnidad) : null,
+          precioM2: precioM2N,
+          precioMetro: precioMetroN,
+          precioUnidad: precioUnidadN,
           precioCompra: body.precioCompra ? parseFloat(body.precioCompra) : null,
           stockActual: body.stockActual ? parseFloat(body.stockActual) : 0,
           stockMinimo: body.stockMinimo ? parseFloat(body.stockMinimo) : 0,
-          unidadMedida: body.unidadMedida,
+          unidadMedida: unidad,
           proveedor: body.proveedor,
           observaciones: body.observaciones,
-          activo: body.activo !== false
+          activo: isActive
         },
         include: {
           quantityDiscounts: { orderBy: { minQty: 'asc' } }

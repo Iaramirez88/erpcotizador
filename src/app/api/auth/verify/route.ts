@@ -2,25 +2,8 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sha256Hex, timingSafeEqualHex } from '@/lib/auth-tokens'
 
-type EmailVerificationCodeDelegate = {
-  deleteMany: (args: unknown) => unknown
-  findFirst: (args: unknown) => unknown
-}
-
 export async function POST(request: Request) {
   try {
-    const emailVerificationCode = (prisma as unknown as { emailVerificationCode?: EmailVerificationCodeDelegate })
-      .emailVerificationCode
-    if (!emailVerificationCode) {
-      return NextResponse.json(
-        {
-          error:
-            'Modelo Prisma EmailVerificationCode no disponible. Ejecuta `npx prisma generate` y reinicia el servidor.',
-        },
-        { status: 500 }
-      )
-    }
-
     const body: unknown = await request.json()
     const { email, code } = (body ?? {}) as { email?: unknown; code?: unknown }
 
@@ -47,14 +30,15 @@ export async function POST(request: Request) {
     const now = new Date()
 
     // Limpieza suave de códigos expirados del usuario
-    await emailVerificationCode.deleteMany({
+    await prisma.emailVerificationCode.deleteMany({
       where: { userId: user.id, expiresAt: { lte: now } },
     })
 
-    const lastCode = (await emailVerificationCode.findFirst({
+    const lastCode = await prisma.emailVerificationCode.findFirst({
       where: { userId: user.id, expiresAt: { gt: now } },
       orderBy: { createdAt: 'desc' },
-    })) as { codeHash: string } | null
+      select: { codeHash: true },
+    })
 
     if (!lastCode) {
       return NextResponse.json({ error: 'Código inválido o expirado' }, { status: 400 })
@@ -68,7 +52,7 @@ export async function POST(request: Request) {
     }
 
     await prisma.user.update({ where: { id: user.id }, data: { emailVerified: now } })
-    await emailVerificationCode.deleteMany({ where: { userId: user.id } })
+    await prisma.emailVerificationCode.deleteMany({ where: { userId: user.id } })
 
     return NextResponse.json({ ok: true, verified: true })
   } catch (error: unknown) {

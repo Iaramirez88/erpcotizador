@@ -42,6 +42,27 @@ function deepSet(obj: Record<string, unknown>, path: string, value: unknown) {
   cursor[parts[parts.length - 1]] = value
 }
 
+function deepGet(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split(".").map((p) => p.trim()).filter(Boolean)
+  if (parts.length === 0) return undefined
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cursor: any = obj
+  for (const key of parts) {
+    if (!cursor || typeof cursor !== "object") return undefined
+    cursor = cursor[key]
+  }
+  return cursor
+}
+
+function jsonEqual(a: unknown, b: unknown): boolean {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b)
+  } catch {
+    return false
+  }
+}
+
 export async function POST(request: Request, context: RouteContext) {
   const access = await requireApiAccess(ModuleKey.ESCANEOS, 'WRITE')
   if (!access.ok) return access.response
@@ -73,6 +94,8 @@ export async function POST(request: Request, context: RouteContext) {
   const confirm = body.confirm !== false
 
   let applied = 0
+  const feedbackRows: Prisma.DocumentScanFieldFeedbackCreateManyInput[] = []
+
   for (const [path, value] of Object.entries(fieldsIn)) {
     const p = String(path || "").trim()
     if (!p) continue
@@ -84,6 +107,27 @@ export async function POST(request: Request, context: RouteContext) {
     entry.confirmedById = userId
     fields[p] = entry
 
+    const prev = deepGet(structured, p)
+    const next = value ?? null
+    if (!jsonEqual(prev, next) || confirm) {
+      feedbackRows.push({
+        scanId: scan.id,
+        userId,
+        sedeId: access.sedeId,
+        source: "UI_BULK",
+        path: p,
+        confirmed: confirm,
+        previousValue:
+          prev === undefined || prev === null
+            ? Prisma.DbNull
+            : (prev as Prisma.InputJsonValue),
+        newValue:
+          next === undefined || next === null
+            ? Prisma.DbNull
+            : (next as Prisma.InputJsonValue),
+      })
+    }
+
     deepSet(structured, p, value ?? null)
     applied++
   }
@@ -94,12 +138,21 @@ export async function POST(request: Request, context: RouteContext) {
   semantic.structured = structured
   extractedObj.semantic = semantic
 
-  const updated = await prisma.documentScan.update({
-    where: { id: scan.id },
-    data: {
-      extractedData: extractedObj as Prisma.InputJsonValue,
-    },
-  })
+  const [updated] = await prisma.$transaction([
+    prisma.documentScan.update({
+      where: { id: scan.id },
+      data: {
+        extractedData: extractedObj as Prisma.InputJsonValue,
+      },
+    }),
+    ...(feedbackRows.length > 0
+      ? [
+          prisma.documentScanFieldFeedback.createMany({
+            data: feedbackRows,
+          }),
+        ]
+      : []),
+  ])
 
   return NextResponse.json({ success: true, data: updated, meta: { applied } })
 }

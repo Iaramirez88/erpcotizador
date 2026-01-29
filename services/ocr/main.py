@@ -234,32 +234,369 @@ def heuristic_extract_structured_co_invoice(extracted_text: str) -> Dict[str, An
     text = extracted_text or ""
     text_norm = normalize_text_for_match(text)
 
-    # Vendor NIT: primer match razonable
+    vendor_name = None
     nit = None
-    m = re.search(r"\b\d{6,11}\s*[-–]\s*\d\b", text)
-    if m:
-        nit = m.group(0).strip()
-
-    # Número de factura: DIAN suele traer 'Número de Factura:' o 'Factura No'
     invoice_number = None
-    patterns = [
-        r"numero\s+de\s+factura\s*[:#-]?\s*([A-Z0-9\-]{3,})",
-        r"factura\s*(?:no|n\.?|nro\.?|número)?\s*[:#-]?\s*([A-Z0-9\-]{3,})",
-    ]
-    for pat in patterns:
-        mm = re.search(pat, text_norm, flags=re.IGNORECASE)
-        if mm:
-            invoice_number = mm.group(1).strip().upper()
+
+    def _label_value(label_regex: str, max_chars: int = 180) -> Optional[str]:
+        """Extrae un valor en la misma línea después de una etiqueta."""
+        if not text:
+            return None
+        mmm = re.search(label_regex + r"\s*[:#-]?\s*([^\n\r]{2," + str(max_chars) + r"})", text, flags=re.IGNORECASE)
+        if not mmm:
+            return None
+        v = mmm.group(1).strip()
+        v = re.sub(r"\s{2,}", " ", v)
+        v = re.sub(r"\s*(?:\.|,|;|:)\s*$", "", v)
+        return v or None
+
+    def _digits_only(s: str) -> str:
+        return re.sub(r"\D", "", s or "")
+
+    def _format_qty(q: float) -> str:
+        if q is None:
+            return ""
+        # Cantidades usualmente no requieren 2 decimales; pero aceptamos fracción.
+        if abs(q - round(q)) <= 1e-9:
+            return str(int(round(q)))
+        return f"{q:.3f}".rstrip("0").rstrip(".")
+
+    def _extract_items_from_text(raw_text: str) -> Tuple[List[Dict[str, Any]], Optional[float]]:
+        """Extrae ítems de una sección tipo tabla y retorna (items, subtotal_from_items)."""
+        if not raw_text:
+            return [], None
+
+        lines = [ln.strip() for ln in raw_text.splitlines() if ln and ln.strip()]
+        if not lines:
+            return [], None
+
+        # Encontrar inicio de sección de productos/ítems.
+        start_idx = -1
+        for i, ln in enumerate(lines):
+            ln_norm = normalize_text_for_match(ln)
+            if "detalles de productos" in ln_norm or "detalle de productos" in ln_norm or "detalle de productos" in ln_norm:
+                start_idx = i
+                break
+
+        # Si no hay encabezado explícito, buscar un header de tabla típico.
+        if start_idx < 0:
+            for i, ln in enumerate(lines):
+                ln_norm = normalize_text_for_match(ln)
+                if (
+                    ("descripcion" in ln_norm and ("cantidad" in ln_norm or "cant" in ln_norm) and ("precio" in ln_norm or "unitario" in ln_norm))
+                    or (
+                        ("precio unitario" in ln_norm or "precio" in ln_norm)
+                        and ("venta" in ln_norm or "unitario" in ln_norm)
+                        and ("cantidad" in ln_norm or "cant" in ln_norm)
+                    )
+                ):
+                    start_idx = i
+                    break
+
+        # Helper local: detectar tokens monetarios sin confundir cantidades (ej: 45) como dinero.
+        number_pat = re.compile(r"\b(\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{1,3})?|\d+(?:[\.,]\d{1,3})?)\b")
+
+        def _money_tokens(line: str) -> List[Tuple[int, float]]:
+            tokens: List[Tuple[int, float]] = []
+            if not line:
+                return tokens
+            for nm in number_pat.finditer(line):
+                tok = (nm.group(1) or "").strip()
+                val = parse_decimal_co(tok)
+                if val is None:
+                    continue
+
+                # En tablas de ítems, un monto usualmente tiene separador (5.000,00 / 45,00)
+                # o es un entero grande (>= 1000). Evita confundir cantidades pequeñas.
+                has_sep = ("," in tok) or ("." in tok)
+                if (not has_sep) and float(val) < 1000.0:
+                    continue
+
+                tokens.append((nm.start(), float(val)))
+            return tokens
+
+        # Fallback: si no hay header, buscar la primera línea que parezca fila de ítem.
+        if start_idx < 0:
+            for i, ln in enumerate(lines):
+                ln_norm = normalize_text_for_match(ln)
+                if any(m in ln_norm for m in ("subtotal", "totales", "total", "resumen", "observaciones")):
+                    continue
+
+                monies = _money_tokens(ln)
+                if len(monies) < 2:
+                    continue
+
+                # Debe existir algo de texto no numérico.
+                if len(re.sub(r"[^A-Za-zÁÉÍÓÚÑáéíóúñ]", "", ln)) < 6:
+                    continue
+
+                start_idx = i
+                break
+
+        if start_idx < 0:
+            return [], None
+
+        # Avanzar hasta pasar posibles headers de tabla.
+        i = start_idx + 1
+        while i < len(lines):
+            ln_norm = normalize_text_for_match(lines[i])
+            if ("descripcion" in ln_norm and "cantidad" in ln_norm) or ln_norm.startswith("no") or ln_norm.startswith("codigo"):
+                i += 1
+                continue
+            # Primera línea de datos probable
             break
 
-    # Fecha: buscar 'Fecha de Emisión' o un dd/mm/aaaa cercano
+        end_markers = (
+            "notas finales",
+            "totales",
+            "total",
+            "subtotal",
+            "resumen",
+            "observaciones",
+        )
+
+        items: List[Dict[str, Any]] = []
+        subtotal_from_items: float = 0.0
+        money_pat_local = re.compile(money_pat, flags=re.IGNORECASE)
+
+        for j in range(i, len(lines)):
+            ln = lines[j]
+            ln_norm = normalize_text_for_match(ln)
+            if any(m in ln_norm for m in end_markers) and len(ln_norm) < 40:
+                break
+
+            # Saltar headers repetidos
+            if ("descripcion" in ln_norm and "cantidad" in ln_norm) or ("precio" in ln_norm and "unitario" in ln_norm):
+                continue
+
+            # Preferir extracción por tokens para no capturar cantidades pequeñas como dinero.
+            # (Ej: una línea que inicia con "45" cantidad; el regex global de money también lo capturaría.)
+            monies: List[Tuple[int, float]] = _money_tokens(ln)
+
+            if not monies:
+                continue
+
+            monies.sort(key=lambda x: x[0])
+            first_money_pos = monies[0][0]
+            prefix = ln[:first_money_pos].strip()
+            if not prefix:
+                continue
+
+            # qty: último número antes del primer monto
+            qty_val: Optional[float] = None
+            qty_token = None
+            qty_pos = -1
+            qty_end = -1
+            for nm in number_pat.finditer(prefix):
+                qty_token = nm.group(1)
+                qty_pos = nm.start()
+                qty_end = nm.end()
+            if qty_token:
+                qty_val = parse_decimal_co(qty_token)
+
+            # Elegir amount/unitPrice de forma más global:
+            # - amount: mayor monto positivo
+            # - unitPrice: menor monto positivo (ignorando ceros y valores demasiado cercanos al total)
+            vals = [v for _, v in monies]
+            pos_vals = [v for v in vals if v is not None and v > 0.0001]
+            if not pos_vals:
+                continue
+
+            amount_val = max(pos_vals)
+            unit_price_val: Optional[float] = None
+            if len(pos_vals) >= 2:
+                unit_candidates = [v for v in pos_vals if abs(v - amount_val) > 0.009]
+                if unit_candidates:
+                    # Si tenemos qty, preferir el candidato que sea consistente con amount.
+                    if qty_val is not None and qty_val > 0:
+                        unit_est = amount_val / float(qty_val)
+                        best = min(unit_candidates, key=lambda v: abs(v - unit_est))
+                        rel_err = abs(best - unit_est) / max(abs(unit_est), 1.0)
+                        if rel_err <= 0.15:
+                            unit_price_val = best
+                        else:
+                            unit_price_val = min(unit_candidates)
+                    else:
+                        unit_price_val = min(unit_candidates)
+
+            # description: robusto a layouts donde la cantidad está al inicio.
+            # - Si qty está al inicio: descripción está después de qty
+            # - Si qty está al final: descripción está antes de qty
+            desc_part = prefix
+            if qty_pos >= 0:
+                if qty_pos == 0 and qty_end > 0:
+                    desc_part = prefix[qty_end:].strip()
+                else:
+                    desc_part = prefix[:qty_pos].strip()
+
+            # Eliminar columnas comunes al inicio: No. y Código
+            desc_part = re.sub(r"^\s*\d+\s+\S+\s+", "", desc_part)
+
+            # Eliminar U/M al final (solo si parece una unidad real)
+            toks = [t for t in desc_part.split() if t]
+            if toks:
+                last = toks[-1]
+                last_norm = normalize_text_for_match(last)
+                known_units = {
+                    "un",
+                    "und",
+                    "unidad",
+                    "unidades",
+                    "kg",
+                    "g",
+                    "gr",
+                    "lb",
+                    "l",
+                    "lt",
+                    "ml",
+                    "m",
+                    "cm",
+                    "mm",
+                    "m2",
+                    "m3",
+                    "hr",
+                    "hrs",
+                    "hora",
+                    "horas",
+                    "dia",
+                    "dias",
+                    "mes",
+                    "meses",
+                    "serv",
+                    "servicio",
+                    "servicios",
+                }
+                if last_norm in known_units:
+                    toks = toks[:-1]
+            description = " ".join(toks).strip()
+            if not description:
+                continue
+
+            # Filtrar falsos positivos: líneas con solo código/encabezados
+            if len(description) < 3:
+                continue
+
+            items.append(
+                {
+                    "description": description,
+                    "qty": _format_qty(qty_val) if qty_val is not None else None,
+                    "unitPrice": f"{unit_price_val:.2f}" if unit_price_val is not None else None,
+                    "amount": f"{amount_val:.2f}" if amount_val is not None else None,
+                }
+            )
+
+            if amount_val is not None and amount_val > 0:
+                subtotal_from_items += amount_val
+
+        if not items:
+            return [], None
+        return items, subtotal_from_items if subtotal_from_items > 0 else None
+
+    # Encabezado común (DIAN/email): NIT;NOMBRE;FE48975;...
+    m_hdr = re.search(r"\b(\d{6,11})\s*;\s*([^;\n\r]{3,120}?)\s*;\s*([A-Z]{1,6}\d{3,})\b", text)
+    if m_hdr:
+        nit = m_hdr.group(1).strip()
+        vendor_name = m_hdr.group(2).strip()
+        invoice_number = m_hdr.group(3).strip().upper()
+
+    # Vendor NIT: soportar 'NIT: 901152321' y variantes con dígito de verificación
+    if not nit:
+        m = re.search(r"\bnit\s*[:#-]?\s*([0-9][0-9\.\s]{5,14}(?:\s*[-–]\s*\d)?)\b", text, flags=re.IGNORECASE)
+        if m:
+            raw = m.group(1)
+            raw = raw.replace("–", "-")
+            raw = re.sub(r"\s+", "", raw)
+            raw = raw.replace(".", "")
+            nit = raw
+
+    # Layouts tipo DIAN/PDF: "Nit del Emisor:" / "NIT del Emisor:"
+    if not nit:
+        v = _label_value(r"nit\s+del\s+emisor")
+        if v:
+            digits = _digits_only(v)
+            if len(digits) >= 6:
+                nit = digits
+    if not nit:
+        m = re.search(r"\b\d{6,11}\s*[-–]\s*\d\b", text)
+        if m:
+            nit = m.group(0).strip().replace("–", "-")
+
+    # Nombre del proveedor/emisor: 'Factura electrónica por X'
+    if not vendor_name:
+        m = re.search(r"factura\s+electr[oó]nica\s+por\s+([^\n\r]{3,140})", text, flags=re.IGNORECASE)
+        if m:
+            vendor_name = m.group(1).strip()
+            vendor_name = re.sub(r"\s{2,}", " ", vendor_name)
+            vendor_name = re.sub(r"\s*(?:\.|,|;|:)\s*$", "", vendor_name)
+
+    # Layouts tipo factura PDF: "Razón Social:" / "Nombre Comercial:"
+    if not vendor_name:
+        v = _label_value(r"raz[oó]n\s+social") or _label_value(r"razon\s+social")
+        if v:
+            vendor_name = v
+    if not vendor_name:
+        v = _label_value(r"nombre\s+comercial")
+        if v:
+            vendor_name = v
+
+    # Número de factura (evitar capturar 'electronica'). Requerimos al menos 1 dígito.
+    if not invoice_number:
+        patterns = [
+            r"numero\s+de\s+factura\s*[:#-]?\s*([A-Z0-9\-]*\d[A-Z0-9\-]{2,})",
+            r"factura\s*(?:#|no\.?|n\.?|nro\.?|número|num\.?|n°)\s*[:#-]?\s*([A-Z0-9\-]*\d[A-Z0-9\-]{2,})",
+        ]
+        for pat in patterns:
+            mm = re.search(pat, text_norm, flags=re.IGNORECASE)
+            if mm:
+                invoice_number = mm.group(1).strip().upper()
+                break
+
+    # Layouts tipo factura PDF: "Número de Factura:" con formatos 0001-36, etc.
+    if not invoice_number:
+        v = _label_value(r"n[uú]mero\s+de\s+factura") or _label_value(r"numero\s+de\s+factura")
+        if v:
+            mm = re.search(r"([A-Z0-9\-]{3,})", v.strip(), flags=re.IGNORECASE)
+            if mm:
+                invoice_number = mm.group(1).strip().upper()
+
+    # Fecha: priorizar la "Fecha de expedición/emisión" del documento (no la fecha/hora del correo).
     invoice_date = None
-    mm = re.search(r"fecha\s+de\s+(?:emision|emisión)\s*[:#-]?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})", text_norm)
-    date_raw = mm.group(1) if mm else None
+    date_raw = None
+
+    # 1) ISO yyyy-mm-dd cerca de la etiqueta
+    mm = re.search(
+        r"fecha\s+de\s+(?:emision|emisión|expedicion|expedición)\b.{0,120}?(\d{4}-\d{1,2}-\d{1,2})",
+        text_norm,
+        flags=re.IGNORECASE,
+    )
+    if mm:
+        date_raw = mm.group(1)
+
+    # 2) dd/mm/aaaa o dd/mm/aa cerca de la etiqueta
+    if not date_raw:
+        mm = re.search(
+            r"fecha\s+de\s+(?:emision|emisión|expedicion|expedición)\b.{0,120}?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})",
+            text_norm,
+            flags=re.IGNORECASE,
+        )
+        date_raw = mm.group(1) if mm else None
+
+    # 3) Mes en español cerca de la etiqueta
+    if not date_raw:
+        mm = re.search(
+            r"fecha\s+de\s+(?:emision|emisión|expedicion|expedición)\b.{0,120}?(\d{1,2}\s+de\s+[a-záéíóúñ]+\s+de\s+\d{4})\b",
+            text_norm,
+            flags=re.IGNORECASE,
+        )
+        date_raw = mm.group(1) if mm else None
+
+    # Fallbacks generales (menos confiables): pueden capturar la fecha del correo.
+    if not date_raw:
+        mm = re.search(r"\b(\d{4}-\d{1,2}-\d{1,2})\b", text)
+        date_raw = mm.group(1) if mm else None
     if not date_raw:
         mm = re.search(r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b", text)
         date_raw = mm.group(1) if mm else None
-    # Alternativa: "3 de diciembre de 2025" (común en recibos/emails)
     if not date_raw:
         mm = re.search(r"\b(\d{1,2}\s+de\s+[a-záéíóúñ]+\s+de\s+\d{4})\b", text_norm)
         date_raw = mm.group(1) if mm else None
@@ -286,12 +623,65 @@ def heuristic_extract_structured_co_invoice(extracted_text: str) -> Dict[str, An
     if mm:
         cufe = mm.group(1).strip()
 
+    money_pat = r"(?:\$|cop|usd|eur)?\s*\$?\s*(\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{2})?|\d+(?:[\.,]\d{2})?)\s*(?:cop|usd|eur)?"
+
+    def _best_money_in_fragment(fragment: str) -> Optional[float]:
+        candidates: List[Tuple[int, int, float]] = []
+        frag = fragment or ""
+        for m in re.finditer(money_pat, frag, flags=re.IGNORECASE):
+            raw_num = (m.group(1) or "").strip()
+            parsed = parse_decimal_co(raw_num)
+            if parsed is None:
+                continue
+
+            match_str = (m.group(0) or "")
+            match_lower = match_str.lower()
+            has_currency = ("$" in match_str) or ("cop" in match_lower) or ("usd" in match_lower) or ("eur" in match_lower)
+            has_sep = ("," in raw_num) or ("." in raw_num)
+            digits_only = re.sub(r"\D", "", raw_num)
+
+            # Evitar IDs largos sin moneda/separadores (ej: NIT 1026559275 en tablas tipo email/DIAN).
+            if len(digits_only) >= 7 and (not has_currency) and (not has_sep):
+                continue
+
+            score = 0
+            if has_currency:
+                score += 3
+            if has_sep:
+                score += 2
+            if parsed >= 1000:
+                score += 1
+
+            candidates.append((score, int(m.start()), float(parsed)))
+
+        if not candidates:
+            return None
+
+        # Elegir el mejor puntaje; en empate, preferir el más cercano al final.
+        candidates.sort(key=lambda x: (x[0], x[1]))
+        return candidates[-1][2]
+
     # Subtotal / IVA / Retenciones (heurístico por etiqueta)
     def _money_after_label(label_pat: str) -> Optional[float]:
-        mmm = re.search(label_pat + r"\s*[:\-]?\s*(\$?\s*\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{2})?)", text_norm)
+        # Capturar un fragmento después de la etiqueta y elegir el mejor monto.
+        mmm = re.search(label_pat + r"\b(.{0,140})", text_norm, flags=re.IGNORECASE)
         if not mmm:
             return None
-        return parse_decimal_co(mmm.group(1))
+        fragment = mmm.group(1)
+
+        best = _best_money_in_fragment(fragment)
+        if best is not None:
+            return best
+        return None
+
+    def _money_candidates_with_separators(raw_text: str) -> List[float]:
+        # Captura montos estilo "145,930" / "1.234.567" / "145,930.00" / "$145,930"
+        vals: List[float] = []
+        for m in re.finditer(r"(?:\$\s*)?(\d{1,3}(?:[\.,]\d{3})+(?:[\.,]\d{2})?|\d{1,3}(?:[\.,]\d{3})+)", raw_text):
+            parsed = parse_decimal_co(m.group(1))
+            if parsed is not None:
+                vals.append(parsed)
+        return vals
 
     subtotal_val = _money_after_label(r"subtotal")
     iva_val = _money_after_label(r"iva")
@@ -302,25 +692,97 @@ def heuristic_extract_structured_co_invoice(extracted_text: str) -> Dict[str, An
         or _money_after_label(r"retencion")
     )
 
-    # Total: escoger el mayor monto candidato (heurística)
-    total_val = None
-    candidates = []
-    for m in re.finditer(r"\b(\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{2})?)\b", text):
-        parsed = parse_decimal_co(m.group(1))
-        if parsed is not None:
-            candidates.append(parsed)
-    if candidates:
-        total_val = max(candidates)
+    # Total: priorizar etiquetas comunes antes que "el mayor número".
+    total_val = (
+        _money_after_label(r"valor\s+total")
+        or _money_after_label(r"total\s+a\s+pagar")
+        or _money_after_label(r"total")
+    )
+
+    # Fallback adicional: montos con separadores suelen ser los totales reales en PDFs resumen.
+    if total_val is None:
+        sep_vals = [v for v in _money_candidates_with_separators(text) if v >= 1000]
+        if sep_vals:
+            total_val = max(sep_vals)
+
+    # Fallback: escoger el mayor monto candidato razonable
+    if total_val is None:
+        candidates: List[float] = []
+        for m in re.finditer(r"\b(\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{2})?)\b", text):
+            parsed = parse_decimal_co(m.group(1))
+            if parsed is not None:
+                candidates.append(parsed)
+        if candidates:
+            candidates2 = [v for v in candidates if v >= 1000]
+            total_val = max(candidates2) if candidates2 else max(candidates)
+
+    # Cliente (cuando viene en resumen tipo email/DIAN)
+    customer_name = None
+
+    # 1) Saludo (suele ser el mejor candidato)
+    m = re.search(r"\b¡?hola,\s*([^!\n\r]{2,80})", text, flags=re.IGNORECASE)
+    if m:
+        customer_name = re.sub(r"\s{2,}", " ", m.group(1).strip())
+
+    # 2) Encabezado/fila: "A nombre de ..." (evitar capturar el encabezado de columnas)
+    if not customer_name:
+        m = re.search(r"a\s+nombre\s+de\s+([^\n\r]{2,80})", text, flags=re.IGNORECASE)
+        if m:
+            cand = re.sub(r"\s{2,}", " ", m.group(1).strip())
+            if not re.search(r"\bnit\b|\bcliente\b|\bfecha\b|\bvalor\b", cand, flags=re.IGNORECASE):
+                customer_name = cand
+
+    # 3) Si el texto trae encabezado de tabla y la fila con datos en la siguiente línea
+    if not customer_name:
+        m = re.search(
+            r"a\s+nombre\s+de\b[^\n\r]{0,200}[\n\r]+\s*([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]+){0,3})\s+\d{6,}",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if m:
+            customer_name = re.sub(r"\s{2,}", " ", m.group(1).strip())
+
+    customer_nit = None
+    m = re.search(r"nit\s+cliente\b.{0,30}?([0-9][0-9\.\s]{6,14})", text, flags=re.IGNORECASE)
+    if m:
+        customer_nit = re.sub(r"\D", "", m.group(1))
+
+    # Layouts tipo factura PDF: Datos del Adquiriente/Comprador
+    if not customer_name:
+        v = _label_value(r"nombre\s+o\s+raz[oó]n\s+social") or _label_value(r"nombre\s+o\s+razon\s+social")
+        if v:
+            customer_name = v
+    if not customer_nit:
+        v = _label_value(r"n[uú]mero\s+documento") or _label_value(r"numero\s+documento")
+        if v:
+            digits = _digits_only(v)
+            if len(digits) >= 6:
+                customer_nit = digits
+
+    # Moneda
+    currency = None
+    if "usd" in text_norm:
+        currency = "USD"
+    elif "cop" in text_norm or "$" in text:
+        currency = "COP"
+
+    # Ítems (tabla) + subtotal derivado
+    items, subtotal_from_items = _extract_items_from_text(text)
+
+    monetary_computed: Dict[str, Any] = {}
+    if subtotal_from_items is not None:
+        monetary_computed["subtotalFromItems"] = f"{subtotal_from_items:.2f}"
+        monetary_computed["totalFromItems"] = f"{subtotal_from_items:.2f}"
 
     return {
-        "vendor": {"name": None, "nit": nit, "address": None},
-        "customer": {"name": None, "nit": None},
+        "vendor": {"name": vendor_name, "nit": nit, "address": None},
+        "customer": {"name": customer_name, "nit": customer_nit},
         "invoice": {
             "number": invoice_number,
             "date": invoice_date,
             "dueDate": due_date,
             "cufe": cufe,
-            "currency": "COP" if "cop" in text_norm else None,
+            "currency": currency,
         },
         "dian": {"cufe": cufe, "resolutionNumber": None, "resolutionDate": None},
         "payment": {"method": None, "terms": None},
@@ -331,8 +793,9 @@ def heuristic_extract_structured_co_invoice(extracted_text: str) -> Dict[str, An
             "taxes": [],
             "withholdings": [],
             "total": f"{total_val:.2f}" if total_val is not None else None,
+            **monetary_computed,
         },
-        "items": [],
+        "items": items,
     }
 
 
@@ -978,13 +1441,45 @@ def parse_decimal_co(value: str) -> Optional[float]:
     if not s:
         return None
 
-    # Heurística CO: miles con '.' y decimales con ','
-    if "," in s and s.count(",") == 1:
-        s = s.replace(".", "")
-        s = s.replace(",", ".")
-    else:
-        # fallback: quitar separadores de miles
-        if s.count(".") > 1 and "," not in s:
+    # Heurística robusta para separadores:
+    # - CO suele usar miles con '.' y decimales con ','
+    # - pero en PDFs/email es común ver miles con ',' sin decimales (ej: 145,930)
+    has_dot = "." in s
+    has_comma = "," in s
+
+    if has_dot and has_comma:
+        # Tomar el ÚLTIMO separador como el decimal probable.
+        last_dot = s.rfind(".")
+        last_comma = s.rfind(",")
+        if last_comma > last_dot:
+            # '.' miles, ',' decimales
+            s = s.replace(".", "")
+            s = s.replace(",", ".")
+        else:
+            # ',' miles, '.' decimales
+            s = s.replace(",", "")
+    elif has_comma and not has_dot:
+        # Un solo ',' puede ser decimal (2 dígitos) o miles (3 dígitos)
+        if s.count(",") == 1:
+            left, right = s.split(",", 1)
+            if len(right) == 3 and len(left) >= 1:
+                # 145,930 => miles
+                s = left + right
+            else:
+                # 145,93 => decimal
+                s = left + "." + right
+        else:
+            # 1,234,567 => miles
+            s = s.replace(",", "")
+    elif has_dot and not has_comma:
+        # '.' puede ser decimal (2 dígitos) o miles (3 dígitos)
+        if s.count(".") == 1:
+            left, right = s.split(".", 1)
+            if len(right) == 3 and len(left) >= 1:
+                s = left + right
+            # si es 2 dígitos, se deja como decimal
+        else:
+            # 1.234.567 => miles
             s = s.replace(".", "")
 
     try:
@@ -1006,6 +1501,17 @@ def parse_date_co(value: str) -> Optional[datetime]:
         if y < 100:
             y = 2000 + y
         try:
+            return datetime(y, mo, d)
+        except Exception:
+            return None
+
+    # 1b) ISO yyyy-mm-dd (común en PDFs exportados)
+    m_iso = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", v)
+    if m_iso:
+        try:
+            y = int(m_iso.group(1))
+            mo = int(m_iso.group(2))
+            d = int(m_iso.group(3))
             return datetime(y, mo, d)
         except Exception:
             return None
@@ -1232,16 +1738,19 @@ def enforce_no_hallucination(extracted_text: str, structured: Optional[Dict[str,
         if amt >= 1000:
             variants.add(f"{amt:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))  # 1.234,56
             variants.add(f"{amt:,.2f}")  # 1,234.56
+            # En muchos PDFs viene sin decimales: "$145,930" / "$145.930"
+            variants.add(f"{amt:,.0f}".replace(",", "X").replace(".", ",").replace("X", "."))  # 145.930
+            variants.add(f"{amt:,.0f}")  # 145,930
 
         raw_norm = normalize_text_for_match(raw_text)
         for v in variants:
             if normalize_text_for_match(v) in raw_norm:
                 return True
 
-        # Fallback robusto: buscar cualquier número con 2 decimales y comparar por valor.
+        # Fallback robusto: buscar cualquier número con separadores (con o sin decimales) y comparar por valor.
         # Limitamos a patrones de dinero típicos para reducir falsos positivos.
         for m in re.finditer(
-            r"(?:(?:usd|cop|\\$)\s*)?(\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{2}))\s*(?:usd|cop|\\$)?",
+            r"(?:(?:usd|cop|\\$)\s*)?(\d{1,3}(?:[\.,]\d{3})+(?:[\.,]\d{2})?|\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{2}))\s*(?:usd|cop|\\$)?",
             raw_text,
             flags=re.IGNORECASE,
         ):
@@ -1455,7 +1964,8 @@ async def analyze(
     page_confs: List[float] = []
     layouts: List[Dict[str, Any]] = []
 
-    provider_req = (provider or "TESSERACT").strip().upper()
+    # Preferimos PaddleOCR cuando está disponible (mejor en fotos/escaneos). Siempre hay fallback a Tesseract.
+    provider_req = (provider or "PADDLEOCR").strip().upper()
     use_paddle = provider_req == "PADDLEOCR"
     provider_effective = "PADDLEOCR" if use_paddle else "TESSERACT"
     ocr_warnings: List[str] = []
@@ -1469,7 +1979,8 @@ async def analyze(
     for img in pages:
         bgr = pil_to_bgr(img)
         pre = preprocess_bgr(bgr)
-        pre_bgr = cv2.cvtColor(pre, cv2.COLOR_GRAY2BGR)
+        # Mantener variante binarizada para posibles diagnósticos/uso futuro.
+        _pre_bgr = cv2.cvtColor(pre, cv2.COLOR_GRAY2BGR)
 
         # Provider selection:
         # - Si provider=TESSERACT: solo Tesseract.
@@ -1477,7 +1988,8 @@ async def analyze(
         paddle: Optional[Dict[str, Any]] = None
         if use_paddle:
             try:
-                paddle = paddle_ocr_page(pre_bgr, language)
+                # PaddleOCR suele rendir mejor con la imagen original (no umbralizada).
+                paddle = paddle_ocr_page(bgr, language)
             except Exception as e:
                 # Si Paddle no está disponible (ej: falta 'paddle'), no abortamos el escaneo.
                 ocr_warnings.append(f"PaddleOCR no disponible, usando Tesseract. Detalle: {e}")

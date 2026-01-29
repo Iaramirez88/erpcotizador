@@ -53,14 +53,18 @@ async function getOrCreateEmpresaIdForUser(userId: string) {
   return empresa.id
 }
 
-async function nextCotizacionNumero(tx: Prisma.TransactionClient) {
-  const last = await tx.cotizacion.findFirst({ orderBy: { createdAt: "desc" }, select: { numero: true } })
-  let seq = 1
-  if (last?.numero) {
-    const match = last.numero.match(/COT-(\d+)/)
-    if (match) seq = Number.parseInt(match[1], 10) + 1
-  }
-  return `COT-${String(seq).padStart(5, "0")}`
+async function nextCotizacionNumero(tx: Prisma.TransactionClient, sedeId: string) {
+  const sede = await tx.sede.findUnique({ where: { id: sedeId }, select: { codigo: true } })
+  const sedeCodigo = (sede?.codigo || '').trim() || '00'
+
+  const seq = await tx.cotizacionSequence.upsert({
+    where: { sedeId },
+    update: { currentNumber: { increment: 1 } },
+    create: { sedeId, currentNumber: 1 },
+    select: { currentNumber: true },
+  })
+
+  return `COT-${sedeCodigo}-${String(seq.currentNumber).padStart(4, "0")}`
 }
 
 function normalizeDocumento(value: string) {
@@ -137,7 +141,7 @@ export async function POST(_request: Request, context: RouteContext) {
   const empresaId = await getOrCreateEmpresaIdForUser(userId)
 
   const result = await prisma.$transaction(async (tx) => {
-    const numero = await nextCotizacionNumero(tx)
+    const numero = await nextCotizacionNumero(tx, accessCotizaciones.sedeId)
 
     const documento = customerDoc || `PENDIENTE-${scan.id.slice(0, 8)}`
     const nombre = customerName || "Cliente (pendiente)"

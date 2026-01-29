@@ -12,6 +12,72 @@
 - **Validación:** Zod
 - **Fechas:** date-fns
 
+---
+
+## 🔥 Peticiones recientes (Ene 2026) — Estado y Prioridad
+
+> Objetivo: mantener el hilo de lo pedido por negocio y avanzar con validaciones cortas.
+
+### ✅ Ya implementado
+
+- [x] (1) Formas de pago + captura de link de Bold (campo para pegar link / mostrar botón).
+- [x] (2) Garantía en cotización (UI + PDF).
+- [x] (3) Acabados con variables (instalación con valor editable por item, reflejado en PDF).
+- [x] (4) Precios con IVA incluido: cálculo correcto (extrae base+IVA desde total) + toggle por sede desde panel admin.
+- [x] (5) Numeración por sede con prefijo: `COT-{sedeCodigo}-{####}`.
+- [x] (Extra) Concurrencia: consecutivo atómico por sede con tabla de secuencia (evita colisiones).
+
+### 🔜 Próximo bloque (recomendado)
+
+- [x] (10) Descuento aplicado sobre utilidad (no sobre total).
+  - Criterio: mostrar costo base vs precio vs utilidad estimada; el descuento reduce utilidad, no el costo.
+  - Regla inicial: utilidad base fija 50% del subtotal (pendiente: hacerlo configurable por sede/empresa).
+
+### 📌 Backlog importante (pendiente)
+
+- [x] (6) Costos de producción litografía (plancha, tintas por cantidad, papel, corte, acabados, transporte).
+  - Implementado (MVP): página “Calculadora Litografía” con inputs + desglose + costo unitario.
+  - Pendiente: guardar parámetros por sede/empresa y/o integrarlo al cotizador como tipo de producto.
+- [x] (7) Desperdicios de materiales (MVP): estándar por sede/material + override por item en cotizador.
+  - Entregable: config editable por material/sede + campo por item, aplicado al cálculo y persistido.
+- [ ] (8) Daños laborales.
+  - Entregable: módulo mínimo para registrar evento/costo y asociarlo a sede/periodo.
+- [x] (9) Terminados: base de datos + tamaño de archivo + ancho de material.
+  - Implementado: tamaño de archivo aprox. (DPI / RGB-CMYK / sangrado) + specs de material (ancho/largo/espesor) en cotizador.
+  - Implementado: catálogo CRUD de “Terminados” + selección por item + costo incluido en precio unitario + persistencia en BD.
+  - Pendiente: correr migración Prisma `20260123194500_terminados_catalog` en el entorno/BD y definir reglas/restricciones por tipo de producto/material.
+- [x] (11) Tamaños reales de productos (presets en cotizador: volantes, brochures, tarjetas, carpetas, sobres, etc.).
+  - Entregable: selector de “Producto (preset)” que autocompleta ancho/alto.
+- [x] (12) Recibos de caja / soportes de proveedores (contabilidad).
+  - Implementado: adjuntar soportes/archivos a pagos de compras (proveedores).
+- [x] (13) Proveedores: conciliación de facturas (debe/paga/abono) (MVP).
+  - Implementado: pagos/abonos por compra + cálculo de pagado/saldo y estado.
+- [x] (14) Resumen general (dashboard/finanzas/operación).
+- [x] (15) Filtros/segmentación de clientes (potenciales/frecuentes/ocasionales).
+- [ ] (16) Ingesta de facturas por correo (captura + clasificación automática).
+- [ ] (17) Items regulares de stock (ej: buzos): cotizar/vender aunque no haya stock (política configurable).
+- [x] (18) Remisiones: definir de dónde descuenta inventario y trazabilidad.
+  - Implementado (MVP): modelos Prisma + migración + API (crear/listar/anular) + UI básica en dashboard.
+  - Implementado: descuento de stock (bodega o global) + trazabilidad vía `InventoryMovement.sourceType = REMISION` y `sourceId`.
+  - Pendiente si se requiere: vista detalle/impresión PDF, traslado entre bodegas (OUT+IN).
+- [x] (19) Estándar de desperdicio editable (ver 7) (MVP).
+  - Pendiente si se requiere: mostrar en PDF / auditoría avanzada de cambios.
+- [ ] (20) Formato Excel para litografía (import/export).
+- [ ] (22) Permisos: grupos/equipos (RBAC por equipo, sede y módulo).
+  - [x] Implementado: RBAC por sede y por módulo (módulos dedicados: `INVENTARIO`, `REMISIONES`, `POS`).
+  - [x] Implementado: permiso general (todas las sedes) como fallback cuando no hay membresía en una sede.
+  - [ ] Pendiente: grupos/equipos (asignar permisos a un team y heredar por usuarios) + UI de gestión.
+
+### 🧭 Orden sugerido de implementación
+
+1) (10) Descuento sobre utilidad
+3) (7)/(19) Desperdicios
+4) (6)/(20) Litografía + Excel
+5) (12)/(13) Proveedores + contabilidad básica
+6) (15) Segmentación de clientes
+7) (18)/(17) Remisiones + stock
+8) (22) Equipos/permisos
+
 **¿Por qué Next.js?**
 ✅ Full-stack en un solo framework (frontend + backend)  
 ✅ TypeScript nativo = menos errores  

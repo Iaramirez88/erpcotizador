@@ -35,6 +35,8 @@ type Compra = {
   descuentoTotal: number
   subtotalConIva: number
   total: number
+  pagado?: number
+  saldo?: number
   autorizado: boolean
   items: Array<{
     id: string
@@ -46,6 +48,20 @@ type Compra = {
     total: number
     orden: number
   }>
+}
+
+type CompraPago = {
+  id: string
+  fecha: string
+  monto: number
+  metodo: 'CASH' | 'CARD' | 'TRANSFER' | 'OTHER'
+  referencia: string | null
+  observaciones: string | null
+  soporteUrl?: string | null
+  soporteOriginalName?: string | null
+  soporteMimeType?: string | null
+  soporteSizeBytes?: number | null
+  user?: { name?: string | null; email?: string | null }
 }
 
 function n(value: unknown, fallback = 0) {
@@ -87,6 +103,26 @@ export default function ComprasPage() {
   const [search, setSearch] = useState('')
   const [compras, setCompras] = useState<Compra[]>([])
 
+  const [pagoOpen, setPagoOpen] = useState(false)
+  const [pagoCompra, setPagoCompra] = useState<Compra | null>(null)
+  const [pagoLoading, setPagoLoading] = useState(false)
+  const [pagos, setPagos] = useState<CompraPago[]>([])
+  const [pagoSummary, setPagoSummary] = useState<{ pagado: number; saldo: number }>({ pagado: 0, saldo: 0 })
+  const [pagoForm, setPagoForm] = useState({
+    fecha: (() => {
+      const d = new Date()
+      const yyyy = d.getFullYear()
+      const mm = String(d.getMonth() + 1).padStart(2, '0')
+      const dd = String(d.getDate()).padStart(2, '0')
+      return `${yyyy}-${mm}-${dd}`
+    })(),
+    monto: '',
+    metodo: 'TRANSFER' as CompraPago['metodo'],
+    referencia: '',
+    observaciones: '',
+    soporteFile: null as File | null,
+  })
+
   const [fechaCompra, setFechaCompra] = useState<string>(() => {
     const d = new Date()
     const yyyy = d.getFullYear()
@@ -117,6 +153,73 @@ export default function ComprasPage() {
       setCompras(json?.data ?? [])
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function openPagos(compra: Compra) {
+    setPagoCompra(compra)
+    setPagoOpen(true)
+    setPagoLoading(true)
+    try {
+      const res = await fetch(`/api/compras/${compra.id}/pagos`)
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.success) throw new Error(json?.error ?? 'No se pudieron cargar los pagos')
+      setPagos((json.data?.pagos ?? []) as CompraPago[])
+      setPagoSummary({ pagado: n(json.data?.pagado, 0), saldo: n(json.data?.saldo, 0) })
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error')
+    } finally {
+      setPagoLoading(false)
+    }
+  }
+
+  async function registrarPago() {
+    if (!pagoCompra) return
+    const monto = n(pagoForm.monto, 0)
+    if (!monto || monto <= 0) {
+      alert('Monto inválido')
+      return
+    }
+    setPagoLoading(true)
+    try {
+      const hasFile = !!pagoForm.soporteFile
+      const res = await fetch(`/api/compras/${pagoCompra.id}/pagos`,
+        hasFile
+          ? {
+              method: 'POST',
+              body: (() => {
+                const fd = new FormData()
+                fd.set('fecha', pagoForm.fecha)
+                fd.set('monto', String(monto))
+                fd.set('metodo', pagoForm.metodo)
+                fd.set('referencia', pagoForm.referencia.trim() || '')
+                fd.set('observaciones', pagoForm.observaciones.trim() || '')
+                if (pagoForm.soporteFile) fd.set('file', pagoForm.soporteFile)
+                return fd
+              })(),
+            }
+          : {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fecha: pagoForm.fecha,
+                monto,
+                metodo: pagoForm.metodo,
+                referencia: pagoForm.referencia.trim() || null,
+                observaciones: pagoForm.observaciones.trim() || null,
+              }),
+            }
+      )
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.success) throw new Error(json?.error ?? 'No se pudo registrar el pago')
+      setPagos((json.data?.pagos ?? []) as CompraPago[])
+      setPagoSummary({ pagado: n(json.data?.pagado, 0), saldo: n(json.data?.saldo, 0) })
+      setPagoForm((prev) => ({ ...prev, monto: '', referencia: '', observaciones: '', soporteFile: null }))
+      await load()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error')
+    } finally {
+      setPagoLoading(false)
     }
   }
 
@@ -415,6 +518,8 @@ export default function ComprasPage() {
                   <th className="py-2 text-left">Proveedor</th>
                   <th className="py-2 text-left">Factura</th>
                   <th className="py-2 text-left">Total</th>
+                  <th className="py-2 text-left">Pagado</th>
+                  <th className="py-2 text-left">Saldo</th>
                   <th className="py-2 text-left">Autorizado</th>
                   <th className="py-2 text-right">Acciones</th>
                 </tr>
@@ -426,8 +531,13 @@ export default function ComprasPage() {
                     <td className="py-2">{c.proveedorNombre}</td>
                     <td className="py-2">{c.numeroFactura ?? '—'}</td>
                     <td className="py-2 whitespace-nowrap">{formatCOP(c.total)}</td>
+                    <td className="py-2 whitespace-nowrap">{formatCOP(n(c.pagado, 0))}</td>
+                    <td className="py-2 whitespace-nowrap">{formatCOP(n(c.saldo, n(c.total, 0) - n(c.pagado, 0)))}</td>
                     <td className="py-2">{c.autorizado ? 'Sí' : 'No'}</td>
                     <td className="py-2 text-right space-x-2">
+                      <Button variant="outline" onClick={() => openPagos(c)}>
+                        Pagos
+                      </Button>
                       <Dialog>
                         <DialogTrigger asChild>
                           <Button variant="outline">Ver</Button>
@@ -528,14 +638,14 @@ export default function ComprasPage() {
 
                 {!loading && compras.length === 0 && (
                   <tr>
-                    <td className="py-6 text-center text-muted-foreground" colSpan={6}>
+                    <td className="py-6 text-center text-muted-foreground" colSpan={8}>
                       Sin resultados
                     </td>
                   </tr>
                 )}
                 {loading && (
                   <tr>
-                    <td className="py-6 text-center text-muted-foreground" colSpan={6}>
+                    <td className="py-6 text-center text-muted-foreground" colSpan={8}>
                       Cargando...
                     </td>
                   </tr>
@@ -545,6 +655,178 @@ export default function ComprasPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={pagoOpen} onOpenChange={setPagoOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Pagos / Abonos</DialogTitle>
+            <DialogDescription>
+              {pagoCompra ? `${pagoCompra.proveedorNombre} — Total ${formatCOP(pagoCompra.total)}` : '—'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-2 text-sm md:grid-cols-3">
+            <div className="rounded-lg border p-3">
+              <div className="text-muted-foreground">Pagado</div>
+              <div className="font-semibold">{formatCOP(pagoSummary.pagado)}</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-muted-foreground">Saldo</div>
+              <div className="font-semibold">{formatCOP(pagoSummary.saldo)}</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-muted-foreground">Estado</div>
+              <div className="font-semibold">
+                {pagoSummary.pagado <= 0 ? 'Debe' : pagoSummary.saldo > 0 ? 'Parcial' : 'Pagado'}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-2 grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Fecha</Label>
+              <Input
+                type="date"
+                value={pagoForm.fecha}
+                onChange={(e) => setPagoForm((p) => ({ ...p, fecha: e.target.value }))}
+                disabled={pagoLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Monto</Label>
+              <Input
+                type="number"
+                value={pagoForm.monto}
+                onChange={(e) => setPagoForm((p) => ({ ...p, monto: e.target.value }))}
+                disabled={pagoLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Método</Label>
+              <select
+                value={pagoForm.metodo}
+                onChange={(e) => setPagoForm((p) => ({ ...p, metodo: e.target.value as CompraPago['metodo'] }))}
+                disabled={pagoLoading}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+              >
+                <option value="TRANSFER">Transferencia</option>
+                <option value="CASH">Efectivo</option>
+                <option value="CARD">Tarjeta</option>
+                <option value="OTHER">Otro</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Referencia</Label>
+              <Input
+                value={pagoForm.referencia}
+                onChange={(e) => setPagoForm((p) => ({ ...p, referencia: e.target.value }))}
+                disabled={pagoLoading}
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>Observaciones</Label>
+              <Textarea
+                value={pagoForm.observaciones}
+                onChange={(e) => setPagoForm((p) => ({ ...p, observaciones: e.target.value }))}
+                rows={2}
+                disabled={pagoLoading}
+              />
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label>Soporte (opcional)</Label>
+              <Input
+                type="file"
+                accept="application/pdf,image/*"
+                disabled={pagoLoading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null
+                  setPagoForm((p) => ({ ...p, soporteFile: file }))
+                }}
+              />
+              {pagoForm.soporteFile ? (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-muted-foreground truncate">
+                    Adjuntado: {pagoForm.soporteFile.name}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={pagoLoading}
+                    onClick={() => setPagoForm((p) => ({ ...p, soporteFile: null }))}
+                  >
+                    Quitar
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">PDF o imagen del recibo/soporte.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-2 flex justify-end">
+            <Button onClick={registrarPago} disabled={pagoLoading || !pagoCompra}>
+              {pagoLoading ? 'Guardando...' : 'Registrar pago'}
+            </Button>
+          </div>
+
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="py-2 text-left">Fecha</th>
+                  <th className="py-2 text-left">Método</th>
+                  <th className="py-2 text-left">Referencia</th>
+                  <th className="py-2 text-left">Soporte</th>
+                  <th className="py-2 text-left">Monto</th>
+                  <th className="py-2 text-left">Usuario</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagos.map((p) => (
+                  <tr key={p.id} className="border-b">
+                    <td className="py-2 whitespace-nowrap">{new Date(p.fecha).toLocaleDateString('es-CO')}</td>
+                    <td className="py-2">{p.metodo}</td>
+                    <td className="py-2">{p.referencia ?? '—'}</td>
+                    <td className="py-2">
+                      {p.soporteUrl ? (
+                        <a
+                          href={p.soporteUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 hover:underline"
+                          title={p.soporteOriginalName ?? 'Abrir soporte'}
+                        >
+                          Ver
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="py-2 whitespace-nowrap">{formatCOP(p.monto)}</td>
+                    <td className="py-2">{p.user?.name || p.user?.email || '—'}</td>
+                  </tr>
+                ))}
+                {!pagoLoading && pagos.length === 0 && (
+                  <tr>
+                    <td className="py-6 text-center text-muted-foreground" colSpan={5}>
+                      Sin pagos registrados
+                    </td>
+                  </tr>
+                )}
+                {pagoLoading && (
+                  <tr>
+                    <td className="py-6 text-center text-muted-foreground" colSpan={5}>
+                      Cargando...
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

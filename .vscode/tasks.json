@@ -2,15 +2,94 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "Dev: Next.js",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"nvm use 22.22.0; npm run dev"
+			],
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "Typecheck: tsc --noEmit",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"nvm use 22.22.0; npm run typecheck"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
 			"label": "Prisma: generate",
 			"type": "shell",
-			"command": "npx",
+			"command": "powershell",
 			"args": [
-				"prisma",
-				"generate"
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"nvm use 22.22.0; npm run prisma:generate"
 			],
 			"isBackground": false,
 			"problemMatcher": []
+		},
+		{
+			"label": "Prisma: migrate dev",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"nvm use 22.22.0; npm run prisma:migrate"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Smoke: cotizaciones",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"nvm use 22.22.0; npm run smoke:cotizaciones"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Test: cotizacion sequence (concurrency)",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"nvm use 22.22.0; npm run test:cotizacion-sequence"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
 		}
 	]
 }

@@ -9,6 +9,46 @@ En tu `.env` del proyecto Next.js:
 - `OCR_SERVICE_URL=http://127.0.0.1:8001`
 - (opcional) `OCR_SERVICE_API_KEY=...`
 
+### OCR asíncrono (recomendado en producción)
+
+Para evitar timeouts y que el OCR tumbe el servidor web, el escaneo se **encola** y se procesa en un **worker**.
+
+Variables:
+
+- `REDIS_URL=redis://...` (habilita la cola)
+- `OCR_WORKER_CONCURRENCY=2` (en el proceso worker)
+
+Ejecutar el worker:
+
+```bash
+npm run worker:ocr
+```
+
+Para levantar Redis en local (opcional):
+
+```bash
+docker compose -f docker-compose.queue.yml up -d
+```
+
+Si `REDIS_URL` no está configurado, el escaneo quedará en **PENDIENTE** y no se procesará automáticamente.
+
+Fallback síncrono (útil en local):
+- Por defecto, si no hay `REDIS_URL`, el sistema intenta procesar el OCR en el mismo request.
+- Puedes desactivarlo con: `OCR_SYNC_FALLBACK=false`
+
+## 1.1) Storage de escaneos en Spaces (S3)
+
+Para un SaaS con varias instancias, no uses disco local. Configura DigitalOcean Spaces:
+
+- `S3_ENDPOINT=https://nyc3.digitaloceanspaces.com`
+- `S3_REGION=us-east-1` (o el que uses)
+- `S3_BUCKET=tu-bucket`
+- `S3_ACCESS_KEY_ID=...`
+- `S3_SECRET_ACCESS_KEY=...`
+- `S3_PUBLIC_BASE_URL=https://tu-bucket.nyc3.digitaloceanspaces.com` (o tu CDN)
+
+Nota: actualmente el sistema guarda `fileUrl` como URL directa. Eso asume bucket/CDN público. Si quieres bucket privado, hay que servir URLs firmadas desde la app.
+
 ## 2) Ejecutar el microservicio OCR
 
 Ruta: `services/ocr`.

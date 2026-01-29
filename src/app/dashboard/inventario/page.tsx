@@ -19,7 +19,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { cn } from "@/lib/utils"
+import { cn, formatUnidadMedidaLabel } from "@/lib/utils"
 
 type Material = {
   id: string
@@ -28,7 +28,15 @@ type Material = {
   stockMinimo: number
   unidadMedida: string
   proveedor?: string | null
+  imagenUrl?: string | null
   activo: boolean
+}
+
+type Bodega = {
+  id: string
+  nombre: string
+  codigo: string | null
+  isDefault: boolean
 }
 
 type Movement = {
@@ -40,6 +48,7 @@ type Movement = {
   note: string | null
   createdAt: string
   material: { id: string; nombre: string; unidadMedida: string }
+  warehouse?: { id: string; nombre: string } | null
 }
 
 function n(value: unknown, fallback = 0) {
@@ -50,6 +59,7 @@ function n(value: unknown, fallback = 0) {
 export default function InventarioPage() {
   const [materials, setMaterials] = useState<Material[]>([])
   const [movements, setMovements] = useState<Movement[]>([])
+  const [bodegas, setBodegas] = useState<Bodega[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -58,25 +68,37 @@ export default function InventarioPage() {
 
   const [search, setSearch] = useState("")
 
+  const [warehouseFilterId, setWarehouseFilterId] = useState("")
+
   const [form, setForm] = useState({
     materialId: "",
     type: "IN" as "IN" | "OUT" | "ADJUST",
     quantity: "",
     newStock: "",
+    warehouseId: "",
     note: "",
   })
+
+  const defaultBodegaId = useMemo(() => bodegas.find((b) => b.isDefault)?.id ?? "", [bodegas])
 
   async function load() {
     setIsLoading(true)
     setError(null)
     try {
+      const movementsUrl = new URL("/api/inventario", window.location.origin)
+      movementsUrl.searchParams.set("limit", "25")
+      if (warehouseFilterId) movementsUrl.searchParams.set("warehouseId", warehouseFilterId)
+
       const [resMaterials, resMovements] = await Promise.all([
         fetch(`/api/materiales?search=${encodeURIComponent(search)}`),
-        fetch(`/api/inventario?limit=25`),
+        fetch(movementsUrl.toString()),
       ])
+
+      const resBodegas = await fetch("/api/bodegas")
 
       const jsonMaterials = (await resMaterials.json().catch(() => ({}))) as { success?: boolean; data?: Material[] }
       const jsonMovements = (await resMovements.json().catch(() => ({}))) as { success?: boolean; data?: Movement[] }
+      const jsonBodegas = (await resBodegas.json().catch(() => ({}))) as { success?: boolean; data?: Bodega[] }
 
       if (resMaterials.ok && jsonMaterials.success && Array.isArray(jsonMaterials.data)) {
         setMaterials(jsonMaterials.data)
@@ -86,8 +108,13 @@ export default function InventarioPage() {
         setMovements(jsonMovements.data)
       }
 
+      if (resBodegas.ok && jsonBodegas.success && Array.isArray(jsonBodegas.data)) {
+        setBodegas(jsonBodegas.data)
+      }
+
       if (!resMaterials.ok) setError("No se pudo cargar materiales")
       if (!resMovements.ok) setError("No se pudo cargar movimientos")
+      if (!resBodegas.ok) setError("No se pudo cargar sedes")
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error inesperado")
     } finally {
@@ -98,7 +125,13 @@ export default function InventarioPage() {
   useEffect(() => {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search])
+  }, [search, warehouseFilterId])
+
+  useEffect(() => {
+    if (!form.warehouseId && defaultBodegaId) {
+      setForm((p) => ({ ...p, warehouseId: defaultBodegaId }))
+    }
+  }, [defaultBodegaId, form.warehouseId])
 
   const activeMaterials = useMemo(() => materials.filter((m) => m.activo !== false), [materials])
 
@@ -122,6 +155,7 @@ export default function InventarioPage() {
       const payload: Record<string, unknown> = {
         materialId: form.materialId,
         type: form.type,
+        warehouseId: form.warehouseId || undefined,
         note: form.note || undefined,
       }
 
@@ -171,11 +205,11 @@ export default function InventarioPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Inventario</h1>
+          <h1 className="text-3xl font-bold tracking-tight" data-tour="inventario-title">Inventario</h1>
           <p className="text-muted-foreground">Entradas, salidas y ajustes de stock por material.</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={openModal} disabled={isLoading}>
+          <Button onClick={openModal} disabled={isLoading} data-tour="inventario-movimiento">
             Registrar movimiento
           </Button>
         </div>
@@ -191,6 +225,7 @@ export default function InventarioPage() {
         <CardContent>
           <div className="flex gap-2 mb-4">
             <Input
+              data-tour="inventario-search"
               placeholder="Buscar material…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -209,6 +244,7 @@ export default function InventarioPage() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="text-left text-gray-600 border-b">
+                    <th className="py-2 pr-3 w-12">Img</th>
                     <th className="py-2 pr-4">Material</th>
                     <th className="py-2 pr-4">Stock</th>
                     <th className="py-2 pr-4">Mínimo</th>
@@ -221,12 +257,23 @@ export default function InventarioPage() {
                     const low = n(m.stockActual) <= n(m.stockMinimo)
                     return (
                       <tr key={m.id} className="border-b last:border-b-0">
+                        <td className="py-2 pr-3">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={m.imagenUrl || "/placeholder-product.svg"}
+                            alt={m.nombre}
+                            className="h-8 w-8 rounded border object-cover bg-white"
+                            onError={(e) => {
+                              e.currentTarget.src = "/placeholder-product.svg"
+                            }}
+                          />
+                        </td>
                         <td className="py-2 pr-4 font-medium text-gray-900">{m.nombre}</td>
                         <td className={cn("py-2 pr-4", low ? "text-red-700 font-semibold" : "text-gray-900")}>
                           {n(m.stockActual).toLocaleString("es-CO")} 
                         </td>
                         <td className="py-2 pr-4 text-gray-700">{n(m.stockMinimo).toLocaleString("es-CO")}</td>
-                        <td className="py-2 pr-4 text-gray-700">{m.unidadMedida}</td>
+                        <td className="py-2 pr-4 text-gray-700">{formatUnidadMedidaLabel(m.unidadMedida)}</td>
                         <td className="py-2 pr-4 text-gray-700">{m.proveedor || "—"}</td>
                       </tr>
                     )
@@ -244,6 +291,22 @@ export default function InventarioPage() {
           <CardDescription>Últimos movimientos registrados.</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4">
+            <div className="text-sm text-gray-700">Filtrar por sede:</div>
+            <select
+              className="border border-gray-200 rounded-md px-3 py-2 text-sm max-w-sm"
+              value={warehouseFilterId}
+              onChange={(e) => setWarehouseFilterId(e.target.value)}
+            >
+              <option value="">Todas</option>
+              {bodegas.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.nombre}{b.isDefault ? " (Principal)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {movements.length === 0 ? (
             <div className="text-sm text-gray-600">Sin movimientos aún.</div>
           ) : (
@@ -253,6 +316,7 @@ export default function InventarioPage() {
                   <tr className="text-left text-gray-600 border-b">
                     <th className="py-2 pr-4">Fecha</th>
                     <th className="py-2 pr-4">Material</th>
+                    <th className="py-2 pr-4">Sede</th>
                     <th className="py-2 pr-4">Tipo</th>
                     <th className="py-2 pr-4">Delta</th>
                     <th className="py-2 pr-4">Antes → Después</th>
@@ -266,6 +330,7 @@ export default function InventarioPage() {
                         {new Date(mv.createdAt).toLocaleString("es-CO")}
                       </td>
                       <td className="py-2 pr-4 font-medium text-gray-900">{mv.material?.nombre || "—"}</td>
+                      <td className="py-2 pr-4 text-gray-700">{mv.warehouse?.nombre || "—"}</td>
                       <td className="py-2 pr-4">
                         <span className={cn("text-xs font-semibold px-2 py-1 rounded", movementBadgeClass(mv.type))}>
                           {movementLabel(mv.type)}
@@ -307,6 +372,25 @@ export default function InventarioPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Sede</Label>
+              <select
+                className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
+                value={form.warehouseId}
+                onChange={(e) => setForm((p) => ({ ...p, warehouseId: e.target.value }))}
+              >
+                <option value="">Global (sin sede)</option>
+                {bodegas.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.nombre}{b.isDefault ? " (Principal)" : ""}
+                  </option>
+                ))}
+              </select>
+              <div className="text-xs text-gray-600">
+                Si eliges sede, el movimiento afecta el stock de esa sede y el global.
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -357,7 +441,7 @@ export default function InventarioPage() {
 
             {selectedMaterial ? (
               <div className="text-xs text-gray-600">
-                Stock actual: <span className="font-medium">{n(selectedMaterial.stockActual).toLocaleString("es-CO")}</span> {selectedMaterial.unidadMedida}
+                Stock actual: <span className="font-medium">{n(selectedMaterial.stockActual).toLocaleString("es-CO")}</span> {formatUnidadMedidaLabel(selectedMaterial.unidadMedida)}
               </div>
             ) : null}
 

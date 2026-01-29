@@ -22,6 +22,11 @@ function fmtDate(date: Date | null | undefined) {
   }
 }
 
+function fmtCOP(value: number | null | undefined) {
+  const numberValue = typeof value === "number" && Number.isFinite(value) ? value : 0
+  return new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP" }).format(numberValue)
+}
+
 type SearchParams = {
   sedeId?: string
   from?: string
@@ -127,6 +132,14 @@ export default async function DashboardPage({
       ? { sedeId: { in: allowedSedeIds } }
       : { sedeId: null }
 
+  // Algunos modelos (POS) no aceptan sedeId null. En ese caso, usamos un filtro "imposible"
+  // para retornar 0 filas cuando no hay sede resoluble.
+  const posSedeScope = sedeId
+    ? { sedeId }
+    : allowedSedeIds.length
+      ? { sedeId: { in: allowedSedeIds } }
+      : { sedeId: '__NO_SEDE__' }
+
   const activeMembershipRole = sedeId
     ? (user.sedeMemberships.find((m) => m.sede.id === sedeId)?.role ?? null)
     : null
@@ -160,6 +173,24 @@ export default async function DashboardPage({
     return Object.keys(range).length ? { [whereKey]: range } : {}
   }
 
+  function buildDateRangeAny(whereKey: string) {
+    const range: { gte?: Date; lt?: Date } = {}
+
+    if (rawFrom) {
+      const fromDate = new Date(`${rawFrom}T00:00:00`)
+      if (!Number.isNaN(fromDate.getTime())) range.gte = fromDate
+    }
+    if (rawTo) {
+      const toDate = new Date(`${rawTo}T00:00:00`)
+      if (!Number.isNaN(toDate.getTime())) {
+        toDate.setDate(toDate.getDate() + 1)
+        range.lt = toDate
+      }
+    }
+
+    return Object.keys(range).length ? ({ [whereKey]: range } as Record<string, unknown>) : {}
+  }
+
   const cotWhere = { vendedorId: user.id, ...sedeScope, ...buildDateRange("createdAt") }
   const ordWhere = { vendedorId: user.id, ...sedeScope, ...buildDateRange("createdAt") }
   const compraWhere = { userId: user.id, ...sedeScope, ...buildDateRange("fechaCompra") }
@@ -180,6 +211,38 @@ export default async function DashboardPage({
   const sedeCompraWhere = { ...sedeScope, ...buildDateRange("fechaCompra") }
   const sedeScanWhere = { ...sedeScope, ...buildDateRange("createdAt") }
 
+  const posInvoiceWhere = {
+    ...(showMeActivity ? { createdById: user.id } : {}),
+    ...posSedeScope,
+    ...buildDateRangeAny("createdAt"),
+  }
+  const posReturnWhere = {
+    ...(showMeActivity ? { createdById: user.id } : {}),
+    ...posSedeScope,
+    ...buildDateRangeAny("createdAt"),
+  }
+  const posPaymentWhere = {
+    ...(showMeActivity
+      ? { invoice: { createdById: user.id, ...posSedeScope } }
+      : { invoice: { ...posSedeScope } }),
+    ...buildDateRangeAny("receivedAt"),
+  }
+
+  const sedePosInvoiceWhere = { ...posSedeScope, ...buildDateRangeAny("createdAt") }
+  const sedePosReturnWhere = { ...posSedeScope, ...buildDateRangeAny("createdAt") }
+  const sedePosPaymentWhere = { invoice: { ...posSedeScope }, ...buildDateRangeAny("receivedAt") }
+
+  const compraPagoWhere = {
+    ...(showMeActivity ? { userId: user.id } : {}),
+    ...(sedeId ? { sedeId } : allowedSedeIds.length ? { sedeId: { in: allowedSedeIds } } : { sedeId: null }),
+    ...buildDateRangeAny("fecha"),
+  }
+
+  const sedeCompraPagoWhere = {
+    ...(sedeId ? { sedeId } : allowedSedeIds.length ? { sedeId: { in: allowedSedeIds } } : { sedeId: null }),
+    ...buildDateRangeAny("fecha"),
+  }
+
   const [
     totalCotizaciones,
     cotizacionesPendientes,
@@ -188,6 +251,14 @@ export default async function DashboardPage({
     comprasCount,
     escaneosCount,
     notificacionesCount,
+    cotizacionesAprobadasTotal,
+    ordenesTotal,
+    comprasTotal,
+    pagosProveedoresEnRango,
+    pagosAcumuladosCompras,
+    posVentasBrutas,
+    posDevoluciones,
+    posCobros,
     recentCotizaciones,
     recentOrdenes,
     recentCompras,
@@ -200,6 +271,14 @@ export default async function DashboardPage({
     sedeComprasCount,
     sedeEscaneosCount,
     sedeNotificacionesCount,
+    sedeCotizacionesAprobadasTotal,
+    sedeOrdenesTotal,
+    sedeComprasTotal,
+    sedePagosProveedoresEnRango,
+    sedePagosAcumuladosCompras,
+    sedePosVentasBrutas,
+    sedePosDevoluciones,
+    sedePosCobros,
     sedeRecentCotizaciones,
     sedeRecentOrdenes,
     sedeRecentCompras,
@@ -213,6 +292,18 @@ export default async function DashboardPage({
     prisma.compra.count({ where: compraWhere }),
     prisma.documentScan.count({ where: scanWhere }),
     prisma.notification.count({ where: notifWhere }),
+    prisma.cotizacion
+      .aggregate({ where: { ...cotWhere, estado: "APROBADA" }, _sum: { total: true } })
+      .then((r) => r._sum?.total ?? 0),
+    prisma.ordenTrabajo.aggregate({ where: ordWhere, _sum: { total: true } }).then((r) => r._sum?.total ?? 0),
+    prisma.compra.aggregate({ where: compraWhere, _sum: { total: true } }).then((r) => r._sum?.total ?? 0),
+    prisma.compraPago.aggregate({ where: compraPagoWhere, _sum: { monto: true } }).then((r) => r._sum?.monto ?? 0),
+    prisma.compraPago
+      .aggregate({ where: { compra: compraWhere }, _sum: { monto: true } })
+      .then((r) => r._sum?.monto ?? 0),
+    prisma.posInvoice.aggregate({ where: posInvoiceWhere, _sum: { total: true } }).then((r) => r._sum?.total ?? 0),
+    prisma.posReturn.aggregate({ where: posReturnWhere, _sum: { total: true } }).then((r) => r._sum?.total ?? 0),
+    prisma.posPayment.aggregate({ where: posPaymentWhere, _sum: { amount: true } }).then((r) => r._sum?.amount ?? 0),
     prisma.cotizacion.findMany({
       where: cotWhere,
       orderBy: { createdAt: "desc" },
@@ -280,6 +371,34 @@ export default async function DashboardPage({
     showSedeActivity ? prisma.compra.count({ where: sedeCompraWhere }) : Promise.resolve(0),
     showSedeActivity ? prisma.documentScan.count({ where: sedeScanWhere }) : Promise.resolve(0),
     showSedeActivity ? prisma.notification.count({ where: sedeNotifWhere }) : Promise.resolve(0),
+    showSedeActivity
+      ? prisma.cotizacion
+          .aggregate({ where: { ...sedeCotWhere, estado: "APROBADA" }, _sum: { total: true } })
+          .then((r) => r._sum?.total ?? 0)
+      : Promise.resolve(0),
+    showSedeActivity
+      ? prisma.ordenTrabajo.aggregate({ where: sedeOrdWhere, _sum: { total: true } }).then((r) => r._sum?.total ?? 0)
+      : Promise.resolve(0),
+    showSedeActivity
+      ? prisma.compra.aggregate({ where: sedeCompraWhere, _sum: { total: true } }).then((r) => r._sum?.total ?? 0)
+      : Promise.resolve(0),
+    showSedeActivity
+      ? prisma.compraPago.aggregate({ where: sedeCompraPagoWhere, _sum: { monto: true } }).then((r) => r._sum?.monto ?? 0)
+      : Promise.resolve(0),
+    showSedeActivity
+      ? prisma.compraPago
+          .aggregate({ where: { compra: sedeCompraWhere }, _sum: { monto: true } })
+          .then((r) => r._sum?.monto ?? 0)
+      : Promise.resolve(0),
+    showSedeActivity
+      ? prisma.posInvoice.aggregate({ where: sedePosInvoiceWhere, _sum: { total: true } }).then((r) => r._sum?.total ?? 0)
+      : Promise.resolve(0),
+    showSedeActivity
+      ? prisma.posReturn.aggregate({ where: sedePosReturnWhere, _sum: { total: true } }).then((r) => r._sum?.total ?? 0)
+      : Promise.resolve(0),
+    showSedeActivity
+      ? prisma.posPayment.aggregate({ where: sedePosPaymentWhere, _sum: { amount: true } }).then((r) => r._sum?.amount ?? 0)
+      : Promise.resolve(0),
     showSedeActivity
       ? prisma.cotizacion.findMany({
           where: sedeCotWhere,
@@ -349,6 +468,31 @@ export default async function DashboardPage({
         })
       : Promise.resolve([] as RecentNotification[]),
   ])
+
+  const resumen = showSedeActivity
+    ? {
+        cotizacionesAprobadasTotal: sedeCotizacionesAprobadasTotal,
+        ordenesTotal: sedeOrdenesTotal,
+        comprasTotal: sedeComprasTotal,
+        pagosProveedoresEnRango: sedePagosProveedoresEnRango,
+        pagosAcumuladosCompras: sedePagosAcumuladosCompras,
+        posVentasBrutas: sedePosVentasBrutas,
+        posDevoluciones: sedePosDevoluciones,
+        posCobros: sedePosCobros,
+      }
+    : {
+        cotizacionesAprobadasTotal,
+        ordenesTotal,
+        comprasTotal,
+        pagosProveedoresEnRango,
+        pagosAcumuladosCompras,
+        posVentasBrutas,
+        posDevoluciones,
+        posCobros,
+      }
+
+  const posVentasNetas = (resumen.posVentasBrutas ?? 0) - (resumen.posDevoluciones ?? 0)
+  const saldoProveedores = (resumen.comprasTotal ?? 0) - (resumen.pagosAcumuladosCompras ?? 0)
 
   const activeSedeLabel = sedeId
     ? allowedSedes.find((s) => s.id === sedeId)
@@ -423,6 +567,105 @@ export default async function DashboardPage({
           </form>
         </CardContent>
       </Card>
+
+      {/* Resumen general */}
+      <div>
+        <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
+          <div>
+            <h2 className="text-xl font-semibold">Resumen general</h2>
+            <p className="text-sm text-muted-foreground">
+              Totales del periodo (según filtros) · Vista: {showSedeActivity ? "sede" : "mi actividad"}
+            </p>
+          </div>
+          <div className="flex gap-3 text-sm">
+            <Link href="/dashboard/reportes" className="text-sky-600 hover:underline">
+              Ver reportes
+            </Link>
+            <Link href="/dashboard/pos" className="text-sky-600 hover:underline">
+              Ir a POS
+            </Link>
+            <Link href="/dashboard/compras" className="text-sky-600 hover:underline">
+              Ir a compras
+            </Link>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Ventas POS (netas)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{fmtCOP(posVentasNetas)}</div>
+              <p className="text-xs text-muted-foreground">
+                Brutas: {fmtCOP(resumen.posVentasBrutas)} · Devoluciones: {fmtCOP(resumen.posDevoluciones)}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Cobros POS</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{fmtCOP(resumen.posCobros)}</div>
+              <p className="text-xs text-muted-foreground">Sumatoria por fecha de pago</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Cotizaciones aprobadas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{fmtCOP(resumen.cotizacionesAprobadasTotal)}</div>
+              <p className="text-xs text-muted-foreground">Sumatoria de totales</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Órdenes (total)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{fmtCOP(resumen.ordenesTotal)}</div>
+              <p className="text-xs text-muted-foreground">Sumatoria de totales</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Compras</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{fmtCOP(resumen.comprasTotal)}</div>
+              <p className="text-xs text-muted-foreground">Sumatoria de totales (por fecha compra)</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Pagos a proveedores</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{fmtCOP(resumen.pagosProveedoresEnRango)}</div>
+              <p className="text-xs text-muted-foreground">Sumatoria por fecha de pago</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Saldo proveedores</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{fmtCOP(saldoProveedores)}</div>
+              <p className="text-xs text-muted-foreground">Compras del periodo menos pagos acumulados</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
       {/* Mi actividad */}
       {showMeActivity ? (

@@ -6,12 +6,13 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { deleteScanFile, saveScanFile } from "@/lib/scan-file-storage"
+import { deleteScanObject, saveScanObject } from "@/lib/scan-storage"
 import { analyzeDocument, type ScanDocumentType } from "@/lib/document-scan"
 import { stripNullChars } from "@/lib/utils"
 import { Prisma } from "@prisma/client"
 import { requireApiAccess } from "@/lib/api-rbac"
 import { ModuleKey } from "@prisma/client"
+import { enqueueOcr, isOcrQueueEnabled } from "@/lib/ocr-queue"
 
 export const runtime = "nodejs"
 
@@ -135,19 +136,54 @@ export async function POST(request: NextRequest) {
     })
 
     // Guardar archivo
-    const saved = await saveScanFile({
+    const saved = await saveScanObject({
       scanId: scan.id,
       originalName: file.name,
       mimeType,
       bytes,
     })
 
-    // Procesar OCR/IA
+
+    // Guardar URL/Key en BD (rápido)
+    const queued = await prisma.documentScan.update({
+      where: { id: scan.id },
+      data: {
+        fileUrl: saved.publicUrl,
+        storedFileName: saved.storedFileName,
+        status: "PENDIENTE",
+      },
+    })
+
+    // Encolar OCR/IA (recomendado). Si no hay REDIS_URL, devolvemos el registro en PENDIENTE.
+    if (isOcrQueueEnabled()) {
+      await enqueueOcr({
+        scanId: scan.id,
+        mimeType,
+        documentType: (autoDetect ? "AUTO" : tipoDb) as "FACTURA" | "COTIZACION" | "AUTO",
+        provider: "TESSERACT",
+        useLlm,
+      })
+
+      return NextResponse.json(
+        { success: true, data: queued, message: "Escaneo en cola para procesamiento" },
+        { status: 202 }
+      )
+    }
+
+    // Fallback síncrono (útil en local): procesa en el mismo request.
+    const syncFallback = (process.env.OCR_SYNC_FALLBACK || "").trim().toLowerCase() !== "false"
+    if (!syncFallback) {
+      return NextResponse.json(
+        {
+          success: true,
+          data: queued,
+          message: "Escaneo creado (sin cola). Configura REDIS_URL o habilita OCR_SYNC_FALLBACK.",
+        },
+        { status: 201 }
+      )
+    }
+
     try {
-      console.log(`[ESCANEO] Iniciando análisis del documento ${scan.id}`)
-      console.log(`[ESCANEO] Tamaño del archivo: ${bytes.length} bytes, MIME: ${mimeType}`)
-      console.log(`[ESCANEO] Tipo (DB): ${tipoDb}, autoDetect: ${autoDetect}, useLlm: ${useLlm}`)
-      
       const analysis = await analyzeDocument({
         bytes,
         mimeType,
@@ -155,8 +191,6 @@ export async function POST(request: NextRequest) {
         provider: "TESSERACT",
         useLlm,
       })
-
-      console.log(`[ESCANEO] Análisis completado: ${analysis.pageCount} páginas, ${analysis.capturePercent}% captación`)
 
       const extractedData =
         analysis.extractedData === undefined || analysis.extractedData === null
@@ -166,56 +200,29 @@ export async function POST(request: NextRequest) {
       const updated = await prisma.documentScan.update({
         where: { id: scan.id },
         data: {
-          fileUrl: saved.publicUrl,
-          storedFileName: saved.storedFileName,
           status: "PROCESADO",
           provider: analysis.provider,
           extractedText: analysis.extractedText || null,
           extractedData,
           capturePercent: analysis.capturePercent,
           pageCount: analysis.pageCount,
+          error: null,
         },
       })
 
-      return NextResponse.json({ success: true, data: updated }, { status: 201 })
+      return NextResponse.json(
+        { success: true, data: updated, message: "Escaneo procesado" },
+        { status: 201 }
+      )
     } catch (error) {
-      console.error("[ESCANEO] Error procesando escaneo:", error)
-      console.error("[ESCANEO] Error stack:", error instanceof Error ? error.stack : "No stack available")
-
       const safeError = stripNullChars(error instanceof Error ? error.message : "Error desconocido")
-
-      let updated
-      try {
-        updated = await prisma.documentScan.update({
-          where: { id: scan.id },
-          data: {
-            fileUrl: saved.publicUrl,
-            storedFileName: saved.storedFileName,
-            status: "FALLIDO",
-            error: safeError,
-          },
-        })
-      } catch (e) {
-        // Último recurso: evitar que un mensaje con NUL rompa la actualización.
-        console.error("[ESCANEO] Error guardando fallo en BD:", e)
-        updated = await prisma.documentScan.update({
-          where: { id: scan.id },
-          data: {
-            fileUrl: saved.publicUrl,
-            storedFileName: saved.storedFileName,
-            status: "FALLIDO",
-            error: "Error al procesar escaneo",
-          },
-        })
-      }
+      const updated = await prisma.documentScan.update({
+        where: { id: scan.id },
+        data: { status: "FALLIDO", error: safeError },
+      })
 
       return NextResponse.json(
-        {
-          success: false,
-          error: "Error al procesar escaneo",
-          details: updated.error || null,
-          data: updated,
-        },
+        { success: false, error: "Error al procesar escaneo", details: updated.error || null, data: updated },
         { status: 500 }
       )
     }
@@ -254,11 +261,7 @@ export async function DELETE(request: NextRequest) {
     await prisma.documentScan.deleteMany({ where: { id: { in: scans.map((s) => s.id) }, userId } })
 
     // Limpiar archivos en disco (best-effort)
-    await Promise.all(
-      scans.map((s) =>
-        deleteScanFile({ storedFileName: s.storedFileName, fileUrl: s.fileUrl }).catch(() => null)
-      )
-    )
+    await Promise.all(scans.map((s) => deleteScanObject({ storedFileName: s.storedFileName, fileUrl: s.fileUrl })))
 
     return NextResponse.json({ success: true, deleted: scans.length })
   } catch (error) {

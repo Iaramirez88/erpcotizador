@@ -11,6 +11,8 @@ import { useEffect, useState } from "react"
 import { signOut } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { useUiStore } from "@/lib/ui-store"
+import { NavSettingsDialog } from "@/components/dashboard/nav-settings-dialog"
+import { useTour } from "@/components/tour/tour-provider"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,7 +32,9 @@ interface HeaderProps {
 export default function Header({ user }: HeaderProps) {
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const [planName, setPlanName] = useState<string>("")
+  const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
   const toggleMobileNav = useUiStore((s) => s.toggleMobileNav)
+  const { hasCurrentTour, startCurrentTour, resetCurrentTour } = useTour()
 
   useEffect(() => {
     let cancelled = false
@@ -55,6 +59,16 @@ export default function Header({ user }: HeaderProps) {
       } catch {
         // ignore
       }
+
+      try {
+        const res = await fetch('/api/ui-preferences')
+        const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { nav?: Record<string, boolean> } } | null
+        if (!cancelled && json?.success) {
+          setNavPrefs(json.data?.nav ?? {})
+        }
+      } catch {
+        // ignore
+      }
     }
 
     void load()
@@ -62,6 +76,33 @@ export default function Header({ user }: HeaderProps) {
       cancelled = true
     }
   }, [])
+
+  const navItems = [
+    { name: 'Dashboard', href: '/dashboard' },
+    { name: 'Cotizador', href: '/dashboard/cotizador' },
+    { name: 'Litografía', href: '/dashboard/litografia' },
+    { name: 'Escaneos', href: '/dashboard/escaneos' },
+    { name: 'Clientes', href: '/dashboard/clientes' },
+    { name: 'Productos', href: '/dashboard/materiales' },
+    { name: 'Terminados', href: '/dashboard/terminados' },
+    { name: 'Inventario', href: '/dashboard/inventario' },
+    { name: 'Traslados', href: '/dashboard/inventario/traslados' },
+    { name: 'Remisiones', href: '/dashboard/remisiones' },
+    { name: 'Facturación', href: '/dashboard/pos' },
+    { name: 'Proveedores', href: '/dashboard/proveedores' },
+    { name: 'Compras', href: '/dashboard/compras' },
+    { name: 'Órdenes de Trabajo', href: '/dashboard/ordenes' },
+    { name: 'Reportes', href: '/dashboard/reportes' },
+  ]
+
+  async function saveNav(next: Record<string, boolean>) {
+    setNavPrefs(next)
+    await fetch('/api/ui-preferences', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nav: next }),
+    }).catch(() => null)
+  }
 
   return (
     <header className="bg-white border-b border-gray-200 px-3 sm:px-4 lg:px-6 py-3">
@@ -104,6 +145,9 @@ export default function Header({ user }: HeaderProps) {
                 <Link href="/dashboard/perfil">Mi perfil</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
+                <Link href="/dashboard/cotizaciones">Cotizaciones</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
                 <Link href="/dashboard/notificaciones" className="flex items-center justify-between gap-2">
                   <span>Notificaciones</span>
                   {unreadCount > 0 ? (
@@ -115,11 +159,56 @@ export default function Header({ user }: HeaderProps) {
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Configuración</DropdownMenuLabel>
+              {navPrefs ? (
+                <NavSettingsDialog
+                  items={navItems}
+                  value={navPrefs}
+                  onSave={saveNav}
+                  trigger={(open) => (
+                    <DropdownMenuItem
+                      onSelect={(e) => {
+                        e.preventDefault()
+                        open()
+                      }}
+                    >
+                      Personalizar menú
+                    </DropdownMenuItem>
+                  )}
+                />
+              ) : null}
               <DropdownMenuItem asChild>
                 <Link href="/dashboard/configuracion/permisos">Permisos</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
+                <Link href="/dashboard/configuracion/cotizaciones">Cotizaciones</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/configuracion/desperdicios">Desperdicios</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
                 <Link href="/dashboard/configuracion/plan">Plan</Link>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Ayuda</DropdownMenuLabel>
+              <DropdownMenuItem
+                disabled={!hasCurrentTour}
+                onSelect={(e) => {
+                  e.preventDefault()
+                  startCurrentTour()
+                }}
+              >
+                Ver tutorial de esta pantalla
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={!hasCurrentTour}
+                onSelect={(e) => {
+                  e.preventDefault()
+                  void resetCurrentTour()
+                  startCurrentTour()
+                }}
+              >
+                Reiniciar tutorial de esta pantalla
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

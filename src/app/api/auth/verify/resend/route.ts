@@ -3,25 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { randomDigits, sha256Hex } from '@/lib/auth-tokens'
 import { sendEmail } from '@/lib/email'
 
-type EmailVerificationCodeDelegate = {
-  deleteMany: (args: unknown) => unknown
-  create: (args: unknown) => unknown
-}
-
 export async function POST(request: Request) {
   try {
-    const emailVerificationCode = (prisma as unknown as { emailVerificationCode?: EmailVerificationCodeDelegate })
-      .emailVerificationCode
-    if (!emailVerificationCode) {
-      return NextResponse.json(
-        {
-          error:
-            'Modelo Prisma EmailVerificationCode no disponible. Ejecuta `npx prisma generate` y reinicia el servidor.',
-        },
-        { status: 500 }
-      )
-    }
-
     const body: unknown = await request.json()
     const { email } = (body ?? {}) as { email?: unknown }
 
@@ -46,8 +29,8 @@ export async function POST(request: Request) {
     const codeHash = sha256Hex(code)
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 min
 
-    await emailVerificationCode.deleteMany({ where: { userId: user.id } })
-    await emailVerificationCode.create({
+    await prisma.emailVerificationCode.deleteMany({ where: { userId: user.id } })
+    await prisma.emailVerificationCode.create({
       data: {
         userId: user.id,
         email: normalizedEmail,

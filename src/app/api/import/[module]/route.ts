@@ -51,6 +51,26 @@ function parseBoolean(value: unknown, fallback = true) {
   return fallback
 }
 
+function normalizeUnidadMedida(value: unknown) {
+  const s = asString(value).trim().toLowerCase()
+  if (!s) return ''
+  const cleaned = s.replace(//g, '2').replace(//g, '3')
+  if (['m2', 'm²', 'metro2', 'metro_cuadrado', 'metrocuadrado', 'm2s'].includes(cleaned)) return 'm2'
+  if (['ml', 'm', 'metro', 'metro_lineal', 'metrolineal', 'lineal'].includes(cleaned)) return 'ml'
+  if (['unidad', 'und', 'u', 'unid', 'pieza', 'pza'].includes(cleaned)) return 'unidad'
+  if (['fisico', 'físico', 'producto_fisico', 'producto', 'merchandising', 'promo', 'promocional', 'promocionales'].includes(cleaned)) return 'unidad'
+  if (['metraje', 'metrado', 'material', 'rollo'].includes(cleaned)) return 'm2'
+  return cleaned
+}
+
+function resolveUnidadMedida(inputUnidad: unknown, tipoProducto: unknown) {
+  const u = normalizeUnidadMedida(inputUnidad)
+  if (u === 'm2' || u === 'ml' || u === 'unidad') return u
+  const t = normalizeUnidadMedida(tipoProducto)
+  if (t === 'm2' || t === 'ml' || t === 'unidad') return t
+  return 'unidad'
+}
+
 async function getOrCreateEmpresaIdForUser(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true } })
   if (user?.empresaId) return user.empresaId
@@ -265,7 +285,9 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const aliases = {
       nombre: ['nombre', 'material'],
       tipo: ['tipo', 'tipo_material'],
+      tipoProducto: ['tipoproducto', 'tipo_producto', 'tipo_de_producto', 'modalidad', 'clase', 'producto_tipo'],
       categoria: ['categoria'],
+      imagenUrl: ['imagenurl', 'imagen_url', 'imagen', 'foto', 'foto_url', 'urlimagen', 'url_imagen', 'image', 'imageurl', 'image_url'],
       ancho: ['ancho'],
       largo: ['largo'],
       espesor: ['espesor'],
@@ -292,12 +314,13 @@ export async function POST(req: NextRequest, context: RouteContext) {
           return null
         }
 
-        const unidadMedida = asString(mapped.unidadMedida || 'unidad').trim() || 'unidad'
+        const unidadMedida = resolveUnidadMedida(mapped.unidadMedida, mapped.tipoProducto)
 
         return {
           nombre,
           tipo,
           categoria: asString(mapped.categoria).trim() || null,
+          imagenUrl: asString(mapped.imagenUrl).trim() || null,
           ancho: mapped.ancho === undefined ? null : parseNumber(mapped.ancho, 0) || null,
           largo: mapped.largo === undefined ? null : parseNumber(mapped.largo, 0) || null,
           espesor: mapped.espesor === undefined ? null : parseNumber(mapped.espesor, 0) || null,

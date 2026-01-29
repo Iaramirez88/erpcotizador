@@ -1,5 +1,10 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Requisitos
+
+- Node.js: recomendado `22.22.0` (ver `.nvmrc`). En Windows esto evita fallos de Prisma WASM al correr `prisma generate`.
+- PostgreSQL accesible por `DATABASE_URL`.
+
 ## Getting Started
 
 First, run the development server:
@@ -17,6 +22,12 @@ bun dev
 docker-compose -f docker-compose.ocr.yml up -d --build
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+Scripts útiles:
+
+- `npm run typecheck`
+- `npm run smoke:cotizaciones`
+- `npm run test:cotizacion-sequence` (prueba concurrencia del consecutivo por sede)
 
 ## Cobros (Bold)
 

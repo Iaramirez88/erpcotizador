@@ -113,7 +113,24 @@ export async function GET(request: NextRequest) {
       orderBy: { fechaCompra: "desc" },
     })
 
-    return NextResponse.json({ success: true, data: compras })
+    const compraIds = compras.map((c) => c.id)
+    const pagosByCompra = compraIds.length
+      ? await prisma.compraPago.groupBy({
+          by: ['compraId'],
+          where: { compraId: { in: compraIds } },
+          _sum: { monto: true },
+        })
+      : []
+
+    const paidMap = new Map(pagosByCompra.map((g) => [g.compraId, g._sum.monto ?? 0]))
+
+    const comprasWithSaldo = compras.map((c) => {
+      const pagado = paidMap.get(c.id) ?? 0
+      const saldo = (typeof c.total === 'number' ? c.total : Number(c.total)) - pagado
+      return { ...c, pagado, saldo }
+    })
+
+    return NextResponse.json({ success: true, data: comprasWithSaldo })
   } catch (error) {
     console.error("Error al obtener compras:", error)
     return NextResponse.json({ error: "Error al obtener compras" }, { status: 500 })

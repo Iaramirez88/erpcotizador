@@ -13,12 +13,29 @@ import {
   Filter,
   Trash2,
   Plus,
+  Pencil,
   CheckCircle,
   Clock,
   XCircle,
-  ClipboardCheck
+  ClipboardCheck,
+  Eye
 } from 'lucide-react';
 import Link from 'next/link';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import dynamic from 'next/dynamic';
+
+// Importación dinámica del PDFViewer
+const PDFViewer = dynamic(
+  () => import('@react-pdf/renderer').then((mod) => mod.PDFViewer),
+  { ssr: false, loading: () => <div className="flex h-96 items-center justify-center">Cargando vista previa...</div> }
+);
+
+import CotizacionPDF from '@/lib/pdf-template';
 
 interface Cotizacion {
   id: string;
@@ -37,7 +54,6 @@ interface Cotizacion {
   cliente: {
     nombre: string;
     email: string;
-    empresa?: string;
   };
   items: {
     id: string;
@@ -58,21 +74,54 @@ export default function CotizacionesPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<string>('');
+  const [filtroSede, setFiltroSede] = useState<string>('');
+  const [sedes, setSedes] = useState<{ id: string; nombre: string; codigo?: string }[]>([]);
   const [enviando, setEnviando] = useState<string | null>(null);
   const [compartiendo, setCompartiendo] = useState<string | null>(null);
+  const [aprobando, setAprobando] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+
+  // Estado para el preview
+  const [previewCotizacion, setPreviewCotizacion] = useState<any | null>(null);
+  const [previewEmpresa, setPreviewEmpresa] = useState<any | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<any | null>(null);
 
   useEffect(() => {
-    cargarCotizaciones();
+    cargarCotizaciones({ page: 1 });
+    cargarSedes();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const cargarCotizaciones = async () => {
+  const cargarSedes = async () => {
     try {
+      const res = await fetch('/api/sedes');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) {
+          setSedes(data.data);
+        }
+      }
+    } catch (error) {
+      console.error('Error cargando sedes:', error);
+    }
+  };
+
+  const cargarCotizaciones = async (opts?: { page?: number }) => {
+    try {
+      setLoading(true);
       const params = new URLSearchParams();
       if (busqueda) params.append('search', busqueda);
       if (filtroEstado) params.append('estado', filtroEstado);
+      if (filtroSede) params.append('sedeId', filtroSede);
       if (from) params.append('from', from);
       if (to) params.append('to', to);
+
+      const pageToLoad = opts?.page ?? page;
+      params.append('page', String(pageToLoad));
+      params.append('pageSize', String(pageSize));
 
       const res = await fetch(`/api/cotizaciones?${params}`);
       const response = await res.json();
@@ -80,13 +129,23 @@ export default function CotizacionesPage() {
       // El API retorna { success, data }
       if (response.success && Array.isArray(response.data)) {
         setCotizaciones(response.data);
+        const meta = response.meta as
+          | { page?: number; pageSize?: number; total?: number; totalPages?: number }
+          | undefined;
+        setTotalPages(typeof meta?.totalPages === 'number' && meta.totalPages > 0 ? meta.totalPages : 1);
+        setTotal(typeof meta?.total === 'number' && meta.total >= 0 ? meta.total : response.data.length);
+        setPage(pageToLoad);
       } else {
         console.error('La respuesta no tiene el formato esperado:', response);
         setCotizaciones([]);
+        setTotalPages(1);
+        setTotal(0);
       }
     } catch (error) {
       console.error('Error:', error);
       setCotizaciones([]);
+      setTotalPages(1);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -196,6 +255,38 @@ export default function CotizacionesPage() {
     }
   };
 
+  const abrirPreview = async (cotizacion: Cotizacion) => {
+    try {
+      // Obtener datos completos de la cotización
+      const res = await fetch(`/api/cotizaciones/${cotizacion.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.data) {
+          setPreviewCotizacion(data.data);
+          
+          // Obtener datos de la empresa si existe
+          if (data.data.vendedor?.empresaId) {
+            const empresaRes = await fetch(`/api/empresas/${data.data.vendedor.empresaId}`);
+            if (empresaRes.ok) {
+              const empresaData = await empresaRes.json();
+              setPreviewEmpresa(empresaData.success ? empresaData.data : null);
+            }
+          }
+
+          // Obtener plantilla de cotización
+          const templateRes = await fetch('/api/cotizacion-template');
+          if (templateRes.ok) {
+            const templateData = await templateRes.json();
+            setPreviewTemplate(templateData.success ? templateData.data : null);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error al cargar datos para preview:', error);
+      alert('Error al cargar el preview');
+    }
+  };
+
   const crearOrden = async (cotizacionId: string, numero: string) => {
     const confirmar = window.confirm(
       `¿Crear orden de trabajo desde la cotización ${numero}?`
@@ -223,6 +314,27 @@ export default function CotizacionesPage() {
     } catch (error) {
       console.error('Error:', error);
       alert('Error al crear orden de trabajo');
+    }
+  };
+
+  const aprobarCotizacion = async (cotizacionId: string, numero: string) => {
+    const confirmar = window.confirm(`¿Aprobar la cotización ${numero}?`);
+    if (!confirmar) return;
+
+    setAprobando(cotizacionId);
+    try {
+      const res = await fetch(`/api/cotizaciones/${cotizacionId}/aprobar`, { method: 'POST' });
+      const json = await res.json().catch(() => ({ success: false }));
+      if (!res.ok || !json?.success) {
+        alert(`Error: ${json?.error ?? 'No se pudo aprobar'}`);
+        return;
+      }
+      cargarCotizaciones();
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error al aprobar la cotización');
+    } finally {
+      setAprobando(null);
     }
   };
 
@@ -311,18 +423,26 @@ export default function CotizacionesPage() {
           <h1 className="text-2xl sm:text-3xl font-bold">Cotizaciones</h1>
           <p className="text-muted-foreground mt-0.5">Gestiona tus cotizaciones</p>
         </div>
-        <Link href="/dashboard/cotizador">
-          <Button>
-            <Plus className="w-4 h-4 mr-2" />
-            Nueva Cotización
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/dashboard/cotizaciones/plantilla">
+            <Button variant="outline">
+              <ClipboardCheck className="w-4 h-4 mr-2" />
+              Editar plantilla
+            </Button>
+          </Link>
+          <Link href="/dashboard/cotizador">
+            <Button>
+              <Plus className="w-4 h-4 mr-2" />
+              Nueva Cotización
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Filtros */}
       <Card className="mb-4">
         <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
             <div className="relative md:col-span-2">
               <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
               <Input
@@ -359,7 +479,24 @@ export default function CotizacionesPage() {
               <option value="VENCIDA">Vencida</option>
             </select>
 
-            <Button onClick={cargarCotizaciones} variant="outline" className="md:col-span-1">
+            <select
+              className="px-3 py-2 border rounded-md"
+              value={filtroSede}
+              onChange={(e) => setFiltroSede(e.target.value)}
+            >
+              <option value="">Todas las sedes</option>
+              {sedes.map((sede) => (
+                <option key={sede.id} value={sede.id}>
+                  {sede.codigo ? `${sede.codigo} - ` : ''}{sede.nombre}
+                </option>
+              ))}
+            </select>
+
+            <Button
+              onClick={() => cargarCotizaciones({ page: 1 })}
+              variant="outline"
+              className="md:col-span-1"
+            >
               <Filter className="w-4 h-4 mr-2" />
               Aplicar Filtros
             </Button>
@@ -405,9 +542,6 @@ export default function CotizacionesPage() {
                       <div>
                         <span className="font-medium">Cliente:</span>
                         <p className="text-gray-900">{cot.cliente.nombre}</p>
-                        {cot.cliente.empresa && (
-                          <p className="text-xs text-gray-500">{cot.cliente.empresa}</p>
-                        )}
                       </div>
                       <div>
                         <span className="font-medium">Fecha:</span>
@@ -428,6 +562,42 @@ export default function CotizacionesPage() {
 
                   {/* Acciones */}
                   <div className="flex gap-2 ml-4">
+                    {/* Preview */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => abrirPreview(cot)}
+                      title="Vista previa"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </Button>
+
+                    {/* Editar (solo borrador) */}
+                    {cot.estado === 'BORRADOR' && !cot.orden && (
+                      <Link href={`/dashboard/cotizador?id=${cot.id}`}>
+                        <Button size="sm" variant="outline" title="Editar cotización">
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                      </Link>
+                    )}
+
+                    {/* Aprobar */}
+                    {cot.estado !== 'APROBADA' && cot.estado !== 'CONVERTIDA' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => aprobarCotizacion(cot.id, cot.numero)}
+                        disabled={aprobando === cot.id}
+                        title="Aprobar"
+                      >
+                        {aprobando === cot.id ? (
+                          <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <CheckCircle className="w-4 h-4" />
+                        )}
+                      </Button>
+                    )}
+
                     {/* Botón para crear orden (solo si está aprobada y no tiene orden) */}
                     {cot.estado === 'APROBADA' && !cot.orden && (
                       <Button
@@ -505,8 +675,55 @@ export default function CotizacionesPage() {
               </CardContent>
             </Card>
           ))}
+
+          {/* Paginación */}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pt-2">
+            <div className="text-sm text-muted-foreground">
+              {total > 0 ? `Total: ${total} • Página ${page} de ${totalPages}` : `Página ${page} de ${totalPages}`}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={loading || page <= 1}
+                onClick={() => cargarCotizaciones({ page: Math.max(1, page - 1) })}
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={loading || page >= totalPages}
+                onClick={() => cargarCotizaciones({ page: Math.min(totalPages, page + 1) })}
+              >
+                Siguiente
+              </Button>
+            </div>
+          </div>
         </div>
       )}
+
+      {/* Dialog para Preview PDF */}
+      <Dialog open={!!previewCotizacion} onOpenChange={() => setPreviewCotizacion(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>
+              Vista previa - {previewCotizacion?.numero}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {previewCotizacion && (
+            <div className="h-[600px] w-full overflow-hidden rounded border">
+              <PDFViewer width="100%" height="100%">
+                <CotizacionPDF
+                  cotizacion={previewCotizacion}
+                  template={previewTemplate || undefined}
+                />
+              </PDFViewer>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

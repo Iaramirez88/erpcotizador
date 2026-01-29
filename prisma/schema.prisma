@@ -29,6 +29,9 @@ model User {
 
   // Plantilla PDF de cotización (configurable por usuario)
   cotizacionTemplate CotizacionTemplate?
+  
+  // Plantilla PDF de remisión (configurable por usuario)
+  remisionTemplate RemisionTemplate?
 
   // Relaciones NextAuth
   accounts Account[]
@@ -39,13 +42,15 @@ model User {
   ordenes      OrdenTrabajo[]
 
   // Escaneo de documentos (IA/OCR)
-  documentScans DocumentScan[] @relation("ScanCreatedBy")
-  approvedScans DocumentScan[] @relation("ScanApprovedBy")
+  documentScans     DocumentScan[]              @relation("ScanCreatedBy")
+  approvedScans     DocumentScan[]              @relation("ScanApprovedBy")
+  scanFieldFeedback DocumentScanFieldFeedback[]
 
   // Compras
-  comprasCreadas     Compra[] @relation("CompraCreadaPor")
-  comprasAutorizadas Compra[] @relation("CompraAutorizadoPor")
-  comprasRecibidas   Compra[] @relation("CompraRecibidoPor")
+  comprasCreadas     Compra[]     @relation("CompraCreadaPor")
+  comprasAutorizadas Compra[]     @relation("CompraAutorizadoPor")
+  comprasRecibidas   Compra[]     @relation("CompraRecibidoPor")
+  compraPagosCreados CompraPago[] @relation("CompraPagoCreadoPor")
 
   // Seguridad: verificación de email y restablecimiento de contraseña
   emailVerificationCodes EmailVerificationCode[]
@@ -55,12 +60,24 @@ model User {
   sedeMemberships SedeMembership[]
   teamMemberships TeamMember[]
   moduleAccess    UserModuleAccess[]
+  globalAccess    UserGlobalAccess?
 
   // Notificaciones
   notifications Notification[]
 
   // Inventario
   inventoryMovements InventoryMovement[]
+
+  // POS (facturación interna)
+  posInvoicesCreated PosInvoice[] @relation("PosInvoiceCreatedBy")
+  posReturnsCreated  PosReturn[]  @relation("PosReturnCreatedBy")
+
+  // Remisiones
+  remisionesCreadas Remision[]
+  
+  // Traslados de inventario
+  transfersCreated   InventoryTransfer[] @relation("TransferCreated")
+  transfersCompleted InventoryTransfer[] @relation("TransferCompleted")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -112,13 +129,27 @@ model CotizacionTemplate {
   @@map("cotizacion_templates")
 }
 
+model RemisionTemplate {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  settings Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("remision_templates")
+}
+
 model UiPreference {
   id     String @id @default(cuid())
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  nav    Json @default("{}")
-  report Json @default("{}")
+  nav      Json @default("{}")
+  report   Json @default("{}")
+  tutorial Json @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -223,6 +254,9 @@ enum ModuleKey {
   COTIZACIONES
   CLIENTES
   MATERIALES
+  INVENTARIO
+  REMISIONES
+  POS
   PROVEEDORES
   COMPRAS
   ORDENES
@@ -260,6 +294,40 @@ enum InventoryMovementType {
   ADJUST
 }
 
+enum InventoryMovementSourceType {
+  MANUAL
+  POS_INVOICE
+  POS_RETURN
+  REMISION
+  TRANSFER
+}
+
+enum RemisionStatus {
+  EMITIDA
+  ANULADA
+}
+
+enum InventoryTransferStatus {
+  PENDIENTE
+  COMPLETADO
+  CANCELADO
+}
+
+enum PosInvoiceStatus {
+  DRAFT
+  PAID
+  VOID
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum PosPaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  OTHER
+}
+
 // ============================================
 // MÓDULO DE EMPRESA
 // ============================================
@@ -291,16 +359,36 @@ model Empresa {
 
   inventoryMovements InventoryMovement[]
 
-  usuarios   User[]
-  clientes   Cliente[]
-  materiales Material[]
-  maquinas   Maquina[]
+  // Bodegas / stock / POS
+  warehouses  InventoryWarehouse[]
+  posInvoices PosInvoice[]
+  posReturns  PosReturn[]
+
+  usuarios       User[]
+  globalAccesses UserGlobalAccess[]
+  clientes       Cliente[]
+  materiales     Material[]
+  terminados     Terminado[]
+  maquinas       Maquina[]
+
+  remisiones Remision[]
 
   proveedores Proveedor[]
   compras     Compra[]
+  compraPagos CompraPago[]
 
   sedes         Sede[]
   notifications Notification[]
+
+  // Tarifario global de Litografía (misma configuración para todas las sedes)
+  litografiaPrintProfiles LitografiaPrintProfile[]
+  litografiaPaperRates    LitografiaPaperRate[]
+  litografiaFlyerRates    LitografiaFlyerRate[]
+  litografiaProductos     LitografiaProducto[]
+  litografiaFinishOptions LitografiaFinishOption[]
+  litografiaPrintSizes    LitografiaPrintSize[]
+  
+  inventoryTransfers InventoryTransfer[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -308,31 +396,461 @@ model Empresa {
   @@map("empresas")
 }
 
-model InventoryMovement {
-  id        String                @id @default(cuid())
+// ============================================
+// LITOGRAFÍA - TARIFARIO GLOBAL (POR EMPRESA)
+// ============================================
+
+model LitografiaPrintProfile {
+  id        String  @id @default(cuid())
   empresaId String
-  empresa   Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  nombre String
+
+  // Costos por pliego (por color)
+  costoPlanchaPorColor Float @default(0)
+  costoTintaPorColor   Float @default(0)
+
+  activo Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, nombre])
+  @@index([empresaId])
+  @@map("litografia_print_profiles")
+}
+
+model LitografiaPaperRate {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  nombre  String
+  tipo    String?
+  gramaje Int?
+
+  // Tamaño de pliego base (cm)
+  pliegoWidthCm  Float @default(70)
+  pliegoHeightCm Float @default(100)
+
+  // Costo por pliego
+  costoPliego Float @default(0)
+
+  activo Boolean @default(true)
+
+  flyerRates LitografiaFlyerRate[]
+  productos  LitografiaProducto[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, nombre])
+  @@index([empresaId])
+  @@map("litografia_paper_rates")
+}
+
+model LitografiaFinishOption {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  key    String
+  nombre String
+
+  // Valor/costo del acabado (COP). Se usa para referencia y futuras reglas.
+  valor Float @default(0)
+
+  activo Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  flyerRates LitografiaFlyerRate[]
+  productos  LitografiaProducto[]
+
+  @@unique([empresaId, key])
+  @@index([empresaId, activo])
+  @@map("litografia_finish_options")
+}
+
+model LitografiaPrintSize {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  // Debe coincidir con el formatoKey usado en tarifario y cotizador
+  key    String
+  nombre String
+
+  widthCm  Float @default(0)
+  heightCm Float @default(0)
+
+  activo Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, key])
+  @@index([empresaId, activo])
+  @@map("litografia_print_sizes")
+}
+
+model LitografiaProducto {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  nombre      String
+  descripcion String?
+
+  // Especificación del producto (define el “ítem” y sus rangos)
+  formatoKey String
+  tintas     Int
+
+  // Papel requerido para calcular pliegos/imposición
+  paperRateId String
+  paperRate   LitografiaPaperRate @relation(fields: [paperRateId], references: [id])
+
+  finishOptionId String?
+  finishOption   LitografiaFinishOption? @relation(fields: [finishOptionId], references: [id], onDelete: SetNull)
+
+  activo Boolean @default(true)
+
+  flyerRates LitografiaFlyerRate[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, nombre])
+  @@unique([empresaId, paperRateId, formatoKey, tintas, finishOptionId])
+  @@index([empresaId, activo])
+  @@index([empresaId, formatoKey, tintas])
+  @@map("litografia_productos")
+}
+
+model LitografiaFlyerRate {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  productoId String?
+  producto   LitografiaProducto? @relation(fields: [productoId], references: [id], onDelete: SetNull)
+
+  // Debe coincidir con LitografiaPrintSize.key (o PRODUCT_PRESETS.key si no usa tamaños configurables)
+  formatoKey String
+
+  // Solo permitidos: 1, 2, 4 (4 = policromía)
+  tintas Int
+
+  // Rango inclusivo: tirajeMin <= cantidad <= tirajeMax
+  tirajeMin Int
+  tirajeMax Int
+
+  // Opcionales para tarifario completo por papel y acabado
+  paperRateId String?
+  paperRate   LitografiaPaperRate? @relation(fields: [paperRateId], references: [id], onDelete: SetNull)
+
+  finishOptionId String?
+  finishOption   LitografiaFinishOption? @relation(fields: [finishOptionId], references: [id], onDelete: SetNull)
+
+  // Precio TOTAL (no unitario) para ese rango/opción
+  precioTotal Float @default(0)
+
+  activo Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, formatoKey, tintas, tirajeMin, tirajeMax, paperRateId, finishOptionId])
+  @@index([empresaId, formatoKey, tintas, paperRateId, finishOptionId, activo])
+  @@index([empresaId, productoId, activo])
+  @@index([empresaId, tirajeMin, tirajeMax])
+  @@map("litografia_flyer_rates")
+}
+
+model InventoryMovement {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  // Multi-sede / bodega (para POS y control por almacén)
+  sedeId String?
+  sede   Sede?   @relation(fields: [sedeId], references: [id], onDelete: SetNull)
+
+  warehouseId String?
+  warehouse   InventoryWarehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
 
   materialId String
-  material   Material             @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
 
-  type      InventoryMovementType
+  type     InventoryMovementType
   // Delta aplicado (IN: positivo, OUT: negativo, ADJUST: diferencia)
-  quantity  Float
+  quantity Float
 
   stockBefore Float
   stockAfter  Float
 
   note String?
 
+  sourceType InventoryMovementSourceType @default(MANUAL)
+  sourceId   String?
+
   createdById String?
-  createdBy   User?               @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
 
   @@index([empresaId, createdAt])
+  @@index([sedeId, createdAt])
+  @@index([warehouseId, createdAt])
+  @@index([sourceType, sourceId])
   @@index([materialId, createdAt])
   @@map("inventory_movements")
+}
+
+model InventoryWarehouse {
+  id        String  @id @default(cuid())
+  nombre    String
+  codigo    String?
+  isDefault Boolean @default(false)
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  // Multi-sede (opcional por compatibilidad / despliegues iniciales)
+  sedeId String?
+  sede   Sede?   @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+
+  stocks    InventoryStock[]
+  movements InventoryMovement[]
+
+  posInvoices PosInvoice[]
+  posReturns  PosReturn[]
+
+  remisiones Remision[]
+  
+  transfersFrom InventoryTransfer[] @relation("TransfersFrom")
+  transfersTo   InventoryTransfer[] @relation("TransfersTo")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, sedeId, nombre])
+  @@index([empresaId])
+  @@index([sedeId])
+  @@map("inventory_warehouses")
+}
+
+model InventoryStock {
+  id          String             @id @default(cuid())
+  warehouseId String
+  warehouse   InventoryWarehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  quantity Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([warehouseId, materialId])
+  @@index([materialId])
+  @@map("inventory_stocks")
+}
+
+model InventoryTransfer {
+  id     String @id @default(cuid())
+  numero String @unique
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  // Bodega origen
+  fromWarehouseId String
+  fromWarehouse   InventoryWarehouse @relation("TransfersFrom", fields: [fromWarehouseId], references: [id], onDelete: Restrict)
+
+  // Bodega destino
+  toWarehouseId String
+  toWarehouse   InventoryWarehouse @relation("TransfersTo", fields: [toWarehouseId], references: [id], onDelete: Restrict)
+
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  quantity Float
+  note     String?
+
+  status InventoryTransferStatus @default(PENDIENTE)
+
+  createdById String?
+  createdBy   User?   @relation("TransferCreated", fields: [createdById], references: [id], onDelete: SetNull)
+
+  completedById String?
+  completedBy   User?    @relation("TransferCompleted", fields: [completedById], references: [id], onDelete: SetNull)
+  completedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, createdAt])
+  @@index([fromWarehouseId, createdAt])
+  @@index([toWarehouseId, createdAt])
+  @@index([materialId, createdAt])
+  @@index([status])
+  @@map("inventory_transfers")
+}
+
+model PosSequence {
+  id     String @id @default(cuid())
+  sedeId String @unique
+  sede   Sede   @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+
+  nextInvoiceNumber Int @default(1)
+  nextReturnNumber  Int @default(1)
+
+  updatedAt DateTime @updatedAt
+
+  @@map("pos_sequences")
+}
+
+model CotizacionSequence {
+  sedeId String @id
+  sede   Sede   @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+
+  currentNumber Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("cotizacion_sequences")
+}
+
+model PosInvoice {
+  id     String           @id @default(cuid())
+  numero String           @unique
+  status PosInvoiceStatus @default(PAID)
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  sedeId String
+  sede   Sede   @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+
+  warehouseId String?
+  warehouse   InventoryWarehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+
+  clienteNombre    String
+  clienteDocumento String?
+
+  ivaPct   Float @default(0)
+  subtotal Float @default(0)
+  iva      Float @default(0)
+  total    Float @default(0)
+
+  note String? @db.Text
+
+  items    PosInvoiceItem[]
+  payments PosPayment[]
+  returns  PosReturn[]
+
+  createdById String?
+  createdBy   User?   @relation("PosInvoiceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, createdAt])
+  @@index([sedeId, createdAt])
+  @@map("pos_invoices")
+}
+
+model PosInvoiceItem {
+  id        String     @id @default(cuid())
+  invoiceId String
+  invoice   PosInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  materialId String?
+  material   Material? @relation(fields: [materialId], references: [id], onDelete: SetNull)
+
+  descripcion String
+  quantity    Float  @default(1)
+  unitPrice   Float  @default(0)
+  total       Float  @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([invoiceId])
+  @@index([materialId])
+  @@map("pos_invoice_items")
+}
+
+model PosPayment {
+  id        String     @id @default(cuid())
+  invoiceId String
+  invoice   PosInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  method PosPaymentMethod
+  amount Float            @default(0)
+  note   String?
+
+  receivedAt DateTime @default(now())
+
+  @@index([invoiceId])
+  @@map("pos_payments")
+}
+
+model PosReturn {
+  id     String @id @default(cuid())
+  numero String @unique
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  sedeId String
+  sede   Sede   @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+
+  warehouseId String?
+  warehouse   InventoryWarehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+
+  invoiceId String?
+  invoice   PosInvoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  motivo   String? @db.Text
+  ivaPct   Float   @default(0)
+  subtotal Float   @default(0)
+  iva      Float   @default(0)
+  total    Float   @default(0)
+
+  items PosReturnItem[]
+
+  createdById String?
+  createdBy   User?   @relation("PosReturnCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([empresaId, createdAt])
+  @@index([sedeId, createdAt])
+  @@index([invoiceId])
+  @@map("pos_returns")
+}
+
+model PosReturnItem {
+  id        String    @id @default(cuid())
+  returnId  String
+  posReturn PosReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+
+  materialId String?
+  material   Material? @relation(fields: [materialId], references: [id], onDelete: SetNull)
+
+  descripcion String
+  quantity    Float  @default(1)
+  unitPrice   Float  @default(0)
+  total       Float  @default(0)
+
+  @@index([returnId])
+  @@index([materialId])
+  @@map("pos_return_items")
 }
 
 model BillingInvoice {
@@ -377,6 +895,13 @@ model Sede {
   nombre String
   codigo String?
 
+  // Configuración de cotizaciones por sede
+  cotizacionesPricesIncludeIva Boolean @default(true)
+  cotizacionesIvaPct           Float   @default(19)
+
+  // Desperdicios (configuración por sede)
+  desperdicioPctDefault Float @default(0)
+
   empresaId String
   empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
@@ -385,16 +910,92 @@ model Sede {
   moduleAccess  UserModuleAccess[]
   notifications Notification[]
 
-  cotizaciones  Cotizacion[]   @relation("SedeCotizaciones")
-  ordenes       OrdenTrabajo[] @relation("SedeOrdenes")
-  compras       Compra[]       @relation("SedeCompras")
-  documentScans DocumentScan[] @relation("SedeScans")
+  cotizaciones      Cotizacion[]                @relation("SedeCotizaciones")
+  ordenes           OrdenTrabajo[]              @relation("SedeOrdenes")
+  compras           Compra[]                    @relation("SedeCompras")
+  compraPagos       CompraPago[]                @relation("SedeCompraPagos")
+  documentScans     DocumentScan[]              @relation("SedeScans")
+  scanFieldFeedback DocumentScanFieldFeedback[]
+
+  // Inventario / bodegas / POS
+  inventoryMovements InventoryMovement[]
+  warehouses         InventoryWarehouse[]
+  posSequence        PosSequence?
+  cotizacionSequence CotizacionSequence?
+  remisionSequence   RemisionSequence?
+  posInvoices        PosInvoice[]
+  posReturns         PosReturn[]
+
+  remisiones Remision[]
+
+  desperdiciosMateriales SedeMaterialWaste[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([empresaId])
   @@map("sedes")
+}
+
+model RemisionSequence {
+  sedeId String @id
+  sede   Sede   @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+
+  currentNumber Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("remision_sequences")
+}
+
+model Remision {
+  id     String         @id @default(cuid())
+  numero String         @unique
+  status RemisionStatus @default(EMITIDA)
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  sedeId String
+  sede   Sede   @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+
+  warehouseId String?
+  warehouse   InventoryWarehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+
+  clienteNombre String?
+  note          String?
+
+  createdById String?
+  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  items RemisionItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, createdAt])
+  @@index([sedeId, createdAt])
+  @@index([warehouseId, createdAt])
+  @@map("remisiones")
+}
+
+model RemisionItem {
+  id         String   @id @default(cuid())
+  remisionId String
+  remision   Remision @relation(fields: [remisionId], references: [id], onDelete: Cascade)
+
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  quantity Float
+  note     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([remisionId])
+  @@index([materialId])
+  @@map("remision_items")
 }
 
 model SedeMembership {
@@ -465,6 +1066,22 @@ model UserModuleAccess {
   @@map("user_module_access")
 }
 
+model UserGlobalAccess {
+  id        String      @id @default(cuid())
+  userId    String      @unique
+  empresaId String
+  level     AccessLevel @default(READ)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId])
+  @@map("user_global_access")
+}
+
 // ============================================
 // NOTIFICACIONES (MVP)
 // ============================================
@@ -497,6 +1114,12 @@ model Notification {
 // MÓDULO DE CLIENTES
 // ============================================
 
+enum ClienteSegmento {
+  POTENCIAL
+  OCASIONAL
+  FRECUENTE
+}
+
 model Cliente {
   id            String  @id @default(cuid())
   nombre        String
@@ -508,6 +1131,9 @@ model Cliente {
   direccion     String?
   ciudad        String?
   departamento  String?
+
+  // Segmento definido manualmente (opcional). Si es null, puede calcularse en la API.
+  segmento ClienteSegmento?
 
   empresaId String
   empresa   Empresa @relation(fields: [empresaId], references: [id])
@@ -536,8 +1162,8 @@ model Cotizacion {
   sede   Sede?   @relation("SedeCotizaciones", fields: [sedeId], references: [id])
 
   // Tracking de envíos
-  emailSentCount     Int      @default(0)
-  whatsappSentCount  Int      @default(0)
+  emailSentCount     Int       @default(0)
+  whatsappSentCount  Int       @default(0)
   lastEmailSentAt    DateTime?
   lastWhatsappSentAt DateTime?
 
@@ -554,6 +1180,12 @@ model Cotizacion {
   iva       Float @default(0)
   total     Float @default(0)
 
+  // Condiciones / pagos
+  garantia          String?  @db.Text
+  paymentMethods    String[] @default([])
+  boldPaymentLinkId String?  @unique
+  boldCheckoutUrl   String?
+
   estado        EstadoCotizacion @default(BORRADOR)
   observaciones String?          @db.Text
 
@@ -563,8 +1195,8 @@ model Cotizacion {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("cotizaciones")
   @@index([sedeId])
+  @@map("cotizaciones")
 }
 
 model ItemCotizacion {
@@ -580,6 +1212,9 @@ model ItemCotizacion {
   ancho Float?
   alto  Float?
   area  Float? // Calculado automáticamente
+
+  // Desperdicio (por item)
+  desperdicioPct Float @default(0)
 
   // Materiales
   materialId String?
@@ -603,6 +1238,8 @@ model ItemCotizacion {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  terminados ItemCotizacionTerminado[]
+
   @@map("items_cotizacion")
 }
 
@@ -625,6 +1262,9 @@ model Material {
   tipo      TipoMaterial
   categoria String?
 
+  // Imagen del producto/servicio (URL pública o ruta absoluta/relativa)
+  imagenUrl String?
+
   // Especificaciones
   ancho   Float? // En cm
   largo   Float? // En cm o metros
@@ -636,6 +1276,8 @@ model Material {
   precioMetro  Float?
   precioUnidad Float?
   precioCompra Float?
+
+  remisionItems RemisionItem[]
 
   // Stock
   stockActual  Float  @default(0)
@@ -650,9 +1292,16 @@ model Material {
 
   items ItemCotizacion[]
 
+  sedeWastes SedeMaterialWaste[]
+
   quantityDiscounts MaterialQuantityDiscount[]
 
   inventoryMovements InventoryMovement[]
+  stocks             InventoryStock[]
+  inventoryTransfers InventoryTransfer[]
+
+  posInvoiceItems PosInvoiceItem[]
+  posReturnItems  PosReturnItem[]
 
   activo    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -661,10 +1310,29 @@ model Material {
   @@map("materiales")
 }
 
-model MaterialQuantityDiscount {
-  id        String   @id @default(cuid())
+model SedeMaterialWaste {
+  id         String @id @default(cuid())
+  sedeId     String
   materialId String
-  material  Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  desperdicioPct Float @default(0)
+
+  sede     Sede     @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sedeId, materialId])
+  @@index([materialId])
+  @@index([sedeId])
+  @@map("sede_material_waste")
+}
+
+model MaterialQuantityDiscount {
+  id         String   @id @default(cuid())
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
 
   // Descuento aplicable cuando cantidad >= minQty
   minQty      Float
@@ -676,6 +1344,53 @@ model MaterialQuantityDiscount {
   @@unique([materialId, minQty])
   @@index([materialId])
   @@map("material_quantity_discounts")
+}
+
+// ============================================
+// TERMINADOS (catálogo de acabados)
+// ============================================
+
+model Terminado {
+  id String @id @default(cuid())
+
+  nombre           String
+  unidadAplicacion String // m2, ml, unidad
+  precioUnitario   Float  @default(0)
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  items ItemCotizacionTerminado[]
+
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, nombre])
+  @@index([empresaId])
+  @@map("terminados")
+}
+
+model ItemCotizacionTerminado {
+  id String @id @default(cuid())
+
+  itemCotizacionId String
+  itemCotizacion   ItemCotizacion @relation(fields: [itemCotizacionId], references: [id], onDelete: Cascade)
+
+  terminadoId String
+  terminado   Terminado @relation(fields: [terminadoId], references: [id], onDelete: Cascade)
+
+  unidadAplicacion String
+  baseCantidad     Float  @default(0)
+  precioUnitario   Float  @default(0)
+  costoTotal       Float  @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@unique([itemCotizacionId, terminadoId])
+  @@index([terminadoId])
+  @@index([itemCotizacionId])
+  @@map("item_cotizacion_terminados")
 }
 
 enum TipoMaterial {
@@ -735,8 +1450,8 @@ model OrdenTrabajo {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("ordenes_trabajo")
   @@index([sedeId])
+  @@map("ordenes_trabajo")
 }
 
 model EtapaProduccion {
@@ -842,6 +1557,12 @@ enum ScanStatus {
   APROBADO
 }
 
+enum ScanFeedbackSource {
+  UI_SINGLE
+  UI_BULK
+  API
+}
+
 // ============================================
 // MÓDULO DE PROVEEDORES Y COMPRAS
 // ============================================
@@ -884,8 +1605,8 @@ model Compra {
   estado      EstadoCompra @default(BORRADOR)
 
   // Multi-sede (MVP): opcional para compatibilidad con registros antiguos
-  sedeId String?
-  sedeRef Sede?  @relation("SedeCompras", fields: [sedeId], references: [id])
+  sedeId  String?
+  sedeRef Sede?   @relation("SedeCompras", fields: [sedeId], references: [id])
 
   // Proveedor (permitimos snapshot para reportes y para casos donde aún no exista un proveedor maestro)
   proveedorId        String?
@@ -929,6 +1650,8 @@ model Compra {
 
   items CompraItem[]
 
+  pagos CompraPago[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -937,8 +1660,46 @@ model Compra {
   @@index([autorizado])
   @@index([empresaId])
   @@index([proveedorNombre])
-  @@map("compras")
   @@index([sedeId])
+  @@map("compras")
+}
+
+model CompraPago {
+  id String @id @default(cuid())
+
+  compraId String
+  compra   Compra @relation(fields: [compraId], references: [id], onDelete: Cascade)
+
+  fecha         DateTime         @default(now())
+  monto         Float
+  metodo        PosPaymentMethod @default(TRANSFER)
+  referencia    String?
+  observaciones String?          @db.Text
+
+  // Soporte / recibo (archivo)
+  soporteUrl          String?
+  soporteStoredName   String?
+  soporteOriginalName String?
+  soporteMimeType     String?
+  soporteSizeBytes    Int?
+
+  sedeId  String?
+  sedeRef Sede?   @relation("SedeCompraPagos", fields: [sedeId], references: [id])
+
+  userId String
+  user   User   @relation("CompraPagoCreadoPor", fields: [userId], references: [id], onDelete: Cascade)
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([compraId])
+  @@index([empresaId])
+  @@index([sedeId])
+  @@index([fecha])
+  @@map("compra_pagos")
 }
 
 model CompraItem {
@@ -995,11 +1756,41 @@ model DocumentScan {
   extractedData Json?
   error         String? @db.Text
 
+  fieldFeedback DocumentScanFieldFeedback[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([createdAt])
   @@index([status, approved])
-  @@map("document_scans")
   @@index([sedeId])
+  @@map("document_scans")
+}
+
+model DocumentScanFieldFeedback {
+  id     String       @id @default(cuid())
+  scanId String
+  scan   DocumentScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  // Quién confirmó/corrigió
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  sedeId String?
+  sede   Sede?   @relation(fields: [sedeId], references: [id])
+
+  source    ScanFeedbackSource @default(UI_SINGLE)
+  path      String
+  confirmed Boolean            @default(true)
+
+  previousValue Json?
+  newValue      Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([scanId])
+  @@index([userId])
+  @@index([sedeId])
+  @@index([path])
+  @@map("document_scan_field_feedback")
 }

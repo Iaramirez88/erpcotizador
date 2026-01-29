@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -93,6 +94,9 @@ export default function PlantillaCotizacionPage() {
       validezDias: 15,
       estado: 'BORRADOR',
       observaciones: mockObservaciones,
+      garantia: 'Garantía de 30 días por defectos de fabricación.',
+      paymentMethods: ['EFECTIVO', 'TRANSFERENCIA', 'BOLD'],
+      boldCheckoutUrl: 'https://checkout.bold.co/xxxxxx',
       cliente: {
         nombre: mockClienteNombre,
         email: mockClienteEmail,
@@ -240,6 +244,9 @@ export default function PlantillaCotizacionPage() {
           <p className="text-muted-foreground mt-0.5">Personaliza colores, fuentes, tamaños, fondo y marca de agua.</p>
         </div>
         <div className="flex gap-2">
+          <Button asChild type="button" variant="outline">
+            <Link href="/dashboard/cotizador">Volver al Cotizador</Link>
+          </Button>
           <Button type="button" variant="outline" onClick={() => setSettings(DEFAULT_COTIZACION_TEMPLATE)}>
             Restablecer
           </Button>

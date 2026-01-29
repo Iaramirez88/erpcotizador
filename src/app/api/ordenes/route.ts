@@ -28,16 +28,33 @@ export async function GET(request: NextRequest) {
 
     const ordenes = await prisma.ordenTrabajo.findMany({
       where,
-      include: {
-        cliente: true,
+      select: {
+        id: true,
+        numero: true,
+        estado: true,
+        prioridad: true,
+        fechaEntrega: true,
+        total: true,
+        observaciones: true,
+        createdAt: true,
+        cliente: {
+          select: {
+            id: true,
+            nombre: true,
+            email: true,
+            telefono: true,
+          },
+        },
         vendedor: {
           select: {
+            id: true,
             name: true,
             email: true,
           },
         },
         cotizacion: {
           select: {
+            id: true,
             numero: true,
           },
         },

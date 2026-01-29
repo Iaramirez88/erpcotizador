@@ -6,6 +6,15 @@ import { verifyCotizacionShareToken } from '@/lib/share-token'
 
 export const runtime = 'nodejs'
 
+function normalizePublicUrl(value: unknown, origin: string): string | null {
+  if (typeof value !== 'string') return null
+  const raw = value.trim()
+  if (!raw) return null
+  if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('data:')) return raw
+  if (raw.startsWith('/')) return `${origin}${raw}`
+  return raw
+}
+
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get('token')
   if (!token) {
@@ -38,14 +47,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Cotización no encontrada' }, { status: 404 })
   }
 
-  const cotizacionTemplateDelegate = (prisma as unknown as { cotizacionTemplate?: { findUnique?: unknown } })
-    .cotizacionTemplate
-  const template = typeof cotizacionTemplateDelegate?.findUnique === 'function'
-    ? await prisma.cotizacionTemplate.findUnique({
-        where: { userId: cotizacion.vendedor.id },
-        select: { settings: true },
-      })
-    : null
+  const template = await prisma.cotizacionTemplate.findUnique({
+    where: { userId: cotizacion.vendedor.id },
+    select: { settings: true },
+  })
+
+  const origin = new URL(request.url).origin
 
   const pdfDoc = CotizacionPDF({
     cotizacion: {
@@ -54,6 +61,9 @@ export async function GET(request: NextRequest) {
       validezDias: cotizacion.validezDias,
       estado: cotizacion.estado,
       observaciones: cotizacion.observaciones,
+      garantia: cotizacion.garantia ?? null,
+      paymentMethods: cotizacion.paymentMethods ?? [],
+      boldCheckoutUrl: cotizacion.boldCheckoutUrl ?? null,
       cliente: {
         nombre: cotizacion.cliente.nombre,
         email: cotizacion.cliente.email,
@@ -64,19 +74,36 @@ export async function GET(request: NextRequest) {
         email: cotizacion.vendedor.email,
       },
       items: cotizacion.items.map((item) => ({
+        descripcion: item.descripcion,
+        unidad: item.unidad,
         cantidad: item.cantidad,
-        ancho: item.ancho,
-        alto: item.alto,
-        metrosCuadrados: (item.ancho || 0) * (item.alto || 0) * item.cantidad,
+        ancho: typeof item.ancho === 'number' ? item.ancho / 100 : null,
+        alto: typeof item.alto === 'number' ? item.alto / 100 : null,
+        metrosCuadrados: (() => {
+          const unidad = String(item.unidad || '').trim().toLowerCase()
+          const anchoM = typeof item.ancho === 'number' ? item.ancho / 100 : null
+          const altoM = typeof item.alto === 'number' ? item.alto / 100 : null
+          return unidad === 'ml'
+            ? (anchoM ?? 0)
+            : unidad === 'm2'
+              ? (typeof item.area === 'number' ? item.area : (anchoM ?? 0) * (altoM ?? 0))
+              : 0
+        })(),
         precioUnitario: item.precioUnitario,
         subtotal: item.subtotal,
         laminado: item.laminado,
         troquelado: item.troquelado,
         instalacion: item.instalacion,
+        costoInstalacion: item.costoInstalacion,
+        imagenUrl:
+          (item.material
+            ? normalizePublicUrl((item.material as { imagenUrl?: unknown }).imagenUrl, origin)
+            : null) || `${origin}/api/assets/placeholder-product?s=64`,
         material: item.material
           ? {
               nombre: item.material.nombre,
               tipo: item.material.tipo,
+              imagenUrl: normalizePublicUrl((item.material as { imagenUrl?: unknown }).imagenUrl, origin),
             }
           : null,
       })),

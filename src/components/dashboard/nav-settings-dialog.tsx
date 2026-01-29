@@ -23,10 +23,12 @@ export function NavSettingsDialog({
   items,
   value,
   onSave,
+  trigger,
 }: {
   items: NavSettingsItem[]
   value: NavPrefs
   onSave: (next: NavPrefs) => Promise<void> | void
+  trigger?: (open: () => void) => React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -54,17 +56,24 @@ export function NavSettingsDialog({
 
   return (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => {
+      {trigger ? (
+        trigger(() => {
           setDraft(value)
           setOpen(true)
-        }}
-      >
-        Personalizar menú
-      </Button>
+        })
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setDraft(value)
+            setOpen(true)
+          }}
+        >
+          Personalizar menú
+        </Button>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-xl">

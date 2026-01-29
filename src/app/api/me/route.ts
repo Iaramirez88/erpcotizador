@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { getActiveSedeForUser, getEffectiveAccess } from '@/lib/rbac'
+import { AccessLevel, ModuleKey } from '@prisma/client'
 
 export const runtime = 'nodejs'
 
@@ -31,7 +33,22 @@ export async function GET() {
     select: { id: true, name: true, email: true, role: true, image: true, createdAt: true, updatedAt: true },
   })
 
-  return NextResponse.json({ success: true, data: user })
+  // Para UI: incluir acceso efectivo (por sede) a CONFIG
+  let configAccess: AccessLevel = 'NONE'
+  try {
+    const sede = await getActiveSedeForUser(userId)
+    configAccess = await getEffectiveAccess({ userId, sedeId: sede.id, module: ModuleKey.CONFIG })
+  } catch {
+    // si algo falla (sede no resuelta, etc), dejamos NONE
+  }
+
+  const order: Record<AccessLevel, number> = { NONE: 0, READ: 1, WRITE: 2, ADMIN: 3 }
+  const canConfigWrite = order[configAccess] >= order.WRITE
+
+  return NextResponse.json({
+    success: true,
+    data: user ? { ...user, access: { config: configAccess }, canConfigWrite } : null,
+  })
 }
 
 export async function PATCH(req: NextRequest) {
