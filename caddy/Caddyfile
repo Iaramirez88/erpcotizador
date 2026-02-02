@@ -1,0 +1,12 @@
+{
+  # Email recomendado para Let's Encrypt (opcional)
+  # email admin@tu-dominio.com
+}
+
+# Hosts que van a servir la app.
+sgdigitalordex.com, www.sgdigitalordex.com {
+  encode zstd gzip
+
+  # Ajusta si quieres límites/timeout adicionales
+  reverse_proxy app:3000
+}

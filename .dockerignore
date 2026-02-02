@@ -1,0 +1,37 @@
+# Docker build context hygiene (producción)
+# Nota: NO ignorar `src/`, `prisma/` ni `public/` (solo subcarpetas de runtime).
+
+# VCS / IDE
+.git
+.gitignore
+.vscode
+
+# Dependencias y builds locales
+node_modules
+.next
+
+# Logs / temporales
+*.log
+tsc.log
+tsconfig.tsbuildinfo
+*.tmp
+
+# Archivos temporales de pruebas/diagnóstico
+/tmp-*
+/tmp-ocr*.json
+/tmp-smoke-*.pdf
+
+# Docs internas (no necesarias para runtime)
+*.md
+
+# Scripts de mantenimiento/benchmark (no requeridos para runtime)
+scripts
+
+# Artefactos OS
+.DS_Store
+Thumbs.db
+
+# Datos runtime que deben ir en volumen / S3
+public/scans
+public/uploads
+public/soportes

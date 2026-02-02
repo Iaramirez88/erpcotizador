@@ -32,6 +32,19 @@ services:
       LLM_MODEL: ${LLM_MODEL:-llama3.1:8b}
       LLM_API_KEY: ${LLM_API_KEY:-}
       DISABLE_MODEL_SOURCE_CHECK: ${DISABLE_MODEL_SOURCE_CHECK:-True}
+
+      # Limita paralelismo interno (evita que BLAS/OMP use todos los cores)
+      OMP_NUM_THREADS: ${OCR_OMP_NUM_THREADS:-1}
+      OPENBLAS_NUM_THREADS: ${OCR_OPENBLAS_NUM_THREADS:-1}
+      MKL_NUM_THREADS: ${OCR_MKL_NUM_THREADS:-1}
+      NUMEXPR_NUM_THREADS: ${OCR_NUMEXPR_NUM_THREADS:-1}
+
+    # Límites de recursos (buena práctica en VPS). Ajustables por .env
+    # Nota: en Docker Compose v2 se respetan estos campos (mem/cpu). Si usas Swarm, usa deploy.resources.
+    mem_limit: ${OCR_MEM_LIMIT:-2g}
+    mem_reservation: ${OCR_MEM_RESERVATION:-512m}
+    cpus: "${OCR_CPUS:-1.0}"
+    pids_limit: ${OCR_PIDS_LIMIT:-256}
     # No exponer OCR público en producción (se consume internamente por app/worker).
     restart: unless-stopped
 
@@ -84,10 +97,23 @@ services:
         condition: service_started
       migrate:
         condition: service_completed_successfully
-    ports:
-      - "3000:3000"
     volumes:
       - scans_data:/app/public/scans
+      - uploads_data:/app/public/uploads
+      - soportes_data:/app/public/soportes
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     restart: unless-stopped
 
   worker:
@@ -126,3 +152,7 @@ volumes:
   db_data:
   redis_data:
   scans_data:
+  uploads_data:
+  soportes_data:
+  caddy_data:
+  caddy_config:
