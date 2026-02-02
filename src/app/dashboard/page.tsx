@@ -87,7 +87,7 @@ export default async function DashboardPage({
   // Verificar sesión
   const session = await auth()
   
-  if (!session) {
+  if (!session || !session.user) {
     redirect("/auth/login")
   }
 
@@ -503,7 +503,7 @@ export default async function DashboardPage({
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">
-          ¡Bienvenido de nuevo, {session.user.name}!
+          ¡Bienvenido de nuevo, {session.user.name ?? session.user.email ?? ""}!
         </h1>
         <p className="text-muted-foreground">
           Actividad por sede y fechas{activeSedeLabel ? ` · Sede: ${activeSedeLabel.nombre}` : ""}

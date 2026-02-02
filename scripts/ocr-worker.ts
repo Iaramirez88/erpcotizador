@@ -114,6 +114,10 @@ worker.on("ready", () => {
   console.log(`[OCR-WORKER] listo. concurrency=${concurrency}`)
 })
 
+worker.on("error", (err: unknown) => {
+  console.error("[OCR-WORKER] error:", err)
+})
+
 worker.on("failed", (job: Job<OcrAnalyzeJob> | undefined, err: unknown) => {
   console.error(`[OCR-WORKER] job falló id=${job?.id}:`, err)
 })

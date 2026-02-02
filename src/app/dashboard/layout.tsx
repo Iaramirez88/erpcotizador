@@ -18,20 +18,26 @@ export default async function DashboardLayout({
   // Proteger todas las rutas del dashboard
   const session = await auth()
   
-  if (!session) {
+  if (!session || !session.user) {
     redirect("/auth/login")
+  }
+
+  const user = {
+    name: session.user.name ?? null,
+    email: session.user.email ?? null,
+    role: session.user.role,
   }
 
   return (
     <TourProvider>
       <div className="flex min-h-screen bg-gray-50">
         {/* Sidebar */}
-        <Sidebar user={session.user} />
+        <Sidebar user={user} />
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Header */}
-          <Header user={session.user} />
+          <Header user={user} />
 
           {/* Page Content */}
           <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
