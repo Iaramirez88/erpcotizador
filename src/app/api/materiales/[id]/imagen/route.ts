@@ -71,6 +71,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     const absPath = path.join(absDir, filename)
     await fs.writeFile(absPath, bytes)
 
+    // Verificación defensiva: evita guardar una URL si el archivo no quedó en disco
+    await fs.stat(absPath)
+
     const publicUrl = `/${relDir}/${filename}`
 
     // Nota: si el servidor dev está cacheando un Prisma Client viejo, `material.update({ imagenUrl })`
