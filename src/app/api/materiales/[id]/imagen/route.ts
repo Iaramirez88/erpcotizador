@@ -7,15 +7,12 @@ import fs from 'fs/promises'
 
 export const runtime = 'nodejs'
 
-const MAX_BYTES = 5 * 1024 * 1024 // 5MB
+const MAX_BYTES = 256 * 1024 // 256KB
 
 function getExtFromMime(mime: string): string {
   const m = (mime || '').toLowerCase()
   if (m === 'image/jpeg' || m === 'image/jpg') return '.jpg'
   if (m === 'image/png') return '.png'
-  if (m === 'image/webp') return '.webp'
-  if (m === 'image/gif') return '.gif'
-  if (m === 'image/svg+xml') return '.svg'
   return ''
 }
 
@@ -47,19 +44,17 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     }
 
     const fileType = String((file as { type?: unknown }).type || '')
-    const fileName = String((file as { name?: unknown }).name || '')
     const fileSize = Number((file as { size?: unknown }).size || 0)
 
-    if (!fileType || !fileType.startsWith('image/')) {
-      return NextResponse.json({ success: false, error: 'El archivo debe ser una imagen' }, { status: 400 })
+    if (fileType !== 'image/jpeg' && fileType !== 'image/jpg' && fileType !== 'image/png') {
+      return NextResponse.json({ success: false, error: 'Formato no permitido. Usa JPG o PNG.' }, { status: 400 })
     }
 
     if (Number.isFinite(fileSize) && fileSize > MAX_BYTES) {
-      return NextResponse.json({ success: false, error: 'Imagen demasiado grande (máx 5MB)' }, { status: 400 })
+      return NextResponse.json({ success: false, error: 'Imagen demasiado grande (máx 256KB)' }, { status: 400 })
     }
 
-    const ext = getExtFromMime(fileType) || (fileName ? path.extname(fileName) : '') || '.img'
-    const safeExt = ext.length <= 10 ? ext : '.img'
+    const safeExt = getExtFromMime(fileType)
 
     const bytes = Buffer.from(await file.arrayBuffer())
 

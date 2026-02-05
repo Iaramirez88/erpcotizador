@@ -50,6 +50,12 @@ interface Material {
   }>
 }
 
+type ProveedorLite = {
+  id: string
+  nombre: string
+  nit?: string | null
+}
+
 const TIPOS_MATERIAL = [
   { value: "VINILO", label: "Vinilo" },
   { value: "LONA", label: "Lona" },
@@ -92,8 +98,17 @@ export default function ProductosPage() {
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imageFileError, setImageFileError] = useState("")
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+
+  const [proveedorMatches, setProveedorMatches] = useState<ProveedorLite[]>([])
+  const [proveedorLoading, setProveedorLoading] = useState(false)
+  const [proveedorCreateOpen, setProveedorCreateOpen] = useState(false)
+  const [proveedorNuevoNombre, setProveedorNuevoNombre] = useState("")
+  const [proveedorNuevoNit, setProveedorNuevoNit] = useState("")
+  const [proveedorCreateSaving, setProveedorCreateSaving] = useState(false)
+  const [proveedorError, setProveedorError] = useState("")
   
   const [formData, setFormData] = useState({
     nombre: "",
@@ -155,6 +170,79 @@ export default function ProductosPage() {
     fetchMateriales()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, tipoFiltro, unidadFiltro])
+
+  useEffect(() => {
+    if (!isModalOpen) return
+
+    const q = String(formData.proveedor || '').trim()
+    if (!q) {
+      setProveedorMatches([])
+      setProveedorLoading(false)
+      return
+    }
+
+    const ac = new AbortController()
+    const t = setTimeout(async () => {
+      try {
+        setProveedorLoading(true)
+        const url = new URL('/api/proveedores', window.location.origin)
+        url.searchParams.set('search', q)
+        url.searchParams.set('activo', 'true')
+        const res = await fetch(url.toString(), { signal: ac.signal })
+        const json = (await res.json().catch(() => null)) as { success?: boolean; data?: ProveedorLite[] } | null
+        if (ac.signal.aborted) return
+        if (res.ok && json?.success && Array.isArray(json.data)) {
+          setProveedorMatches(json.data.slice(0, 6))
+        } else {
+          setProveedorMatches([])
+        }
+      } catch {
+        if (!ac.signal.aborted) setProveedorMatches([])
+      } finally {
+        if (!ac.signal.aborted) setProveedorLoading(false)
+      }
+    }, 250)
+
+    return () => {
+      ac.abort()
+      clearTimeout(t)
+    }
+  }, [isModalOpen, formData.proveedor])
+
+  const createProveedor = async () => {
+    const nombre = proveedorNuevoNombre.trim()
+    const nit = proveedorNuevoNit.trim()
+    if (!nombre) {
+      setProveedorError('El nombre del proveedor es requerido.')
+      return
+    }
+
+    setProveedorError('')
+    setProveedorCreateSaving(true)
+    try {
+      const res = await fetch('/api/proveedores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre, nit: nit || null }),
+      })
+      const json = (await res.json().catch(() => null)) as { success?: boolean; data?: ProveedorLite; error?: string } | null
+      if (!res.ok || !json?.success || !json.data?.nombre) {
+        setProveedorError(json?.error || 'No se pudo crear el proveedor.')
+        return
+      }
+
+      setFormData((p) => ({ ...p, proveedor: json.data!.nombre }))
+      setProveedorCreateOpen(false)
+      setProveedorNuevoNombre('')
+      setProveedorNuevoNit('')
+      setProveedorMatches((prev) => {
+        const exists = prev.some((x) => x.id === json.data!.id)
+        return exists ? prev : [json.data!, ...prev].slice(0, 6)
+      })
+    } finally {
+      setProveedorCreateSaving(false)
+    }
+  }
 
   const fetchMateriales = async () => {
     setIsLoading(true)
@@ -328,6 +416,14 @@ export default function ProductosPage() {
   const resetForm = () => {
     setEditingMaterial(null)
     setImageFile(null)
+    setImageFileError("")
+    setProveedorMatches([])
+    setProveedorLoading(false)
+    setProveedorCreateOpen(false)
+    setProveedorNuevoNombre("")
+    setProveedorNuevoNit("")
+    setProveedorCreateSaving(false)
+    setProveedorError("")
     setFormData({
       nombre: "",
       tipo: "VINILO",
@@ -361,6 +457,10 @@ export default function ProductosPage() {
       alert('Selecciona una imagen.')
       return
     }
+    if (imageFileError) {
+      alert(imageFileError)
+      return
+    }
 
     setIsUploadingImage(true)
     try {
@@ -378,6 +478,7 @@ export default function ProductosPage() {
         setFormData((p) => ({ ...p, imagenUrl: nextUrl }))
       }
       setImageFile(null)
+      setImageFileError("")
       await fetchMateriales()
     } finally {
       setIsUploadingImage(false)
@@ -646,16 +747,7 @@ export default function ProductosPage() {
 
               {/* Imagen */}
               <div className="col-span-2">
-                <Label htmlFor="imagenUrl">Imagen (URL)</Label>
-                <Input
-                  id="imagenUrl"
-                  value={formData.imagenUrl}
-                  onChange={(e) => setFormData({ ...formData, imagenUrl: e.target.value })}
-                  placeholder="https://... o /ruta-publica/imagen.jpg"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Se mostrará en la cotización (PDF) junto al ítem.
-                </p>
+                <Label>Imagen</Label>
                 {formData.imagenUrl ? (
                   <div className="mt-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -674,8 +766,32 @@ export default function ProductosPage() {
                 <div className="mt-3 flex items-center gap-2 flex-wrap">
                   <Input
                     type="file"
-                    accept="image/*"
-                    onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+                    accept="image/jpeg,image/png"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null
+                      if (!f) {
+                        setImageFile(null)
+                        setImageFileError("")
+                        return
+                      }
+
+                      const allowed = f.type === 'image/jpeg' || f.type === 'image/png'
+                      if (!allowed) {
+                        setImageFile(null)
+                        setImageFileError('Formato no permitido. Usa JPG o PNG.')
+                        return
+                      }
+
+                      const maxBytes = 256 * 1024
+                      if (Number.isFinite(f.size) && f.size > maxBytes) {
+                        setImageFile(null)
+                        setImageFileError('Imagen demasiado grande (máx 256KB).')
+                        return
+                      }
+
+                      setImageFileError("")
+                      setImageFile(f)
+                    }}
                     className="max-w-xs"
                   />
                   <Button
@@ -686,6 +802,9 @@ export default function ProductosPage() {
                   >
                     {isUploadingImage ? 'Subiendo…' : 'Subir imagen'}
                   </Button>
+                  <p className={"text-xs mt-1 " + (imageFileError ? "text-red-600" : "text-muted-foreground")}>
+                    {imageFileError || 'Solo JPG o PNG (máx 256KB). Se sube al guardar/editar.'}
+                  </p>
                   {!editingMaterial ? (
                     <p className="text-xs text-muted-foreground">
                       Tip: si es un producto nuevo, primero guárdalo y luego sube la imagen.
@@ -903,13 +1022,91 @@ export default function ProductosPage() {
               </div>
 
               <div>
-                <Label htmlFor="proveedor">Proveedor</Label>
+                <Label htmlFor="proveedor">Proveedor (opcional)</Label>
                 <Input
                   id="proveedor"
                   value={formData.proveedor}
-                  onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })}
-                  placeholder="Nombre del proveedor"
+                  onChange={(e) => {
+                    setFormData({ ...formData, proveedor: e.target.value })
+                    setProveedorCreateOpen(false)
+                    setProveedorError("")
+                  }}
+                  placeholder="Busca o escribe el nombre del proveedor"
                 />
+
+                {proveedorLoading ? (
+                  <div className="mt-1 text-xs text-muted-foreground">Buscando proveedores…</div>
+                ) : null}
+
+                {!proveedorCreateOpen && proveedorMatches.length > 0 ? (
+                  <div className="mt-2 rounded-md border border-input bg-background p-1">
+                    {proveedorMatches.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="w-full text-left rounded-sm px-2 py-1 text-sm hover:bg-muted"
+                        onClick={() => {
+                          setFormData((prev) => ({ ...prev, proveedor: p.nombre }))
+                          setProveedorMatches([])
+                        }}
+                        title={p.nit ? `${p.nombre} · ${p.nit}` : p.nombre}
+                      >
+                        <div className="font-medium">{p.nombre}</div>
+                        {p.nit ? <div className="text-xs text-muted-foreground">{p.nit}</div> : null}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
+                {!proveedorCreateOpen ? (
+                  <div className="mt-2 flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setProveedorCreateOpen(true)
+                        setProveedorError("")
+                        setProveedorNuevoNombre(String(formData.proveedor || '').trim())
+                        setProveedorNuevoNit("")
+                      }}
+                    >
+                      Crear proveedor nuevo
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-md border border-input p-3 space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label>Nombre</Label>
+                        <Input value={proveedorNuevoNombre} onChange={(e) => setProveedorNuevoNombre(e.target.value)} disabled={proveedorCreateSaving} />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>NIT (opcional)</Label>
+                        <Input value={proveedorNuevoNit} onChange={(e) => setProveedorNuevoNit(e.target.value)} disabled={proveedorCreateSaving} />
+                      </div>
+                    </div>
+
+                    {proveedorError ? <div className="text-sm text-red-600">{proveedorError}</div> : null}
+
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => {
+                          setProveedorCreateOpen(false)
+                          setProveedorError("")
+                        }}
+                        disabled={proveedorCreateSaving}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button type="button" onClick={createProveedor} disabled={proveedorCreateSaving}>
+                        {proveedorCreateSaving ? 'Creando…' : 'Crear'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Observaciones */}

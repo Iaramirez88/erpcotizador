@@ -38,8 +38,10 @@ model User {
   sessions Session[]
 
   // Relaciones del negocio
-  cotizaciones Cotizacion[]
-  ordenes      OrdenTrabajo[]
+  cotizaciones Cotizacion[] @relation("CotizacionVendedor")
+  cotizacionesAsignadas Cotizacion[] @relation("CotizacionAssignedTo")
+  ordenes      OrdenTrabajo[] @relation("OrdenVendedor")
+  ordenesAsignadas OrdenTrabajo[] @relation("OrdenAssignedTo")
 
   // Escaneo de documentos (IA/OCR)
   documentScans     DocumentScan[]              @relation("ScanCreatedBy")
@@ -73,7 +75,8 @@ model User {
   posReturnsCreated  PosReturn[]  @relation("PosReturnCreatedBy")
 
   // Remisiones
-  remisionesCreadas Remision[]
+  remisionesCreadas Remision[] @relation("RemisionCreatedBy")
+  remisionesAsignadas Remision[] @relation("RemisionAssignedTo")
   
   // Traslados de inventario
   transfersCreated   InventoryTransfer[] @relation("TransferCreated")
@@ -340,6 +343,10 @@ model Empresa {
   telefono  String?
   email     String?
   logo      String?
+
+  // Código de acceso para permitir registro de usuarios en esta empresa.
+  // Se guarda hasheado (bcrypt). Si es null, el registro es abierto.
+  registrationCodeHash String? @db.Text
 
   planTier     PlanTier     @default(FULL)
   billingCycle BillingCycle @default(MONTHLY)
@@ -912,6 +919,7 @@ model Sede {
 
   cotizaciones      Cotizacion[]                @relation("SedeCotizaciones")
   ordenes           OrdenTrabajo[]              @relation("SedeOrdenes")
+  clientes          Cliente[]
   compras           Compra[]                    @relation("SedeCompras")
   compraPagos       CompraPago[]                @relation("SedeCompraPagos")
   documentScans     DocumentScan[]              @relation("SedeScans")
@@ -967,7 +975,11 @@ model Remision {
   note          String?
 
   createdById String?
-  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("RemisionCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  assignedToUserId String?
+  assignedTo       User?   @relation("RemisionAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  assignedAt       DateTime?
 
   items RemisionItem[]
 
@@ -977,6 +989,7 @@ model Remision {
   @@index([empresaId, createdAt])
   @@index([sedeId, createdAt])
   @@index([warehouseId, createdAt])
+  @@index([assignedToUserId])
   @@map("remisiones")
 }
 
@@ -1138,11 +1151,18 @@ model Cliente {
   empresaId String
   empresa   Empresa @relation(fields: [empresaId], references: [id])
 
+  // Sede asociada (opcional). Útil para segmentar clientes por sede.
+  sedeId String?
+  sede   Sede?   @relation(fields: [sedeId], references: [id], onDelete: SetNull)
+
   cotizaciones Cotizacion[]
   ordenes      OrdenTrabajo[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([empresaId, nombre], map: "idx_clientes_empresa_nombre")
+  @@index([sedeId])
 
   @@map("clientes")
 }
@@ -1171,7 +1191,11 @@ model Cotizacion {
   cliente   Cliente @relation(fields: [clienteId], references: [id])
 
   vendedorId String
-  vendedor   User   @relation(fields: [vendedorId], references: [id])
+  vendedor   User   @relation("CotizacionVendedor", fields: [vendedorId], references: [id])
+
+  assignedToUserId String?
+  assignedTo       User?   @relation("CotizacionAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  assignedAt       DateTime?
 
   items ItemCotizacion[]
 
@@ -1195,7 +1219,11 @@ model Cotizacion {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([estado, createdAt], map: "idx_cotizaciones_estado_created")
+  @@index([sedeId, createdAt], map: "idx_cotizaciones_sede_created")
+  @@index([sedeId, estado], map: "idx_cotizaciones_sede_estado")
   @@index([sedeId])
+  @@index([assignedToUserId])
   @@map("cotizaciones")
 }
 
@@ -1240,6 +1268,7 @@ model ItemCotizacion {
 
   terminados ItemCotizacionTerminado[]
 
+  @@index([cotizacionId], map: "idx_items_cotizacion_cot")
   @@map("items_cotizacion")
 }
 
@@ -1307,6 +1336,7 @@ model Material {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([empresaId, activo], map: "idx_materiales_empresa_activo")
   @@map("materiales")
 }
 
@@ -1426,7 +1456,11 @@ model OrdenTrabajo {
   cliente   Cliente @relation(fields: [clienteId], references: [id])
 
   vendedorId String
-  vendedor   User   @relation(fields: [vendedorId], references: [id])
+  vendedor   User   @relation("OrdenVendedor", fields: [vendedorId], references: [id])
+
+  assignedToUserId String?
+  assignedTo       User?   @relation("OrdenAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  assignedAt        DateTime?
 
   // Referencia a cotización
   cotizacionId String?     @unique
@@ -1450,7 +1484,11 @@ model OrdenTrabajo {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([estado, createdAt], map: "idx_ordenes_estado_created")
+  @@index([sedeId, createdAt], map: "idx_ordenes_sede_created")
+  @@index([sedeId, estado], map: "idx_ordenes_sede_estado")
   @@index([sedeId])
+  @@index([assignedToUserId])
   @@map("ordenes_trabajo")
 }
 
@@ -1507,11 +1545,21 @@ model Maquina {
 
 enum EstadoOrden {
   PENDIENTE
+  RECIBIDO
+  COTIZADO
+  APROBADO
   EN_DISENO
+  EN_CORRECCION
+  APROBADO_PRODUCCION
+  EN_IMPRESION
   EN_PRODUCCION
+  EN_ACONDICIONAMIENTO
   EN_ACABADOS
+  EN_ENTREGA
   LISTA_ENTREGA
   ENTREGADA
+  FACTURADO
+  CERRADO
   CANCELADA
 }
 
@@ -1655,6 +1703,7 @@ model Compra {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([sedeId, fechaCompra], map: "idx_compras_sede_fecha")
   @@index([fechaCompra])
   @@index([estado])
   @@index([autorizado])

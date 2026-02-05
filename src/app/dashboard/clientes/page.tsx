@@ -34,10 +34,24 @@ interface Cliente {
   createdAt: string
   segmento?: "POTENCIAL" | "OCASIONAL" | "FRECUENTE"
   ultimaActividadAt?: string | null
+  sede?: {
+    id: string
+    nombre: string
+  } | null
+  invoiceCount?: number
+  invoiceTotal?: number
+  invoiceCost?: number
+  cotizacionesRangeCount?: number
+  cotizacionesRangeTotal?: number
   _count?: {
     cotizaciones: number
     ordenes?: number
   }
+}
+
+interface Sede {
+  id: string
+  nombre: string
 }
 
 type ClienteSegmento = NonNullable<Cliente["segmento"]>
@@ -64,11 +78,30 @@ function fmtDate(date: string | null | undefined) {
   }
 }
 
+function fmtMoney(value: number | null | undefined) {
+  const n = typeof value === 'number' ? value : 0
+  try {
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: 'COP',
+      maximumFractionDigits: 0,
+    }).format(n)
+  } catch {
+    return String(n)
+  }
+}
+
 export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [segmentoFiltro, setSegmentoFiltro] = useState<"" | "POTENCIAL" | "OCASIONAL" | "FRECUENTE">("")
+  const [sedes, setSedes] = useState<Sede[]>([])
+  const [sedeFiltro, setSedeFiltro] = useState("")
+  const [createdAtMode, setCreatedAtMode] = useState<"" | "day" | "month" | "year">("")
+  const [createdAtValue, setCreatedAtValue] = useState("")
+  const [actividadDesde, setActividadDesde] = useState("")
+  const [actividadHasta, setActividadHasta] = useState("")
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -93,6 +126,15 @@ export default function ClientesPage() {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
       if (segmentoFiltro) params.set('segmento', segmentoFiltro)
+      if (sedeFiltro) params.set('sedeId', sedeFiltro)
+
+      if (createdAtMode === 'day' && createdAtValue) params.set('createdAtDay', createdAtValue)
+      if (createdAtMode === 'month' && createdAtValue) params.set('createdAtMonth', createdAtValue)
+      if (createdAtMode === 'year' && createdAtValue) params.set('createdAtYear', createdAtValue)
+
+      if (actividadDesde) params.set('activityFrom', actividadDesde)
+      if (actividadHasta) params.set('activityTo', actividadHasta)
+
       const url = params.toString() ? `/api/clientes?${params.toString()}` : '/api/clientes'
 
       const response = await fetch(url)
@@ -111,7 +153,21 @@ export default function ClientesPage() {
   useEffect(() => {
     fetchClientes()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, segmentoFiltro])
+  }, [search, segmentoFiltro, sedeFiltro, createdAtMode, createdAtValue, actividadDesde, actividadHasta])
+
+  useEffect(() => {
+    const fetchSedes = async () => {
+      try {
+        const response = await fetch('/api/sedes')
+        const data = await response.json()
+        if (data.success) setSedes(data.data)
+      } catch (error) {
+        console.error('Error al cargar sedes:', error)
+      }
+    }
+
+    fetchSedes()
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -234,13 +290,57 @@ export default function ClientesPage() {
       {/* Búsqueda */}
       <Card>
         <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="md:col-span-2">
               <Input
                 data-tour="clientes-search"
                 placeholder="Buscar por nombre, documento o email..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label>Sede</Label>
+              <select
+                value={sedeFiltro}
+                onChange={(e) => setSedeFiltro(e.target.value)}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">Todas</option>
+                {sedes.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <Label>Fecha creación</Label>
+              <select
+                value={createdAtMode}
+                onChange={(e) => {
+                  setCreatedAtMode(e.target.value as ("" | "day" | "month" | "year"))
+                  setCreatedAtValue("")
+                }}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">Sin filtro</option>
+                <option value="day">Día</option>
+                <option value="month">Mes</option>
+                <option value="year">Año</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <Label>Valor</Label>
+              <Input
+                disabled={!createdAtMode}
+                type={createdAtMode === 'day' ? 'date' : createdAtMode === 'month' ? 'month' : 'number'}
+                placeholder={createdAtMode === 'year' ? '2026' : undefined}
+                value={createdAtValue}
+                onChange={(e) => setCreatedAtValue(e.target.value)}
               />
             </div>
 
@@ -257,6 +357,30 @@ export default function ClientesPage() {
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-4">
+            <div className="space-y-1 md:col-span-2">
+              <Label>Actividad (desde)</Label>
+              <Input type="date" value={actividadDesde} onChange={(e) => setActividadDesde(e.target.value)} />
+            </div>
+            <div className="space-y-1 md:col-span-2">
+              <Label>Actividad (hasta)</Label>
+              <Input type="date" value={actividadHasta} onChange={(e) => setActividadHasta(e.target.value)} />
+            </div>
+            <div className="flex items-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setActividadDesde("")
+                  setActividadHasta("")
+                }}
+              >
+                Limpiar rango
+              </Button>
             </div>
           </div>
         </CardContent>
@@ -291,11 +415,15 @@ export default function ClientesPage() {
                   <tr className="text-left">
                     <th className="pb-3 font-medium">Nombre</th>
                     <th className="pb-3 font-medium">Documento</th>
+                    <th className="pb-3 font-medium">Sede</th>
                     <th className="pb-3 font-medium">Segmento</th>
                     <th className="pb-3 font-medium">Contacto</th>
                     <th className="pb-3 font-medium">Ciudad</th>
-                    <th className="pb-3 font-medium text-center">Cotizaciones</th>
+                    <th className="pb-3 font-medium text-center">Cotizaciones (rango)</th>
                     <th className="pb-3 font-medium text-center">Órdenes</th>
+                    <th className="pb-3 font-medium text-center">Facturas</th>
+                    <th className="pb-3 font-medium text-right">Facturado</th>
+                    <th className="pb-3 font-medium text-right">Costo aprox.</th>
                     <th className="pb-3 font-medium">Última actividad</th>
                     <th className="pb-3 font-medium text-right">Acciones</th>
                   </tr>
@@ -314,6 +442,10 @@ export default function ClientesPage() {
                           <p className="text-sm">{cliente.tipoDocumento}</p>
                           <p className="font-mono text-sm">{cliente.documento}</p>
                         </div>
+                      </td>
+
+                      <td className="py-4 text-sm">
+                        {cliente.sede?.nombre || '—'}
                       </td>
 
                       <td className="py-4">
@@ -338,7 +470,7 @@ export default function ClientesPage() {
                       </td>
                       <td className="py-4 text-center">
                         <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 text-sm font-medium">
-                          {cliente._count?.cotizaciones || 0}
+                          {cliente.cotizacionesRangeCount || 0}
                         </span>
                       </td>
 
@@ -346,6 +478,20 @@ export default function ClientesPage() {
                         <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-700 text-sm font-medium">
                           {cliente._count?.ordenes || 0}
                         </span>
+                      </td>
+
+                      <td className="py-4 text-center">
+                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-700 text-sm font-medium">
+                          {cliente.invoiceCount || 0}
+                        </span>
+                      </td>
+
+                      <td className="py-4 text-sm text-right">
+                        {fmtMoney(cliente.invoiceTotal)}
+                      </td>
+
+                      <td className="py-4 text-sm text-right">
+                        {fmtMoney(cliente.invoiceCost)}
                       </td>
 
                       <td className="py-4 text-sm">

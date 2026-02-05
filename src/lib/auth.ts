@@ -16,6 +16,17 @@ import { prisma } from "./prisma"
 import type { JWT } from "next-auth/jwt"
 import type { Session, User } from "next-auth"
 
+const ONE_HOUR = 60 * 60
+const ONE_DAY = 24 * ONE_HOUR
+
+const INACTIVITY_DEFAULT = 8 * ONE_HOUR
+const ABSOLUTE_DEFAULT = 7 * ONE_DAY
+
+const INACTIVITY_REMEMBER = 30 * ONE_DAY
+const ABSOLUTE_REMEMBER = 30 * ONE_DAY
+
+const LAST_ACTIVE_REFRESH = 15 * 60 // 15 min
+
 export const authOptions: NextAuthConfig = {
   // Adapter de Prisma para guardar sesiones en la BD
   // @ts-expect-error - PrismaAdapter es compatible pero los tipos difieren
@@ -27,13 +38,16 @@ export const authOptions: NextAuthConfig = {
       name: "credentials",
       credentials: {
         email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
+        password: { label: "Password", type: "password" },
+        remember: { label: "Remember", type: "text" },
       },
       async authorize(credentials) {
         // Validar que se envíen email y password
         if (!credentials?.email || !credentials?.password) {
           throw new Error("Email y contraseña son requeridos")
         }
+
+        const remember = String((credentials as Record<string, unknown>)?.remember ?? '').toLowerCase() === 'true'
 
         // Buscar usuario en la base de datos
         const user = await prisma.user.findUnique({
@@ -67,7 +81,8 @@ export const authOptions: NextAuthConfig = {
           email: user.email,
           name: user.name,
           role: user.role,
-          image: user.image
+          image: user.image,
+          remember,
         }
       }
     })
@@ -82,13 +97,17 @@ export const authOptions: NextAuthConfig = {
   // Configuración de sesión
   session: {
     strategy: "jwt",
+    // Cookie amplia; la expiración real se aplica vía callbacks.jwt
     maxAge: 30 * 24 * 60 * 60, // 30 días
+    updateAge: LAST_ACTIVE_REFRESH,
   },
 
   // Callbacks para personalizar el comportamiento
   callbacks: {
     // Callback de JWT - Se ejecuta cuando se crea o actualiza el token
     async jwt({ token, user }: { token: JWT; user?: User | null }) {
+      const now = Math.floor(Date.now() / 1000)
+
       if (user?.id) {
         token.id = user.id
       }
@@ -100,6 +119,31 @@ export const authOptions: NextAuthConfig = {
 
       if (user && typeof (user as User).role === "string") {
         token.role = (user as User).role
+      }
+
+      // En sign-in: inicializar política de expiración (absoluta + inactividad)
+      if (user) {
+        const remember = Boolean((user as unknown as { remember?: boolean }).remember)
+        token.remember = remember
+        token.absExp = now + (remember ? ABSOLUTE_REMEMBER : ABSOLUTE_DEFAULT)
+        token.lastActive = now
+        return token
+      }
+
+      // En requests posteriores: validar expiración absoluta
+      if (typeof token.absExp === 'number' && now > token.absExp) {
+        return null
+      }
+
+      // Validar inactividad
+      const inactivity = token.remember ? INACTIVITY_REMEMBER : INACTIVITY_DEFAULT
+      if (typeof token.lastActive === 'number' && now - token.lastActive > inactivity) {
+        return null
+      }
+
+      // Sliding session: refrescar lastActive (evitar re-firmar en cada request)
+      if (typeof token.lastActive === 'number' && now - token.lastActive >= LAST_ACTIVE_REFRESH) {
+        token.lastActive = now
       }
       return token
     },

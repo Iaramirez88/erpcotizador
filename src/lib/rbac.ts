@@ -26,8 +26,25 @@ export function sedeRoleToBaseAccess(role: SedeRole): AccessLevel {
   }
 }
 
-export async function getOrCreateDefaultEmpresa(): Promise<Empresa> {
-  const existing = await prisma.empresa.findFirst()
+export type DefaultEmpresa = Pick<
+  Empresa,
+  'id' | 'nombre' | 'nit' | 'direccion' | 'telefono' | 'email' | 'logo' | 'createdAt' | 'updatedAt'
+>
+
+const DEFAULT_EMPRESA_SELECT = {
+  id: true,
+  nombre: true,
+  nit: true,
+  direccion: true,
+  telefono: true,
+  email: true,
+  logo: true,
+  createdAt: true,
+  updatedAt: true,
+} as const
+
+export async function getOrCreateDefaultEmpresa(): Promise<DefaultEmpresa> {
+  const existing = await prisma.empresa.findFirst({ select: DEFAULT_EMPRESA_SELECT })
   if (existing) return existing
 
   return prisma.empresa.create({
@@ -38,6 +55,7 @@ export async function getOrCreateDefaultEmpresa(): Promise<Empresa> {
       telefono: '0000000',
       email: 'contacto@sgdigital.com',
     },
+    select: DEFAULT_EMPRESA_SELECT,
   })
 }
 
@@ -80,17 +98,18 @@ export async function ensureDefaultSedeForEmpresa(empresaId: string, userId: str
 }
 
 export async function getActiveSedeForUser(userId: string): Promise<Sede> {
-  const empresa = await getOrCreateDefaultEmpresa()
+  const userEmpresa = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true } })
+  const empresaId = userEmpresa?.empresaId ?? (await getOrCreateDefaultEmpresa()).id
 
   const memberSede = await prisma.sedeMembership.findFirst({
-    where: { userId, sede: { empresaId: empresa.id } },
+    where: { userId, sede: { empresaId } },
     include: { sede: true },
     orderBy: { createdAt: 'asc' },
   })
 
   if (memberSede?.sede) return memberSede.sede
 
-  return ensureDefaultSedeForEmpresa(empresa.id, userId)
+  return ensureDefaultSedeForEmpresa(empresaId, userId)
 }
 
 export async function getEffectiveAccess(args: {

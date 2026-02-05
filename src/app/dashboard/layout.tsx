@@ -26,6 +26,7 @@ export default async function DashboardLayout({
     name: session.user.name ?? null,
     email: session.user.email ?? null,
     role: session.user.role,
+    image: session.user.image ?? null,
   }
 
   return (

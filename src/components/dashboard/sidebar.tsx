@@ -11,6 +11,7 @@ import { useEffect, useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 import { useUiStore } from "@/lib/ui-store"
 import { Building2 } from "lucide-react"
+import Image from "next/image"
 
 interface SidebarProps {
   user: {
@@ -203,6 +204,12 @@ type UiPrefsResponse = {
   }
 }
 
+type EmpresaBranding = {
+  nombre: string
+  logo: string | null
+  nit: string
+}
+
 export default function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname()
 
@@ -213,6 +220,7 @@ export default function Sidebar({ user }: SidebarProps) {
   const toggleSidebarCollapsed = useUiStore((s) => s.toggleSidebarCollapsed)
 
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
+  const [empresa, setEmpresa] = useState<EmpresaBranding | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -226,12 +234,52 @@ export default function Sidebar({ user }: SidebarProps) {
       } catch {
         // ignorar
       }
+
+      try {
+        const res = await fetch('/api/configuracion/empresa', { cache: 'no-store' })
+        const json = (await res.json().catch(() => null)) as
+          | { ok?: boolean; data?: { nombre?: string; logo?: string | null; nit?: string } }
+          | null
+
+        if (!cancelled && json?.ok && json.data?.nombre) {
+          setEmpresa({
+            nombre: json.data.nombre,
+            logo: json.data.logo ?? null,
+            nit: json.data.nit ?? '',
+          })
+        }
+      } catch {
+        // ignorar
+      }
     }
     void load()
     return () => {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    function onBrandingUpdated(e: Event) {
+      const ce = e as CustomEvent<Partial<EmpresaBranding>>
+      const next = ce.detail
+      if (!next) return
+      setEmpresa((prev) => ({
+        nombre: next.nombre ?? prev?.nombre ?? 'SGDigital',
+        logo: next.logo !== undefined ? (next.logo ?? null) : (prev?.logo ?? null),
+        nit: next.nit ?? prev?.nit ?? '',
+      }))
+    }
+    window.addEventListener('empresa:branding-updated', onBrandingUpdated)
+    return () => window.removeEventListener('empresa:branding-updated', onBrandingUpdated)
+  }, [])
+
+  const empresaInitials = useMemo(() => {
+    const name = (empresa?.nombre ?? 'SGDigital').trim()
+    const parts = name.split(/\s+/).filter(Boolean)
+    const a = parts[0]?.[0] ?? 'S'
+    const b = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : ''
+    return (a + b).toUpperCase()
+  }, [empresa?.nombre])
 
   const visibleNavigation = useMemo(() => {
     if (!navPrefs) return navigation
@@ -261,12 +309,16 @@ export default function Sidebar({ user }: SidebarProps) {
         {/* Logo */}
         <div className="p-4 border-b border-slate-800">
           <div className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "space-x-3")}>
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-primary-foreground text-lg font-bold shadow-sm">
-              SG
+            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-primary-foreground text-lg font-bold shadow-sm overflow-hidden">
+              {empresa?.logo ? (
+                <Image src={empresa.logo} alt={empresa.nombre} width={40} height={40} className="h-10 w-10 object-contain" />
+              ) : (
+                <span>{empresaInitials}</span>
+              )}
             </div>
             {!sidebarCollapsed ? (
               <div>
-                <h1 className="text-xl font-bold text-slate-50">SGDigital</h1>
+                <h1 className="text-xl font-bold text-slate-50">{empresa?.nombre ?? 'SGDigital'}</h1>
                 <p className="text-xs text-slate-400">Cotizador Pro</p>
               </div>
             ) : null}

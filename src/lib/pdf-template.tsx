@@ -8,13 +8,13 @@ import {
 
 /* eslint-disable jsx-a11y/alt-text */
 
-interface Material {
+export interface CotizacionPdfMaterial {
   nombre: string
   tipo: string
   imagenUrl?: string | null
 }
 
-interface ItemCotizacion {
+export interface CotizacionPdfItem {
   descripcion?: string | null
   unidad?: string | null
   cantidad: number
@@ -28,35 +28,37 @@ interface ItemCotizacion {
   instalacion: boolean
   costoInstalacion?: number
   imagenUrl?: string | null
-  material: Material | null
+  material: CotizacionPdfMaterial | null
 }
 
-interface CotizacionPDFProps {
-  cotizacion: {
-    numero: string
-    createdAt: Date
-    validezDias: number
-    estado?: string
-    observaciones?: string | null
-    garantia?: string | null
-    paymentMethods?: string[]
-    boldCheckoutUrl?: string | null
-    cliente: {
-      nombre: string
-      email?: string | null
-      telefono?: string | null
-      empresa?: string | null
-    }
-    vendedor: {
-      name: string | null
-      email: string | null
-    }
-    items: ItemCotizacion[]
-    subtotal: number
-    iva: number
-    total: number
-    notas?: string | null
+export interface CotizacionPdfData {
+  numero: string
+  createdAt: Date | string
+  validezDias: number
+  estado?: string
+  observaciones?: string | null
+  garantia?: string | null
+  paymentMethods?: string[]
+  boldCheckoutUrl?: string | null
+  cliente: {
+    nombre: string
+    email?: string | null
+    telefono?: string | null
+    empresa?: string | null
   }
+  vendedor: {
+    name: string | null
+    email: string | null
+  }
+  items: CotizacionPdfItem[]
+  subtotal: number
+  iva: number
+  total: number
+  notas?: string | null
+}
+
+export interface CotizacionPDFProps {
+  cotizacion: CotizacionPdfData
   template?: CotizacionTemplateSettings | unknown
 }
 
@@ -237,7 +239,7 @@ function formatCurrency(value: number, locale: string, currency: string) {
   return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(value)
 }
 
-function formatDate(date: Date, locale: string) {
+function formatDate(date: Date | string, locale: string) {
   return new Intl.DateTimeFormat(locale, { year: 'numeric', month: 'long', day: 'numeric' }).format(new Date(date))
 }
 

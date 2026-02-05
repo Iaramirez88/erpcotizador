@@ -14,11 +14,18 @@ export async function GET(
 
     const { id } = await context.params;
 
-    const orden = await prisma.ordenTrabajo.findUnique({
-      where: { id },
+    const orden = await prisma.ordenTrabajo.findFirst({
+      where: { id, sedeId: access.sedeId },
       include: {
         cliente: true,
         vendedor: true,
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
         cotizacion: {
           include: {
             items: {
@@ -62,8 +69,20 @@ export async function PUT(
     const body = await request.json();
     const { estado, fechaEntrega, notas } = body;
 
+    const before = await prisma.ordenTrabajo.findFirst({
+      where: { id, sedeId: access.sedeId },
+      select: { id: true, numero: true, estado: true, assignedToUserId: true, vendedorId: true },
+    })
+
+    if (!before) {
+      return NextResponse.json(
+        { success: false, error: 'Orden no encontrada' },
+        { status: 404 }
+      )
+    }
+
     const orden = await prisma.ordenTrabajo.update({
-      where: { id },
+      where: { id: before.id },
       data: {
         ...(estado && { estado }),
         ...(fechaEntrega && { fechaEntrega: new Date(fechaEntrega) }),
@@ -72,9 +91,28 @@ export async function PUT(
       include: {
         cliente: true,
         vendedor: true,
+        assignedTo: { select: { id: true, name: true, email: true } },
         etapas: true,
       },
     });
+
+    if (estado && estado !== before.estado) {
+      const recipients = new Set<string>()
+      if (before.assignedToUserId) recipients.add(before.assignedToUserId)
+      if (before.vendedorId) recipients.add(before.vendedorId)
+      recipients.delete(access.userId)
+
+      const items = Array.from(recipients).map((userId) => ({
+        userId,
+        type: 'INFO' as const,
+        title: `Orden ${before.numero}: cambio de estado`,
+        body: `Nuevo estado: ${estado}.`,
+      }))
+
+      if (items.length) {
+        await prisma.notification.createMany({ data: items })
+      }
+    }
 
     return NextResponse.json({ success: true, data: orden });
   } catch (error) {
@@ -98,8 +136,8 @@ export async function DELETE(
     const { id } = await context.params;
 
     // Verificar que la orden existe
-    const orden = await prisma.ordenTrabajo.findUnique({
-      where: { id },
+    const orden = await prisma.ordenTrabajo.findFirst({
+      where: { id, sedeId: access.sedeId },
       include: { cotizacion: true },
     });
 

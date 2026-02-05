@@ -277,7 +277,10 @@ export default function CotizacionesPage() {
           const templateRes = await fetch('/api/cotizacion-template');
           if (templateRes.ok) {
             const templateData = await templateRes.json();
-            setPreviewTemplate(templateData.success ? templateData.data : null);
+            const settings = templateData?.success && templateData?.data?.settings
+              ? templateData.data.settings
+              : null;
+            setPreviewTemplate(settings);
           }
         }
       }

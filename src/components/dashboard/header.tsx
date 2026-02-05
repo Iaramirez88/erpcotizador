@@ -7,12 +7,14 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { signOut } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { useUiStore } from "@/lib/ui-store"
 import { NavSettingsDialog } from "@/components/dashboard/nav-settings-dialog"
 import { useTour } from "@/components/tour/tour-provider"
+import Image from "next/image"
+import NotificationsBell from "@/components/dashboard/notifications-bell"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,6 +28,7 @@ interface HeaderProps {
   user: {
     name?: string | null
     role?: string
+    image?: string | null
   }
 }
 
@@ -36,20 +39,19 @@ export default function Header({ user }: HeaderProps) {
   const toggleMobileNav = useUiStore((s) => s.toggleMobileNav)
   const { hasCurrentTour, startCurrentTour, resetCurrentTour } = useTour()
 
+  const initials = useMemo(() => {
+    const name = (user.name ?? '').trim()
+    if (!name) return 'U'
+    const parts = name.split(/\s+/).filter(Boolean)
+    const a = parts[0]?.[0] ?? 'U'
+    const b = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : ''
+    return (a + b).toUpperCase()
+  }, [user.name])
+
   useEffect(() => {
     let cancelled = false
 
     async function load() {
-      try {
-        const res = await fetch('/api/notificaciones?unread=true&limit=1')
-        const json = (await res.json().catch(() => null)) as { unreadCount?: number } | null
-        if (!cancelled && typeof json?.unreadCount === 'number') {
-          setUnreadCount(json.unreadCount)
-        }
-      } catch {
-        // ignore
-      }
-
       try {
         const res = await fetch('/api/plan')
         const json = (await res.json().catch(() => null)) as { current?: { nombre?: string } } | null
@@ -127,6 +129,8 @@ export default function Header({ user }: HeaderProps) {
 
         {/* Actions */}
         <div className="flex items-center space-x-2 sm:space-x-4">
+          <NotificationsBell onUnreadCountChange={setUnreadCount} />
+
           {/* Más opciones */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -180,6 +184,9 @@ export default function Header({ user }: HeaderProps) {
                 <Link href="/dashboard/configuracion/permisos">Permisos</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
+                <Link href="/dashboard/configuracion/empresa">Empresa</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
                 <Link href="/dashboard/configuracion/cotizaciones">Cotizaciones</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -215,6 +222,15 @@ export default function Header({ user }: HeaderProps) {
 
           {/* User Menu */}
           <div className="flex items-center space-x-3">
+            <div className="relative h-9 w-9 rounded-full overflow-hidden border bg-white">
+              {user.image ? (
+                <Image src={user.image} alt={user.name ?? 'Usuario'} fill className="object-cover" sizes="36px" />
+              ) : (
+                <div className="h-full w-full grid place-items-center text-xs font-semibold text-slate-700 bg-slate-100">
+                  {initials}
+                </div>
+              )}
+            </div>
             <div className="text-right hidden sm:block">
               <p className="text-sm font-medium text-gray-900">{user.name}</p>
               <p className="text-xs text-gray-500 capitalize">

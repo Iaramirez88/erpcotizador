@@ -86,6 +86,8 @@ type PostBody =
       quantity: number
       warehouseId?: string
       note?: string
+      updateProveedor?: boolean
+      proveedor?: string
     }
   | {
       materialId: string
@@ -93,6 +95,8 @@ type PostBody =
       newStock: number
       warehouseId?: string
       note?: string
+      updateProveedor?: boolean
+      proveedor?: string
     }
 
 export async function POST(request: Request) {
@@ -128,7 +132,7 @@ export async function POST(request: Request) {
 
     const material = await prisma.material.findUnique({
       where: { id: materialId },
-      select: { id: true, empresaId: true, stockActual: true, nombre: true, unidadMedida: true },
+      select: { id: true, empresaId: true, stockActual: true, nombre: true, unidadMedida: true, proveedor: true },
     })
 
     if (!material || material.empresaId !== empresaId) {
@@ -189,6 +193,17 @@ export async function POST(request: Request) {
 
     const note = typeof body?.note === 'string' ? body.note.trim() : null
 
+    const updateProveedor = Boolean((body as { updateProveedor?: unknown })?.updateProveedor)
+    const proveedor = typeof (body as { proveedor?: unknown })?.proveedor === 'string' ? (body as { proveedor?: string }).proveedor.trim() : ''
+
+    if (updateProveedor && type !== 'IN') {
+      return NextResponse.json({ error: 'Solo puedes actualizar el proveedor en movimientos de Entrada' }, { status: 400 })
+    }
+
+    if (updateProveedor && !proveedor) {
+      return NextResponse.json({ error: 'Proveedor requerido para actualizar' }, { status: 400 })
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       if (warehouseId) {
         await tx.inventoryStock.upsert({
@@ -201,8 +216,11 @@ export async function POST(request: Request) {
 
       const updatedMaterial = await tx.material.update({
         where: { id: materialId },
-        data: { stockActual: globalAfter },
-        select: { id: true, stockActual: true, nombre: true, unidadMedida: true },
+        data: {
+          stockActual: globalAfter,
+          ...(updateProveedor ? { proveedor } : {}),
+        },
+        select: { id: true, stockActual: true, nombre: true, unidadMedida: true, proveedor: true },
       })
 
       const movement = await tx.inventoryMovement.create({

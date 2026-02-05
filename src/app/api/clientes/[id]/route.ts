@@ -9,6 +9,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
 import { ModuleKey } from "@prisma/client"
+import { getOrCreateDefaultEmpresa } from "@/lib/rbac"
 
 type ClienteSegmento = "POTENCIAL" | "OCASIONAL" | "FRECUENTE"
 
@@ -44,9 +45,13 @@ export async function GET(
 
     const { id } = await context.params
 
+    const activeSede = await prisma.sede.findUnique({ where: { id: access.sedeId }, select: { empresaId: true } })
+    const empresaId = activeSede?.empresaId ?? (await getOrCreateDefaultEmpresa()).id
+
     const cliente = await prisma.cliente.findUnique({
       where: { id },
       include: {
+        sede: { select: { id: true, nombre: true } },
         cotizaciones: {
           orderBy: {
             fecha: 'desc'
@@ -69,16 +74,52 @@ export async function GET(
       )
     }
 
+    if (cliente.empresaId !== empresaId) {
+      return NextResponse.json(
+        { error: "Cliente no encontrado" },
+        { status: 404 }
+      )
+    }
+
     const cotizaciones = cliente._count?.cotizaciones ?? 0
     const ordenes = cliente._count?.ordenes ?? 0
     const segmentoCalc = computeSegment({ cotizaciones, ordenes })
     const segmentoFinal = (cliente as { segmento?: ClienteSegmento | null }).segmento ?? segmentoCalc
+
+    const inv = cliente.documento
+      ? await prisma.posInvoice.findMany({
+          where: {
+            empresaId,
+            status: 'PAID',
+            clienteDocumento: cliente.documento,
+          },
+          select: {
+            total: true,
+            items: { select: { quantity: true, material: { select: { precioCompra: true } } } },
+          },
+        })
+      : []
+
+    let invoiceCount = 0
+    let invoiceTotal = 0
+    let invoiceCost = 0
+    for (const invoice of inv) {
+      invoiceCount += 1
+      invoiceTotal += invoice.total ?? 0
+      for (const item of invoice.items) {
+        const pc = item.material?.precioCompra
+        if (typeof pc === 'number') invoiceCost += pc * (item.quantity ?? 0)
+      }
+    }
 
     return NextResponse.json({
       success: true,
       data: {
         ...cliente,
         segmento: segmentoFinal,
+        invoiceCount,
+        invoiceTotal,
+        invoiceCost,
       }
     })
 
@@ -103,6 +144,9 @@ export async function PUT(
     const { id } = await context.params
     const body = await request.json()
 
+    const activeSede = await prisma.sede.findUnique({ where: { id: access.sedeId }, select: { empresaId: true } })
+    const empresaId = activeSede?.empresaId ?? (await getOrCreateDefaultEmpresa()).id
+
     const hasSegmento = Object.prototype.hasOwnProperty.call(body, "segmento")
     const segmentoManual = hasSegmento ? normalizeSegmento(body.segmento) : null
 
@@ -112,6 +156,13 @@ export async function PUT(
     })
 
     if (!clienteExistente) {
+      return NextResponse.json(
+        { error: "Cliente no encontrado" },
+        { status: 404 }
+      )
+    }
+
+    if (clienteExistente.empresaId !== empresaId) {
       return NextResponse.json(
         { error: "Cliente no encontrado" },
         { status: 404 }
@@ -175,6 +226,9 @@ export async function DELETE(
 
     const { id } = await context.params
 
+    const activeSede = await prisma.sede.findUnique({ where: { id: access.sedeId }, select: { empresaId: true } })
+    const empresaId = activeSede?.empresaId ?? (await getOrCreateDefaultEmpresa()).id
+
     // Verificar si el cliente tiene cotizaciones
     const cliente = await prisma.cliente.findUnique({
       where: { id },
@@ -189,6 +243,13 @@ export async function DELETE(
     })
 
     if (!cliente) {
+      return NextResponse.json(
+        { error: "Cliente no encontrado" },
+        { status: 404 }
+      )
+    }
+
+    if (cliente.empresaId !== empresaId) {
       return NextResponse.json(
         { error: "Cliente no encontrado" },
         { status: 404 }

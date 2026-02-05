@@ -162,6 +162,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
   if (!access.ok) return access.response
 
   const userId = access.userId
+  const sedeId = access.sedeId
 
   const form = await req.formData().catch(() => null)
   const file = form?.get('file')
@@ -214,6 +215,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
           ciudad: asString(mapped.ciudad).trim() || null,
           departamento: asString(mapped.departamento).trim() || null,
           empresaId,
+          sedeId,
         }
       })
       .filter(Boolean)

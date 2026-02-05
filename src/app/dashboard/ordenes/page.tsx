@@ -34,11 +34,10 @@ interface OrdenTrabajo {
   };
   cotizacion?: {
     numero: string;
+    _count?: {
+      items: number;
+    };
   };
-  items: {
-    id: string;
-    materialId: string;
-  }[];
 }
 
 export default function OrdenesPage() {
@@ -237,7 +236,7 @@ export default function OrdenesPage() {
                       </div>
                       <div>
                         <span className="font-medium">Items:</span>
-                        <p className="text-gray-900">{orden.items.length}</p>
+                        <p className="text-gray-900">{orden.cotizacion?._count?.items ?? 0}</p>
                       </div>
                       <div>
                         <span className="font-medium">Total:</span>

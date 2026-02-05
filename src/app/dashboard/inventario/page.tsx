@@ -51,6 +51,12 @@ type Movement = {
   warehouse?: { id: string; nombre: string } | null
 }
 
+type ProveedorLite = {
+  id: string
+  nombre: string
+  nit?: string | null
+}
+
 function n(value: unknown, fallback = 0) {
   const num = typeof value === "number" ? value : Number(value)
   return Number.isFinite(num) ? num : fallback
@@ -77,7 +83,17 @@ export default function InventarioPage() {
     newStock: "",
     warehouseId: "",
     note: "",
+    updateProveedor: false,
+    proveedor: "",
   })
+
+  const [proveedorMatches, setProveedorMatches] = useState<ProveedorLite[]>([])
+  const [proveedorLoading, setProveedorLoading] = useState(false)
+  const [proveedorCreateOpen, setProveedorCreateOpen] = useState(false)
+  const [proveedorNuevoNombre, setProveedorNuevoNombre] = useState("")
+  const [proveedorNuevoNit, setProveedorNuevoNit] = useState("")
+  const [proveedorCreateSaving, setProveedorCreateSaving] = useState(false)
+  const [proveedorError, setProveedorError] = useState("")
 
   const defaultBodegaId = useMemo(() => bodegas.find((b) => b.isDefault)?.id ?? "", [bodegas])
 
@@ -140,10 +156,95 @@ export default function InventarioPage() {
     [activeMaterials, form.materialId]
   )
 
+  const canUpdateProveedor = form.type === 'IN'
+
+  useEffect(() => {
+    // Si el tipo deja de ser entrada, desactivamos la opción.
+    if (!canUpdateProveedor && form.updateProveedor) {
+      setForm((p) => ({ ...p, updateProveedor: false }))
+      setProveedorCreateOpen(false)
+      setProveedorError("")
+    }
+  }, [canUpdateProveedor, form.updateProveedor])
+
+  useEffect(() => {
+    if (!isModalOpen) return
+    if (!form.updateProveedor) return
+
+    const q = String(form.proveedor || '').trim()
+    if (!q) {
+      setProveedorMatches([])
+      setProveedorLoading(false)
+      return
+    }
+
+    const ac = new AbortController()
+    const t = setTimeout(async () => {
+      try {
+        setProveedorLoading(true)
+        const url = new URL('/api/proveedores', window.location.origin)
+        url.searchParams.set('search', q)
+        url.searchParams.set('activo', 'true')
+        const res = await fetch(url.toString(), { signal: ac.signal })
+        const json = (await res.json().catch(() => null)) as { success?: boolean; data?: ProveedorLite[] } | null
+        if (ac.signal.aborted) return
+        if (res.ok && json?.success && Array.isArray(json.data)) {
+          setProveedorMatches(json.data.slice(0, 6))
+        } else {
+          setProveedorMatches([])
+        }
+      } catch {
+        if (!ac.signal.aborted) setProveedorMatches([])
+      } finally {
+        if (!ac.signal.aborted) setProveedorLoading(false)
+      }
+    }, 250)
+
+    return () => {
+      ac.abort()
+      clearTimeout(t)
+    }
+  }, [isModalOpen, form.updateProveedor, form.proveedor])
+
   function openModal() {
     const defaultMaterialId = activeMaterials[0]?.id ?? ""
     setForm((prev) => ({ ...prev, materialId: prev.materialId || defaultMaterialId }))
     setIsModalOpen(true)
+  }
+
+  async function createProveedor() {
+    const nombre = proveedorNuevoNombre.trim()
+    const nit = proveedorNuevoNit.trim()
+    if (!nombre) {
+      setProveedorError('El nombre del proveedor es requerido.')
+      return
+    }
+
+    setProveedorError('')
+    setProveedorCreateSaving(true)
+    try {
+      const res = await fetch('/api/proveedores', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre, nit: nit || null }),
+      })
+      const json = (await res.json().catch(() => null)) as { success?: boolean; data?: ProveedorLite; error?: string } | null
+      if (!res.ok || !json?.success || !json.data?.nombre) {
+        setProveedorError(json?.error || 'No se pudo crear el proveedor.')
+        return
+      }
+
+      setForm((p) => ({ ...p, proveedor: json.data!.nombre }))
+      setProveedorCreateOpen(false)
+      setProveedorNuevoNombre('')
+      setProveedorNuevoNit('')
+      setProveedorMatches((prev) => {
+        const exists = prev.some((x) => x.id === json.data!.id)
+        return exists ? prev : [json.data!, ...prev].slice(0, 6)
+      })
+    } finally {
+      setProveedorCreateSaving(false)
+    }
   }
 
   async function submitMovement(e: React.FormEvent) {
@@ -157,6 +258,11 @@ export default function InventarioPage() {
         type: form.type,
         warehouseId: form.warehouseId || undefined,
         note: form.note || undefined,
+      }
+
+      if (form.updateProveedor && form.type === 'IN') {
+        payload.updateProveedor = true
+        payload.proveedor = String(form.proveedor || '').trim()
       }
 
       if (form.type === "ADJUST") {
@@ -178,7 +284,12 @@ export default function InventarioPage() {
       }
 
       setIsModalOpen(false)
-      setForm((prev) => ({ ...prev, quantity: "", newStock: "", note: "" }))
+      setForm((prev) => ({ ...prev, quantity: "", newStock: "", note: "", updateProveedor: false, proveedor: "" }))
+      setProveedorMatches([])
+      setProveedorCreateOpen(false)
+      setProveedorNuevoNombre("")
+      setProveedorNuevoNit("")
+      setProveedorError("")
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error inesperado")
@@ -405,6 +516,7 @@ export default function InventarioPage() {
                       type: e.target.value as "IN" | "OUT" | "ADJUST",
                       quantity: "",
                       newStock: "",
+                      ...(e.target.value === 'IN' ? {} : { updateProveedor: false }),
                     }))
                   }
                 >
@@ -453,6 +565,123 @@ export default function InventarioPage() {
                 placeholder="Ej: compra proveedor / ajuste por conteo físico"
               />
             </div>
+
+            {canUpdateProveedor ? (
+              <div className="space-y-3">
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={form.updateProveedor}
+                    onChange={(e) => {
+                      const checked = e.target.checked
+                      setForm((p) => ({
+                        ...p,
+                        updateProveedor: checked,
+                        proveedor: checked ? (p.proveedor || selectedMaterial?.proveedor || '') : '',
+                      }))
+                      setProveedorCreateOpen(false)
+                      setProveedorError("")
+                      if (checked) {
+                        setProveedorNuevoNombre(String(selectedMaterial?.proveedor || '').trim())
+                        setProveedorNuevoNit("")
+                      }
+                    }}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">Actualizar proveedor del producto (si cambió)</span>
+                </label>
+
+                {form.updateProveedor ? (
+                  <div className="space-y-2">
+                    <Label>Proveedor</Label>
+                    <Input
+                      value={form.proveedor}
+                      onChange={(e) => {
+                        setForm((p) => ({ ...p, proveedor: e.target.value }))
+                        setProveedorCreateOpen(false)
+                        setProveedorError("")
+                      }}
+                      placeholder="Busca o escribe el nombre del proveedor"
+                      required
+                    />
+
+                    {proveedorLoading ? (
+                      <div className="text-xs text-muted-foreground">Buscando proveedores…</div>
+                    ) : null}
+
+                    {!proveedorCreateOpen && proveedorMatches.length > 0 ? (
+                      <div className="rounded-md border border-input bg-background p-1">
+                        {proveedorMatches.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            className="w-full text-left rounded-sm px-2 py-1 text-sm hover:bg-muted"
+                            onClick={() => {
+                              setForm((prev) => ({ ...prev, proveedor: p.nombre }))
+                              setProveedorMatches([])
+                            }}
+                            title={p.nit ? `${p.nombre} · ${p.nit}` : p.nombre}
+                          >
+                            <div className="font-medium">{p.nombre}</div>
+                            {p.nit ? <div className="text-xs text-muted-foreground">{p.nit}</div> : null}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {!proveedorCreateOpen ? (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setProveedorCreateOpen(true)
+                            setProveedorError("")
+                            setProveedorNuevoNombre(String(form.proveedor || '').trim())
+                            setProveedorNuevoNit("")
+                          }}
+                        >
+                          Crear proveedor nuevo
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-input p-3 space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-2">
+                            <Label>Nombre</Label>
+                            <Input value={proveedorNuevoNombre} onChange={(e) => setProveedorNuevoNombre(e.target.value)} disabled={proveedorCreateSaving} />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>NIT (opcional)</Label>
+                            <Input value={proveedorNuevoNit} onChange={(e) => setProveedorNuevoNit(e.target.value)} disabled={proveedorCreateSaving} />
+                          </div>
+                        </div>
+
+                        {proveedorError ? <div className="text-sm text-red-600">{proveedorError}</div> : null}
+
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={() => {
+                              setProveedorCreateOpen(false)
+                              setProveedorError("")
+                            }}
+                            disabled={proveedorCreateSaving}
+                          >
+                            Cancelar
+                          </Button>
+                          <Button type="button" onClick={() => void createProveedor()} disabled={proveedorCreateSaving}>
+                            {proveedorCreateSaving ? 'Creando…' : 'Crear'}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <DialogFooter>
               <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)} disabled={isSubmitting}>

@@ -19,7 +19,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { formatCurrency } from "@/lib/utils"
-import { LitografiaCalculator } from "@/components/litografia/litografia-calculator"
 
 type Terminado = {
   id: string
@@ -297,15 +296,6 @@ export default function TerminadosPage() {
         </CardContent>
       </Card>
 
-      <div className="space-y-2">
-        <div>
-          <h2 className="text-xl font-semibold">Calculadora Litografía</h2>
-          <p className="text-sm text-muted-foreground">
-            Úsala como guía rápida para estimar costos y trasladar valores a tus terminados.
-          </p>
-        </div>
-        <LitografiaCalculator />
-      </div>
     </div>
   )
 }

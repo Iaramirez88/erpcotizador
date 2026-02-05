@@ -6,7 +6,7 @@
 
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Eye, EyeOff } from "lucide-react"
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import Image from "next/image"
 
 function validatePassword(password: string): string | null {
   if (password.length < 8) return "La contraseña debe tener al menos 8 caracteres"
@@ -35,6 +36,10 @@ export default function RegisterPage() {
   const [debugCode, setDebugCode] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+
+  const [empresas, setEmpresas] = useState<Array<{ id: string; nombre: string; logo?: string | null; requiresAccessCode: boolean }>>([])
+  const [empresaId, setEmpresaId] = useState("")
+  const [accessCode, setAccessCode] = useState("")
   
   const [formData, setFormData] = useState({
     name: "",
@@ -42,6 +47,31 @@ export default function RegisterPage() {
     password: "",
     confirmPassword: ""
   })
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const res = await fetch('/api/public/empresas', { cache: 'no-store' })
+        const json = (await res.json().catch(() => null)) as { ok?: boolean; data?: Array<{ id: string; nombre: string; logo?: string | null; requiresAccessCode: boolean }> } | null
+        if (cancelled) return
+        if (json?.ok && Array.isArray(json.data)) {
+          setEmpresas(json.data)
+          if (json.data.length === 1) {
+            setEmpresaId(json.data[0]?.id ?? '')
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const selectedEmpresa = useMemo(() => empresas.find((e) => e.id === empresaId) ?? null, [empresas, empresaId])
   // Estado para validaciones en tiempo real
   const [passwordChecks, setPasswordChecks] = useState({
     length: false,
@@ -71,6 +101,18 @@ export default function RegisterPage() {
       return
     }
 
+    if (empresas.length > 0 && !empresaId) {
+      setError('Selecciona la entidad a la que te vas a registrar')
+      setIsLoading(false)
+      return
+    }
+
+    if (selectedEmpresa?.requiresAccessCode && !accessCode.trim()) {
+      setError('Ingresa el código de acceso')
+      setIsLoading(false)
+      return
+    }
+
     try {
       // Llamar a la API de registro
       const response = await fetch("/api/auth/register", {
@@ -82,6 +124,8 @@ export default function RegisterPage() {
           name: formData.name,
           email: formData.email,
           password: formData.password,
+          empresaId: empresaId || undefined,
+          accessCode: accessCode || undefined,
         }),
       })
 
@@ -167,9 +211,15 @@ export default function RegisterPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center text-white text-2xl font-bold">
-              SG
-            </div>
+            {selectedEmpresa?.logo ? (
+              <div className="relative w-16 h-16 rounded-lg overflow-hidden border bg-white">
+                <Image src={selectedEmpresa.logo} alt={selectedEmpresa.nombre} fill className="object-contain" sizes="64px" />
+              </div>
+            ) : (
+              <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center text-white text-2xl font-bold">
+                SG
+              </div>
+            )}
           </div>
           <CardTitle className="text-2xl text-center">Crear cuenta</CardTitle>
           <CardDescription className="text-center">
@@ -183,6 +233,46 @@ export default function RegisterPage() {
                 {error}
               </div>
             )}
+            {empresas.length > 0 ? (
+              <div className="space-y-2">
+                <Label htmlFor="empresa">Entidad</Label>
+                <select
+                  id="empresa"
+                  value={empresaId}
+                  onChange={(e) => setEmpresaId(e.target.value)}
+                  disabled={isLoading}
+                  required
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">Selecciona…</option>
+                  {empresas.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.nombre}
+                    </option>
+                  ))}
+                </select>
+                {selectedEmpresa?.requiresAccessCode ? (
+                  <p className="text-xs text-muted-foreground">Esta entidad requiere código de acceso.</p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {selectedEmpresa?.requiresAccessCode ? (
+              <div className="space-y-2">
+                <Label htmlFor="accessCode">Código de acceso</Label>
+                <Input
+                  id="accessCode"
+                  type="password"
+                  placeholder="Código provisto por el administrador"
+                  value={accessCode}
+                  onChange={(e) => setAccessCode(e.target.value)}
+                  required
+                  disabled={isLoading}
+                  autoComplete="off"
+                />
+              </div>
+            ) : null}
+
             <div className="space-y-2">
               <Label htmlFor="name">Nombre completo</Label>
               <Input

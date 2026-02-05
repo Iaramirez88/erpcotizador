@@ -37,6 +37,14 @@ export async function GET(request: NextRequest) {
         total: true,
         observaciones: true,
         createdAt: true,
+        assignedAt: true,
+        assignedTo: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
         cliente: {
           select: {
             id: true,
@@ -56,6 +64,11 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             numero: true,
+            _count: {
+              select: {
+                items: true,
+              },
+            },
           },
         },
       },

@@ -111,6 +111,9 @@ export async function PUT(
 
     const quantityDiscounts = Array.isArray(body.quantityDiscounts) ? body.quantityDiscounts : null
 
+    const nextPrecioCompra = body.precioCompra ? parseFloat(body.precioCompra) : null
+    const precioCompraChanged = (materialExistente.precioCompra ?? null) !== (nextPrecioCompra ?? null)
+
     const material = await prisma.$transaction(async (tx) => {
       if (quantityDiscounts) {
         await tx.materialQuantityDiscount.deleteMany({ where: { materialId: id } })
@@ -130,7 +133,7 @@ export async function PUT(
           precioM2: precioM2N,
           precioMetro: precioMetroN,
           precioUnidad: precioUnidadN,
-          precioCompra: body.precioCompra ? parseFloat(body.precioCompra) : null,
+          precioCompra: nextPrecioCompra,
           stockActual: body.stockActual ? parseFloat(body.stockActual) : 0,
           stockMinimo: body.stockMinimo ? parseFloat(body.stockMinimo) : 0,
           unidadMedida: unidad,
@@ -142,6 +145,36 @@ export async function PUT(
           quantityDiscounts: { orderBy: { minQty: 'asc' } }
         }
       })
+
+      if (precioCompraChanged) {
+        const sede = await tx.sede.findUnique({ where: { id: access.sedeId }, select: { empresaId: true } })
+        const empresaId = sede?.empresaId ?? null
+
+        const memberships = await tx.sedeMembership.findMany({
+          where: { sedeId: access.sedeId },
+          select: { userId: true },
+        })
+
+        const recipients = Array.from(new Set(memberships.map((m) => m.userId))).filter(
+          (uid) => uid && uid !== access.userId
+        )
+
+        if (recipients.length) {
+          const beforeValue = materialExistente.precioCompra ?? null
+          const afterValue = nextPrecioCompra ?? null
+
+          await tx.notification.createMany({
+            data: recipients.map((uid) => ({
+              userId: uid,
+              sedeId: access.sedeId,
+              empresaId: empresaId ?? undefined,
+              type: 'INFO',
+              title: `Costo actualizado: ${updated.nombre}`,
+              body: `Costo de compra: ${beforeValue ?? '—'} → ${afterValue ?? '—'}`,
+            })),
+          })
+        }
+      }
 
       if (quantityDiscounts) {
         const data = quantityDiscounts

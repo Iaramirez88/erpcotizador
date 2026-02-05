@@ -12,15 +12,18 @@ import { prisma } from "@/lib/prisma"
 import { validatePassword } from "@/lib/password-policy"
 import { randomDigits, sha256Hex } from "@/lib/auth-tokens"
 import { sendEmail } from "@/lib/email"
+import { ensureDefaultSedeForEmpresa, getOrCreateDefaultEmpresa } from "@/lib/rbac"
 
 export async function POST(request: Request) {
   try {
     // Obtener datos del body
     const body: unknown = await request.json()
-    const { name, email, password } = (body ?? {}) as {
+    const { name, email, password, empresaId, accessCode } = (body ?? {}) as {
       name?: unknown
       email?: unknown
       password?: unknown
+      empresaId?: unknown
+      accessCode?: unknown
     }
 
     // Validar datos requeridos
@@ -37,6 +40,43 @@ export async function POST(request: Request) {
     }
 
     const normalizedEmail = email.trim().toLowerCase()
+
+    // Resolver empresa (entidad cabeza)
+    const resolvedEmpresaId = typeof empresaId === 'string' ? empresaId.trim() : ''
+
+    if (!resolvedEmpresaId) {
+      const empresasCount = await prisma.empresa.count()
+      if (empresasCount > 1) {
+        return NextResponse.json({ error: 'Selecciona la entidad a la que te vas a registrar' }, { status: 400 })
+      }
+    }
+    const empresa = resolvedEmpresaId
+      ? await prisma.empresa.findUnique({
+          where: { id: resolvedEmpresaId },
+          select: { id: true, nombre: true, registrationCodeHash: true },
+        })
+      : await (async () => {
+          const e = await getOrCreateDefaultEmpresa()
+          return prisma.empresa.findUnique({
+            where: { id: e.id },
+            select: { id: true, nombre: true, registrationCodeHash: true },
+          })
+        })()
+
+    if (!empresa?.id) {
+      return NextResponse.json({ error: 'Entidad no encontrada' }, { status: 400 })
+    }
+
+    if (empresa.registrationCodeHash) {
+      const code = typeof accessCode === 'string' ? accessCode.trim() : ''
+      if (!code) {
+        return NextResponse.json({ error: 'Código de acceso requerido' }, { status: 400 })
+      }
+      const ok = await bcrypt.compare(code, empresa.registrationCodeHash)
+      if (!ok) {
+        return NextResponse.json({ error: 'Código de acceso inválido' }, { status: 403 })
+      }
+    }
 
     // Verificar si el email ya está registrado
     const existingUser = await prisma.user.findUnique({
@@ -59,9 +99,13 @@ export async function POST(request: Request) {
         name,
         email: normalizedEmail,
         password: hashedPassword,
-        role: "USER" // Rol por defecto
+        role: "USER", // Rol por defecto
+        empresaId: empresa.id,
       }
     })
+
+    // Asegurar sede/membresía inicial (para RBAC por sede)
+    await ensureDefaultSedeForEmpresa(empresa.id, user.id)
 
     // Generar y guardar código de verificación
     const code = randomDigits(6)
@@ -78,10 +122,10 @@ export async function POST(request: Request) {
     })
 
     // Enviar correo de verificación
-    const subject = "Código de verificación - SGDigital"
+    const subject = `Código de verificación - ${empresa.nombre}`
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.5">
-        <h2>Verifica tu cuenta</h2>
+        <h2>Verifica tu cuenta (${empresa.nombre})</h2>
         <p>Tu código de verificación es:</p>
         <p style="font-size: 24px; letter-spacing: 4px"><b>${code}</b></p>
         <p>Este código expira en 10 minutos.</p>

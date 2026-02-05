@@ -8,19 +8,33 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
+import dynamic from "next/dynamic"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { formatCurrency } from "@/lib/utils"
 import { LitografiaQuoteDialog } from "@/components/litografia/litografia-quote-dialog"
-import {
-  PaperSizePreview,
-  getPaperSize,
-  type PaperOrientation,
-  type PaperSizeKey,
-} from "@/components/cotizador/paper-size-preview"
+import CotizacionPDF, { type CotizacionPdfData } from "@/lib/pdf-template"
+import type { CotizacionTemplateSettings } from "@/lib/cotizacion-template"
+
+const PDFViewer = dynamic(
+  () => import("@react-pdf/renderer").then((mod) => mod.PDFViewer),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-96 items-center justify-center">Cargando vista previa...</div>
+    ),
+  }
+)
 
 interface Cliente {
   id: string
@@ -73,6 +87,16 @@ export default function CotizadorPage() {
   const searchParams = useSearchParams()
   const cotizacionIdParam = searchParams.get("id")
 
+  const [previewCotizacion, setPreviewCotizacion] = useState<(CotizacionPdfData & { id: string; estado?: string }) | null>(null)
+  const [previewTemplate, setPreviewTemplate] = useState<CotizacionTemplateSettings | null>(null)
+  const [sendingPreviewEmail, setSendingPreviewEmail] = useState(false)
+  const [sharingPreviewWhatsapp, setSharingPreviewWhatsapp] = useState(false)
+
+  const [taxConfig, setTaxConfig] = useState<{ pricesIncludeIva: boolean; ivaPct: number }>({
+    pricesIncludeIva: true,
+    ivaPct: 19,
+  })
+
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [materiales, setMateriales] = useState<Material[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -83,6 +107,8 @@ export default function CotizadorPage() {
 
   // Datos de la cotización
   const [clienteId, setClienteId] = useState("")
+  const [clienteSearch, setClienteSearch] = useState("")
+  const [clienteDropdownOpen, setClienteDropdownOpen] = useState(false)
   const [descripcion, setDescripcion] = useState("")
   const [validezDias, setValidezDias] = useState("15")
   const [tiempoEntrega, setTiempoEntrega] = useState("")
@@ -93,24 +119,53 @@ export default function CotizadorPage() {
   
   // Formulario de nuevo item
   const [showItemForm, setShowItemForm] = useState(false)
+  const [materialSearch, setMaterialSearch] = useState("")
+  const [materialDropdownOpen, setMaterialDropdownOpen] = useState(false)
   const [itemForm, setItemForm] = useState({
     descripcion: "",
     materialId: "",
     cantidad: "1",
-    ancho: "",
-    alto: "",
-    usePaperSize: false,
-    paperSizeKey: "" as "" | PaperSizeKey,
-    paperOrientation: "PORTRAIT" as PaperOrientation,
     precioUnitario: "",
-    laminado: false,
-    troquelado: false,
-    instalacion: false,
-    costoLaminado: "5000",
-    costoTroquelado: "3000",
-    costoInstalacion: "15000",
     observaciones: ""
   })
+
+  const filteredClientes = (clienteSearch.trim()
+    ? clientes.filter((c) => {
+        const q = clienteSearch.trim().toLowerCase()
+        return (
+          String(c.nombre || "").toLowerCase().includes(q) ||
+          String((c as unknown as { documento?: string }).documento || "").toLowerCase().includes(q) ||
+          String((c as unknown as { email?: string }).email || "").toLowerCase().includes(q)
+        )
+      })
+    : clientes
+  ).slice(0, 50)
+
+  const filteredMateriales = (materialSearch.trim()
+    ? materiales.filter((m) => {
+        const q = materialSearch.trim().toLowerCase()
+        return String(m.nombre || "").toLowerCase().includes(q)
+      })
+    : materiales
+  ).slice(0, 80)
+
+  useEffect(() => {
+    if (!clienteId) return
+    if (clienteSearch.trim()) return
+    const c = clientes.find((x) => x.id === clienteId)
+    if (!c) return
+    setClienteSearch(`${c.nombre}${c.empresa ? ` - ${c.empresa}` : ""}`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteId, clientes])
+
+  useEffect(() => {
+    if (!itemForm.materialId) return
+    if (materialSearch.trim()) return
+    const m = materiales.find((x) => x.id === itemForm.materialId)
+    if (!m) return
+    setMaterialSearch(m.nombre)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemForm.materialId, materiales])
 
   // Cálculos
   const [subtotal, setSubtotal] = useState(0)
@@ -121,7 +176,22 @@ export default function CotizadorPage() {
   useEffect(() => {
     fetchClientes()
     fetchMateriales()
+    void fetchCotizacionesConfig()
   }, [])
+
+  const fetchCotizacionesConfig = async () => {
+    try {
+      const res = await fetch('/api/configuracion/cotizaciones', { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      if (res.ok && json?.ok && json?.data) {
+        const pricesIncludeIva = Boolean(json.data.pricesIncludeIva)
+        const ivaPct = Math.min(100, Math.max(0, Number(json.data.ivaPct ?? 19)))
+        setTaxConfig({ pricesIncludeIva, ivaPct })
+      }
+    } catch (error) {
+      console.error('Error al cargar config de IVA:', error)
+    }
+  }
 
   useEffect(() => {
     const id = cotizacionIdParam?.trim() || null
@@ -238,7 +308,7 @@ export default function CotizadorPage() {
   useEffect(() => {
     calcularTotales()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, descuento])
+  }, [items, descuento, taxConfig.pricesIncludeIva, taxConfig.ivaPct])
 
   const fetchClientes = async () => {
     try {
@@ -264,8 +334,128 @@ export default function CotizadorPage() {
     }
   }
 
-  const calcularM2 = (ancho: number, alto: number): number => {
-    return (ancho * alto) / 10000 // cm² a m²
+  const abrirPreviewPorId = async (id: string) => {
+    try {
+      const res = await fetch(`/api/cotizaciones/${id}`, { cache: "no-store" })
+      if (!res.ok) throw new Error("No se pudo cargar la cotización")
+      const data = await res.json()
+      if (!data?.success || !data?.data) throw new Error(data?.error ?? "No se pudo cargar la cotización")
+      setPreviewCotizacion(data.data as CotizacionPdfData & { id: string; estado?: string })
+
+      const templateRes = await fetch('/api/cotizacion-template', { cache: "no-store" })
+      if (templateRes.ok) {
+        const templateData = await templateRes.json()
+        const settings = templateData?.success && templateData?.data?.settings
+          ? (templateData.data.settings as CotizacionTemplateSettings)
+          : null
+        setPreviewTemplate(settings)
+      } else {
+        setPreviewTemplate(null)
+      }
+    } catch (error) {
+      console.error('Error al cargar datos para preview:', error)
+      alert('Error al cargar el preview')
+    }
+  }
+
+  const buildWhatsAppMessage = (cotizacion: CotizacionPdfData & { numero: string }, pdfUrl: string) => {
+    const createdAt = new Date(cotizacion.createdAt)
+    const validezDias = Number(cotizacion.validezDias) || 15
+    const validUntil = new Date(createdAt.getTime() + validezDias * 24 * 60 * 60 * 1000)
+    const items = Array.isArray(cotizacion.items) ? cotizacion.items : []
+
+    const resumenItems = items
+      .slice(0, 4)
+      .map((it) => {
+        const name = String(it?.descripcion || it?.material?.nombre || 'Ítem').trim() || 'Ítem'
+        const qty = typeof it?.cantidad === 'number' && !Number.isNaN(it.cantidad) ? it.cantidad : null
+        const unit = String(it?.unidad || '').trim()
+        const qtyLabel = qty !== null ? `${qty}${unit ? ` ${unit}` : ''}` : null
+        return `• ${qtyLabel ? `${qtyLabel} - ` : ''}${name}`
+      })
+      .join('\n')
+
+    const hayMasItems = items.length > 4
+
+    return [
+      '*SGDigital Softwares*',
+      `*Cotización ${cotizacion.numero}*`,
+      '',
+      `*Cliente:* ${cotizacion?.cliente?.nombre ?? '-'}`,
+      `*Total:* ${formatCurrency(Number(cotizacion.total) || 0)}`,
+      `*Fecha:* ${createdAt.toLocaleDateString('es-MX')}`,
+      `*Vigencia:* hasta ${validUntil.toLocaleDateString('es-MX')}`,
+      '',
+      resumenItems ? '*Resumen:*\n' + resumenItems + (hayMasItems ? '\n• …' : '') : '',
+      '',
+      `*PDF:* ${pdfUrl}`,
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  const compartirPreviewPorWhatsApp = async () => {
+    if (!previewCotizacion?.id) return
+    setSharingPreviewWhatsapp(true)
+    try {
+      const res = await fetch(`/api/cotizaciones/${previewCotizacion.id}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ttlSeconds: 60 * 60 * 24 * 14 }),
+      })
+
+      const json = await res.json().catch(() => ({ success: false }))
+      if (!res.ok || !json?.success) {
+        alert(`No se pudo generar link de WhatsApp: ${json?.error ?? 'Error'}`)
+        return
+      }
+
+      const url: string = json.data.url
+      const mensaje = buildWhatsAppMessage(previewCotizacion, url)
+      window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, '_blank')
+    } catch (error) {
+      console.error('Error:', error)
+      alert('Error al preparar el WhatsApp')
+    } finally {
+      setSharingPreviewWhatsapp(false)
+    }
+  }
+
+  const enviarPreviewPorEmail = async () => {
+    if (!previewCotizacion?.id) return
+    const destinatario = String(previewCotizacion?.cliente?.email || '').trim()
+    if (!destinatario) {
+      alert('El cliente no tiene email registrado')
+      return
+    }
+
+    const confirmar = window.confirm(
+      `¿Enviar cotización ${previewCotizacion?.numero ?? ''} a ${destinatario}?`
+    )
+    if (!confirmar) return
+
+    setSendingPreviewEmail(true)
+    try {
+      const res = await fetch(`/api/cotizaciones/${previewCotizacion.id}/enviar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destinatarios: [destinatario],
+          copiarContabilidad: String(previewCotizacion?.estado) === 'APROBADA',
+        }),
+      })
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ error: 'Error' }))
+        alert(`Error: ${error?.error ?? 'No se pudo enviar'}`)
+        return
+      }
+      alert('Cotización enviada correctamente')
+    } catch (error) {
+      console.error('Error:', error)
+      alert('Error al enviar el email')
+    } finally {
+      setSendingPreviewEmail(false)
+    }
   }
 
   const calcularPrecioItem = () => {
@@ -273,45 +463,12 @@ export default function CotizadorPage() {
     if (!material) return
 
     const cantidad = parseFloat(itemForm.cantidad) || 1
-    const ancho = parseFloat(itemForm.ancho) || 0
-    const alto = parseFloat(itemForm.alto) || 0
 
     let precioBase = 0
 
     // Calcular según tipo de material
-    if (material.precioM2 && ancho && alto) {
-      const m2 = calcularM2(ancho, alto)
-      precioBase = m2 * material.precioM2 * cantidad
-    } else if (material.precioMetro && ancho) {
-      const metros = (ancho / 100) * cantidad
-      precioBase = metros * material.precioMetro
-    } else if (material.precioUnidad) {
+    if (material.precioUnidad) {
       precioBase = material.precioUnidad * cantidad
-    }
-
-    // Agregar costos de acabados
-    let costoAcabados = 0
-    if (itemForm.laminado) {
-      const costoLam = parseFloat(itemForm.costoLaminado) || 0
-      if (ancho && alto) {
-        const m2 = calcularM2(ancho, alto)
-        costoAcabados += m2 * costoLam * cantidad
-      } else {
-        costoAcabados += costoLam * cantidad
-      }
-    }
-    if (itemForm.troquelado) {
-      const costoTroq = parseFloat(itemForm.costoTroquelado) || 0
-      costoAcabados += costoTroq * cantidad
-    }
-    if (itemForm.instalacion) {
-      const costoInst = parseFloat(itemForm.costoInstalacion) || 0
-      if (ancho && alto) {
-        const m2 = calcularM2(ancho, alto)
-        costoAcabados += m2 * costoInst * cantidad
-      } else {
-        costoAcabados += costoInst * cantidad
-      }
     }
 
     // Descuento por cantidad (configurable por material)
@@ -325,8 +482,7 @@ export default function CotizadorPage() {
     })()
 
     const precioBaseConDescuento = precioBase * (1 - cantidadDiscountPct / 100)
-    const precioTotal = precioBaseConDescuento + costoAcabados
-    const precioUnitario = precioTotal / cantidad
+    const precioUnitario = cantidad > 0 ? precioBaseConDescuento / cantidad : 0
 
     setItemForm(prev => ({
       ...prev,
@@ -341,30 +497,26 @@ export default function CotizadorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     itemForm.materialId,
-    itemForm.cantidad,
-    itemForm.ancho,
-    itemForm.alto,
-    itemForm.usePaperSize,
-    itemForm.paperSizeKey,
-    itemForm.paperOrientation,
-    itemForm.laminado,
-    itemForm.troquelado,
-    itemForm.instalacion,
-    itemForm.costoLaminado,
-    itemForm.costoTroquelado,
-    itemForm.costoInstalacion
+    itemForm.cantidad
   ])
 
   const agregarItem = () => {
     const material = materiales.find(m => m.id === itemForm.materialId)
     if (!material) {
-      alert('Selecciona un material')
+      alert('Selecciona un producto')
+      return
+    }
+
+    // Este formulario manual es solo para productos por unidad.
+    // Los productos por m²/ml se agregan por el Cotizador de Litografía.
+    if (material.precioM2 || material.precioMetro) {
+      alert('Este producto se cotiza por medidas (m² / ml). Usa “Cotizador Litografía”.')
       return
     }
 
     const cantidad = parseFloat(itemForm.cantidad) || 1
-    const ancho = parseFloat(itemForm.ancho) || null
-    const alto = parseFloat(itemForm.alto) || null
+    const ancho = null
+    const alto = null
     const precioUnitario = parseFloat(itemForm.precioUnitario) || 0
     const subtotal = precioUnitario * cantidad
 
@@ -383,15 +535,15 @@ export default function CotizadorPage() {
       cantidad,
       ancho,
       alto,
-      m2: ancho && alto ? calcularM2(ancho, alto) : null,
+      m2: null,
       precioUnitario,
       subtotal,
-      laminado: itemForm.laminado,
-      troquelado: itemForm.troquelado,
-      instalacion: itemForm.instalacion,
-      costoLaminado: parseFloat(itemForm.costoLaminado) || 0,
-      costoTroquelado: parseFloat(itemForm.costoTroquelado) || 0,
-      costoInstalacion: parseFloat(itemForm.costoInstalacion) || 0,
+      laminado: false,
+      troquelado: false,
+      instalacion: false,
+      costoLaminado: 0,
+      costoTroquelado: 0,
+      costoInstalacion: 0,
       observaciones: itemForm.observaciones
     }
 
@@ -441,18 +593,7 @@ export default function CotizadorPage() {
       descripcion: "",
       materialId: "",
       cantidad: "1",
-      ancho: "",
-      alto: "",
-      usePaperSize: false,
-      paperSizeKey: "",
-      paperOrientation: "PORTRAIT",
       precioUnitario: "",
-      laminado: false,
-      troquelado: false,
-      instalacion: false,
-      costoLaminado: "5000",
-      costoTroquelado: "3000",
-      costoInstalacion: "15000",
       observaciones: ""
     })
   }
@@ -460,9 +601,23 @@ export default function CotizadorPage() {
   const calcularTotales = () => {
     const sub = items.reduce((sum, item) => sum + item.subtotal, 0)
     const desc = parseFloat(descuento.toString()) || 0
-    const subConDescuento = sub - desc
-    const ivaCalc = subConDescuento * 0.19
-    const tot = subConDescuento + ivaCalc
+    const subConDescuento = Math.max(0, sub - Math.max(0, desc))
+
+    const ivaPct = Math.min(100, Math.max(0, taxConfig.ivaPct))
+    const rate = ivaPct / 100
+
+    let ivaCalc = 0
+    let tot = 0
+
+    if (taxConfig.pricesIncludeIva) {
+      const denom = 1 + rate
+      const base = denom > 0 ? subConDescuento / denom : subConDescuento
+      ivaCalc = subConDescuento - base
+      tot = subConDescuento
+    } else {
+      ivaCalc = subConDescuento * rate
+      tot = subConDescuento + ivaCalc
+    }
 
     setSubtotal(sub)
     setIva(ivaCalc)
@@ -517,18 +672,21 @@ export default function CotizadorPage() {
       const data = await response.json()
 
       if (data.success) {
+        const id = data?.data?.id as string | undefined
         const numero = data?.data?.numero
-        alert(editingId ? `Cotización ${numero || ''} actualizada exitosamente!` : `Cotización ${numero || ''} creada exitosamente!`)
+
+        // Si estamos CREANDO una nueva cotización, abrir preview con acciones.
+        if (!editingId && id) {
+          await abrirPreviewPorId(id)
+          resetCotizador()
+          return
+        }
+
+        alert(`Cotización ${numero || ''} actualizada exitosamente!`)
+
         // Limpiar / salir de edición
         router.push('/dashboard/cotizador')
-        setEditingId(null)
-        setClienteId("")
-        setDescripcion("")
-        setItems([])
-        setDescuento(0)
-        setValidezDias("15")
-        setTiempoEntrega("")
-        setObservaciones("")
+        resetCotizador()
       } else {
         alert(data.error || 'Error al guardar cotización')
       }
@@ -551,21 +709,6 @@ export default function CotizadorPage() {
     }
     return best
   })()
-
-  const applyPaperSize = (key: PaperSizeKey, orientation: PaperOrientation) => {
-    const s = getPaperSize(key)
-    if (!s) return
-    const width = orientation === "PORTRAIT" ? s.widthCm : s.heightCm
-    const height = orientation === "PORTRAIT" ? s.heightCm : s.widthCm
-    setItemForm((prev) => ({
-      ...prev,
-      usePaperSize: true,
-      paperSizeKey: key,
-      paperOrientation: orientation,
-      ancho: String(width),
-      alto: String(height),
-    }))
-  }
 
   const resetCotizador = () => {
     setEditingId(null)
@@ -590,6 +733,68 @@ export default function CotizadorPage() {
         onOpenChange={setLitografiaOpen}
         onAddItem={agregarItemLitografia}
       />
+
+      {/* Preview post-guardar */}
+      <Dialog
+        open={!!previewCotizacion}
+        onOpenChange={(open) => {
+          if (!open) setPreviewCotizacion(null)
+        }}
+      >
+        <DialogContent className="max-w-5xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>
+              Vista previa - {previewCotizacion?.numero}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={sharingPreviewWhatsapp}
+              onClick={() => void compartirPreviewPorWhatsApp()}
+            >
+              {sharingPreviewWhatsapp ? 'Generando link…' : 'WhatsApp'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={sendingPreviewEmail}
+              onClick={() => void enviarPreviewPorEmail()}
+            >
+              {sendingPreviewEmail ? 'Enviando…' : 'Correo'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                const id = previewCotizacion?.id
+                setPreviewCotizacion(null)
+                if (id) router.push(`/dashboard/cotizador?id=${id}`)
+              }}
+            >
+              Editar
+            </Button>
+            <Button type="button" onClick={() => setPreviewCotizacion(null)}>
+              Cerrar
+            </Button>
+          </div>
+
+          {previewCotizacion ? (
+            <div className="h-[70vh] w-full overflow-hidden rounded border">
+              <PDFViewer width="100%" height="100%">
+                <CotizacionPDF
+                  cotizacion={previewCotizacion}
+                  template={previewTemplate || undefined}
+                />
+              </PDFViewer>
+            </div>
+          ) : null}
+
+          <DialogFooter />
+        </DialogContent>
+      </Dialog>
       {/* Header */}
       <div>
         <div className="flex items-start justify-between gap-3">
@@ -609,16 +814,6 @@ export default function CotizadorPage() {
             </Button>
             <Button asChild variant="outline" size="sm" type="button">
               <Link href="/dashboard/cotizaciones/plantilla">Editar plantilla</Link>
-            </Button>
-            <Button
-              size="sm"
-              type="button"
-              onClick={() => {
-                router.push('/dashboard/cotizador')
-                resetCotizador()
-              }}
-            >
-              Nueva cotización
             </Button>
             {editingId ? (
               <Button
@@ -649,20 +844,57 @@ export default function CotizadorPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <Label htmlFor="cliente">Cliente *</Label>
-                  <select
-                    id="cliente"
-                    value={clienteId}
-                    onChange={(e) => setClienteId(e.target.value)}
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                    required
-                  >
-                    <option value="">Seleccionar cliente...</option>
-                    {clientes.map(cliente => (
-                      <option key={cliente.id} value={cliente.id}>
-                        {cliente.nombre} {cliente.empresa && `- ${cliente.empresa}`}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <Input
+                      id="cliente"
+                      value={clienteSearch}
+                      onChange={(e) => {
+                        setClienteSearch(e.target.value)
+                        setClienteDropdownOpen(true)
+                        if (!e.target.value.trim()) setClienteId("")
+                      }}
+                      onFocus={() => setClienteDropdownOpen(true)}
+                      onBlur={() => {
+                        setTimeout(() => setClienteDropdownOpen(false), 120)
+                      }}
+                      placeholder="Buscar cliente por nombre, documento o email…"
+                      required
+                    />
+
+                    {clienteDropdownOpen ? (
+                      <div className="absolute z-10 mt-1 w-full rounded-md border bg-background p-1 shadow-sm max-h-64 overflow-auto">
+                        {filteredClientes.length === 0 ? (
+                          <div className="px-3 py-2 text-sm text-muted-foreground">Sin resultados</div>
+                        ) : (
+                          filteredClientes.map((cliente) => {
+                            const label = `${cliente.nombre}${cliente.empresa ? ` - ${cliente.empresa}` : ""}`
+                            return (
+                              <button
+                                key={cliente.id}
+                                type="button"
+                                className={`w-full text-left px-3 py-2 rounded-sm text-sm hover:bg-muted ${
+                                  cliente.id === clienteId ? 'bg-muted' : ''
+                                }`}
+                                onMouseDown={(e) => {
+                                  e.preventDefault()
+                                  setClienteId(cliente.id)
+                                  setClienteSearch(label)
+                                  setClienteDropdownOpen(false)
+                                }}
+                              >
+                                <div className="truncate">{label}</div>
+                                {'documento' in cliente ? (
+                                  <div className="text-xs text-muted-foreground truncate">
+                                    {(cliente as unknown as { documento?: string }).documento || ''}
+                                  </div>
+                                ) : null}
+                              </button>
+                            )
+                          })
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="col-span-2">
@@ -732,154 +964,74 @@ export default function CotizadorPage() {
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="col-span-2">
-                      <Label htmlFor="item-desc">Descripción *</Label>
+                      <Label htmlFor="item-material">Producto a cotizar *</Label>
+                      <div className="relative">
+                        <Input
+                          id="item-material"
+                          value={materialSearch}
+                          onChange={(e) => {
+                            setMaterialSearch(e.target.value)
+                            setMaterialDropdownOpen(true)
+                            if (!e.target.value.trim()) {
+                              setItemForm((prev) => ({ ...prev, materialId: '' }))
+                            }
+                          }}
+                          onFocus={() => setMaterialDropdownOpen(true)}
+                          onBlur={() => {
+                            setTimeout(() => setMaterialDropdownOpen(false), 120)
+                          }}
+                          placeholder="Buscar producto por nombre…"
+                        />
+
+                        {materialDropdownOpen ? (
+                          <div className="absolute z-10 mt-1 w-full rounded-md border bg-background p-1 shadow-sm max-h-64 overflow-auto">
+                            {filteredMateriales.length === 0 ? (
+                              <div className="px-3 py-2 text-sm text-muted-foreground">Sin resultados</div>
+                            ) : (
+                              filteredMateriales.map((mat) => {
+                                const priceHint =
+                                  (mat.precioM2 ? `${formatCurrency(mat.precioM2)}/m²` : '') ||
+                                  (mat.precioMetro ? `${formatCurrency(mat.precioMetro)}/ml` : '') ||
+                                  (mat.precioUnidad ? `${formatCurrency(mat.precioUnidad)}/und` : '')
+
+                                return (
+                                  <button
+                                    key={mat.id}
+                                    type="button"
+                                    className={`w-full text-left px-3 py-2 rounded-sm text-sm hover:bg-muted ${
+                                      mat.id === itemForm.materialId ? 'bg-muted' : ''
+                                    }`}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault()
+                                      setItemForm((prev) => ({ ...prev, materialId: mat.id }))
+                                      setMaterialSearch(mat.nombre)
+                                      setMaterialDropdownOpen(false)
+                                    }}
+                                  >
+                                    <div className="truncate">{mat.nombre}</div>
+                                    {priceHint ? (
+                                      <div className="text-xs text-muted-foreground truncate">{priceHint}</div>
+                                    ) : null}
+                                  </button>
+                                )
+                              })
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="col-span-2">
+                      <Label htmlFor="item-desc">Descripción</Label>
                       <Input
                         id="item-desc"
                         value={itemForm.descripcion}
                         onChange={(e) => setItemForm({ ...itemForm, descripcion: e.target.value })}
-                        placeholder="Ej: Banner promocional..."
+                        placeholder="Ej: Llaveros para evento..."
                       />
-                    </div>
-
-                    <div className="col-span-2">
-                      <Label htmlFor="item-material">Material *</Label>
-                      <select
-                        id="item-material"
-                        value={itemForm.materialId}
-                        onChange={(e) => {
-                          const materialId = e.target.value
-                          setItemForm((prev) => ({
-                            ...prev,
-                            materialId,
-                            // Si cambias de material, mantenemos dimensiones; pero reseteamos tamaño de papel
-                            usePaperSize: false,
-                            paperSizeKey: "",
-                            paperOrientation: "PORTRAIT",
-                          }))
-                        }}
-                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                      >
-                        <option value="">Seleccionar material...</option>
-                        {materiales.map(mat => (
-                          <option key={mat.id} value={mat.id}>
-                            {mat.nombre} - {mat.precioM2 && `${formatCurrency(mat.precioM2)}/m²`}
-                            {mat.precioMetro && `${formatCurrency(mat.precioMetro)}/ml`}
-                            {mat.precioUnidad && `${formatCurrency(mat.precioUnidad)}/und`}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="col-span-2">
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={itemForm.usePaperSize}
-                          onChange={(e) => {
-                            const checked = e.target.checked
-                            if (!checked) {
-                              setItemForm((prev) => ({
-                                ...prev,
-                                usePaperSize: false,
-                                paperSizeKey: "",
-                                paperOrientation: "PORTRAIT",
-                              }))
-                              return
-                            }
-
-                            // Default A4 cuando se activa
-                            applyPaperSize("A4", itemForm.paperOrientation)
-                          }}
-                          className="w-4 h-4"
-                        />
-                        <span className="text-sm">Usar tamaño de papel</span>
-                      </label>
-                    </div>
-
-                    {itemForm.usePaperSize && (
-                      <>
-                        <div>
-                          <Label htmlFor="paper-size">Tamaño de papel</Label>
-                          <select
-                            id="paper-size"
-                            value={itemForm.paperSizeKey}
-                            onChange={(e) => {
-                              const key = e.target.value as PaperSizeKey
-                              applyPaperSize(key, itemForm.paperOrientation)
-                            }}
-                            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                          >
-                            <option value="A0">A0</option>
-                            <option value="A1">A1</option>
-                            <option value="A2">A2</option>
-                            <option value="A3">A3</option>
-                            <option value="A4">A4</option>
-                            <option value="A5">A5</option>
-                            <option value="A6">A6</option>
-                            <option value="PLIEGO_70X100">Pliego (70×100)</option>
-                            <option value="MEDIO_PLIEGO_50X70">Medio pliego (50×70)</option>
-                            <option value="CUARTO_PLIEGO_35X50">Cuarto pliego (35×50)</option>
-                            <option value="CARTA">Carta (21.59×27.94)</option>
-                            <option value="MEDIA_CARTA">Media carta (13.97×21.59)</option>
-                            <option value="CUARTO_CARTA">Cuarto de carta (10.80×13.97)</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <Label htmlFor="paper-orientation">Orientación</Label>
-                          <select
-                            id="paper-orientation"
-                            value={itemForm.paperOrientation}
-                            onChange={(e) => {
-                              const orientation = e.target.value as PaperOrientation
-                              if (itemForm.paperSizeKey) {
-                                applyPaperSize(itemForm.paperSizeKey, orientation)
-                              } else {
-                                setItemForm((prev) => ({ ...prev, paperOrientation: orientation }))
-                              }
-                            }}
-                            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                          >
-                            <option value="PORTRAIT">Vertical</option>
-                            <option value="LANDSCAPE">Horizontal</option>
-                          </select>
-                        </div>
-
-                        {itemForm.paperSizeKey && (
-                          <div className="col-span-2">
-                            <PaperSizePreview
-                              selectedKey={itemForm.paperSizeKey}
-                              orientation={itemForm.paperOrientation}
-                            />
-                          </div>
-                        )}
-                      </>
-                    )}
-
-                    <div>
-                      <Label htmlFor="item-ancho">Ancho (cm)</Label>
-                      <Input
-                        id="item-ancho"
-                        type="number"
-                        step="0.01"
-                        value={itemForm.ancho}
-                        onChange={(e) => setItemForm({ ...itemForm, ancho: e.target.value })}
-                        disabled={itemForm.usePaperSize}
-                        className={itemForm.usePaperSize ? "bg-muted" : undefined}
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="item-alto">Alto (cm)</Label>
-                      <Input
-                        id="item-alto"
-                        type="number"
-                        step="0.01"
-                        value={itemForm.alto}
-                        onChange={(e) => setItemForm({ ...itemForm, alto: e.target.value })}
-                        disabled={itemForm.usePaperSize}
-                        className={itemForm.usePaperSize ? "bg-muted" : undefined}
-                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Opcional. Si la dejas vacía, se usa el nombre del producto.
+                      </p>
                     </div>
 
                     <div>
@@ -911,71 +1063,6 @@ export default function CotizadorPage() {
                       )}
                     </div>
 
-                    {/* Acabados */}
-                    <div className="col-span-2 space-y-2">
-                      <Label>Acabados</Label>
-                      <div className="grid grid-cols-3 gap-4">
-                        <label className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            checked={itemForm.laminado}
-                            onChange={(e) => setItemForm({ ...itemForm, laminado: e.target.checked })}
-                            className="w-4 h-4"
-                          />
-                          <span className="text-sm">Laminado</span>
-                        </label>
-                        {itemForm.laminado && (
-                          <Input
-                            type="number"
-                            step="1"
-                            value={itemForm.costoLaminado}
-                            onChange={(e) => setItemForm({ ...itemForm, costoLaminado: e.target.value })}
-                            placeholder="Costo"
-                            className="col-span-2"
-                          />
-                        )}
-
-                        <label className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            checked={itemForm.troquelado}
-                            onChange={(e) => setItemForm({ ...itemForm, troquelado: e.target.checked })}
-                            className="w-4 h-4"
-                          />
-                          <span className="text-sm">Troquelado</span>
-                        </label>
-                        {itemForm.troquelado && (
-                          <Input
-                            type="number"
-                            step="1"
-                            value={itemForm.costoTroquelado}
-                            onChange={(e) => setItemForm({ ...itemForm, costoTroquelado: e.target.value })}
-                            placeholder="Costo"
-                            className="col-span-2"
-                          />
-                        )}
-
-                        <label className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            checked={itemForm.instalacion}
-                            onChange={(e) => setItemForm({ ...itemForm, instalacion: e.target.checked })}
-                            className="w-4 h-4"
-                          />
-                          <span className="text-sm">Instalación</span>
-                        </label>
-                        {itemForm.instalacion && (
-                          <Input
-                            type="number"
-                            step="1"
-                            value={itemForm.costoInstalacion}
-                            onChange={(e) => setItemForm({ ...itemForm, costoInstalacion: e.target.value })}
-                            placeholder="Costo"
-                            className="col-span-2"
-                          />
-                        )}
-                      </div>
-                    </div>
                   </div>
 
                   <div className="flex gap-2">
@@ -1079,7 +1166,9 @@ export default function CotizadorPage() {
                 </div>
 
                 <div className="flex justify-between text-sm pt-2 border-t">
-                  <span className="text-muted-foreground">IVA (19%):</span>
+                  <span className="text-muted-foreground">
+                    IVA ({Math.min(100, Math.max(0, taxConfig.ivaPct))}%{taxConfig.pricesIncludeIva ? ' incluido' : ''}):
+                  </span>
                   <span className="font-medium">{formatCurrency(iva)}</span>
                 </div>
 

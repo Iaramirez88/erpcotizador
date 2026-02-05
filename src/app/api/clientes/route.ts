@@ -7,7 +7,8 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
-import { ModuleKey } from "@prisma/client"
+import { AccessLevel, ModuleKey } from "@prisma/client"
+import { getOrCreateDefaultEmpresa, requireSedeAccess } from "@/lib/rbac"
 
 type ClienteSegmento = "POTENCIAL" | "OCASIONAL" | "FRECUENTE"
 
@@ -26,27 +27,102 @@ function computeSegment(opts: { cotizaciones: number; ordenes: number }): Client
   return "OCASIONAL"
 }
 
+function parseCreatedAtRange(searchParams: URLSearchParams): { gte: Date; lt: Date } | null {
+  const day = searchParams.get('createdAtDay')
+  const month = searchParams.get('createdAtMonth')
+  const year = searchParams.get('createdAtYear')
+
+  if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    const gte = new Date(`${day}T00:00:00`)
+    const lt = new Date(gte)
+    lt.setDate(lt.getDate() + 1)
+    return { gte, lt }
+  }
+
+  if (month && /^\d{4}-\d{2}$/.test(month)) {
+    const gte = new Date(`${month}-01T00:00:00`)
+    const lt = new Date(gte)
+    lt.setMonth(lt.getMonth() + 1)
+    return { gte, lt }
+  }
+
+  if (year && /^\d{4}$/.test(year)) {
+    const gte = new Date(`${year}-01-01T00:00:00`)
+    const lt = new Date(gte)
+    lt.setFullYear(lt.getFullYear() + 1)
+    return { gte, lt }
+  }
+
+  return null
+}
+
+function parseActivityRange(searchParams: URLSearchParams): { gte?: Date; lt?: Date } | null {
+  const from = searchParams.get('activityFrom')
+  const to = searchParams.get('activityTo')
+
+  const out: { gte?: Date; lt?: Date } = {}
+
+  if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) {
+    out.gte = new Date(`${from}T00:00:00`)
+  }
+
+  if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    const lt = new Date(`${to}T00:00:00`)
+    lt.setDate(lt.getDate() + 1)
+    out.lt = lt
+  }
+
+  if (!out.gte && !out.lt) return null
+  return out
+}
+
 // GET - Listar todos los clientes
 export async function GET(request: Request) {
   try {
     const access = await requireApiAccess(ModuleKey.CLIENTES, 'READ')
     if (!access.ok) return access.response
 
+    const activeSede = await prisma.sede.findUnique({ where: { id: access.sedeId }, select: { empresaId: true } })
+    const empresaId = activeSede?.empresaId ?? (await getOrCreateDefaultEmpresa()).id
+
     // Obtener parámetros de búsqueda (opcional)
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
     const segmento = searchParams.get('segmento')
+    const sedeId = searchParams.get('sedeId')
+    const createdAtRange = parseCreatedAtRange(searchParams)
+    const activityRange = parseActivityRange(searchParams)
+
+    if (sedeId) {
+      const sede = await prisma.sede.findUnique({ where: { id: sedeId }, select: { id: true, empresaId: true } })
+      if (!sede || sede.empresaId !== empresaId) {
+        return NextResponse.json({ error: 'sedeId inválido' }, { status: 400 })
+      }
+      try {
+        await requireSedeAccess({ userId: access.userId, sedeId: sede.id, module: ModuleKey.CLIENTES, minLevel: AccessLevel.READ })
+      } catch (error) {
+        if (error instanceof Error && error.message === 'FORBIDDEN') {
+          return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
+        }
+        throw error
+      }
+    }
 
     // Construir query
-    const where = search
-      ? {
-          OR: [
-            { nombre: { contains: search, mode: 'insensitive' as const } },
-            { documento: { contains: search, mode: 'insensitive' as const } },
-            { email: { contains: search, mode: 'insensitive' as const } },
-          ],
-        }
-      : {}
+    const where = {
+      empresaId,
+      ...(sedeId ? { sedeId } : {}),
+      ...(createdAtRange ? { createdAt: createdAtRange } : {}),
+      ...(search
+        ? {
+            OR: [
+              { nombre: { contains: search, mode: 'insensitive' as const } },
+              { documento: { contains: search, mode: 'insensitive' as const } },
+              { email: { contains: search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    }
 
     // Obtener clientes de la base de datos
     const clientes = await prisma.cliente.findMany({
@@ -55,6 +131,7 @@ export async function GET(request: Request) {
         createdAt: 'desc'
       },
       include: {
+        sede: { select: { id: true, nombre: true } },
         _count: {
           select: {
             cotizaciones: true,
@@ -92,6 +169,75 @@ export async function GET(request: Request) {
       if (row._max.createdAt) lastOrdByCliente.set(row.clienteId, row._max.createdAt)
     }
 
+    const documentos = Array.from(
+      new Set(
+        clientes
+          .map((c) => (c.documento ?? '').trim())
+          .filter((d): d is string => Boolean(d))
+      )
+    )
+
+    const cotizacionesAgg = await prisma.cotizacion.groupBy({
+      by: ['clienteId'],
+      where: {
+        clienteId: { in: clienteIds },
+        cliente: { empresaId },
+        ...(sedeId ? { sedeId } : {}),
+        ...(activityRange ? { createdAt: activityRange } : {}),
+      },
+      _count: { _all: true },
+      _sum: { total: true },
+    })
+
+    const cotAggByCliente = new Map<string, { count: number; total: number }>()
+    for (const row of cotizacionesAgg) {
+      cotAggByCliente.set(row.clienteId, {
+        count: row._count?._all ?? 0,
+        total: row._sum?.total ?? 0,
+      })
+    }
+
+    const invoices = documentos.length
+      ? await prisma.posInvoice.findMany({
+          where: {
+            empresaId,
+            status: 'PAID',
+            ...(sedeId ? { sedeId } : {}),
+            ...(activityRange ? { createdAt: activityRange } : {}),
+            clienteDocumento: { in: documentos },
+          },
+          select: {
+            clienteDocumento: true,
+            total: true,
+            items: {
+              select: {
+                quantity: true,
+                material: { select: { precioCompra: true } },
+              },
+            },
+          },
+        })
+      : []
+
+    const invoiceAgg = new Map<string, { count: number; total: number; cost: number }>()
+    for (const inv of invoices) {
+      const key = (inv.clienteDocumento ?? '').trim()
+      if (!key) continue
+
+      const current = invoiceAgg.get(key) ?? { count: 0, total: 0, cost: 0 }
+      current.count += 1
+      current.total += inv.total ?? 0
+
+      for (const item of inv.items) {
+        const precioCompra = item.material?.precioCompra
+        if (typeof precioCompra === 'number') {
+          current.cost += precioCompra * (item.quantity ?? 0)
+        }
+      }
+
+      invoiceAgg.set(key, current)
+    }
+
     const enhanced = clientes
       .map((c) => {
         const cotizaciones = c._count?.cotizaciones ?? 0
@@ -104,10 +250,18 @@ export async function GET(request: Request) {
           ? (lastCot > lastOrd ? lastCot : lastOrd)
           : (lastCot ?? lastOrd)
 
+        const inv = invoiceAgg.get(c.documento.trim()) ?? { count: 0, total: 0, cost: 0 }
+        const cotAgg = cotAggByCliente.get(c.id) ?? { count: 0, total: 0 }
+
         return {
           ...c,
           segmento: segmentoFinal,
           ultimaActividadAt,
+          cotizacionesRangeCount: cotAgg.count,
+          cotizacionesRangeTotal: cotAgg.total,
+          invoiceCount: inv.count,
+          invoiceTotal: inv.total,
+          invoiceCost: inv.cost,
         }
       })
       .filter((c) => {
@@ -173,19 +327,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // Obtener o crear empresa por defecto
-    let empresa = await prisma.empresa.findFirst()
-    
-    if (!empresa) {
-      empresa = await prisma.empresa.create({
-        data: {
-          nombre: "SGDigital",
-          nit: "900000000-1"
-        }
-      })
-    }
-    
-    const empresaId = empresa.id
+    const activeSede = await prisma.sede.findUnique({ where: { id: access.sedeId }, select: { empresaId: true } })
+    const empresaId = activeSede?.empresaId ?? (await getOrCreateDefaultEmpresa()).id
 
     // Crear cliente
     const cliente = await prisma.cliente.create({
@@ -200,7 +343,8 @@ export async function POST(request: Request) {
         ciudad,
         departamento,
         ...(segmentoManual ? { segmento: segmentoManual } : {}),
-        empresaId
+        empresaId,
+        sedeId: access.sedeId,
       }
     })
 
