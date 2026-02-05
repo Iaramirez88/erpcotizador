@@ -194,7 +194,8 @@ export async function POST(request: Request) {
     const note = typeof body?.note === 'string' ? body.note.trim() : null
 
     const updateProveedor = Boolean((body as { updateProveedor?: unknown })?.updateProveedor)
-    const proveedor = typeof (body as { proveedor?: unknown })?.proveedor === 'string' ? (body as { proveedor?: string }).proveedor.trim() : ''
+    const proveedorRaw = (body as { proveedor?: unknown })?.proveedor
+    const proveedor = typeof proveedorRaw === 'string' ? proveedorRaw.trim() : ''
 
     if (updateProveedor && type !== 'IN') {
       return NextResponse.json({ error: 'Solo puedes actualizar el proveedor en movimientos de Entrada' }, { status: 400 })
