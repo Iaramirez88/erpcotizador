@@ -25,7 +25,9 @@ tsconfig.tsbuildinfo
 *.md
 
 # Scripts de mantenimiento/benchmark (no requeridos para runtime)
-scripts
+# Nota: el worker en producción necesita `scripts/ocr-worker.ts`.
+scripts/*
+!scripts/ocr-worker.ts
 
 # Artefactos OS
 .DS_Store

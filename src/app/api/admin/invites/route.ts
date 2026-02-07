@@ -7,6 +7,29 @@ import { sendEmail } from '@/lib/email'
 
 export const runtime = 'nodejs'
 
+function normalizeBaseUrl(value: string): string {
+  return value.trim().replace(/\/+$/, '')
+}
+
+function getBaseUrl(request: Request): string {
+  const envUrl =
+    process.env.APP_URL || process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_APP_URL
+
+  if (typeof envUrl === 'string' && envUrl.trim()) return normalizeBaseUrl(envUrl)
+
+  // Fallback: derivar de headers (Caddy/Nginx suelen setear x-forwarded-*)
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host')
+  const proto = request.headers.get('x-forwarded-proto') || 'https'
+  if (host) return normalizeBaseUrl(`${proto}://${host}`)
+
+  // Último recurso: origin del request
+  try {
+    return normalizeBaseUrl(new URL(request.url).origin)
+  } catch {
+    return ''
+  }
+}
+
 export async function POST(request: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -47,12 +70,14 @@ export async function POST(request: Request) {
     }
 
     const subject = `Acceso a ${empresa.nombre}`
+    const baseUrl = getBaseUrl(request)
+    const loginUrl = baseUrl ? new URL('/auth/login', baseUrl).toString() : '/auth/login'
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.5">
         <h2>Acceso a ${empresa.nombre}</h2>
         <p>Este correo ya tiene una cuenta registrada.</p>
         <p>Puedes iniciar sesión aquí:</p>
-        <p><a href="${process.env.NEXT_PUBLIC_APP_URL || ''}/auth/login">Iniciar sesión</a></p>
+        <p><a href="${loginUrl}">Iniciar sesión</a></p>
       </div>
     `
 
@@ -79,8 +104,11 @@ export async function POST(request: Request) {
   })
 
   const subject = `Código de acceso - ${empresa.nombre}`
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || ''
-  const registerUrl = `${baseUrl}/auth/register?empresaId=${encodeURIComponent(empresa.id)}&email=${encodeURIComponent(email)}`
+  const baseUrl = getBaseUrl(request)
+  const registerUrlObj = baseUrl ? new URL('/auth/register', baseUrl) : new URL('http://localhost/auth/register')
+  registerUrlObj.searchParams.set('empresaId', empresa.id)
+  registerUrlObj.searchParams.set('email', email)
+  const registerUrl = baseUrl ? registerUrlObj.toString() : `/auth/register?empresaId=${encodeURIComponent(empresa.id)}&email=${encodeURIComponent(email)}`
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.5">
       <h2>Invitación a ${empresa.nombre}</h2>
