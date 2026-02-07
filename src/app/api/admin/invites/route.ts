@@ -34,15 +34,22 @@ export async function POST(request: Request) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
-  const body = (await request.json().catch(() => null)) as { email?: unknown } | null
+  const body = (await request.json().catch(() => null)) as { email?: unknown; sedeId?: unknown } | null
   const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : ''
+  const requestedSedeId = typeof body?.sedeId === 'string' ? body.sedeId.trim() : ''
 
   if (!email || !email.includes('@')) {
     return NextResponse.json({ error: 'Email inválido' }, { status: 400 })
   }
 
   const empresa = await getOrCreateDefaultEmpresa()
-  await ensureDefaultSedeForEmpresa(empresa.id, session.user.id)
+  const defaultSede = await ensureDefaultSedeForEmpresa(empresa.id, session.user.id)
+
+  const selectedSede = requestedSedeId
+    ? await prisma.sede.findUnique({ where: { id: requestedSedeId }, select: { id: true, empresaId: true } })
+    : null
+
+  const sedeForInvite = selectedSede?.id && selectedSede.empresaId === empresa.id ? selectedSede : null
 
   const isSystemAdmin = session.user.role === 'ADMIN'
   const anyAdmin = await prisma.sedeMembership.findFirst({
@@ -67,6 +74,14 @@ export async function POST(request: Request) {
   if (existingUser?.id) {
     if (existingUser.empresaId && existingUser.empresaId !== empresa.id) {
       return NextResponse.json({ error: 'Este email ya pertenece a otra entidad' }, { status: 409 })
+    }
+
+    if (sedeForInvite?.id) {
+      await prisma.sedeMembership.upsert({
+        where: { sedeId_userId: { sedeId: sedeForInvite.id, userId: existingUser.id } },
+        create: { sedeId: sedeForInvite.id, userId: existingUser.id, role: 'READER' },
+        update: {},
+      })
     }
 
     const subject = `Acceso a ${empresa.nombre}`
@@ -107,8 +122,13 @@ export async function POST(request: Request) {
   const baseUrl = getBaseUrl(request)
   const registerUrlObj = baseUrl ? new URL('/auth/register', baseUrl) : new URL('http://localhost/auth/register')
   registerUrlObj.searchParams.set('empresaId', empresa.id)
+  if (sedeForInvite?.id) {
+    registerUrlObj.searchParams.set('sedeId', sedeForInvite.id)
+  }
   registerUrlObj.searchParams.set('email', email)
-  const registerUrl = baseUrl ? registerUrlObj.toString() : `/auth/register?empresaId=${encodeURIComponent(empresa.id)}&email=${encodeURIComponent(email)}`
+  const registerUrl = baseUrl
+    ? registerUrlObj.toString()
+    : `/auth/register?empresaId=${encodeURIComponent(empresa.id)}&email=${encodeURIComponent(email)}`
   const html = `
     <div style="font-family: Arial, sans-serif; line-height: 1.5">
       <h2>Invitación a ${empresa.nombre}</h2>

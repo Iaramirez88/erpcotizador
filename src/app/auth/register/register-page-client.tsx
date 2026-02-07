@@ -43,6 +43,7 @@ export function RegisterPageClient() {
     Array<{ id: string; nombre: string; logo?: string | null; requiresAccessCode: boolean }>
   >([])
   const [empresaId, setEmpresaId] = useState("")
+  const [invitedSedeId, setInvitedSedeId] = useState<string | null>(null)
   const [accessCode, setAccessCode] = useState("")
   const [lockedEmpresaId, setLockedEmpresaId] = useState<string | null>(null)
   const [lockedEmail, setLockedEmail] = useState<string | null>(null)
@@ -67,6 +68,7 @@ export function RegisterPageClient() {
         if (json?.ok && Array.isArray(json.data)) {
           setEmpresas(json.data)
           const empresaIdFromUrl = (searchParams.get("empresaId") ?? "").trim()
+          const sedeIdFromUrl = (searchParams.get("sedeId") ?? "").trim()
           const emailFromUrl = (searchParams.get("email") ?? "").trim().toLowerCase()
 
           if (empresaIdFromUrl) {
@@ -79,6 +81,10 @@ export function RegisterPageClient() {
           if (emailFromUrl && emailFromUrl.includes("@")) {
             setFormData((p) => ({ ...p, email: emailFromUrl }))
             setLockedEmail(emailFromUrl)
+          }
+
+          if (sedeIdFromUrl) {
+            setInvitedSedeId(sedeIdFromUrl)
           }
         }
       } catch {
@@ -147,6 +153,7 @@ export function RegisterPageClient() {
           password: formData.password,
           empresaId: empresaId || undefined,
           accessCode: accessCode || undefined,
+          sedeId: invitedSedeId || undefined,
         }),
       })
 

@@ -18,12 +18,13 @@ export async function POST(request: Request) {
   try {
     // Obtener datos del body
     const body: unknown = await request.json()
-    const { name, email, password, empresaId, accessCode } = (body ?? {}) as {
+    const { name, email, password, empresaId, accessCode, sedeId } = (body ?? {}) as {
       name?: unknown
       email?: unknown
       password?: unknown
       empresaId?: unknown
       accessCode?: unknown
+      sedeId?: unknown
     }
 
     // Validar datos requeridos
@@ -40,6 +41,8 @@ export async function POST(request: Request) {
     }
 
     const normalizedEmail = email.trim().toLowerCase()
+
+    const requestedSedeId = typeof sedeId === 'string' ? sedeId.trim() : ''
 
     // Resolver empresa (entidad cabeza)
     const resolvedEmpresaId = typeof empresaId === 'string' ? empresaId.trim() : ''
@@ -127,6 +130,22 @@ export async function POST(request: Request) {
 
     // Asegurar sede/membresía inicial (para RBAC por sede)
     await ensureDefaultSedeForEmpresa(empresa.id, user.id)
+
+    // Si llega sedeId (por invitación), asociar también a esa sede (si pertenece a la entidad)
+    if (requestedSedeId) {
+      const sede = await prisma.sede.findUnique({ where: { id: requestedSedeId }, select: { id: true, empresaId: true } })
+      if (sede?.id && sede.empresaId === empresa.id) {
+        const existing = await prisma.sedeMembership.findUnique({
+          where: { sedeId_userId: { sedeId: sede.id, userId: user.id } },
+          select: { id: true },
+        })
+        if (!existing?.id) {
+          await prisma.sedeMembership.create({
+            data: { sedeId: sede.id, userId: user.id, role: 'READER' },
+          })
+        }
+      }
+    }
 
     // Generar y guardar código de verificación
     const code = randomDigits(6)
