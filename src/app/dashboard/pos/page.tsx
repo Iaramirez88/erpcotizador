@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { formatCurrency, formatUnidadMedidaLabel } from '@/lib/utils'
+import { Download } from 'lucide-react'
 
 type Bodega = {
   id: string
@@ -243,6 +244,10 @@ export default function PosPage() {
       setIsLoading(false)
     }
   }, [materialSearch])
+
+  const exportExcel = useCallback(() => {
+    window.location.href = '/api/pos/export'
+  }, [])
 
   useEffect(() => {
     if (!selectedWarehouseForStock && defaultBodegaId) {
@@ -641,6 +646,10 @@ export default function PosPage() {
         <div className="flex gap-2">
           <Button onClick={() => void loadAll()} variant="secondary" disabled={isLoading}>
             Refrescar
+          </Button>
+          <Button variant="outline" onClick={exportExcel} disabled={isLoading}>
+            <Download className="w-4 h-4 mr-2" />
+            Exportar Excel
           </Button>
           <Button onClick={openReturn} variant="outline" disabled={isLoading}>
             Nueva devolución

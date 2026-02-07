@@ -151,6 +151,17 @@ export default function CotizacionesPage() {
     }
   };
 
+  const exportExcel = () => {
+    const params = new URLSearchParams();
+    if (busqueda) params.append('search', busqueda);
+    if (filtroEstado) params.append('estado', filtroEstado);
+    if (filtroSede) params.append('sedeId', filtroSede);
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    const url = params.toString() ? `/api/cotizaciones/export?${params}` : '/api/cotizaciones/export';
+    window.location.href = url;
+  };
+
   const descargarPDF = async (id: string, numero: string) => {
     try {
       const res = await fetch(`/api/cotizaciones/${id}/pdf`);
@@ -433,6 +444,10 @@ export default function CotizacionesPage() {
               Editar plantilla
             </Button>
           </Link>
+          <Button variant="outline" onClick={exportExcel}>
+            <Download className="w-4 h-4 mr-2" />
+            Exportar Excel
+          </Button>
           <Link href="/dashboard/cotizador">
             <Button>
               <Plus className="w-4 h-4 mr-2" />

@@ -264,6 +264,23 @@ export default function ClientesPage() {
     setIsModalOpen(true)
   }
 
+  const exportExcel = () => {
+    const params = new URLSearchParams()
+    if (search) params.set('search', search)
+    if (segmentoFiltro) params.set('segmento', segmentoFiltro)
+    if (sedeFiltro) params.set('sedeId', sedeFiltro)
+
+    if (createdAtMode === 'day' && createdAtValue) params.set('createdAtDay', createdAtValue)
+    if (createdAtMode === 'month' && createdAtValue) params.set('createdAtMonth', createdAtValue)
+    if (createdAtMode === 'year' && createdAtValue) params.set('createdAtYear', createdAtValue)
+
+    if (actividadDesde) params.set('activityFrom', actividadDesde)
+    if (actividadHasta) params.set('activityTo', actividadHasta)
+
+    const url = params.toString() ? `/api/clientes/export?${params.toString()}` : '/api/clientes/export'
+    window.location.href = url
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -278,6 +295,9 @@ export default function ClientesPage() {
           <span data-tour="clientes-import">
             <ImportDialog module="clientes" title="Importar clientes" />
           </span>
+          <Button variant="outline" onClick={exportExcel}>
+            Exportar Excel
+          </Button>
           <Button onClick={openNewClienteModal} data-tour="clientes-new">
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

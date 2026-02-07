@@ -101,6 +101,12 @@ export default function ProveedoresPage() {
     }
   }
 
+  const exportExcel = () => {
+    const url = new URL('/api/proveedores/export', window.location.origin)
+    if (query) url.searchParams.set('search', query)
+    window.location.href = url.toString()
+  }
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-start justify-between gap-4">
@@ -108,7 +114,12 @@ export default function ProveedoresPage() {
           <h1 className="text-3xl font-bold">Proveedores</h1>
           <p className="text-muted-foreground mt-1">Maestro de proveedores (NIT, contacto, dirección).</p>
         </div>
-        <ImportDialog module="proveedores" title="Importar proveedores" />
+        <div className="flex items-center gap-2">
+          <ImportDialog module="proveedores" title="Importar proveedores" />
+          <Button variant="outline" onClick={exportExcel}>
+            Exportar Excel
+          </Button>
+        </div>
       </div>
 
       <Card>

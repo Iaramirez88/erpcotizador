@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { formatCurrency } from "@/lib/utils"
-import { LitografiaQuoteDialog } from "@/components/litografia/litografia-quote-dialog"
+import { LitografiaQuoteDialog, type LitografiaMeta } from "@/components/litografia/litografia-quote-dialog"
 import CotizacionPDF, { type CotizacionPdfData } from "@/lib/pdf-template"
 import type { CotizacionTemplateSettings } from "@/lib/cotizacion-template"
 
@@ -116,6 +116,8 @@ export default function CotizadorPage() {
 
   // Items
   const [items, setItems] = useState<ItemCotizacion[]>([])
+  const [editingManualItemId, setEditingManualItemId] = useState<string | null>(null)
+  const [litografiaEdit, setLitografiaEdit] = useState<{ itemId: string; meta: LitografiaMeta } | null>(null)
   
   // Formulario de nuevo item
   const [showItemForm, setShowItemForm] = useState(false)
@@ -528,7 +530,7 @@ export default function CotizadorPage() {
     })()
 
     const nuevoItem: ItemCotizacion = {
-      id: Date.now().toString(),
+      id: editingManualItemId ?? Date.now().toString(),
       descripcion: descripcionItem,
       materialId: itemForm.materialId,
       material,
@@ -547,7 +549,13 @@ export default function CotizadorPage() {
       observaciones: itemForm.observaciones
     }
 
-    setItems([...items, nuevoItem])
+    if (editingManualItemId) {
+      setItems((prev) => prev.map((it) => (it.id === editingManualItemId ? nuevoItem : it)))
+      setEditingManualItemId(null)
+    } else {
+      setItems((prev) => [...prev, nuevoItem])
+    }
+
     setShowItemForm(false)
     resetItemForm()
   }
@@ -559,7 +567,9 @@ export default function CotizadorPage() {
     desperdicioPct: number
     precioUnitario: number
     subtotal: number
+    meta?: LitografiaMeta
   }) => {
+    const metaStr = payload.meta ? `LITOGRAFIA_META:${JSON.stringify(payload.meta)}` : ""
     const nuevoItem: ItemCotizacion = {
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       descripcion: payload.descripcion,
@@ -577,15 +587,151 @@ export default function CotizadorPage() {
       costoLaminado: 0,
       costoTroquelado: 0,
       costoInstalacion: 0,
-      observaciones: `Litografía • unidad=${payload.unidad}${payload.desperdicioPct ? ` • desperdicio=${payload.desperdicioPct}%` : ""}`,
+      observaciones: [
+        `Litografía • unidad=${payload.unidad}${payload.desperdicioPct ? ` • desperdicio=${payload.desperdicioPct}%` : ""}`,
+        metaStr,
+      ]
+        .filter(Boolean)
+        .join("\n"),
     }
 
     setItems((prev) => [...prev, nuevoItem])
     setShowItemForm(false)
   }
 
+  const actualizarItemLitografia = (payload: {
+    itemId: string
+    descripcion: string
+    cantidad: number
+    unidad: string
+    desperdicioPct: number
+    precioUnitario: number
+    subtotal: number
+    meta?: LitografiaMeta
+  }) => {
+    const metaStr = payload.meta ? `LITOGRAFIA_META:${JSON.stringify(payload.meta)}` : ""
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== payload.itemId) return it
+        return {
+          ...it,
+          descripcion: payload.descripcion,
+          cantidad: payload.cantidad,
+          precioUnitario: payload.precioUnitario,
+          subtotal: payload.subtotal,
+          observaciones: [
+            `Litografía • unidad=${payload.unidad}${payload.desperdicioPct ? ` • desperdicio=${payload.desperdicioPct}%` : ""}`,
+            metaStr,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        }
+      })
+    )
+    setLitografiaEdit(null)
+    setLitografiaOpen(false)
+  }
+
   const eliminarItem = (id: string) => {
     setItems(items.filter(item => item.id !== id))
+  }
+
+  const parseLitografiaMeta = (raw: string): LitografiaMeta | null => {
+    const idx = raw.indexOf("LITOGRAFIA_META:")
+    if (idx < 0) return null
+    const json = raw.slice(idx + "LITOGRAFIA_META:".length).trim()
+    if (!json) return null
+    try {
+      const parsed = JSON.parse(json) as unknown
+      if (!parsed || typeof parsed !== "object") return null
+      const rec = parsed as Record<string, unknown>
+      if (rec.version !== 1) return null
+      return parsed as LitografiaMeta
+    } catch {
+      return null
+    }
+  }
+
+  const editarItem = (item: ItemCotizacion) => {
+    // Litografía (con meta) => reabrir el mismo cotizador
+    if (!item.materialId && !item.material && typeof item.observaciones === "string") {
+      const meta = parseLitografiaMeta(item.observaciones)
+      if (meta) {
+        setLitografiaEdit({ itemId: item.id, meta })
+        setShowItemForm(false)
+        setLitografiaOpen(true)
+        return
+      }
+    }
+
+    // Manual (por unidad) => reusar el formulario de creación
+    if (item.materialId) {
+      setEditingManualItemId(item.id)
+      setItemForm({
+        descripcion: String(item.descripcion || ""),
+        materialId: String(item.materialId || ""),
+        cantidad: String(item.cantidad ?? 1),
+        precioUnitario: String(item.precioUnitario ?? ""),
+        observaciones: String(item.observaciones || ""),
+      })
+
+      const mat = materiales.find((m) => m.id === item.materialId)
+      setMaterialSearch(mat?.nombre ?? "")
+      setShowItemForm(true)
+      return
+    }
+
+    // Fallback mínimo si no se puede reconstruir
+    alert("Este item no tiene formato editable disponible (falta metadata).")
+  }
+
+  const abrirEditarItem = (item: ItemCotizacion) => {
+    setEditingItemId(item.id)
+    setEditItemForm({
+      descripcion: String(item.descripcion || ""),
+      cantidad: String(item.cantidad ?? 1),
+      precioUnitario: String(item.precioUnitario ?? 0),
+      observaciones: String(item.observaciones || ""),
+    })
+    setEditItemOpen(true)
+  }
+
+  const guardarEdicionItem = () => {
+    if (!editingItemId) return
+
+    const cantidad = Number.parseFloat(String(editItemForm.cantidad))
+    const precioUnitario = Number.parseFloat(String(editItemForm.precioUnitario))
+
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      alert("La cantidad debe ser mayor a 0")
+      return
+    }
+
+    if (!Number.isFinite(precioUnitario) || precioUnitario < 0) {
+      alert("El precio unitario no puede ser negativo")
+      return
+    }
+
+    const subtotal = cantidad * precioUnitario
+    const descripcion = String(editItemForm.descripcion || "").trim()
+
+    setItems((prev) =>
+      prev.map((it) =>
+        it.id === editingItemId
+          ? {
+              ...it,
+              descripcion: descripcion || it.descripcion,
+              cantidad,
+              precioUnitario,
+              subtotal,
+              observaciones: String(editItemForm.observaciones || ""),
+            }
+          : it
+      )
+    )
+
+    setEditItemOpen(false)
+    setEditingItemId(null)
   }
 
   const resetItemForm = () => {
@@ -719,6 +865,8 @@ export default function CotizadorPage() {
     setObservaciones("")
     setItems([])
     setShowItemForm(false)
+    setEditingManualItemId(null)
+    setLitografiaEdit(null)
     resetItemForm()
     setSubtotal(0)
     setDescuento(0)
@@ -732,6 +880,8 @@ export default function CotizadorPage() {
         open={litografiaOpen}
         onOpenChange={setLitografiaOpen}
         onAddItem={agregarItemLitografia}
+        edit={litografiaEdit}
+        onUpdateItem={actualizarItemLitografia}
       />
 
       {/* Preview post-guardar */}
@@ -960,7 +1110,7 @@ export default function CotizadorPage() {
             <CardContent>
               {showItemForm && (
                 <div className="p-4 mb-4 border rounded-lg bg-muted/50 space-y-4">
-                  <h4 className="font-medium">Nuevo Item</h4>
+                  <h4 className="font-medium">{editingManualItemId ? "Editar Item" : "Nuevo Item"}</h4>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <div className="col-span-2">
@@ -1066,8 +1216,16 @@ export default function CotizadorPage() {
                   </div>
 
                   <div className="flex gap-2">
-                    <Button onClick={agregarItem} size="sm">Agregar</Button>
-                    <Button onClick={() => { setShowItemForm(false); resetItemForm() }} variant="outline" size="sm">
+                    <Button onClick={agregarItem} size="sm">{editingManualItemId ? "Guardar cambios" : "Agregar"}</Button>
+                    <Button
+                      onClick={() => {
+                        setShowItemForm(false)
+                        setEditingManualItemId(null)
+                        resetItemForm()
+                      }}
+                      variant="outline"
+                      size="sm"
+                    >
                       Cancelar
                     </Button>
                   </div>
@@ -1106,6 +1264,13 @@ export default function CotizadorPage() {
                           <p className="font-bold text-blue-600">
                             {formatCurrency(item.subtotal)}
                           </p>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => editarItem(item)}
+                          >
+                            Editar
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"

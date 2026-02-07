@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Eye, EyeOff } from 'lucide-react'
 
 type EmpresaConfig = {
   empresaId: string
@@ -26,6 +27,7 @@ export default function ConfigEmpresaPage() {
   const [nit, setNit] = useState('')
   const [logo, setLogo] = useState<string | null>(null)
   const [registrationCode, setRegistrationCode] = useState('')
+  const [showRegistrationCode, setShowRegistrationCode] = useState(false)
 
   const logoPreview = useMemo(() => (logo ?? config?.logo ?? null), [logo, config?.logo])
 
@@ -267,7 +269,7 @@ export default function ConfigEmpresaPage() {
                 <Label>Nuevo código</Label>
                 <div className="flex items-center gap-2 flex-wrap">
                   <Input
-                    type="password"
+                    type={showRegistrationCode ? 'text' : 'password'}
                     placeholder="Define un código para nuevos registros"
                     value={registrationCode}
                     onChange={(e) => setRegistrationCode(e.target.value)}
@@ -275,11 +277,20 @@ export default function ConfigEmpresaPage() {
                     className="max-w-sm"
                     autoComplete="off"
                   />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={saving}
+                    onClick={() => setShowRegistrationCode((v) => !v)}
+                    aria-label={showRegistrationCode ? 'Ocultar código' : 'Mostrar código'}
+                  >
+                    {showRegistrationCode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
                   <Button type="button" disabled={saving} onClick={() => void saveRegistrationCode()}>
                     {saving ? 'Guardando…' : 'Actualizar código'}
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">No se mostrará el código actual por seguridad.</p>
+                <p className="text-xs text-muted-foreground">Puedes previsualizar lo que escribes. El código actual no se puede recuperar por seguridad.</p>
               </div>
             </>
           ) : null}

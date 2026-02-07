@@ -101,7 +101,51 @@ function getDefaultCostoPliego(tipo: PapelTipo) {
   }
 }
 
+function parseCopNumber(value: string): number {
+  const trimmed = value.trim()
+  if (!trimmed) return 0
+  if (/[a-zA-Z]/.test(trimmed)) return 0
+  if (!/[0-9]/.test(trimmed)) return 0
+
+  const sign = trimmed.startsWith("-") ? -1 : 1
+  const digits = trimmed.replace(/[^0-9]/g, "")
+  if (!digits) return 0
+  const n = Number(digits)
+  if (!Number.isFinite(n)) return 0
+  return sign * n
+}
+
 type CustomField = { id: string; label: string; value: string }
+
+export type LitografiaMeta = {
+  version: 1
+  titulo: string
+  descripcion: string
+  cantidad: string
+  desperdicioPct: string
+  pricingSource: "tarifario" | "calculo"
+  formatoKey: string
+  colores: string
+  costoPlanchaPorColor: string
+  costoTintaPorColor: string
+  costoPapelUnidad: string
+  papelPorPliego: boolean
+  papelTipo: PapelTipo
+  costoPliego: string
+  pliegoW: string
+  pliegoH: string
+  selectedPlanchaProfileId: string
+  selectedTintaProfileId: string
+  selectedPaperId: string
+  selectedFinishId: string
+  selectedPaperTipo: string
+  selectedPaperGramaje: string
+  selectedTransporteKey: TransporteKey | ""
+  costoCorte: string
+  costoAcabados: string
+  costoTransporte: string
+  customFields: CustomField[]
+}
 
 type AddLitografiaItemPayload = {
   descripcion: string
@@ -110,12 +154,15 @@ type AddLitografiaItemPayload = {
   desperdicioPct: number
   precioUnitario: number
   subtotal: number
+  meta?: LitografiaMeta
 }
 
 export function LitografiaQuoteDialog(props: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onAddItem: (payload: AddLitografiaItemPayload) => void
+  edit?: { itemId: string; meta: LitografiaMeta } | null
+  onUpdateItem?: (payload: AddLitografiaItemPayload & { itemId: string }) => void
 }) {
   const [meLoaded, setMeLoaded] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
@@ -143,7 +190,8 @@ export function LitografiaQuoteDialog(props: {
   const [finishes, setFinishes] = useState<FinishOption[]>([])
   const [sizes, setSizes] = useState<PrintSize[]>([])
   const [configError, setConfigError] = useState<string | null>(null)
-  const [selectedProfileId, setSelectedProfileId] = useState<string>("")
+  const [selectedPlanchaProfileId, setSelectedPlanchaProfileId] = useState<string>("")
+  const [selectedTintaProfileId, setSelectedTintaProfileId] = useState<string>("")
   const [selectedPaperId, setSelectedPaperId] = useState<string>("")
   const [selectedFinishId, setSelectedFinishId] = useState<string>("")
 
@@ -156,7 +204,8 @@ export function LitografiaQuoteDialog(props: {
   const [costoAcabados, setCostoAcabados] = useState("0")
   const [costoTransporte, setCostoTransporte] = useState("0")
 
-  const [tintas, setTintas] = useState<1 | 2 | 4>(4)
+  // En SGDigital se cotiza siempre en policromía (4).
+  const tintas: 1 | 2 | 4 = 4
   const [tarifa, setTarifa] = useState<FlyerRate | null>(null)
   const [tarifaLoading, setTarifaLoading] = useState(false)
   const [tarifaError, setTarifaError] = useState<string | null>(null)
@@ -164,6 +213,77 @@ export function LitografiaQuoteDialog(props: {
   const [pricingSource, setPricingSource] = useState<"tarifario" | "calculo">("tarifario")
 
   const [customFields, setCustomFields] = useState<CustomField[]>([])
+
+  const customFieldsTotal = useMemo(() => {
+    return customFields.reduce((acc, f) => acc + parseCopNumber(f.value), 0)
+  }, [customFields])
+
+  const buildMeta = (): LitografiaMeta => {
+    return {
+      version: 1,
+      titulo,
+      descripcion,
+      cantidad,
+      desperdicioPct,
+      pricingSource,
+      formatoKey,
+      colores,
+      costoPlanchaPorColor,
+      costoTintaPorColor,
+      costoPapelUnidad,
+      papelPorPliego,
+      papelTipo,
+      costoPliego,
+      pliegoW,
+      pliegoH,
+      selectedPlanchaProfileId,
+      selectedTintaProfileId,
+      selectedPaperId,
+      selectedFinishId,
+      selectedPaperTipo,
+      selectedPaperGramaje,
+      selectedTransporteKey,
+      costoCorte,
+      costoAcabados,
+      costoTransporte,
+      customFields,
+    }
+  }
+
+  const applyMeta = (meta: LitografiaMeta) => {
+    setTitulo(meta.titulo ?? "")
+    setDescripcion(meta.descripcion ?? "")
+    setCantidad(meta.cantidad ?? "")
+    setDesperdicioPct(meta.desperdicioPct ?? "")
+    setPricingSource(meta.pricingSource === "calculo" ? "calculo" : "tarifario")
+    setFormatoKey(meta.formatoKey ?? "")
+    setColores(meta.colores ?? "4")
+    setCostoPlanchaPorColor(meta.costoPlanchaPorColor ?? "")
+    setCostoTintaPorColor(meta.costoTintaPorColor ?? "")
+    setCostoPapelUnidad(meta.costoPapelUnidad ?? "")
+    setPapelPorPliego(Boolean(meta.papelPorPliego))
+    setPapelTipo((meta.papelTipo as PapelTipo) ?? "propalcote")
+    setCostoPliego(meta.costoPliego ?? "")
+    setPliegoW(meta.pliegoW ?? "")
+    setPliegoH(meta.pliegoH ?? "")
+    setSelectedPlanchaProfileId(meta.selectedPlanchaProfileId ?? "")
+    setSelectedTintaProfileId(meta.selectedTintaProfileId ?? "")
+    setSelectedPaperId(meta.selectedPaperId ?? "")
+    setSelectedFinishId(meta.selectedFinishId ?? "")
+    setSelectedPaperTipo(meta.selectedPaperTipo ?? "")
+    setSelectedPaperGramaje(meta.selectedPaperGramaje ?? "")
+    setSelectedTransporteKey((meta.selectedTransporteKey as TransporteKey | "") ?? "")
+    setCostoCorte(meta.costoCorte ?? "0")
+    setCostoAcabados(meta.costoAcabados ?? "0")
+    setCostoTransporte(meta.costoTransporte ?? "0")
+    setCustomFields(Array.isArray(meta.customFields) ? meta.customFields : [])
+  }
+
+  useEffect(() => {
+    if (!props.open) return
+    if (props.edit?.meta) applyMeta(props.edit.meta)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.open, props.edit?.itemId])
 
   const activeSizes = useMemo(() => sizes.filter((s) => s.activo), [sizes])
 
@@ -176,12 +296,24 @@ export function LitografiaQuoteDialog(props: {
   }, [formatoKey, sizeOptions])
 
   const activeProfiles = useMemo(() => profiles.filter((p) => p.activo), [profiles])
+  const activePlanchaProfiles = useMemo(() => {
+    const filtered = activeProfiles.filter((p) => (p.costoPlanchaPorColor ?? 0) > 0)
+    return filtered.length ? filtered : activeProfiles
+  }, [activeProfiles])
+  const activeTintaProfiles = useMemo(() => {
+    const filtered = activeProfiles.filter((p) => (p.costoTintaPorColor ?? 0) > 0)
+    return filtered.length ? filtered : activeProfiles
+  }, [activeProfiles])
   const activePapers = useMemo(() => papers.filter((p) => p.activo), [papers])
   const activeFinishes = useMemo(() => finishes.filter((f) => f.activo), [finishes])
 
-  const selectedProfile = useMemo(() => {
-    return profiles.find((p) => p.id === selectedProfileId) || null
-  }, [profiles, selectedProfileId])
+  const selectedPlanchaProfile = useMemo(() => {
+    return profiles.find((p) => p.id === selectedPlanchaProfileId) || null
+  }, [profiles, selectedPlanchaProfileId])
+
+  const selectedTintaProfile = useMemo(() => {
+    return profiles.find((p) => p.id === selectedTintaProfileId) || null
+  }, [profiles, selectedTintaProfileId])
 
   const paperTipoOptions = useMemo(() => {
     const set = new Set<string>()
@@ -211,10 +343,17 @@ export function LitografiaQuoteDialog(props: {
 
   useEffect(() => {
     if (!props.open) return
-    if (!selectedProfileId && activeProfiles.length) {
-      setSelectedProfileId(activeProfiles[0]!.id)
+    if (!selectedPlanchaProfileId && activePlanchaProfiles.length) {
+      setSelectedPlanchaProfileId(activePlanchaProfiles[0]!.id)
     }
-  }, [props.open, activeProfiles, selectedProfileId])
+  }, [props.open, activePlanchaProfiles, selectedPlanchaProfileId])
+
+  useEffect(() => {
+    if (!props.open) return
+    if (!selectedTintaProfileId && activeTintaProfiles.length) {
+      setSelectedTintaProfileId(activeTintaProfiles[0]!.id)
+    }
+  }, [props.open, activeTintaProfiles, selectedTintaProfileId])
 
   useEffect(() => {
     if (!props.open) return
@@ -353,14 +492,19 @@ export function LitografiaQuoteDialog(props: {
 
     void run()
     return () => controller.abort()
-  }, [props.open, meLoaded, isAdmin, pricingSource, cantidad, formatoKey, tintas, selectedPaperId, selectedFinishId])
+  }, [props.open, meLoaded, isAdmin, pricingSource, cantidad, formatoKey, selectedPaperId, selectedFinishId])
 
   useEffect(() => {
-    const profile = profiles.find((p) => p.id === selectedProfileId)
+    const profile = profiles.find((p) => p.id === selectedPlanchaProfileId)
     if (!profile) return
     setCostoPlanchaPorColor(String(profile.costoPlanchaPorColor ?? 0))
+  }, [profiles, selectedPlanchaProfileId])
+
+  useEffect(() => {
+    const profile = profiles.find((p) => p.id === selectedTintaProfileId)
+    if (!profile) return
     setCostoTintaPorColor(String(profile.costoTintaPorColor ?? 0))
-  }, [profiles, selectedProfileId])
+  }, [profiles, selectedTintaProfileId])
 
   useEffect(() => {
     const paper = papers.find((p) => p.id === selectedPaperId)
@@ -428,16 +572,17 @@ export function LitografiaQuoteDialog(props: {
     // Estimación cuando no hay tarifa exacta. Usa costos del perfil y papel seleccionado.
     // Nota: finishOption no tiene costo asociado en el modelo actual; se estima en 0.
     const desperdicio = parseFloat(desperdicioPct) || 0
-    const profile = selectedProfile
+    const planchaProfile = selectedPlanchaProfile
+    const tintaProfile = selectedTintaProfile
     const paper = selectedPaper
-    if (!profile || !paper) return null
+    if (!planchaProfile || !tintaProfile || !paper) return null
 
     return computeLitografia({
       cantidad: qty,
       colores: tintas,
       desperdicioPct: desperdicio,
-      costoPlanchaPorColor: profile.costoPlanchaPorColor ?? 0,
-      costoTintaPorColor: profile.costoTintaPorColor ?? 0,
+      costoPlanchaPorColor: planchaProfile.costoPlanchaPorColor ?? 0,
+      costoTintaPorColor: tintaProfile.costoTintaPorColor ?? 0,
       costoPapelUnidad: 0,
       papelModo: "pliego",
       papelTipo,
@@ -457,11 +602,11 @@ export function LitografiaQuoteDialog(props: {
     props.open,
     cantidad,
     desperdicioPct,
-    tintas,
     papelTipo,
     costoTransporte,
     selectedPreset,
-    selectedProfile,
+    selectedPlanchaProfile,
+    selectedTintaProfile,
     selectedPaper,
   ])
 
@@ -550,29 +695,48 @@ export function LitografiaQuoteDialog(props: {
         return
       }
 
-      const subtotal = tarifa ? base + transporte : (estimated?.precioVenta ?? 0)
-      props.onAddItem({
+      const meta = buildMeta()
+      const subtotal = (tarifa ? base + transporte : (estimated?.precioVenta ?? 0)) + customFieldsTotal
+      const payload: AddLitografiaItemPayload = {
         descripcion: buildDescripcion(),
         cantidad: qty,
         unidad: "unidad",
         desperdicioPct: tarifa ? 0 : (estimated?.waste ?? 0),
         precioUnitario: subtotal / qty,
         subtotal,
-      })
+        meta,
+      }
+
+      if (props.edit?.itemId && props.onUpdateItem) {
+        props.onUpdateItem({ ...payload, itemId: props.edit.itemId })
+      } else {
+        props.onAddItem(payload)
+      }
       props.onOpenChange(false)
       return
     }
 
     if (!calc) return
 
-    props.onAddItem({
+    const qty = Math.max(1, Math.trunc(calc.qty || 0))
+    const subtotal = (calc.precioVenta || 0) + customFieldsTotal
+
+    const meta = buildMeta()
+    const payload: AddLitografiaItemPayload = {
       descripcion: buildDescripcion(),
       cantidad: calc.qty,
       unidad: "unidad",
       desperdicioPct: calc.waste,
-      precioUnitario: calc.precioUnitario,
-      subtotal: calc.precioVenta,
-    })
+      precioUnitario: subtotal / qty,
+      subtotal,
+      meta,
+    }
+
+    if (props.edit?.itemId && props.onUpdateItem) {
+      props.onUpdateItem({ ...payload, itemId: props.edit.itemId })
+    } else {
+      props.onAddItem(payload)
+    }
     props.onOpenChange(false)
   }
 
@@ -666,15 +830,15 @@ export function LitografiaQuoteDialog(props: {
                       </div>
 
                       <div>
-                        <Label>Planchas y tintas</Label>
+                        <Label>Planchas (costo)</Label>
                         <select
                           className={SELECT_COMPACT}
-                          value={selectedProfileId}
-                          onChange={(e) => setSelectedProfileId(e.target.value)}
-                          disabled={!activeProfiles.length}
+                          value={selectedPlanchaProfileId}
+                          onChange={(e) => setSelectedPlanchaProfileId(e.target.value)}
+                          disabled={!activePlanchaProfiles.length}
                         >
-                          {activeProfiles.length ? (
-                            activeProfiles.map((p) => (
+                          {activePlanchaProfiles.length ? (
+                            activePlanchaProfiles.map((p) => (
                               <option key={p.id} value={p.id}>
                                 {p.nombre}
                               </option>
@@ -684,21 +848,39 @@ export function LitografiaQuoteDialog(props: {
                           )}
                         </select>
                         <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                          {selectedProfile ? (
-                            <>Plancha/Color: {formatCurrency(selectedProfile.costoPlanchaPorColor)} • Tinta/Color: {formatCurrency(selectedProfile.costoTintaPorColor)}</>
+                          {selectedPlanchaProfile ? (
+                            <>Plancha/Color: {formatCurrency(selectedPlanchaProfile.costoPlanchaPorColor)}</>
                           ) : (
-                            <>Selecciona planchas y tintas.</>
+                            <>Selecciona planchas.</>
                           )}
                         </p>
                       </div>
 
                       <div>
-                        <Label>Tintas</Label>
-                        <select className={SELECT_COMPACT} value={String(tintas)} onChange={(e) => setTintas(Number(e.target.value) as 1 | 2 | 4)}>
-                          <option value="4">Policromía (4)</option>
-                          <option value="2">2 tintas</option>
-                          <option value="1">1 tinta</option>
+                        <Label>Tinta (costo)</Label>
+                        <select
+                          className={SELECT_COMPACT}
+                          value={selectedTintaProfileId}
+                          onChange={(e) => setSelectedTintaProfileId(e.target.value)}
+                          disabled={!activeTintaProfiles.length}
+                        >
+                          {activeTintaProfiles.length ? (
+                            activeTintaProfiles.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.nombre}
+                              </option>
+                            ))
+                          ) : (
+                            <option value="">Sin perfiles</option>
+                          )}
                         </select>
+                        <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                          {selectedTintaProfile ? (
+                            <>Tinta/Color: {formatCurrency(selectedTintaProfile.costoTintaPorColor)}</>
+                          ) : (
+                            <>Selecciona tintas.</>
+                          )}
+                        </p>
                       </div>
 
                         <div>
@@ -830,21 +1012,37 @@ export function LitografiaQuoteDialog(props: {
                         />
                       </div>
 
-                      <div className="sm:col-span-2 lg:col-span-2">
-                        <Label>Planchas y tintas (auto)</Label>
+                      <div className="sm:col-span-2 lg:col-span-1">
+                        <Label>Planchas (auto)</Label>
                         <select
                           className={SELECT_COMPACT}
-                          value={selectedProfileId}
-                          onChange={(e) => setSelectedProfileId(e.target.value)}
+                          value={selectedPlanchaProfileId}
+                          onChange={(e) => setSelectedPlanchaProfileId(e.target.value)}
                         >
                           <option value="">(Manual)</option>
-                          {activeProfiles.map((p) => (
+                          {activePlanchaProfiles.map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.nombre}
                             </option>
                           ))}
                         </select>
                         {configError ? <p className="mt-1 text-xs text-red-600">{configError}</p> : null}
+                      </div>
+
+                      <div className="sm:col-span-2 lg:col-span-1">
+                        <Label>Tintas (auto)</Label>
+                        <select
+                          className={SELECT_COMPACT}
+                          value={selectedTintaProfileId}
+                          onChange={(e) => setSelectedTintaProfileId(e.target.value)}
+                        >
+                          <option value="">(Manual)</option>
+                          {activeTintaProfiles.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.nombre}
+                            </option>
+                          ))}
+                        </select>
                       </div>
 
                       <div className="sm:col-span-2 lg:col-span-4">
@@ -1048,12 +1246,14 @@ export function LitografiaQuoteDialog(props: {
                               {(() => {
                                 const base = tarifa.precioTotal || 0
                                 const transporte = parseFloat(costoTransporte) || 0
-                                const total = base + transporte
+                                const extras = customFieldsTotal
+                                const total = base + transporte + extras
                                 const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
                                 return (
                                   <>
                                     <div className="flex justify-between text-sm"><span className="text-muted-foreground">Base (tarifario)</span><span className="font-medium">{formatCurrency(base)}</span></div>
                                     <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Transporte</span><span className="font-medium">{formatCurrency(transporte)}</span></div>
+                                    {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Campos extra</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
                                     <div className="flex justify-between mt-2"><span className="font-medium">Total</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
                                     <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Unitario</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>
                                   </>
@@ -1076,11 +1276,13 @@ export function LitografiaQuoteDialog(props: {
 
                             <div className="border-t pt-3">
                               {(() => {
-                                const total = fallbackCalc.precioVenta || 0
+                                const extras = customFieldsTotal
+                                const total = (fallbackCalc.precioVenta || 0) + extras
                                 const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
                                 return (
                                   <>
                                     <div className="flex justify-between text-sm"><span className="text-muted-foreground">Total (estimado)</span><span className="font-medium">{formatCurrency(total)}</span></div>
+                                    {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Campos extra</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
                                     <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Unitario</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>
                                     <p className="mt-2 text-[10px] leading-tight text-amber-700">
                                       No existe tarifa exacta para esta combinación. Configura el tarifario para que el precio sea el oficial.
@@ -1150,11 +1352,11 @@ export function LitografiaQuoteDialog(props: {
                         <div className="border-t pt-3">
                           <div className="flex justify-between">
                             <span className="font-medium">Precio venta</span>
-                            <span className="font-bold text-blue-700">{formatCurrency(calc.precioVenta)}</span>
+                            <span className="font-bold text-blue-700">{formatCurrency((calc.precioVenta || 0) + customFieldsTotal)}</span>
                           </div>
                           <div className="flex justify-between text-sm mt-1">
                             <span className="text-muted-foreground">Precio unitario</span>
-                            <span className="font-medium">{formatCurrency(calc.precioUnitario)}</span>
+                            <span className="font-medium">{formatCurrency(((calc.precioVenta || 0) + customFieldsTotal) / Math.max(1, Math.trunc(calc.qty || 0)))}</span>
                           </div>
                         </div>
 
@@ -1171,7 +1373,7 @@ export function LitografiaQuoteDialog(props: {
                     <div className="flex items-center justify-between">
                       <div>
                         <CardTitle>Campos personalizados</CardTitle>
-                        <CardDescription>Se anexan a la descripción del ítem.</CardDescription>
+                        <CardDescription>Se anexan a la descripción del ítem. Si el valor es numérico, se suma al total.</CardDescription>
                       </div>
                       <Button type="button" variant="outline" size="sm" onClick={addCustomField}>
                         Agregar campo
@@ -1238,7 +1440,7 @@ export function LitografiaQuoteDialog(props: {
                 onClick={handleAddToCotizacion}
                 disabled={!canAdd}
               >
-                Agregar a cotización
+                {props.edit?.itemId ? "Actualizar item" : "Agregar a cotización"}
               </Button>
             </DialogFooter>
           </div>

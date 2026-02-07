@@ -123,6 +123,10 @@ export const authOptions: NextAuthConfig = {
 
       // En sign-in: inicializar política de expiración (absoluta + inactividad)
       if (user) {
+        if (typeof user.name === 'string') token.name = user.name
+        if (typeof user.email === 'string') token.email = user.email
+        if (typeof user.image === 'string') token.picture = user.image
+
         const remember = Boolean((user as unknown as { remember?: boolean }).remember)
         token.remember = remember
         token.absExp = now + (remember ? ABSOLUTE_REMEMBER : ABSOLUTE_DEFAULT)
@@ -156,12 +160,43 @@ export const authOptions: NextAuthConfig = {
           session.user.id = resolvedUserId
         }
 
-        if (token.role) {
-          session.user.role = token.role as string
+        if (token.role) session.user.role = token.role as string
+        if (typeof token.name === 'string') session.user.name = token.name
+        if (typeof token.email === 'string') session.user.email = token.email
+        if (typeof token.picture === 'string') session.user.image = token.picture
+
+        // Mantener datos frescos (avatar/nombre) si cambian en BD.
+        if (resolvedUserId) {
+          try {
+            const dbUser = await prisma.user.findUnique({
+              where: { id: resolvedUserId },
+              select: { name: true, email: true, image: true, role: true },
+            })
+            if (dbUser) {
+              session.user.name = dbUser.name
+              session.user.email = dbUser.email
+              session.user.image = dbUser.image
+              session.user.role = dbUser.role
+            }
+          } catch {
+            // no-op
+          }
         }
       }
       return session
     }
+  },
+
+  events: {
+    async signIn({ user }) {
+      const userId = user?.id
+      if (!userId) return
+      try {
+        await prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } })
+      } catch {
+        // no-op
+      }
+    },
   },
 
   // Configuración de seguridad

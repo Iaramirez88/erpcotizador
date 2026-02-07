@@ -75,6 +75,10 @@ docker run --name postgres-sgdigital \
    # NextAuth
    NEXTAUTH_URL="http://localhost:3000"
    NEXTAUTH_SECRET="genera-un-secreto-aqui-min-32-caracteres"
+
+   # Auth.js (NextAuth v5)
+   # Requerido cuando ejecutas `npm start` (modo producción local) para evitar UntrustedHost.
+   AUTH_TRUST_HOST="true"
    ```
 
 3. **Generar NEXTAUTH_SECRET**:

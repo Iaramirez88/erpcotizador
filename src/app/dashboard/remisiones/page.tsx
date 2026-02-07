@@ -25,6 +25,7 @@ const PDFViewer = dynamic(
 )
 
 import { RemisionPDF } from '@/lib/remision-pdf-template'
+import { Download } from 'lucide-react'
 
 type Warehouse = { id: string; nombre: string; codigo?: string | null; isDefault?: boolean }
 
@@ -87,6 +88,13 @@ export default function RemisionesPage() {
 
   const [itemForm, setItemForm] = useState<CreateItem>({ materialId: "", quantity: "1", note: "" })
   const [items, setItems] = useState<CreateItem[]>([])
+
+  const exportExcel = useCallback(() => {
+    const params = new URLSearchParams()
+    if (search.trim()) params.set('search', search.trim())
+    const url = params.toString() ? `/api/remisiones/export?${params.toString()}` : '/api/remisiones/export'
+    window.location.href = url
+  }, [search])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -326,6 +334,13 @@ export default function RemisionesPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Remisiones</h1>
           <p className="text-muted-foreground">Salida de inventario con trazabilidad por documento.</p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={exportExcel}>
+            <Download className="w-4 h-4 mr-2" />
+            Exportar Excel
+          </Button>
         </div>
       </div>
 

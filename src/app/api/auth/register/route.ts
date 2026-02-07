@@ -72,9 +72,30 @@ export async function POST(request: Request) {
       if (!code) {
         return NextResponse.json({ error: 'Código de acceso requerido' }, { status: 400 })
       }
-      const ok = await bcrypt.compare(code, empresa.registrationCodeHash)
-      if (!ok) {
-        return NextResponse.json({ error: 'Código de acceso inválido' }, { status: 403 })
+
+      const okEmpresa = await bcrypt.compare(code, empresa.registrationCodeHash)
+      if (!okEmpresa) {
+        // Fallback: código de invitación por email (admin).
+        const invite = await prisma.registrationInvite.findFirst({
+          where: {
+            empresaId: empresa.id,
+            email: normalizedEmail,
+            consumedAt: null,
+            expiresAt: { gt: new Date() },
+            codeHash: sha256Hex(code),
+          },
+          select: { id: true },
+          orderBy: { createdAt: 'desc' },
+        })
+
+        if (!invite?.id) {
+          return NextResponse.json({ error: 'Código de acceso inválido' }, { status: 403 })
+        }
+
+        await prisma.registrationInvite.update({
+          where: { id: invite.id },
+          data: { consumedAt: new Date() },
+        })
       }
     }
 
@@ -86,7 +107,7 @@ export async function POST(request: Request) {
     if (existingUser) {
       return NextResponse.json(
         { error: "Este email ya está registrado" },
-        { status: 400 }
+        { status: 409 }
       )
     }
 

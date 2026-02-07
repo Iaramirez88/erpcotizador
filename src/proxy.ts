@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
 
   // Fuerza que /uploads/* pase por un handler Node (evita 404 por handling estático de assets)

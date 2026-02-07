@@ -143,6 +143,13 @@ export default function ComprasPage() {
 
   const query = useMemo(() => search.trim(), [search])
 
+  const exportExcel = () => {
+    const params = new URLSearchParams()
+    if (query) params.set('search', query)
+    const url = params.toString() ? `/api/compras/export?${params.toString()}` : '/api/compras/export'
+    window.location.href = url
+  }
+
   async function load() {
     setLoading(true)
     try {
@@ -342,7 +349,12 @@ export default function ComprasPage() {
           <h1 className="text-3xl font-bold">Compras</h1>
           <p className="text-muted-foreground mt-1">Registro de compras con ítems, IVA, descuentos y autorización.</p>
         </div>
-        <ImportDialog module="compras" title="Importar compras" />
+        <div className="flex items-center gap-2">
+          <ImportDialog module="compras" title="Importar compras" />
+          <Button variant="outline" onClick={exportExcel}>
+            Exportar Excel
+          </Button>
+        </div>
       </div>
 
       <Card>

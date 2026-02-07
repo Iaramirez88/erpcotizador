@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button"
 import { useUiStore } from "@/lib/ui-store"
 import { NavSettingsDialog } from "@/components/dashboard/nav-settings-dialog"
 import { useTour } from "@/components/tour/tour-provider"
-import Image from "next/image"
 import NotificationsBell from "@/components/dashboard/notifications-bell"
 import {
   DropdownMenu,
@@ -184,6 +183,9 @@ export default function Header({ user }: HeaderProps) {
                 <Link href="/dashboard/configuracion/permisos">Permisos</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
+                <Link href="/dashboard/configuracion/usuarios">Usuarios</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
                 <Link href="/dashboard/configuracion/empresa">Empresa</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
@@ -224,7 +226,7 @@ export default function Header({ user }: HeaderProps) {
           <div className="flex items-center space-x-3">
             <div className="relative h-9 w-9 rounded-full overflow-hidden border bg-white">
               {user.image ? (
-                <Image src={user.image} alt={user.name ?? 'Usuario'} fill className="object-cover" sizes="36px" />
+                <img src={user.image} alt={user.name ?? 'Usuario'} className="h-full w-full object-cover" />
               ) : (
                 <div className="h-full w-full grid place-items-center text-xs font-semibold text-slate-700 bg-slate-100">
                   {initials}

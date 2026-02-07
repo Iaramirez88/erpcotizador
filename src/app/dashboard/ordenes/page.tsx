@@ -7,6 +7,7 @@ import { ImportDialog } from '@/components/import/import-dialog';
 import { Input } from '@/components/ui/input';
 import {
   FileText,
+  Download,
   Search,
   Filter,
   Plus,
@@ -72,6 +73,14 @@ export default function OrdenesPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const exportExcel = () => {
+    const params = new URLSearchParams();
+    if (busqueda) params.append('busqueda', busqueda);
+    if (filtroEstado) params.append('estado', filtroEstado);
+    const url = params.toString() ? `/api/ordenes/export?${params}` : '/api/ordenes/export';
+    window.location.href = url;
   };
 
   const formatCurrency = (value: number) => {
@@ -140,6 +149,10 @@ export default function OrdenesPage() {
         </div>
         <div className="flex items-center gap-2">
           <ImportDialog module="ordenes" title="Importar órdenes" />
+          <Button variant="outline" onClick={exportExcel}>
+            <Download className="w-4 h-4 mr-2" />
+            Exportar Excel
+          </Button>
           <Link href="/dashboard/cotizaciones">
             <Button>
               <Plus className="w-4 h-4 mr-2" />

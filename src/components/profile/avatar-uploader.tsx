@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -89,7 +88,7 @@ export function AvatarUploader({ userName, imageUrl }: Props) {
       <div className="flex items-center gap-4">
         <div className="relative h-16 w-16 rounded-full overflow-hidden bg-slate-900 border border-slate-800">
           {imageUrl ? (
-            <Image src={imageUrl} alt="Avatar" fill className="object-cover" sizes="64px" />
+            <img src={imageUrl} alt="Avatar" className="h-full w-full object-cover" />
           ) : (
             <div className="h-full w-full grid place-items-center text-slate-100 font-semibold">
               {initials}

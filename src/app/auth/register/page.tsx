@@ -7,7 +7,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -30,6 +30,7 @@ function validatePassword(password: string): string | null {
 
 export default function RegisterPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
@@ -40,6 +41,8 @@ export default function RegisterPage() {
   const [empresas, setEmpresas] = useState<Array<{ id: string; nombre: string; logo?: string | null; requiresAccessCode: boolean }>>([])
   const [empresaId, setEmpresaId] = useState("")
   const [accessCode, setAccessCode] = useState("")
+  const [lockedEmpresaId, setLockedEmpresaId] = useState<string | null>(null)
+  const [lockedEmail, setLockedEmail] = useState<string | null>(null)
   
   const [formData, setFormData] = useState({
     name: "",
@@ -57,8 +60,19 @@ export default function RegisterPage() {
         if (cancelled) return
         if (json?.ok && Array.isArray(json.data)) {
           setEmpresas(json.data)
-          if (json.data.length === 1) {
+          const empresaIdFromUrl = (searchParams.get('empresaId') ?? '').trim()
+          const emailFromUrl = (searchParams.get('email') ?? '').trim().toLowerCase()
+
+          if (empresaIdFromUrl) {
+            setEmpresaId(empresaIdFromUrl)
+            setLockedEmpresaId(empresaIdFromUrl)
+          } else if (json.data.length === 1) {
             setEmpresaId(json.data[0]?.id ?? '')
+          }
+
+          if (emailFromUrl && emailFromUrl.includes('@')) {
+            setFormData((p) => ({ ...p, email: emailFromUrl }))
+            setLockedEmail(emailFromUrl)
           }
         }
       } catch {
@@ -240,7 +254,7 @@ export default function RegisterPage() {
                   id="empresa"
                   value={empresaId}
                   onChange={(e) => setEmpresaId(e.target.value)}
-                  disabled={isLoading}
+                  disabled={isLoading || Boolean(lockedEmpresaId)}
                   required
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -294,7 +308,7 @@ export default function RegisterPage() {
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 required
-                disabled={isLoading}
+                disabled={isLoading || Boolean(lockedEmail)}
               />
             </div>
             <div className="space-y-2">

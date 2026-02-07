@@ -24,6 +24,8 @@ model User {
   empresaId     String?
   empresa       Empresa?  @relation(fields: [empresaId], references: [id])
 
+  lastLoginAt   DateTime?
+
   // Preferencias de UI (menú, reportes)
   uiPreference UiPreference?
 
@@ -117,6 +119,24 @@ model PasswordResetToken {
   @@index([email])
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+model RegistrationInvite {
+  id       String @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  email    String
+  codeHash String @db.Text
+
+  expiresAt  DateTime
+  consumedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([empresaId, email])
+  @@map("registration_invites")
 }
 
 model CotizacionTemplate {
@@ -347,6 +367,8 @@ model Empresa {
   // Código de acceso para permitir registro de usuarios en esta empresa.
   // Se guarda hasheado (bcrypt). Si es null, el registro es abierto.
   registrationCodeHash String? @db.Text
+
+  registrationInvites RegistrationInvite[]
 
   planTier     PlanTier     @default(FULL)
   billingCycle BillingCycle @default(MONTHLY)

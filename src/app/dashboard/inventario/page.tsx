@@ -5,7 +5,7 @@
 
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { cn, formatUnidadMedidaLabel } from "@/lib/utils"
+import { Download } from 'lucide-react'
 
 type Material = {
   id: string
@@ -75,6 +76,13 @@ export default function InventarioPage() {
   const [search, setSearch] = useState("")
 
   const [warehouseFilterId, setWarehouseFilterId] = useState("")
+
+  const exportExcel = useCallback(() => {
+    const params = new URLSearchParams()
+    if (warehouseFilterId) params.set('warehouseId', warehouseFilterId)
+    const url = params.toString() ? `/api/inventario/export?${params.toString()}` : '/api/inventario/export'
+    window.location.href = url
+  }, [warehouseFilterId])
 
   const [form, setForm] = useState({
     materialId: "",
@@ -320,6 +328,10 @@ export default function InventarioPage() {
           <p className="text-muted-foreground">Entradas, salidas y ajustes de stock por material.</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={exportExcel} disabled={isLoading}>
+            <Download className="w-4 h-4 mr-2" />
+            Exportar Excel
+          </Button>
           <Button onClick={openModal} disabled={isLoading} data-tour="inventario-movimiento">
             Registrar movimiento
           </Button>

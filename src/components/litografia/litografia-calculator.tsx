@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ComponentProps } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -30,6 +30,15 @@ const DEFAULT_TIRAJE_TIERS = [
 const INPUT_COMPACT = "h-7 px-2 text-xs"
 const SELECT_COMPACT = "mt-2 h-8 w-full rounded-md border bg-background px-2 text-xs"
 const SELECT_INLINE = "h-8 rounded-md border bg-background px-2 text-xs"
+
+function MoneyInput({ className, ...props }: ComponentProps<typeof Input>) {
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+      <Input {...props} className={`${className ?? ""} pl-5`} />
+    </div>
+  )
+}
 
 type PrintProfile = {
   id: string
@@ -160,7 +169,8 @@ export function LitografiaCalculator() {
   const [sizesLoading, setSizesLoading] = useState(false)
   const [configError, setConfigError] = useState<string | null>(null)
 
-  const [selectedProfileId, setSelectedProfileId] = useState<string>("")
+  const [selectedPlanchaProfileId, setSelectedPlanchaProfileId] = useState<string>("")
+  const [selectedTintaProfileId, setSelectedTintaProfileId] = useState<string>("")
   const [selectedPaperId, setSelectedPaperId] = useState<string>("")
   const [selectedFinishId, setSelectedFinishId] = useState<string>("")
 
@@ -260,6 +270,14 @@ export function LitografiaCalculator() {
   const [newFlyerTierKey, setNewFlyerTierKey] = useState<string>("")
 
   const activeProfiles = useMemo(() => profiles.filter((p) => p.activo), [profiles])
+  const activePlanchaProfiles = useMemo(() => {
+    const filtered = activeProfiles.filter((p) => (p.costoPlanchaPorColor ?? 0) > 0)
+    return filtered.length ? filtered : activeProfiles
+  }, [activeProfiles])
+  const activeTintaProfiles = useMemo(() => {
+    const filtered = activeProfiles.filter((p) => (p.costoTintaPorColor ?? 0) > 0)
+    return filtered.length ? filtered : activeProfiles
+  }, [activeProfiles])
   const activePapers = useMemo(() => papers.filter((p) => p.activo), [papers])
   const activeFinishes = useMemo(() => finishes.filter((f) => f.activo), [finishes])
   const activeSizes = useMemo(() => sizes.filter((s) => s.activo), [sizes])
@@ -317,9 +335,13 @@ export function LitografiaCalculator() {
     return Array.from(set).sort((a, b) => a - b)
   }, [activePapers, selectedPaperTipo, selectedPaperId])
 
-  const selectedProfile = useMemo(() => {
-    return profiles.find((p) => p.id === selectedProfileId) || null
-  }, [profiles, selectedProfileId])
+  const selectedPlanchaProfile = useMemo(() => {
+    return profiles.find((p) => p.id === selectedPlanchaProfileId) || null
+  }, [profiles, selectedPlanchaProfileId])
+
+  const selectedTintaProfile = useMemo(() => {
+    return profiles.find((p) => p.id === selectedTintaProfileId) || null
+  }, [profiles, selectedTintaProfileId])
 
   const selectedPaper = useMemo(() => {
     return papers.find((p) => p.id === selectedPaperId) || null
@@ -735,10 +757,16 @@ export function LitografiaCalculator() {
   }, [newFlyerTierKey])
 
   useEffect(() => {
-    if (!selectedProfileId && activeProfiles.length) {
-      setSelectedProfileId(activeProfiles[0]!.id)
+    if (!selectedPlanchaProfileId && activePlanchaProfiles.length) {
+      setSelectedPlanchaProfileId(activePlanchaProfiles[0]!.id)
     }
-  }, [activeProfiles, selectedProfileId])
+  }, [activePlanchaProfiles, selectedPlanchaProfileId])
+
+  useEffect(() => {
+    if (!selectedTintaProfileId && activeTintaProfiles.length) {
+      setSelectedTintaProfileId(activeTintaProfiles[0]!.id)
+    }
+  }, [activeTintaProfiles, selectedTintaProfileId])
 
   useEffect(() => {
     if (!selectedPaperId && activePapers.length) {
@@ -791,11 +819,16 @@ export function LitografiaCalculator() {
   }, [activePapers, newFlyerPaperId])
 
   useEffect(() => {
-    const profile = profiles.find((p) => p.id === selectedProfileId)
+    const profile = profiles.find((p) => p.id === selectedPlanchaProfileId)
     if (!profile) return
     setCostoPlanchaPorColor(String(profile.costoPlanchaPorColor ?? 0))
+  }, [profiles, selectedPlanchaProfileId])
+
+  useEffect(() => {
+    const profile = profiles.find((p) => p.id === selectedTintaProfileId)
+    if (!profile) return
     setCostoTintaPorColor(String(profile.costoTintaPorColor ?? 0))
-  }, [profiles, selectedProfileId])
+  }, [profiles, selectedTintaProfileId])
 
   useEffect(() => {
     const paper = papers.find((p) => p.id === selectedPaperId)
@@ -812,7 +845,7 @@ export function LitografiaCalculator() {
     else setPapelTipo("otro")
   }, [papers, selectedPaperId])
 
-  const createProfile = async () => {
+  const createProfile = async (mode: "plancha" | "tinta" | "ambos" = "ambos") => {
     setConfigError(null)
     try {
       const res = await fetch("/api/litografia/perfiles", {
@@ -820,8 +853,8 @@ export function LitografiaCalculator() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           nombre: newProfileNombre,
-          costoPlanchaPorColor: parseFloat(newProfilePlancha) || 0,
-          costoTintaPorColor: parseFloat(newProfileTinta) || 0,
+          costoPlanchaPorColor: mode === "tinta" ? 0 : parseFloat(newProfilePlancha) || 0,
+          costoTintaPorColor: mode === "plancha" ? 0 : parseFloat(newProfileTinta) || 0,
           activo: true,
         }),
       })
@@ -904,7 +937,8 @@ export function LitografiaCalculator() {
       const res = await fetch(`/api/litografia/perfiles/${id}`, { method: "DELETE" })
       const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
       if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, "No se pudo eliminar"))
-      if (selectedProfileId === id) setSelectedProfileId("")
+      if (selectedPlanchaProfileId === id) setSelectedPlanchaProfileId("")
+      if (selectedTintaProfileId === id) setSelectedTintaProfileId("")
       await fetchProfiles()
     } catch (e) {
       setConfigError(e instanceof Error ? e.message : "No se pudo eliminar")
@@ -1156,222 +1190,374 @@ export function LitografiaCalculator() {
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Planchas y tintas</CardTitle>
-              <CardDescription>Costos de plancha/tinta por color.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
-                <div className="md:col-span-1">
-                  <Label>Nombre</Label>
-                  <Input className={INPUT_COMPACT} value={newProfileNombre} onChange={(e) => setNewProfileNombre(e.target.value)} placeholder="Ej: Offset 70×100" />
-                </div>
-                <div>
-                  <Label>Plancha/Color</Label>
-                  <Input className={INPUT_COMPACT} type="number" step="1" value={newProfilePlancha} onChange={(e) => setNewProfilePlancha(e.target.value)} />
-                </div>
-                <div>
-                  <Label>Tinta/Color</Label>
-                  <Input className={INPUT_COMPACT} type="number" step="1" value={newProfileTinta} onChange={(e) => setNewProfileTinta(e.target.value)} />
-                </div>
-                <div className="md:col-span-3">
-                  <Button type="button" onClick={createProfile} disabled={!newProfileNombre.trim()}>
-                    Agregar planchas y tintas
-                  </Button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {profilesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                {profiles.length === 0 && !profilesLoading ? <p className="text-sm text-muted-foreground">No hay registros de planchas/tintas.</p> : null}
-
-                {pagedProfiles.map((p) => (
-                  <div key={p.id} className="rounded-md border p-3 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{p.nombre}</p>
-                        <p className="text-xs text-muted-foreground">Plancha/Color: {p.costoPlanchaPorColor} • Tinta/Color: {p.costoTintaPorColor}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button type="button" variant={p.activo ? "outline" : "default"} onClick={() => patchProfile(p.id, { activo: !p.activo })}>
-                          {p.activo ? "Desactivar" : "Activar"}
-                        </Button>
-                        <Button type="button" variant="ghost" className="text-red-600" onClick={() => deleteProfile(p.id)}>
-                          Eliminar
-                        </Button>
-                      </div>
-                    </div>
-
-                    {(() => {
-                      const draft = profileEdits[p.id]
-                      const draftNombre = draft?.nombre ?? p.nombre
-                      const draftPlancha = draft?.plancha ?? String(p.costoPlanchaPorColor)
-                      const draftTinta = draft?.tinta ?? String(p.costoTintaPorColor)
-
-                      const parsedPlancha = parseFloat(draftPlancha)
-                      const parsedTinta = parseFloat(draftTinta)
-
-                      const hasDraft = Boolean(draft)
-                      const isNombreDirty = draft?.nombre !== undefined && draftNombre.trim() !== p.nombre
-                      const isPlanchaDirty =
-                        draft?.plancha !== undefined &&
-                        Number.isFinite(parsedPlancha) &&
-                        parsedPlancha >= 0 &&
-                        parsedPlancha !== p.costoPlanchaPorColor
-                      const isTintaDirty =
-                        draft?.tinta !== undefined &&
-                        Number.isFinite(parsedTinta) &&
-                        parsedTinta >= 0 &&
-                        parsedTinta !== p.costoTintaPorColor
-
-                      const canSave =
-                        (isNombreDirty || isPlanchaDirty || isTintaDirty) &&
-                        (!draftPlancha.trim() || (Number.isFinite(parsedPlancha) && parsedPlancha >= 0)) &&
-                        (!draftTinta.trim() || (Number.isFinite(parsedTinta) && parsedTinta >= 0))
-
-                      return (
-                        <>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
-                            <div className="md:col-span-1">
-                              <Label className="text-xs">Nombre</Label>
-                              <Input
-                                className={INPUT_COMPACT}
-                                value={draftNombre}
-                                onChange={(e) => {
-                                  const v = e.target.value
-                                  setProfileEdits((prev) => ({
-                                    ...prev,
-                                    [p.id]: {
-                                      nombre: v,
-                                      plancha: prev[p.id]?.plancha ?? String(p.costoPlanchaPorColor),
-                                      tinta: prev[p.id]?.tinta ?? String(p.costoTintaPorColor),
-                                    },
-                                  }))
-                                }}
-                              />
-                            </div>
-                            <div>
-                              <Label className="text-xs">Plancha/Color</Label>
-                              <Input
-                                className={INPUT_COMPACT}
-                                type="number"
-                                step="1"
-                                min="0"
-                                value={draftPlancha}
-                                onChange={(e) => {
-                                  const v = e.target.value
-                                  setProfileEdits((prev) => ({
-                                    ...prev,
-                                    [p.id]: {
-                                      nombre: prev[p.id]?.nombre ?? p.nombre,
-                                      plancha: v,
-                                      tinta: prev[p.id]?.tinta ?? String(p.costoTintaPorColor),
-                                    },
-                                  }))
-                                }}
-                              />
-                            </div>
-                            <div>
-                              <Label className="text-xs">Tinta/Color</Label>
-                              <Input
-                                className={INPUT_COMPACT}
-                                type="number"
-                                step="1"
-                                min="0"
-                                value={draftTinta}
-                                onChange={(e) => {
-                                  const v = e.target.value
-                                  setProfileEdits((prev) => ({
-                                    ...prev,
-                                    [p.id]: {
-                                      nombre: prev[p.id]?.nombre ?? p.nombre,
-                                      plancha: prev[p.id]?.plancha ?? String(p.costoPlanchaPorColor),
-                                      tinta: v,
-                                    },
-                                  }))
-                                }}
-                              />
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                setProfileEdits((prev) => {
-                                  const next = { ...prev }
-                                  delete next[p.id]
-                                  return next
-                                })
-                              }
-                              disabled={!hasDraft}
-                            >
-                              Cancelar
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => {
-                                const patch: Partial<PrintProfile> = {}
-                                const nombre = draftNombre.trim()
-                                if (nombre && nombre !== p.nombre) patch.nombre = nombre
-                                if (Number.isFinite(parsedPlancha) && parsedPlancha >= 0 && parsedPlancha !== p.costoPlanchaPorColor) patch.costoPlanchaPorColor = parsedPlancha
-                                if (Number.isFinite(parsedTinta) && parsedTinta >= 0 && parsedTinta !== p.costoTintaPorColor) patch.costoTintaPorColor = parsedTinta
-                                if (Object.keys(patch).length === 0) return
-                                void patchProfile(p.id, patch)
-                                setProfileEdits((prev) => {
-                                  const next = { ...prev }
-                                  delete next[p.id]
-                                  return next
-                                })
-                              }}
-                              disabled={!canSave}
-                            >
-                              Guardar
-                            </Button>
-                          </div>
-                        </>
-                      )
-                    })()}
+            <details>
+              <summary className="cursor-pointer">
+                <CardHeader>
+                  <CardTitle>Planchas</CardTitle>
+                  <CardDescription>Costo de plancha por color.</CardDescription>
+                </CardHeader>
+              </summary>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                  <div className="md:col-span-2">
+                    <Label>Nombre</Label>
+                    <Input className={INPUT_COMPACT} value={newProfileNombre} onChange={(e) => setNewProfileNombre(e.target.value)} placeholder="Ej: Offset 70×100" />
                   </div>
-                ))}
+                  <div>
+                    <Label>Plancha/Color</Label>
+                    <MoneyInput className={INPUT_COMPACT} type="number" step="1" value={newProfilePlancha} onChange={(e) => setNewProfilePlancha(e.target.value)} />
+                  </div>
+                  <div className="md:col-span-3">
+                    <Button type="button" onClick={() => void createProfile("plancha")} disabled={!newProfileNombre.trim()}>
+                      Agregar plancha
+                    </Button>
+                  </div>
+                </div>
 
-                {profiles.length > 0 ? (
-                  <div className="flex items-center justify-between gap-2 pt-1">
-                    <p className="text-xs text-muted-foreground">
-                      Mostrando {profilesPage * PAGE_SIZE + 1}-{Math.min(profiles.length, (profilesPage + 1) * PAGE_SIZE)} de {profiles.length}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <Button type="button" variant="outline" size="sm" onClick={() => setProfilesPage((p) => Math.max(0, p - 1))} disabled={profilesPage <= 0}>
-                        Anterior
-                      </Button>
-                      <p className="text-xs">
-                        Página {profilesPage + 1} / {Math.max(1, Math.ceil(profiles.length / PAGE_SIZE))}
+                <div className="space-y-2">
+                  {profilesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
+                  {profiles.length === 0 && !profilesLoading ? <p className="text-sm text-muted-foreground">No hay registros de planchas.</p> : null}
+
+                  {pagedProfiles.map((p) => (
+                    <div key={p.id} className="rounded-md border p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{p.nombre}</p>
+                          <p className="text-xs text-muted-foreground">Plancha/Color: {formatCurrency(p.costoPlanchaPorColor)}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button type="button" variant={p.activo ? "outline" : "default"} onClick={() => patchProfile(p.id, { activo: !p.activo })}>
+                            {p.activo ? "Desactivar" : "Activar"}
+                          </Button>
+                          <Button type="button" variant="ghost" className="text-red-600" onClick={() => deleteProfile(p.id)}>
+                            Eliminar
+                          </Button>
+                        </div>
+                      </div>
+
+                      {(() => {
+                        const draft = profileEdits[p.id]
+                        const draftNombre = draft?.nombre ?? p.nombre
+                        const draftPlancha = draft?.plancha ?? String(p.costoPlanchaPorColor)
+                        const parsedPlancha = parseFloat(draftPlancha)
+
+                        const hasDraft = Boolean(draft)
+                        const isNombreDirty = draft?.nombre !== undefined && draftNombre.trim() !== p.nombre
+                        const isPlanchaDirty =
+                          draft?.plancha !== undefined &&
+                          Number.isFinite(parsedPlancha) &&
+                          parsedPlancha >= 0 &&
+                          parsedPlancha !== p.costoPlanchaPorColor
+
+                        const canSave =
+                          (isNombreDirty || isPlanchaDirty) &&
+                          (!draftPlancha.trim() || (Number.isFinite(parsedPlancha) && parsedPlancha >= 0))
+
+                        return (
+                          <>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                              <div className="md:col-span-2">
+                                <Label className="text-xs">Nombre</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  value={draftNombre}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setProfileEdits((prev) => ({
+                                      ...prev,
+                                      [p.id]: {
+                                        nombre: v,
+                                        plancha: prev[p.id]?.plancha ?? String(p.costoPlanchaPorColor),
+                                        tinta: prev[p.id]?.tinta ?? String(p.costoTintaPorColor),
+                                      },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Plancha/Color</Label>
+                                <MoneyInput
+                                  className={INPUT_COMPACT}
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  value={draftPlancha}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setProfileEdits((prev) => ({
+                                      ...prev,
+                                      [p.id]: {
+                                        nombre: prev[p.id]?.nombre ?? p.nombre,
+                                        plancha: v,
+                                        tinta: prev[p.id]?.tinta ?? String(p.costoTintaPorColor),
+                                      },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setProfileEdits((prev) => {
+                                    const next = { ...prev }
+                                    delete next[p.id]
+                                    return next
+                                  })
+                                }
+                                disabled={!hasDraft}
+                              >
+                                Cancelar
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => {
+                                  const patch: Partial<PrintProfile> = {}
+                                  const nombre = draftNombre.trim()
+                                  if (nombre && nombre !== p.nombre) patch.nombre = nombre
+                                  if (Number.isFinite(parsedPlancha) && parsedPlancha >= 0 && parsedPlancha !== p.costoPlanchaPorColor) patch.costoPlanchaPorColor = parsedPlancha
+                                  if (Object.keys(patch).length === 0) return
+                                  void patchProfile(p.id, patch)
+                                  setProfileEdits((prev) => {
+                                    const next = { ...prev }
+                                    delete next[p.id]
+                                    return next
+                                  })
+                                }}
+                                disabled={!canSave}
+                              >
+                                Guardar
+                              </Button>
+                            </div>
+                          </>
+                        )
+                      })()}
+                    </div>
+                  ))}
+
+                  {profiles.length > 0 ? (
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <p className="text-xs text-muted-foreground">
+                        Mostrando {profilesPage * PAGE_SIZE + 1}-{Math.min(profiles.length, (profilesPage + 1) * PAGE_SIZE)} de {profiles.length}
                       </p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setProfilesPage((p) => Math.min(Math.ceil(profiles.length / PAGE_SIZE) - 1, p + 1))}
-                        disabled={profilesPage >= Math.ceil(profiles.length / PAGE_SIZE) - 1}
-                      >
-                        Siguiente
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setProfilesPage((p) => Math.max(0, p - 1))} disabled={profilesPage <= 0}>
+                          Anterior
+                        </Button>
+                        <p className="text-xs">
+                          Página {profilesPage + 1} / {Math.max(1, Math.ceil(profiles.length / PAGE_SIZE))}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setProfilesPage((p) => Math.min(Math.ceil(profiles.length / PAGE_SIZE) - 1, p + 1))}
+                          disabled={profilesPage >= Math.ceil(profiles.length / PAGE_SIZE) - 1}
+                        >
+                          Siguiente
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                ) : null}
-              </div>
-            </CardContent>
+                  ) : null}
+                </div>
+              </CardContent>
+            </details>
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Papeles</CardTitle>
-              <CardDescription>Tipo, gramaje, pliego base y costo por pliego.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+            <details>
+              <summary className="cursor-pointer">
+                <CardHeader>
+                  <CardTitle>Tintas</CardTitle>
+                  <CardDescription>Costo de tinta por color.</CardDescription>
+                </CardHeader>
+              </summary>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                  <div className="md:col-span-2">
+                    <Label>Nombre</Label>
+                    <Input className={INPUT_COMPACT} value={newProfileNombre} onChange={(e) => setNewProfileNombre(e.target.value)} placeholder="Ej: Offset 70×100" />
+                  </div>
+                  <div>
+                    <Label>Tinta/Color</Label>
+                    <MoneyInput className={INPUT_COMPACT} type="number" step="1" value={newProfileTinta} onChange={(e) => setNewProfileTinta(e.target.value)} />
+                  </div>
+                  <div className="md:col-span-3">
+                    <Button type="button" onClick={() => void createProfile("tinta")} disabled={!newProfileNombre.trim()}>
+                      Agregar tinta
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {profilesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
+                  {profiles.length === 0 && !profilesLoading ? <p className="text-sm text-muted-foreground">No hay registros de tintas.</p> : null}
+
+                  {pagedProfiles.map((p) => (
+                    <div key={p.id} className="rounded-md border p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{p.nombre}</p>
+                          <p className="text-xs text-muted-foreground">Tinta/Color: {formatCurrency(p.costoTintaPorColor)}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button type="button" variant={p.activo ? "outline" : "default"} onClick={() => patchProfile(p.id, { activo: !p.activo })}>
+                            {p.activo ? "Desactivar" : "Activar"}
+                          </Button>
+                          <Button type="button" variant="ghost" className="text-red-600" onClick={() => deleteProfile(p.id)}>
+                            Eliminar
+                          </Button>
+                        </div>
+                      </div>
+
+                      {(() => {
+                        const draft = profileEdits[p.id]
+                        const draftNombre = draft?.nombre ?? p.nombre
+                        const draftTinta = draft?.tinta ?? String(p.costoTintaPorColor)
+                        const parsedTinta = parseFloat(draftTinta)
+
+                        const hasDraft = Boolean(draft)
+                        const isNombreDirty = draft?.nombre !== undefined && draftNombre.trim() !== p.nombre
+                        const isTintaDirty =
+                          draft?.tinta !== undefined &&
+                          Number.isFinite(parsedTinta) &&
+                          parsedTinta >= 0 &&
+                          parsedTinta !== p.costoTintaPorColor
+
+                        const canSave =
+                          (isNombreDirty || isTintaDirty) &&
+                          (!draftTinta.trim() || (Number.isFinite(parsedTinta) && parsedTinta >= 0))
+
+                        return (
+                          <>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                              <div className="md:col-span-2">
+                                <Label className="text-xs">Nombre</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  value={draftNombre}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setProfileEdits((prev) => ({
+                                      ...prev,
+                                      [p.id]: {
+                                        nombre: v,
+                                        plancha: prev[p.id]?.plancha ?? String(p.costoPlanchaPorColor),
+                                        tinta: prev[p.id]?.tinta ?? String(p.costoTintaPorColor),
+                                      },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Tinta/Color</Label>
+                                <MoneyInput
+                                  className={INPUT_COMPACT}
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  value={draftTinta}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setProfileEdits((prev) => ({
+                                      ...prev,
+                                      [p.id]: {
+                                        nombre: prev[p.id]?.nombre ?? p.nombre,
+                                        plancha: prev[p.id]?.plancha ?? String(p.costoPlanchaPorColor),
+                                        tinta: v,
+                                      },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setProfileEdits((prev) => {
+                                    const next = { ...prev }
+                                    delete next[p.id]
+                                    return next
+                                  })
+                                }
+                                disabled={!hasDraft}
+                              >
+                                Cancelar
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => {
+                                  const patch: Partial<PrintProfile> = {}
+                                  const nombre = draftNombre.trim()
+                                  if (nombre && nombre !== p.nombre) patch.nombre = nombre
+                                  if (Number.isFinite(parsedTinta) && parsedTinta >= 0 && parsedTinta !== p.costoTintaPorColor) patch.costoTintaPorColor = parsedTinta
+                                  if (Object.keys(patch).length === 0) return
+                                  void patchProfile(p.id, patch)
+                                  setProfileEdits((prev) => {
+                                    const next = { ...prev }
+                                    delete next[p.id]
+                                    return next
+                                  })
+                                }}
+                                disabled={!canSave}
+                              >
+                                Guardar
+                              </Button>
+                            </div>
+                          </>
+                        )
+                      })()}
+                    </div>
+                  ))}
+
+                  {profiles.length > 0 ? (
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <p className="text-xs text-muted-foreground">
+                        Mostrando {profilesPage * PAGE_SIZE + 1}-{Math.min(profiles.length, (profilesPage + 1) * PAGE_SIZE)} de {profiles.length}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setProfilesPage((p) => Math.max(0, p - 1))} disabled={profilesPage <= 0}>
+                          Anterior
+                        </Button>
+                        <p className="text-xs">
+                          Página {profilesPage + 1} / {Math.max(1, Math.ceil(profiles.length / PAGE_SIZE))}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setProfilesPage((p) => Math.min(Math.ceil(profiles.length / PAGE_SIZE) - 1, p + 1))}
+                          disabled={profilesPage >= Math.ceil(profiles.length / PAGE_SIZE) - 1}
+                        >
+                          Siguiente
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </CardContent>
+            </details>
+          </Card>
+
+          <Card>
+            <details>
+              <summary className="cursor-pointer">
+                <CardHeader>
+                  <CardTitle>Papeles</CardTitle>
+                  <CardDescription>Tipo, gramaje, pliego base y costo por pliego.</CardDescription>
+                </CardHeader>
+              </summary>
+              <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                 <div className="md:col-span-3">
                   <Label>Nombre</Label>
@@ -1387,7 +1573,7 @@ export function LitografiaCalculator() {
                 </div>
                 <div>
                   <Label>Costo/pliego</Label>
-                  <Input className={INPUT_COMPACT} type="number" step="1" value={newPaperCostoPliego} onChange={(e) => setNewPaperCostoPliego(e.target.value)} />
+                  <MoneyInput className={INPUT_COMPACT} type="number" step="1" value={newPaperCostoPliego} onChange={(e) => setNewPaperCostoPliego(e.target.value)} />
                 </div>
                 <div>
                   <Label>Pliego W (cm)</Label>
@@ -1543,7 +1729,7 @@ export function LitografiaCalculator() {
                             </div>
                             <div>
                               <Label className="text-xs">Costo/pliego</Label>
-                              <Input
+                              <MoneyInput
                                 className={INPUT_COMPACT}
                                 type="number"
                                 step="1"
@@ -1695,17 +1881,19 @@ export function LitografiaCalculator() {
                   </div>
                 ) : null}
               </div>
-            </CardContent>
+              </CardContent>
+            </details>
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Tamaños de impresión</CardTitle>
-              <CardDescription>
-                Define los formatos disponibles (código, nombre y dimensiones).
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+            <details>
+              <summary className="cursor-pointer">
+                <CardHeader>
+                  <CardTitle>Tamaños de impresión</CardTitle>
+                  <CardDescription>Define los formatos disponibles (código, nombre y dimensiones).</CardDescription>
+                </CardHeader>
+              </summary>
+              <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
                 <div className="md:col-span-2">
                   <Label>Nombre</Label>
@@ -1936,15 +2124,19 @@ export function LitografiaCalculator() {
                   </div>
                 ) : null}
               </div>
-            </CardContent>
+              </CardContent>
+            </details>
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Acabados</CardTitle>
-              <CardDescription>Lista de acabados disponibles para el tarifario y la cotización.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+            <details>
+              <summary className="cursor-pointer">
+                <CardHeader>
+                  <CardTitle>Acabados</CardTitle>
+                  <CardDescription>Lista de acabados disponibles para el tarifario y la cotización.</CardDescription>
+                </CardHeader>
+              </summary>
+              <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                 <div className="md:col-span-1">
                   <Label>Nombre</Label>
@@ -1960,7 +2152,7 @@ export function LitografiaCalculator() {
                 </div>
                 <div className="md:col-span-1">
                   <Label>Valor</Label>
-                  <Input
+                  <MoneyInput
                     className={INPUT_COMPACT}
                     type="number"
                     step="1"
@@ -2033,7 +2225,7 @@ export function LitografiaCalculator() {
                       </div>
                       <div>
                         <Label className="text-xs">Valor</Label>
-                        <Input
+                        <MoneyInput
                           className={INPUT_COMPACT}
                           type="number"
                           step="1"
@@ -2114,17 +2306,21 @@ export function LitografiaCalculator() {
                   </div>
                 ) : null}
               </div>
-            </CardContent>
+              </CardContent>
+            </details>
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Rangos (Flyers)</CardTitle>
-              <CardDescription>
-                Un mismo ítem agrupa varios rangos de cantidad (ej: 1–500, 501–1000) para el mismo Papel + Tamaño + Tintas + Acabado.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+            <details>
+              <summary className="cursor-pointer">
+                <CardHeader>
+                  <CardTitle>Rangos (Flyers)</CardTitle>
+                  <CardDescription>
+                    Un mismo ítem agrupa varios rangos de cantidad (ej: 1–500, 501–1000) para el mismo Papel + Tamaño + Tintas + Acabado.
+                  </CardDescription>
+                </CardHeader>
+              </summary>
+              <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-8 gap-2 items-end">
                 <div className="md:col-span-2">
                   <Label>Filtro Tamaño</Label>
@@ -2269,7 +2465,7 @@ export function LitografiaCalculator() {
                 </div>
                 <div>
                   <Label>Precio total</Label>
-                  <Input className={INPUT_COMPACT} type="number" step="1" value={newFlyerPrecioTotal} onChange={(e) => setNewFlyerPrecioTotal(e.target.value)} />
+                  <MoneyInput className={INPUT_COMPACT} type="number" step="1" value={newFlyerPrecioTotal} onChange={(e) => setNewFlyerPrecioTotal(e.target.value)} />
                 </div>
                 <div className="md:col-span-6">
                   <Button
@@ -2598,7 +2794,7 @@ export function LitografiaCalculator() {
                                   </div>
                                   <div>
                                     <Label className="text-xs">Precio total</Label>
-                                    <Input
+                                    <MoneyInput
                                       className={INPUT_COMPACT}
                                       type="number"
                                       step="1"
@@ -2703,7 +2899,8 @@ export function LitografiaCalculator() {
                   </div>
                 ) : null}
               </div>
-            </CardContent>
+              </CardContent>
+            </details>
           </Card>
         </div>
       ) : (
@@ -2749,10 +2946,15 @@ export function LitografiaCalculator() {
           </div>
 
           <div>
-            <Label>Planchas y tintas</Label>
-            <select className={SELECT_COMPACT} value={selectedProfileId} onChange={(e) => setSelectedProfileId(e.target.value)} disabled={!activeProfiles.length}>
-              {activeProfiles.length ? (
-                activeProfiles.map((p) => (
+            <Label>Planchas (costo)</Label>
+            <select
+              className={SELECT_COMPACT}
+              value={selectedPlanchaProfileId}
+              onChange={(e) => setSelectedPlanchaProfileId(e.target.value)}
+              disabled={!activePlanchaProfiles.length}
+            >
+              {activePlanchaProfiles.length ? (
+                activePlanchaProfiles.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.nombre}
                   </option>
@@ -2762,21 +2964,43 @@ export function LitografiaCalculator() {
               )}
             </select>
             <p className="mt-1 text-xs text-muted-foreground">
-              {selectedProfile ? (
-                <>Plancha/Color: {formatCurrency(selectedProfile.costoPlanchaPorColor)} • Tinta/Color: {formatCurrency(selectedProfile.costoTintaPorColor)}</>
+              {selectedPlanchaProfile ? (
+                <>
+                  <span className="block">Plancha/Color: {formatCurrency(selectedPlanchaProfile.costoPlanchaPorColor)}</span>
+                </>
               ) : (
-                <>Selecciona planchas y tintas.</>
+                <>Selecciona planchas.</>
               )}
             </p>
           </div>
 
           <div>
-            <Label>Tintas</Label>
-            <select className={SELECT_COMPACT} value={colores} onChange={(e) => setColores(e.target.value as "1" | "2" | "4")}>
-              <option value="4">Policromía (4)</option>
-              <option value="2">2 tintas</option>
-              <option value="1">1 tinta</option>
+            <Label>Tinta (costo)</Label>
+            <select
+              className={SELECT_COMPACT}
+              value={selectedTintaProfileId}
+              onChange={(e) => setSelectedTintaProfileId(e.target.value)}
+              disabled={!activeTintaProfiles.length}
+            >
+              {activeTintaProfiles.length ? (
+                activeTintaProfiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nombre}
+                  </option>
+                ))
+              ) : (
+                <option value="">Sin perfiles</option>
+              )}
             </select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {selectedTintaProfile ? (
+                <>
+                  <span className="block">Tinta/Color: {formatCurrency(selectedTintaProfile.costoTintaPorColor)}</span>
+                </>
+              ) : (
+                <>Selecciona tintas.</>
+              )}
+            </p>
           </div>
 
           <div>

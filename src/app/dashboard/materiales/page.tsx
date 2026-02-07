@@ -171,6 +171,15 @@ export default function ProductosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, tipoFiltro, unidadFiltro])
 
+  const exportExcel = () => {
+    const params = new URLSearchParams()
+    if (search) params.set('search', search)
+    if (tipoFiltro) params.set('tipo', tipoFiltro)
+    if (unidadFiltro) params.set('unidadMedida', unidadFiltro)
+    const url = params.toString() ? `/api/materiales/export?${params.toString()}` : '/api/materiales/export'
+    window.location.href = url
+  }
+
   useEffect(() => {
     if (!isModalOpen) return
 
@@ -518,6 +527,9 @@ export default function ProductosPage() {
           <span data-tour="materiales-import">
             <ImportDialog module="materiales" title="Importar productos" />
           </span>
+          <Button variant="outline" onClick={exportExcel}>
+            Exportar Excel
+          </Button>
           <Button onClick={() => { resetForm(); setIsModalOpen(true) }} data-tour="materiales-new">
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
