@@ -685,55 +685,6 @@ export default function CotizadorPage() {
     alert("Este item no tiene formato editable disponible (falta metadata).")
   }
 
-  const abrirEditarItem = (item: ItemCotizacion) => {
-    setEditingItemId(item.id)
-    setEditItemForm({
-      descripcion: String(item.descripcion || ""),
-      cantidad: String(item.cantidad ?? 1),
-      precioUnitario: String(item.precioUnitario ?? 0),
-      observaciones: String(item.observaciones || ""),
-    })
-    setEditItemOpen(true)
-  }
-
-  const guardarEdicionItem = () => {
-    if (!editingItemId) return
-
-    const cantidad = Number.parseFloat(String(editItemForm.cantidad))
-    const precioUnitario = Number.parseFloat(String(editItemForm.precioUnitario))
-
-    if (!Number.isFinite(cantidad) || cantidad <= 0) {
-      alert("La cantidad debe ser mayor a 0")
-      return
-    }
-
-    if (!Number.isFinite(precioUnitario) || precioUnitario < 0) {
-      alert("El precio unitario no puede ser negativo")
-      return
-    }
-
-    const subtotal = cantidad * precioUnitario
-    const descripcion = String(editItemForm.descripcion || "").trim()
-
-    setItems((prev) =>
-      prev.map((it) =>
-        it.id === editingItemId
-          ? {
-              ...it,
-              descripcion: descripcion || it.descripcion,
-              cantidad,
-              precioUnitario,
-              subtotal,
-              observaciones: String(editItemForm.observaciones || ""),
-            }
-          : it
-      )
-    )
-
-    setEditItemOpen(false)
-    setEditingItemId(null)
-  }
-
   const resetItemForm = () => {
     setItemForm({
       descripcion: "",
