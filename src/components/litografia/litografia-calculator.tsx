@@ -132,7 +132,7 @@ function getSizeDisplayName(sizes: Array<{ key: string; nombre: string }>, key: 
 
 export function LitografiaCalculator() {
   const PAGE_SIZE = 5
-  const [tab, setTab] = useState<"cotizar" | "config">("cotizar")
+  const [tab] = useState<"config">("config")
 
   const [meLoaded, setMeLoaded] = useState(false)
   const [canConfigWrite, setCanConfigWrite] = useState(false)
@@ -584,11 +584,7 @@ export function LitografiaCalculator() {
     void loadMe()
   }, [])
 
-  useEffect(() => {
-    if (meLoaded && !canConfigWrite && tab === "config") {
-      setTab("cotizar")
-    }
-  }, [meLoaded, canConfigWrite, tab])
+  // En Litografía se mantiene solo Configuración (sin cotizador de ejemplo).
 
   useEffect(() => {
     void fetchProfiles()
@@ -731,22 +727,8 @@ export function LitografiaCalculator() {
   }, [flyerRates, formatoKey, tintasFromColores, selectedPaperId, selectedFinishId])
 
   useEffect(() => {
-    if (tab !== "cotizar") return
-    if (pricingSource !== "tarifario") return
-
-    const qty = Math.trunc(parseFloat(cantidad) || 0)
-    if (qty <= 0) {
-      setSelectedRateId("")
-      setMatchedRate(null)
-      setMatchedRateLoading(false)
-      return
-    }
-
-    const found = availableTarifas.find((r) => r.tirajeMin <= qty && r.tirajeMax >= qty) || null
-    setMatchedRate(found)
-    setSelectedRateId(found?.id || "")
-    setMatchedRateLoading(false)
-  }, [tab, pricingSource, cantidad, availableTarifas])
+    // Solo Configuración: no se ejecuta lógica de cotización.
+  }, [])
 
   useEffect(() => {
     if (!newFlyerTierKey) return
@@ -1166,14 +1148,9 @@ export function LitografiaCalculator() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Button variant={tab === "cotizar" ? "default" : "outline"} onClick={() => setTab("cotizar")}>
-          Cotizar
+        <Button variant="default" disabled>
+          Config
         </Button>
-        {(!meLoaded || canConfigWrite) && (
-          <Button variant={tab === "config" ? "default" : "outline"} onClick={() => setTab("config")}>
-            Config
-          </Button>
-        )}
       </div>
 
       {configError ? <p className="text-sm text-red-600">{configError}</p> : null}

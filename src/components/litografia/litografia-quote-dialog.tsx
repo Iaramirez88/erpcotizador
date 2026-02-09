@@ -53,6 +53,7 @@ type FinishOption = {
   id: string
   key: string
   nombre: string
+  valor: number
   activo: boolean
 }
 
@@ -138,6 +139,7 @@ export type LitografiaMeta = {
   selectedTintaProfileId: string
   selectedPaperId: string
   selectedFinishId: string
+  selectedFinishIds?: string[]
   selectedPaperTipo: string
   selectedPaperGramaje: string
   selectedTransporteKey: TransporteKey | ""
@@ -193,7 +195,7 @@ export function LitografiaQuoteDialog(props: {
   const [selectedPlanchaProfileId, setSelectedPlanchaProfileId] = useState<string>("")
   const [selectedTintaProfileId, setSelectedTintaProfileId] = useState<string>("")
   const [selectedPaperId, setSelectedPaperId] = useState<string>("")
-  const [selectedFinishId, setSelectedFinishId] = useState<string>("")
+  const [selectedFinishIds, setSelectedFinishIds] = useState<string[]>([""])
 
   const [selectedPaperTipo, setSelectedPaperTipo] = useState<string>("")
   const [selectedPaperGramaje, setSelectedPaperGramaje] = useState<string>("")
@@ -214,11 +216,38 @@ export function LitografiaQuoteDialog(props: {
 
   const [customFields, setCustomFields] = useState<CustomField[]>([])
 
+  const finishIdsNormalized = useMemo(() => {
+    const ids = selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean)
+    return Array.from(new Set(ids))
+  }, [selectedFinishIds])
+
+  const addFinishRow = () => {
+    setSelectedFinishIds((prev) => [...prev, ""])
+  }
+
+  const removeFinishRow = (index: number) => {
+    setSelectedFinishIds((prev) => {
+      const next = prev.filter((_, i) => i !== index)
+      return next.length ? next : [""]
+    })
+  }
+
+  const updateFinishRow = (index: number, value: string) => {
+    setSelectedFinishIds((prev) => {
+      const next = [...prev]
+      next[index] = value
+      if (!next.length) return [""]
+      return next
+    })
+  }
+
   const customFieldsTotal = useMemo(() => {
     return customFields.reduce((acc, f) => acc + parseCopNumber(f.value), 0)
   }, [customFields])
 
   const buildMeta = (): LitografiaMeta => {
+    const finishIds = selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean)
+    const primaryFinishId = finishIds[0] ?? ""
     return {
       version: 1,
       titulo,
@@ -239,7 +268,8 @@ export function LitografiaQuoteDialog(props: {
       selectedPlanchaProfileId,
       selectedTintaProfileId,
       selectedPaperId,
-      selectedFinishId,
+      selectedFinishId: primaryFinishId,
+      selectedFinishIds: finishIds,
       selectedPaperTipo,
       selectedPaperGramaje,
       selectedTransporteKey,
@@ -269,7 +299,11 @@ export function LitografiaQuoteDialog(props: {
     setSelectedPlanchaProfileId(meta.selectedPlanchaProfileId ?? "")
     setSelectedTintaProfileId(meta.selectedTintaProfileId ?? "")
     setSelectedPaperId(meta.selectedPaperId ?? "")
-    setSelectedFinishId(meta.selectedFinishId ?? "")
+    const finishIdsRaw = Array.isArray(meta.selectedFinishIds) ? meta.selectedFinishIds : []
+    const fromList = finishIdsRaw.map((x) => String(x || "").trim()).filter(Boolean)
+    const fromLegacy = String(meta.selectedFinishId ?? "").trim()
+    const nextFinishIds = fromList.length ? fromList : (fromLegacy ? [fromLegacy] : [])
+    setSelectedFinishIds(nextFinishIds.length ? nextFinishIds : [""])
     setSelectedPaperTipo(meta.selectedPaperTipo ?? "")
     setSelectedPaperGramaje(meta.selectedPaperGramaje ?? "")
     setSelectedTransporteKey((meta.selectedTransporteKey as TransporteKey | "") ?? "")
@@ -315,31 +349,19 @@ export function LitografiaQuoteDialog(props: {
     return profiles.find((p) => p.id === selectedTintaProfileId) || null
   }, [profiles, selectedTintaProfileId])
 
-  const paperTipoOptions = useMemo(() => {
-    const set = new Set<string>()
-    for (const p of activePapers) set.add(String(p.tipo || "otro").trim() || "otro")
-    return Array.from(set).sort((a, b) => a.localeCompare(b))
-  }, [activePapers])
-
-  const paperGramajeOptions = useMemo(() => {
-    const selected = activePapers.find((p) => p.id === selectedPaperId) || null
-    const tipo = (selectedPaperTipo || "").trim() || (selected?.tipo || "otro")
-    const set = new Set<number>()
-    for (const p of activePapers) {
-      const pt = String(p.tipo || "otro").trim() || "otro"
-      if (pt !== tipo) continue
-      if (typeof p.gramaje === "number" && Number.isFinite(p.gramaje)) set.add(p.gramaje)
-    }
-    return Array.from(set).sort((a, b) => a - b)
-  }, [activePapers, selectedPaperTipo, selectedPaperId])
-
   const selectedPaper = useMemo(() => {
     return papers.find((p) => p.id === selectedPaperId) || null
   }, [papers, selectedPaperId])
 
-  const selectedFinish = useMemo(() => {
-    return finishes.find((f) => f.id === selectedFinishId) || null
-  }, [finishes, selectedFinishId])
+  const selectedFinishes = useMemo(() => {
+    const wanted = new Set(selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean))
+    if (!wanted.size) return [] as FinishOption[]
+    return finishes.filter((f) => wanted.has(f.id))
+  }, [finishes, selectedFinishIds])
+
+  const selectedFinishesCost = useMemo(() => {
+    return selectedFinishes.reduce((acc, f) => acc + (Number(f.valor) || 0), 0)
+  }, [selectedFinishes])
 
   useEffect(() => {
     if (!props.open) return
@@ -374,40 +396,6 @@ export function LitografiaQuoteDialog(props: {
       setSelectedPaperId(activePapers[0]!.id)
     }
   }, [props.open, activePapers, selectedPaperId])
-
-  useEffect(() => {
-    if (!props.open) return
-    if (!selectedPaperTipo && paperTipoOptions.length) {
-      const fromSelected = String(selectedPaper?.tipo || "").trim()
-      setSelectedPaperTipo(fromSelected || paperTipoOptions[0]!)
-    }
-  }, [props.open, selectedPaperTipo, paperTipoOptions, selectedPaper])
-
-  useEffect(() => {
-    if (!props.open) return
-    if (!selectedPaperGramaje && paperGramajeOptions.length) {
-      const fromSelected = selectedPaper?.gramaje != null ? String(selectedPaper.gramaje) : ""
-      setSelectedPaperGramaje(fromSelected || String(paperGramajeOptions[0]!))
-    }
-  }, [props.open, selectedPaperGramaje, paperGramajeOptions, selectedPaper])
-
-  useEffect(() => {
-    if (!props.open) return
-    if (!activePapers.length) return
-    const tipo = (selectedPaperTipo || "").trim() || "otro"
-    const gramajeNum = selectedPaperGramaje.trim() ? parseInt(selectedPaperGramaje, 10) : NaN
-
-    const match = activePapers.find((p) => {
-      const pt = String(p.tipo || "otro").trim() || "otro"
-      if (pt !== tipo) return false
-      if (!Number.isFinite(gramajeNum)) return true
-      return (p.gramaje ?? null) === gramajeNum
-    })
-
-    if (match && match.id !== selectedPaperId) {
-      setSelectedPaperId(match.id)
-    }
-  }, [props.open, activePapers, selectedPaperTipo, selectedPaperGramaje, selectedPaperId])
 
   useEffect(() => {
     if (!props.open) return
@@ -474,7 +462,8 @@ export function LitografiaQuoteDialog(props: {
         url.searchParams.set("tintas", String(tintas))
         url.searchParams.set("cantidad", String(qty))
         if (selectedPaperId) url.searchParams.set("paperRateId", selectedPaperId)
-        if (selectedFinishId.trim()) url.searchParams.set("finishOptionId", selectedFinishId.trim())
+        const finishIds = selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean)
+        if (finishIds.length === 1) url.searchParams.set("finishOptionId", finishIds[0]!)
 
         const res = await fetch(url.toString(), { cache: "no-store", signal: controller.signal })
         const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
@@ -492,7 +481,7 @@ export function LitografiaQuoteDialog(props: {
 
     void run()
     return () => controller.abort()
-  }, [props.open, meLoaded, isAdmin, pricingSource, cantidad, formatoKey, selectedPaperId, selectedFinishId])
+  }, [props.open, meLoaded, isAdmin, pricingSource, cantidad, formatoKey, selectedPaperId, selectedFinishIds])
 
   useEffect(() => {
     const profile = profiles.find((p) => p.id === selectedPlanchaProfileId)
@@ -513,6 +502,9 @@ export function LitografiaQuoteDialog(props: {
     setCostoPliego(String(paper.costoPliego ?? 0))
     setPliegoW(String(paper.pliegoWidthCm ?? 70))
     setPliegoH(String(paper.pliegoHeightCm ?? 100))
+
+    setSelectedPaperTipo(String(paper.tipo || "").trim())
+    setSelectedPaperGramaje(paper.gramaje != null ? String(paper.gramaje) : "")
 
     const t = (paper.tipo || "").toLowerCase()
     if (t.includes("bond")) setPapelTipo("bond")
@@ -570,7 +562,6 @@ export function LitografiaQuoteDialog(props: {
     if (!selectedPreset) return null
 
     // Estimación cuando no hay tarifa exacta. Usa costos del perfil y papel seleccionado.
-    // Nota: finishOption no tiene costo asociado en el modelo actual; se estima en 0.
     const desperdicio = parseFloat(desperdicioPct) || 0
     const planchaProfile = selectedPlanchaProfile
     const tintaProfile = selectedTintaProfile
@@ -592,7 +583,7 @@ export function LitografiaQuoteDialog(props: {
       papelFormatoHeightCm: selectedPreset.heightCm ?? 0,
       costoPliego: paper.costoPliego ?? 0,
       costoCorte: 0,
-      costoAcabados: 0,
+      costoAcabados: selectedFinishesCost,
       costoTransporte: parseFloat(costoTransporte) || 0,
       // Margen 0: se deja como estimación base (se puede ajustar en tarifario).
       margenPct: 0,
@@ -608,6 +599,7 @@ export function LitografiaQuoteDialog(props: {
     selectedPlanchaProfile,
     selectedTintaProfile,
     selectedPaper,
+    selectedFinishesCost,
   ])
 
   const canAdd = useMemo(() => {
@@ -625,7 +617,7 @@ export function LitografiaQuoteDialog(props: {
       const qty = Math.trunc(parseFloat(cantidad) || 0)
       const parts = [base, presetLabel, tintasLabel]
       if (selectedPaper) parts.push(`Papel ${selectedPaper.nombre}${selectedPaper.gramaje ? ` ${selectedPaper.gramaje}g` : ""}`)
-      if (selectedFinish) parts.push(`Acabado ${selectedFinish.nombre}`)
+      if (selectedFinishes.length) parts.push(`Acabados ${selectedFinishes.map((f) => f.nombre).join(", ")}`)
       if (selectedTransporteKey) {
         const opt = TRANSPORTE_OPTIONS.find((o) => o.key === selectedTransporteKey)
         parts.push(`Transporte ${opt?.label ?? ""}`.trim())
@@ -649,7 +641,7 @@ export function LitografiaQuoteDialog(props: {
     }
 
     return parts.join(" • ")
-  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, tarifa, calc, papelTipo, selectedPaper, selectedFinish, selectedTransporteKey])
+  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, tarifa, calc, papelTipo, selectedPaper, selectedFinishes, selectedTransporteKey])
 
   const buildDescripcion = () => {
     const notas = descripcion.trim()
@@ -695,8 +687,12 @@ export function LitografiaQuoteDialog(props: {
         return
       }
 
+      const finishIds = selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean)
+      const finishesCost = selectedFinishesCost
+      const addFinishesCost = tarifa && tarifa.finishOptionId && finishIds.length === 1 && tarifa.finishOptionId === finishIds[0] ? 0 : finishesCost
+
       const meta = buildMeta()
-      const subtotal = (tarifa ? base + transporte : (estimated?.precioVenta ?? 0)) + customFieldsTotal
+      const subtotal = (tarifa ? base + transporte + addFinishesCost : (estimated?.precioVenta ?? 0) + addFinishesCost) + customFieldsTotal
       const payload: AddLitografiaItemPayload = {
         descripcion: buildDescripcion(),
         cantidad: qty,
@@ -912,22 +908,47 @@ export function LitografiaQuoteDialog(props: {
 
                         <div>
                           <Label>Acabados</Label>
-                        <select
-                          className={SELECT_COMPACT}
-                          value={selectedFinishId}
-                          onChange={(e) => setSelectedFinishId(e.target.value)}
-                        >
-                          <option value="">Sin acabado</option>
-                          {activeFinishes.map((f) => (
-                            <option key={f.id} value={f.id}>
-                              {f.nombre}
-                            </option>
-                          ))}
-                        </select>
-                        <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                          {selectedFinish ? <>Seleccionado: {selectedFinish.nombre}</> : <>Ej: troquel.</>}
-                        </p>
-                      </div>
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <span className="text-[10px] leading-tight text-muted-foreground">Puedes agregar más de un acabado.</span>
+                            <Button type="button" variant="outline" size="sm" onClick={addFinishRow}>
+                              Agregar
+                            </Button>
+                          </div>
+                          <div className="mt-2 space-y-2">
+                            {selectedFinishIds.map((id, idx) => (
+                              <div key={`${idx}-${id}`} className="flex items-center gap-2">
+                                <select
+                                  className={SELECT_COMPACT}
+                                  value={id}
+                                  onChange={(e) => updateFinishRow(idx, e.target.value)}
+                                >
+                                  <option value="">Sin acabado</option>
+                                  {activeFinishes.map((f) => (
+                                    <option key={f.id} value={f.id}>
+                                      {f.nombre}
+                                    </option>
+                                  ))}
+                                </select>
+                                {selectedFinishIds.length > 1 ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-600"
+                                    onClick={() => removeFinishRow(idx)}
+                                  >
+                                    Quitar
+                                  </Button>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                          <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                            {finishIdsNormalized.length
+                              ? <>Seleccionados: {selectedFinishes.map((f) => f.nombre).join(", ")}</>
+                              : <>Ej: troquel.</>}
+                          </p>
+                        </div>
 
                       <div className="sm:col-span-2">
                         <Label>Transporte</Label>
@@ -1231,7 +1252,7 @@ export function LitografiaQuoteDialog(props: {
                             </div>
 
                             {(() => {
-                              const wantsFinish = Boolean(selectedFinishId.trim())
+                              const wantsFinish = finishIdsNormalized.length > 0
                               const usedGenericFinish = wantsFinish && tarifa.finishOptionId == null
                               const usedGenericPaper = Boolean(selectedPaperId) && tarifa.paperRateId == null
                               if (!usedGenericFinish && !usedGenericPaper) return null
@@ -1247,12 +1268,17 @@ export function LitografiaQuoteDialog(props: {
                                 const base = tarifa.precioTotal || 0
                                 const transporte = parseFloat(costoTransporte) || 0
                                 const extras = customFieldsTotal
-                                const total = base + transporte + extras
+                                const addFinishesCost =
+                                  tarifa.finishOptionId && finishIdsNormalized.length === 1 && tarifa.finishOptionId === finishIdsNormalized[0]
+                                    ? 0
+                                    : selectedFinishesCost
+                                const total = base + transporte + addFinishesCost + extras
                                 const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
                                 return (
                                   <>
                                     <div className="flex justify-between text-sm"><span className="text-muted-foreground">Base (tarifario)</span><span className="font-medium">{formatCurrency(base)}</span></div>
                                     <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Transporte</span><span className="font-medium">{formatCurrency(transporte)}</span></div>
+                                      {addFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Acabados</span><span className="font-medium">{formatCurrency(addFinishesCost)}</span></div> : null}
                                     {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Campos extra</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
                                     <div className="flex justify-between mt-2"><span className="font-medium">Total</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
                                     <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Unitario</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>

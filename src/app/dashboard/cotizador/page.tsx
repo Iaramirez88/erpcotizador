@@ -173,6 +173,8 @@ export default function CotizadorPage() {
   const [subtotal, setSubtotal] = useState(0)
   const [descuento, setDescuento] = useState(0)
   const [iva, setIva] = useState(0)
+  const [utilidadPct, setUtilidadPct] = useState(30)
+  const [utilidad, setUtilidad] = useState(0)
   const [total, setTotal] = useState(0)
 
   useEffect(() => {
@@ -310,7 +312,7 @@ export default function CotizadorPage() {
   useEffect(() => {
     calcularTotales()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, descuento, taxConfig.pricesIncludeIva, taxConfig.ivaPct])
+  }, [items, descuento, taxConfig.pricesIncludeIva, taxConfig.ivaPct, utilidadPct])
 
   const fetchClientes = async () => {
     try {
@@ -716,9 +718,14 @@ export default function CotizadorPage() {
       tot = subConDescuento + ivaCalc
     }
 
+    const uPct = Math.min(100, Math.max(30, Number(utilidadPct) || 30))
+    const utilidadCalc = tot * (uPct / 100)
+    const totFinal = tot + utilidadCalc
+
     setSubtotal(sub)
     setIva(ivaCalc)
-    setTotal(tot)
+    setUtilidad(utilidadCalc)
+    setTotal(totFinal)
   }
 
   const guardarCotizacion = async () => {
@@ -1286,6 +1293,26 @@ export default function CotizadorPage() {
                     IVA ({Math.min(100, Math.max(0, taxConfig.ivaPct))}%{taxConfig.pricesIncludeIva ? ' incluido' : ''}):
                   </span>
                   <span className="font-medium">{formatCurrency(iva)}</span>
+                </div>
+
+                <div>
+                  <Label htmlFor="utilidadPct" className="text-sm">Utilidad (%):</Label>
+                  <Input
+                    id="utilidadPct"
+                    type="number"
+                    min={30}
+                    max={100}
+                    step="1"
+                    value={utilidadPct}
+                    onChange={(e) => setUtilidadPct(parseFloat(e.target.value) || 30)}
+                    placeholder="30"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">Se calcula sobre el total con IVA incluido.</p>
+                </div>
+
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Utilidad ({Math.min(100, Math.max(30, utilidadPct))}%):</span>
+                  <span className="font-medium">{formatCurrency(utilidad)}</span>
                 </div>
 
                 <div className="flex justify-between text-lg font-bold pt-2 border-t">
