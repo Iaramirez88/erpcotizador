@@ -202,8 +202,11 @@ export const authOptions: NextAuthConfig = {
   // Configuración de seguridad
   secret: process.env.NEXTAUTH_SECRET,
   
-  // Debug en desarrollo
-  debug: process.env.NODE_ENV === 'development',
+  // Debug en desarrollo (o forzado por env en producción)
+  debug:
+    process.env.NODE_ENV === "development" ||
+    String(process.env.AUTH_DEBUG ?? "").toLowerCase() === "true" ||
+    String(process.env.NEXTAUTH_DEBUG ?? "").toLowerCase() === "true",
 }
 
 // Exportar la función auth para Server Components
