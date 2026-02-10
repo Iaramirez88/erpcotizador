@@ -59,7 +59,11 @@ export async function requireApiAccess(
 
   // Regla: Espacio personal (PERS-*) requiere plan vigente para operar.
   // Permitimos CONFIG para que el usuario pueda activar su plan.
+  // Nota (temporal): mientras no esté implementado el flujo de pagos, esta regla queda
+  // detrás de una bandera para evitar bloquear a usuarios recién registrados.
+  const enforcePersonalPlan = process.env.ENFORCE_PERSONAL_PLAN === 'true'
   if (
+    enforcePersonalPlan &&
     process.env.NODE_ENV === 'production' &&
     empresa?.nit?.startsWith('PERS-') &&
     moduleKey !== ModuleKey.CONFIG
