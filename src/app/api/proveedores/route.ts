@@ -11,20 +11,6 @@ import { ModuleKey } from "@prisma/client"
 
 export const runtime = "nodejs"
 
-async function getOrCreateEmpresaId() {
-  let empresa = await prisma.empresa.findFirst({ select: { id: true } })
-  if (!empresa) {
-    empresa = await prisma.empresa.create({
-      data: {
-        nombre: "SGDigital",
-        nit: "900000000-1",
-      },
-      select: { id: true },
-    })
-  }
-  return empresa.id
-}
-
 export async function GET(request: NextRequest) {
   try {
     const access = await requireApiAccess(ModuleKey.PROVEEDORES, 'READ')
@@ -35,7 +21,7 @@ export async function GET(request: NextRequest) {
     const activo = searchParams.get("activo")
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: any = {}
+    const where: any = { empresaId: access.empresaId }
 
     if (search) {
       where.OR = [
@@ -85,7 +71,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "El nombre del proveedor es requerido" }, { status: 400 })
     }
 
-    const empresaId = await getOrCreateEmpresaId()
+    const empresaId = access.empresaId
 
     const proveedor = await prisma.proveedor.create({
       data: {

@@ -37,22 +37,6 @@ function getAtPath(obj: Record<string, unknown>, path: string): unknown {
   return cur
 }
 
-async function getOrCreateEmpresaIdForUser(userId: string) {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true } })
-  if (user?.empresaId) return user.empresaId
-
-  let empresa = await prisma.empresa.findFirst({ select: { id: true } })
-  if (!empresa) {
-    empresa = await prisma.empresa.create({
-      data: { nombre: "SGDigital", nit: "900000000-1" },
-      select: { id: true },
-    })
-  }
-
-  await prisma.user.update({ where: { id: userId }, data: { empresaId: empresa.id } }).catch(() => null)
-  return empresa.id
-}
-
 async function nextCotizacionNumero(tx: Prisma.TransactionClient, sedeId: string) {
   const sede = await tx.sede.findUnique({ where: { id: sedeId }, select: { codigo: true } })
   const sedeCodigo = (sede?.codigo || '').trim() || '00'
@@ -76,6 +60,10 @@ export async function POST(_request: Request, context: RouteContext) {
   if (!accessScan.ok) return accessScan.response
   const accessCotizaciones = await requireApiAccess(ModuleKey.COTIZACIONES, 'WRITE')
   if (!accessCotizaciones.ok) return accessCotizaciones.response
+
+  if (accessScan.empresaId !== accessCotizaciones.empresaId) {
+    return NextResponse.json({ success: false, error: 'Acceso inválido para la empresa actual' }, { status: 403 })
+  }
 
   const userId = accessScan.userId
 
@@ -138,7 +126,7 @@ export async function POST(_request: Request, context: RouteContext) {
       }
     })
 
-  const empresaId = await getOrCreateEmpresaIdForUser(userId)
+  const empresaId = accessScan.empresaId
 
   const result = await prisma.$transaction(async (tx) => {
     const numero = await nextCotizacionNumero(tx, accessCotizaciones.sedeId)

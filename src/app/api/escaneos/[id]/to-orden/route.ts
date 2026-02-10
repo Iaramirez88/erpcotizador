@@ -39,22 +39,6 @@ function getAtPath(obj: Record<string, unknown>, path: string): unknown {
   return cur
 }
 
-async function getOrCreateEmpresaIdForUser(userId: string) {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true } })
-  if (user?.empresaId) return user.empresaId
-
-  let empresa = await prisma.empresa.findFirst({ select: { id: true } })
-  if (!empresa) {
-    empresa = await prisma.empresa.create({
-      data: { nombre: "SGDigital", nit: "900000000-1" },
-      select: { id: true },
-    })
-  }
-
-  await prisma.user.update({ where: { id: userId }, data: { empresaId: empresa.id } }).catch(() => null)
-  return empresa.id
-}
-
 async function nextOrdenNumero(tx: Prisma.TransactionClient) {
   const last = await tx.ordenTrabajo.findFirst({ orderBy: { createdAt: "desc" }, select: { numero: true } })
   let seq = 1
@@ -75,6 +59,10 @@ export async function POST(_request: Request, context: RouteContext) {
   if (!accessScan.ok) return accessScan.response
   const accessOrdenes = await requireApiAccess(ModuleKey.ORDENES, 'WRITE')
   if (!accessOrdenes.ok) return accessOrdenes.response
+
+  if (accessScan.empresaId !== accessOrdenes.empresaId) {
+    return NextResponse.json({ success: false, error: 'Acceso inválido para la empresa actual' }, { status: 403 })
+  }
 
   const userId = accessScan.userId
 
@@ -117,7 +105,7 @@ export async function POST(_request: Request, context: RouteContext) {
   const iva = n(getAtPath(structured, "monetary.taxTotal"), 0)
   const total = n(getAtPath(structured, "monetary.total"), subtotal + iva)
 
-  const empresaId = await getOrCreateEmpresaIdForUser(userId)
+  const empresaId = accessScan.empresaId
 
   const result = await prisma.$transaction(async (tx) => {
     const numero = await nextOrdenNumero(tx)

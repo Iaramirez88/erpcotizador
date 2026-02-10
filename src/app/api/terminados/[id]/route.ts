@@ -16,17 +16,6 @@ function normalizeUnidadAplicacion(value: unknown): "m2" | "ml" | "unidad" {
   return "unidad"
 }
 
-async function getOrCreateEmpresaId() {
-  let empresa = await prisma.empresa.findFirst({ select: { id: true } })
-  if (!empresa) {
-    empresa = await prisma.empresa.create({
-      data: { nombre: "SGDigital", nit: "900000000-1" },
-      select: { id: true },
-    })
-  }
-  return empresa.id
-}
-
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const access = await requireApiAccess(ModuleKey.MATERIALES, "WRITE")
@@ -35,7 +24,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const { id } = await params
     const body = await request.json().catch(() => null)
 
-    const empresaId = await getOrCreateEmpresaId()
+    const empresaId = access.empresaId
 
     const existing = await prisma.terminado.findFirst({ where: { id, empresaId }, select: { id: true } })
     if (!existing) {
@@ -70,7 +59,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     if (!access.ok) return access.response
 
     const { id } = await params
-    const empresaId = await getOrCreateEmpresaId()
+    const empresaId = access.empresaId
 
     const existing = await prisma.terminado.findFirst({ where: { id, empresaId }, select: { id: true } })
     if (!existing) {

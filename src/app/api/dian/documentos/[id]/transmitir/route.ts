@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
-import { getOrCreateDefaultEmpresa } from '@/lib/rbac'
 import {
   DianDocumentDirection,
   DianDocumentStatus,
@@ -10,15 +9,6 @@ import {
 } from '@prisma/client'
 
 export const runtime = 'nodejs'
-
-async function getOrCreateEmpresaIdForUser(userId: string): Promise<string> {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true } })
-  if (user?.empresaId) return user.empresaId
-
-  const empresa = await getOrCreateDefaultEmpresa()
-  await prisma.user.update({ where: { id: userId }, data: { empresaId: empresa.id } }).catch(() => null)
-  return empresa.id
-}
 
 function makeRef() {
   return `MOCK-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
@@ -29,7 +19,7 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
     const access = await requireApiAccess('POS' as ModuleKey, 'WRITE')
     if (!access.ok) return access.response
 
-    const empresaId = await getOrCreateEmpresaIdForUser(access.userId)
+    const empresaId = access.empresaId
     const { id } = await ctx.params
 
     const result = await prisma.$transaction(async (tx) => {

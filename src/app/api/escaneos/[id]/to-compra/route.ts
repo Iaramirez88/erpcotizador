@@ -34,22 +34,16 @@ function getAtPath(obj: Record<string, unknown>, path: string): unknown {
   return cur
 }
 
-async function getOrCreateEmpresaId() {
-  let empresa = await prisma.empresa.findFirst({ select: { id: true } })
-  if (!empresa) {
-    empresa = await prisma.empresa.create({
-      data: { nombre: "SGDigital", nit: "900000000-1" },
-      select: { id: true },
-    })
-  }
-  return empresa.id
-}
 
 export async function POST(_request: Request, context: RouteContext) {
   const accessScan = await requireApiAccess(ModuleKey.ESCANEOS, 'WRITE')
   if (!accessScan.ok) return accessScan.response
   const accessCompras = await requireApiAccess(ModuleKey.COMPRAS, 'WRITE')
   if (!accessCompras.ok) return accessCompras.response
+
+  if (accessScan.empresaId !== accessCompras.empresaId) {
+    return NextResponse.json({ success: false, error: 'Acceso inválido para la empresa actual' }, { status: 403 })
+  }
 
   const userId = accessScan.userId
 
@@ -130,7 +124,7 @@ export async function POST(_request: Request, context: RouteContext) {
 
   const subtotalConIva = computed.subtotalSinIva + computed.iva
 
-  const empresaId = await getOrCreateEmpresaId()
+  const empresaId = accessScan.empresaId
 
   const result = await prisma.$transaction(async (tx) => {
     const compra = await tx.compra.create({

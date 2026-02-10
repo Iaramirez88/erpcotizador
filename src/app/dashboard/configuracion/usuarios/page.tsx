@@ -1,7 +1,7 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
-import { ensureDefaultSedeForEmpresa, getOrCreateDefaultEmpresa } from '@/lib/rbac'
+import { ensureDefaultSedeForEmpresa, requireEmpresaIdForUser } from '@/lib/rbac'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { InviteUserCard } from '@/components/users/invite-user-card'
 
@@ -20,13 +20,13 @@ export default async function UsuariosPage() {
   const session = await auth()
   if (!session) redirect('/auth/login')
 
-  const empresa = await getOrCreateDefaultEmpresa()
-  await ensureDefaultSedeForEmpresa(empresa.id, session.user.id)
+  const empresaId = await requireEmpresaIdForUser(session.user.id)
+  await ensureDefaultSedeForEmpresa(empresaId, session.user.id)
 
   const myAdmin = await prisma.sedeMembership.findFirst({
     where: {
       userId: session.user.id,
-      sede: { empresaId: empresa.id },
+      sede: { empresaId },
       role: { in: ['ADMIN', 'MANAGER'] },
     },
     select: { id: true },
@@ -39,8 +39,8 @@ export default async function UsuariosPage() {
   const users = await prisma.user.findMany({
     where: {
       OR: [
-        { empresaId: empresa.id },
-        { sedeMemberships: { some: { sede: { empresaId: empresa.id } } } },
+        { empresaId },
+        { sedeMemberships: { some: { sede: { empresaId } } } },
       ],
     },
     orderBy: { createdAt: 'desc' },

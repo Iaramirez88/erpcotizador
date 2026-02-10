@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
-import { getOrCreateDefaultEmpresa } from '@/lib/rbac'
 import {
   InventoryMovementSourceType,
   InventoryMovementType,
@@ -11,15 +10,6 @@ import {
 } from '@prisma/client'
 
 export const runtime = 'nodejs'
-
-async function getOrCreateEmpresaIdForUser(userId: string): Promise<string> {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true } })
-  if (user?.empresaId) return user.empresaId
-
-  const empresa = await getOrCreateDefaultEmpresa()
-  await prisma.user.update({ where: { id: userId }, data: { empresaId: empresa.id } }).catch(() => null)
-  return empresa.id
-}
 
 async function reverseInvoiceStock(tx: Prisma.TransactionClient, args: { empresaId: string; sedeId: string; userId: string; invoiceId: string }) {
   const invoice = await tx.posInvoice.findUnique({
@@ -147,7 +137,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     const access = await requireApiAccess('POS' as ModuleKey, 'WRITE')
     if (!access.ok) return access.response
 
-    const empresaId = await getOrCreateEmpresaIdForUser(access.userId)
+    const empresaId = access.empresaId
     const { id } = await ctx.params
 
     // Reservado para futura auditoría / nota de anulación

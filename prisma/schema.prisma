@@ -1313,7 +1313,7 @@ model Cliente {
 
 model Cotizacion {
   id          String   @id @default(cuid())
-  numero      String   @unique // COT-2025-0001
+  numero      String // COT-2025-0001
   fecha       DateTime @default(now())
   validezDias Int      @default(15)
 
@@ -1364,6 +1364,7 @@ model Cotizacion {
   @@index([sedeId, estado], map: "idx_cotizaciones_sede_estado")
   @@index([sedeId])
   @@index([assignedToUserId])
+  @@unique([sedeId, numero], map: "uq_cotizaciones_sede_numero")
   @@map("cotizaciones")
 }
 

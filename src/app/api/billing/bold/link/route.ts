@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { BillingCycle as PrismaBillingCycle, ModuleKey, PlanTier as PrismaPlanTier } from '@prisma/client'
 import { createBoldPaymentLink } from '@/lib/bold'
-import { getOrCreateDefaultEmpresa } from '@/lib/rbac'
 import { ANNUAL_DISCOUNT_PCT, type BillingCycle, getPlanPriceCOP, type PlanTier } from '@/lib/plans'
 
 export const runtime = 'nodejs'
@@ -32,14 +31,8 @@ export async function POST(request: Request) {
     }
 
     const userId = access.userId
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true, email: true } })
-
-    let empresaId = user?.empresaId ?? null
-    if (!empresaId) {
-      const empresa = await getOrCreateDefaultEmpresa()
-      await prisma.user.update({ where: { id: userId }, data: { empresaId: empresa.id } })
-      empresaId = empresa.id
-    }
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
+    const empresaId = access.empresaId
 
     const tier = body.tier
     const cycle = body.cycle

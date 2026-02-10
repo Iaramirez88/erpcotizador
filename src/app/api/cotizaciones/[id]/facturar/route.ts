@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
-import { getOrCreateDefaultEmpresa } from '@/lib/rbac'
 import { ModuleKey, PosInvoiceStatus, type Prisma } from '@prisma/client'
 
 export const runtime = 'nodejs'
@@ -21,15 +20,6 @@ function sumCotizacionItemsGross(items: Array<{ subtotal?: number | null; cantid
     if (Number.isFinite(lineSubtotal) && (lineSubtotal as number) !== 0) return acc + (lineSubtotal as number)
     return acc + n(it.cantidad) * n(it.precioUnitario)
   }, 0)
-}
-
-async function getOrCreateEmpresaIdForUser(userId: string): Promise<string> {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true } })
-  if (user?.empresaId) return user.empresaId
-
-  const empresa = await getOrCreateDefaultEmpresa()
-  await prisma.user.update({ where: { id: userId }, data: { empresaId: empresa.id } }).catch(() => null)
-  return empresa.id
 }
 
 async function ensureDefaultWarehouse(tx: Prisma.TransactionClient, args: { empresaId: string; sedeId: string }) {
@@ -116,8 +106,12 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
     const accessPos = await requireApiAccess(ModuleKey.POS, 'WRITE')
     if (!accessPos.ok) return accessPos.response
 
+    if (accessCot.empresaId !== accessPos.empresaId) {
+      return NextResponse.json({ error: 'Acceso inválido para la empresa actual' }, { status: 403 })
+    }
+
     const { id } = await ctx.params
-    const empresaId = await getOrCreateEmpresaIdForUser(accessPos.userId)
+    const empresaId = accessPos.empresaId
 
     const result = await prisma.$transaction(async (tx) => {
       const cotizacion = await tx.cotizacion.findFirst({

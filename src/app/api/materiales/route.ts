@@ -7,17 +7,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
-import { getOrCreateDefaultEmpresa } from '@/lib/rbac'
 import { ModuleKey } from "@prisma/client"
-
-async function getOrCreateEmpresaIdForUser(userId: string): Promise<string> {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true } })
-  if (user?.empresaId) return user.empresaId
-
-  const empresa = await getOrCreateDefaultEmpresa()
-  await prisma.user.update({ where: { id: userId }, data: { empresaId: empresa.id } }).catch(() => null)
-  return empresa.id
-}
 
 function normalizeUnidadMedida(value: unknown): 'm2' | 'ml' | 'unidad' {
   const u = String(value ?? '').trim().toLowerCase()
@@ -48,7 +38,7 @@ export async function GET(request: Request) {
     const access = await requireApiAccess(ModuleKey.MATERIALES, 'READ')
     if (!access.ok) return access.response
 
-    const empresaId = await getOrCreateEmpresaIdForUser(access.userId)
+    const empresaId = access.empresaId
 
     const sede = await prisma.sede.findUnique({ where: { id: access.sedeId }, select: { id: true } })
     const sedeId = sede?.id ?? access.sedeId
@@ -132,7 +122,7 @@ export async function POST(request: Request) {
     const access = await requireApiAccess(ModuleKey.MATERIALES, 'WRITE')
     if (!access.ok) return access.response
 
-    const empresaId = await getOrCreateEmpresaIdForUser(access.userId)
+    const empresaId = access.empresaId
 
     const body = await request.json()
     const {

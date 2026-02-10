@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { InventoryMovementType, ModuleKey } from '@prisma/client'
-import { getOrCreateDefaultEmpresa } from '@/lib/rbac'
 import { buildXlsxBuffer, formatDateForFilename } from '@/lib/excel-export'
 
 export const runtime = 'nodejs'
@@ -11,21 +10,12 @@ function isMovementType(value: unknown): value is InventoryMovementType {
   return value === 'IN' || value === 'OUT' || value === 'ADJUST'
 }
 
-async function getOrCreateEmpresaIdForUser(userId: string): Promise<string> {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true } })
-  if (user?.empresaId) return user.empresaId
-
-  const empresa = await getOrCreateDefaultEmpresa()
-  await prisma.user.update({ where: { id: userId }, data: { empresaId: empresa.id } }).catch(() => null)
-  return empresa.id
-}
-
 export async function GET(request: NextRequest) {
   try {
     const access = await requireApiAccess('INVENTARIO' as ModuleKey, 'READ')
     if (!access.ok) return access.response
 
-    const empresaId = await getOrCreateEmpresaIdForUser(access.userId)
+    const empresaId = access.empresaId
 
     const { searchParams } = new URL(request.url)
     const materialId = (searchParams.get('materialId') || '').trim() || undefined

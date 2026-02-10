@@ -8,7 +8,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
 import { AccessLevel, ModuleKey } from "@prisma/client"
-import { getOrCreateDefaultEmpresa, requireSedeAccess } from "@/lib/rbac"
+import { requireSedeAccess } from "@/lib/rbac"
 
 type ClienteSegmento = "POTENCIAL" | "OCASIONAL" | "FRECUENTE"
 
@@ -82,8 +82,7 @@ export async function GET(request: Request) {
     const access = await requireApiAccess(ModuleKey.CLIENTES, 'READ')
     if (!access.ok) return access.response
 
-    const activeSede = await prisma.sede.findUnique({ where: { id: access.sedeId }, select: { empresaId: true } })
-    const empresaId = activeSede?.empresaId ?? (await getOrCreateDefaultEmpresa()).id
+    const empresaId = access.empresaId
 
     // Obtener parámetros de búsqueda (opcional)
     const { searchParams } = new URL(request.url)
@@ -327,8 +326,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const activeSede = await prisma.sede.findUnique({ where: { id: access.sedeId }, select: { empresaId: true } })
-    const empresaId = activeSede?.empresaId ?? (await getOrCreateDefaultEmpresa()).id
+    const empresaId = access.empresaId
 
     // Crear cliente
     const cliente = await prisma.cliente.create({

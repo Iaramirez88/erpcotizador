@@ -12,7 +12,7 @@ import { prisma } from "@/lib/prisma"
 import { validatePassword } from "@/lib/password-policy"
 import { randomDigits, sha256Hex } from "@/lib/auth-tokens"
 import { sendEmail } from "@/lib/email"
-import { ensureDefaultSedeForEmpresa, getOrCreateDefaultEmpresa } from "@/lib/rbac"
+import { ensureDefaultSedeForEmpresa } from "@/lib/rbac"
 
 export async function POST(request: Request) {
   try {
@@ -47,30 +47,18 @@ export async function POST(request: Request) {
     // Resolver empresa (entidad cabeza)
     const resolvedEmpresaId = typeof empresaId === 'string' ? empresaId.trim() : ''
 
-    if (!resolvedEmpresaId) {
-      const empresasCount = await prisma.empresa.count()
-      if (empresasCount > 1) {
-        return NextResponse.json({ error: 'Selecciona la entidad a la que te vas a registrar' }, { status: 400 })
-      }
-    }
     const empresa = resolvedEmpresaId
       ? await prisma.empresa.findUnique({
           where: { id: resolvedEmpresaId },
           select: { id: true, nombre: true, registrationCodeHash: true },
         })
-      : await (async () => {
-          const e = await getOrCreateDefaultEmpresa()
-          return prisma.empresa.findUnique({
-            where: { id: e.id },
-            select: { id: true, nombre: true, registrationCodeHash: true },
-          })
-        })()
+      : null
 
-    if (!empresa?.id) {
+    if (resolvedEmpresaId && !empresa?.id) {
       return NextResponse.json({ error: 'Entidad no encontrada' }, { status: 400 })
     }
 
-    if (empresa.registrationCodeHash) {
+    if (empresa?.registrationCodeHash) {
       const code = typeof accessCode === 'string' ? accessCode.trim() : ''
       if (!code) {
         return NextResponse.json({ error: 'Código de acceso requerido' }, { status: 400 })
@@ -124,17 +112,41 @@ export async function POST(request: Request) {
         email: normalizedEmail,
         password: hashedPassword,
         role: "USER", // Rol por defecto
-        empresaId: empresa.id,
+        empresaId: empresa?.id ?? null,
       }
     })
 
+    // Si no eligió entidad, creamos su espacio personal (Empresa propia).
+    let empresaFinal = empresa
+    if (!empresaFinal) {
+      const personalNit = `PERS-${user.id}`
+      const personalNombre = `Espacio personal (${normalizedEmail})`
+
+      const created = await prisma.empresa.upsert({
+        where: { nit: personalNit },
+        create: {
+          nombre: personalNombre,
+          nit: personalNit,
+          email: normalizedEmail,
+          planTier: 'BASIC',
+          billingCycle: 'MONTHLY',
+          planValidUntil: null,
+        },
+        update: {},
+        select: { id: true, nombre: true, registrationCodeHash: true },
+      })
+
+      await prisma.user.update({ where: { id: user.id }, data: { empresaId: created.id } })
+      empresaFinal = created
+    }
+
     // Asegurar sede/membresía inicial (para RBAC por sede)
-    await ensureDefaultSedeForEmpresa(empresa.id, user.id)
+    await ensureDefaultSedeForEmpresa(empresaFinal.id, user.id)
 
     // Si llega sedeId (por invitación), asociar también a esa sede (si pertenece a la entidad)
     if (requestedSedeId) {
       const sede = await prisma.sede.findUnique({ where: { id: requestedSedeId }, select: { id: true, empresaId: true } })
-      if (sede?.id && sede.empresaId === empresa.id) {
+      if (sede?.id && sede.empresaId === empresaFinal.id) {
         const existing = await prisma.sedeMembership.findUnique({
           where: { sedeId_userId: { sedeId: sede.id, userId: user.id } },
           select: { id: true },
@@ -162,10 +174,10 @@ export async function POST(request: Request) {
     })
 
     // Enviar correo de verificación
-    const subject = `Código de verificación - ${empresa.nombre}`
+    const subject = `Código de verificación - ${empresaFinal.nombre}`
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.5">
-        <h2>Verifica tu cuenta (${empresa.nombre})</h2>
+        <h2>Verifica tu cuenta (${empresaFinal.nombre})</h2>
         <p>Tu código de verificación es:</p>
         <p style="font-size: 24px; letter-spacing: 4px"><b>${code}</b></p>
         <p>Este código expira en 10 minutos.</p>

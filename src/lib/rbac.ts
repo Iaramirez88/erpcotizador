@@ -43,20 +43,42 @@ const DEFAULT_EMPRESA_SELECT = {
   updatedAt: true,
 } as const
 
-export async function getOrCreateDefaultEmpresa(): Promise<DefaultEmpresa> {
-  const existing = await prisma.empresa.findFirst({ select: DEFAULT_EMPRESA_SELECT })
-  if (existing) return existing
-
-  return prisma.empresa.create({
-    data: {
-      nombre: 'SGDigital',
-      nit: '900000000-1',
-      direccion: 'Dirección por definir',
-      telefono: '0000000',
-      email: 'contacto@sgdigital.com',
-    },
-    select: DEFAULT_EMPRESA_SELECT,
+export async function requireEmpresaIdForUser(userId: string): Promise<string> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, email: true, name: true, empresaId: true },
   })
+
+  if (!user?.id) throw new Error('USER_NOT_FOUND')
+  if (user.empresaId) return user.empresaId
+
+  const normalizedEmail = (user.email || '').trim().toLowerCase()
+  const personalNit = `PERS-${user.id}`
+  const personalNombre = `Espacio personal${normalizedEmail ? ` (${normalizedEmail})` : ''}`
+
+  const empresaId = await prisma.$transaction(async (tx) => {
+    const existing = await tx.empresa.findUnique({ where: { nit: personalNit }, select: { id: true } })
+    const empresa = existing
+      ? existing
+      : await tx.empresa.create({
+          data: {
+            nombre: personalNombre,
+            nit: personalNit,
+            email: normalizedEmail || null,
+            planTier: 'BASIC',
+            billingCycle: 'MONTHLY',
+            planValidUntil: null,
+          },
+          select: { id: true },
+        })
+
+    await tx.user.update({ where: { id: user.id }, data: { empresaId: empresa.id }, select: { id: true } })
+    return empresa.id
+  })
+
+  await ensureDefaultSedeForEmpresa(empresaId, userId)
+
+  return empresaId
 }
 
 export async function ensureDefaultSedeForEmpresa(empresaId: string, userId: string): Promise<Sede> {
@@ -98,8 +120,7 @@ export async function ensureDefaultSedeForEmpresa(empresaId: string, userId: str
 }
 
 export async function getActiveSedeForUser(userId: string): Promise<Sede> {
-  const userEmpresa = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true } })
-  const empresaId = userEmpresa?.empresaId ?? (await getOrCreateDefaultEmpresa()).id
+  const empresaId = await requireEmpresaIdForUser(userId)
 
   const memberSede = await prisma.sedeMembership.findFirst({
     where: { userId, sede: { empresaId } },

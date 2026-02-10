@@ -1,19 +1,16 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { ensureDefaultSedeForEmpresa, getOrCreateDefaultEmpresa } from '@/lib/rbac'
+import { requireApiAccess } from '@/lib/api-rbac'
+import { ModuleKey } from '@prisma/client'
 
 export const runtime = 'nodejs'
 
 export async function GET() {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
-
-  const empresa = await getOrCreateDefaultEmpresa()
-  await ensureDefaultSedeForEmpresa(empresa.id, session.user.id)
+  const access = await requireApiAccess(ModuleKey.CONFIG, 'READ')
+  if (!access.ok) return access.response
 
   const sedes = await prisma.sede.findMany({
-    where: { empresaId: empresa.id },
+    where: { empresaId: access.empresaId },
     orderBy: { createdAt: 'asc' },
     include: {
       _count: { select: { memberships: true, teams: true } },
@@ -24,8 +21,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const session = await auth()
-  if (!session) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  const access = await requireApiAccess(ModuleKey.CONFIG, 'WRITE')
+  if (!access.ok) return access.response
 
   const body = (await request.json().catch(() => null)) as { nombre?: unknown; codigo?: unknown } | null
   const nombre = typeof body?.nombre === 'string' ? body.nombre.trim() : ''
@@ -35,14 +32,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'nombre es requerido' }, { status: 400 })
   }
 
-  const empresa = await getOrCreateDefaultEmpresa()
-
   // Permiso: rol sistema ADMIN o ser ADMIN/MANAGER en alguna sede de la empresa.
-  const isSystemAdmin = session.user.role === 'ADMIN'
+  const isSystemAdmin = access.session.user.role === 'ADMIN'
   const anyAdmin = await prisma.sedeMembership.findFirst({
     where: {
-      userId: session.user.id,
-      sede: { empresaId: empresa.id },
+      userId: access.userId,
+      sede: { empresaId: access.empresaId },
       role: { in: ['ADMIN', 'MANAGER'] },
     },
     select: { id: true },
@@ -54,7 +49,7 @@ export async function POST(request: Request) {
 
   const sede = await prisma.sede.create({
     data: {
-      empresaId: empresa.id,
+      empresaId: access.empresaId,
       nombre,
       codigo: codigo || null,
     },

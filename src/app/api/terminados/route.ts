@@ -16,17 +16,6 @@ function normalizeUnidadAplicacion(value: unknown): "m2" | "ml" | "unidad" {
   return "unidad"
 }
 
-async function getOrCreateEmpresaId() {
-  let empresa = await prisma.empresa.findFirst({ select: { id: true } })
-  if (!empresa) {
-    empresa = await prisma.empresa.create({
-      data: { nombre: "SGDigital", nit: "900000000-1" },
-      select: { id: true },
-    })
-  }
-  return empresa.id
-}
-
 export async function GET(request: Request) {
   try {
     const access = await requireApiAccess(ModuleKey.MATERIALES, "READ")
@@ -35,7 +24,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get("search")
 
-    const empresaId = await getOrCreateEmpresaId()
+    const empresaId = access.empresaId
 
     const where = {
       empresaId,
@@ -82,7 +71,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Nombre es requerido" }, { status: 400 })
     }
 
-    const empresaId = await getOrCreateEmpresaId()
+    const empresaId = access.empresaId
 
     const terminado = await prisma.terminado.create({
       data: {

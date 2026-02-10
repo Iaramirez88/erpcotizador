@@ -3,18 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { ModuleKey, Prisma } from '@prisma/client'
 import { buildXlsxBuffer, formatDateForFilename } from '@/lib/excel-export'
-import { getOrCreateDefaultEmpresa } from '@/lib/rbac'
 
 export const runtime = 'nodejs'
-
-async function getOrCreateEmpresaIdForUser(userId: string): Promise<string> {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true } })
-  if (user?.empresaId) return user.empresaId
-
-  const empresa = await getOrCreateDefaultEmpresa()
-  await prisma.user.update({ where: { id: userId }, data: { empresaId: empresa.id } }).catch(() => null)
-  return empresa.id
-}
 
 function parseDateStart(value: string | null) {
   if (!value) return null
@@ -35,7 +25,7 @@ export async function GET(request: NextRequest) {
     const access = await requireApiAccess('REMISIONES' as ModuleKey, 'READ')
     if (!access.ok) return access.response
 
-    const empresaId = await getOrCreateEmpresaIdForUser(access.userId)
+    const empresaId = access.empresaId
 
     const { searchParams } = new URL(request.url)
     const from = parseDateStart(searchParams.get('from'))

@@ -10,6 +10,7 @@ export type ApiAccessOk = {
   session: Session
   userId: string
   sedeId: string
+  empresaId: string
 }
 
 export type ApiAccessFail = {
@@ -50,6 +51,36 @@ export async function requireApiAccess(
 
   const sede = await getActiveSedeForUser(userId)
 
+  const empresaId = sede.empresaId
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { id: true, nit: true, planValidUntil: true },
+  })
+
+  // Regla: Espacio personal (PERS-*) requiere plan vigente para operar.
+  // Permitimos CONFIG para que el usuario pueda activar su plan.
+  if (
+    process.env.NODE_ENV === 'production' &&
+    empresa?.nit?.startsWith('PERS-') &&
+    moduleKey !== ModuleKey.CONFIG
+  ) {
+    const now = new Date()
+    const validUntil = empresa.planValidUntil
+    const isActive = Boolean(validUntil && validUntil > now)
+    if (!isActive) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          {
+            error: 'Se requiere una suscripción activa para usar tu espacio personal. Ve a Configuración → Plan.',
+            code: 'PLAN_REQUIRED',
+          },
+          { status: 402 }
+        ),
+      }
+    }
+  }
+
   try {
     await requireSedeAccess({ userId, sedeId: sede.id, module: moduleKey, minLevel })
   } catch (error) {
@@ -59,5 +90,5 @@ export async function requireApiAccess(
     throw error
   }
 
-  return { ok: true, session, userId, sedeId: sede.id }
+  return { ok: true, session, userId, sedeId: sede.id, empresaId }
 }

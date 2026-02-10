@@ -8,25 +8,15 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { InventoryMovementType, InventoryMovementSourceType, ModuleKey } from '@prisma/client'
-import { getOrCreateDefaultEmpresa } from '@/lib/rbac'
 
 export const runtime = 'nodejs'
-
-async function getOrCreateEmpresaIdForUser(userId: string): Promise<string> {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true } })
-  if (user?.empresaId) return user.empresaId
-
-  const empresa = await getOrCreateDefaultEmpresa()
-  await prisma.user.update({ where: { id: userId }, data: { empresaId: empresa.id } }).catch(() => null)
-  return empresa.id
-}
 
 export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const access = await requireApiAccess('REMISIONES' as ModuleKey, 'READ')
     if (!access.ok) return access.response
 
-    const empresaId = await getOrCreateEmpresaIdForUser(access.userId)
+    const empresaId = access.empresaId
 
     const { id } = await ctx.params
 
@@ -71,7 +61,7 @@ export async function DELETE(_: Request, ctx: { params: Promise<{ id: string }> 
     const access = await requireApiAccess('REMISIONES' as ModuleKey, 'WRITE')
     if (!access.ok) return access.response
 
-    const empresaId = await getOrCreateEmpresaIdForUser(access.userId)
+    const empresaId = access.empresaId
 
     const { id } = await ctx.params
 

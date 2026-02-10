@@ -71,19 +71,6 @@ function resolveUnidadMedida(inputUnidad: unknown, tipoProducto: unknown) {
   return 'unidad'
 }
 
-async function getOrCreateEmpresaIdForUser(userId: string) {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true } })
-  if (user?.empresaId) return user.empresaId
-
-  let empresa = await prisma.empresa.findFirst({ select: { id: true } })
-  if (!empresa) {
-    empresa = await prisma.empresa.create({ data: { nombre: 'SGDigital', nit: '900000000-1' }, select: { id: true } })
-  }
-
-  await prisma.user.update({ where: { id: userId }, data: { empresaId: empresa.id } }).catch(() => null)
-  return empresa.id
-}
-
 function isAllowedModule(m: string): m is ImportModule {
   return ['clientes', 'proveedores', 'materiales', 'compras', 'ordenes'].includes(m)
 }
@@ -172,7 +159,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     return NextResponse.json({ success: false, error: 'Archivo requerido (file)' }, { status: 400 })
   }
 
-  const empresaId = await getOrCreateEmpresaIdForUser(userId)
+    const empresaId = access.empresaId
 
   const { rows, warnings } = await parseRows(file)
   if (rows.length === 0) {

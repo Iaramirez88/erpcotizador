@@ -74,8 +74,9 @@ export function RegisterPageClient() {
           if (empresaIdFromUrl) {
             setEmpresaId(empresaIdFromUrl)
             setLockedEmpresaId(empresaIdFromUrl)
-          } else if (json.data.length === 1) {
-            setEmpresaId(json.data[0]?.id ?? "")
+          } else {
+            // Por defecto: espacio personal (empresaId vacío)
+            setEmpresaId("")
           }
 
           if (emailFromUrl && emailFromUrl.includes("@")) {
@@ -124,12 +125,6 @@ export function RegisterPageClient() {
     const passwordError = validatePassword(formData.password)
     if (passwordError) {
       setError(passwordError)
-      setIsLoading(false)
-      return
-    }
-
-    if (empresas.length > 0 && !empresaId) {
-      setError("Selecciona la entidad a la que te vas a registrar")
       setIsLoading(false)
       return
     }
@@ -262,24 +257,26 @@ export function RegisterPageClient() {
 
             {empresas.length > 0 ? (
               <div className="space-y-2">
-                <Label htmlFor="empresa">Entidad</Label>
+                <Label htmlFor="empresa">Espacio</Label>
                 <select
                   id="empresa"
                   value={empresaId}
                   onChange={(e) => setEmpresaId(e.target.value)}
                   disabled={isLoading || Boolean(lockedEmpresaId)}
-                  required
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <option value="" disabled>
-                    Selecciona una entidad
-                  </option>
-                  {empresas.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.nombre}
-                    </option>
-                  ))}
+                  <option value="">Mi espacio personal (requiere plan básico)</option>
+                  <optgroup label="Empresas">
+                    {empresas.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.nombre}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
+                <p className="text-xs text-muted-foreground">
+                  Tu información se guarda separada por empresa. Si eliges “Mi espacio personal”, trabajas en un entorno solo para tu cuenta.
+                </p>
               </div>
             ) : null}
 

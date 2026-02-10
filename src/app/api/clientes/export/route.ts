@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { AccessLevel, ModuleKey } from '@prisma/client'
-import { getOrCreateDefaultEmpresa, requireSedeAccess } from '@/lib/rbac'
+import { requireSedeAccess } from '@/lib/rbac'
 import { buildXlsxBuffer, formatDateForFilename } from '@/lib/excel-export'
 
 export const runtime = 'nodejs'
@@ -71,8 +71,7 @@ export async function GET(request: Request) {
     const access = await requireApiAccess(ModuleKey.CLIENTES, 'READ')
     if (!access.ok) return access.response
 
-    const activeSede = await prisma.sede.findUnique({ where: { id: access.sedeId }, select: { empresaId: true } })
-    const empresaId = activeSede?.empresaId ?? (await getOrCreateDefaultEmpresa()).id
+    const empresaId = access.empresaId
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')

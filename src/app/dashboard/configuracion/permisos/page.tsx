@@ -1,7 +1,7 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
-import { ensureDefaultSedeForEmpresa, getOrCreateDefaultEmpresa } from '@/lib/rbac'
+import { ensureDefaultSedeForEmpresa, requireEmpresaIdForUser } from '@/lib/rbac'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ModuleKey, AccessLevel, SedeRole } from '@prisma/client'
@@ -47,13 +47,13 @@ export default async function PermisosPage() {
   const session = await auth()
   if (!session) redirect('/auth/login')
 
-  const empresa = await getOrCreateDefaultEmpresa()
-  await ensureDefaultSedeForEmpresa(empresa.id, session.user.id)
+  const empresaId = await requireEmpresaIdForUser(session.user.id)
+  await ensureDefaultSedeForEmpresa(empresaId, session.user.id)
 
   const myAdmin = await prisma.sedeMembership.findFirst({
     where: {
       userId: session.user.id,
-      sede: { empresaId: empresa.id },
+      sede: { empresaId },
       role: { in: ['ADMIN', 'MANAGER'] },
     },
     select: { id: true },
@@ -64,7 +64,7 @@ export default async function PermisosPage() {
   }
 
   const sedes = await prisma.sede.findMany({
-    where: { empresaId: empresa.id },
+    where: { empresaId },
     orderBy: { createdAt: 'asc' },
     select: { id: true, nombre: true, codigo: true },
   })
@@ -81,14 +81,14 @@ export default async function PermisosPage() {
 
     if (!nombre) return
 
-    const empresa2 = await getOrCreateDefaultEmpresa()
+    const empresaId2 = await requireEmpresaIdForUser(session2.user.id)
 
     const anyAdmin2 =
       session2.user.role === 'ADMIN' ||
       !!(await prisma.sedeMembership.findFirst({
         where: {
           userId: session2.user.id,
-          sede: { empresaId: empresa2.id },
+          sede: { empresaId: empresaId2 },
           role: { in: ['ADMIN', 'MANAGER'] },
         },
         select: { id: true },
@@ -98,7 +98,7 @@ export default async function PermisosPage() {
 
     await prisma.sede.create({
       data: {
-        empresaId: empresa2.id,
+        empresaId: empresaId2,
         nombre,
         codigo: codigo || null,
       },
@@ -115,6 +115,10 @@ export default async function PermisosPage() {
 
     if (!sedeId || !email) return
     if (!SEDE_ROLES.includes(role)) return
+
+    const empresaId2 = await requireEmpresaIdForUser(session2.user.id)
+    const sede = await prisma.sede.findUnique({ where: { id: sedeId }, select: { id: true, empresaId: true } })
+    if (!sede || sede.empresaId !== empresaId2) return
 
     const admin = await prisma.sedeMembership.findUnique({
       where: { sedeId_userId: { sedeId, userId: session2.user.id } },
@@ -146,6 +150,10 @@ export default async function PermisosPage() {
     if (!MODULES.includes(moduleKey)) return
     if (!ACCESS.includes(level)) return
 
+    const empresaId2 = await requireEmpresaIdForUser(session2.user.id)
+    const sede = await prisma.sede.findUnique({ where: { id: sedeId }, select: { id: true, empresaId: true } })
+    if (!sede || sede.empresaId !== empresaId2) return
+
     const admin = await prisma.sedeMembership.findUnique({
       where: { sedeId_userId: { sedeId, userId: session2.user.id } },
       select: { role: true },
@@ -173,14 +181,14 @@ export default async function PermisosPage() {
     if (!email) return
     if (!ACCESS.includes(level)) return
 
-    const empresa2 = await getOrCreateDefaultEmpresa()
+    const empresaId2 = await requireEmpresaIdForUser(session2.user.id)
 
     const anyAdmin2 =
       session2.user.role === 'ADMIN' ||
       !!(await prisma.sedeMembership.findFirst({
         where: {
           userId: session2.user.id,
-          sede: { empresaId: empresa2.id },
+          sede: { empresaId: empresaId2 },
           role: { in: ['ADMIN', 'MANAGER'] },
         },
         select: { id: true },
@@ -198,7 +206,7 @@ export default async function PermisosPage() {
 
     await prisma.userGlobalAccess.upsert({
       where: { userId: user.id },
-      create: { userId: user.id, empresaId: empresa2.id, level },
+      create: { userId: user.id, empresaId: empresaId2, level },
       update: { level },
     })
   }
@@ -227,7 +235,7 @@ export default async function PermisosPage() {
     : []
 
   const globalAccess = await prisma.userGlobalAccess.findMany({
-    where: { empresaId: empresa.id },
+    where: { empresaId },
     orderBy: { createdAt: 'asc' },
     select: { id: true, level: true, user: { select: { email: true, name: true } } },
   })

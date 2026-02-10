@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { ensureDefaultSedeForEmpresa, getOrCreateDefaultEmpresa } from '@/lib/rbac'
+import { ensureDefaultSedeForEmpresa, requireEmpresaIdForUser } from '@/lib/rbac'
 import { randomDigits, sha256Hex } from '@/lib/auth-tokens'
 import { sendEmail } from '@/lib/email'
 
@@ -42,7 +42,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Email inválido' }, { status: 400 })
   }
 
-  const empresa = await getOrCreateDefaultEmpresa()
+  const empresaId = await requireEmpresaIdForUser(session.user.id)
+  const empresa = await prisma.empresa.findUnique({ where: { id: empresaId }, select: { id: true, nombre: true } })
+  if (!empresa) return NextResponse.json({ error: 'Empresa no encontrada' }, { status: 404 })
+
   const defaultSede = await ensureDefaultSedeForEmpresa(empresa.id, session.user.id)
 
   const selectedSede = requestedSedeId

@@ -9,7 +9,6 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
 import { ModuleKey } from "@prisma/client"
-import { getOrCreateDefaultEmpresa } from "@/lib/rbac"
 
 type ClienteSegmento = "POTENCIAL" | "OCASIONAL" | "FRECUENTE"
 
@@ -45,8 +44,7 @@ export async function GET(
 
     const { id } = await context.params
 
-    const activeSede = await prisma.sede.findUnique({ where: { id: access.sedeId }, select: { empresaId: true } })
-    const empresaId = activeSede?.empresaId ?? (await getOrCreateDefaultEmpresa()).id
+    const empresaId = access.empresaId
 
     const cliente = await prisma.cliente.findUnique({
       where: { id },
@@ -144,8 +142,7 @@ export async function PUT(
     const { id } = await context.params
     const body = await request.json()
 
-    const activeSede = await prisma.sede.findUnique({ where: { id: access.sedeId }, select: { empresaId: true } })
-    const empresaId = activeSede?.empresaId ?? (await getOrCreateDefaultEmpresa()).id
+    const empresaId = access.empresaId
 
     const hasSegmento = Object.prototype.hasOwnProperty.call(body, "segmento")
     const segmentoManual = hasSegmento ? normalizeSegmento(body.segmento) : null
@@ -226,8 +223,7 @@ export async function DELETE(
 
     const { id } = await context.params
 
-    const activeSede = await prisma.sede.findUnique({ where: { id: access.sedeId }, select: { empresaId: true } })
-    const empresaId = activeSede?.empresaId ?? (await getOrCreateDefaultEmpresa()).id
+    const empresaId = access.empresaId
 
     // Verificar si el cliente tiene cotizaciones
     const cliente = await prisma.cliente.findUnique({
