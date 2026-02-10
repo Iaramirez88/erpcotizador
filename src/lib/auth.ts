@@ -38,7 +38,6 @@ function sanitizeJwtToken(token: JWT) {
     "jti",
     "name",
     "email",
-    "picture",
     // custom app
     "id",
     "role",
@@ -49,6 +48,16 @@ function sanitizeJwtToken(token: JWT) {
 
   for (const key of Object.keys(token)) {
     if (!allowed.has(key)) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+      delete (token as Record<string, unknown>)[key]
+    }
+  }
+
+  // Última línea de defensa: si algún string permitido crece demasiado, lo removemos.
+  // Esto previene cookies enormes por valores inesperados (p.ej. avatar base64).
+  for (const key of Object.keys(token)) {
+    const value = (token as Record<string, unknown>)[key]
+    if (typeof value === "string" && value.length > 1024) {
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete (token as Record<string, unknown>)[key]
     }
@@ -155,7 +164,10 @@ export const authOptions: NextAuthConfig = {
       if (user) {
         if (typeof user.name === 'string') token.name = user.name
         if (typeof user.email === 'string') token.email = user.email
-        if (typeof user.image === 'string') token.picture = user.image
+        // No guardar imagen/avatar en JWT cookie (puede ser muy grande).
+        // El callback `session` ya refresca `session.user.image` desde BD.
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+        delete (token as Record<string, unknown>).picture
 
         const remember = Boolean((user as unknown as { remember?: boolean }).remember)
         token.remember = remember
@@ -193,7 +205,7 @@ export const authOptions: NextAuthConfig = {
         if (token.role) session.user.role = token.role as string
         if (typeof token.name === 'string') session.user.name = token.name
         if (typeof token.email === 'string') session.user.email = token.email
-        if (typeof token.picture === 'string') session.user.image = token.picture
+        // No usar `token.picture` para evitar inflar el cookie; se refresca desde BD.
 
         // Mantener datos frescos (avatar/nombre) si cambian en BD.
         if (resolvedUserId) {
