@@ -91,6 +91,10 @@ export default function CotizadorPage() {
   const [previewTemplate, setPreviewTemplate] = useState<CotizacionTemplateSettings | null>(null)
   const [sendingPreviewEmail, setSendingPreviewEmail] = useState(false)
   const [sharingPreviewWhatsapp, setSharingPreviewWhatsapp] = useState(false)
+  const [approvingForBilling, setApprovingForBilling] = useState(false)
+  const [creatingInvoiceFromCotizacion, setCreatingInvoiceFromCotizacion] = useState(false)
+  const [remittingElectronic, setRemittingElectronic] = useState(false)
+  const [createdInvoice, setCreatedInvoice] = useState<{ id: string; numero: string } | null>(null)
 
   const [taxConfig, setTaxConfig] = useState<{ pricesIncludeIva: boolean; ivaPct: number }>({
     pricesIncludeIva: true,
@@ -173,8 +177,7 @@ export default function CotizadorPage() {
   const [subtotal, setSubtotal] = useState(0)
   const [descuento, setDescuento] = useState(0)
   const [iva, setIva] = useState(0)
-  const [utilidadPct, setUtilidadPct] = useState(30)
-  const [utilidad, setUtilidad] = useState(0)
+  // Nota: la utilidad/margen se maneja en el cotizador de litografía (opcional).
   const [total, setTotal] = useState(0)
 
   useEffect(() => {
@@ -312,7 +315,7 @@ export default function CotizadorPage() {
   useEffect(() => {
     calcularTotales()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, descuento, taxConfig.pricesIncludeIva, taxConfig.ivaPct, utilidadPct])
+  }, [items, descuento, taxConfig.pricesIncludeIva, taxConfig.ivaPct])
 
   const fetchClientes = async () => {
     try {
@@ -340,6 +343,7 @@ export default function CotizadorPage() {
 
   const abrirPreviewPorId = async (id: string) => {
     try {
+      setCreatedInvoice(null)
       const res = await fetch(`/api/cotizaciones/${id}`, { cache: "no-store" })
       if (!res.ok) throw new Error("No se pudo cargar la cotización")
       const data = await res.json()
@@ -359,6 +363,84 @@ export default function CotizadorPage() {
     } catch (error) {
       console.error('Error al cargar datos para preview:', error)
       alert('Error al cargar el preview')
+    }
+  }
+
+  const aprobarParaFacturar = async () => {
+    if (!previewCotizacion?.id) return
+    if (approvingForBilling) return
+
+    setApprovingForBilling(true)
+    try {
+      const res = await fetch(`/api/cotizaciones/${previewCotizacion.id}/aprobar`, { method: 'POST' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.success) {
+        alert(json?.error || 'No se pudo aprobar la cotización')
+        return
+      }
+
+      setPreviewCotizacion((prev) => (prev ? { ...prev, estado: 'APROBADA' } : prev))
+      alert('Cotización aprobada. Ya puedes facturarla.')
+    } catch (error) {
+      console.error('Error al aprobar:', error)
+      alert('Error al aprobar la cotización')
+    } finally {
+      setApprovingForBilling(false)
+    }
+  }
+
+  const crearFacturaDesdeCotizacion = async () => {
+    if (!previewCotizacion?.id) return
+    if (creatingInvoiceFromCotizacion) return
+
+    setCreatingInvoiceFromCotizacion(true)
+    try {
+      const res = await fetch(`/api/cotizaciones/${previewCotizacion.id}/facturar`, { method: 'POST' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.ok || !json?.data) {
+        alert(json?.error || 'No se pudo crear la factura')
+        return
+      }
+
+      const inv = json.data as { id: string; numero: string }
+      setCreatedInvoice({ id: inv.id, numero: inv.numero })
+      alert(`Factura creada: ${inv.numero}. Ya aparece en el historial de facturas.`)
+    } catch (error) {
+      console.error('Error al facturar:', error)
+      alert('Error al crear la factura')
+    } finally {
+      setCreatingInvoiceFromCotizacion(false)
+    }
+  }
+
+  const remitirAFacturaElectronica = async () => {
+    if (!createdInvoice?.id) return
+    if (remittingElectronic) return
+
+    setRemittingElectronic(true)
+    try {
+      const res = await fetch('/api/dian/documentos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          direction: 'OUTBOUND',
+          type: 'INVOICE',
+          posInvoiceId: createdInvoice.id,
+        }),
+      })
+
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.ok) {
+        alert(json?.error || 'No se pudo remitir a facturación electrónica')
+        return
+      }
+
+      alert('Documento DIAN creado. Ve a POS > pestaña DIAN para continuar con transmisión/expedición.')
+    } catch (error) {
+      console.error('Error al remitir a DIAN:', error)
+      alert('Error al remitir a facturación electrónica')
+    } finally {
+      setRemittingElectronic(false)
     }
   }
 
@@ -718,14 +800,9 @@ export default function CotizadorPage() {
       tot = subConDescuento + ivaCalc
     }
 
-    const uPct = Math.min(100, Math.max(30, Number(utilidadPct) || 30))
-    const utilidadCalc = tot * (uPct / 100)
-    const totFinal = tot + utilidadCalc
-
     setSubtotal(sub)
     setIva(ivaCalc)
-    setUtilidad(utilidadCalc)
-    setTotal(totFinal)
+    setTotal(tot)
   }
 
   const guardarCotizacion = async () => {
@@ -846,7 +923,10 @@ export default function CotizadorPage() {
       <Dialog
         open={!!previewCotizacion}
         onOpenChange={(open) => {
-          if (!open) setPreviewCotizacion(null)
+          if (!open) {
+            setPreviewCotizacion(null)
+            setCreatedInvoice(null)
+          }
         }}
       >
         <DialogContent className="max-w-5xl max-h-[90vh]">
@@ -879,11 +959,59 @@ export default function CotizadorPage() {
               onClick={() => {
                 const id = previewCotizacion?.id
                 setPreviewCotizacion(null)
+                setCreatedInvoice(null)
                 if (id) router.push(`/dashboard/cotizador?id=${id}`)
               }}
             >
               Editar
             </Button>
+
+            {previewCotizacion?.id ? (
+              <>
+                {String(previewCotizacion?.estado) !== 'APROBADA' ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={approvingForBilling}
+                    onClick={() => void aprobarParaFacturar()}
+                  >
+                    {approvingForBilling ? 'Aprobando…' : 'Aprobar para facturar'}
+                  </Button>
+                ) : null}
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={String(previewCotizacion?.estado) !== 'APROBADA' || creatingInvoiceFromCotizacion}
+                  onClick={() => void crearFacturaDesdeCotizacion()}
+                >
+                  {creatingInvoiceFromCotizacion ? 'Creando factura…' : 'Crear factura (borrador)'}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!createdInvoice?.id || remittingElectronic}
+                  onClick={() => void remitirAFacturaElectronica()}
+                >
+                  {remittingElectronic ? 'Remitiendo…' : 'Remitir a facturación electrónica'}
+                </Button>
+
+                {createdInvoice?.numero ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setPreviewCotizacion(null)
+                      router.push('/dashboard/pos')
+                    }}
+                  >
+                    Ir a facturas
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
+
             <Button type="button" onClick={() => setPreviewCotizacion(null)}>
               Cerrar
             </Button>
@@ -1293,26 +1421,6 @@ export default function CotizadorPage() {
                     IVA ({Math.min(100, Math.max(0, taxConfig.ivaPct))}%{taxConfig.pricesIncludeIva ? ' incluido' : ''}):
                   </span>
                   <span className="font-medium">{formatCurrency(iva)}</span>
-                </div>
-
-                <div>
-                  <Label htmlFor="utilidadPct" className="text-sm">Utilidad (%):</Label>
-                  <Input
-                    id="utilidadPct"
-                    type="number"
-                    min={30}
-                    max={100}
-                    step="1"
-                    value={utilidadPct}
-                    onChange={(e) => setUtilidadPct(parseFloat(e.target.value) || 30)}
-                    placeholder="30"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">Se calcula sobre el total con IVA incluido.</p>
-                </div>
-
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Utilidad ({Math.min(100, Math.max(30, utilidadPct))}%):</span>
-                  <span className="font-medium">{formatCurrency(utilidad)}</span>
                 </div>
 
                 <div className="flex justify-between text-lg font-bold pt-2 border-t">

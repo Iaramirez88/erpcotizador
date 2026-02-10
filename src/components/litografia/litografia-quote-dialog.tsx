@@ -122,6 +122,8 @@ export type LitografiaMeta = {
   version: 1
   titulo: string
   descripcion: string
+  // Utilidad/margen opcional (porcentaje). Se aplica al total del ítem de litografía.
+  margenPct?: string
   cantidad: string
   desperdicioPct: string
   pricingSource: "tarifario" | "calculo"
@@ -206,6 +208,9 @@ export function LitografiaQuoteDialog(props: {
   const [costoAcabados, setCostoAcabados] = useState("0")
   const [costoTransporte, setCostoTransporte] = useState("0")
 
+  // Utilidad/Margen opcional (en litografía la utilidad varía)
+  const [margenPct, setMargenPct] = useState<string>("")
+
   // En SGDigital se cotiza siempre en policromía (4).
   const tintas: 1 | 2 | 4 = 4
   const [tarifa, setTarifa] = useState<FlyerRate | null>(null)
@@ -245,6 +250,12 @@ export function LitografiaQuoteDialog(props: {
     return customFields.reduce((acc, f) => acc + parseCopNumber(f.value), 0)
   }, [customFields])
 
+  const margenMultiplier = useMemo(() => {
+    const n = parseFloat(String(margenPct))
+    const pct = Number.isFinite(n) ? Math.min(500, Math.max(0, n)) : 0
+    return 1 + pct / 100
+  }, [margenPct])
+
   const buildMeta = (): LitografiaMeta => {
     const finishIds = selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean)
     const primaryFinishId = finishIds[0] ?? ""
@@ -252,6 +263,7 @@ export function LitografiaQuoteDialog(props: {
       version: 1,
       titulo,
       descripcion,
+      margenPct,
       cantidad,
       desperdicioPct,
       pricingSource,
@@ -283,6 +295,7 @@ export function LitografiaQuoteDialog(props: {
   const applyMeta = (meta: LitografiaMeta) => {
     setTitulo(meta.titulo ?? "")
     setDescripcion(meta.descripcion ?? "")
+    setMargenPct(meta.margenPct ?? "")
     setCantidad(meta.cantidad ?? "")
     setDesperdicioPct(meta.desperdicioPct ?? "")
     setPricingSource(meta.pricingSource === "calculo" ? "calculo" : "tarifario")
@@ -692,7 +705,8 @@ export function LitografiaQuoteDialog(props: {
       const addFinishesCost = tarifa && tarifa.finishOptionId && finishIds.length === 1 && tarifa.finishOptionId === finishIds[0] ? 0 : finishesCost
 
       const meta = buildMeta()
-      const subtotal = (tarifa ? base + transporte + addFinishesCost : (estimated?.precioVenta ?? 0) + addFinishesCost) + customFieldsTotal
+      const baseValue = tarifa ? base : (estimated?.precioVenta ?? 0)
+      const subtotal = (baseValue * margenMultiplier) + (tarifa ? (transporte + addFinishesCost) : addFinishesCost) + customFieldsTotal
       const payload: AddLitografiaItemPayload = {
         descripcion: buildDescripcion(),
         cantidad: qty,
@@ -715,7 +729,8 @@ export function LitografiaQuoteDialog(props: {
     if (!calc) return
 
     const qty = Math.max(1, Math.trunc(calc.qty || 0))
-    const subtotal = (calc.precioVenta || 0) + customFieldsTotal
+  const baseValue = calc.precioVenta || 0
+  const subtotal = (baseValue * margenMultiplier) + customFieldsTotal
 
     const meta = buildMeta()
     const payload: AddLitografiaItemPayload = {
@@ -769,6 +784,21 @@ export function LitografiaQuoteDialog(props: {
                       onChange={(e) => setTitulo(e.target.value)}
                       placeholder="Ej: Flyers A5"
                     />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <Label>Utilidad / Margen (%) (opcional)</Label>
+                    <Input
+                      className={INPUT_COMPACT}
+                      type="number"
+                      min={0}
+                      max={500}
+                      step="1"
+                      value={margenPct}
+                      onChange={(e) => setMargenPct(e.target.value)}
+                      placeholder="0"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">Se aplica al total del ítem de litografía. 0 = sin utilidad adicional.</p>
                   </div>
 
                   {isAdmin ? (
@@ -1272,7 +1302,7 @@ export function LitografiaQuoteDialog(props: {
                                   tarifa.finishOptionId && finishIdsNormalized.length === 1 && tarifa.finishOptionId === finishIdsNormalized[0]
                                     ? 0
                                     : selectedFinishesCost
-                                const total = base + transporte + addFinishesCost + extras
+                                const total = (base * margenMultiplier) + transporte + addFinishesCost + extras
                                 const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
                                 return (
                                   <>
@@ -1303,7 +1333,8 @@ export function LitografiaQuoteDialog(props: {
                             <div className="border-t pt-3">
                               {(() => {
                                 const extras = customFieldsTotal
-                                const total = (fallbackCalc.precioVenta || 0) + extras
+                                const baseValue = fallbackCalc.precioVenta || 0
+                                const total = (baseValue * margenMultiplier) + extras
                                 const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
                                 return (
                                   <>
@@ -1378,11 +1409,11 @@ export function LitografiaQuoteDialog(props: {
                         <div className="border-t pt-3">
                           <div className="flex justify-between">
                             <span className="font-medium">Precio venta</span>
-                            <span className="font-bold text-blue-700">{formatCurrency((calc.precioVenta || 0) + customFieldsTotal)}</span>
+                            <span className="font-bold text-blue-700">{formatCurrency(((calc.precioVenta || 0) * margenMultiplier) + customFieldsTotal)}</span>
                           </div>
                           <div className="flex justify-between text-sm mt-1">
                             <span className="text-muted-foreground">Precio unitario</span>
-                            <span className="font-medium">{formatCurrency(((calc.precioVenta || 0) + customFieldsTotal) / Math.max(1, Math.trunc(calc.qty || 0)))}</span>
+                            <span className="font-medium">{formatCurrency((((calc.precioVenta || 0) * margenMultiplier) + customFieldsTotal) / Math.max(1, Math.trunc(calc.qty || 0)))}</span>
                           </div>
                         </div>
 

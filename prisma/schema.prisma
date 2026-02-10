@@ -76,6 +76,9 @@ model User {
   posInvoicesCreated PosInvoice[] @relation("PosInvoiceCreatedBy")
   posReturnsCreated  PosReturn[]  @relation("PosReturnCreatedBy")
 
+  // DIAN (documentos electrónicos)
+  dianDocumentsCreated DianElectronicDocument[] @relation("DianDocCreatedBy")
+
   // Remisiones
   remisionesCreadas Remision[] @relation("RemisionCreatedBy")
   remisionesAsignadas Remision[] @relation("RemisionAssignedTo")
@@ -352,6 +355,41 @@ enum PosPaymentMethod {
 }
 
 // ============================================
+// FACTURACIÓN ELECTRÓNICA (DIAN) - MVP
+// ============================================
+
+enum DianDocumentDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum DianDocumentType {
+  INVOICE
+  CREDIT_NOTE
+  DEBIT_NOTE
+  ELECTRONIC_INSTRUMENT
+}
+
+enum DianDocumentStatus {
+  GENERATED
+  TRANSMITTED
+  EXPEDITED
+  DELIVERED
+  RECEIVED
+  ERROR
+}
+
+enum DianEventType {
+  GENERATION
+  TRANSMISSION
+  EXPEDITION
+  DELIVERY
+  RECEPTION
+  ERROR
+  NOTE
+}
+
+// ============================================
 // MÓDULO DE EMPRESA
 // ============================================
 
@@ -392,6 +430,9 @@ model Empresa {
   warehouses  InventoryWarehouse[]
   posInvoices PosInvoice[]
   posReturns  PosReturn[]
+
+  // DIAN (documentos electrónicos)
+  dianDocuments DianElectronicDocument[]
 
   usuarios       User[]
   globalAccesses UserGlobalAccess[]
@@ -783,6 +824,9 @@ model PosInvoice {
   payments PosPayment[]
   returns  PosReturn[]
 
+  // DIAN (documentos electrónicos)
+  dianDocuments DianElectronicDocument[] @relation("DianDocPosInvoice")
+
   createdById String?
   createdBy   User?   @relation("PosInvoiceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
@@ -853,6 +897,9 @@ model PosReturn {
 
   items PosReturnItem[]
 
+  // DIAN (documentos electrónicos)
+  dianDocuments DianElectronicDocument[] @relation("DianDocPosReturn")
+
   createdById String?
   createdBy   User?   @relation("PosReturnCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
@@ -880,6 +927,74 @@ model PosReturnItem {
   @@index([returnId])
   @@index([materialId])
   @@map("pos_return_items")
+}
+
+model DianElectronicDocument {
+  id        String @id @default(cuid())
+  direction DianDocumentDirection @default(OUTBOUND)
+  type      DianDocumentType
+  status    DianDocumentStatus @default(GENERATED)
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  sedeId String
+  sede   Sede @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+
+  // Opcional: documento interno origen
+  posInvoiceId String?
+  posInvoice   PosInvoice? @relation("DianDocPosInvoice", fields: [posInvoiceId], references: [id], onDelete: SetNull)
+
+  posReturnId String?
+  posReturn   PosReturn? @relation("DianDocPosReturn", fields: [posReturnId], references: [id], onDelete: SetNull)
+
+  // Identificadores y payload
+  numero      String?
+  uuid        String?
+  cufe        String? @db.Text
+  provider    String?
+  providerRef String?
+
+  payload Json @default("{}")
+  xml     String? @db.Text
+
+  lastError String? @db.Text
+
+  transmittedAt DateTime?
+  expeditedAt   DateTime?
+  deliveredAt   DateTime?
+  receivedAt    DateTime?
+
+  createdById String?
+  createdBy   User? @relation("DianDocCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  events DianElectronicEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, createdAt])
+  @@index([sedeId, createdAt])
+  @@index([direction, status, createdAt])
+  @@index([posInvoiceId])
+  @@index([posReturnId])
+  @@map("dian_electronic_documents")
+}
+
+model DianElectronicEvent {
+  id         String @id @default(cuid())
+  documentId String
+  document   DianElectronicDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  type    DianEventType
+  message String? @db.Text
+  meta    Json @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([documentId, createdAt])
+  @@index([type, createdAt])
+  @@map("dian_electronic_events")
 }
 
 model BillingInvoice {
@@ -955,6 +1070,9 @@ model Sede {
   remisionSequence   RemisionSequence?
   posInvoices        PosInvoice[]
   posReturns         PosReturn[]
+
+  // DIAN (documentos electrónicos)
+  dianDocuments DianElectronicDocument[]
 
   remisiones Remision[]
 

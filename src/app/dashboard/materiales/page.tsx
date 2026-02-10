@@ -43,11 +43,23 @@ interface Material {
   observaciones?: string | null
   activo: boolean
   createdAt: string
+  stocks?: Array<{
+    quantity: number
+    warehouse: { id: string; nombre: string; codigo: string | null; isDefault: boolean; sedeId: string | null }
+  }>
   quantityDiscounts?: Array<{
     id: string
     minQty: number
     discountPct: number
   }>
+}
+
+type Bodega = {
+  id: string
+  nombre: string
+  codigo: string | null
+  isDefault: boolean
+  sedeId: string | null
 }
 
 type ProveedorLite = {
@@ -90,6 +102,7 @@ const UNIDADES_MEDIDA = [
 
 export default function ProductosPage() {
   const [materiales, setMateriales] = useState<Material[]>([])
+  const [bodegas, setBodegas] = useState<Bodega[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [tipoFiltro, setTipoFiltro] = useState("")
@@ -126,6 +139,7 @@ export default function ProductosPage() {
     stockActual: "0",
     stockMinimo: "0",
     unidadMedida: "m2",
+    warehouseId: "",
     proveedor: "",
     observaciones: "",
     activo: true
@@ -143,6 +157,41 @@ export default function ProductosPage() {
   const tipoProducto = useMemo(() => {
     return unidadCobro === 'unidad' ? 'FISICO' : 'METRAJE'
   }, [unidadCobro])
+
+  const defaultBodegaId = useMemo(() => {
+    // Preferimos la bodega principal asociada a la sede (sedeId != null).
+    const sedeDefault = bodegas.find((b) => b.isDefault && b.sedeId)
+    if (sedeDefault?.id) return sedeDefault.id
+    const anyDefault = bodegas.find((b) => b.isDefault)
+    if (anyDefault?.id) return anyDefault.id
+    return bodegas[0]?.id ?? ''
+  }, [bodegas])
+
+  useEffect(() => {
+    if (!isModalOpen) return
+
+    const loadBodegas = async () => {
+      try {
+        const res = await fetch('/api/bodegas')
+        const json = (await res.json().catch(() => ({}))) as { success?: boolean; data?: Bodega[] }
+        if (res.ok && json.success && Array.isArray(json.data)) {
+          setBodegas(json.data)
+        }
+      } catch {
+        // noop
+      }
+    }
+
+    void loadBodegas()
+  }, [isModalOpen])
+
+  useEffect(() => {
+    if (!isModalOpen) return
+    if (editingMaterial) return
+    if (formData.warehouseId) return
+    if (!defaultBodegaId) return
+    setFormData((p) => ({ ...p, warehouseId: defaultBodegaId }))
+  }, [defaultBodegaId, editingMaterial, formData.warehouseId, isModalOpen])
 
   function setTipoProducto(next: 'METRAJE' | 'FISICO') {
     setFormData((prev) => {
@@ -285,13 +334,16 @@ export default function ProductosPage() {
       
       const method = editingMaterial ? 'PUT' : 'POST'
 
+      const { warehouseId, ...restForm } = formData
+
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          ...formData,
+          ...restForm,
+          ...(editingMaterial ? {} : { warehouseId: warehouseId || undefined }),
           quantityDiscounts: quantityDiscounts
             .map((d) => ({
               minQty: parseFloat(d.minQty),
@@ -362,6 +414,7 @@ export default function ProductosPage() {
       stockActual: "0",
       stockMinimo: material.stockMinimo?.toString() || "0",
       unidadMedida: material.unidadMedida,
+      warehouseId: material.stocks?.[0]?.warehouse?.id ?? "",
       proveedor: material.proveedor ?? "",
       observaciones: material.observaciones ?? "",
       activo: material.activo,
@@ -387,6 +440,7 @@ export default function ProductosPage() {
       stockActual: material.stockActual.toString(),
       stockMinimo: material.stockMinimo.toString(),
       unidadMedida: material.unidadMedida,
+      warehouseId: material.stocks?.[0]?.warehouse?.id ?? "",
       proveedor: material.proveedor || "",
       observaciones: material.observaciones || "",
       activo: material.activo
@@ -449,6 +503,7 @@ export default function ProductosPage() {
       stockActual: "0",
       stockMinimo: "0",
       unidadMedida: "m2",
+      warehouseId: "",
       proveedor: "",
       observaciones: "",
       activo: true
@@ -599,6 +654,8 @@ export default function ProductosPage() {
                   material.color ? `Color ${material.color}` : null,
                 ].filter(Boolean).join(" • ")
 
+                const wh = material.stocks?.[0]?.warehouse ?? null
+
                 return (
                   <div key={material.id} className={`px-4 py-3 ${!material.activo ? "opacity-60" : ""}`}>
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -635,6 +692,9 @@ export default function ProductosPage() {
                             className={`text-xs whitespace-nowrap ${material.stockActual <= material.stockMinimo ? "text-red-600 font-medium" : "text-muted-foreground"}`}
                           >
                             Stock: {material.stockActual} {formatUnidadMedidaLabel(material.unidadMedida)}
+                          </div>
+                          <div className="text-xs whitespace-nowrap text-muted-foreground">
+                            Bodega: {wh ? `${wh.nombre}${wh.isDefault ? ' (Principal)' : ''}` : '—'}
                           </div>
                         </div>
 
@@ -1020,6 +1080,32 @@ export default function ProductosPage() {
                   placeholder="100"
                 />
               </div>
+
+              {!editingMaterial ? (
+                <div>
+                  <Label>Bodega / Sede</Label>
+                  {bodegas.length > 1 ? (
+                    <select
+                      value={formData.warehouseId}
+                      onChange={(e) => setFormData({ ...formData, warehouseId: e.target.value })}
+                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    >
+                      {bodegas.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.nombre}{b.isDefault ? ' (Principal)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="h-9 flex items-center rounded-md border border-input bg-muted/30 px-3 text-sm">
+                      {(bodegas[0]?.nombre || 'Principal').trim()}
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Stock inicial quedará registrado en esta bodega.
+                  </p>
+                </div>
+              ) : null}
 
               <div>
                 <Label htmlFor="stockMinimo">Stock Mínimo</Label>

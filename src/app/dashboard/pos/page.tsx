@@ -6,6 +6,7 @@
  * - Anular factura (si aplica)
  */
 
+
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -22,8 +23,107 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatCurrency, formatUnidadMedidaLabel } from '@/lib/utils'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Download } from 'lucide-react'
+
+type DianDirection = 'OUTBOUND' | 'INBOUND'
+type DianType = 'INVOICE' | 'CREDIT_NOTE' | 'DEBIT_NOTE' | 'ELECTRONIC_INSTRUMENT'
+type DianStatus = 'GENERATED' | 'TRANSMITTED' | 'EXPEDITED' | 'DELIVERED' | 'RECEIVED' | 'ERROR'
+type DianAction = 'transmitir' | 'expedir' | 'entregar' | 'recepcionar'
+
+const DIAN_STEPS: Array<{ key: DianStatus; title: string; description: string }> = [
+  {
+    key: 'GENERATED',
+    title: 'Generación',
+    description: 'Construcción del documento electrónico con su información fiscal y comercial.',
+  },
+  {
+    key: 'TRANSMITTED',
+    title: 'Transmisión',
+    description: 'Envío para validación/registro ante el proveedor tecnológico y DIAN (según integración).',
+  },
+  {
+    key: 'EXPEDITED',
+    title: 'Expedición',
+    description: 'Emisión del documento válido y asignación de identificadores/estado de expedición.',
+  },
+  {
+    key: 'DELIVERED',
+    title: 'Entrega',
+    description: 'Entrega al adquirente por los canales configurados (email/portal/otros).',
+  },
+  {
+    key: 'RECEIVED',
+    title: 'Recepción',
+    description: 'Recepción y registro de facturas/documentos recibidos (acuse/validación/estado).',
+  },
+]
+
+const DIAN_DOC_TYPES: Array<{ value: DianType; label: string }> = [
+  { value: 'INVOICE', label: 'Factura electrónica' },
+  { value: 'CREDIT_NOTE', label: 'Nota crédito' },
+  { value: 'DEBIT_NOTE', label: 'Nota débito' },
+  { value: 'ELECTRONIC_INSTRUMENT', label: 'Instrumento electrónico' },
+]
+
+function dianTypeLabel(value: DianType | string): string {
+  return DIAN_DOC_TYPES.find((t) => t.value === value)?.label ?? String(value)
+}
+
+type DianDocListItem = {
+  id: string
+  direction: DianDirection
+  type: DianType
+  status: DianStatus
+  numero: string | null
+  uuid: string | null
+  cufe: string | null
+  provider: string | null
+  providerRef: string | null
+  transmittedAt: string | null
+  expeditedAt: string | null
+  deliveredAt: string | null
+  receivedAt: string | null
+  lastError: string | null
+  createdAt: string
+  posInvoice?: { id: string; numero: string } | null
+  posReturn?: { id: string; numero: string } | null
+}
+
+type DianDocEvent = {
+  id: string
+  type: string
+  message: string
+  meta: unknown
+  createdAt: string
+}
+
+type DianDocDetail = {
+  id: string
+  direction: DianDirection
+  type: DianType
+  status: DianStatus
+  numero: string | null
+  uuid: string | null
+  cufe: string | null
+  provider: string | null
+  providerRef: string | null
+  payload: unknown
+  xml: string | null
+  lastError: string | null
+  transmittedAt: string | null
+  expeditedAt: string | null
+  deliveredAt: string | null
+  receivedAt: string | null
+  createdAt: string
+  updatedAt: string
+  posInvoice?: { id: string; numero: string } | null
+  posReturn?: { id: string; numero: string } | null
+  events: DianDocEvent[]
+  createdBy?: { id: string; name: string | null; email: string | null } | null
+}
 
 type Bodega = {
   id: string
@@ -131,6 +231,8 @@ type DraftItem = {
 }
 
 export default function PosPage() {
+  const [activeTab, setActiveTab] = useState<'interna' | 'dian'>('interna')
+
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -163,6 +265,24 @@ export default function PosPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [detail, setDetail] = useState<InvoiceDetail | null>(null)
+
+  const [dianFilterDirection, setDianFilterDirection] = useState<'ALL' | DianDirection>('ALL')
+  const [dianDocs, setDianDocs] = useState<DianDocListItem[]>([])
+  const [dianLoading, setDianLoading] = useState(false)
+  const [dianError, setDianError] = useState<string | null>(null)
+
+  const [dianSelectedId, setDianSelectedId] = useState('')
+  const [dianDetail, setDianDetail] = useState<DianDocDetail | null>(null)
+  const [dianDetailLoading, setDianDetailLoading] = useState(false)
+  const [dianDetailError, setDianDetailError] = useState<string | null>(null)
+
+  const [dianNewDirection, setDianNewDirection] = useState<DianDirection>('OUTBOUND')
+  const [dianNewType, setDianNewType] = useState<DianType>('INVOICE')
+  const [dianNewNumero, setDianNewNumero] = useState('')
+  const [dianCreating, setDianCreating] = useState(false)
+  const [dianActionSubmitting, setDianActionSubmitting] = useState<DianAction | null>(null)
+
+  const [invoiceToDianSubmitting, setInvoiceToDianSubmitting] = useState<string | null>(null)
 
   const [form, setForm] = useState({
     clienteNombre: '',
@@ -280,9 +400,185 @@ export default function PosPage() {
     }
   }
 
+  const loadDianDocs = useCallback(async () => {
+    setDianLoading(true)
+    setDianError(null)
+    try {
+      const qs = new URLSearchParams({ limit: '100' })
+      if (dianFilterDirection !== 'ALL') qs.set('direction', dianFilterDirection)
+
+      const res = await fetch(`/api/dian/documentos?${qs.toString()}`)
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: unknown; error?: string }
+      if (!res.ok || !json.ok || !Array.isArray(json.data)) {
+        setDianError(json.error || 'No se pudieron cargar los documentos DIAN')
+        setDianDocs([])
+        return
+      }
+      setDianDocs(json.data as DianDocListItem[])
+    } catch (e) {
+      setDianError(e instanceof Error ? e.message : 'Error inesperado')
+      setDianDocs([])
+    } finally {
+      setDianLoading(false)
+    }
+  }, [dianFilterDirection])
+
+  const loadDianDetail = useCallback(async (id: string) => {
+    if (!id) return
+
+    setDianDetailLoading(true)
+    setDianDetailError(null)
+    try {
+      const res = await fetch(`/api/dian/documentos/${id}`)
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: unknown; error?: string }
+      if (!res.ok || !json.ok || !json.data) {
+        setDianDetailError(json.error || 'No se pudo cargar el detalle del documento')
+        setDianDetail(null)
+        return
+      }
+      setDianDetail(json.data as DianDocDetail)
+    } catch (e) {
+      setDianDetailError(e instanceof Error ? e.message : 'Error inesperado')
+      setDianDetail(null)
+    } finally {
+      setDianDetailLoading(false)
+    }
+  }, [])
+
+  const createDianDoc = useCallback(async () => {
+    if (dianCreating) return
+
+    setDianCreating(true)
+    setDianError(null)
+    try {
+      const payload = {
+        direction: dianNewDirection,
+        type: dianNewType,
+        numero: dianNewNumero.trim() || undefined,
+      }
+
+      const res = await fetch('/api/dian/documentos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: unknown; error?: string }
+      if (!res.ok || !json.ok || !json.data) {
+        setDianError(json.error || 'No se pudo crear el documento DIAN')
+        return
+      }
+
+      const created = json.data as { id?: string } | null
+      await loadDianDocs()
+      if (created?.id) {
+        setDianSelectedId(created.id)
+        await loadDianDetail(created.id)
+      }
+    } catch (e) {
+      setDianError(e instanceof Error ? e.message : 'Error inesperado')
+    } finally {
+      setDianCreating(false)
+    }
+  }, [dianCreating, dianNewDirection, dianNewNumero, dianNewType, loadDianDetail, loadDianDocs])
+
+  const pasarFacturaAFacturacionElectronica = useCallback(
+    async (posInvoiceId: string, status?: string) => {
+      if (!posInvoiceId) return
+      if (invoiceToDianSubmitting) return
+
+      const isDraft = String(status || '').toUpperCase() === 'DRAFT'
+      const ok = window.confirm(
+        isDraft
+          ? '¿Finalizar y enviar a facturación electrónica? Esto descontará inventario, dejará la factura como pagada y creará el documento DIAN.'
+          : '¿Enviar a facturación electrónica? Se creará el documento DIAN para esta factura.'
+      )
+      if (!ok) return
+
+      setInvoiceToDianSubmitting(posInvoiceId)
+      setError(null)
+
+      try {
+        if (isDraft) {
+          const finalized = await finalizar(posInvoiceId, { confirm: false })
+          if (!finalized) return
+        }
+
+        const res = await fetch('/api/dian/documentos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            direction: 'OUTBOUND',
+            type: 'INVOICE',
+            posInvoiceId,
+          }),
+        })
+
+        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: unknown; error?: string }
+        if (!res.ok || !json.ok || !json.data) {
+          setError(json.error || 'No se pudo enviar a facturación electrónica')
+          return
+        }
+
+        const created = json.data as { id?: string } | null
+        setActiveTab('dian')
+        await loadDianDocs()
+        if (created?.id) {
+          setDianSelectedId(created.id)
+          await loadDianDetail(created.id)
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Error inesperado')
+      } finally {
+        setInvoiceToDianSubmitting(null)
+      }
+    },
+    [finalizar, invoiceToDianSubmitting, loadDianDetail, loadDianDocs]
+  )
+
+  const runDianAction = useCallback(
+    async (action: DianAction) => {
+      if (!dianSelectedId || dianActionSubmitting) return
+      if (action === 'transmitir' && dianDetail?.direction === 'INBOUND') {
+        setDianDetailError('Transmisión solo aplica a documentos OUTBOUND')
+        return
+      }
+
+      setDianActionSubmitting(action)
+      setDianDetailError(null)
+      try {
+        const res = await fetch(`/api/dian/documentos/${dianSelectedId}/${action}`, { method: 'POST' })
+        const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: unknown; error?: string }
+        if (!res.ok || !json.ok) {
+          setDianDetailError(json.error || 'No se pudo ejecutar la acción DIAN')
+          return
+        }
+        await loadDianDocs()
+        await loadDianDetail(dianSelectedId)
+      } catch (e) {
+        setDianDetailError(e instanceof Error ? e.message : 'Error inesperado')
+      } finally {
+        setDianActionSubmitting(null)
+      }
+    },
+    [dianActionSubmitting, dianDetail?.direction, dianSelectedId, loadDianDetail, loadDianDocs]
+  )
+
+  const dianBitacora = useMemo(() => {
+    if (!dianDetail?.events?.length) return ''
+    return dianDetail.events
+      .map((ev) => `${new Date(ev.createdAt).toLocaleString('es-CO')} [${ev.type}] ${ev.message}`)
+      .join('\n')
+  }, [dianDetail?.events])
+
   useEffect(() => {
     void loadStock(selectedWarehouseForStock)
   }, [selectedWarehouseForStock])
+
+  useEffect(() => {
+    if (activeTab !== 'dian') return
+    void loadDianDocs()
+  }, [activeTab, loadDianDocs])
 
   useEffect(() => {
     void loadAll()
@@ -534,9 +830,18 @@ export default function PosPage() {
     }
   }
 
-  async function finalizar(invoiceId: string) {
-    const ok = window.confirm('¿Finalizar esta factura? Se descontará inventario y quedará como pagada.')
-    if (!ok) return
+  async function finalizar(
+    invoiceId: string,
+    opts?: {
+      confirm?: boolean
+      confirmMessage?: string
+    }
+  ): Promise<boolean> {
+    const shouldConfirm = opts?.confirm ?? true
+    if (shouldConfirm) {
+      const ok = window.confirm(opts?.confirmMessage || '¿Finalizar esta factura? Se descontará inventario y quedará como pagada.')
+      if (!ok) return false
+    }
 
     setError(null)
     setDetailError(null)
@@ -549,22 +854,40 @@ export default function PosPage() {
         body: JSON.stringify({}),
       })
 
-      const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string }
+      const json = (await res.json().catch(() => ({}))) as {
+        success?: boolean
+        error?: string
+        details?: {
+          materialId?: string
+          materialNombre?: string | null
+          required?: number
+          warehouseId?: string | null
+          warehouseNombre?: string | null
+          warehouseAvailable?: number | null
+          globalAvailable?: number | null
+        }
+      }
       if (!res.ok || !json.success) {
-        const msg = json.error || 'No se pudo finalizar la factura'
+        const d = json.details
+        const extra = d
+          ? ` | Material: ${d.materialNombre || d.materialId || '—'} | Requiere: ${d.required ?? '—'} | Bodega: ${d.warehouseNombre || '—'} | Disp. bodega: ${d.warehouseAvailable ?? '—'} | Disp. global: ${d.globalAvailable ?? '—'}`
+          : ''
+        const msg = (json.error || 'No se pudo finalizar la factura') + extra
         setError(msg)
         setDetailError(msg)
-        return
+        return false
       }
 
       await loadAll()
       if (detailOpen && detail?.id === invoiceId) {
         await openDetail(invoiceId)
       }
+      return true
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Error inesperado'
       setError(msg)
       setDetailError(msg)
+      return false
     } finally {
       setFinalizeSubmitting(false)
     }
@@ -641,200 +964,634 @@ export default function PosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Facturación</h1>
-          <p className="text-muted-foreground">Facturación interna (sin DIAN por ahora).</p>
+          <p className="text-muted-foreground">Facturación interna y demo del flujo de facturación electrónica (DIAN).</p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={() => void loadAll()} variant="secondary" disabled={isLoading}>
-            Refrescar
-          </Button>
-          <Button variant="outline" onClick={exportExcel} disabled={isLoading}>
-            <Download className="w-4 h-4 mr-2" />
-            Exportar Excel
-          </Button>
-          <Button onClick={openReturn} variant="outline" disabled={isLoading}>
-            Nueva devolución
-          </Button>
-          <Button onClick={openCreate} disabled={isLoading}>
-            Nueva factura
-          </Button>
-        </div>
+        {activeTab === 'interna' ? (
+          <div className="flex gap-2">
+            <Button onClick={() => void loadAll()} variant="secondary" disabled={isLoading}>
+              Refrescar
+            </Button>
+            <Button variant="outline" onClick={exportExcel} disabled={isLoading}>
+              <Download className="w-4 h-4 mr-2" />
+              Exportar Excel
+            </Button>
+            <Button onClick={openReturn} variant="outline" disabled={isLoading}>
+              Nueva devolución
+            </Button>
+            <Button onClick={openCreate} disabled={isLoading}>
+              Nueva factura
+            </Button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => void loadDianDocs()} disabled={dianLoading}>
+              Refrescar DIAN
+            </Button>
+          </div>
+        )}
       </div>
 
       {error ? <div className="text-sm text-red-600">{error}</div> : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Facturas recientes</CardTitle>
-          <CardDescription>Últimas facturas generadas.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-sm text-gray-600">Cargando…</div>
-          ) : invoices.length === 0 ? (
-            <div className="text-sm text-gray-600">Aún no hay facturas.</div>
-          ) : (
-            <div className="overflow-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-600 border-b">
-                    <th className="py-2 pr-4">Fecha</th>
-                    <th className="py-2 pr-4">Número</th>
-                    <th className="py-2 pr-4">Cliente</th>
-                    <th className="py-2 pr-4">Sede</th>
-                    <th className="py-2 pr-4">Estado</th>
-                    <th className="py-2 pr-4">Total</th>
-                    <th className="py-2 pr-2">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {invoices.map((inv) => (
-                    <tr key={inv.id} className="border-b last:border-b-0">
-                      <td className="py-2 pr-4 text-gray-700">{new Date(inv.createdAt).toLocaleString('es-CO')}</td>
-                      <td className="py-2 pr-4">
-                        <button className="text-blue-700 hover:underline" onClick={() => void openDetail(inv.id)}>
-                          {inv.numero}
-                        </button>
-                      </td>
-                      <td className="py-2 pr-4 text-gray-900">{inv.clienteNombre}</td>
-                      <td className="py-2 pr-4 text-gray-700">{inv.warehouse?.nombre || '—'}</td>
-                      <td className="py-2 pr-4 text-gray-700">{inv.status}</td>
-                      <td className="py-2 pr-4 font-medium">{formatCurrency(n(inv.total, 0))}</td>
-                      <td className="py-2 pr-2">
-                        <div className="flex gap-2">
-                          <Button type="button" size="sm" variant="outline" onClick={() => void openDetail(inv.id)}>
-                            Ver
-                          </Button>
-                          {inv.status === 'DRAFT' ? (
-                            <Button type="button" size="sm" onClick={() => void finalizar(inv.id)} disabled={finalizeSubmitting}>
-                              {finalizeSubmitting ? 'Finalizando…' : 'Finalizar'}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'interna' | 'dian')} className="w-full">
+        <TabsList>
+          <TabsTrigger value="interna">Interna</TabsTrigger>
+          <TabsTrigger value="dian">DIAN (MVP)</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="interna" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Facturas recientes</CardTitle>
+              <CardDescription>Últimas facturas generadas.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="text-sm text-gray-600">Cargando…</div>
+              ) : invoices.length === 0 ? (
+                <div className="text-sm text-gray-600">Aún no hay facturas.</div>
+              ) : (
+                <div className="overflow-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-600 border-b">
+                        <th className="py-2 pr-4">Fecha</th>
+                        <th className="py-2 pr-4">Número</th>
+                        <th className="py-2 pr-4">Cliente</th>
+                        <th className="py-2 pr-4">Sede</th>
+                        <th className="py-2 pr-4">Estado</th>
+                        <th className="py-2 pr-4">Total</th>
+                        <th className="py-2 pr-2">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoices.map((inv) => (
+                        <tr key={inv.id} className="border-b last:border-b-0">
+                          <td className="py-2 pr-4 text-gray-700">{new Date(inv.createdAt).toLocaleString('es-CO')}</td>
+                          <td className="py-2 pr-4">
+                            <button className="text-blue-700 hover:underline" onClick={() => void openDetail(inv.id)}>
+                              {inv.numero}
+                            </button>
+                          </td>
+                          <td className="py-2 pr-4 text-gray-900">{inv.clienteNombre}</td>
+                          <td className="py-2 pr-4 text-gray-700">{inv.warehouse?.nombre || '—'}</td>
+                          <td className="py-2 pr-4 text-gray-700">{inv.status}</td>
+                          <td className="py-2 pr-4 font-medium">{formatCurrency(n(inv.total, 0))}</td>
+                          <td className="py-2 pr-2">
+                            <div className="flex gap-2">
+                              <Button type="button" size="sm" variant="outline" onClick={() => void openDetail(inv.id)}>
+                                Ver
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => void pasarFacturaAFacturacionElectronica(inv.id, inv.status)}
+                                disabled={Boolean(invoiceToDianSubmitting) || finalizeSubmitting}
+                              >
+                                {invoiceToDianSubmitting === inv.id ? 'Enviando…' : 'Enviar a facturación electrónica'}
+                              </Button>
+                              {inv.status === 'DRAFT' ? (
+                                <Button type="button" size="sm" onClick={() => void finalizar(inv.id)} disabled={finalizeSubmitting}>
+                                  {finalizeSubmitting ? 'Finalizando…' : 'Finalizar'}
+                                </Button>
+                              ) : null}
+                              <Button type="button" size="sm" variant="destructive" onClick={() => void anular(inv.id)}>
+                                Anular
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Devoluciones recientes</CardTitle>
+              <CardDescription>Últimas devoluciones registradas.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="text-sm text-gray-600">Cargando…</div>
+              ) : returns.length === 0 ? (
+                <div className="text-sm text-gray-600">Aún no hay devoluciones.</div>
+              ) : (
+                <div className="overflow-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-600 border-b">
+                        <th className="py-2 pr-4">Fecha</th>
+                        <th className="py-2 pr-4">Número</th>
+                        <th className="py-2 pr-4">Factura</th>
+                        <th className="py-2 pr-4">Sede</th>
+                        <th className="py-2 pr-4">Total</th>
+                        <th className="py-2 pr-2">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {returns.map((r) => (
+                        <tr key={r.id} className="border-b last:border-b-0">
+                          <td className="py-2 pr-4 text-gray-700">{new Date(r.createdAt).toLocaleString('es-CO')}</td>
+                          <td className="py-2 pr-4">
+                            <button className="text-blue-700 hover:underline" onClick={() => void openReturnDetail(r.id)}>
+                              {r.numero}
+                            </button>
+                          </td>
+                          <td className="py-2 pr-4 text-gray-700">{r.invoice?.numero || '—'}</td>
+                          <td className="py-2 pr-4 text-gray-700">{r.warehouse?.nombre || '—'}</td>
+                          <td className="py-2 pr-4 font-medium">{formatCurrency(n(r.total, 0))}</td>
+                          <td className="py-2 pr-2">
+                            <Button type="button" size="sm" variant="outline" onClick={() => void openReturnDetail(r.id)}>
+                              Ver
                             </Button>
-                          ) : null}
-                          <Button type="button" size="sm" variant="destructive" onClick={() => void anular(inv.id)}>
-                            Anular
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Devoluciones recientes</CardTitle>
-          <CardDescription>Últimas devoluciones registradas.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-sm text-gray-600">Cargando…</div>
-          ) : returns.length === 0 ? (
-            <div className="text-sm text-gray-600">Aún no hay devoluciones.</div>
-          ) : (
-            <div className="overflow-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-600 border-b">
-                    <th className="py-2 pr-4">Fecha</th>
-                    <th className="py-2 pr-4">Número</th>
-                    <th className="py-2 pr-4">Factura</th>
-                    <th className="py-2 pr-4">Sede</th>
-                    <th className="py-2 pr-4">Total</th>
-                    <th className="py-2 pr-2">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {returns.map((r) => (
-                    <tr key={r.id} className="border-b last:border-b-0">
-                      <td className="py-2 pr-4 text-gray-700">{new Date(r.createdAt).toLocaleString('es-CO')}</td>
-                      <td className="py-2 pr-4">
-                        <button className="text-blue-700 hover:underline" onClick={() => void openReturnDetail(r.id)}>
-                          {r.numero}
+          <Card>
+            <CardHeader>
+              <CardTitle>Stock por sede</CardTitle>
+              <CardDescription>Vista rápida del inventario en la sede seleccionada.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row gap-2 sm:items-center mb-3">
+                <div className="sm:w-80">
+                  <Label>Sede</Label>
+                  <select
+                    className="w-full h-10 rounded-md border px-3 text-sm"
+                    value={selectedWarehouseForStock}
+                    onChange={(e) => setSelectedWarehouseForStock(e.target.value)}
+                  >
+                    <option value="">(Selecciona)</option>
+                    {bodegas.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.nombre}{b.isDefault ? ' (Pred.)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sm:pt-6">
+                  <Button type="button" variant="secondary" onClick={() => void loadStock(selectedWarehouseForStock)} disabled={stockLoading}>
+                    Refrescar stock
+                  </Button>
+                </div>
+              </div>
+
+              {stockError ? <div className="text-sm text-red-600 mb-2">{stockError}</div> : null}
+
+              {stockLoading ? (
+                <div className="text-sm text-gray-600">Cargando…</div>
+              ) : !selectedWarehouseForStock ? (
+                <div className="text-sm text-gray-600">Selecciona una sede.</div>
+              ) : stockRows.length === 0 ? (
+                <div className="text-sm text-gray-600">No hay stock registrado en esta sede.</div>
+              ) : (
+                <div className="overflow-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-600 border-b">
+                        <th className="py-2 pr-4">Material</th>
+                        <th className="py-2 pr-4">Cantidad</th>
+                        <th className="py-2 pr-4">Unidad</th>
+                        <th className="py-2 pr-4">Actualizado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stockRows.map((row) => (
+                        <tr key={row.id} className="border-b last:border-b-0">
+                          <td className="py-2 pr-4 text-gray-900">{row.material.nombre}</td>
+                          <td className="py-2 pr-4 text-gray-700">{n(row.quantity, 0).toLocaleString('es-CO')}</td>
+                          <td className="py-2 pr-4 text-gray-700">{formatUnidadMedidaLabel(row.material.unidadMedida)}</td>
+                          <td className="py-2 pr-4 text-gray-700">{new Date(row.updatedAt).toLocaleString('es-CO')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="dian" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>DIAN: flujo electrónico (MVP)</CardTitle>
+              <CardDescription>
+                MVP con persistencia en BD y trazabilidad de eventos. Cubre generación, transmisión, expedición, entrega y recepción para facturas electrónicas y documentos relacionados.
+              </CardDescription>
+            </CardHeader>
+            <TooltipProvider delayDuration={200}>
+              <CardContent className="space-y-4">
+                {dianError ? <div className="text-sm text-red-600">{dianError}</div> : null}
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <div className="flex items-center">
+                    <Label>Filtrar por dirección</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border text-[11px] text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                          aria-label="Ayuda: filtrar por dirección"
+                        >
+                          ?
                         </button>
-                      </td>
-                      <td className="py-2 pr-4 text-gray-700">{r.invoice?.numero || '—'}</td>
-                      <td className="py-2 pr-4 text-gray-700">{r.warehouse?.nombre || '—'}</td>
-                      <td className="py-2 pr-4 font-medium">{formatCurrency(n(r.total, 0))}</td>
-                      <td className="py-2 pr-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => void openReturnDetail(r.id)}>
-                          Ver
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        Muestra documentos emitidos (OUTBOUND) o recibidos (INBOUND). “(Todas)” incluye ambos.
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <select
+                    className="w-full h-10 rounded-md border px-3 text-sm"
+                    value={dianFilterDirection}
+                    onChange={(e) => setDianFilterDirection(e.target.value as 'ALL' | DianDirection)}
+                  >
+                    <option value="ALL">(Todas)</option>
+                    <option value="OUTBOUND">OUTBOUND (Emitidos)</option>
+                    <option value="INBOUND">INBOUND (Recibidos)</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2 rounded-md border p-3">
+                  <div className="text-sm font-medium">Documentos relacionados cubiertos</div>
+                  <div className="text-xs text-muted-foreground">
+                    El mismo flujo aplica para notas débito/crédito e instrumentos electrónicos.
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {DIAN_DOC_TYPES.map((t) => (
+                      <span key={t.value} className="inline-flex items-center rounded-md border px-2 py-0.5 text-xs">
+                        {t.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Stock por sede</CardTitle>
-          <CardDescription>Vista rápida del inventario en la sede seleccionada.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row gap-2 sm:items-center mb-3">
-            <div className="sm:w-80">
-              <Label>Sede</Label>
-              <select
-                className="w-full h-10 rounded-md border px-3 text-sm"
-                value={selectedWarehouseForStock}
-                onChange={(e) => setSelectedWarehouseForStock(e.target.value)}
-              >
-                <option value="">(Selecciona)</option>
-                {bodegas.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.nombre}{b.isDefault ? ' (Pred.)' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="sm:pt-6">
-              <Button type="button" variant="secondary" onClick={() => void loadStock(selectedWarehouseForStock)} disabled={stockLoading}>
-                Refrescar stock
-              </Button>
-            </div>
-          </div>
+              <div className="rounded-md border p-3 space-y-3">
+                <div className="text-sm font-medium">Crear documento</div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div>
+                    <div className="flex items-center">
+                      <Label>Dirección</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border text-[11px] text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                            aria-label="Ayuda: dirección del documento"
+                          >
+                            ?
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          OUTBOUND: documento que emites (venta). INBOUND: documento recibido (compra/terceros). Afecta qué acciones aplican.
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <select
+                      className="w-full h-10 rounded-md border px-3 text-sm"
+                      value={dianNewDirection}
+                      onChange={(e) => setDianNewDirection(e.target.value as DianDirection)}
+                      disabled={dianCreating}
+                    >
+                      <option value="OUTBOUND">OUTBOUND</option>
+                      <option value="INBOUND">INBOUND</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div className="flex items-center">
+                      <Label>Tipo</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border text-[11px] text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                            aria-label="Ayuda: tipo de documento"
+                          >
+                            ?
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          Define el documento electrónico a gestionar en el flujo DIAN (Factura, Nota crédito, Nota débito, etc.).
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <select
+                      className="w-full h-10 rounded-md border px-3 text-sm"
+                      value={dianNewType}
+                      onChange={(e) => setDianNewType(e.target.value as DianType)}
+                      disabled={dianCreating}
+                    >
+                      {DIAN_DOC_TYPES.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <div className="flex items-center">
+                      <Label>Número (opcional)</Label>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full border text-[11px] text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                            aria-label="Ayuda: número del documento"
+                          >
+                            ?
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          Es el consecutivo o referencia del documento (ej. FE-123). Si lo dejas vacío, el registro queda sin número hasta que se asigne desde el origen/integración.
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <Input
+                      value={dianNewNumero}
+                      onChange={(e) => setDianNewNumero(e.target.value)}
+                      placeholder="Ej: FE-123"
+                      disabled={dianCreating}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Button onClick={() => void createDianDoc()} disabled={dianCreating}>
+                    {dianCreating ? 'Creando…' : 'Crear documento'}
+                  </Button>
+                </div>
+              </div>
 
-          {stockError ? <div className="text-sm text-red-600 mb-2">{stockError}</div> : null}
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Documentos</div>
+                {dianLoading ? (
+                  <div className="text-sm text-gray-600">Cargando…</div>
+                ) : dianDocs.length === 0 ? (
+                  <div className="text-sm text-gray-600">Aún no hay documentos.</div>
+                ) : (
+                  <div className="overflow-auto">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-gray-600 border-b">
+                          <th className="py-2 pr-4">Fecha</th>
+                          <th className="py-2 pr-4">Dirección</th>
+                          <th className="py-2 pr-4">Tipo</th>
+                          <th className="py-2 pr-4">Número</th>
+                          <th className="py-2 pr-4">Estado</th>
+                          <th className="py-2 pr-2">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dianDocs.map((doc) => (
+                          <tr key={doc.id} className="border-b last:border-b-0">
+                            <td className="py-2 pr-4 text-gray-700">{new Date(doc.createdAt).toLocaleString('es-CO')}</td>
+                            <td className="py-2 pr-4 text-gray-700">{doc.direction}</td>
+                            <td className="py-2 pr-4 text-gray-900">{dianTypeLabel(doc.type)}</td>
+                            <td className="py-2 pr-4 text-gray-700">{doc.numero || '—'}</td>
+                            <td className="py-2 pr-4 text-gray-700">{doc.status}</td>
+                            <td className="py-2 pr-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setDianSelectedId(doc.id)
+                                  void loadDianDetail(doc.id)
+                                }}
+                              >
+                                Ver
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
 
-          {stockLoading ? (
-            <div className="text-sm text-gray-600">Cargando…</div>
-          ) : !selectedWarehouseForStock ? (
-            <div className="text-sm text-gray-600">Selecciona una sede.</div>
-          ) : stockRows.length === 0 ? (
-            <div className="text-sm text-gray-600">No hay stock registrado en esta sede.</div>
-          ) : (
-            <div className="overflow-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-600 border-b">
-                    <th className="py-2 pr-4">Material</th>
-                    <th className="py-2 pr-4">Cantidad</th>
-                    <th className="py-2 pr-4">Unidad</th>
-                    <th className="py-2 pr-4">Actualizado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stockRows.map((row) => (
-                    <tr key={row.id} className="border-b last:border-b-0">
-                      <td className="py-2 pr-4 text-gray-900">{row.material.nombre}</td>
-                      <td className="py-2 pr-4 text-gray-700">{n(row.quantity, 0).toLocaleString('es-CO')}</td>
-                      <td className="py-2 pr-4 text-gray-700">{formatUnidadMedidaLabel(row.material.unidadMedida)}</td>
-                      <td className="py-2 pr-4 text-gray-700">{new Date(row.updatedAt).toLocaleString('es-CO')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              {dianSelectedId ? (
+                <div className="rounded-md border p-3 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium">Documento seleccionado</div>
+                      <div className="text-xs text-muted-foreground">ID: {dianSelectedId}</div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void loadDianDetail(dianSelectedId)}
+                      disabled={dianDetailLoading}
+                    >
+                      {dianDetailLoading ? 'Cargando…' : 'Refrescar'}
+                    </Button>
+                  </div>
+
+                  {dianDetailError ? <div className="text-sm text-red-600">{dianDetailError}</div> : null}
+
+                  {dianDetail ? (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="rounded-md border p-3">
+                          <div className="text-xs text-muted-foreground">Dirección</div>
+                          <div className="text-sm font-medium">{dianDetail.direction}</div>
+                        </div>
+                        <div className="rounded-md border p-3">
+                          <div className="text-xs text-muted-foreground">Tipo</div>
+                          <div className="text-sm font-medium">{dianTypeLabel(dianDetail.type)}</div>
+                        </div>
+                        <div className="rounded-md border p-3">
+                          <div className="text-xs text-muted-foreground">Estado</div>
+                          <div className="text-sm font-medium">{dianDetail.status}</div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                          <Label>UUID</Label>
+                          <Input value={dianDetail.uuid || ''} readOnly placeholder="(Vacío)" />
+                        </div>
+                        <div>
+                          <Label>CUFE</Label>
+                          <Input value={dianDetail.cufe || ''} readOnly placeholder="(Vacío)" />
+                        </div>
+                        <div>
+                          <Label>ProviderRef</Label>
+                          <Input value={dianDetail.providerRef || ''} readOnly placeholder="(Vacío)" />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => void runDianAction('transmitir')}
+                            disabled={
+                              dianActionSubmitting !== null ||
+                              dianDetail.direction === 'INBOUND' ||
+                              Boolean(dianDetail.transmittedAt)
+                            }
+                          >
+                            {dianActionSubmitting === 'transmitir' ? 'Transmitiendo…' : 'Transmitir'}
+                          </Button>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-md border text-[11px] text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                                aria-label="Ayuda: transmitir"
+                              >
+                                ?
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              Envía el documento para validación/registro ante el proveedor tecnológico y DIAN (según integración). Solo aplica a OUTBOUND.
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => void runDianAction('expedir')}
+                            disabled={dianActionSubmitting !== null || Boolean(dianDetail.expeditedAt)}
+                          >
+                            {dianActionSubmitting === 'expedir' ? 'Expidiendo…' : 'Expedir'}
+                          </Button>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-md border text-[11px] text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                                aria-label="Ayuda: expedir"
+                              >
+                                ?
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              Marca la expedición: el documento queda emitido/válido en el flujo (estado de expedición y referencias asociadas).
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => void runDianAction('entregar')}
+                            disabled={dianActionSubmitting !== null || Boolean(dianDetail.deliveredAt)}
+                          >
+                            {dianActionSubmitting === 'entregar' ? 'Entregando…' : 'Entregar'}
+                          </Button>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-md border text-[11px] text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                                aria-label="Ayuda: entregar"
+                              >
+                                ?
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              Registra la entrega al adquirente por los canales configurados (email/portal/otros).
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => void runDianAction('recepcionar')}
+                            disabled={dianActionSubmitting !== null || Boolean(dianDetail.receivedAt)}
+                          >
+                            {dianActionSubmitting === 'recepcionar' ? 'Recepcionando…' : 'Recepcionar'}
+                          </Button>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-md border text-[11px] text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                                aria-label="Ayuda: recepcionar"
+                              >
+                                ?
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              Registra la recepción/acuse y deja trazabilidad del estado (documentos INBOUND o validaciones posteriores).
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </div>
+
+                      {dianDetail.lastError ? (
+                        <div className="text-sm text-red-600">Último error: {dianDetail.lastError}</div>
+                      ) : null}
+
+                      <div className="space-y-2">
+                        {DIAN_STEPS.map((s) => {
+                          const isCompleted =
+                            s.key === 'GENERATED'
+                              ? true
+                              : s.key === 'TRANSMITTED'
+                                ? Boolean(dianDetail.transmittedAt)
+                                : s.key === 'EXPEDITED'
+                                  ? Boolean(dianDetail.expeditedAt)
+                                  : s.key === 'DELIVERED'
+                                    ? Boolean(dianDetail.deliveredAt)
+                                    : Boolean(dianDetail.receivedAt)
+
+                          return (
+                            <div key={s.key} className="flex items-start justify-between gap-3 rounded-md border p-3">
+                              <div>
+                                <div className="text-sm font-medium">{s.title}</div>
+                                <div className="text-xs text-muted-foreground">{s.description}</div>
+                              </div>
+                              <span className="shrink-0 inline-flex items-center rounded-md border px-2 py-0.5 text-xs">
+                                {isCompleted ? 'Completado' : 'Pendiente'}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      <div>
+                        <Label>Bitácora (eventos persistidos)</Label>
+                        <Textarea
+                          value={dianBitacora}
+                          readOnly
+                          className="mt-2 h-48 font-mono text-xs"
+                          placeholder="Sin eventos aún…"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-sm text-gray-600">Selecciona un documento para ver el detalle.</div>
+                  )}
+                </div>
+              ) : null}
+              </CardContent>
+            </TooltipProvider>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
         <DialogContent className="max-w-3xl">

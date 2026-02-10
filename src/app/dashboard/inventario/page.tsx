@@ -31,6 +31,10 @@ type Material = {
   proveedor?: string | null
   imagenUrl?: string | null
   activo: boolean
+  stocks?: Array<{
+    quantity: number
+    warehouse: { id: string; nombre: string; codigo: string | null; isDefault: boolean; sedeId: string | null }
+  }>
 }
 
 type Bodega = {
@@ -369,6 +373,7 @@ export default function InventarioPage() {
                   <tr className="text-left text-gray-600 border-b">
                     <th className="py-2 pr-3 w-12">Img</th>
                     <th className="py-2 pr-4">Material</th>
+                    <th className="py-2 pr-4">Bodega</th>
                     <th className="py-2 pr-4">Stock</th>
                     <th className="py-2 pr-4">Mínimo</th>
                     <th className="py-2 pr-4">Unidad</th>
@@ -378,6 +383,7 @@ export default function InventarioPage() {
                 <tbody>
                   {activeMaterials.map((m) => {
                     const low = n(m.stockActual) <= n(m.stockMinimo)
+                    const wh = m.stocks?.[0]?.warehouse ?? null
                     return (
                       <tr key={m.id} className="border-b last:border-b-0">
                         <td className="py-2 pr-3">
@@ -392,6 +398,9 @@ export default function InventarioPage() {
                           />
                         </td>
                         <td className="py-2 pr-4 font-medium text-gray-900">{m.nombre}</td>
+                        <td className="py-2 pr-4 text-gray-700">
+                          {wh ? `${wh.nombre}${wh.isDefault ? ' (Principal)' : ''}` : '—'}
+                        </td>
                         <td className={cn("py-2 pr-4", low ? "text-red-700 font-semibold" : "text-gray-900")}>
                           {n(m.stockActual).toLocaleString("es-CO")} 
                         </td>

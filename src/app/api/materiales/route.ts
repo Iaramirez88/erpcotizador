@@ -7,7 +7,17 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
+import { getOrCreateDefaultEmpresa } from '@/lib/rbac'
 import { ModuleKey } from "@prisma/client"
+
+async function getOrCreateEmpresaIdForUser(userId: string): Promise<string> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { empresaId: true } })
+  if (user?.empresaId) return user.empresaId
+
+  const empresa = await getOrCreateDefaultEmpresa()
+  await prisma.user.update({ where: { id: userId }, data: { empresaId: empresa.id } }).catch(() => null)
+  return empresa.id
+}
 
 function normalizeUnidadMedida(value: unknown): 'm2' | 'ml' | 'unidad' {
   const u = String(value ?? '').trim().toLowerCase()
@@ -38,6 +48,11 @@ export async function GET(request: Request) {
     const access = await requireApiAccess(ModuleKey.MATERIALES, 'READ')
     if (!access.ok) return access.response
 
+    const empresaId = await getOrCreateEmpresaIdForUser(access.userId)
+
+    const sede = await prisma.sede.findUnique({ where: { id: access.sedeId }, select: { id: true } })
+    const sedeId = sede?.id ?? access.sedeId
+
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
     const tipo = searchParams.get('tipo')
@@ -46,7 +61,7 @@ export async function GET(request: Request) {
 
     // Construir filtros
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const where: any = {}
+    const where: any = { empresaId }
 
     if (search) {
       where.OR = [
@@ -74,7 +89,23 @@ export async function GET(request: Request) {
       include: {
         quantityDiscounts: {
           orderBy: { minQty: 'asc' }
-        }
+        },
+        // “Anclaje” por bodega: traemos 1 stock, priorizando la bodega principal de la sede.
+        // Si el material solo tiene stocks globales (sedeId null), también lo consideramos.
+        stocks: {
+          where: {
+            warehouse: {
+              OR: [{ sedeId }, { sedeId: null }],
+            },
+          },
+          take: 1,
+          orderBy: [{ warehouse: { isDefault: 'desc' } }, { updatedAt: 'desc' }],
+          include: {
+            warehouse: {
+              select: { id: true, nombre: true, codigo: true, isDefault: true, sedeId: true },
+            },
+          },
+        },
       },
       orderBy: {
         nombre: 'asc'
@@ -101,6 +132,8 @@ export async function POST(request: Request) {
     const access = await requireApiAccess(ModuleKey.MATERIALES, 'WRITE')
     if (!access.ok) return access.response
 
+    const empresaId = await getOrCreateEmpresaIdForUser(access.userId)
+
     const body = await request.json()
     const {
       nombre,
@@ -120,7 +153,8 @@ export async function POST(request: Request) {
       unidadMedida,
       proveedor,
       observaciones,
-      activo
+      activo,
+      warehouseId: warehouseIdInput,
     } = body
 
     const imagenUrlNorm = typeof imagenUrl === 'string' ? imagenUrl.trim() : null
@@ -151,6 +185,9 @@ export async function POST(request: Request) {
     const unidad = normalizeUnidadMedida(unidadMedida)
     const isActive = activo !== false
 
+    const stockActualNRaw = typeof stockActual === 'number' ? stockActual : Number(stockActual)
+    const stockActualN = Number.isFinite(stockActualNRaw) ? Math.max(0, stockActualNRaw) : 0
+
     const precioM2N = unidad === 'm2' ? toPositiveNumberOrNull(precioM2) : null
     const precioMetroN = unidad === 'ml' ? toPositiveNumberOrNull(precioMetro) : null
     const precioUnidadN = unidad === 'unidad' ? toPositiveNumberOrNull(precioUnidad) : null
@@ -163,50 +200,101 @@ export async function POST(request: Request) {
       )
     }
 
-    // Obtener o crear empresa
-    let empresa = await prisma.empresa.findFirst()
-    if (!empresa) {
-      empresa = await prisma.empresa.create({
-        data: {
-          nombre: "SGDigital",
-          nit: "900000000-1"
-        }
-      })
-    }
-
     // Crear material
-    const material = await prisma.material.create({
-      data: {
-        nombre,
-        tipo,
-        categoria,
-        imagenUrl: imagenUrlNorm || null,
-        ancho: ancho ? parseFloat(ancho) : null,
-        largo: largo ? parseFloat(largo) : null,
-        espesor: espesor ? parseFloat(espesor) : null,
-        color,
-        precioM2: precioM2N,
-        precioMetro: precioMetroN,
-        precioUnidad: precioUnidadN,
-        precioCompra: precioCompra ? parseFloat(precioCompra) : null,
-        stockActual: stockActual ? parseFloat(stockActual) : 0,
-        stockMinimo: stockMinimo ? parseFloat(stockMinimo) : 0,
-        unidadMedida: unidad,
-        proveedor,
-        observaciones,
-        activo: isActive,
-        empresaId: empresa.id,
-        ...(quantityDiscountData.length > 0
-          ? {
-              quantityDiscounts: {
-                createMany: { data: quantityDiscountData }
+    const material = await prisma.$transaction(async (tx) => {
+      const created = await tx.material.create({
+        data: {
+          nombre,
+          tipo,
+          categoria,
+          imagenUrl: imagenUrlNorm || null,
+          ancho: ancho ? parseFloat(ancho) : null,
+          largo: largo ? parseFloat(largo) : null,
+          espesor: espesor ? parseFloat(espesor) : null,
+          color,
+          precioM2: precioM2N,
+          precioMetro: precioMetroN,
+          precioUnidad: precioUnidadN,
+          precioCompra: precioCompra ? parseFloat(precioCompra) : null,
+          stockActual: stockActualN,
+          stockMinimo: stockMinimo ? parseFloat(stockMinimo) : 0,
+          unidadMedida: unidad,
+          proveedor,
+          observaciones,
+          activo: isActive,
+          empresaId,
+          ...(quantityDiscountData.length > 0
+            ? {
+                quantityDiscounts: {
+                  createMany: { data: quantityDiscountData },
+                },
               }
-            }
-          : {})
-      },
-      include: {
-        quantityDiscounts: { orderBy: { minQty: 'asc' } }
+            : {}),
+        },
+        include: {
+          quantityDiscounts: { orderBy: { minQty: 'asc' } },
+        },
+      })
+
+      // Inicializar inventario por bodega.
+      // - Si el cliente envía warehouseId, usamos esa bodega (si pertenece a la sede/empresa).
+      // - Si no, usamos la bodega default de la sede (o la primera existente) o creamos “Principal”.
+      // Esto evita que el stock por bodega quede en 0 y luego falle al facturar.
+      let warehouseId: string | null = null
+      const sedeId = access.sedeId
+
+      const requestedWarehouseId = typeof warehouseIdInput === 'string' ? warehouseIdInput.trim() : ''
+      if (requestedWarehouseId) {
+        const whRequested = await tx.inventoryWarehouse.findFirst({
+          where: {
+            id: requestedWarehouseId,
+            empresaId,
+            OR: [{ sedeId }, { sedeId: null }],
+          },
+          select: { id: true },
+        })
+        if (whRequested?.id) warehouseId = whRequested.id
       }
+
+      const whDefault = await tx.inventoryWarehouse.findFirst({
+        where: { empresaId, sedeId, isDefault: true },
+        select: { id: true },
+      })
+      if (!warehouseId && whDefault?.id) warehouseId = whDefault.id
+
+      if (!warehouseId) {
+        const whAny = await tx.inventoryWarehouse.findFirst({
+          where: { empresaId, sedeId },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        })
+        if (whAny?.id) warehouseId = whAny.id
+      }
+
+      if (!warehouseId) {
+        const whCreated = await tx.inventoryWarehouse.create({
+          data: {
+            empresaId,
+            sedeId,
+            nombre: 'Principal',
+            codigo: 'PRIN',
+            isDefault: true,
+          },
+          select: { id: true },
+        })
+        warehouseId = whCreated.id
+      }
+
+      if (warehouseId) {
+        await tx.inventoryStock.upsert({
+          where: { warehouseId_materialId: { warehouseId, materialId: created.id } },
+          create: { warehouseId, materialId: created.id, quantity: stockActualN },
+          update: { quantity: stockActualN },
+          select: { id: true },
+        })
+      }
+
+      return created
     })
 
     return NextResponse.json(

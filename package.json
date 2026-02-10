@@ -22,7 +22,8 @@
     "perf:analyze": "tsx scripts/analyze-slow-queries.ts",
     "perf:startup": "tsx scripts/startup-performance.ts",
     "perf:indexes": "tsx scripts/database-indexes-check.ts",
-    "perf:apply-indexes": "tsx scripts/apply-performance-indexes.ts"
+    "perf:apply-indexes": "tsx scripts/apply-performance-indexes.ts",
+    "backfill:inventory-stock": "tsx scripts/backfill-inventory-stock-default-warehouse.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
@@ -39,6 +40,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-toast": "^1.2.15",
+    "@radix-ui/react-tooltip": "^1.2.8",
     "@react-pdf/renderer": "^4.3.1",
     "@tanstack/react-query": "^5.90.12",
     "bcryptjs": "^3.0.3",

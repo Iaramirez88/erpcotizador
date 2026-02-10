@@ -79,6 +79,7 @@ export default function CotizacionesPage() {
   const [enviando, setEnviando] = useState<string | null>(null);
   const [compartiendo, setCompartiendo] = useState<string | null>(null);
   const [aprobando, setAprobando] = useState<string | null>(null);
+  const [facturando, setFacturando] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const pageSize = 10;
   const [totalPages, setTotalPages] = useState(1);
@@ -332,7 +333,7 @@ export default function CotizacionesPage() {
   };
 
   const aprobarCotizacion = async (cotizacionId: string, numero: string) => {
-    const confirmar = window.confirm(`¿Aprobar la cotización ${numero}?`);
+    const confirmar = window.confirm(`¿Aprobar la cotización ${numero} para facturar?`);
     if (!confirmar) return;
 
     setAprobando(cotizacionId);
@@ -349,6 +350,40 @@ export default function CotizacionesPage() {
       alert('Error al aprobar la cotización');
     } finally {
       setAprobando(null);
+    }
+  };
+
+  const facturarCotizacion = async (cotizacionId: string, numero: string) => {
+    const confirmar = window.confirm(`¿Crear factura desde la cotización ${numero}?`);
+    if (!confirmar) return;
+
+    setFacturando(cotizacionId);
+    try {
+      const res = await fetch(`/api/cotizaciones/${cotizacionId}/facturar`, { method: 'POST' });
+      const json = await res.json().catch(() => ({ ok: false }));
+      if (!res.ok || !json?.ok || !json?.data) {
+        alert(`Error: ${json?.error ?? 'No se pudo crear la factura'}`);
+        return;
+      }
+
+      const inv = json.data as { id: string; numero: string; alreadyExisted?: boolean };
+      const msg = inv.alreadyExisted
+        ? `Ya existía una factura para esta cotización: ${inv.numero}`
+        : `Factura creada: ${inv.numero}`;
+
+      const go = window.confirm(`${msg}.\n\n¿Ir al historial de facturas?`);
+      if (go) {
+        window.location.href = '/dashboard/pos';
+        return;
+      }
+
+      // Mantener lista actualizada (por si luego se quiere reflejar estado)
+      cargarCotizaciones();
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error al crear factura');
+    } finally {
+      setFacturando(null);
     }
   };
 
@@ -606,7 +641,7 @@ export default function CotizacionesPage() {
                         variant="outline"
                         onClick={() => aprobarCotizacion(cot.id, cot.numero)}
                         disabled={aprobando === cot.id}
-                        title="Aprobar"
+                        title="Aprobar para facturar"
                       >
                         {aprobando === cot.id ? (
                           <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
@@ -615,6 +650,23 @@ export default function CotizacionesPage() {
                         )}
                       </Button>
                     )}
+
+                    {/* Crear factura (solo si está aprobada) */}
+                    {cot.estado === 'APROBADA' ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => facturarCotizacion(cot.id, cot.numero)}
+                        disabled={facturando === cot.id}
+                        title="Crear factura"
+                      >
+                        {facturando === cot.id ? (
+                          <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <FileText className="w-4 h-4" />
+                        )}
+                      </Button>
+                    ) : null}
 
                     {/* Botón para crear orden (solo si está aprobada y no tiene orden) */}
                     {cot.estado === 'APROBADA' && !cot.orden && (

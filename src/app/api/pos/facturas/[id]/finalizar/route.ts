@@ -13,6 +13,23 @@ import {
 
 export const runtime = 'nodejs'
 
+class StockInsufficientError extends Error {
+  details: {
+    materialId: string
+    materialNombre?: string | null
+    required: number
+    warehouseId?: string | null
+    warehouseNombre?: string | null
+    warehouseAvailable?: number | null
+    globalAvailable?: number | null
+  }
+
+  constructor(details: StockInsufficientError['details']) {
+    super('STOCK_INSUFFICIENT')
+    this.details = details
+  }
+}
+
 function n(value: unknown): number | null {
   const num = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(num) ? num : null
@@ -157,8 +174,17 @@ async function finalizeInvoice(
     warehouseId: args.body.warehouseId ?? invoice.warehouseId,
   })
 
+  const resolvedWarehouse = resolvedWarehouseId
+    ? await tx.inventoryWarehouse.findUnique({ where: { id: resolvedWarehouseId }, select: { id: true, nombre: true } })
+    : null
+
   for (const it of invoice.items) {
     if (!it.materialId) continue
+
+    const required = it.quantity
+
+    const mat = await tx.material.findUnique({ where: { id: it.materialId }, select: { stockActual: true, nombre: true } })
+    const globalBefore = mat?.stockActual ?? 0
 
     if (resolvedWarehouseId) {
       const stockRow = await tx.inventoryStock.findUnique({
@@ -166,13 +192,31 @@ async function finalizeInvoice(
         select: { quantity: true },
       })
       const stockBefore = stockRow?.quantity ?? 0
-      const stockAfter = stockBefore - it.quantity
-      if (stockAfter < -1e-9) throw new Error('STOCK_INSUFFICIENT')
+      const stockAfter = stockBefore - required
+      if (stockAfter < -1e-9) {
+        throw new StockInsufficientError({
+          materialId: it.materialId,
+          materialNombre: mat?.nombre ?? null,
+          required,
+          warehouseId: resolvedWarehouseId,
+          warehouseNombre: resolvedWarehouse?.nombre ?? null,
+          warehouseAvailable: stockBefore,
+          globalAvailable: globalBefore,
+        })
+      }
 
-      const mat = await tx.material.findUnique({ where: { id: it.materialId }, select: { stockActual: true } })
-      const globalBefore = mat?.stockActual ?? 0
-      const globalAfter = globalBefore - it.quantity
-      if (globalAfter < -1e-9) throw new Error('STOCK_INSUFFICIENT')
+      const globalAfter = globalBefore - required
+      if (globalAfter < -1e-9) {
+        throw new StockInsufficientError({
+          materialId: it.materialId,
+          materialNombre: mat?.nombre ?? null,
+          required,
+          warehouseId: resolvedWarehouseId,
+          warehouseNombre: resolvedWarehouse?.nombre ?? null,
+          warehouseAvailable: stockBefore,
+          globalAvailable: globalBefore,
+        })
+      }
 
       await tx.inventoryStock.upsert({
         where: { warehouseId_materialId: { warehouseId: resolvedWarehouseId, materialId: it.materialId } },
@@ -190,7 +234,7 @@ async function finalizeInvoice(
           warehouseId: resolvedWarehouseId,
           materialId: it.materialId,
           type: InventoryMovementType.OUT,
-          quantity: -it.quantity,
+          quantity: -required,
           stockBefore,
           stockAfter,
           note: `Facturación factura ${invoice.numero}`,
@@ -201,10 +245,19 @@ async function finalizeInvoice(
         select: { id: true },
       })
     } else {
-      const mat = await tx.material.findUnique({ where: { id: it.materialId }, select: { stockActual: true } })
-      const stockBefore = mat?.stockActual ?? 0
-      const stockAfter = stockBefore - it.quantity
-      if (stockAfter < -1e-9) throw new Error('STOCK_INSUFFICIENT')
+      const stockBefore = globalBefore
+      const stockAfter = stockBefore - required
+      if (stockAfter < -1e-9) {
+        throw new StockInsufficientError({
+          materialId: it.materialId,
+          materialNombre: mat?.nombre ?? null,
+          required,
+          warehouseId: null,
+          warehouseNombre: null,
+          warehouseAvailable: null,
+          globalAvailable: globalBefore,
+        })
+      }
 
       await tx.material.update({ where: { id: it.materialId }, data: { stockActual: stockAfter }, select: { id: true } })
 
@@ -214,7 +267,7 @@ async function finalizeInvoice(
           sedeId: args.sedeId,
           materialId: it.materialId,
           type: InventoryMovementType.OUT,
-          quantity: -it.quantity,
+          quantity: -required,
           stockBefore,
           stockAfter,
           note: `Facturación factura ${invoice.numero}`,
@@ -280,7 +333,8 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
         return NextResponse.json({ error: 'Pago insuficiente' }, { status: 400 })
       }
       if (error.message === 'STOCK_INSUFFICIENT') {
-        return NextResponse.json({ error: 'Stock insuficiente' }, { status: 400 })
+        const details = error instanceof StockInsufficientError ? error.details : undefined
+        return NextResponse.json({ error: 'Stock insuficiente', details }, { status: 400 })
       }
     }
 
