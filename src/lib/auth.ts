@@ -27,6 +27,36 @@ const ABSOLUTE_REMEMBER = 30 * ONE_DAY
 
 const LAST_ACTIVE_REFRESH = 15 * 60 // 15 min
 
+function sanitizeJwtToken(token: JWT) {
+  // Mantener solo campos mínimos para evitar que el cookie crezca
+  // (Cloudflare/proxies suelen fallar cuando hay muchos Set-Cookie > ~32KB)
+  const allowed = new Set([
+    // estándar
+    "sub",
+    "iat",
+    "exp",
+    "jti",
+    "name",
+    "email",
+    "picture",
+    // custom app
+    "id",
+    "role",
+    "remember",
+    "absExp",
+    "lastActive",
+  ])
+
+  for (const key of Object.keys(token)) {
+    if (!allowed.has(key)) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+      delete (token as Record<string, unknown>)[key]
+    }
+  }
+
+  return token
+}
+
 export const authOptions: NextAuthConfig = {
   // Adapter de Prisma para guardar sesiones en la BD
   // @ts-expect-error - PrismaAdapter es compatible pero los tipos difieren
@@ -131,7 +161,7 @@ export const authOptions: NextAuthConfig = {
         token.remember = remember
         token.absExp = now + (remember ? ABSOLUTE_REMEMBER : ABSOLUTE_DEFAULT)
         token.lastActive = now
-        return token
+        return sanitizeJwtToken(token)
       }
 
       // En requests posteriores: validar expiración absoluta
@@ -149,7 +179,7 @@ export const authOptions: NextAuthConfig = {
       if (typeof token.lastActive === 'number' && now - token.lastActive >= LAST_ACTIVE_REFRESH) {
         token.lastActive = now
       }
-      return token
+      return sanitizeJwtToken(token)
     },
 
     // Callback de sesión - Se ejecuta cuando se obtiene la sesión del cliente
