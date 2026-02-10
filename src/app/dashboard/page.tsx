@@ -128,7 +128,9 @@ export default async function DashboardPage({
   const sedeId = rawSedeId && allowedSedeIds.includes(rawSedeId) ? rawSedeId : defaultSedeId
   const sedeScope = sedeId
     ? { sedeId }
-    : { sedeId: { in: allowedSedeIds } }
+    : allowedSedeIds.length
+      ? { sedeId: { in: allowedSedeIds } }
+      : { sedeId: '__NO_SEDE__' }
 
   // Algunos modelos (POS) no aceptan sedeId null. En ese caso, usamos un filtro "imposible"
   // para retornar 0 filas cuando no hay sede resoluble.
@@ -195,12 +197,12 @@ export default async function DashboardPage({
   const scanWhere = { userId: user.id, ...sedeScope, ...buildDateRange("createdAt") }
   const notifWhere = {
     userId: user.id,
-    ...(sedeId ? { sedeId } : { sedeId: { in: allowedSedeIds } }),
+    ...(sedeId ? { sedeId } : allowedSedeIds.length ? { sedeId: { in: allowedSedeIds } } : { sedeId: '__NO_SEDE__' }),
     ...buildDateRange("createdAt"),
   }
 
   const sedeNotifWhere = {
-    ...(sedeId ? { sedeId } : { sedeId: { in: allowedSedeIds } }),
+    ...(sedeId ? { sedeId } : allowedSedeIds.length ? { sedeId: { in: allowedSedeIds } } : { sedeId: '__NO_SEDE__' }),
     ...buildDateRange("createdAt"),
   }
 
@@ -232,12 +234,12 @@ export default async function DashboardPage({
 
   const compraPagoWhere = {
     ...(showMeActivity ? { userId: user.id } : {}),
-    ...(sedeId ? { sedeId } : { sedeId: { in: allowedSedeIds } }),
+    ...(sedeId ? { sedeId } : allowedSedeIds.length ? { sedeId: { in: allowedSedeIds } } : { sedeId: '__NO_SEDE__' }),
     ...buildDateRangeAny("fecha"),
   }
 
   const sedeCompraPagoWhere = {
-    ...(sedeId ? { sedeId } : { sedeId: { in: allowedSedeIds } }),
+    ...(sedeId ? { sedeId } : allowedSedeIds.length ? { sedeId: { in: allowedSedeIds } } : { sedeId: '__NO_SEDE__' }),
     ...buildDateRangeAny("fecha"),
   }
 
