@@ -218,7 +218,8 @@ export function LitografiaCalculator() {
 
   const [sizeEdits, setSizeEdits] = useState<Record<string, { nombre: string; key: string; w: string; h: string }>>({})
 
-  const [profilesPage, setProfilesPage] = useState(0)
+  const [planchaProfilesPage, setPlanchaProfilesPage] = useState(0)
+  const [tintaProfilesPage, setTintaProfilesPage] = useState(0)
   const [papersPage, setPapersPage] = useState(0)
   const [finishesPage, setFinishesPage] = useState(0)
   const [sizesPage, setSizesPage] = useState(0)
@@ -659,7 +660,8 @@ export function LitografiaCalculator() {
   }
 
   useEffect(() => {
-    setProfilesPage(0)
+    setPlanchaProfilesPage(0)
+    setTintaProfilesPage(0)
   }, [profiles.length])
 
   useEffect(() => {
@@ -851,6 +853,30 @@ export function LitografiaCalculator() {
     }
   }
 
+  const createProfileDirect = async (payload: {
+    nombre: string
+    costoPlanchaPorColor: number
+    costoTintaPorColor: number
+    activo: boolean
+  }): Promise<PrintProfile | null> => {
+    setConfigError(null)
+    try {
+      const res = await fetch("/api/litografia/perfiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
+      if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, "No se pudo crear el perfil"))
+      const created = env.data && typeof env.data === "object" ? (env.data as PrintProfile) : null
+      await fetchProfiles()
+      return created
+    } catch (e) {
+      setConfigError(e instanceof Error ? e.message : "No se pudo crear el perfil")
+      return null
+    }
+  }
+
   const createPaper = async () => {
     setConfigError(null)
     try {
@@ -925,6 +951,42 @@ export function LitografiaCalculator() {
     } catch (e) {
       setConfigError(e instanceof Error ? e.message : "No se pudo eliminar")
     }
+  }
+
+  const deletePlanchaProfile = async (id: string) => {
+    const profile = profiles.find((p) => p.id === id) || null
+    if (!profile) return
+
+    const plancha = Number(profile.costoPlanchaPorColor ?? 0) || 0
+    const tinta = Number(profile.costoTintaPorColor ?? 0) || 0
+
+    // Si el perfil está "mezclado" (tiene plancha y tinta), al eliminar desde Planchas
+    // solo removemos la parte de plancha para no afectar el módulo de Tintas.
+    if (plancha > 0 && tinta > 0) {
+      if (selectedPlanchaProfileId === id) setSelectedPlanchaProfileId("")
+      await patchProfile(id, { costoPlanchaPorColor: 0 })
+      return
+    }
+
+    await deleteProfile(id)
+  }
+
+  const deleteTintaProfile = async (id: string) => {
+    const profile = profiles.find((p) => p.id === id) || null
+    if (!profile) return
+
+    const plancha = Number(profile.costoPlanchaPorColor ?? 0) || 0
+    const tinta = Number(profile.costoTintaPorColor ?? 0) || 0
+
+    // Si el perfil está "mezclado" (tiene plancha y tinta), al eliminar desde Tintas
+    // solo removemos la parte de tinta para no afectar el módulo de Planchas.
+    if (plancha > 0 && tinta > 0) {
+      if (selectedTintaProfileId === id) setSelectedTintaProfileId("")
+      await patchProfile(id, { costoTintaPorColor: 0 })
+      return
+    }
+
+    await deleteProfile(id)
   }
 
   const deletePaper = async (id: string) => {
@@ -1041,10 +1103,23 @@ export function LitografiaCalculator() {
     costoTransporte,
   ])
 
-  const pagedProfiles = useMemo(() => {
-    const start = profilesPage * PAGE_SIZE
-    return profiles.slice(start, start + PAGE_SIZE)
-  }, [profiles, profilesPage, PAGE_SIZE])
+  const planchaProfiles = useMemo(() => {
+    return profiles.filter((p) => (p.costoPlanchaPorColor ?? 0) > 0)
+  }, [profiles])
+
+  const tintaProfiles = useMemo(() => {
+    return profiles.filter((p) => (p.costoTintaPorColor ?? 0) > 0)
+  }, [profiles])
+
+  const pagedPlanchaProfiles = useMemo(() => {
+    const start = planchaProfilesPage * PAGE_SIZE
+    return planchaProfiles.slice(start, start + PAGE_SIZE)
+  }, [planchaProfiles, planchaProfilesPage, PAGE_SIZE])
+
+  const pagedTintaProfiles = useMemo(() => {
+    const start = tintaProfilesPage * PAGE_SIZE
+    return tintaProfiles.slice(start, start + PAGE_SIZE)
+  }, [tintaProfiles, tintaProfilesPage, PAGE_SIZE])
 
   const pagedPapers = useMemo(() => {
     const start = papersPage * PAGE_SIZE
@@ -1147,12 +1222,6 @@ export function LitografiaCalculator() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Button variant="default" disabled>
-          Config
-        </Button>
-      </div>
-
       {configError ? <p className="text-sm text-red-600">{configError}</p> : null}
 
       {tab === "config" ? (
@@ -1185,7 +1254,11 @@ export function LitografiaCalculator() {
                     <MoneyInput className={INPUT_COMPACT} type="number" step="1" value={newProfilePlancha} onChange={(e) => setNewProfilePlancha(e.target.value)} />
                   </div>
                   <div className="md:col-span-3">
-                    <Button type="button" onClick={() => void createProfile("plancha")} disabled={!newProfileNombre.trim()}>
+                    <Button
+                      type="button"
+                      onClick={() => void createProfile("plancha")}
+                      disabled={!newProfileNombre.trim() || (parseFloat(newProfilePlancha) || 0) <= 0}
+                    >
                       Agregar plancha
                     </Button>
                   </div>
@@ -1193,9 +1266,9 @@ export function LitografiaCalculator() {
 
                 <div className="space-y-2">
                   {profilesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                  {profiles.length === 0 && !profilesLoading ? <p className="text-sm text-muted-foreground">No hay registros de planchas.</p> : null}
+                  {planchaProfiles.length === 0 && !profilesLoading ? <p className="text-sm text-muted-foreground">No hay registros de planchas.</p> : null}
 
-                  {pagedProfiles.map((p) => (
+                  {pagedPlanchaProfiles.map((p) => (
                     <div key={p.id} className="rounded-md border p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
@@ -1206,7 +1279,7 @@ export function LitografiaCalculator() {
                           <Button type="button" variant={p.activo ? "outline" : "default"} onClick={() => patchProfile(p.id, { activo: !p.activo })}>
                             {p.activo ? "Desactivar" : "Activar"}
                           </Button>
-                          <Button type="button" variant="ghost" className="text-red-600" onClick={() => deleteProfile(p.id)}>
+                          <Button type="button" variant="ghost" className="text-red-600" onClick={() => void deletePlanchaProfile(p.id)}>
                             Eliminar
                           </Button>
                         </div>
@@ -1294,12 +1367,39 @@ export function LitografiaCalculator() {
                                 type="button"
                                 size="sm"
                                 onClick={() => {
-                                  const patch: Partial<PrintProfile> = {}
                                   const nombre = draftNombre.trim()
-                                  if (nombre && nombre !== p.nombre) patch.nombre = nombre
-                                  if (Number.isFinite(parsedPlancha) && parsedPlancha >= 0 && parsedPlancha !== p.costoPlanchaPorColor) patch.costoPlanchaPorColor = parsedPlancha
-                                  if (Object.keys(patch).length === 0) return
-                                  void patchProfile(p.id, patch)
+
+                                  const nextPlancha =
+                                    Number.isFinite(parsedPlancha) && parsedPlancha >= 0 ? parsedPlancha : (p.costoPlanchaPorColor ?? 0)
+
+                                  const isMixed = (p.costoPlanchaPorColor ?? 0) > 0 && (p.costoTintaPorColor ?? 0) > 0
+                                  if (isMixed) {
+                                    void (async () => {
+                                      const created = await createProfileDirect({
+                                        nombre: nombre || p.nombre,
+                                        costoPlanchaPorColor: nextPlancha,
+                                        costoTintaPorColor: 0,
+                                        activo: p.activo,
+                                      })
+
+                                      // El original queda como perfil de tinta (solo removemos plancha)
+                                      if (selectedPlanchaProfileId === p.id) {
+                                        const nextId = created?.id
+                                        setSelectedPlanchaProfileId(typeof nextId === "string" && nextId ? nextId : "")
+                                      }
+
+                                      await patchProfile(p.id, { costoPlanchaPorColor: 0 })
+                                    })()
+                                  } else {
+                                    const patch: Partial<PrintProfile> = {}
+                                    if (nombre && nombre !== p.nombre) patch.nombre = nombre
+                                    if (Number.isFinite(parsedPlancha) && parsedPlancha >= 0 && parsedPlancha !== p.costoPlanchaPorColor) {
+                                      patch.costoPlanchaPorColor = parsedPlancha
+                                    }
+                                    if (Object.keys(patch).length === 0) return
+                                    void patchProfile(p.id, patch)
+                                  }
+
                                   setProfileEdits((prev) => {
                                     const next = { ...prev }
                                     delete next[p.id]
@@ -1317,24 +1417,31 @@ export function LitografiaCalculator() {
                     </div>
                   ))}
 
-                  {profiles.length > 0 ? (
+                  {planchaProfiles.length > 0 ? (
                     <div className="flex items-center justify-between gap-2 pt-1">
                       <p className="text-xs text-muted-foreground">
-                        Mostrando {profilesPage * PAGE_SIZE + 1}-{Math.min(profiles.length, (profilesPage + 1) * PAGE_SIZE)} de {profiles.length}
+                        Mostrando {planchaProfilesPage * PAGE_SIZE + 1}-
+                        {Math.min(planchaProfiles.length, (planchaProfilesPage + 1) * PAGE_SIZE)} de {planchaProfiles.length}
                       </p>
                       <div className="flex items-center gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => setProfilesPage((p) => Math.max(0, p - 1))} disabled={profilesPage <= 0}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPlanchaProfilesPage((p) => Math.max(0, p - 1))}
+                          disabled={planchaProfilesPage <= 0}
+                        >
                           Anterior
                         </Button>
                         <p className="text-xs">
-                          Página {profilesPage + 1} / {Math.max(1, Math.ceil(profiles.length / PAGE_SIZE))}
+                          Página {planchaProfilesPage + 1} / {Math.max(1, Math.ceil(planchaProfiles.length / PAGE_SIZE))}
                         </p>
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setProfilesPage((p) => Math.min(Math.ceil(profiles.length / PAGE_SIZE) - 1, p + 1))}
-                          disabled={profilesPage >= Math.ceil(profiles.length / PAGE_SIZE) - 1}
+                          onClick={() => setPlanchaProfilesPage((p) => Math.min(Math.ceil(planchaProfiles.length / PAGE_SIZE) - 1, p + 1))}
+                          disabled={planchaProfilesPage >= Math.ceil(planchaProfiles.length / PAGE_SIZE) - 1}
                         >
                           Siguiente
                         </Button>
@@ -1365,7 +1472,11 @@ export function LitografiaCalculator() {
                     <MoneyInput className={INPUT_COMPACT} type="number" step="1" value={newProfileTinta} onChange={(e) => setNewProfileTinta(e.target.value)} />
                   </div>
                   <div className="md:col-span-3">
-                    <Button type="button" onClick={() => void createProfile("tinta")} disabled={!newProfileNombre.trim()}>
+                    <Button
+                      type="button"
+                      onClick={() => void createProfile("tinta")}
+                      disabled={!newProfileNombre.trim() || (parseFloat(newProfileTinta) || 0) <= 0}
+                    >
                       Agregar tinta
                     </Button>
                   </div>
@@ -1373,9 +1484,9 @@ export function LitografiaCalculator() {
 
                 <div className="space-y-2">
                   {profilesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                  {profiles.length === 0 && !profilesLoading ? <p className="text-sm text-muted-foreground">No hay registros de tintas.</p> : null}
+                  {tintaProfiles.length === 0 && !profilesLoading ? <p className="text-sm text-muted-foreground">No hay registros de tintas.</p> : null}
 
-                  {pagedProfiles.map((p) => (
+                  {pagedTintaProfiles.map((p) => (
                     <div key={p.id} className="rounded-md border p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
@@ -1386,7 +1497,7 @@ export function LitografiaCalculator() {
                           <Button type="button" variant={p.activo ? "outline" : "default"} onClick={() => patchProfile(p.id, { activo: !p.activo })}>
                             {p.activo ? "Desactivar" : "Activar"}
                           </Button>
-                          <Button type="button" variant="ghost" className="text-red-600" onClick={() => deleteProfile(p.id)}>
+                          <Button type="button" variant="ghost" className="text-red-600" onClick={() => void deleteTintaProfile(p.id)}>
                             Eliminar
                           </Button>
                         </div>
@@ -1474,12 +1585,39 @@ export function LitografiaCalculator() {
                                 type="button"
                                 size="sm"
                                 onClick={() => {
-                                  const patch: Partial<PrintProfile> = {}
                                   const nombre = draftNombre.trim()
-                                  if (nombre && nombre !== p.nombre) patch.nombre = nombre
-                                  if (Number.isFinite(parsedTinta) && parsedTinta >= 0 && parsedTinta !== p.costoTintaPorColor) patch.costoTintaPorColor = parsedTinta
-                                  if (Object.keys(patch).length === 0) return
-                                  void patchProfile(p.id, patch)
+
+                                  const nextTinta =
+                                    Number.isFinite(parsedTinta) && parsedTinta >= 0 ? parsedTinta : (p.costoTintaPorColor ?? 0)
+
+                                  const isMixed = (p.costoPlanchaPorColor ?? 0) > 0 && (p.costoTintaPorColor ?? 0) > 0
+                                  if (isMixed) {
+                                    void (async () => {
+                                      const created = await createProfileDirect({
+                                        nombre: nombre || p.nombre,
+                                        costoPlanchaPorColor: 0,
+                                        costoTintaPorColor: nextTinta,
+                                        activo: p.activo,
+                                      })
+
+                                      // El original queda como perfil de plancha (solo removemos tinta)
+                                      if (selectedTintaProfileId === p.id) {
+                                        const nextId = created?.id
+                                        setSelectedTintaProfileId(typeof nextId === "string" && nextId ? nextId : "")
+                                      }
+
+                                      await patchProfile(p.id, { costoTintaPorColor: 0 })
+                                    })()
+                                  } else {
+                                    const patch: Partial<PrintProfile> = {}
+                                    if (nombre && nombre !== p.nombre) patch.nombre = nombre
+                                    if (Number.isFinite(parsedTinta) && parsedTinta >= 0 && parsedTinta !== p.costoTintaPorColor) {
+                                      patch.costoTintaPorColor = parsedTinta
+                                    }
+                                    if (Object.keys(patch).length === 0) return
+                                    void patchProfile(p.id, patch)
+                                  }
+
                                   setProfileEdits((prev) => {
                                     const next = { ...prev }
                                     delete next[p.id]
@@ -1497,24 +1635,31 @@ export function LitografiaCalculator() {
                     </div>
                   ))}
 
-                  {profiles.length > 0 ? (
+                  {tintaProfiles.length > 0 ? (
                     <div className="flex items-center justify-between gap-2 pt-1">
                       <p className="text-xs text-muted-foreground">
-                        Mostrando {profilesPage * PAGE_SIZE + 1}-{Math.min(profiles.length, (profilesPage + 1) * PAGE_SIZE)} de {profiles.length}
+                        Mostrando {tintaProfilesPage * PAGE_SIZE + 1}-
+                        {Math.min(tintaProfiles.length, (tintaProfilesPage + 1) * PAGE_SIZE)} de {tintaProfiles.length}
                       </p>
                       <div className="flex items-center gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => setProfilesPage((p) => Math.max(0, p - 1))} disabled={profilesPage <= 0}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setTintaProfilesPage((p) => Math.max(0, p - 1))}
+                          disabled={tintaProfilesPage <= 0}
+                        >
                           Anterior
                         </Button>
                         <p className="text-xs">
-                          Página {profilesPage + 1} / {Math.max(1, Math.ceil(profiles.length / PAGE_SIZE))}
+                          Página {tintaProfilesPage + 1} / {Math.max(1, Math.ceil(tintaProfiles.length / PAGE_SIZE))}
                         </p>
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setProfilesPage((p) => Math.min(Math.ceil(profiles.length / PAGE_SIZE) - 1, p + 1))}
-                          disabled={profilesPage >= Math.ceil(profiles.length / PAGE_SIZE) - 1}
+                          onClick={() => setTintaProfilesPage((p) => Math.min(Math.ceil(tintaProfiles.length / PAGE_SIZE) - 1, p + 1))}
+                          disabled={tintaProfilesPage >= Math.ceil(tintaProfiles.length / PAGE_SIZE) - 1}
                         >
                           Siguiente
                         </Button>

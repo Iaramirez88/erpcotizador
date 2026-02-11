@@ -10,7 +10,7 @@ export default function LitografiaPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Litografía</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Configuración litográfica</h1>
         <p className="text-muted-foreground">Configuración del tarifario y opciones de litografía.</p>
       </div>
 
