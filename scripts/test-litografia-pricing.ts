@@ -15,6 +15,13 @@ import { PrismaPg } from "@prisma/adapter-pg"
 import { Pool } from "pg"
 import dotenv from "dotenv"
 
+import {
+  computeLitografiaMinPlusUnitTotal,
+  computeLitografiaTarifarioInterpolatedTotal,
+  matchLitografiaTarifaByRange,
+  buildLitografiaTarifarioPoints,
+} from "../src/lib/litografia-tarifario-pricing"
+
 dotenv.config()
 
 type Rate = {
@@ -81,6 +88,17 @@ function pickBestRate(args: {
   })[0]!
 }
 
+function fmt(n: number) {
+  return money(Math.round(n))
+}
+
+function parseIntEnv(name: string, fallback: number) {
+  const raw = (process.env[name] || "").trim()
+  if (!raw) return fallback
+  const n = Number(raw)
+  return Number.isFinite(n) ? Math.trunc(n) : fallback
+}
+
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL no está definido")
 
@@ -101,7 +119,8 @@ async function main() {
     if (!sizes.length) throw new Error("No hay tamaños activos. Ejecuta: npm run litografia:reset")
     if (!rates.length) throw new Error("No hay tarifas activas. Ejecuta: npm run litografia:reset")
 
-    const cantidad = 1000
+    const cantidad = parseIntEnv("LITOGRAFIA_QTY", 750)
+    const cantidades = Array.from(new Set([cantidad, 480, 520, 750, 1000, 1500].filter((x) => x > 0))).sort((a, b) => a - b)
     const tintas: 1 | 2 | 4 = 4
 
     const sizeMedio = sizes.find((s) => s.key === "MEDIO_CARTA") ?? sizes[0]!
@@ -113,34 +132,72 @@ async function main() {
     ]
 
     console.log(`Empresa: ${empresa.nombre} (${empresa.id})`)
-    console.log(`Cantidad=${cantidad} | Tintas=${tintas}`)
+    console.log(`Tintas=${tintas} | Cantidades=${cantidades.join(", ")}`)
 
     for (const s of scenarios) {
-      const rate = pickBestRate({ rates: rates as Rate[], formatoKey: s.formatoKey, tintas, cantidad, paperRateId: s.paperRateId, finishOptionId: s.finishOptionId })
-      if (!rate) {
-        console.log(`\n${s.name}`)
-        console.log(`  ❌ No hay tarifa que aplique (revisa rangos/papel/acabado).`)
+      console.log(`\n${s.name}`)
+
+      const baseRates = (rates as Rate[])
+        .filter((r) => r.formatoKey === s.formatoKey)
+        .filter((r) => r.tintas === tintas)
+        .filter((r) => (r.paperRateId == null ? true : r.paperRateId === s.paperRateId))
+        .filter((r) => (r.finishOptionId == null ? true : r.finishOptionId === s.finishOptionId))
+
+      if (!baseRates.length) {
+        console.log(`  ❌ No hay tarifas para el formato/tintas seleccionados.`)
         continue
       }
 
-      const base = rate.precioTotal
-      const t0 = 0
-      const tNorte = 20000
-      const total0 = base + t0
-      const totalNorte = base + tNorte
+      const points = buildLitografiaTarifarioPoints(baseRates)
+      const defaultMinQty = parseIntEnv("LITOGRAFIA_MIN_QTY", 500)
+      const minRes = computeLitografiaTarifarioInterpolatedTotal({ rates: baseRates, cantidad: defaultMinQty })
+      const minTotal = minRes.ok ? minRes.precioTotal : 0
 
-      console.log(`\n${s.name}`)
-      console.log(`  Base (tarifario): ${money(base)}  [rateId=${rate.id}]`)
-      if (rate.paperRateId == null && rate.finishOptionId == null) {
-        console.log(`  (Tarifa genérica: aplica a cualquier papel/acabado)`)
-      } else {
-        console.log(`  (Tarifa específica: depende de papel/acabado)`)
+      // Derivamos un "adicional por unidad" usando el siguiente punto disponible > minQty.
+      const nextPoint = points.find((p) => p.qty > defaultMinQty) || null
+      const unitAdditional = nextPoint ? (nextPoint.precioTotal - minTotal) / (nextPoint.qty - defaultMinQty) : 0
+
+      console.log(`  Puntos (tirajeMax): ${points.map((p) => `${p.qty}:${Math.round(p.precioTotal)}`).join(" | ")}`)
+      console.log(`  MinQty=${defaultMinQty} => MinTotal=${fmt(minTotal)} | unitAdditional≈${fmt(unitAdditional)} / unidad`)
+
+      for (const qty of cantidades) {
+        const matched = pickBestRate({ rates: rates as Rate[], formatoKey: s.formatoKey, tintas, cantidad: qty, paperRateId: s.paperRateId, finishOptionId: s.finishOptionId })
+        const byRange = matched ? matched.precioTotal : NaN
+
+        const interp = computeLitografiaTarifarioInterpolatedTotal({ rates: baseRates, cantidad: qty })
+        const byInterp = interp.ok ? interp.precioTotal : NaN
+
+        const byMinPlus = computeLitografiaMinPlusUnitTotal({
+          cantidad: qty,
+          minQty: defaultMinQty,
+          minTotal,
+          unitAdditional,
+        })
+
+        const t0 = 0
+        const tNorte = 20000
+
+        console.log(`\n  Tiraje=${qty}`)
+        if (matched) {
+          console.log(`    Rango (actual):     ${fmt(byRange)}  [${matched.tirajeMin}-${matched.tirajeMax} rateId=${matched.id}]`)
+        } else {
+          console.log(`    Rango (actual):     ❌ sin match`)
+        }
+
+        if (interp.ok) {
+          const b = interp.upper.qty === interp.lower.qty ? `${interp.upper.qty}` : `${interp.lower.qty}→${interp.upper.qty}`
+          console.log(`    Interpolación:      ${fmt(byInterp)}  (${interp.mode} ${b})`)
+        } else {
+          console.log(`    Interpolación:      ❌ ${interp.error}`)
+        }
+
+        console.log(`    Mín + adicional:    ${fmt(byMinPlus)}`)
+        console.log(`    + Transporte 20k:   rango=${fmt((Number.isFinite(byRange) ? byRange : 0) + tNorte)} | interp=${fmt((Number.isFinite(byInterp) ? byInterp : 0) + tNorte)} | min+u=${fmt(byMinPlus + tNorte)}`)
+        console.log(`    Δ transporte (ref): ${money(tNorte - t0)}`)
       }
-      console.log(`  + Transporte 0:   ${money(total0)}`)
-      console.log(`  + Transporte 20k: ${money(totalNorte)} (Δ=${money(totalNorte - total0)})`)
     }
 
-    console.log("\n✅ Prueba finalizada. Si el Δ del transporte no es 20k, hay un bug.")
+    console.log("\n✅ Prueba finalizada. Compara Rango vs Interpolación vs Mín+Adicional.")
   } finally {
     await prisma.$disconnect()
     await pool.end()
