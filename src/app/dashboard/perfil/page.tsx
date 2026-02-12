@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AvatarUploader } from '@/components/profile/avatar-uploader'
 import { ProfileBasicsForm } from '@/components/profile/profile-basics-form'
+import { LeaveWorkspaceCard } from '@/components/profile/leave-workspace-card'
 
 function fmtDate(date: Date | null | undefined) {
   if (!date) return '—'
@@ -182,6 +183,8 @@ export default async function PerfilPage() {
               )}
             </CardContent>
           </Card>
+
+          <LeaveWorkspaceCard empresaNombre={user.empresa?.nombre ?? null} />
         </div>
       </div>
 

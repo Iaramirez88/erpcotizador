@@ -5,11 +5,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 export function InviteUserCard() {
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
+
+  const [successOpen, setSuccessOpen] = useState(false)
+  const [successMessage, setSuccessMessage] = useState<string>('')
 
   const [sedes, setSedes] = useState<Array<{ id: string; nombre: string; codigo: string | null }>>([])
   const [sedeId, setSedeId] = useState('')
@@ -57,25 +68,53 @@ export function InviteUserCard() {
         | null
 
       if (!res.ok || !json?.success) {
-        setStatus(json?.error ?? 'No se pudo enviar la invitación.')
+        const err = (json?.error ?? 'No se pudo enviar la invitación.').trim()
+        // Ayuda contextual para el caso más común en producción.
+        if (res.status === 409 && /otra\s+entidad/i.test(err)) {
+          setStatus(
+            `${err}. Si esa persona ya tiene cuenta en otra entidad, debe iniciar sesión allá y usar “Mi perfil → Darme de baja del espacio de trabajo”, luego intenta invitar de nuevo.`
+          )
+        } else {
+          setStatus(err)
+        }
         return
       }
 
       const debug = typeof json.debugCode === 'string' ? ` (Código dev: ${json.debugCode})` : ''
-      setStatus((json.message ?? 'Invitación enviada.') + debug)
+      const msg = (json.message ?? 'Invitación enviada.') + debug
+      setStatus(msg)
+      setSuccessMessage(msg)
+      setSuccessOpen(true)
       setEmail('')
       setSedeId('')
+    } catch {
+      setStatus('No se pudo enviar la invitación. Verifica tu conexión e intenta de nuevo.')
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Invitar por correo</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <>
+      <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invitación enviada</DialogTitle>
+            <DialogDescription>{successMessage || 'Se envió la invitación correctamente.'}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" onClick={() => setSuccessOpen(false)}>
+              Entendido
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Invitar por correo</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
         <div className="space-y-2">
           <Label htmlFor="invite-email">Email</Label>
           <div className="flex gap-2">
@@ -119,7 +158,8 @@ export function InviteUserCard() {
         <p className="text-xs text-muted-foreground">
           Se enviará un código para registrarse en esta entidad (si aplica).
         </p>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </>
   )
 }

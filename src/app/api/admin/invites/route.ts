@@ -76,7 +76,18 @@ export async function POST(request: Request) {
   // Si ya existe el usuario, solo informamos por correo.
   if (existingUser?.id) {
     if (existingUser.empresaId && existingUser.empresaId !== empresa.id) {
-      return NextResponse.json({ error: 'Este email ya pertenece a otra entidad' }, { status: 409 })
+      // Permitimos mover desde el espacio personal (PERS-<userId>) hacia esta empresa.
+      const currentEmpresa = await prisma.empresa.findUnique({
+        where: { id: existingUser.empresaId },
+        select: { id: true, nit: true },
+      })
+      const isPersonal = currentEmpresa?.nit === `PERS-${existingUser.id}`
+      if (!isPersonal) {
+        return NextResponse.json({ error: 'Este email ya pertenece a otra entidad' }, { status: 409 })
+      }
+
+      await prisma.user.update({ where: { id: existingUser.id }, data: { empresaId: empresa.id } })
+      await ensureDefaultSedeForEmpresa(empresa.id, existingUser.id)
     }
 
     if (sedeForInvite?.id) {
