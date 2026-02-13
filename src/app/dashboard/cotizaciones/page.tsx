@@ -27,15 +27,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import dynamic from 'next/dynamic';
-
-// Importación dinámica del PDFViewer
-const PDFViewer = dynamic(
-  () => import('@react-pdf/renderer').then((mod) => mod.PDFViewer),
-  { ssr: false, loading: () => <div className="flex h-96 items-center justify-center">Cargando vista previa...</div> }
-);
-
-import CotizacionPDF from '@/lib/pdf-template';
 
 interface Cotizacion {
   id: string;
@@ -87,8 +78,15 @@ export default function CotizacionesPage() {
 
   // Estado para el preview
   const [previewCotizacion, setPreviewCotizacion] = useState<any | null>(null);
-  const [previewEmpresa, setPreviewEmpresa] = useState<any | null>(null);
-  const [previewTemplate, setPreviewTemplate] = useState<any | null>(null);
+  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewPdfUrl) {
+        window.URL.revokeObjectURL(previewPdfUrl);
+      }
+    };
+  }, [previewPdfUrl]);
 
   useEffect(() => {
     cargarCotizaciones({ page: 1 });
@@ -269,33 +267,21 @@ export default function CotizacionesPage() {
 
   const abrirPreview = async (cotizacion: Cotizacion) => {
     try {
-      // Obtener datos completos de la cotización
-      const res = await fetch(`/api/cotizaciones/${cotizacion.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.data) {
-          setPreviewCotizacion(data.data);
-          
-          // Obtener datos de la empresa si existe
-          if (data.data.vendedor?.empresaId) {
-            const empresaRes = await fetch(`/api/empresas/${data.data.vendedor.empresaId}`);
-            if (empresaRes.ok) {
-              const empresaData = await empresaRes.json();
-              setPreviewEmpresa(empresaData.success ? empresaData.data : null);
-            }
-          }
-
-          // Obtener plantilla de cotización
-          const templateRes = await fetch('/api/cotizacion-template');
-          if (templateRes.ok) {
-            const templateData = await templateRes.json();
-            const settings = templateData?.success && templateData?.data?.settings
-              ? templateData.data.settings
-              : null;
-            setPreviewTemplate(settings);
-          }
-        }
+      // Limpiar preview anterior
+      if (previewPdfUrl) {
+        window.URL.revokeObjectURL(previewPdfUrl);
+        setPreviewPdfUrl(null);
       }
+
+      // Guardamos el item para el título
+      setPreviewCotizacion(cotizacion);
+
+      // Cargamos el PDF ya renderizado por el backend
+      const res = await fetch(`/api/cotizaciones/${cotizacion.id}/pdf`);
+      if (!res.ok) throw new Error('No se pudo cargar el PDF');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      setPreviewPdfUrl(url);
     } catch (error) {
       console.error('Error al cargar datos para preview:', error);
       alert('Error al cargar el preview');
@@ -774,7 +760,17 @@ export default function CotizacionesPage() {
       )}
 
       {/* Dialog para Preview PDF */}
-      <Dialog open={!!previewCotizacion} onOpenChange={() => setPreviewCotizacion(null)}>
+      <Dialog
+        open={!!previewCotizacion}
+        onOpenChange={(open) => {
+          if (open) return;
+          setPreviewCotizacion(null);
+          if (previewPdfUrl) {
+            window.URL.revokeObjectURL(previewPdfUrl);
+          }
+          setPreviewPdfUrl(null);
+        }}
+      >
         <DialogContent className="max-w-4xl max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>
@@ -782,16 +778,19 @@ export default function CotizacionesPage() {
             </DialogTitle>
           </DialogHeader>
           
-          {previewCotizacion && (
+          {previewCotizacion ? (
             <div className="h-[600px] w-full overflow-hidden rounded border">
-              <PDFViewer width="100%" height="100%">
-                <CotizacionPDF
-                  cotizacion={previewCotizacion}
-                  template={previewTemplate || undefined}
+              {previewPdfUrl ? (
+                <iframe
+                  title={`Vista previa ${previewCotizacion?.numero ?? ''}`}
+                  src={previewPdfUrl}
+                  className="h-full w-full"
                 />
-              </PDFViewer>
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Cargando vista previa…</div>
+              )}
             </div>
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

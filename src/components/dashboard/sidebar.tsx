@@ -10,6 +10,7 @@ import { usePathname } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 import { useUiStore } from "@/lib/ui-store"
+import { NavSettingsDialog, type NavSettingsItem } from "@/components/dashboard/nav-settings-dialog"
 import { Building2 } from "lucide-react"
 import Image from "next/image"
 
@@ -28,7 +29,7 @@ interface NavItem {
   badge?: string
 }
 
-const navigation: NavItem[] = [
+const moduleNavigation: NavItem[] = [
   {
     name: "Dashboard",
     href: "/dashboard",
@@ -36,8 +37,19 @@ const navigation: NavItem[] = [
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
       </svg>
-    )
+    ),
   },
+  {
+    name: "Reportes",
+    href: "/dashboard/reportes",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    ),
+  },
+
+  // Comercial
   {
     name: "Cotizador",
     href: "/dashboard/cotizador",
@@ -45,25 +57,39 @@ const navigation: NavItem[] = [
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
       </svg>
-    )
+    ),
   },
   {
-    name: "Litografía",
-    href: "/dashboard/litografia",
+    name: "Cotizaciones",
+    href: "/dashboard/cotizaciones",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6M7 17h10M8 21h8M6 3h12v14H6V3z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m-7 5h8a2 2 0 002-2V7a2 2 0 00-2-2h-1.5a2.5 2.5 0 00-5 0H8a2 2 0 00-2 2v12a2 2 0 002 2z" />
       </svg>
-    )
+    ),
   },
   {
-    name: "Escaneos",
-    href: "/dashboard/escaneos",
+    name: "Remisiones",
+    href: "/dashboard/remisiones",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7V5a2 2 0 012-2h2m10 0h2a2 2 0 012 2v2M3 17v2a2 2 0 002 2h2m10 0h2a2 2 0 002-2v-2M7 7h10v10H7V7zm2 2h6m-6 3h6m-6 3h4" />
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M9 12h6m-6 4h6m3-10H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V8a2 2 0 00-2-2zm-7-2h2a2 2 0 012 2v0H9v0a2 2 0 012-2z"
+        />
       </svg>
-    )
+    ),
+  },
+  {
+    name: "Facturación",
+    href: "/dashboard/pos",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M6 11h12M6 15h6M6 19h12" />
+      </svg>
+    ),
   },
   {
     name: "Clientes",
@@ -72,16 +98,36 @@ const navigation: NavItem[] = [
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
       </svg>
-    )
+    ),
   },
+
+  // Operaciones
   {
-    name: "Productos",
-    href: "/dashboard/materiales",
+    name: "Órdenes de Trabajo",
+    href: "/dashboard/ordenes",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
       </svg>
-    )
+    ),
+  },
+  {
+    name: "Litografía",
+    href: "/dashboard/litografia",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6M7 17h10M8 21h8M6 3h12v14H6V3z" />
+      </svg>
+    ),
+  },
+  {
+    name: "Escaneos",
+    href: "/dashboard/escaneos",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7V5a2 2 0 012-2h2m10 0h2a2 2 0 012 2v2M3 17v2a2 2 0 002 2h2m10 0h2a2 2 0 002-2v-2M7 7h10v10H7V7zm2 2h6m-6 3h6m-6 3h4" />
+      </svg>
+    ),
   },
   {
     name: "Terminados",
@@ -90,8 +136,10 @@ const navigation: NavItem[] = [
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2l9 4.5v11L12 22 3 17.5v-11L12 2zm0 0v20M3 6.5l9 4.5 9-4.5" />
       </svg>
-    )
+    ),
   },
+
+  // Logística
   {
     name: "Inventario",
     href: "/dashboard/inventario",
@@ -111,51 +159,17 @@ const navigation: NavItem[] = [
     href: "/dashboard/inventario/traslados",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"
-        />
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M13 7l4 5-4 5"
-        />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l4 5-4 5" />
       </svg>
     ),
   },
   {
-    name: "Remisiones",
-    href: "/dashboard/remisiones",
+    name: "Compras",
+    href: "/dashboard/compras",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M9 12h6m-6 4h6m3-10H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V8a2 2 0 00-2-2zm-7-2h2a2 2 0 012 2v0H9v0a2 2 0 012-2z"
-        />
-      </svg>
-    ),
-  },
-  {
-    name: "Sedes",
-    href: "/dashboard/bodegas",
-    icon: <Building2 />,
-  },
-  {
-    name: "Facturación",
-    href: "/dashboard/pos",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M3 7h18M6 11h12M6 15h6M6 19h12"
-        />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.5 7.5M17 13l1.5 7.5M9 21h6" />
       </svg>
     ),
   },
@@ -166,34 +180,89 @@ const navigation: NavItem[] = [
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21h18M4 21V7a1 1 0 011-1h14a1 1 0 011 1v14M8 10h8M8 14h8M8 18h8" />
       </svg>
-    )
+    ),
   },
   {
-    name: "Compras",
-    href: "/dashboard/compras",
+    name: "Desperdicios",
+    href: "/dashboard/configuracion/desperdicios",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13l-1.5 7.5M17 13l1.5 7.5M9 21h6" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-8 0l1 14h8l1-14" />
       </svg>
-    )
+    ),
+  },
+
+  // Gestión
+  {
+    name: "Sedes",
+    href: "/dashboard/bodegas",
+    icon: <Building2 className="h-5 w-5" />,
   },
   {
-    name: "Órdenes de Trabajo",
-    href: "/dashboard/ordenes",
+    name: "Usuarios",
+    href: "/dashboard/configuracion/usuarios",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
       </svg>
-    )
+    ),
   },
   {
-    name: "Reportes",
-    href: "/dashboard/reportes",
+    name: "Permisos",
+    href: "/dashboard/configuracion/permisos",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11V7a4 4 0 118 0v4m-8 0h8m-8 0H6a2 2 0 00-2 2v6a2 2 0 002 2h12a2 2 0 002-2v-6a2 2 0 00-2-2" />
       </svg>
-    )
+    ),
+  },
+  {
+    name: "Empresa",
+    href: "/dashboard/configuracion/empresa",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21h18M4 21V7a2 2 0 012-2h3V3h6v2h3a2 2 0 012 2v14M8 11h.01M8 15h.01M12 11h.01M12 15h.01M16 11h.01M16 15h.01" />
+      </svg>
+    ),
+  },
+  {
+    name: "Plan",
+    href: "/dashboard/configuracion/plan",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h4m-6 4h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+]
+
+const preferenceNavigation: NavItem[] = [
+  {
+    name: "Mi perfil",
+    href: "/dashboard/perfil",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2m16 0v-2a4 4 0 00-3-3.87M7 7a4 4 0 118 0 4 4 0 01-8 0z" />
+      </svg>
+    ),
+  },
+  {
+    name: "Notificaciones",
+    href: "/dashboard/notificaciones",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0a3 3 0 01-6 0" />
+      </svg>
+    ),
+  },
+  {
+    name: "Ayuda",
+    href: "/dashboard/ayuda",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.305-.88 2.418-2.13 2.83-.97.32-1.87 1.1-1.87 2.17V16m0 4h.01M12 22a10 10 0 100-20 10 10 0 000 20z" />
+      </svg>
+    ),
   },
 ]
 
@@ -221,6 +290,13 @@ export default function Sidebar({ user }: SidebarProps) {
 
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
   const [empresa, setEmpresa] = useState<EmpresaBranding | null>(null)
+  const [openSectionTitle, setOpenSectionTitle] = useState<string | null>(null)
+
+  function isNavActive(href: string) {
+    if (href === '/dashboard') return pathname === '/dashboard'
+    if (pathname === href) return true
+    return pathname.startsWith(href + '/')
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -282,9 +358,105 @@ export default function Sidebar({ user }: SidebarProps) {
   }, [empresa?.nombre])
 
   const visibleNavigation = useMemo(() => {
-    if (!navPrefs) return navigation
-    return navigation.filter((it) => navPrefs[it.href] !== false)
+    if (!navPrefs) return moduleNavigation
+    return moduleNavigation.filter((it) => navPrefs[it.href] !== false)
   }, [navPrefs])
+
+  const visibleHrefs = useMemo(() => {
+    return new Set(visibleNavigation.map((it) => it.href))
+  }, [visibleNavigation])
+
+  const navSettingsItems: NavSettingsItem[] = useMemo(() => {
+    return moduleNavigation.map((it) => ({ name: it.name, href: it.href }))
+  }, [])
+
+  async function saveNav(next: Record<string, boolean>) {
+    setNavPrefs(next)
+    await fetch('/api/ui-preferences', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nav: next }),
+    }).catch(() => null)
+  }
+
+  const sections = useMemo(() => {
+    const get = (href: string) => visibleNavigation.find((it) => it.href === href) ?? null
+
+    return [
+      {
+        title: 'Centro de Control',
+        items: [get('/dashboard'), get('/dashboard/reportes')].filter(Boolean) as NavItem[],
+      },
+      {
+        title: 'Comercial',
+        items: [
+          get('/dashboard/cotizador'),
+          get('/dashboard/cotizaciones'),
+          get('/dashboard/remisiones'),
+          get('/dashboard/pos'),
+          get('/dashboard/clientes'),
+        ].filter(Boolean) as NavItem[],
+      },
+      {
+        title: 'Operaciones',
+        items: [
+          get('/dashboard/ordenes'),
+          get('/dashboard/litografia'),
+          get('/dashboard/escaneos'),
+          get('/dashboard/terminados'),
+        ].filter(Boolean) as NavItem[],
+      },
+      {
+        title: 'Logística',
+        items: [
+          get('/dashboard/inventario'),
+          get('/dashboard/inventario/traslados'),
+          get('/dashboard/compras'),
+          get('/dashboard/proveedores'),
+          get('/dashboard/configuracion/desperdicios'),
+        ].filter(Boolean) as NavItem[],
+      },
+      {
+        title: 'Gestión',
+        items: [
+          get('/dashboard/bodegas'),
+          get('/dashboard/configuracion/usuarios'),
+          get('/dashboard/configuracion/permisos'),
+          get('/dashboard/configuracion/empresa'),
+          get('/dashboard/configuracion/plan'),
+        ].filter(Boolean) as NavItem[],
+      },
+    ]
+  }, [visibleNavigation])
+
+  const activeSectionTitle = useMemo(() => {
+    // Elegimos el match más específico (href más largo) para evitar que “/dashboard” capture todo.
+    let best: { sectionTitle: string; hrefLen: number } | null = null
+
+    for (const section of sections) {
+      for (const it of section.items) {
+        if (!isNavActive(it.href)) continue
+        const hrefLen = it.href.length
+        if (!best || hrefLen > best.hrefLen) {
+          best = { sectionTitle: section.title, hrefLen }
+        }
+      }
+    }
+
+    if (best) return best.sectionTitle
+
+    // Si no está en un módulo, pero sí en una preferencia, mantenemos abierto Preferencias.
+    if (preferenceNavigation.some((it) => isNavActive(it.href))) return 'Preferencias'
+
+    return null
+  }, [sections, pathname])
+
+  useEffect(() => {
+    // Al navegar a una ruta dentro de otra sección, colapsa el anterior y abre el nuevo.
+    if (activeSectionTitle) setOpenSectionTitle(activeSectionTitle)
+  }, [activeSectionTitle])
+
+  const effectiveOpenSection = openSectionTitle ?? activeSectionTitle
 
   return (
     <>
@@ -347,34 +519,227 @@ export default function Sidebar({ user }: SidebarProps) {
 
         {/* Navigation */}
         <nav className={cn("flex-1 p-3 space-y-1 overflow-y-auto", sidebarCollapsed ? "px-2" : "px-3")}>
-          {visibleNavigation.map((item) => {
-            const isActive = pathname === item.href
+          {sections.map((section) => {
+            const visibleItems = section.items.filter((it) => visibleHrefs.has(it.href))
+            if (!visibleItems.length) return null
+
+            // Sidebar colapsada: se mantiene lista directa (sin dropdown) para no romper UX.
+            if (sidebarCollapsed) {
+              return (
+                <div key={section.title} className={cn("space-y-1", "")}> 
+                  {visibleItems.map((item) => {
+                    const isActive = isNavActive(item.href)
+                    return (
+                      <Link
+                        key={item.name}
+                        href={item.href}
+                        onClick={() => setMobileNavOpen(false)}
+                        className={cn(
+                          "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
+                          isActive ? "bg-slate-800/60 text-white" : "text-slate-200 hover:bg-slate-800/40"
+                        )}
+                        title={item.name}
+                      >
+                        <div className={cn("flex items-center", "justify-center w-full")}>
+                          {item.icon}
+                        </div>
+                      </Link>
+                    )
+                  })}
+                </div>
+              )
+            }
+
+            const isOpen = effectiveOpenSection === section.title
+            const isActiveSection = activeSectionTitle === section.title
 
             return (
-              <Link
-                key={item.name}
-                href={item.href}
-                onClick={() => setMobileNavOpen(false)}
-                className={cn(
-                  "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
-                  isActive
-                    ? "bg-slate-800/60 text-white"
-                    : "text-slate-200 hover:bg-slate-800/40"
-                )}
-                title={sidebarCollapsed ? item.name : undefined}
+              <div
+                key={section.title}
+                className={cn("space-y-1", "pt-2")}
               >
-                <div className={cn("flex items-center", sidebarCollapsed ? "justify-center w-full" : "space-x-3")}>
-                  {item.icon}
-                  {!sidebarCollapsed ? <span className="font-medium">{item.name}</span> : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpenSectionTitle((cur) => {
+                      if (cur === section.title) return isActiveSection ? section.title : null
+                      return section.title
+                    })
+                  }}
+                  className={cn(
+                    "w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-slate-200 hover:bg-slate-800/40"
+                  )}
+                >
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{section.title}</span>
+                  <svg
+                    className={cn("h-4 w-4 transition-transform text-slate-400", isOpen ? "rotate-180" : "")}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                <div
+                  className={cn(
+                    "pl-2 overflow-hidden transition-all duration-200 ease-out",
+                    isOpen ? "max-h-[900px] opacity-100 translate-y-0" : "max-h-0 opacity-0 -translate-y-1 pointer-events-none"
+                  )}
+                >
+                  <div className="space-y-1 pt-1">
+                    {visibleItems.map((item) => {
+                      const isActive = isNavActive(item.href)
+                      return (
+                        <Link
+                          key={item.name}
+                          href={item.href}
+                          onClick={() => {
+                            setMobileNavOpen(false)
+                          }}
+                          className={cn(
+                            "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
+                            isActive ? "bg-slate-800/60 text-white" : "text-slate-200 hover:bg-slate-800/40"
+                          )}
+                        >
+                          <div className="flex items-center space-x-3">
+                            {item.icon}
+                            <span className="text-sm font-medium">{item.name}</span>
+                          </div>
+                          {item.badge ? (
+                            <span className="px-2 py-1 text-xs font-medium bg-slate-800 text-slate-200 rounded">{item.badge}</span>
+                          ) : null}
+                        </Link>
+                      )
+                    })}
+                  </div>
                 </div>
-                {!sidebarCollapsed && item.badge ? (
-                  <span className="px-2 py-1 text-xs font-medium bg-slate-800 text-slate-200 rounded">
-                    {item.badge}
-                  </span>
-                ) : null}
-              </Link>
+              </div>
             )
           })}
+
+          {/* Preferencias */}
+          <div
+            className={cn("space-y-1", sidebarCollapsed ? "" : "pt-3")}
+          >
+            {sidebarCollapsed ? (
+              <>
+                {preferenceNavigation.map((item) => {
+                  const isActive = isNavActive(item.href)
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      onClick={() => setMobileNavOpen(false)}
+                      className={cn(
+                        "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
+                        isActive ? "bg-slate-800/60 text-white" : "text-slate-200 hover:bg-slate-800/40"
+                      )}
+                      title={item.name}
+                    >
+                      <div className={cn("flex items-center", "justify-center w-full")}>
+                        {item.icon}
+                      </div>
+                    </Link>
+                  )
+                })}
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const isActiveSection = activeSectionTitle === "Preferencias"
+                    setOpenSectionTitle((cur) => {
+                      if (cur === "Preferencias") return isActiveSection ? "Preferencias" : null
+                      return "Preferencias"
+                    })
+                  }}
+                  className={cn(
+                    "w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-slate-200 hover:bg-slate-800/40"
+                  )}
+                >
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Preferencias</span>
+                  <svg
+                    className={cn(
+                      "h-4 w-4 transition-transform text-slate-400",
+                      effectiveOpenSection === "Preferencias" ? "rotate-180" : ""
+                    )}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                <div
+                  className={cn(
+                    "pl-2 overflow-hidden transition-all duration-200 ease-out",
+                    effectiveOpenSection === "Preferencias"
+                      ? "max-h-[900px] opacity-100 translate-y-0"
+                      : "max-h-0 opacity-0 -translate-y-1 pointer-events-none"
+                  )}
+                >
+                  <div className="space-y-1 pt-1">
+                    {preferenceNavigation.map((item) => {
+                      const isActive = isNavActive(item.href)
+                      return (
+                        <Link
+                          key={item.name}
+                          href={item.href}
+                          onClick={() => {
+                            setMobileNavOpen(false)
+                            setOpenSectionTitle(activeSectionTitle ?? null)
+                          }}
+                          className={cn(
+                            "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
+                            isActive ? "bg-slate-800/60 text-white" : "text-slate-200 hover:bg-slate-800/40"
+                          )}
+                        >
+                          <div className="flex items-center space-x-3">
+                            {item.icon}
+                            <span className="text-sm font-medium">{item.name}</span>
+                          </div>
+                        </Link>
+                      )
+                    })}
+                      {navPrefs ? (
+                        <NavSettingsDialog
+                          items={navSettingsItems}
+                          value={navPrefs}
+                          onSave={saveNav}
+                          trigger={(open) => (
+                            <button
+                              type="button"
+                              onClick={() => open()}
+                              className={cn(
+                                "w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-slate-200 hover:bg-slate-800/40"
+                              )}
+                            >
+                              <div className="flex items-center space-x-3">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+                                  />
+                                </svg>
+                                <span className="font-medium">Personalizar menú</span>
+                              </div>
+                            </button>
+                          )}
+                        />
+                      ) : null}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
         </nav>
 
         {/* User Info + Cambiar contraseña */}
@@ -390,6 +755,7 @@ export default function Sidebar({ user }: SidebarProps) {
               </div>
             ) : null}
           </div>
+
           {!sidebarCollapsed ? (
             <div className="mt-4">
               <Link

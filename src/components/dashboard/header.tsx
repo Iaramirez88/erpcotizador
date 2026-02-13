@@ -80,20 +80,26 @@ export default function Header({ user }: HeaderProps) {
 
   const navItems = [
     { name: 'Dashboard', href: '/dashboard' },
+    { name: 'Reportes', href: '/dashboard/reportes' },
     { name: 'Cotizador', href: '/dashboard/cotizador' },
+    { name: 'Cotizaciones', href: '/dashboard/cotizaciones' },
+    { name: 'Facturación', href: '/dashboard/pos' },
+    { name: 'Remisiones', href: '/dashboard/remisiones' },
+    { name: 'Clientes', href: '/dashboard/clientes' },
+    { name: 'Órdenes de Trabajo', href: '/dashboard/ordenes' },
     { name: 'Litografía', href: '/dashboard/litografia' },
     { name: 'Escaneos', href: '/dashboard/escaneos' },
-    { name: 'Clientes', href: '/dashboard/clientes' },
-    { name: 'Productos', href: '/dashboard/materiales' },
     { name: 'Terminados', href: '/dashboard/terminados' },
     { name: 'Inventario', href: '/dashboard/inventario' },
     { name: 'Traslados', href: '/dashboard/inventario/traslados' },
-    { name: 'Remisiones', href: '/dashboard/remisiones' },
-    { name: 'Facturación', href: '/dashboard/pos' },
-    { name: 'Proveedores', href: '/dashboard/proveedores' },
     { name: 'Compras', href: '/dashboard/compras' },
-    { name: 'Órdenes de Trabajo', href: '/dashboard/ordenes' },
-    { name: 'Reportes', href: '/dashboard/reportes' },
+    { name: 'Proveedores', href: '/dashboard/proveedores' },
+    { name: 'Desperdicios', href: '/dashboard/configuracion/desperdicios' },
+    { name: 'Sedes', href: '/dashboard/bodegas' },
+    { name: 'Usuarios', href: '/dashboard/configuracion/usuarios' },
+    { name: 'Permisos', href: '/dashboard/configuracion/permisos' },
+    { name: 'Empresa', href: '/dashboard/configuracion/empresa' },
+    { name: 'Plan', href: '/dashboard/configuracion/plan' },
   ]
 
   async function saveNav(next: Record<string, boolean>) {
@@ -148,9 +154,6 @@ export default function Header({ user }: HeaderProps) {
                 <Link href="/dashboard/perfil">Mi perfil</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href="/dashboard/cotizaciones">Cotizaciones</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
                 <Link href="/dashboard/notificaciones" className="flex items-center justify-between gap-2">
                   <span>Notificaciones</span>
                   {unreadCount > 0 ? (
@@ -161,7 +164,6 @@ export default function Header({ user }: HeaderProps) {
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel>Configuración</DropdownMenuLabel>
               {navPrefs ? (
                 <NavSettingsDialog
                   items={navItems}
@@ -179,25 +181,6 @@ export default function Header({ user }: HeaderProps) {
                   )}
                 />
               ) : null}
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/configuracion/permisos">Permisos</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/configuracion/usuarios">Usuarios</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/configuracion/empresa">Empresa</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/configuracion/cotizaciones">Cotizaciones</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/configuracion/desperdicios">Desperdicios</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/configuracion/plan">Plan</Link>
-              </DropdownMenuItem>
-
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Ayuda</DropdownMenuLabel>
               <DropdownMenuItem

@@ -82,7 +82,7 @@ type RecentNotification = {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: SearchParams | Promise<SearchParams>
+  searchParams?: Promise<SearchParams>
 }) {
   // Verificar sesión
   const session = await auth()
@@ -91,7 +91,7 @@ export default async function DashboardPage({
     redirect("/auth/login")
   }
 
-  const resolvedSearchParams = searchParams ? await Promise.resolve(searchParams) : undefined
+  const resolvedSearchParams = searchParams ? await searchParams : undefined
 
   const sessionUserId = session.user.id
   const sessionEmail = session.user.email
