@@ -1235,6 +1235,20 @@ model UserGlobalAccess {
   @@map("user_global_access")
 }
 
+model PlanModuleSetting {
+  id       String   @id @default(cuid())
+  planTier PlanTier
+  module   ModuleKey
+  enabled  Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([planTier, module])
+  @@index([module])
+  @@map("plan_module_settings")
+}
+
 // ============================================
 // NOTIFICACIONES (MVP)
 // ============================================

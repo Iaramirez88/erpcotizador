@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import type { Empresa, Sede } from '@prisma/client'
 import { AccessLevel, ModuleKey, SedeRole, UserRole } from '@prisma/client'
+import { isSuperAdminEmail } from '@/lib/super-admin'
 
 function maxAccess(a: AccessLevel, b: AccessLevel): AccessLevel {
   const order: Record<AccessLevel, number> = {
@@ -140,10 +141,10 @@ export async function getEffectiveAccess(args: {
 }): Promise<AccessLevel> {
   const user = await prisma.user.findUnique({
     where: { id: args.userId },
-    select: { role: true, globalAccess: { select: { level: true } } },
+    select: { role: true, email: true, globalAccess: { select: { level: true } } },
   })
 
-  if (user?.role === UserRole.ADMIN) return 'ADMIN'
+  if (user?.role === UserRole.ADMIN && isSuperAdminEmail(user.email)) return 'ADMIN'
 
   const globalBase: AccessLevel = user?.globalAccess?.level ?? 'NONE'
 

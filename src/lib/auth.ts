@@ -15,6 +15,7 @@ import bcrypt from "bcryptjs"
 import { prisma } from "./prisma"
 import type { JWT } from "next-auth/jwt"
 import type { Session, User } from "next-auth"
+import { coerceEffectiveUserRole } from "@/lib/super-admin"
 
 const ONE_HOUR = 60 * 60
 const ONE_DAY = 24 * ONE_HOUR
@@ -119,7 +120,7 @@ export const authOptions: NextAuthConfig = {
           id: user.id,
           email: user.email,
           name: user.name,
-          role: user.role,
+          role: coerceEffectiveUserRole({ email: user.email, role: user.role }),
           image: user.image,
           remember,
         }
@@ -218,7 +219,7 @@ export const authOptions: NextAuthConfig = {
               session.user.name = dbUser.name
               session.user.email = dbUser.email
               session.user.image = dbUser.image
-              session.user.role = dbUser.role
+              session.user.role = coerceEffectiveUserRole({ email: dbUser.email, role: dbUser.role })
             }
           } catch {
             // no-op

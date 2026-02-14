@@ -1,0 +1,216 @@
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+
+type PlanTier = 'BASIC' | 'MEDIO' | 'INTERMEDIO' | 'FULL'
+
+type ModuleKey =
+  | 'DASHBOARD'
+  | 'COTIZADOR'
+  | 'COTIZACIONES'
+  | 'CLIENTES'
+  | 'MATERIALES'
+  | 'INVENTARIO'
+  | 'REMISIONES'
+  | 'POS'
+  | 'PROVEEDORES'
+  | 'COMPRAS'
+  | 'ORDENES'
+  | 'ESCANEOS'
+  | 'REPORTES'
+  | 'NOTIFICACIONES'
+  | 'CONFIG'
+
+type Row = { planTier: PlanTier; module: ModuleKey; enabled: boolean; updatedAt: string }
+
+type GetResponse =
+  | { ok: true; planTiers: PlanTier[]; modules: ModuleKey[]; rows: Row[] }
+  | { ok?: false; error?: string }
+
+type PutResponse =
+  | { ok: true; row: Row }
+  | { ok?: false; error?: string }
+
+function titleForModule(moduleKey: ModuleKey): string {
+  switch (moduleKey) {
+    case 'DASHBOARD':
+      return 'Dashboard'
+    case 'COTIZADOR':
+      return 'Cotizador'
+    case 'COTIZACIONES':
+      return 'Cotizaciones'
+    case 'CLIENTES':
+      return 'Clientes'
+    case 'MATERIALES':
+      return 'Materiales / Terminados'
+    case 'INVENTARIO':
+      return 'Inventario'
+    case 'REMISIONES':
+      return 'Remisiones'
+    case 'POS':
+      return 'POS / Facturación'
+    case 'PROVEEDORES':
+      return 'Proveedores'
+    case 'COMPRAS':
+      return 'Compras'
+    case 'ORDENES':
+      return 'Órdenes'
+    case 'ESCANEOS':
+      return 'Escaneos'
+    case 'REPORTES':
+      return 'Reportes'
+    case 'NOTIFICACIONES':
+      return 'Notificaciones'
+    case 'CONFIG':
+      return 'Configuración'
+    default:
+      return moduleKey
+  }
+}
+
+export default function SuperAdminPlanModulesClient() {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [planTiers, setPlanTiers] = useState<PlanTier[]>([])
+  const [modules, setModules] = useState<ModuleKey[]>([])
+  const [rows, setRows] = useState<Row[]>([])
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch('/api/super-admin/plan-modules', { cache: 'no-store' })
+        const json = (await res.json().catch(() => ({}))) as GetResponse
+        if (!res.ok || !('ok' in json) || !json.ok) {
+          setError(('error' in json && json.error) || 'No se pudo cargar la configuración')
+          return
+        }
+
+        if (!cancelled) {
+          setPlanTiers(json.planTiers)
+          setModules(json.modules)
+          setRows(json.rows)
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Error inesperado')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const rowMap = useMemo(() => {
+    const map = new Map<string, Row>()
+    for (const r of rows) {
+      map.set(`${r.planTier}::${r.module}`, r)
+    }
+    return map
+  }, [rows])
+
+  async function setEnabled(planTier: PlanTier, moduleKey: ModuleKey, enabled: boolean) {
+    const key = `${planTier}::${moduleKey}`
+    setSavingKey(key)
+    setError(null)
+
+    // Optimistic update
+    setRows((prev) => {
+      const next = [...prev]
+      const idx = next.findIndex((r) => r.planTier === planTier && r.module === moduleKey)
+      const updated: Row = {
+        planTier,
+        module: moduleKey,
+        enabled,
+        updatedAt: new Date().toISOString(),
+      }
+      if (idx >= 0) next[idx] = updated
+      else next.push(updated)
+      return next
+    })
+
+    try {
+      const res = await fetch('/api/super-admin/plan-modules', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planTier, module: moduleKey, enabled }),
+      })
+
+      const json = (await res.json().catch(() => ({}))) as PutResponse
+      if (!res.ok || !('ok' in json) || !json.ok) {
+        setError(('error' in json && json.error) || 'No se pudo guardar')
+        return
+      }
+
+      setRows((prev) => {
+        const next = [...prev]
+        const idx = next.findIndex((r) => r.planTier === planTier && r.module === moduleKey)
+        if (idx >= 0) next[idx] = json.row
+        else next.push(json.row)
+        return next
+      })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error inesperado')
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Super Admin · Módulos por plan</h1>
+        <p className="text-sm text-gray-600">Habilita o deshabilita módulos para cada plan.</p>
+      </div>
+
+      {loading ? <div className="text-sm text-gray-600">Cargando…</div> : null}
+      {error ? <div className="text-sm text-red-600">{error}</div> : null}
+
+      {!loading && !error ? (
+        <div className="grid gap-4">
+          {planTiers.map((tier) => (
+            <Card key={tier}>
+              <CardHeader>
+                <CardTitle>{tier}</CardTitle>
+                <CardDescription>Define qué módulos incluye este plan.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3">
+                {modules.map((m) => {
+                  const key = `${tier}::${m}`
+                  const row = rowMap.get(key)
+                  const enabled = row?.enabled ?? true
+                  const disabled = savingKey === key
+
+                  return (
+                    <div key={m} className="flex items-center justify-between gap-4 rounded-md border px-3 py-2">
+                      <div className="grid gap-0.5">
+                        <Label className="text-sm">{titleForModule(m)}</Label>
+                        <div className="text-xs text-muted-foreground">{m}</div>
+                      </div>
+                      <Switch
+                        checked={enabled}
+                        disabled={disabled}
+                        onCheckedChange={(v) => void setEnabled(tier, m, Boolean(v))}
+                        aria-label={`Habilitar ${m} en ${tier}`}
+                      />
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}

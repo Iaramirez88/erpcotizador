@@ -13,25 +13,25 @@ export const PLANES: PlanInfo[] = [
   {
     tier: 'BASIC',
     nombre: 'Básico',
-    descripcion: 'Para equipos pequeños y operación esencial.',
+    descripcion: 'Lo esencial para empezar.',
     precioMensualCOP: 99000,
   },
   {
     tier: 'MEDIO',
     nombre: 'Medio',
-    descripcion: 'Para operación diaria con más módulos y control.',
+    descripcion: 'Operación diaria organizada.',
     precioMensualCOP: 199000,
   },
   {
     tier: 'INTERMEDIO',
     nombre: 'Intermedio',
-    descripcion: 'Para equipos en crecimiento y flujos más completos.',
+    descripcion: 'Control real de la empresa.',
     precioMensualCOP: 299000,
   },
   {
     tier: 'FULL',
     nombre: 'Full',
-    descripcion: 'Suite completa para producción y administración.',
+    descripcion: 'Escala sin límites.',
     precioMensualCOP: 399000,
   },
 ]

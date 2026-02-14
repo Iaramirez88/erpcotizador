@@ -1,10 +1,70 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatCOP, getPlanPriceCOP, type BillingCycle, type PlanInfo, type PlanTier } from "@/lib/plans"
+
+type PlanDetails = {
+  tagline: string
+  forWho: string
+  incluye: Array<{ title: string; items: string[] }>
+  alcance: string[]
+}
+
+const PLAN_DETAILS: Record<PlanTier, PlanDetails> = {
+  BASIC: {
+    tagline: '“Lo esencial para empezar”',
+    forWho: 'Para emprendedores y equipos pequeños.',
+    incluye: [
+      { title: '📊 Centro de Control', items: ['Dashboard'] },
+      { title: '💰 Comercial', items: ['Cotizador', 'Cotizaciones', 'Clientes'] },
+      { title: '📦 Logística', items: ['Inventario'] },
+      { title: '🛠 Preferencias', items: ['Mi perfil', 'Notificaciones'] },
+    ],
+    alcance: ['1 sede', '2 usuarios', '500 clientes', '300 cotizaciones / mes'],
+  },
+  MEDIO: {
+    tagline: '“Operación diaria organizada”',
+    forWho: 'Para negocios con flujo constante.',
+    incluye: [
+      { title: 'Incluye todo el Básico +', items: [] },
+      { title: '📊 Centro de Control', items: ['Reportes'] },
+      { title: '💰 Comercial', items: ['POS', 'Remisiones'] },
+      { title: '🏭 Operaciones', items: ['Órdenes de Trabajo'] },
+      { title: '📦 Logística', items: ['Compras', 'Proveedores'] },
+      { title: '⚙️ Gestión', items: ['Sedes'] },
+    ],
+    alcance: ['3 sedes', '5 usuarios', '2.000 clientes', '1.500 cotizaciones / mes'],
+  },
+  INTERMEDIO: {
+    tagline: '“Control real de la empresa”',
+    forWho: 'Para equipos en crecimiento.',
+    incluye: [
+      { title: 'Incluye todo el Medio +', items: [] },
+      { title: '💰 Comercial', items: ['Facturación'] },
+      { title: '🏭 Operaciones', items: ['Litografía', 'Escaneos', 'Terminados'] },
+      { title: '📦 Logística', items: ['Traslados', 'Desperdicios'] },
+      { title: '⚙️ Gestión', items: ['Usuarios'] },
+      { title: '📊 Centro de Control', items: ['Reportes avanzados'] },
+    ],
+    alcance: ['6 sedes', '10 usuarios', '8.000 clientes', '5.000 cotizaciones / mes'],
+  },
+  FULL: {
+    tagline: '“Escala sin límites”',
+    forWho: 'Para empresas con operación completa.',
+    incluye: [
+      { title: 'Incluye todo +', items: [] },
+      { title: '⚙️ Gestión', items: ['Permisos', 'Empresa', 'Plan'] },
+      { title: '🛠 Preferencias', items: ['Personalizar menú', 'Configuración', 'Ayuda'] },
+      { title: '📊 Centro de Control', items: ['KPIs por sede'] },
+    ],
+    alcance: ['Sedes ilimitadas', 'Usuarios ilimitados', 'Clientes ilimitados', 'Cotizaciones ilimitadas'],
+  },
+}
 
 type PlanApiResponse =
   | {
@@ -45,6 +105,11 @@ type LastInvoice = {
 }
 
 export default function PlanPage() {
+  const searchParams = useSearchParams()
+  const blockedModule = searchParams.get('blockedModule')
+
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
+
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [current, setCurrent] = useState<PlanInfo | null>(null)
@@ -120,6 +185,30 @@ export default function PlanPage() {
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadMe() {
+      try {
+        const res = await fetch('/api/me', { cache: 'no-store' })
+        const json = (await res.json().catch(() => null)) as
+          | { success?: boolean; data?: { role?: string | null } | null }
+          | null
+
+        if (!cancelled && res.ok && json?.success && json?.data?.role === 'ADMIN') {
+          setIsSuperAdmin(true)
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    void loadMe()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const sortedPlans = useMemo(() => {
     const order: PlanTier[] = ["BASIC", "MEDIO", "INTERMEDIO", "FULL"]
     return [...all].sort((a, b) => order.indexOf(a.tier) - order.indexOf(b.tier))
@@ -156,10 +245,32 @@ export default function PlanPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Plan</h1>
-        <p className="text-sm text-gray-600">Gestiona tu plan y facturación.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Plan</h1>
+          <p className="text-sm text-gray-600">Gestiona tu plan y facturación.</p>
+        </div>
+
+        {isSuperAdmin ? (
+          <Button asChild variant="outline">
+            <Link href="/dashboard/configuracion/super-admin/modulos-por-plan">Super Admin</Link>
+          </Button>
+        ) : null}
       </div>
+
+      {blockedModule ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>No incluido en tu plan</CardTitle>
+            <CardDescription>
+              El módulo <span className="font-medium">{blockedModule}</span> no está habilitado en tu plan actual.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-sm text-gray-700">Selecciona un plan superior para activarlo.</div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -281,6 +392,7 @@ export default function PlanPage() {
           const isCurrent = current?.tier === p.tier
           const displayPrice = getPlanPriceCOP(p.tier, cycle)
           const disablePay = isPaying || isLoading || (isCurrent && empresa?.billingCycle === cycle && !!empresa?.planValidUntil)
+          const details = PLAN_DETAILS[p.tier]
 
           return (
             <Card
@@ -304,6 +416,38 @@ export default function PlanPage() {
               <CardContent>
                 <div className="text-2xl font-bold text-gray-900">{formatCOP(displayPrice)}</div>
                 <div className="text-sm text-gray-600">{cycle === "YEARLY" ? "COP / año" : "COP / mes"}</div>
+
+                <div className="mt-4 space-y-2">
+                  <div className="text-sm font-medium text-gray-900">{details.tagline}</div>
+                  <div className="text-sm text-gray-700">{details.forWho}</div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  <div className="text-sm font-semibold text-gray-900">Incluye</div>
+                  <div className="space-y-2">
+                    {details.incluye.map((group) => (
+                      <div key={group.title} className="space-y-1">
+                        <div className="text-sm font-medium text-gray-900">{group.title}</div>
+                        {group.items.length ? (
+                          <ul className="list-disc pl-5 text-sm text-gray-700">
+                            {group.items.map((it) => (
+                              <li key={it}>{it}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  <div className="text-sm font-semibold text-gray-900">Alcance</div>
+                  <ul className="list-disc pl-5 text-sm text-gray-700">
+                    {details.alcance.map((it) => (
+                      <li key={it}>{it}</li>
+                    ))}
+                  </ul>
+                </div>
 
                 <div className="mt-4">
                   <Button

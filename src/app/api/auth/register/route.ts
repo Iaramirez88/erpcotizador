@@ -13,6 +13,7 @@ import { validatePassword } from "@/lib/password-policy"
 import { randomDigits, sha256Hex } from "@/lib/auth-tokens"
 import { sendEmail } from "@/lib/email"
 import { ensureDefaultSedeForEmpresa } from "@/lib/rbac"
+import { isSuperAdminEmail } from "@/lib/super-admin"
 
 export async function POST(request: Request) {
   try {
@@ -111,7 +112,7 @@ export async function POST(request: Request) {
         name,
         email: normalizedEmail,
         password: hashedPassword,
-        role: "USER", // Rol por defecto
+        role: isSuperAdminEmail(normalizedEmail) ? "ADMIN" : "USER",
         empresaId: empresa?.id ?? null,
       }
     })

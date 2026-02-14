@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getActiveSedeForUser, requireSedeAccess } from '@/lib/rbac'
 import type { Session } from 'next-auth'
 import { AccessLevel, ModuleKey } from '@prisma/client'
+import { isModuleEnabledForEmpresa } from '@/lib/plan-modules'
 
 export type ApiAccessOk = {
   ok: true
@@ -54,8 +55,27 @@ export async function requireApiAccess(
   const empresaId = sede.empresaId
   const empresa = await prisma.empresa.findUnique({
     where: { id: empresaId },
-    select: { id: true, nit: true, planValidUntil: true },
+    select: { id: true, nit: true, planValidUntil: true, planTier: true },
   })
+
+  // Super admin (global) bypass: puede operar sin restricciones de plan.
+  if (session.user.role !== 'ADMIN') {
+    const enabled = await isModuleEnabledForEmpresa({ empresaId, module: moduleKey })
+    if (!enabled) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          {
+            error: 'Este módulo no está habilitado para tu plan. Ve a Configuración → Plan o contacta al administrador.',
+            code: 'MODULE_NOT_ENABLED',
+            module: moduleKey,
+            planTier: empresa?.planTier ?? null,
+          },
+          { status: 402 }
+        ),
+      }
+    }
+  }
 
   // Regla: Espacio personal (PERS-*) requiere plan vigente para operar.
   // Permitimos CONFIG para que el usuario pueda activar su plan.

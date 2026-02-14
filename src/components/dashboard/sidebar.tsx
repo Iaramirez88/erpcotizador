@@ -29,6 +29,50 @@ interface NavItem {
   badge?: string
 }
 
+function moduleForHref(href: string): string | null {
+  switch (href) {
+    case '/dashboard':
+      return 'DASHBOARD'
+    case '/dashboard/reportes':
+      return 'REPORTES'
+    case '/dashboard/cotizador':
+      return 'COTIZADOR'
+    case '/dashboard/cotizaciones':
+      return 'COTIZACIONES'
+    case '/dashboard/remisiones':
+      return 'REMISIONES'
+    case '/dashboard/pos':
+      return 'POS'
+    case '/dashboard/clientes':
+      return 'CLIENTES'
+    case '/dashboard/ordenes':
+      return 'ORDENES'
+    case '/dashboard/litografia':
+      return 'COTIZADOR'
+    case '/dashboard/escaneos':
+      return 'ESCANEOS'
+    case '/dashboard/terminados':
+      return 'MATERIALES'
+    case '/dashboard/inventario':
+    case '/dashboard/inventario/traslados':
+      return 'INVENTARIO'
+    case '/dashboard/compras':
+      return 'COMPRAS'
+    case '/dashboard/proveedores':
+      return 'PROVEEDORES'
+    case '/dashboard/bodegas':
+    case '/dashboard/configuracion/usuarios':
+    case '/dashboard/configuracion/permisos':
+    case '/dashboard/configuracion/empresa':
+    case '/dashboard/configuracion/plan':
+    case '/dashboard/configuracion/desperdicios':
+    case '/dashboard/configuracion/super-admin/modulos-por-plan':
+      return 'CONFIG'
+    default:
+      return null
+  }
+}
+
 const moduleNavigation: NavItem[] = [
   {
     name: "Dashboard",
@@ -234,6 +278,20 @@ const moduleNavigation: NavItem[] = [
       </svg>
     ),
   },
+  {
+    name: "Super Admin",
+    href: "/dashboard/configuracion/super-admin/modulos-por-plan",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M12 11c1.657 0 3-1.343 3-3S13.657 5 12 5 9 6.343 9 8s1.343 3 3 3zm0 0c-3.314 0-6 1.79-6 4v2h12v-2c0-2.21-2.686-4-6-4zm7-3h2v2h-2V8zM3 8h2v2H3V8z"
+        />
+      </svg>
+    ),
+  },
 ]
 
 const preferenceNavigation: NavItem[] = [
@@ -289,6 +347,7 @@ export default function Sidebar({ user }: SidebarProps) {
   const toggleSidebarCollapsed = useUiStore((s) => s.toggleSidebarCollapsed)
 
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
+  const [enabledModules, setEnabledModules] = useState<Set<string> | null>(null)
   const [empresa, setEmpresa] = useState<EmpresaBranding | null>(null)
   const [openSectionTitle, setOpenSectionTitle] = useState<string | null>(null)
 
@@ -306,6 +365,19 @@ export default function Sidebar({ user }: SidebarProps) {
         const json: UiPrefsResponse = await res.json().catch(() => ({ success: false }))
         if (!cancelled && json?.success) {
           setNavPrefs(json.data?.nav ?? {})
+        }
+      } catch {
+        // ignorar
+      }
+
+      try {
+        const res = await fetch('/api/modules/enabled', { cache: 'no-store' })
+        const json = (await res.json().catch(() => null)) as
+          | { ok?: boolean; enabled?: string[] }
+          | null
+
+        if (!cancelled && json?.ok && Array.isArray(json.enabled)) {
+          setEnabledModules(new Set(json.enabled))
         }
       } catch {
         // ignorar
@@ -358,9 +430,21 @@ export default function Sidebar({ user }: SidebarProps) {
   }, [empresa?.nombre])
 
   const visibleNavigation = useMemo(() => {
-    if (!navPrefs) return moduleNavigation
-    return moduleNavigation.filter((it) => navPrefs[it.href] !== false)
-  }, [navPrefs])
+    const base = !navPrefs ? moduleNavigation : moduleNavigation.filter((it) => navPrefs[it.href] !== false)
+
+    const withAdminGate = base.filter((it) => {
+      if (it.href !== '/dashboard/configuracion/super-admin/modulos-por-plan') return true
+      return user?.role === 'ADMIN'
+    })
+
+    if (!enabledModules) return withAdminGate
+
+    return withAdminGate.filter((it) => {
+      const moduleKey = moduleForHref(it.href)
+      if (!moduleKey) return true
+      return enabledModules.has(moduleKey)
+    })
+  }, [navPrefs, enabledModules, user?.role])
 
   const visibleHrefs = useMemo(() => {
     return new Set(visibleNavigation.map((it) => it.href))

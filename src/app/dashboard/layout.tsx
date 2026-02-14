@@ -9,6 +9,7 @@ import { redirect } from "next/navigation"
 import Sidebar from "@/components/dashboard/sidebar"
 import Header from "@/components/dashboard/header"
 import { TourProvider } from "@/components/tour/tour-provider"
+import PlanModuleGate from "@/components/dashboard/plan-module-gate"
 
 export default async function DashboardLayout({
   children,
@@ -31,6 +32,7 @@ export default async function DashboardLayout({
 
   return (
     <TourProvider>
+      <PlanModuleGate />
       <div className="flex min-h-screen bg-gray-50">
         {/* Sidebar */}
         <Sidebar user={user} />
