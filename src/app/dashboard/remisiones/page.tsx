@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -67,6 +67,26 @@ function asString(value: unknown): string {
 }
 
 export default function RemisionesPage() {
+  const [activeTab, setActiveTab] = useState<"listado" | "plantillas">("listado")
+  const [tabPending, setTabPending] = useState(false)
+  const tabTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (tabTimerRef.current) window.clearTimeout(tabTimerRef.current)
+    }
+  }, [])
+
+  const onTabChange = useCallback((v: string) => {
+    const next = (v === 'plantillas' ? 'plantillas' : 'listado') as 'listado' | 'plantillas'
+    if (next === activeTab) return
+
+    setTabPending(true)
+    setActiveTab(next)
+    if (tabTimerRef.current) window.clearTimeout(tabTimerRef.current)
+    tabTimerRef.current = window.setTimeout(() => setTabPending(false), 180)
+  }, [activeTab])
+
   const [loading, setLoading] = useState(true)
   const [remisiones, setRemisiones] = useState<Remision[]>([])
   const [search, setSearch] = useState("")
@@ -344,11 +364,15 @@ export default function RemisionesPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="listado" className="w-full">
+      <Tabs value={activeTab} onValueChange={onTabChange} className="w-full">
         <TabsList>
           <TabsTrigger value="listado">Listado</TabsTrigger>
           <TabsTrigger value="plantillas">Plantillas</TabsTrigger>
         </TabsList>
+
+        {tabPending ? (
+          <div className="mt-2 text-sm text-muted-foreground">Cargando…</div>
+        ) : null}
 
         <TabsContent value="listado" className="space-y-4">
           <div className="flex justify-end">

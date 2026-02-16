@@ -12,9 +12,7 @@ export default function RegisterPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-          <div className="text-sm text-muted-foreground">Cargando...</div>
-        </div>
+        <div className="w-full max-w-md text-sm text-muted-foreground">Cargando...</div>
       }
     >
       <RegisterPageClient />

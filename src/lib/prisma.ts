@@ -22,8 +22,29 @@ if (!globalForPrisma.pool) {
 
 const adapter = new PrismaPg(globalForPrisma.pool)
 
+function runtimeModelHasField(client: PrismaClient, modelName: string, fieldName: string): boolean {
+  try {
+    const runtimeDataModel = (client as unknown as { _runtimeDataModel?: any })._runtimeDataModel
+    const model = runtimeDataModel?.models?.[modelName]
+    const fields: Array<{ name: string }> | undefined = model?.fields
+    return Array.isArray(fields) ? fields.some((f) => f?.name === fieldName) : false
+  } catch {
+    return false
+  }
+}
+
+let prismaClient = globalForPrisma.prisma
+
+// En desarrollo, el singleton puede quedar desfasado si se regeneró Prisma Client
+// mientras el server estaba corriendo (HMR + cache global). Si detectamos que le
+// faltan campos nuevos, forzamos una nueva instancia.
+if (process.env.NODE_ENV !== 'production' && prismaClient) {
+  const hasTrialTier = runtimeModelHasField(prismaClient, 'Empresa', 'trialTier')
+  if (!hasTrialTier) prismaClient = undefined
+}
+
 export const prisma =
-  globalForPrisma.prisma ??
+  prismaClient ??
   (new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],

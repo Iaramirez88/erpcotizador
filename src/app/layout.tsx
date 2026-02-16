@@ -6,8 +6,8 @@ import { AuthProvider } from "@/components/providers/auth-provider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "SGDigital - Cotizador Inteligente",
-  description: "Sistema de cotización y órdenes de trabajo para impresión digital",
+  title: "Ordex",
+  description: "Sistema de cotización y órdenes de trabajo",
 };
 
 export default function RootLayout({

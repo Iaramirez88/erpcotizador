@@ -15,7 +15,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import Image from "next/image"
 
 function validatePassword(password: string): string | null {
   if (password.length < 8) return "La contraseña debe tener al menos 8 caracteres"
@@ -179,27 +178,25 @@ export function RegisterPageClient() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <div className="text-center space-y-4">
-              <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900">¡Registro exitoso!</h2>
-              <p className="text-gray-600">Tu cuenta ha sido creada. Redirigiendo a verificación...</p>
-              {debugCode && (
-                <div className="bg-yellow-50 border border-yellow-200 text-yellow-900 px-4 py-3 rounded-md text-sm text-left">
-                  <div className="font-semibold">Código (modo dev)</div>
-                  <div className="font-mono tracking-widest text-lg">{debugCode}</div>
-                </div>
-              )}
+      <Card className="w-full max-w-md border-0 shadow-sm">
+        <CardContent className="pt-6">
+          <div className="text-center space-y-4">
+            <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto">
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+            <h2 className="text-2xl font-bold text-gray-900">¡Registro exitoso!</h2>
+            <p className="text-gray-600">Tu cuenta ha sido creada. Redirigiendo a verificación...</p>
+            {debugCode && (
+              <div className="bg-yellow-50 border border-yellow-200 text-yellow-900 px-4 py-3 rounded-md text-sm text-left">
+                <div className="font-semibold">Código (modo dev)</div>
+                <div className="font-mono tracking-widest text-lg">{debugCode}</div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     )
   }
 
@@ -225,25 +222,10 @@ export function RegisterPageClient() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md">
+    <Card className="w-full max-w-md border-0 shadow-sm">
         <CardHeader className="space-y-1">
-          <div className="flex justify-center mb-4">
-            {selectedEmpresa?.logo ? (
-              <div className="relative w-16 h-16 rounded-lg overflow-hidden border bg-white">
-                <Image
-                  src={selectedEmpresa.logo}
-                  alt={selectedEmpresa.nombre}
-                  fill
-                  className="object-contain"
-                  sizes="64px"
-                />
-              </div>
-            ) : (
-              <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center text-white text-2xl font-bold">
-                SG
-              </div>
-            )}
+          <div className="flex justify-center mb-2">
+            <div className="text-3xl font-semibold tracking-tight">Ordex</div>
           </div>
           <CardTitle className="text-2xl text-center">Crear cuenta</CardTitle>
           <CardDescription className="text-center">Completa el formulario para crear tu cuenta</CardDescription>
@@ -257,7 +239,7 @@ export function RegisterPageClient() {
 
             {empresas.length > 0 ? (
               <div className="space-y-2">
-                <Label htmlFor="empresa">Espacio</Label>
+                <Label htmlFor="empresa" className="sr-only">Espacio</Label>
                 <select
                   id="empresa"
                   value={empresaId}
@@ -281,24 +263,24 @@ export function RegisterPageClient() {
             ) : null}
 
             <div className="space-y-2">
-              <Label htmlFor="name">Nombre</Label>
+              <Label htmlFor="name" className="sr-only">Nombre</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
-                placeholder="Tu nombre"
+                placeholder="Nombre"
                 required
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="sr-only">Email</Label>
               <Input
                 id="email"
                 type="email"
                 value={formData.email}
                 onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))}
-                placeholder="correo@ejemplo.com"
+                placeholder="tu@email.com"
                 disabled={isLoading || Boolean(lockedEmail)}
                 required
               />
@@ -306,25 +288,26 @@ export function RegisterPageClient() {
 
             {selectedEmpresa?.requiresAccessCode ? (
               <div className="space-y-2">
-                <Label htmlFor="accessCode">Código de acceso</Label>
+                <Label htmlFor="accessCode" className="sr-only">Código de acceso</Label>
                 <Input
                   id="accessCode"
                   value={accessCode}
                   onChange={(e) => setAccessCode(e.target.value)}
-                  placeholder="Ingresa el código"
+                  placeholder="Código de acceso"
                   required
                 />
               </div>
             ) : null}
 
             <div className="space-y-2">
-              <Label htmlFor="password">Contraseña</Label>
+              <Label htmlFor="password" className="sr-only">Contraseña</Label>
               <div className="relative">
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
                   onChange={handlePasswordChange}
+                  placeholder="Contraseña"
                   required
                 />
                 <button
@@ -345,13 +328,14 @@ export function RegisterPageClient() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
+              <Label htmlFor="confirmPassword" className="sr-only">Confirmar contraseña</Label>
               <div className="relative">
                 <Input
                   id="confirmPassword"
                   type={showConfirmPassword ? "text" : "password"}
                   value={formData.confirmPassword}
                   onChange={handleConfirmPasswordChange}
+                  placeholder="Confirmar contraseña"
                   required
                 />
                 <button
@@ -383,7 +367,6 @@ export function RegisterPageClient() {
             </p>
           </CardFooter>
         </form>
-      </Card>
-    </div>
+    </Card>
   )
 }

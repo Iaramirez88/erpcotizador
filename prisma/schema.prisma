@@ -415,6 +415,11 @@ model Empresa {
   // se maneja por periodo pagado y renovaciones).
   planValidUntil DateTime?
 
+  // Trial (para espacios personales / paywall)
+  trialTier       PlanTier?
+  trialStartedAt  DateTime?
+  trialValidUntil DateTime?
+
   stripeCustomerId         String?
   stripeSubscriptionId     String?
   stripePriceId            String?
@@ -527,6 +532,9 @@ model LitografiaFinishOption {
 
   key    String
   nombre String
+
+  // Cuando es true, se considera un “acabado especial” (se gestiona y cotiza aparte).
+  especial Boolean @default(false)
 
   // Valor/costo del acabado (COP). Se usa para referencia y futuras reglas.
   valor Float @default(0)

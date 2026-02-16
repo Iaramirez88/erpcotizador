@@ -60,8 +60,7 @@ export default function ResetForm({ token }: { token: string }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md">
+    <Card className="w-full max-w-md border-0 shadow-sm">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl text-center">Nueva contraseña</CardTitle>
           <CardDescription className="text-center">
@@ -88,10 +87,11 @@ export default function ResetForm({ token }: { token: string }) {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="password">Contraseña</Label>
+              <Label htmlFor="password" className="sr-only">Contraseña</Label>
               <Input
                 id="password"
                 type="password"
+                placeholder="Nueva contraseña"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -101,10 +101,11 @@ export default function ResetForm({ token }: { token: string }) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
+              <Label htmlFor="confirmPassword" className="sr-only">Confirmar contraseña</Label>
               <Input
                 id="confirmPassword"
                 type="password"
+                placeholder="Confirmar contraseña"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
@@ -125,7 +126,6 @@ export default function ResetForm({ token }: { token: string }) {
             </div>
           </CardFooter>
         </form>
-      </Card>
-    </div>
+    </Card>
   )
 }

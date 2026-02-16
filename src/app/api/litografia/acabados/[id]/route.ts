@@ -15,6 +15,15 @@ function asNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+function asBoolean(value: unknown): boolean | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === "boolean") return value
+  const s = String(value).trim().toLowerCase()
+  if (["true", "1", "yes", "si"].includes(s)) return true
+  if (["false", "0", "no"].includes(s)) return false
+  return null
+}
+
 async function getEmpresaIdFromSedeId(sedeId: string): Promise<string | null> {
   const sede = await prisma.sede.findUnique({ where: { id: sedeId }, select: { empresaId: true } })
   return sede?.empresaId ?? null
@@ -45,6 +54,12 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
 
   if (body.activo !== undefined) patch.activo = Boolean(body.activo)
 
+  if (body.especial !== undefined) {
+    const especial = asBoolean(body.especial)
+    if (especial === null) return NextResponse.json({ ok: false, error: "especial inválido" }, { status: 400 })
+    patch.especial = especial
+  }
+
   if (body.valor !== undefined) {
     const valor = asNumber(body.valor)
     if (valor === null || valor < 0) return NextResponse.json({ ok: false, error: "valor inválido" }, { status: 400 })
@@ -55,7 +70,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     const updated = await prisma.litografiaFinishOption.update({
       where: { id, empresaId },
       data: patch,
-      select: { id: true, key: true, nombre: true, valor: true, activo: true, updatedAt: true },
+      select: { id: true, key: true, nombre: true, especial: true, valor: true, activo: true, updatedAt: true },
     })
     return NextResponse.json({ ok: true, data: updated })
   } catch {

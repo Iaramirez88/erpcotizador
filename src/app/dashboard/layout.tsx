@@ -10,6 +10,9 @@ import Sidebar from "@/components/dashboard/sidebar"
 import Header from "@/components/dashboard/header"
 import { TourProvider } from "@/components/tour/tour-provider"
 import PlanModuleGate from "@/components/dashboard/plan-module-gate"
+import PlanPaywallModal from "@/components/dashboard/plan-paywall-modal"
+import RouteLoadingIndicator from "@/components/dashboard/route-loading-indicator"
+import RouteLoadingStartListener from "@/components/dashboard/route-loading-start-listener"
 
 export default async function DashboardLayout({
   children,
@@ -33,6 +36,8 @@ export default async function DashboardLayout({
   return (
     <TourProvider>
       <PlanModuleGate />
+      <PlanPaywallModal />
+      <RouteLoadingStartListener />
       <div className="flex min-h-screen bg-gray-50">
         {/* Sidebar */}
         <Sidebar user={user} />
@@ -43,7 +48,8 @@ export default async function DashboardLayout({
           <Header user={user} />
 
           {/* Page Content */}
-          <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
+          <main className="relative flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
+            <RouteLoadingIndicator />
             {children}
           </main>
         </div>

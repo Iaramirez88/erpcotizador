@@ -78,8 +78,7 @@ export default function ChangePasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-        <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md border-0 shadow-sm">
           <CardContent className="pt-6">
             <div className="text-center space-y-4">
               <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto">
@@ -94,20 +93,18 @@ export default function ChangePasswordPage() {
               <Link href="/dashboard" className="text-blue-600 hover:underline font-medium">Volver al dashboard</Link>
             </div>
           </CardContent>
-        </Card>
-      </div>
+      </Card>
     )
   }
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md">
+    <Card className="w-full max-w-md border-0 shadow-sm">
         <CardHeader>
           <CardTitle className="text-2xl text-center">Cambiar contraseña</CardTitle>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="password">Nueva contraseña</Label>
+              <Label htmlFor="password" className="sr-only">Nueva contraseña</Label>
               <div className="relative">
                 <Input
                   id="password"
@@ -141,7 +138,7 @@ export default function ChangePasswordPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirmar nueva contraseña</Label>
+              <Label htmlFor="confirmPassword" className="sr-only">Confirmar nueva contraseña</Label>
               <div className="relative">
                 <Input
                   id="confirmPassword"
@@ -173,7 +170,6 @@ export default function ChangePasswordPage() {
             <Button type="submit" className="w-full">Cambiar contraseña</Button>
           </CardFooter>
         </form>
-      </Card>
-    </div>
+    </Card>
   )
 }

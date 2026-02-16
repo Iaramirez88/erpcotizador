@@ -70,10 +70,27 @@ type PlanApiResponse =
   | {
       ok: true
       current: PlanInfo
+      effective?:
+        | {
+            planTier: PlanTier
+            paywall: { show: boolean; blocking: boolean; reason: string }
+            trial: {
+              tier: PlanTier | null
+              startedAt: string | null
+              validUntil: string | null
+              isActive: boolean
+              isExpired: boolean
+              daysLeft: number | null
+            }
+          }
+        | null
       empresa: {
         planTier: PlanTier
         billingCycle: BillingCycle
         planValidUntil: string | null
+        trialTier?: PlanTier | null
+        trialStartedAt?: string | null
+        trialValidUntil?: string | null
       } | null
       lastInvoice: LastInvoice | null
       all: PlanInfo[]

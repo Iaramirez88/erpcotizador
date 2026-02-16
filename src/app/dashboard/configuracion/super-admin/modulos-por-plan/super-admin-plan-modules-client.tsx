@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 type PlanTier = 'BASIC' | 'MEDIO' | 'INTERMEDIO' | 'FULL'
 
@@ -78,6 +81,12 @@ export default function SuperAdminPlanModulesClient() {
   const [modules, setModules] = useState<ModuleKey[]>([])
   const [rows, setRows] = useState<Row[]>([])
   const [savingKey, setSavingKey] = useState<string | null>(null)
+
+  const [empresaNit, setEmpresaNit] = useState('')
+  const [empresaId, setEmpresaId] = useState('')
+  const [codePlanTier, setCodePlanTier] = useState<PlanTier>('FULL')
+  const [generatedCode, setGeneratedCode] = useState<string | null>(null)
+  const [generatingCode, setGeneratingCode] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -166,12 +175,91 @@ export default function SuperAdminPlanModulesClient() {
     }
   }
 
+  async function generateEmpresaCode() {
+    setGeneratingCode(true)
+    setError(null)
+    setGeneratedCode(null)
+    try {
+      const res = await fetch('/api/super-admin/empresa-access-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nit: empresaNit.trim() || undefined,
+          empresaId: empresaId.trim() || undefined,
+          planTier: codePlanTier,
+        }),
+      })
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; code?: string; error?: string }
+      if (!res.ok || !json.ok) {
+        setError(json.error || 'No se pudo generar el código')
+        return
+      }
+
+      setGeneratedCode(json.code || null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error inesperado')
+    } finally {
+      setGeneratingCode(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Super Admin · Módulos por plan</h1>
         <p className="text-sm text-gray-600">Habilita o deshabilita módulos para cada plan.</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Código de empresa</CardTitle>
+          <CardDescription>
+            Genera un código para asignar usuarios a una empresa ya registrada (formato: EMP-&lt;empresaId&gt;-...).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          <div className="grid gap-2 md:grid-cols-3">
+            <div className="grid gap-1.5">
+              <Label className="text-sm">NIT (opcional)</Label>
+              <Input value={empresaNit} onChange={(e) => setEmpresaNit(e.target.value)} placeholder="900123456" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label className="text-sm">Empresa ID (opcional)</Label>
+              <Input value={empresaId} onChange={(e) => setEmpresaId(e.target.value)} placeholder="cuid..." />
+            </div>
+            <div className="grid gap-1.5">
+              <Label className="text-sm">Plan</Label>
+              <Select value={codePlanTier} onValueChange={(v) => setCodePlanTier(v as PlanTier)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="BASIC">BASIC</SelectItem>
+                  <SelectItem value="MEDIO">MEDIO</SelectItem>
+                  <SelectItem value="INTERMEDIO">INTERMEDIO</SelectItem>
+                  <SelectItem value="FULL">FULL</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => void generateEmpresaCode()}
+              disabled={generatingCode || (!empresaNit.trim() && !empresaId.trim())}
+            >
+              Generar código
+            </Button>
+            {generatedCode ? (
+              <div className="text-sm">
+                <span className="text-muted-foreground">Código: </span>
+                <span className="font-mono">{generatedCode}</span>
+              </div>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
 
       {loading ? <div className="text-sm text-gray-600">Cargando…</div> : null}
       {error ? <div className="text-sm text-red-600">{error}</div> : null}
@@ -184,7 +272,7 @@ export default function SuperAdminPlanModulesClient() {
                 <CardTitle>{tier}</CardTitle>
                 <CardDescription>Define qué módulos incluye este plan.</CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-3">
+              <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
                 {modules.map((m) => {
                   const key = `${tier}::${m}`
                   const row = rowMap.get(key)
@@ -192,10 +280,10 @@ export default function SuperAdminPlanModulesClient() {
                   const disabled = savingKey === key
 
                   return (
-                    <div key={m} className="flex items-center justify-between gap-4 rounded-md border px-3 py-2">
-                      <div className="grid gap-0.5">
-                        <Label className="text-sm">{titleForModule(m)}</Label>
-                        <div className="text-xs text-muted-foreground">{m}</div>
+                    <div key={m} className="flex items-center justify-between gap-2 rounded-md border px-2 py-1.5">
+                      <div className="min-w-0">
+                        <Label className="text-xs leading-4">{titleForModule(m)}</Label>
+                        <div className="truncate text-[10px] text-muted-foreground">{m}</div>
                       </div>
                       <Switch
                         checked={enabled}

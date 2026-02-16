@@ -18,8 +18,7 @@ export default function AuthErrorPage({
           : "Ocurrió un error de autenticación."
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md">
+    <Card className="w-full max-w-md border-0 shadow-sm">
         <CardHeader>
           <CardTitle className="text-2xl text-center">Error</CardTitle>
           <CardDescription className="text-center">{message}</CardDescription>
@@ -29,7 +28,6 @@ export default function AuthErrorPage({
             Volver al login
           </Link>
         </CardContent>
-      </Card>
-    </div>
+    </Card>
   )
 }

@@ -5,6 +5,28 @@ import { usePathname } from 'next/navigation'
 import { driver, type Config, type Driver } from 'driver.js'
 import { TOURS, tourIdFromPath, type TourId } from './tours'
 
+async function waitForTourSelectors(
+  selectors: string[],
+  {
+    timeoutMs,
+    intervalMs,
+    isActive,
+  }: { timeoutMs: number; intervalMs: number; isActive: () => boolean }
+): Promise<boolean> {
+  const uniq = Array.from(new Set(selectors.map((s) => s.trim()).filter(Boolean)))
+  if (uniq.length === 0) return true
+
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    if (!isActive()) return false
+    const allFound = uniq.every((sel) => typeof document !== 'undefined' && !!document.querySelector(sel))
+    if (allFound) return true
+    await new Promise((r) => setTimeout(r, intervalMs))
+  }
+
+  return false
+}
+
 type TutorialPrefs = {
   seen?: Record<string, boolean>
 }
@@ -50,6 +72,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const activeDriverRef = useRef<Driver | null>(null)
   const activeTourIdRef = useRef<TourId | null>(null)
   const prefsRef = useRef<TutorialPrefs>(prefs)
+  const startSeqRef = useRef(0)
 
   useEffect(() => {
     prefsRef.current = prefs
@@ -84,6 +107,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
   const startTour = useCallback(
     (id: TourId) => {
+      const startSeq = (startSeqRef.current += 1)
       if (activeDriverRef.current) {
         try {
           activeDriverRef.current.destroy()
@@ -99,37 +123,52 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
       def.preStart?.()
 
-      const onEnd = () => {
-        const activeId = activeTourIdRef.current
-        activeDriverRef.current = null
-        activeTourIdRef.current = null
-        if (activeId) {
-          void setSeen(activeId, true)
+      const stepSelectors = def.steps
+        .map((s) => s.element)
+        .filter((el): el is string => typeof el === 'string')
+
+      void (async () => {
+        const ready = await waitForTourSelectors(stepSelectors, {
+          timeoutMs: 5000,
+          intervalMs: 120,
+          isActive: () => startSeqRef.current === startSeq,
+        })
+
+        if (!ready) return
+        if (startSeqRef.current !== startSeq) return
+
+        const onEnd = () => {
+          const activeId = activeTourIdRef.current
+          activeDriverRef.current = null
+          activeTourIdRef.current = null
+          if (activeId) {
+            void setSeen(activeId, true)
+          }
         }
-      }
 
-      const config: Config = {
-        showProgress: true,
-        overlayOpacity: 0.55,
-        allowClose: true,
-        nextBtnText: 'Siguiente',
-        prevBtnText: 'Atrás',
-        doneBtnText: 'Listo',
-        steps: def.steps,
-        onDestroyed: () => onEnd(),
-        onCloseClick: () => onEnd(),
-      }
+        const config: Config = {
+          showProgress: true,
+          overlayOpacity: 0.55,
+          allowClose: true,
+          nextBtnText: 'Siguiente',
+          prevBtnText: 'Atrás',
+          doneBtnText: 'Listo',
+          steps: def.steps,
+          onDestroyed: () => onEnd(),
+          onCloseClick: () => onEnd(),
+        }
 
-      const d = driver(config)
+        const d = driver(config)
 
-      activeDriverRef.current = d
-      activeTourIdRef.current = id
+        activeDriverRef.current = d
+        activeTourIdRef.current = id
 
-      try {
-        d.drive()
-      } catch {
-        onEnd()
-      }
+        try {
+          d.drive()
+        } catch {
+          onEnd()
+        }
+      })()
     },
     [setSeen]
   )

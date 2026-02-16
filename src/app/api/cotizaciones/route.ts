@@ -270,14 +270,15 @@ export async function POST(request: NextRequest) {
         }, 0)
       : 0
 
-    const DEFAULT_UTILITY_PCT = 50
-    const pct = Number.parseFloat(descuentoPct)
+    const pct = Number.parseFloat(String(descuentoPct ?? ''))
 
-    let desc = Number.parseFloat(descuento) || 0
+    // Compatibilidad:
+    // - Si viene `descuentoPct`, se interpreta como % del total de items.
+    // - Si no viene, `descuento` se interpreta como valor absoluto.
+    let desc = Number.parseFloat(String(descuento ?? '')) || 0
     if (Number.isFinite(pct) && pct > 0) {
       const clampedPct = Math.min(100, Math.max(0, pct))
-      const utilidadBase = itemsTotal * (DEFAULT_UTILITY_PCT / 100)
-      desc = utilidadBase * (clampedPct / 100)
+      desc = itemsTotal * (clampedPct / 100)
     }
 
     const grossAfterDiscount = Math.max(0, itemsTotal - Math.max(0, desc))

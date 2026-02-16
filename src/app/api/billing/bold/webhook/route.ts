@@ -97,6 +97,9 @@ export async function POST(request: Request) {
         planTier,
         billingCycle,
         planValidUntil,
+        trialTier: null,
+        trialStartedAt: null,
+        trialValidUntil: null,
       },
     })
 

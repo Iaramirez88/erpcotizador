@@ -51,6 +51,8 @@ function moduleForHref(href: string): string | null {
       return 'COTIZADOR'
     case '/dashboard/escaneos':
       return 'ESCANEOS'
+    case '/dashboard/materiales':
+      return 'MATERIALES'
     case '/dashboard/terminados':
       return 'MATERIALES'
     case '/dashboard/inventario':
@@ -179,6 +181,15 @@ const moduleNavigation: NavItem[] = [
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2l9 4.5v11L12 22 3 17.5v-11L12 2zm0 0v20M3 6.5l9 4.5 9-4.5" />
+      </svg>
+    ),
+  },
+  {
+    name: "Productos",
+    href: "/dashboard/materiales",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
       </svg>
     ),
   },
@@ -345,6 +356,7 @@ export default function Sidebar({ user }: SidebarProps) {
 
   const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useUiStore((s) => s.toggleSidebarCollapsed)
+  const setRouteLoading = useUiStore((s) => s.setRouteLoading)
 
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
   const [enabledModules, setEnabledModules] = useState<Set<string> | null>(null)
@@ -355,6 +367,13 @@ export default function Sidebar({ user }: SidebarProps) {
     if (href === '/dashboard') return pathname === '/dashboard'
     if (pathname === href) return true
     return pathname.startsWith(href + '/')
+  }
+
+  function beginRouteLoadingIfNeeded(href: string) {
+    if (!href) return
+    if (href === pathname) return
+    if (pathname.startsWith(href + '/')) return
+    setRouteLoading(true)
   }
 
   useEffect(() => {
@@ -488,6 +507,7 @@ export default function Sidebar({ user }: SidebarProps) {
           get('/dashboard/litografia'),
           get('/dashboard/escaneos'),
           get('/dashboard/terminados'),
+          get('/dashboard/materiales'),
         ].filter(Boolean) as NavItem[],
       },
       {
@@ -617,7 +637,10 @@ export default function Sidebar({ user }: SidebarProps) {
                       <Link
                         key={item.name}
                         href={item.href}
-                        onClick={() => setMobileNavOpen(false)}
+                        onClick={() => {
+                          beginRouteLoadingIfNeeded(item.href)
+                          setMobileNavOpen(false)
+                        }}
                         className={cn(
                           "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
                           isActive ? "bg-slate-800/60 text-white" : "text-slate-200 hover:bg-slate-800/40"
@@ -680,6 +703,7 @@ export default function Sidebar({ user }: SidebarProps) {
                           key={item.name}
                           href={item.href}
                           onClick={() => {
+                            beginRouteLoadingIfNeeded(item.href)
                             setMobileNavOpen(false)
                           }}
                           className={cn(

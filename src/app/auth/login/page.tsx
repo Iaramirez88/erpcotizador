@@ -7,7 +7,7 @@
 
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -16,7 +16,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Eye, EyeOff } from "lucide-react"
-import Image from "next/image"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -24,36 +23,12 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const [needsVerification, setNeedsVerification] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
-
-  const [brandName, setBrandName] = useState<string>('SGDigital')
-  const [brandLogo, setBrandLogo] = useState<string | null>(null)
   
   const [formData, setFormData] = useState({
     email: "",
     password: ""
   })
   const [showPassword, setShowPassword] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    async function loadBranding() {
-      try {
-        const res = await fetch('/api/public/branding', { cache: 'no-store' })
-        const json = (await res.json().catch(() => null)) as { ok?: boolean; data?: { nombre?: string; logo?: string | null } } | null
-        if (cancelled) return
-        if (json?.ok) {
-          if (typeof json.data?.nombre === 'string' && json.data.nombre.trim()) setBrandName(json.data.nombre)
-          if (typeof json.data?.logo === 'string') setBrandLogo(json.data.logo)
-        }
-      } catch {
-        // ignore
-      }
-    }
-    void loadBranding()
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -91,21 +66,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md">
+    <Card className="w-full max-w-md border-0 shadow-sm">
         <CardHeader className="space-y-1">
-          <div className="flex justify-center mb-4">
-            {brandLogo ? (
-              <div className="relative w-16 h-16 rounded-lg overflow-hidden border bg-white">
-                <Image src={brandLogo} alt={brandName} fill className="object-contain" sizes="64px" />
-              </div>
-            ) : (
-              <div className="w-16 h-16 bg-blue-600 rounded-lg flex items-center justify-center text-white text-2xl font-bold">
-                SG
-              </div>
-            )}
+          <div className="flex justify-center mb-2">
+            <div className="text-3xl font-semibold tracking-tight">Ordex</div>
           </div>
-          <CardTitle className="text-2xl text-center">Bienvenido a {brandName}</CardTitle>
+          <CardTitle className="text-2xl text-center">Iniciar sesión</CardTitle>
           <CardDescription className="text-center">
             Ingresa tus credenciales para acceder al sistema
           </CardDescription>
@@ -130,7 +96,7 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="sr-only">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -143,7 +109,7 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Contraseña</Label>
+              <Label htmlFor="password" className="sr-only">Contraseña</Label>
               <div className="relative">
                 <Input
                   id="password"
@@ -204,7 +170,6 @@ export default function LoginPage() {
             </div>
           </CardFooter>
         </form>
-      </Card>
-    </div>
+    </Card>
   )
 }

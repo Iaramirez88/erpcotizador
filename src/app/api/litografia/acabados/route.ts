@@ -15,6 +15,15 @@ function asNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+function asBoolean(value: unknown): boolean | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === "boolean") return value
+  const s = String(value).trim().toLowerCase()
+  if (["true", "1", "yes", "si"].includes(s)) return true
+  if (["false", "0", "no"].includes(s)) return false
+  return null
+}
+
 function toFinishKeyFromNombre(nombre: string) {
   return nombre
     .trim()
@@ -39,7 +48,7 @@ export async function GET() {
   const items = await prisma.litografiaFinishOption.findMany({
     where: { empresaId },
     orderBy: [{ activo: "desc" }, { nombre: "asc" }],
-    select: { id: true, key: true, nombre: true, valor: true, activo: true, updatedAt: true },
+    select: { id: true, key: true, nombre: true, especial: true, valor: true, activo: true, updatedAt: true },
   })
 
   return NextResponse.json({ ok: true, data: items })
@@ -56,6 +65,7 @@ export async function POST(request: NextRequest) {
 
   const nombre = asString(body.nombre)
   const key = asString(body.key) || toFinishKeyFromNombre(nombre)
+  const especial = asBoolean(body.especial)
   const valor = asNumber(body.valor)
   const activo = body.activo === undefined ? true : Boolean(body.activo)
 
@@ -65,8 +75,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const created = await prisma.litografiaFinishOption.create({
-      data: { empresaId, key, nombre, valor: valor ?? 0, activo },
-      select: { id: true, key: true, nombre: true, valor: true, activo: true, updatedAt: true },
+      data: { empresaId, key, nombre, especial: especial ?? false, valor: valor ?? 0, activo },
+      select: { id: true, key: true, nombre: true, especial: true, valor: true, activo: true, updatedAt: true },
     })
     return NextResponse.json({ ok: true, data: created })
   } catch {

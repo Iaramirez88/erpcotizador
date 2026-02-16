@@ -230,7 +230,7 @@ export default function CotizadorPage() {
 
         setEditingId(cot.id)
         setClienteId(String(cot.clienteId || ""))
-        setDescuento(typeof cot.descuento === "number" ? cot.descuento : Number(cot.descuento || 0))
+        const descuentoAmount = typeof cot.descuento === "number" ? cot.descuento : Number(cot.descuento || 0)
         setValidezDias(String(cot.validezDias ?? 15))
 
         const obsRaw = String(cot.observaciones || "").trim()
@@ -296,6 +296,11 @@ export default function CotizadorPage() {
               }
             })
           : []
+
+        // `cot.descuento` se guarda como valor; en UI lo manejamos como porcentaje.
+        const itemsTotal = mappedItems.reduce((acc, it) => acc + (Number.isFinite(it.subtotal) ? it.subtotal : 0), 0)
+        const pct = itemsTotal > 0 ? (Math.max(0, descuentoAmount) / itemsTotal) * 100 : 0
+        setDescuento(Math.min(100, Math.max(0, pct)))
 
         setItems(mappedItems)
         setShowItemForm(false)
@@ -781,8 +786,9 @@ export default function CotizadorPage() {
 
   const calcularTotales = () => {
     const sub = items.reduce((sum, item) => sum + item.subtotal, 0)
-    const desc = parseFloat(descuento.toString()) || 0
-    const subConDescuento = Math.max(0, sub - Math.max(0, desc))
+    const descPct = Math.min(100, Math.max(0, parseFloat(descuento.toString()) || 0))
+    const descValue = sub * (descPct / 100)
+    const subConDescuento = Math.max(0, sub - descValue)
 
     const ivaPct = Math.min(100, Math.max(0, taxConfig.ivaPct))
     const rate = ivaPct / 100
@@ -841,7 +847,8 @@ export default function CotizadorPage() {
             observaciones: item.observaciones
           })),
           subtotal,
-          descuento,
+          descuento: 0,
+          descuentoPct: descuento,
           iva,
           total,
           validezDias,
@@ -1035,7 +1042,7 @@ export default function CotizadorPage() {
       <div>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Cotizador Inteligente</h1>
+            <h1 className="text-3xl font-bold tracking-tight" data-tour="cotizador-title">Cotizador Inteligente</h1>
             <p className="text-muted-foreground">
               {isLoadingCotizacion
                 ? 'Cargando cotización…'
@@ -1078,7 +1085,7 @@ export default function CotizadorPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
+                <div className="col-span-2" data-tour="cotizador-cliente">
                   <Label htmlFor="cliente">Cliente *</Label>
                   <div className="relative">
                     <Input
@@ -1184,7 +1191,7 @@ export default function CotizadorPage() {
                   >
                     Cotizador Litografía
                   </Button>
-                  <Button onClick={() => setShowItemForm(true)} size="sm">
+                  <Button onClick={() => setShowItemForm(true)} size="sm" data-tour="cotizador-add-item">
                     <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
@@ -1405,11 +1412,13 @@ export default function CotizadorPage() {
                 </div>
 
                 <div>
-                  <Label htmlFor="descuento" className="text-sm">Descuento:</Label>
+                  <Label htmlFor="descuento" className="text-sm">Descuento (%):</Label>
                   <Input
                     id="descuento"
                     type="number"
-                    step="1"
+                    min={0}
+                    max={100}
+                    step="0.1"
                     value={descuento}
                     onChange={(e) => setDescuento(parseFloat(e.target.value) || 0)}
                     placeholder="0"
@@ -1434,6 +1443,7 @@ export default function CotizadorPage() {
                 disabled={isLoading || isLoadingCotizacion || !clienteId || items.length === 0}
                 className="w-full"
                 size="lg"
+                data-tour="cotizador-save"
               >
                 {isLoading
                   ? 'Guardando...'

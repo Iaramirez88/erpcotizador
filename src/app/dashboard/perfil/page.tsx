@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { AvatarUploader } from '@/components/profile/avatar-uploader'
 import { ProfileBasicsForm } from '@/components/profile/profile-basics-form'
 import { LeaveWorkspaceCard } from '@/components/profile/leave-workspace-card'
@@ -110,8 +111,13 @@ export default async function PerfilPage() {
                 <div className="text-xs text-muted-foreground">Empresa</div>
                 <div className="font-medium">{user.empresa?.nombre ?? '—'}</div>
                 {user.empresa ? (
-                  <div className="text-xs text-muted-foreground">
-                    Plan: {String(user.empresa.planTier)} · {String(user.empresa.billingCycle)} · Vigente hasta: {fmtDate(user.empresa.planValidUntil)}
+                  <div className="space-y-2">
+                    <div className="text-xs text-muted-foreground">
+                      Plan: {String(user.empresa.planTier)} · {String(user.empresa.billingCycle)} · Vigente hasta: {fmtDate(user.empresa.planValidUntil)}
+                    </div>
+                    <Button asChild size="sm" variant="outline">
+                      <Link href="/dashboard/configuracion/plan">Actualizar plan</Link>
+                    </Button>
                   </div>
                 ) : null}
               </div>

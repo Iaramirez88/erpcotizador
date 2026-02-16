@@ -9,7 +9,7 @@
 
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -232,6 +232,14 @@ type DraftItem = {
 
 export default function PosPage() {
   const [activeTab, setActiveTab] = useState<'interna' | 'dian'>('interna')
+  const [tabPending, setTabPending] = useState(false)
+  const tabTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (tabTimerRef.current) window.clearTimeout(tabTimerRef.current)
+    }
+  }, [])
 
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -993,11 +1001,26 @@ export default function PosPage() {
 
       {error ? <div className="text-sm text-red-600">{error}</div> : null}
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'interna' | 'dian')} className="w-full">
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => {
+          const next = (v === 'dian' ? 'dian' : 'interna') as 'interna' | 'dian'
+          if (next === activeTab) return
+          setTabPending(true)
+          setActiveTab(next)
+          if (tabTimerRef.current) window.clearTimeout(tabTimerRef.current)
+          tabTimerRef.current = window.setTimeout(() => setTabPending(false), 180)
+        }}
+        className="w-full"
+      >
         <TabsList>
           <TabsTrigger value="interna">Interna</TabsTrigger>
           <TabsTrigger value="dian">DIAN (MVP)</TabsTrigger>
         </TabsList>
+
+        {tabPending ? (
+          <div className="mt-2 text-sm text-muted-foreground">Cargando…</div>
+        ) : null}
 
         <TabsContent value="interna" className="space-y-6">
           <Card>

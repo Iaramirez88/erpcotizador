@@ -53,8 +53,14 @@ type FinishOption = {
   id: string
   key: string
   nombre: string
+  especial?: boolean
   valor: number
   activo: boolean
+}
+
+type SpecialFinishRow = {
+  finishId: string
+  qty: string
 }
 
 type PrintSize = {
@@ -142,6 +148,7 @@ export type LitografiaMeta = {
   selectedPaperId: string
   selectedFinishId: string
   selectedFinishIds?: string[]
+  specialFinishItems?: Array<{ finishId: string; qty: string }>
   selectedPaperTipo: string
   selectedPaperGramaje: string
   selectedTransporteKey: TransporteKey | ""
@@ -198,6 +205,7 @@ export function LitografiaQuoteDialog(props: {
   const [selectedTintaProfileId, setSelectedTintaProfileId] = useState<string>("")
   const [selectedPaperId, setSelectedPaperId] = useState<string>("")
   const [selectedFinishIds, setSelectedFinishIds] = useState<string[]>([""])
+  const [specialFinishRows, setSpecialFinishRows] = useState<SpecialFinishRow[]>([{ finishId: "", qty: "1" }])
 
   const [selectedPaperTipo, setSelectedPaperTipo] = useState<string>("")
   const [selectedPaperGramaje, setSelectedPaperGramaje] = useState<string>("")
@@ -216,8 +224,6 @@ export function LitografiaQuoteDialog(props: {
   const [tarifa, setTarifa] = useState<FlyerRate | null>(null)
   const [tarifaLoading, setTarifaLoading] = useState(false)
   const [tarifaError, setTarifaError] = useState<string | null>(null)
-
-  const [pricingSource, setPricingSource] = useState<"tarifario" | "calculo">("tarifario")
 
   const [customFields, setCustomFields] = useState<CustomField[]>([])
 
@@ -246,6 +252,42 @@ export function LitografiaQuoteDialog(props: {
     })
   }
 
+  const addSpecialFinishRow = () => {
+    setSpecialFinishRows((prev) => [...prev, { finishId: "", qty: "1" }])
+  }
+
+  const removeSpecialFinishRow = (index: number) => {
+    setSpecialFinishRows((prev) => {
+      const next = prev.filter((_, i) => i !== index)
+      return next.length ? next : [{ finishId: "", qty: "1" }]
+    })
+  }
+
+  const updateSpecialFinishRow = (index: number, finishId: string) => {
+    setSpecialFinishRows((prev) => {
+      const normalized = String(finishId || "").trim()
+      if (normalized) {
+        const alreadyUsedElsewhere = prev.some((row, i) => i !== index && String(row.finishId || "").trim() === normalized)
+        if (alreadyUsedElsewhere) return prev
+      }
+      const next = [...prev]
+      const current = next[index] ?? { finishId: "", qty: "1" }
+      next[index] = { ...current, finishId: normalized }
+      if (!next.length) return [{ finishId: "", qty: "1" }]
+      return next
+    })
+  }
+
+  const updateSpecialFinishQty = (index: number, qty: string) => {
+    setSpecialFinishRows((prev) => {
+      const next = [...prev]
+      const current = next[index] ?? { finishId: "", qty: "1" }
+      next[index] = { ...current, qty }
+      if (!next.length) return [{ finishId: "", qty: "1" }]
+      return next
+    })
+  }
+
   const customFieldsTotal = useMemo(() => {
     return customFields.reduce((acc, f) => acc + parseCopNumber(f.value), 0)
   }, [customFields])
@@ -259,6 +301,15 @@ export function LitografiaQuoteDialog(props: {
   const buildMeta = (): LitografiaMeta => {
     const finishIds = selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean)
     const primaryFinishId = finishIds[0] ?? ""
+    const qtyBySpecialFinishId = new Map<string, number>()
+    for (const row of specialFinishRows) {
+      const finishId = String(row.finishId || "").trim()
+      if (!finishId) continue
+      const qty = Math.max(0, Math.trunc(parseFloat(String(row.qty ?? "0")) || 0))
+      if (qty <= 0) continue
+      qtyBySpecialFinishId.set(finishId, (qtyBySpecialFinishId.get(finishId) ?? 0) + qty)
+    }
+    const specialFinishItems = Array.from(qtyBySpecialFinishId.entries()).map(([finishId, qty]) => ({ finishId, qty: String(qty) }))
     return {
       version: 1,
       titulo,
@@ -266,7 +317,7 @@ export function LitografiaQuoteDialog(props: {
       margenPct,
       cantidad,
       desperdicioPct,
-      pricingSource,
+      pricingSource: "tarifario",
       formatoKey,
       colores,
       costoPlanchaPorColor,
@@ -282,6 +333,7 @@ export function LitografiaQuoteDialog(props: {
       selectedPaperId,
       selectedFinishId: primaryFinishId,
       selectedFinishIds: finishIds,
+      specialFinishItems,
       selectedPaperTipo,
       selectedPaperGramaje,
       selectedTransporteKey,
@@ -298,7 +350,6 @@ export function LitografiaQuoteDialog(props: {
     setMargenPct(meta.margenPct ?? "")
     setCantidad(meta.cantidad ?? "")
     setDesperdicioPct(meta.desperdicioPct ?? "")
-    setPricingSource(meta.pricingSource === "calculo" ? "calculo" : "tarifario")
     setFormatoKey(meta.formatoKey ?? "")
     setColores(meta.colores ?? "4")
     setCostoPlanchaPorColor(meta.costoPlanchaPorColor ?? "")
@@ -317,6 +368,19 @@ export function LitografiaQuoteDialog(props: {
     const fromLegacy = String(meta.selectedFinishId ?? "").trim()
     const nextFinishIds = fromList.length ? fromList : (fromLegacy ? [fromLegacy] : [])
     setSelectedFinishIds(nextFinishIds.length ? nextFinishIds : [""])
+    const items = Array.isArray(meta.specialFinishItems) ? meta.specialFinishItems : []
+    const qtyById = new Map<string, number>()
+    for (const it of items) {
+      const finishId = String((it as { finishId?: unknown }).finishId ?? "").trim()
+      const qty = String((it as { qty?: unknown }).qty ?? "").trim()
+      if (!finishId) continue
+      if (!qty) continue
+      const n = Math.max(0, Math.trunc(parseFloat(qty) || 0))
+      if (n <= 0) continue
+      qtyById.set(finishId, (qtyById.get(finishId) ?? 0) + n)
+    }
+    const rows: SpecialFinishRow[] = Array.from(qtyById.entries()).map(([finishId, n]) => ({ finishId, qty: String(n) }))
+    setSpecialFinishRows(rows.length ? rows : [{ finishId: "", qty: "1" }])
     setSelectedPaperTipo(meta.selectedPaperTipo ?? "")
     setSelectedPaperGramaje(meta.selectedPaperGramaje ?? "")
     setSelectedTransporteKey((meta.selectedTransporteKey as TransporteKey | "") ?? "")
@@ -352,7 +416,8 @@ export function LitografiaQuoteDialog(props: {
     return filtered.length ? filtered : activeProfiles
   }, [activeProfiles])
   const activePapers = useMemo(() => papers.filter((p) => p.activo), [papers])
-  const activeFinishes = useMemo(() => finishes.filter((f) => f.activo), [finishes])
+  const activeFinishes = useMemo(() => finishes.filter((f) => f.activo && !f.especial), [finishes])
+  const activeSpecialFinishes = useMemo(() => finishes.filter((f) => f.activo && Boolean(f.especial)), [finishes])
 
   const selectedPlanchaProfile = useMemo(() => {
     return profiles.find((p) => p.id === selectedPlanchaProfileId) || null
@@ -369,12 +434,43 @@ export function LitografiaQuoteDialog(props: {
   const selectedFinishes = useMemo(() => {
     const wanted = new Set(selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean))
     if (!wanted.size) return [] as FinishOption[]
-    return finishes.filter((f) => wanted.has(f.id))
+    return finishes.filter((f) => !f.especial && wanted.has(f.id))
   }, [finishes, selectedFinishIds])
 
   const selectedFinishesCost = useMemo(() => {
     return selectedFinishes.reduce((acc, f) => acc + (Number(f.valor) || 0), 0)
   }, [selectedFinishes])
+
+  const selectedSpecialFinishNames = useMemo(() => {
+    if (!specialFinishRows.length) return [] as string[]
+    const byId = new Map(finishes.filter((f) => Boolean(f.especial)).map((f) => [f.id, f.nombre] as const))
+    const names = specialFinishRows
+      .map((row) => byId.get(String(row.finishId || "").trim()) || "")
+      .map((x) => String(x || "").trim())
+      .filter(Boolean)
+    return Array.from(new Set(names))
+  }, [finishes, specialFinishRows])
+
+  const specialFinishesCost = useMemo(() => {
+    if (!specialFinishRows.length) return 0
+    const byId = new Map(finishes.filter((f) => Boolean(f.especial)).map((f) => [f.id, f] as const))
+    const qtyById = new Map<string, number>()
+    for (const row of specialFinishRows) {
+      const finishId = String(row.finishId || "").trim()
+      if (!finishId) continue
+      const rawQty = String(row.qty ?? "0")
+      const qty = Math.max(0, Math.trunc(parseFloat(rawQty) || 0))
+      if (qty <= 0) continue
+      qtyById.set(finishId, (qtyById.get(finishId) ?? 0) + qty)
+    }
+    let total = 0
+    for (const [finishId, qty] of qtyById.entries()) {
+      const f = byId.get(finishId)
+      if (!f) continue
+      total += (Number(f.valor) || 0) * qty
+    }
+    return total
+  }, [finishes, specialFinishRows])
 
   useEffect(() => {
     if (!props.open) return
@@ -412,11 +508,10 @@ export function LitografiaQuoteDialog(props: {
 
   useEffect(() => {
     if (!props.open) return
-    if (pricingSource !== "tarifario") return
     const opt = TRANSPORTE_OPTIONS.find((o) => o.key === selectedTransporteKey) || null
     const next = opt ? String(opt.total) : "0"
     if (costoTransporte !== next) setCostoTransporte(next)
-  }, [props.open, pricingSource, selectedTransporteKey, costoTransporte])
+  }, [props.open, selectedTransporteKey, costoTransporte])
 
   useEffect(() => {
     const load = async () => {
@@ -457,7 +552,6 @@ export function LitografiaQuoteDialog(props: {
   useEffect(() => {
     if (!props.open) return
     if (!meLoaded) return
-    if (pricingSource !== "tarifario") return
 
     const qty = Math.trunc(parseFloat(cantidad) || 0)
     if (qty <= 0) {
@@ -494,7 +588,7 @@ export function LitografiaQuoteDialog(props: {
 
     void run()
     return () => controller.abort()
-  }, [props.open, meLoaded, isAdmin, pricingSource, cantidad, formatoKey, selectedPaperId, selectedFinishIds])
+  }, [props.open, meLoaded, isAdmin, cantidad, formatoKey, selectedPaperId, selectedFinishIds])
 
   useEffect(() => {
     const profile = profiles.find((p) => p.id === selectedPlanchaProfileId)
@@ -543,7 +637,7 @@ export function LitografiaQuoteDialog(props: {
       papelFormatoHeightCm: selectedPreset?.heightCm ?? 0,
       costoPliego: parseFloat(costoPliego) || 0,
       costoCorte: parseFloat(costoCorte) || 0,
-      costoAcabados: parseFloat(costoAcabados) || 0,
+      costoAcabados: (parseFloat(costoAcabados) || 0) + selectedFinishesCost + specialFinishesCost,
       costoTransporte: parseFloat(costoTransporte) || 0,
       margenPct: 0,
     })
@@ -563,6 +657,8 @@ export function LitografiaQuoteDialog(props: {
     selectedPreset,
     costoCorte,
     costoAcabados,
+    selectedFinishesCost,
+    specialFinishesCost,
     costoTransporte,
   ])
 
@@ -596,7 +692,7 @@ export function LitografiaQuoteDialog(props: {
       papelFormatoHeightCm: selectedPreset.heightCm ?? 0,
       costoPliego: paper.costoPliego ?? 0,
       costoCorte: 0,
-      costoAcabados: selectedFinishesCost,
+      costoAcabados: 0,
       costoTransporte: parseFloat(costoTransporte) || 0,
       // Margen 0: se deja como estimación base (se puede ajustar en tarifario).
       margenPct: 0,
@@ -612,14 +708,14 @@ export function LitografiaQuoteDialog(props: {
     selectedPlanchaProfile,
     selectedTintaProfile,
     selectedPaper,
-    selectedFinishesCost,
   ])
 
   const canAdd = useMemo(() => {
     if (isAdmin) return Boolean(calc)
     if (tarifaLoading) return false
-    return Boolean(tarifa || fallbackCalc)
-  }, [isAdmin, calc, tarifaLoading, tarifa, fallbackCalc])
+    const qty = Math.trunc(parseFloat(cantidad) || 0)
+    return qty > 0
+  }, [isAdmin, calc, tarifaLoading, cantidad])
 
   const defaultDescripcion = useMemo(() => {
     const base = (titulo || (isAdmin ? "Litografía" : "Litografía")).trim() || (isAdmin ? "Litografía" : "Litografía")
@@ -631,6 +727,7 @@ export function LitografiaQuoteDialog(props: {
       const parts = [base, presetLabel, tintasLabel]
       if (selectedPaper) parts.push(`Papel ${selectedPaper.nombre}${selectedPaper.gramaje ? ` ${selectedPaper.gramaje}g` : ""}`)
       if (selectedFinishes.length) parts.push(`Acabados ${selectedFinishes.map((f) => f.nombre).join(", ")}`)
+      if (selectedSpecialFinishNames.length) parts.push(`Acabados especiales ${selectedSpecialFinishNames.join(", ")}`)
       if (selectedTransporteKey) {
         const opt = TRANSPORTE_OPTIONS.find((o) => o.key === selectedTransporteKey)
         parts.push(`Transporte ${opt?.label ?? ""}`.trim())
@@ -654,7 +751,7 @@ export function LitografiaQuoteDialog(props: {
     }
 
     return parts.join(" • ")
-  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, tarifa, calc, papelTipo, selectedPaper, selectedFinishes, selectedTransporteKey])
+  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, tarifa, calc, papelTipo, selectedPaper, selectedFinishes, selectedSpecialFinishNames, selectedTransporteKey])
 
   const buildDescripcion = () => {
     const notas = descripcion.trim()
@@ -686,7 +783,8 @@ export function LitografiaQuoteDialog(props: {
   }
 
   const handleAddToCotizacion = () => {
-    if (!isAdmin || pricingSource === "tarifario") {
+    {
+      setTarifaError(null)
       const qty = Math.trunc(parseFloat(cantidad) || 0)
       if (qty <= 0) {
         setTarifaError("Cantidad inválida")
@@ -694,24 +792,25 @@ export function LitografiaQuoteDialog(props: {
       }
       const transporte = parseFloat(costoTransporte) || 0
       const base = tarifa ? Number(tarifa.precioTotal) || 0 : 0
-      const estimated = !tarifa ? fallbackCalc : null
-      if (!tarifa && !estimated) {
-        setTarifaError("No hay tarifa configurada para estas opciones")
-        return
-      }
+      const computed = !tarifa ? (isAdmin ? calc : fallbackCalc) : null
 
-      const finishIds = selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean)
-      const finishesCost = selectedFinishesCost
-      const addFinishesCost = tarifa && tarifa.finishOptionId && finishIds.length === 1 && tarifa.finishOptionId === finishIds[0] ? 0 : finishesCost
+      const addFinishesCost = isAdmin && computed ? 0 : selectedFinishesCost
+      const addSpecialFinishesCost = isAdmin && computed ? 0 : specialFinishesCost
 
       const meta = buildMeta()
-      const baseValue = tarifa ? base : (estimated?.precioVenta ?? 0)
-      const subtotal = (baseValue * margenMultiplier) + (tarifa ? (transporte + addFinishesCost) : addFinishesCost) + customFieldsTotal
+      const baseValue = tarifa ? base : (computed?.precioVenta ?? 0)
+      const shouldAddTransporte = Boolean(tarifa) || !computed
+      const subtotal =
+        (baseValue * margenMultiplier) +
+        (shouldAddTransporte ? transporte : 0) +
+        addFinishesCost +
+        addSpecialFinishesCost +
+        customFieldsTotal
       const payload: AddLitografiaItemPayload = {
         descripcion: buildDescripcion(),
         cantidad: qty,
         unidad: "unidad",
-        desperdicioPct: tarifa ? 0 : (estimated?.waste ?? 0),
+        desperdicioPct: tarifa ? 0 : (computed?.waste ?? 0),
         precioUnitario: subtotal / qty,
         subtotal,
         meta,
@@ -725,30 +824,6 @@ export function LitografiaQuoteDialog(props: {
       props.onOpenChange(false)
       return
     }
-
-    if (!calc) return
-
-    const qty = Math.max(1, Math.trunc(calc.qty || 0))
-  const baseValue = calc.precioVenta || 0
-  const subtotal = (baseValue * margenMultiplier) + customFieldsTotal
-
-    const meta = buildMeta()
-    const payload: AddLitografiaItemPayload = {
-      descripcion: buildDescripcion(),
-      cantidad: calc.qty,
-      unidad: "unidad",
-      desperdicioPct: calc.waste,
-      precioUnitario: subtotal / qty,
-      subtotal,
-      meta,
-    }
-
-    if (props.edit?.itemId && props.onUpdateItem) {
-      props.onUpdateItem({ ...payload, itemId: props.edit.itemId })
-    } else {
-      props.onAddItem(payload)
-    }
-    props.onOpenChange(false)
   }
 
   return (
@@ -786,8 +861,17 @@ export function LitografiaQuoteDialog(props: {
                     />
                   </div>
 
-                  <div className="sm:col-span-2">
-                    <Label>Utilidad / Margen (%) (opcional)</Label>
+                  {isAdmin ? (
+                    <div className="sm:col-span-2">
+                      <Label>Tarifario (por rango)</Label>
+                      <p className="mt-1 text-xs text-muted-foreground">Fuente de precio fija. El cálculo aprox. está deshabilitado.</p>
+                    </div>
+                  ) : null}
+
+                  {
+                    <>
+                      <div >
+                    <Label>Utilidad / Margen <small>(%) (opcional)</small></Label>
                     <Input
                       className={INPUT_COMPACT}
                       type="number"
@@ -800,26 +884,6 @@ export function LitografiaQuoteDialog(props: {
                     />
                     <p className="mt-1 text-xs text-muted-foreground">Se aplica al total del ítem de litografía. 0 = sin utilidad adicional.</p>
                   </div>
-
-                  {isAdmin ? (
-                    <div className="sm:col-span-2">
-                      <Label>Fuente de precio</Label>
-                      <select
-                        className={SELECT_COMPACT}
-                        value={pricingSource}
-                        onChange={(e) => {
-                          const v = e.target.value
-                          if (v === "tarifario" || v === "calculo") setPricingSource(v)
-                        }}
-                      >
-                        <option value="tarifario">Tarifario (por rango)</option>
-                        <option value="calculo">Cálculo (aprox.)</option>
-                      </select>
-                    </div>
-                  ) : null}
-
-                  {!isAdmin || pricingSource === "tarifario" ? (
-                    <>
                       <div>
                         <Label>Cantidad (tiraje)</Label>
                         <Input
@@ -936,14 +1000,8 @@ export function LitografiaQuoteDialog(props: {
                           </p>
                         </div>
 
-                        <div>
+                        <div className="sm:col-span-2">
                           <Label>Acabados</Label>
-                          <div className="mt-2 flex items-center justify-between gap-2">
-                            <span className="text-[10px] leading-tight text-muted-foreground">Puedes agregar más de un acabado.</span>
-                            <Button type="button" variant="outline" size="sm" onClick={addFinishRow}>
-                              Agregar
-                            </Button>
-                          </div>
                           <div className="mt-2 space-y-2">
                             {selectedFinishIds.map((id, idx) => (
                               <div key={`${idx}-${id}`} className="flex items-center gap-2">
@@ -973,10 +1031,87 @@ export function LitografiaQuoteDialog(props: {
                               </div>
                             ))}
                           </div>
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <span className="text-[10px] leading-tight text-muted-foreground">Puedes agregar más de un acabado.</span>
+                            <Button type="button" variant="outline" size="sm" onClick={addFinishRow}>
+                              Agregar otro
+                            </Button>
+                          </div>
                           <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
                             {finishIdsNormalized.length
                               ? <>Seleccionados: {selectedFinishes.map((f) => f.nombre).join(", ")}</>
                               : <>Ej: troquel.</>}
+                          </p>
+                        </div>
+
+                        <div className="sm:col-span-2">
+                          <Label>Acabados especiales</Label>
+                          <div className="mt-2 space-y-2">
+                            {specialFinishRows.map((row, idx) => {
+                              const finishId = String(row.finishId || "").trim()
+                              const selected = finishId ? activeSpecialFinishes.find((f) => f.id === finishId) || null : null
+                              const takenElsewhere = new Set(
+                                specialFinishRows
+                                  .map((r, i) => (i === idx ? "" : String(r.finishId || "").trim()))
+                                  .filter(Boolean)
+                              )
+
+                              return (
+                                <div key={`${idx}-${finishId}`} className="flex items-center gap-2">
+                                  <select
+                                    className={SELECT_COMPACT}
+                                    value={finishId}
+                                    onChange={(e) => updateSpecialFinishRow(idx, e.target.value)}
+                                  >
+                                    <option value="">Seleccionar…</option>
+                                    {activeSpecialFinishes.map((f) => (
+                                      <option key={f.id} value={f.id} disabled={takenElsewhere.has(f.id)}>
+                                        {f.nombre}
+                                      </option>
+                                    ))}
+                                  </select>
+
+                                  <span className="text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
+                                    {selected ? `${formatCurrency(selected.valor || 0)} c/u` : ""}
+                                  </span>
+
+                                  <Input
+                                    className={`${INPUT_COMPACT} w-24 shrink-0`}
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={row.qty ?? "1"}
+                                    onChange={(e) => updateSpecialFinishQty(idx, e.target.value)}
+                                    placeholder="Cant."
+                                  />
+
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-600"
+                                    onClick={() => removeSpecialFinishRow(idx)}
+                                  >
+                                    Quitar
+                                  </Button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                            <span className="text-[10px] leading-tight text-muted-foreground">Puedes agregar más de un acabado especial.</span>
+                            <Button type="button" variant="outline" size="sm" onClick={addSpecialFinishRow}>
+                              Agregar Otro
+                            </Button>
+                          </div>
+                          <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                            {selectedSpecialFinishNames.length
+                              ? <>Seleccionados: {selectedSpecialFinishNames.join(", ")}</>
+                              : <>Ej: troquel, hot stamping.</>}
+                          </p>
+
+                          <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                            Total acabados especiales: {formatCurrency(specialFinishesCost)}
                           </p>
                         </div>
 
@@ -1009,242 +1144,7 @@ export function LitografiaQuoteDialog(props: {
                         {!tarifaError && configError ? <p className="text-sm text-red-600">{configError}</p> : null}
                       </div>
                     </>
-                  ) : (
-                    <>
-                      <div>
-                        <Label>Cantidad (tiraje)</Label>
-                        <Input
-                          className={INPUT_COMPACT}
-                          type="number"
-                          step="1"
-                          value={cantidad}
-                          onChange={(e) => setCantidad(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <Label>Número de colores</Label>
-                        <Input
-                          className={INPUT_COMPACT}
-                          type="number"
-                          step="1"
-                          value={colores}
-                          onChange={(e) => setColores(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <Label>Desperdicio (%)</Label>
-                        <Input
-                          className={INPUT_COMPACT}
-                          type="number"
-                          step="0.1"
-                          value={desperdicioPct}
-                          onChange={(e) => setDesperdicioPct(e.target.value)}
-                        />
-                      </div>
-
-                      <div>
-                        <Label>Plancha por color</Label>
-                        <Input
-                          className={INPUT_COMPACT}
-                          type="number"
-                          step="1"
-                          value={costoPlanchaPorColor}
-                          onChange={(e) => setCostoPlanchaPorColor(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <Label>Tinta por color</Label>
-                        <Input
-                          className={INPUT_COMPACT}
-                          type="number"
-                          step="1"
-                          value={costoTintaPorColor}
-                          onChange={(e) => setCostoTintaPorColor(e.target.value)}
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2 lg:col-span-1">
-                        <Label>Planchas (auto)</Label>
-                        <select
-                          className={SELECT_COMPACT}
-                          value={selectedPlanchaProfileId}
-                          onChange={(e) => setSelectedPlanchaProfileId(e.target.value)}
-                        >
-                          <option value="">(Manual)</option>
-                          {activePlanchaProfiles.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.nombre}
-                            </option>
-                          ))}
-                        </select>
-                        {configError ? <p className="mt-1 text-xs text-red-600">{configError}</p> : null}
-                      </div>
-
-                      <div className="sm:col-span-2 lg:col-span-1">
-                        <Label>Tintas (auto)</Label>
-                        <select
-                          className={SELECT_COMPACT}
-                          value={selectedTintaProfileId}
-                          onChange={(e) => setSelectedTintaProfileId(e.target.value)}
-                        >
-                          <option value="">(Manual)</option>
-                          {activeTintaProfiles.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.nombre}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="sm:col-span-2 lg:col-span-4">
-                        <Label>Papel</Label>
-                        <div className="mt-2 flex items-center gap-2">
-                          <input
-                            id="papel-por-pliego-dialog"
-                            type="checkbox"
-                            checked={papelPorPliego}
-                            onChange={(e) => setPapelPorPliego(e.target.checked)}
-                          />
-                          <label htmlFor="papel-por-pliego-dialog" className="text-sm text-muted-foreground">
-                            Calcular por pliego (imposición)
-                          </label>
-                        </div>
-                      </div>
-
-                      {papelPorPliego ? (
-                        <>
-                          <div>
-                            <Label>Tipo de papel</Label>
-                            <select
-                              className={SELECT_COMPACT}
-                              value={papelTipo}
-                              onChange={(e) => {
-                                const next = e.target.value as PapelTipo
-                                setPapelTipo(next)
-                                const nextDefault = getDefaultCostoPliego(next)
-                                if (nextDefault > 0) setCostoPliego(String(nextDefault))
-                              }}
-                            >
-                              <option value="propalcote">Propalcote</option>
-                              <option value="bond">Bond</option>
-                              <option value="periodico">Periódico</option>
-                              <option value="otro">Otro</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <Label>Costo por pliego</Label>
-                            <Input
-                              className={INPUT_COMPACT}
-                              type="number"
-                              step="1"
-                              value={costoPliego}
-                              onChange={(e) => setCostoPliego(e.target.value)}
-                            />
-                          </div>
-
-                          <div>
-                            <Label>Pliego (ancho cm)</Label>
-                            <Input
-                              className={INPUT_COMPACT}
-                              type="number"
-                              step="0.1"
-                              value={pliegoW}
-                              onChange={(e) => setPliegoW(e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <Label>Pliego (alto cm)</Label>
-                            <Input
-                              className={INPUT_COMPACT}
-                              type="number"
-                              step="0.1"
-                              value={pliegoH}
-                              onChange={(e) => setPliegoH(e.target.value)}
-                            />
-                          </div>
-
-                          <div className="sm:col-span-2 lg:col-span-2">
-                            <Label>Formato final</Label>
-                            <select
-                              className={SELECT_COMPACT}
-                              value={formatoKey}
-                              onChange={(e) => setFormatoKey(e.target.value)}
-                              disabled={!sizeOptions.length}
-                            >
-                              <option value="" disabled>
-                                {sizeOptions.length ? "Selecciona un tamaño" : "Sin tamaños configurados"}
-                              </option>
-                              {sizeOptions.map((p) => (
-                                <option key={p.key} value={p.key}>
-                                  {p.nombre} ({p.widthCm}×{p.heightCm} cm)
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div className="sm:col-span-2 lg:col-span-2">
-                            <Label>Papel (auto)</Label>
-                            <select
-                              className={SELECT_COMPACT}
-                              value={selectedPaperId}
-                              onChange={(e) => setSelectedPaperId(e.target.value)}
-                            >
-                              <option value="">(Manual)</option>
-                              {activePapers.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.nombre}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </>
-                      ) : (
-                        <div>
-                          <Label>Papel por unidad</Label>
-                          <Input
-                            className={INPUT_COMPACT}
-                            type="number"
-                            step="0.01"
-                            value={costoPapelUnidad}
-                            onChange={(e) => setCostoPapelUnidad(e.target.value)}
-                          />
-                        </div>
-                      )}
-
-                      <div>
-                        <Label>Corte (total)</Label>
-                        <Input
-                          className={INPUT_COMPACT}
-                          type="number"
-                          step="1"
-                          value={costoCorte}
-                          onChange={(e) => setCostoCorte(e.target.value)}
-                        />
-                      </div>
-
-                      <div>
-                        <Label>Acabados (total)</Label>
-                        <Input
-                          className={INPUT_COMPACT}
-                          type="number"
-                          step="1"
-                          value={costoAcabados}
-                          onChange={(e) => setCostoAcabados(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <Label>Transporte (total)</Label>
-                        <Input
-                          className={INPUT_COMPACT}
-                          type="number"
-                          step="1"
-                          value={costoTransporte}
-                          onChange={(e) => setCostoTransporte(e.target.value)}
-                        />
-                      </div>
-                    </>
-                  )}
+                  }
                 </CardContent>
               </Card>
 
@@ -1253,175 +1153,174 @@ export function LitografiaQuoteDialog(props: {
                   <CardHeader>
                     <CardTitle>Resultado</CardTitle>
                     <CardDescription>
-                      {isAdmin
-                        ? "Desglose de costos (aprox.)."
-                        : tarifa
-                          ? "Precio desde tarifario."
-                          : fallbackCalc
-                            ? "Sin tarifa exacta. Se usa cálculo estimado."
-                            : "Precio desde tarifario."}
+                      {tarifa
+                        ? "Precio desde tarifario."
+                        : fallbackCalc
+                          ? "Sin tarifa exacta. Se usa cálculo estimado."
+                          : isAdmin && calc
+                            ? "Sin tarifa exacta. Se usa cálculo (admin)."
+                          : "Precio desde tarifario."}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    {!isAdmin ? (
-                      <>
-                        {tarifaLoading ? <p className="text-sm text-muted-foreground">Consultando tarifa…</p> : null}
-                        {!tarifaLoading && !tarifa && !fallbackCalc ? (
-                          <p className="text-sm text-muted-foreground">No hay tarifa para estas opciones.</p>
-                        ) : null}
+                    <>
+                      {tarifaLoading ? <p className="text-sm text-muted-foreground">Consultando tarifa…</p> : null}
+                      {null}
 
-                        {tarifa ? (
-                          <>
-                            <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground space-y-1">
-                              <div className="flex justify-between">
-                                <span>Rango aplicable</span>
-                                <span className="font-medium">
-                                  {tarifa.tirajeMin}–{tarifa.tirajeMax}
-                                </span>
-                              </div>
-                            </div>
-
-                            {(() => {
-                              const wantsFinish = finishIdsNormalized.length > 0
-                              const usedGenericFinish = wantsFinish && tarifa.finishOptionId == null
-                              const usedGenericPaper = Boolean(selectedPaperId) && tarifa.paperRateId == null
-                              if (!usedGenericFinish && !usedGenericPaper) return null
-                              return (
-                                <p className="text-xs text-amber-700">
-                                  Usando tarifa genérica ({usedGenericPaper ? "sin papel específico" : null}{usedGenericPaper && usedGenericFinish ? ", " : null}{usedGenericFinish ? "sin acabado específico" : null}). Para que troquel/papel cambien el precio, configura una tarifa exacta.
-                                </p>
-                              )
-                            })()}
-
-                            <div className="border-t pt-3">
-                              {(() => {
-                                const base = tarifa.precioTotal || 0
-                                const transporte = parseFloat(costoTransporte) || 0
-                                const extras = customFieldsTotal
-                                const addFinishesCost =
-                                  tarifa.finishOptionId && finishIdsNormalized.length === 1 && tarifa.finishOptionId === finishIdsNormalized[0]
-                                    ? 0
-                                    : selectedFinishesCost
-                                const total = (base * margenMultiplier) + transporte + addFinishesCost + extras
-                                const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
-                                return (
-                                  <>
-                                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">Base (tarifario)</span><span className="font-medium">{formatCurrency(base)}</span></div>
-                                    <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Transporte</span><span className="font-medium">{formatCurrency(transporte)}</span></div>
-                                      {addFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Acabados</span><span className="font-medium">{formatCurrency(addFinishesCost)}</span></div> : null}
-                                    {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Campos extra</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
-                                    <div className="flex justify-between mt-2"><span className="font-medium">Total</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
-                                    <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Unitario</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>
-                                  </>
-                                )
-                              })()}
-                            </div>
-                          </>
-                        ) : fallbackCalc ? (
-                          <>
-                            <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground space-y-1">
-                              <div className="flex justify-between">
-                                <span>Modo</span>
-                                <span className="font-medium">Estimado</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Pliegos</span>
-                                <span className="font-medium">{fallbackCalc.pliegosNecesarios ?? "—"}</span>
-                              </div>
-                            </div>
-
-                            <div className="border-t pt-3">
-                              {(() => {
-                                const extras = customFieldsTotal
-                                const baseValue = fallbackCalc.precioVenta || 0
-                                const total = (baseValue * margenMultiplier) + extras
-                                const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
-                                return (
-                                  <>
-                                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">Total (estimado)</span><span className="font-medium">{formatCurrency(total)}</span></div>
-                                    {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Campos extra</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
-                                    <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Unitario</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>
-                                    <p className="mt-2 text-[10px] leading-tight text-amber-700">
-                                      No existe tarifa exacta para esta combinación. Configura el tarifario para que el precio sea el oficial.
-                                    </p>
-                                  </>
-                                )
-                              })()}
-                            </div>
-                          </>
-                        ) : null}
-                      </>
-                    ) : calc ? (
-                      <>
-                        {calc.papelModo === "pliego" && (
+                      {tarifa ? (
+                        <>
                           <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground space-y-1">
                             <div className="flex justify-between">
-                              <span>Tiraje con desperdicio</span>
-                              <span className="font-medium">{Math.ceil(calc.qtyConDesperdicio)}</span>
+                              <span>Rango aplicable</span>
+                              <span className="font-medium">
+                                {tarifa.tirajeMin}–{tarifa.tirajeMax}
+                              </span>
+                            </div>
+                          </div>
+
+                          {(() => {
+                            const wantsFinish = finishIdsNormalized.length > 0
+                            const usedGenericFinish = wantsFinish && tarifa.finishOptionId == null
+                            const usedGenericPaper = Boolean(selectedPaperId) && tarifa.paperRateId == null
+                            if (!usedGenericFinish && !usedGenericPaper) return null
+                            return (
+                              <p className="text-xs text-amber-700">
+                                Usando tarifa genérica ({usedGenericPaper ? "sin papel específico" : null}{usedGenericPaper && usedGenericFinish ? ", " : null}{usedGenericFinish ? "sin acabado específico" : null}). Para que troquel/papel cambien el precio, configura una tarifa exacta.
+                              </p>
+                            )
+                          })()}
+
+                          <div className="border-t pt-3">
+                            {(() => {
+                              const base = tarifa.precioTotal || 0
+                              const transporte = parseFloat(costoTransporte) || 0
+                              const extras = customFieldsTotal
+                              const addFinishesCost = selectedFinishesCost
+                              const total = (base * margenMultiplier) + transporte + addFinishesCost + specialFinishesCost + extras
+                              const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
+                              return (
+                                <>
+                                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Base (tarifario)</span><span className="font-medium">{formatCurrency(base)}</span></div>
+                                  <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Transporte</span><span className="font-medium">{formatCurrency(transporte)}</span></div>
+                                  {addFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Acabados</span><span className="font-medium">{formatCurrency(addFinishesCost)}</span></div> : null}
+                                  {specialFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Acabados especiales</span><span className="font-medium">{formatCurrency(specialFinishesCost)}</span></div> : null}
+                                  {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Campos extra</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
+                                  <div className="flex justify-between mt-2"><span className="font-medium">Total</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
+                                  <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Unitario</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>
+                                </>
+                              )
+                            })()}
+                          </div>
+                        </>
+                      ) : fallbackCalc ? (
+                        <>
+                          <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground space-y-1">
+                            <div className="flex justify-between">
+                              <span>Modo</span>
+                              <span className="font-medium">Estimado</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Piezas por pliego</span>
-                              <span className="font-medium">{calc.piezasPorPliego ?? "—"}</span>
+                              <span>Pliegos</span>
+                              <span className="font-medium">{fallbackCalc.pliegosNecesarios ?? "—"}</span>
                             </div>
+                          </div>
+
+                          <div className="border-t pt-3">
+                            {(() => {
+                              const extras = customFieldsTotal
+                              const baseValue = fallbackCalc.precioVenta || 0
+                              const total = (baseValue * margenMultiplier) + selectedFinishesCost + specialFinishesCost + extras
+                              const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
+                              return (
+                                <>
+                                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Base (estimado)</span><span className="font-medium">{formatCurrency(baseValue)}</span></div>
+                                  {selectedFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Acabados</span><span className="font-medium">{formatCurrency(selectedFinishesCost)}</span></div> : null}
+                                  {specialFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Acabados especiales</span><span className="font-medium">{formatCurrency(specialFinishesCost)}</span></div> : null}
+                                  {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Campos extra</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
+                                  <div className="flex justify-between mt-2"><span className="font-medium">Total</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
+                                  <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Unitario</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>
+                                </>
+                              )
+                            })()}
+                          </div>
+                        </>
+                      ) : isAdmin && calc ? (
+                        <>
+                          {calc.papelModo === "pliego" ? (
+                            <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground space-y-1">
+                              <div className="flex justify-between">
+                                <span>Tiraje con desperdicio</span>
+                                <span className="font-medium">{Math.ceil(calc.qtyConDesperdicio)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Piezas por pliego</span>
+                                <span className="font-medium">{calc.piezasPorPliego ?? "—"}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Pliegos requeridos</span>
+                                <span className="font-medium">{calc.pliegosNecesarios ?? "—"}</span>
+                              </div>
+                            </div>
+                          ) : null}
+
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Plancha</span>
+                            <span className="font-medium">{formatCurrency(calc.plancha)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Tinta</span>
+                            <span className="font-medium">{formatCurrency(calc.tinta)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Papel</span>
+                            <span className="font-medium">{formatCurrency(calc.papel)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Corte</span>
+                            <span className="font-medium">{formatCurrency(calc.corte)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Acabados</span>
+                            <span className="font-medium">{formatCurrency(calc.acabados)}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Transporte</span>
+                            <span className="font-medium">{formatCurrency(calc.transporte)}</span>
+                          </div>
+
+                          <div className="border-t pt-3">
                             <div className="flex justify-between">
-                              <span>Pliegos requeridos</span>
-                              <span className="font-medium">{calc.pliegosNecesarios ?? "—"}</span>
+                              <span className="font-medium">Costo producción</span>
+                              <span className="font-bold">{formatCurrency(calc.costoProduccion)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm mt-1">
+                              <span className="text-muted-foreground">Costo unitario</span>
+                              <span className="font-medium">{formatCurrency(calc.costoUnitario)}</span>
                             </div>
                           </div>
-                        )}
 
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Plancha</span>
-                          <span className="font-medium">{formatCurrency(calc.plancha)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Tinta</span>
-                          <span className="font-medium">{formatCurrency(calc.tinta)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Papel</span>
-                          <span className="font-medium">{formatCurrency(calc.papel)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Corte</span>
-                          <span className="font-medium">{formatCurrency(calc.corte)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Acabados</span>
-                          <span className="font-medium">{formatCurrency(calc.acabados)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">Transporte</span>
-                          <span className="font-medium">{formatCurrency(calc.transporte)}</span>
-                        </div>
-
-                        <div className="border-t pt-3">
-                          <div className="flex justify-between">
-                            <span className="font-medium">Costo producción</span>
-                            <span className="font-bold">{formatCurrency(calc.costoProduccion)}</span>
+                          <div className="border-t pt-3">
+                            {(() => {
+                              const baseValue = calc.precioVenta || 0
+                              const total = (baseValue * margenMultiplier) + customFieldsTotal
+                              const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
+                              return (
+                                <>
+                                  <div className="flex justify-between">
+                                    <span className="font-medium">Precio venta</span>
+                                    <span className="font-bold text-blue-700">{formatCurrency(total)}</span>
+                                  </div>
+                                  <div className="flex justify-between text-sm mt-1">
+                                    <span className="text-muted-foreground">Precio unitario</span>
+                                    <span className="font-medium">{formatCurrency(total / qty)}</span>
+                                  </div>
+                                </>
+                              )
+                            })()}
                           </div>
-                          <div className="flex justify-between text-sm mt-1">
-                            <span className="text-muted-foreground">Costo unitario</span>
-                            <span className="font-medium">{formatCurrency(calc.costoUnitario)}</span>
-                          </div>
-                        </div>
-
-                        <div className="border-t pt-3">
-                          <div className="flex justify-between">
-                            <span className="font-medium">Precio venta</span>
-                            <span className="font-bold text-blue-700">{formatCurrency(((calc.precioVenta || 0) * margenMultiplier) + customFieldsTotal)}</span>
-                          </div>
-                          <div className="flex justify-between text-sm mt-1">
-                            <span className="text-muted-foreground">Precio unitario</span>
-                            <span className="font-medium">{formatCurrency((((calc.precioVenta || 0) * margenMultiplier) + customFieldsTotal) / Math.max(1, Math.trunc(calc.qty || 0)))}</span>
-                          </div>
-                        </div>
-
-                        <p className="text-xs text-muted-foreground">Nota: valores sin impuestos; usa como guía rápida.</p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Completa los parámetros para calcular.</p>
-                    )}
+                        </>
+                      ) : null}
+                    </>
                   </CardContent>
                 </Card>
 

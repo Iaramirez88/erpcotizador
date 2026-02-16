@@ -8,6 +8,9 @@ type UiState = {
   sidebarCollapsed: boolean
   setSidebarCollapsed: (collapsed: boolean) => void
   toggleSidebarCollapsed: () => void
+
+  routeLoading: boolean
+  setRouteLoading: (loading: boolean) => void
 }
 
 function readInitialSidebarCollapsed(): boolean {
@@ -44,4 +47,7 @@ export const useUiStore = create<UiState>((set) => ({
       persistSidebarCollapsed(next)
       return { sidebarCollapsed: next }
     }),
+
+  routeLoading: false,
+  setRouteLoading: (loading) => set({ routeLoading: loading }),
 }))

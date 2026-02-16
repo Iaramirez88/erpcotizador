@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -74,6 +74,16 @@ const EJEMPLO_EMPRESA = {
 }
 
 export default function PlantillaRemisionesPage() {
+  const [activeTab, setActiveTab] = useState<'page' | 'colors' | 'typography' | 'header' | 'footer'>('page')
+  const [tabPending, setTabPending] = useState(false)
+  const tabTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (tabTimerRef.current) window.clearTimeout(tabTimerRef.current)
+    }
+  }, [])
+
   const { toast } = useToast()
   const [settings, setSettings] = useState<RemisionTemplateSettings>(DEFAULT_REMISION_TEMPLATE)
   const [loading, setLoading] = useState(true)
@@ -210,7 +220,18 @@ export default function PlantillaRemisionesPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Panel de configuración */}
         <div className="space-y-4">
-          <Tabs defaultValue="page" className="w-full">
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => {
+              const next = (v || 'page') as typeof activeTab
+              if (next === activeTab) return
+              setTabPending(true)
+              setActiveTab(next)
+              if (tabTimerRef.current) window.clearTimeout(tabTimerRef.current)
+              tabTimerRef.current = window.setTimeout(() => setTabPending(false), 180)
+            }}
+            className="w-full"
+          >
             <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="page">Página</TabsTrigger>
               <TabsTrigger value="colors">Colores</TabsTrigger>
@@ -218,6 +239,10 @@ export default function PlantillaRemisionesPage() {
               <TabsTrigger value="header">Encabezado</TabsTrigger>
               <TabsTrigger value="footer">Pie</TabsTrigger>
             </TabsList>
+
+            {tabPending ? (
+              <div className="mt-2 text-sm text-muted-foreground">Cargando…</div>
+            ) : null}
 
             {/* Configuración de página */}
             <TabsContent value="page" className="space-y-4">

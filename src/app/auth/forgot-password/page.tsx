@@ -51,8 +51,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md">
+    <Card className="w-full max-w-md border-0 shadow-sm">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl text-center">Restablecer contraseña</CardTitle>
           <CardDescription className="text-center">
@@ -81,7 +80,7 @@ export default function ForgotPasswordPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="sr-only">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -105,7 +104,6 @@ export default function ForgotPasswordPage() {
             </div>
           </CardFooter>
         </form>
-      </Card>
-    </div>
+    </Card>
   )
 }

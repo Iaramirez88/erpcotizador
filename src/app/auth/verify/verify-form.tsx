@@ -81,8 +81,7 @@ export default function VerifyForm({ initialEmail }: { initialEmail: string }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md">
+    <Card className="w-full max-w-md border-0 shadow-sm">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl text-center">Verificar cuenta</CardTitle>
           <CardDescription className="text-center">
@@ -110,10 +109,11 @@ export default function VerifyForm({ initialEmail }: { initialEmail: string }) {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="sr-only">Email</Label>
               <Input
                 id="email"
                 type="email"
+                placeholder="tu@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -122,7 +122,7 @@ export default function VerifyForm({ initialEmail }: { initialEmail: string }) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="code">Código</Label>
+              <Label htmlFor="code" className="sr-only">Código</Label>
               <Input
                 id="code"
                 inputMode="numeric"
@@ -158,7 +158,6 @@ export default function VerifyForm({ initialEmail }: { initialEmail: string }) {
             </div>
           </CardFooter>
         </form>
-      </Card>
-    </div>
+    </Card>
   )
 }

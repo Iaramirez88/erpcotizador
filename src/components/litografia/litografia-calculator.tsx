@@ -63,6 +63,7 @@ type FinishOption = {
   id: string
   key: string
   nombre: string
+  especial?: boolean
   valor: number
   activo: boolean
 }
@@ -209,6 +210,9 @@ export function LitografiaCalculator() {
   const [newFinishNombre, setNewFinishNombre] = useState("")
   const [newFinishValor, setNewFinishValor] = useState("0")
 
+  const [newSpecialFinishNombre, setNewSpecialFinishNombre] = useState("")
+  const [newSpecialFinishValor, setNewSpecialFinishValor] = useState("0")
+
   const [finishEdits, setFinishEdits] = useState<Record<string, { nombre: string; valor: string }>>({})
 
   const [newSizeKey, setNewSizeKey] = useState("")
@@ -222,6 +226,7 @@ export function LitografiaCalculator() {
   const [tintaProfilesPage, setTintaProfilesPage] = useState(0)
   const [papersPage, setPapersPage] = useState(0)
   const [finishesPage, setFinishesPage] = useState(0)
+  const [specialFinishesPage, setSpecialFinishesPage] = useState(0)
   const [sizesPage, setSizesPage] = useState(0)
   const [ratesPage, setRatesPage] = useState(0)
 
@@ -280,8 +285,11 @@ export function LitografiaCalculator() {
     return filtered.length ? filtered : activeProfiles
   }, [activeProfiles])
   const activePapers = useMemo(() => papers.filter((p) => p.activo), [papers])
-  const activeFinishes = useMemo(() => finishes.filter((f) => f.activo), [finishes])
+  const activeFinishes = useMemo(() => finishes.filter((f) => f.activo && !f.especial), [finishes])
   const activeSizes = useMemo(() => sizes.filter((s) => s.activo), [sizes])
+
+  const normalFinishes = useMemo(() => finishes.filter((f) => !f.especial), [finishes])
+  const specialFinishes = useMemo(() => finishes.filter((f) => Boolean(f.especial)), [finishes])
 
   const sizeOptions = useMemo(() => {
     return activeSizes.map((s) => ({ key: s.key, nombre: s.nombre, widthCm: s.widthCm, heightCm: s.heightCm }))
@@ -451,7 +459,7 @@ export function LitografiaCalculator() {
       const res = await fetch("/api/litografia/acabados", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nombre, valor: Number.isFinite(valor) ? valor : 0, activo: true }),
+        body: JSON.stringify({ nombre, valor: Number.isFinite(valor) ? valor : 0, activo: true, especial: false }),
       })
       const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
       if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, "No se pudo crear el acabado"))
@@ -460,6 +468,27 @@ export function LitografiaCalculator() {
       await fetchFinishes()
     } catch (e) {
       setConfigError(e instanceof Error ? e.message : "No se pudo crear el acabado")
+    }
+  }
+
+  const createSpecialFinish = async () => {
+    setConfigError(null)
+    try {
+      const nombre = newSpecialFinishNombre.trim()
+      const valor = parseFloat(newSpecialFinishValor)
+
+      const res = await fetch("/api/litografia/acabados", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre, valor: Number.isFinite(valor) ? valor : 0, activo: true, especial: true }),
+      })
+      const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
+      if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, "No se pudo crear el acabado especial"))
+      setNewSpecialFinishNombre("")
+      setNewSpecialFinishValor("0")
+      await fetchFinishes()
+    } catch (e) {
+      setConfigError(e instanceof Error ? e.message : "No se pudo crear el acabado especial")
     }
   }
 
@@ -1128,8 +1157,13 @@ export function LitografiaCalculator() {
 
   const pagedFinishes = useMemo(() => {
     const start = finishesPage * PAGE_SIZE
-    return finishes.slice(start, start + PAGE_SIZE)
-  }, [finishes, finishesPage, PAGE_SIZE])
+    return normalFinishes.slice(start, start + PAGE_SIZE)
+  }, [normalFinishes, finishesPage, PAGE_SIZE])
+
+  const pagedSpecialFinishes = useMemo(() => {
+    const start = specialFinishesPage * PAGE_SIZE
+    return specialFinishes.slice(start, start + PAGE_SIZE)
+  }, [specialFinishes, specialFinishesPage, PAGE_SIZE])
 
   const pagedSizes = useMemo(() => {
     const start = sizesPage * PAGE_SIZE
@@ -2293,7 +2327,7 @@ export function LitografiaCalculator() {
 
               <div className="space-y-2">
                 {finishesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                {finishes.length === 0 && !finishesLoading ? <p className="text-sm text-muted-foreground">No hay acabados.</p> : null}
+                {normalFinishes.length === 0 && !finishesLoading ? <p className="text-sm text-muted-foreground">No hay acabados.</p> : null}
 
                 {pagedFinishes.map((f) => (
                   <div key={f.id} className="rounded-md border p-3 space-y-2">
@@ -2405,28 +2439,202 @@ export function LitografiaCalculator() {
                   </div>
                 ))}
 
-                {finishes.length > 0 ? (
+                {normalFinishes.length > 0 ? (
                   <div className="flex items-center justify-between gap-2 pt-1">
                     <p className="text-xs text-muted-foreground">
-                      Mostrando {finishesPage * PAGE_SIZE + 1}-{Math.min(finishes.length, (finishesPage + 1) * PAGE_SIZE)} de {finishes.length}
+                      Mostrando {finishesPage * PAGE_SIZE + 1}-{Math.min(normalFinishes.length, (finishesPage + 1) * PAGE_SIZE)} de {normalFinishes.length}
                     </p>
                     <div className="flex items-center gap-2">
                       <Button type="button" variant="outline" size="sm" onClick={() => setFinishesPage((p) => Math.max(0, p - 1))} disabled={finishesPage <= 0}>
                         Anterior
                       </Button>
-                      <p className="text-xs">Página {finishesPage + 1} / {Math.max(1, Math.ceil(finishes.length / PAGE_SIZE))}</p>
+                      <p className="text-xs">Página {finishesPage + 1} / {Math.max(1, Math.ceil(normalFinishes.length / PAGE_SIZE))}</p>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => setFinishesPage((p) => Math.min(Math.ceil(finishes.length / PAGE_SIZE) - 1, p + 1))}
-                        disabled={finishesPage >= Math.ceil(finishes.length / PAGE_SIZE) - 1}
+                        onClick={() => setFinishesPage((p) => Math.min(Math.ceil(normalFinishes.length / PAGE_SIZE) - 1, p + 1))}
+                        disabled={finishesPage >= Math.ceil(normalFinishes.length / PAGE_SIZE) - 1}
                       >
                         Siguiente
                       </Button>
                     </div>
                   </div>
                 ) : null}
+              </div>
+
+              <div className="pt-6 border-t space-y-4">
+                <div>
+                  <p className="text-sm font-semibold">Acabados especiales</p>
+                  <p className="text-xs text-muted-foreground">Se seleccionan con checks en el cotizador y permiten cantidad por acabado.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                  <div className="md:col-span-1">
+                    <Label>Nombre</Label>
+                    <Input
+                      className={INPUT_COMPACT}
+                      value={newSpecialFinishNombre}
+                      onChange={(e) => setNewSpecialFinishNombre(e.target.value)}
+                      placeholder="Ej: Troquel, Hot stamping"
+                    />
+                  </div>
+                  <div className="md:col-span-1">
+                    <Label>Valor</Label>
+                    <MoneyInput
+                      className={INPUT_COMPACT}
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={newSpecialFinishValor}
+                      onChange={(e) => setNewSpecialFinishValor(e.target.value)}
+                      placeholder="Ej: 25000"
+                    />
+                  </div>
+                  <div className="md:col-span-1">
+                    <Button type="button" onClick={createSpecialFinish} disabled={!newSpecialFinishNombre.trim()}>
+                      Agregar acabado especial
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {finishesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
+                  {specialFinishes.length === 0 && !finishesLoading ? <p className="text-sm text-muted-foreground">No hay acabados especiales.</p> : null}
+
+                  {pagedSpecialFinishes.map((f) => (
+                    <div key={f.id} className="rounded-md border p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{f.nombre}</p>
+                          <p className="text-xs text-muted-foreground">Valor: {formatCurrency(f.valor || 0)}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button type="button" variant={f.activo ? "outline" : "default"} onClick={() => patchFinish(f.id, { activo: !f.activo })}>
+                            {f.activo ? "Desactivar" : "Activar"}
+                          </Button>
+                          <Button type="button" variant="ghost" className="text-red-600" onClick={() => deleteFinish(f.id)}>
+                            Eliminar
+                          </Button>
+                        </div>
+                      </div>
+
+                      {(() => {
+                        const draft = finishEdits[f.id]
+                        const draftNombre = draft?.nombre ?? f.nombre
+                        const draftValor = draft?.valor ?? String(f.valor ?? 0)
+                        const parsedDraftValor = parseFloat(draftValor)
+
+                        const isNombreDirty = draft?.nombre !== undefined && draftNombre.trim() !== f.nombre
+                        const isValorDirty =
+                          draft?.valor !== undefined &&
+                          Number.isFinite(parsedDraftValor) &&
+                          parsedDraftValor >= 0 &&
+                          parsedDraftValor !== (f.valor ?? 0)
+
+                        const hasDraft = Boolean(draft)
+                        const canSave = (isNombreDirty || isValorDirty) && (!draftValor.trim() || (Number.isFinite(parsedDraftValor) && parsedDraftValor >= 0))
+
+                        return (
+                          <>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                              <div className="md:col-span-2">
+                                <Label className="text-xs">Nombre</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  value={draftNombre}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setFinishEdits((prev) => ({
+                                      ...prev,
+                                      [f.id]: { nombre: v, valor: prev[f.id]?.valor ?? String(f.valor ?? 0) },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Valor</Label>
+                                <MoneyInput
+                                  className={INPUT_COMPACT}
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  value={draftValor}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setFinishEdits((prev) => ({
+                                      ...prev,
+                                      [f.id]: { nombre: prev[f.id]?.nombre ?? f.nombre, valor: v },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setFinishEdits((prev) => {
+                                  const next = { ...prev }
+                                  delete next[f.id]
+                                  return next
+                                })}
+                                disabled={!hasDraft}
+                              >
+                                Cancelar
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => {
+                                  const patch: Partial<FinishOption> = {}
+                                  const nombre = draftNombre.trim()
+                                  if (nombre && nombre !== f.nombre) patch.nombre = nombre
+                                  if (Number.isFinite(parsedDraftValor) && parsedDraftValor >= 0 && parsedDraftValor !== (f.valor ?? 0)) patch.valor = parsedDraftValor
+                                  if (Object.keys(patch).length === 0) return
+                                  void patchFinish(f.id, patch)
+                                  setFinishEdits((prev) => {
+                                    const next = { ...prev }
+                                    delete next[f.id]
+                                    return next
+                                  })
+                                }}
+                                disabled={!canSave}
+                              >
+                                Guardar
+                              </Button>
+                            </div>
+                          </>
+                        )
+                      })()}
+                    </div>
+                  ))}
+
+                  {specialFinishes.length > 0 ? (
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <p className="text-xs text-muted-foreground">
+                        Mostrando {specialFinishesPage * PAGE_SIZE + 1}-{Math.min(specialFinishes.length, (specialFinishesPage + 1) * PAGE_SIZE)} de {specialFinishes.length}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setSpecialFinishesPage((p) => Math.max(0, p - 1))} disabled={specialFinishesPage <= 0}>
+                          Anterior
+                        </Button>
+                        <p className="text-xs">Página {specialFinishesPage + 1} / {Math.max(1, Math.ceil(specialFinishes.length / PAGE_SIZE))}</p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSpecialFinishesPage((p) => Math.min(Math.ceil(specialFinishes.length / PAGE_SIZE) - 1, p + 1))}
+                          disabled={specialFinishesPage >= Math.ceil(specialFinishes.length / PAGE_SIZE) - 1}
+                        >
+                          Siguiente
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               </div>
               </CardContent>
             </details>
