@@ -402,6 +402,8 @@ model Empresa {
   email     String?
   logo      String?
 
+  dianSettings Json @default("{}")
+
   // Código de acceso para permitir registro de usuarios en esta empresa.
   // Se guarda hasheado (bcrypt). Si es null, el registro es abierto.
   registrationCodeHash String? @db.Text

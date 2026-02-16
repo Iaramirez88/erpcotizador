@@ -23,6 +23,13 @@ const PDFViewer = dynamic(async () => {
   return mod.PDFViewer
 }, { ssr: false })
 
+const CURRENCY_PRESETS: Array<{ label: string; locale: string; currency: string }> = [
+  { label: 'COP (Pesos colombianos)', locale: 'es-CO', currency: 'COP' },
+  { label: 'USD (Dólares)', locale: 'en-US', currency: 'USD' },
+  { label: 'EUR (Euros)', locale: 'es-ES', currency: 'EUR' },
+  { label: 'MXN (Pesos mexicanos)', locale: 'es-MX', currency: 'MXN' },
+]
+
 type TemplateResponse = { success: boolean; data?: { settings?: unknown } }
 
 type SectionCardProps = {
@@ -157,12 +164,25 @@ export default function PlantillaCotizacionPage() {
   } = settings.toggles
   const { enabled: watermarkEnabled } = settings.watermark
   const { showLogo, logoUrl } = settings.header
+  const headerRightLinesJoined = useMemo(() => {
+    const r = settings.header.right
+    return [r.line1, r.line2, r.line3, r.line4, r.line5].map((x) => String(x ?? '').trim()).filter(Boolean).join('|')
+  }, [settings.header.right])
 
   const pdfViewerKey = useMemo(() => {
     return [
+      settings.page.backgroundImageUrl ? 'bg1' : 'bg0',
+      String(settings.page.backgroundImageOpacity ?? 1),
       watermarkEnabled ? 'wm1' : 'wm0',
+      settings.watermark.mode,
+      settings.watermark.useLogo ? 'wml1' : 'wml0',
+      settings.watermark.imageUrl ? 'wmi1' : 'wmi0',
+      String(settings.watermark.scale ?? 0.8),
       showLogo ? 'lg1' : 'lg0',
       logoUrl ? 'lu1' : 'lu0',
+      settings.header.right.showLogo ? 'rg1' : 'rg0',
+      settings.header.right.logoUrl ? 'rlu1' : 'rlu0',
+      headerRightLinesJoined ? 'rln1' : 'rln0',
       showVendedor ? 'v1' : 'v0',
       showClienteEmail ? 'ce1' : 'ce0',
       showClienteTelefono ? 'ct1' : 'ct0',
@@ -171,6 +191,7 @@ export default function PlantillaCotizacionPage() {
       showObservaciones ? 'ob1' : 'ob0',
     ].join('|')
   }, [
+    headerRightLinesJoined,
     logoUrl,
     showLogo,
     showClienteEmail,
@@ -179,6 +200,14 @@ export default function PlantillaCotizacionPage() {
     showEstado,
     showObservaciones,
     showVendedor,
+    settings.header.right.logoUrl,
+    settings.header.right.showLogo,
+    settings.page.backgroundImageOpacity,
+    settings.page.backgroundImageUrl,
+    settings.watermark.imageUrl,
+    settings.watermark.mode,
+    settings.watermark.scale,
+    settings.watermark.useLogo,
     watermarkEnabled,
   ])
 
@@ -197,9 +226,9 @@ export default function PlantillaCotizacionPage() {
 
   async function onLogoFileChange(file: File | null) {
     if (!file) return
-    const maxBytes = 700 * 1024
+    const maxBytes = 2 * 1024 * 1024
     if (file.size > maxBytes) {
-      alert('El logo es muy grande. Intenta con una imagen más liviana (≤ 700KB).')
+      alert('El logo es muy grande. Intenta con una imagen más liviana (≤ 2MB).')
       return
     }
 
@@ -223,6 +252,62 @@ export default function PlantillaCotizacionPage() {
     setSettings((s) => ({
       ...s,
       header: { ...s.header, showLogo: true, logoUrl: dataUrl },
+    }))
+  }
+
+  async function fileToDataUrl(file: File) {
+    if (file.type === 'image/svg+xml') {
+      const text = await file.text()
+      return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`
+    }
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result ?? ''))
+      reader.onerror = () => reject(new Error('No se pudo leer el archivo'))
+      reader.readAsDataURL(file)
+    })
+  }
+
+  async function onHeaderRightLogoFileChange(file: File | null) {
+    if (!file) return
+    const maxBytes = 2 * 1024 * 1024
+    if (file.size > maxBytes) {
+      alert('El logo es muy grande. Intenta con una imagen más liviana (≤ 2MB).')
+      return
+    }
+
+    const dataUrl = await fileToDataUrl(file)
+    setSettings((s) => ({
+      ...s,
+      header: { ...s.header, right: { ...s.header.right, showLogo: true, logoUrl: dataUrl } },
+    }))
+  }
+
+  async function onWatermarkImageFileChange(file: File | null) {
+    if (!file) return
+    const maxBytes = 2 * 1024 * 1024
+    if (file.size > maxBytes) {
+      alert('La imagen de marca de agua es muy grande. Intenta con una imagen más liviana (≤ 2MB).')
+      return
+    }
+    const dataUrl = await fileToDataUrl(file)
+    setSettings((s) => ({
+      ...s,
+      watermark: { ...s.watermark, mode: 'image', imageUrl: dataUrl, enabled: true, useLogo: false },
+    }))
+  }
+
+  async function onBackgroundImageFileChange(file: File | null) {
+    if (!file) return
+    const maxBytes = 4 * 1024 * 1024
+    if (file.size > maxBytes) {
+      alert('La imagen de fondo es muy grande. Intenta con una imagen más liviana (≤ 4MB).')
+      return
+    }
+    const dataUrl = await fileToDataUrl(file)
+    setSettings((s) => ({
+      ...s,
+      page: { ...s.page, backgroundImageUrl: dataUrl },
     }))
   }
 
@@ -301,6 +386,81 @@ export default function PlantillaCotizacionPage() {
                   value={settings.page.padding}
                   onChange={(e) => setSettings((s) => ({ ...s, page: { ...s.page, padding: Number(e.target.value) } }))}
                 />
+              </div>
+              <div className="md:col-span-3 space-y-2">
+                <Label>Imagen de fondo (opcional)</Label>
+                <div className="flex flex-col gap-2">
+                  <input
+                    id="backgroundImageUpload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => void onBackgroundImageFileChange(e.target.files?.[0] ?? null)}
+                  />
+
+                  <div className="flex items-center gap-2">
+                    <Button asChild type="button" variant="outline">
+                      <label htmlFor="backgroundImageUpload" className="cursor-pointer">
+                        Subir imagen de fondo
+                      </label>
+                    </Button>
+                    {settings.page.backgroundImageUrl ? (
+                      <span className="text-xs text-muted-foreground">Imagen cargada</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Sin imagen</span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">URL o Data URL</Label>
+                      <Input
+                        placeholder="https://... o data:image/..."
+                        value={settings.page.backgroundImageUrl ?? ''}
+                        onChange={(e) =>
+                          setSettings((s) => ({
+                            ...s,
+                            page: { ...s.page, backgroundImageUrl: e.target.value },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setSettings((s) => ({
+                            ...s,
+                            page: { ...s.page, backgroundImageUrl: undefined },
+                          }))
+                        }
+                      >
+                        Quitar fondo
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Opacidad (0 - 1)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={settings.page.backgroundImageOpacity}
+                        onChange={(e) =>
+                          setSettings((s) => ({
+                            ...s,
+                            page: { ...s.page, backgroundImageOpacity: Number(e.target.value) },
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500">Recomendado: PNG/JPG liviano. La imagen se ajusta a toda la página.</p>
               </div>
           </SectionCard>
 
@@ -511,7 +671,7 @@ export default function PlantillaCotizacionPage() {
               </div>
           </SectionCard>
 
-          <SectionCard title="Encabezado y textos" contentClassName="pt-0 grid grid-cols-1 gap-4">
+          <SectionCard title="Encabezado y pie (2 secciones)" contentClassName="pt-0 grid grid-cols-1 gap-4">
               <div className="space-y-2">
                 <Label>Logo</Label>
                 <div className="flex flex-col gap-2">
@@ -530,10 +690,25 @@ export default function PlantillaCotizacionPage() {
                   </label>
 
                   <input
+                    id="logoUpload"
                     type="file"
-                    accept="image/png,image/jpeg,image/svg+xml"
+                    accept="image/*"
+                    className="hidden"
                     onChange={(e) => void onLogoFileChange(e.target.files?.[0] ?? null)}
                   />
+
+                  <div className="flex items-center gap-2">
+                    <Button asChild type="button" variant="outline">
+                      <label htmlFor="logoUpload" className="cursor-pointer">
+                        Subir logo
+                      </label>
+                    </Button>
+                    {settings.header.logoUrl ? (
+                      <span className="text-xs text-muted-foreground">Logo cargado</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Sin logo</span>
+                    )}
+                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div className="space-y-1">
@@ -586,11 +761,123 @@ export default function PlantillaCotizacionPage() {
                 <Label>Subtítulo 2</Label>
                 <Input value={settings.header.subtitle2} onChange={(e) => setSettings((s) => ({ ...s, header: { ...s.header, subtitle2: e.target.value } }))} />
               </div>
+
               <div className="space-y-2">
-                <Label>Texto pie de página</Label>
+                <Label>Encabezado derecho (logo y líneas)</Label>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={settings.header.right.showLogo}
+                      onChange={(e) =>
+                        setSettings((s) => ({
+                          ...s,
+                          header: { ...s.header, right: { ...s.header.right, showLogo: e.target.checked } },
+                        }))
+                      }
+                    />
+                    Mostrar logo en el encabezado derecho
+                  </label>
+
+                  <input
+                    id="headerRightLogoUpload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => void onHeaderRightLogoFileChange(e.target.files?.[0] ?? null)}
+                  />
+
+                  <div className="flex items-center gap-2">
+                    <Button asChild type="button" variant="outline">
+                      <label htmlFor="headerRightLogoUpload" className="cursor-pointer">
+                        Subir logo derecho
+                      </label>
+                    </Button>
+                    {settings.header.right.logoUrl ? (
+                      <span className="text-xs text-muted-foreground">Logo cargado</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Sin logo</span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">URL o Data URL (logo derecho)</Label>
+                      <Input
+                        placeholder="https://... o data:image/..."
+                        value={settings.header.right.logoUrl ?? ''}
+                        onChange={(e) =>
+                          setSettings((s) => ({
+                            ...s,
+                            header: { ...s.header, right: { ...s.header.right, logoUrl: e.target.value } },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setSettings((s) => ({
+                            ...s,
+                            header: { ...s.header, right: { ...s.header.right, logoUrl: undefined, showLogo: false } },
+                          }))
+                        }
+                      >
+                        Quitar logo derecho
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Línea 1</Label>
+                      <Input value={settings.header.right.line1} onChange={(e) => setSettings((s) => ({ ...s, header: { ...s.header, right: { ...s.header.right, line1: e.target.value } } }))} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Línea 2</Label>
+                      <Input value={settings.header.right.line2} onChange={(e) => setSettings((s) => ({ ...s, header: { ...s.header, right: { ...s.header.right, line2: e.target.value } } }))} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Línea 3</Label>
+                      <Input value={settings.header.right.line3} onChange={(e) => setSettings((s) => ({ ...s, header: { ...s.header, right: { ...s.header.right, line3: e.target.value } } }))} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Línea 4</Label>
+                      <Input value={settings.header.right.line4} onChange={(e) => setSettings((s) => ({ ...s, header: { ...s.header, right: { ...s.header.right, line4: e.target.value } } }))} />
+                    </div>
+                    <div className="space-y-1 md:col-span-2">
+                      <Label className="text-xs text-gray-500">Línea 5</Label>
+                      <Input value={settings.header.right.line5} onChange={(e) => setSettings((s) => ({ ...s, header: { ...s.header, right: { ...s.header.right, line5: e.target.value } } }))} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Pie de página izquierdo</Label>
                 <Textarea
-                  value={settings.footer.text}
-                  onChange={(e) => setSettings((s) => ({ ...s, footer: { ...s.footer, text: e.target.value } }))}
+                  value={settings.footer.leftText}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      footer: {
+                        ...s.footer,
+                        leftText: e.target.value,
+                        text: s.footer.rightText ? s.footer.text : e.target.value,
+                      },
+                    }))
+                  }
+                  rows={3}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Pie de página derecho</Label>
+                <Textarea
+                  value={settings.footer.rightText}
+                  onChange={(e) => setSettings((s) => ({ ...s, footer: { ...s.footer, rightText: e.target.value } }))}
                   rows={3}
                 />
               </div>
@@ -632,11 +919,30 @@ export default function PlantillaCotizacionPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Moneda (ej. MXN, COP, USD)</Label>
-                <Input
+                <Label>Moneda</Label>
+                <select
+                  className="px-3 py-2 border rounded-md w-full"
                   value={settings.currency.currency}
-                  onChange={(e) => setSettings((s) => ({ ...s, currency: { ...s.currency, currency: e.target.value } }))}
-                />
+                  onChange={(e) => {
+                    const nextCurrency = e.target.value
+                    const preset = CURRENCY_PRESETS.find((p) => p.currency === nextCurrency)
+                    setSettings((s) => ({
+                      ...s,
+                      currency: {
+                        ...s.currency,
+                        currency: nextCurrency,
+                        locale: preset?.locale ?? s.currency.locale,
+                      },
+                    }))
+                  }}
+                >
+                  {CURRENCY_PRESETS.map((p) => (
+                    <option key={p.currency} value={p.currency}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500">Al cambiar moneda se sugiere un locale compatible (editable).</p>
               </div>
           </SectionCard>
 
@@ -650,9 +956,110 @@ export default function PlantillaCotizacionPage() {
                 Activar
               </label>
               <div className="space-y-2">
+                <Label>Tipo</Label>
+                <select
+                  className="px-3 py-2 border rounded-md w-full"
+                  value={settings.watermark.mode}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      watermark: { ...s.watermark, mode: e.target.value as 'text' | 'image' },
+                    }))
+                  }
+                >
+                  <option value="text">Texto</option>
+                  <option value="image">Imagen / Logo</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
                 <Label>Texto</Label>
                 <Input value={settings.watermark.text} onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, text: e.target.value } }))} />
               </div>
+
+              <div className="space-y-2">
+                <Label>Tamaño relativo (0.2 - 1)</Label>
+                <Input
+                  type="number"
+                  min={0.2}
+                  max={1}
+                  step={0.05}
+                  value={settings.watermark.scale}
+                  onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, scale: Number(e.target.value) } }))}
+                />
+                <p className="text-xs text-gray-500">0.8 = 80% centrado</p>
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Imagen de marca de agua (opcional)</Label>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={settings.watermark.useLogo}
+                      onChange={(e) =>
+                        setSettings((s) => ({
+                          ...s,
+                          watermark: { ...s.watermark, mode: 'image', useLogo: e.target.checked, enabled: true },
+                        }))
+                      }
+                    />
+                    Usar el logo del encabezado como marca de agua
+                  </label>
+
+                  <input
+                    id="watermarkImageUpload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => void onWatermarkImageFileChange(e.target.files?.[0] ?? null)}
+                  />
+
+                  <div className="flex items-center gap-2">
+                    <Button asChild type="button" variant="outline">
+                      <label htmlFor="watermarkImageUpload" className="cursor-pointer">
+                        Subir imagen de marca de agua
+                      </label>
+                    </Button>
+                    {settings.watermark.imageUrl ? (
+                      <span className="text-xs text-muted-foreground">Imagen cargada</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Sin imagen</span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">URL o Data URL (marca de agua)</Label>
+                      <Input
+                        placeholder="https://... o data:image/..."
+                        value={settings.watermark.imageUrl ?? ''}
+                        onChange={(e) =>
+                          setSettings((s) => ({
+                            ...s,
+                            watermark: { ...s.watermark, mode: 'image', imageUrl: e.target.value, enabled: true, useLogo: false },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() =>
+                          setSettings((s) => ({
+                            ...s,
+                            watermark: { ...s.watermark, imageUrl: undefined, useLogo: false },
+                          }))
+                        }
+                      >
+                        Quitar imagen
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label>Opacidad (0 - 0.25)</Label>
                 <Input

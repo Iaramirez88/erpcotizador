@@ -7,6 +7,8 @@ export type CotizacionTemplateSettings = {
     size: CotizacionPageSize
     orientation: CotizacionOrientation
     padding: number
+    backgroundImageUrl?: string
+    backgroundImageOpacity: number
   }
   colors: {
     primary: string
@@ -33,17 +35,32 @@ export type CotizacionTemplateSettings = {
     subtitle2: string
     logoUrl?: string
     showLogo: boolean
+    right: {
+      showLogo: boolean
+      logoUrl?: string
+      line1: string
+      line2: string
+      line3: string
+      line4: string
+      line5: string
+    }
   }
   watermark: {
     enabled: boolean
+    mode: 'text' | 'image'
     text: string
+    imageUrl?: string
+    useLogo: boolean
     color: string
     opacity: number
     fontSize: number
     rotateDeg: number
+    scale: number
   }
   footer: {
     text: string
+    leftText: string
+    rightText: string
   }
   toggles: {
     showVendedor: boolean
@@ -60,7 +77,7 @@ export type CotizacionTemplateSettings = {
 }
 
 export const DEFAULT_COTIZACION_TEMPLATE: CotizacionTemplateSettings = {
-  page: { size: 'A4', orientation: 'portrait', padding: 40 },
+  page: { size: 'A4', orientation: 'portrait', padding: 40, backgroundImageOpacity: 1 },
   colors: {
     primary: '#2563eb',
     pageBackground: '#ffffff',
@@ -85,17 +102,30 @@ export const DEFAULT_COTIZACION_TEMPLATE: CotizacionTemplateSettings = {
     subtitle1: 'Soluciones de Impresión Digital',
     subtitle2: '',
     showLogo: false,
+    right: {
+      showLogo: false,
+      line1: '',
+      line2: '',
+      line3: '',
+      line4: '',
+      line5: '',
+    },
   },
   watermark: {
     enabled: false,
+    mode: 'text',
     text: 'COTIZACIÓN',
+    useLogo: false,
     color: '#111827',
     opacity: 0.08,
     fontSize: 64,
     rotateDeg: -35,
+    scale: 0.8,
   },
   footer: {
     text: 'Gracias por confiar en nosotros. Esta cotización está sujeta a cambios según especificaciones finales.',
+    leftText: 'Gracias por confiar en nosotros. Esta cotización está sujeta a cambios según especificaciones finales.',
+    rightText: '',
   },
   toggles: {
     showVendedor: true,
@@ -106,8 +136,8 @@ export const DEFAULT_COTIZACION_TEMPLATE: CotizacionTemplateSettings = {
     showObservaciones: true,
   },
   currency: {
-    locale: 'es-MX',
-    currency: 'MXN',
+    locale: 'es-CO',
+    currency: 'COP',
   },
 }
 
@@ -139,6 +169,7 @@ export function mergeCotizacionTemplateSettings(input: unknown): CotizacionTempl
   const colors = isPlainObject(input.colors) ? input.colors : {}
   const typography = isPlainObject(input.typography) ? input.typography : {}
   const header = isPlainObject(input.header) ? input.header : {}
+  const headerRight = isPlainObject(header.right) ? header.right : {}
   const watermark = isPlainObject(input.watermark) ? input.watermark : {}
   const footer = isPlainObject(input.footer) ? input.footer : {}
   const toggles = isPlainObject(input.toggles) ? input.toggles : {}
@@ -153,6 +184,11 @@ export function mergeCotizacionTemplateSettings(input: unknown): CotizacionTempl
       size: ['A4', 'LETTER', 'LEGAL'].includes(size) ? size : defaults.page.size,
       orientation: ['portrait', 'landscape'].includes(orientation) ? orientation : defaults.page.orientation,
       padding: clamp(asNumber(page.padding, defaults.page.padding), 12, 80),
+      backgroundImageUrl:
+        typeof page.backgroundImageUrl === 'string' && page.backgroundImageUrl.trim()
+          ? page.backgroundImageUrl.trim()
+          : defaults.page.backgroundImageUrl,
+      backgroundImageOpacity: clamp(asNumber(page.backgroundImageOpacity, defaults.page.backgroundImageOpacity), 0, 1),
     },
     colors: {
       primary: asString(colors.primary, defaults.colors.primary),
@@ -179,17 +215,42 @@ export function mergeCotizacionTemplateSettings(input: unknown): CotizacionTempl
       subtitle2: asString(header.subtitle2, defaults.header.subtitle2),
       logoUrl: typeof header.logoUrl === 'string' ? header.logoUrl : defaults.header.logoUrl,
       showLogo: asBoolean(header.showLogo, defaults.header.showLogo),
+      right: {
+        showLogo: asBoolean(headerRight.showLogo, defaults.header.right.showLogo),
+        logoUrl: typeof headerRight.logoUrl === 'string' ? headerRight.logoUrl : defaults.header.right.logoUrl,
+        line1: asString(headerRight.line1, defaults.header.right.line1),
+        line2: asString(headerRight.line2, defaults.header.right.line2),
+        line3: asString(headerRight.line3, defaults.header.right.line3),
+        line4: asString(headerRight.line4, defaults.header.right.line4),
+        line5: asString(headerRight.line5, defaults.header.right.line5),
+      },
     },
     watermark: {
       enabled: asBoolean(watermark.enabled, defaults.watermark.enabled),
+      mode: ((): 'text' | 'image' => {
+        const v = asString(watermark.mode, defaults.watermark.mode)
+        return v === 'image' ? 'image' : 'text'
+      })(),
       text: asString(watermark.text, defaults.watermark.text),
+      imageUrl:
+        typeof watermark.imageUrl === 'string' && watermark.imageUrl.trim()
+          ? watermark.imageUrl.trim()
+          : defaults.watermark.imageUrl,
+      useLogo: asBoolean(watermark.useLogo, defaults.watermark.useLogo),
       color: asString(watermark.color, defaults.watermark.color),
       opacity: clamp(asNumber(watermark.opacity, defaults.watermark.opacity), 0, 0.25),
       fontSize: clamp(asNumber(watermark.fontSize, defaults.watermark.fontSize), 24, 120),
       rotateDeg: clamp(asNumber(watermark.rotateDeg, defaults.watermark.rotateDeg), -90, 90),
+      scale: clamp(asNumber(watermark.scale, defaults.watermark.scale), 0.2, 1),
     },
     footer: {
       text: asString(footer.text, defaults.footer.text),
+      leftText: (() => {
+        if (typeof footer.leftText === 'string') return footer.leftText
+        if (typeof footer.text === 'string') return footer.text
+        return defaults.footer.leftText
+      })(),
+      rightText: asString(footer.rightText, defaults.footer.rightText),
     },
     toggles: {
       showVendedor: asBoolean(toggles.showVendedor, defaults.toggles.showVendedor),

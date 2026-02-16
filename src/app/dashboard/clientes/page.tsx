@@ -281,6 +281,16 @@ export default function ClientesPage() {
     window.location.href = url
   }
 
+  const clearFilters = () => {
+    setSearch("")
+    setSegmentoFiltro("")
+    setSedeFiltro("")
+    setCreatedAtMode("")
+    setCreatedAtValue("")
+    setActividadDesde("")
+    setActividadHasta("")
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -307,19 +317,140 @@ export default function ClientesPage() {
         </div>
       </div>
 
-      {/* Búsqueda */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div className="md:col-span-2">
-              <Input
-                data-tour="clientes-search"
-                placeholder="Buscar por nombre, documento o email..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_360px]">
+        {/* Lista (primero) */}
+        <Card className="min-w-0">
+          <CardHeader>
+            <CardTitle>Lista de Clientes ({clientes.length})</CardTitle>
+            <CardDescription>Todos tus clientes registrados</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2 flex-wrap mb-4">
+              <div className="min-w-[240px] flex-1">
+                <Input
+                  data-tour="clientes-search"
+                  placeholder="Buscar por nombre, documento o email..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <Button type="button" variant="outline" onClick={clearFilters}>
+                Limpiar
+              </Button>
             </div>
 
+            {isLoading ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">Cargando...</p>
+              </div>
+            ) : clientes.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">No hay clientes registrados</p>
+                <Button onClick={openNewClienteModal} className="mt-4">
+                  Crear primer cliente
+                </Button>
+              </div>
+            ) : (
+              <div className="max-w-full overflow-x-auto">
+                <table className="min-w-[1400px] w-full">
+                  <thead className="border-b">
+                    <tr className="text-left">
+                      <th className="pb-3 font-medium">Nombre</th>
+                      <th className="pb-3 font-medium">Documento</th>
+                      <th className="pb-3 font-medium">Sede</th>
+                      <th className="pb-3 font-medium">Segmento</th>
+                      <th className="pb-3 font-medium">Contacto</th>
+                      <th className="pb-3 font-medium">Ciudad</th>
+                      <th className="pb-3 font-medium text-center">Cotizaciones (rango)</th>
+                      <th className="pb-3 font-medium text-center">Órdenes</th>
+                      <th className="pb-3 font-medium text-center">Facturas</th>
+                      <th className="pb-3 font-medium text-right">Facturado</th>
+                      <th className="pb-3 font-medium text-right">Costo aprox.</th>
+                      <th className="pb-3 font-medium">Última actividad</th>
+                      <th className="pb-3 font-medium text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clientes.map((cliente) => (
+                      <tr key={cliente.id} className="border-b last:border-0">
+                        <td className="py-4">
+                          <div>
+                            <p className="font-medium">{cliente.nombre}</p>
+                            <p className="text-sm text-muted-foreground">{cliente.email || 'Sin email'}</p>
+                          </div>
+                        </td>
+                        <td className="py-4">
+                          <div>
+                            <p className="text-sm">{cliente.tipoDocumento}</p>
+                            <p className="font-mono text-sm">{cliente.documento}</p>
+                          </div>
+                        </td>
+                        <td className="py-4 text-sm">{cliente.sede?.nombre || '—'}</td>
+                        <td className="py-4">
+                          <span
+                            className={
+                              "text-xs px-2 py-1 rounded border " +
+                              (cliente.segmento === "FRECUENTE"
+                                ? "bg-green-50 text-green-700 border-green-200"
+                                : cliente.segmento === "OCASIONAL"
+                                  ? "bg-blue-50 text-blue-700 border-blue-200"
+                                  : "bg-slate-50 text-slate-700 border-slate-200")
+                            }
+                          >
+                            {cliente.segmento ? SEGMENTO_LABEL[cliente.segmento] : "—"}
+                          </span>
+                        </td>
+                        <td className="py-4 text-sm">{cliente.celular || cliente.telefono || 'Sin teléfono'}</td>
+                        <td className="py-4 text-sm">{cliente.ciudad || '-'}</td>
+                        <td className="py-4 text-center">
+                          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 text-sm font-medium">
+                            {cliente.cotizacionesRangeCount || 0}
+                          </span>
+                        </td>
+                        <td className="py-4 text-center">
+                          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-700 text-sm font-medium">
+                            {cliente._count?.ordenes || 0}
+                          </span>
+                        </td>
+                        <td className="py-4 text-center">
+                          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-700 text-sm font-medium">
+                            {cliente.invoiceCount || 0}
+                          </span>
+                        </td>
+                        <td className="py-4 text-sm text-right">{fmtMoney(cliente.invoiceTotal)}</td>
+                        <td className="py-4 text-sm text-right">{fmtMoney(cliente.invoiceCost)}</td>
+                        <td className="py-4 text-sm">{fmtDate(cliente.ultimaActividadAt)}</td>
+                        <td className="py-4">
+                          <div className="flex justify-end gap-2">
+                            <Button variant="outline" size="sm" onClick={() => handleEdit(cliente)}>
+                              Editar
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDelete(cliente.id)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              Eliminar
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Filtros (compacto, al lado) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Filtros</CardTitle>
+            <CardDescription>Refina la lista de clientes</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
             <div className="space-y-1">
               <Label>Sede</Label>
               <select
@@ -337,34 +468,6 @@ export default function ClientesPage() {
             </div>
 
             <div className="space-y-1">
-              <Label>Fecha creación</Label>
-              <select
-                value={createdAtMode}
-                onChange={(e) => {
-                  setCreatedAtMode(e.target.value as ("" | "day" | "month" | "year"))
-                  setCreatedAtValue("")
-                }}
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-              >
-                <option value="">Sin filtro</option>
-                <option value="day">Día</option>
-                <option value="month">Mes</option>
-                <option value="year">Año</option>
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <Label>Valor</Label>
-              <Input
-                disabled={!createdAtMode}
-                type={createdAtMode === 'day' ? 'date' : createdAtMode === 'month' ? 'month' : 'number'}
-                placeholder={createdAtMode === 'year' ? '2026' : undefined}
-                value={createdAtValue}
-                onChange={(e) => setCreatedAtValue(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-1">
               <Label>Segmento</Label>
               <select
                 value={segmentoFiltro}
@@ -378,172 +481,64 @@ export default function ClientesPage() {
                 ))}
               </select>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-4">
-            <div className="space-y-1 md:col-span-2">
-              <Label>Actividad (desde)</Label>
-              <Input type="date" value={actividadDesde} onChange={(e) => setActividadDesde(e.target.value)} />
+            <div className="grid grid-cols-1 gap-3">
+              <div className="space-y-1">
+                <Label>Fecha creación</Label>
+                <select
+                  value={createdAtMode}
+                  onChange={(e) => {
+                    setCreatedAtMode(e.target.value as ("" | "day" | "month" | "year"))
+                    setCreatedAtValue("")
+                  }}
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value="">Sin filtro</option>
+                  <option value="day">Día</option>
+                  <option value="month">Mes</option>
+                  <option value="year">Año</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label>Valor</Label>
+                <Input
+                  disabled={!createdAtMode}
+                  type={createdAtMode === 'day' ? 'date' : createdAtMode === 'month' ? 'month' : 'number'}
+                  placeholder={createdAtMode === 'year' ? '2026' : undefined}
+                  value={createdAtValue}
+                  onChange={(e) => setCreatedAtValue(e.target.value)}
+                />
+              </div>
             </div>
-            <div className="space-y-1 md:col-span-2">
-              <Label>Actividad (hasta)</Label>
-              <Input type="date" value={actividadHasta} onChange={(e) => setActividadHasta(e.target.value)} />
+
+            <div className="grid grid-cols-1 gap-3">
+              <div className="space-y-1">
+                <Label>Actividad (desde)</Label>
+                <Input type="date" value={actividadDesde} onChange={(e) => setActividadDesde(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label>Actividad (hasta)</Label>
+                <Input type="date" value={actividadHasta} onChange={(e) => setActividadHasta(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setActividadDesde("")
+                    setActividadHasta("")
+                  }}
+                >
+                  Limpiar rango
+                </Button>
+                <Button type="button" variant="outline" onClick={clearFilters}>
+                  Limpiar todo
+                </Button>
+              </div>
             </div>
-            <div className="flex items-end">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => {
-                  setActividadDesde("")
-                  setActividadHasta("")
-                }}
-              >
-                Limpiar rango
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Tabla de clientes */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Lista de Clientes ({clientes.length})</CardTitle>
-          <CardDescription>
-            Todos tus clientes registrados
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">Cargando...</p>
-            </div>
-          ) : clientes.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">
-                No hay clientes registrados
-              </p>
-              <Button onClick={openNewClienteModal} className="mt-4">
-                Crear primer cliente
-              </Button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="border-b">
-                  <tr className="text-left">
-                    <th className="pb-3 font-medium">Nombre</th>
-                    <th className="pb-3 font-medium">Documento</th>
-                    <th className="pb-3 font-medium">Sede</th>
-                    <th className="pb-3 font-medium">Segmento</th>
-                    <th className="pb-3 font-medium">Contacto</th>
-                    <th className="pb-3 font-medium">Ciudad</th>
-                    <th className="pb-3 font-medium text-center">Cotizaciones (rango)</th>
-                    <th className="pb-3 font-medium text-center">Órdenes</th>
-                    <th className="pb-3 font-medium text-center">Facturas</th>
-                    <th className="pb-3 font-medium text-right">Facturado</th>
-                    <th className="pb-3 font-medium text-right">Costo aprox.</th>
-                    <th className="pb-3 font-medium">Última actividad</th>
-                    <th className="pb-3 font-medium text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {clientes.map((cliente) => (
-                    <tr key={cliente.id} className="border-b last:border-0">
-                      <td className="py-4">
-                        <div>
-                          <p className="font-medium">{cliente.nombre}</p>
-                          <p className="text-sm text-muted-foreground">{cliente.email || 'Sin email'}</p>
-                        </div>
-                      </td>
-                      <td className="py-4">
-                        <div>
-                          <p className="text-sm">{cliente.tipoDocumento}</p>
-                          <p className="font-mono text-sm">{cliente.documento}</p>
-                        </div>
-                      </td>
-
-                      <td className="py-4 text-sm">
-                        {cliente.sede?.nombre || '—'}
-                      </td>
-
-                      <td className="py-4">
-                        <span
-                          className={
-                            "text-xs px-2 py-1 rounded border " +
-                            (cliente.segmento === "FRECUENTE"
-                              ? "bg-green-50 text-green-700 border-green-200"
-                              : cliente.segmento === "OCASIONAL"
-                                ? "bg-blue-50 text-blue-700 border-blue-200"
-                                : "bg-slate-50 text-slate-700 border-slate-200")
-                          }
-                        >
-                          {cliente.segmento ? SEGMENTO_LABEL[cliente.segmento] : "—"}
-                        </span>
-                      </td>
-                      <td className="py-4 text-sm">
-                        {cliente.celular || cliente.telefono || 'Sin teléfono'}
-                      </td>
-                      <td className="py-4 text-sm">
-                        {cliente.ciudad || '-'}
-                      </td>
-                      <td className="py-4 text-center">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 text-sm font-medium">
-                          {cliente.cotizacionesRangeCount || 0}
-                        </span>
-                      </td>
-
-                      <td className="py-4 text-center">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-700 text-sm font-medium">
-                          {cliente._count?.ordenes || 0}
-                        </span>
-                      </td>
-
-                      <td className="py-4 text-center">
-                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-700 text-sm font-medium">
-                          {cliente.invoiceCount || 0}
-                        </span>
-                      </td>
-
-                      <td className="py-4 text-sm text-right">
-                        {fmtMoney(cliente.invoiceTotal)}
-                      </td>
-
-                      <td className="py-4 text-sm text-right">
-                        {fmtMoney(cliente.invoiceCost)}
-                      </td>
-
-                      <td className="py-4 text-sm">
-                        {fmtDate(cliente.ultimaActividadAt)}
-                      </td>
-                      <td className="py-4">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEdit(cliente)}
-                          >
-                            Editar
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDelete(cliente.id)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            Eliminar
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Modal de crear/editar */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>

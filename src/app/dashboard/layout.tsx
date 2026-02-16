@@ -38,7 +38,7 @@ export default async function DashboardLayout({
       <PlanModuleGate />
       <PlanPaywallModal />
       <RouteLoadingStartListener />
-      <div className="flex min-h-screen bg-gray-50">
+      <div className="flex h-screen bg-gray-50">
         {/* Sidebar */}
         <Sidebar user={user} />
 

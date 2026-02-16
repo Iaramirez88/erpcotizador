@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
@@ -205,9 +206,14 @@ export default function SuperAdminPlanModulesClient() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Super Admin · Módulos por plan</h1>
-        <p className="text-sm text-gray-600">Habilita o deshabilita módulos para cada plan.</p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Super Admin · Módulos por plan</h1>
+          <p className="text-sm text-gray-600">Habilita o deshabilita módulos para cada plan.</p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/dashboard/configuracion/super-admin/usuarios">Usuarios</Link>
+        </Button>
       </div>
 
       <Card>

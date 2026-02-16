@@ -63,6 +63,10 @@ export interface CotizacionPDFProps {
 }
 
 function createStyles(t: CotizacionTemplateSettings) {
+  const watermarkScale = Math.max(0.2, Math.min(1, Number(t.watermark.scale ?? 0.8)))
+  const watermarkOffsetPct = (1 - watermarkScale) * 50
+  const backgroundOpacity = Math.max(0, Math.min(1, Number(t.page.backgroundImageOpacity ?? 1)))
+
   return StyleSheet.create({
     page: {
       padding: t.page.padding,
@@ -70,6 +74,15 @@ function createStyles(t: CotizacionTemplateSettings) {
       fontFamily: t.typography.fontFamily,
       backgroundColor: t.colors.pageBackground,
       color: t.colors.text,
+    },
+    pageBackgroundImage: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      objectFit: 'cover',
+      opacity: backgroundOpacity,
     },
     header: {
       marginBottom: 20,
@@ -85,9 +98,40 @@ function createStyles(t: CotizacionTemplateSettings) {
       flexGrow: 1,
       flexDirection: 'column',
     },
+    headerLeftTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      gap: 10,
+    },
+    headerLeftText: {
+      flexGrow: 1,
+      flexDirection: 'column',
+    },
+    headerRight: {
+      width: '40%',
+      flexDirection: 'column',
+      alignItems: 'flex-end',
+      justifyContent: 'flex-start',
+      gap: 6,
+    },
+    headerRightText: {
+      flexDirection: 'column',
+      alignItems: 'flex-end',
+    },
+    headerRightLine: {
+      fontSize: Math.max(t.typography.baseFontSize - 1, 8),
+      color: t.colors.mutedText,
+      textAlign: 'right',
+    },
     logo: {
       width: 90,
       height: 42,
+      objectFit: 'contain',
+    },
+    logoRight: {
+      width: 70,
+      height: 32,
       objectFit: 'contain',
     },
     title: {
@@ -198,23 +242,24 @@ function createStyles(t: CotizacionTemplateSettings) {
       fontSize: Math.max(t.typography.baseFontSize - 1, 8),
       color: t.colors.mutedText,
     },
+    footerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    footerLeft: {
+      width: '65%',
+    },
+    footerRight: {
+      width: '35%',
+      textAlign: 'right',
+    },
     observaciones: {
       marginTop: 15,
       padding: 10,
       backgroundColor: t.colors.warningBackground,
       borderLeft: 3,
       borderLeftColor: t.colors.warningBorder,
-    },
-    watermark: {
-      position: 'absolute',
-      top: '45%',
-      left: '10%',
-      right: '10%',
-      textAlign: 'center',
-      opacity: t.watermark.opacity,
-      transform: [{ operation: 'rotate' as const, value: [t.watermark.rotateDeg] as [number] }],
-      color: t.watermark.color,
-      fontWeight: 'bold',
     },
     smallMuted: {
       fontSize: Math.max(t.typography.baseFontSize - 2, 8),
@@ -232,6 +277,29 @@ function createStyles(t: CotizacionTemplateSettings) {
       borderRadius: 3,
       marginRight: 6,
     },
+    watermarkText: {
+      position: 'absolute',
+      top: '45%',
+      left: '10%',
+      right: '10%',
+      textAlign: 'center',
+      opacity: t.watermark.opacity,
+      transform: [{ operation: 'rotate' as const, value: [t.watermark.rotateDeg] as [number] }],
+      color: t.watermark.color,
+      fontWeight: 'bold',
+      fontSize: t.watermark.fontSize,
+    },
+    watermarkImage: {
+      position: 'absolute',
+      top: `${watermarkOffsetPct}%`,
+      left: `${watermarkOffsetPct}%`,
+      width: `${watermarkScale * 100}%`,
+      height: `${watermarkScale * 100}%`,
+      objectFit: 'contain',
+      opacity: t.watermark.opacity,
+      transform: [{ operation: 'rotate' as const, value: [t.watermark.rotateDeg] as [number] }],
+    },
+
   })
 }
 
@@ -248,6 +316,22 @@ export default function CotizacionPDF({ cotizacion, template }: CotizacionPDFPro
   const styles = createStyles(t)
   const locale = t.currency.locale
   const currency = t.currency.currency
+
+  const watermarkImageSrc = t.watermark.useLogo ? (t.header.logoUrl ?? '') : (t.watermark.imageUrl ?? '')
+  const hasWatermarkImage = t.watermark.mode === 'image' && Boolean(watermarkImageSrc)
+  const headerRightLines = [
+    t.header.right.line1,
+    t.header.right.line2,
+    t.header.right.line3,
+    t.header.right.line4,
+    t.header.right.line5,
+  ]
+    .map((x) => (x ?? '').trim())
+    .filter(Boolean)
+
+  const hasHeaderRight =
+    headerRightLines.length > 0 || (t.header.right.showLogo && Boolean((t.header.right.logoUrl ?? '').trim()))
+  const hasFooterRight = Boolean((t.footer.rightText ?? '').trim())
 
   const getUnitKey = (u: unknown): 'm2' | 'ml' | 'unidad' => {
     const unit = String(u ?? '').trim().toLowerCase()
@@ -280,16 +364,43 @@ export default function CotizacionPDF({ cotizacion, template }: CotizacionPDFPro
   return (
     <Document>
       <Page size={t.page.size} orientation={t.page.orientation} style={styles.page}>
-        {t.watermark.enabled ? <Text style={styles.watermark}>{t.watermark.text}</Text> : null}
+        {t.page.backgroundImageUrl ? <Image style={styles.pageBackgroundImage} src={t.page.backgroundImageUrl} /> : null}
+
+        {t.watermark.enabled ? (
+          hasWatermarkImage ? (
+            <Image style={styles.watermarkImage} src={watermarkImageSrc} />
+          ) : (
+            <Text style={styles.watermarkText}>{t.watermark.text}</Text>
+          )
+        ) : null}
 
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Text style={styles.title}>{t.header.title}</Text>
-            <Text style={styles.empresa}>{t.header.companyName}</Text>
-            {!!t.header.subtitle1 && <Text style={styles.empresa}>{t.header.subtitle1}</Text>}
-            {!!t.header.subtitle2 && <Text style={styles.empresa}>{t.header.subtitle2}</Text>}
+            <View style={styles.headerLeftTop}>
+              <View style={styles.headerLeftText}>
+                <Text style={styles.title}>{t.header.title}</Text>
+                <Text style={styles.empresa}>{t.header.companyName}</Text>
+                {!!t.header.subtitle1 && <Text style={styles.empresa}>{t.header.subtitle1}</Text>}
+                {!!t.header.subtitle2 && <Text style={styles.empresa}>{t.header.subtitle2}</Text>}
+              </View>
+              {t.header.showLogo && t.header.logoUrl ? <Image style={styles.logo} src={t.header.logoUrl} /> : null}
+            </View>
           </View>
-          {t.header.showLogo && t.header.logoUrl ? <Image style={styles.logo} src={t.header.logoUrl} /> : null}
+
+          {hasHeaderRight ? (
+            <View style={styles.headerRight}>
+              {t.header.right.showLogo && t.header.right.logoUrl ? <Image style={styles.logoRight} src={t.header.right.logoUrl} /> : null}
+              {headerRightLines.length > 0 ? (
+                <View style={styles.headerRightText}>
+                  {headerRightLines.map((line, idx) => (
+                    <Text key={idx} style={styles.headerRightLine}>
+                      {line}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.section}>
@@ -515,7 +626,14 @@ export default function CotizacionPDF({ cotizacion, template }: CotizacionPDFPro
         ) : null}
 
         <View style={styles.footer}>
-          <Text>{t.footer.text}</Text>
+          {hasFooterRight ? (
+            <View style={styles.footerRow}>
+              <Text style={styles.footerLeft}>{t.footer.leftText || t.footer.text}</Text>
+              <Text style={styles.footerRight}>{t.footer.rightText}</Text>
+            </View>
+          ) : (
+            <Text>{t.footer.leftText || t.footer.text}</Text>
+          )}
         </View>
       </Page>
     </Document>

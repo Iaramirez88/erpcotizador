@@ -129,7 +129,7 @@ export async function POST(request: Request) {
             createdAt: true,
           },
         })
-        if (existing) return existing
+        if (existing) return { ...existing, reused: true }
       }
 
       if (posReturnId) {
