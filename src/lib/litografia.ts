@@ -3,6 +3,10 @@ export type LitografiaParams = {
   colores: number
   desperdicioPct: number
 
+  // Sobrante mínimo (unidades) adicional al % de desperdicio.
+  // Se usa como mínimo de unidades extra para cubrir desperdicio.
+  sobranteMinimo?: number
+
   costoPlanchaPorColor: number
   costoTintaPorColor: number
   costoPapelUnidad: number
@@ -26,6 +30,8 @@ export type LitografiaResult = {
   qty: number
   k: number
   waste: number
+
+  sobranteMinimo: number
 
   papelModo: "unidad" | "pliego"
   papelTipo?: "bond" | "propalcote" | "periodico" | "otro"
@@ -71,8 +77,10 @@ export function computeLitografia(params: LitografiaParams): LitografiaResult {
   const qty = clampNumber(Number(params.cantidad) || 0, 1, 1_000_000_000)
   const k = clampNumber(Number(params.colores) || 1, 1, 12)
   const waste = clampNumber(Number(params.desperdicioPct) || 0, 0, 100)
-  const factor = 1 + waste / 100
-  const qtyConDesperdicio = qty * factor
+  const sobranteMinimo = clampNumber(Number(params.sobranteMinimo) || 0, 0, 1_000_000_000)
+  const extraFromPct = qty * (waste / 100)
+  const extra = Math.max(extraFromPct, sobranteMinimo)
+  const qtyConDesperdicio = qty + extra
 
   const plancha = (Number(params.costoPlanchaPorColor) || 0) * k
   const tinta = (Number(params.costoTintaPorColor) || 0) * k
@@ -118,6 +126,7 @@ export function computeLitografia(params: LitografiaParams): LitografiaResult {
     qty,
     k,
     waste,
+    sobranteMinimo,
     papelModo,
     papelTipo: paperType,
     qtyConDesperdicio,

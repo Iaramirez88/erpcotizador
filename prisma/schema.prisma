@@ -535,6 +535,8 @@ model LitografiaFinishOption {
   key    String
   nombre String
 
+  grupo LitografiaFinishGroup @default(ACABADO)
+
   // Cuando es true, se considera un “acabado especial” (se gestiona y cotiza aparte).
   especial Boolean @default(false)
 
@@ -552,6 +554,13 @@ model LitografiaFinishOption {
   @@unique([empresaId, key])
   @@index([empresaId, activo])
   @@map("litografia_finish_options")
+}
+
+enum LitografiaFinishGroup {
+  ACABADO
+  PLASTIFICADO
+  TROQUELADO
+  CORTE
 }
 
 model LitografiaPrintSize {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
-import { ModuleKey } from "@prisma/client"
+import { LitografiaFinishGroup, ModuleKey } from "@prisma/client"
 
 export const runtime = "nodejs"
 
@@ -48,7 +48,7 @@ export async function GET() {
   const items = await prisma.litografiaFinishOption.findMany({
     where: { empresaId },
     orderBy: [{ activo: "desc" }, { nombre: "asc" }],
-    select: { id: true, key: true, nombre: true, especial: true, valor: true, activo: true, updatedAt: true },
+    select: { id: true, key: true, nombre: true, grupo: true, especial: true, valor: true, activo: true, updatedAt: true },
   })
 
   return NextResponse.json({ ok: true, data: items })
@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
 
   const nombre = asString(body.nombre)
   const key = asString(body.key) || toFinishKeyFromNombre(nombre)
+  const grupo = asString(body.grupo)
   const especial = asBoolean(body.especial)
   const valor = asNumber(body.valor)
   const activo = body.activo === undefined ? true : Boolean(body.activo)
@@ -73,10 +74,24 @@ export async function POST(request: NextRequest) {
   if (!key) return NextResponse.json({ ok: false, error: "nombre es requerido" }, { status: 400 })
   if (valor !== null && valor < 0) return NextResponse.json({ ok: false, error: "valor inválido" }, { status: 400 })
 
+  const grupoNormalized = (grupo || "ACABADO").toUpperCase()
+  const allowedGroups = new Set(["ACABADO", "PLASTIFICADO", "TROQUELADO", "CORTE"])
+  if (!allowedGroups.has(grupoNormalized)) {
+    return NextResponse.json({ ok: false, error: "grupo inválido" }, { status: 400 })
+  }
+
   try {
     const created = await prisma.litografiaFinishOption.create({
-      data: { empresaId, key, nombre, especial: especial ?? false, valor: valor ?? 0, activo },
-      select: { id: true, key: true, nombre: true, especial: true, valor: true, activo: true, updatedAt: true },
+      data: {
+        empresaId,
+        key,
+        nombre,
+        grupo: grupoNormalized as LitografiaFinishGroup,
+        especial: especial ?? false,
+        valor: valor ?? 0,
+        activo,
+      },
+      select: { id: true, key: true, nombre: true, grupo: true, especial: true, valor: true, activo: true, updatedAt: true },
     })
     return NextResponse.json({ ok: true, data: created })
   } catch {

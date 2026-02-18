@@ -63,6 +63,7 @@ type FinishOption = {
   id: string
   key: string
   nombre: string
+  grupo?: "ACABADO" | "PLASTIFICADO" | "TROQUELADO" | "CORTE"
   especial?: boolean
   valor: number
   activo: boolean
@@ -210,6 +211,15 @@ export function LitografiaCalculator() {
   const [newFinishNombre, setNewFinishNombre] = useState("")
   const [newFinishValor, setNewFinishValor] = useState("0")
 
+  const [newPlastificadoNombre, setNewPlastificadoNombre] = useState("")
+  const [newPlastificadoValor, setNewPlastificadoValor] = useState("0")
+
+  const [newTroqueladoNombre, setNewTroqueladoNombre] = useState("")
+  const [newTroqueladoValor, setNewTroqueladoValor] = useState("0")
+
+  const [newCorteNombre, setNewCorteNombre] = useState("")
+  const [newCorteValor, setNewCorteValor] = useState("0")
+
   const [newSpecialFinishNombre, setNewSpecialFinishNombre] = useState("")
   const [newSpecialFinishValor, setNewSpecialFinishValor] = useState("0")
 
@@ -226,6 +236,9 @@ export function LitografiaCalculator() {
   const [tintaProfilesPage, setTintaProfilesPage] = useState(0)
   const [papersPage, setPapersPage] = useState(0)
   const [finishesPage, setFinishesPage] = useState(0)
+  const [plastificadosPage, setPlastificadosPage] = useState(0)
+  const [troqueladosPage, setTroqueladosPage] = useState(0)
+  const [cortesPage, setCortesPage] = useState(0)
   const [specialFinishesPage, setSpecialFinishesPage] = useState(0)
   const [sizesPage, setSizesPage] = useState(0)
   const [ratesPage, setRatesPage] = useState(0)
@@ -285,11 +298,20 @@ export function LitografiaCalculator() {
     return filtered.length ? filtered : activeProfiles
   }, [activeProfiles])
   const activePapers = useMemo(() => papers.filter((p) => p.activo), [papers])
-  const activeFinishes = useMemo(() => finishes.filter((f) => f.activo && !f.especial), [finishes])
+
+  const getGrupo = (f: FinishOption) => (f.grupo ?? "ACABADO")
+
+  const activeFinishes = useMemo(
+    () => finishes.filter((f) => f.activo && getGrupo(f) === "ACABADO" && !f.especial),
+    [finishes]
+  )
   const activeSizes = useMemo(() => sizes.filter((s) => s.activo), [sizes])
 
-  const normalFinishes = useMemo(() => finishes.filter((f) => !f.especial), [finishes])
-  const specialFinishes = useMemo(() => finishes.filter((f) => Boolean(f.especial)), [finishes])
+  const acabadosFinishes = useMemo(() => finishes.filter((f) => !f.especial && getGrupo(f) === "ACABADO"), [finishes])
+  const plastificadosFinishes = useMemo(() => finishes.filter((f) => !f.especial && getGrupo(f) === "PLASTIFICADO"), [finishes])
+  const troqueladosFinishes = useMemo(() => finishes.filter((f) => !f.especial && getGrupo(f) === "TROQUELADO"), [finishes])
+  const cortesFinishes = useMemo(() => finishes.filter((f) => !f.especial && getGrupo(f) === "CORTE"), [finishes])
+  const specialFinishes = useMemo(() => finishes.filter((f) => getGrupo(f) === "ACABADO" && Boolean(f.especial)), [finishes])
 
   const sizeOptions = useMemo(() => {
     return activeSizes.map((s) => ({ key: s.key, nombre: s.nombre, widthCm: s.widthCm, heightCm: s.heightCm }))
@@ -450,24 +472,67 @@ export function LitografiaCalculator() {
     }
   }
 
-  const createFinish = async () => {
+  const createFinishInGroup = async (grupo: "ACABADO" | "PLASTIFICADO" | "TROQUELADO" | "CORTE", args: { nombre: string; valor: number }) => {
     setConfigError(null)
+    const nombre = args.nombre.trim()
+    const valor = args.valor
+
+    const res = await fetch("/api/litografia/acabados", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre, valor: Number.isFinite(valor) ? valor : 0, activo: true, especial: false, grupo }),
+    })
+    const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
+    if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, "No se pudo crear"))
+    await fetchFinishes()
+  }
+
+  const createFinish = async () => {
     try {
       const nombre = newFinishNombre.trim()
       const valor = parseFloat(newFinishValor)
 
-      const res = await fetch("/api/litografia/acabados", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nombre, valor: Number.isFinite(valor) ? valor : 0, activo: true, especial: false }),
-      })
-      const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
-      if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, "No se pudo crear el acabado"))
+      await createFinishInGroup("ACABADO", { nombre, valor: Number.isFinite(valor) ? valor : 0 })
       setNewFinishNombre("")
       setNewFinishValor("0")
-      await fetchFinishes()
     } catch (e) {
       setConfigError(e instanceof Error ? e.message : "No se pudo crear el acabado")
+    }
+  }
+
+  const createPlastificado = async () => {
+    try {
+      const nombre = newPlastificadoNombre.trim()
+      const valor = parseFloat(newPlastificadoValor)
+      await createFinishInGroup("PLASTIFICADO", { nombre, valor: Number.isFinite(valor) ? valor : 0 })
+      setNewPlastificadoNombre("")
+      setNewPlastificadoValor("0")
+    } catch (e) {
+      setConfigError(e instanceof Error ? e.message : "No se pudo crear el plastificado")
+    }
+  }
+
+  const createTroquelado = async () => {
+    try {
+      const nombre = newTroqueladoNombre.trim()
+      const valor = parseFloat(newTroqueladoValor)
+      await createFinishInGroup("TROQUELADO", { nombre, valor: Number.isFinite(valor) ? valor : 0 })
+      setNewTroqueladoNombre("")
+      setNewTroqueladoValor("0")
+    } catch (e) {
+      setConfigError(e instanceof Error ? e.message : "No se pudo crear el troquelado")
+    }
+  }
+
+  const createCorte = async () => {
+    try {
+      const nombre = newCorteNombre.trim()
+      const valor = parseFloat(newCorteValor)
+      await createFinishInGroup("CORTE", { nombre, valor: Number.isFinite(valor) ? valor : 0 })
+      setNewCorteNombre("")
+      setNewCorteValor("0")
+    } catch (e) {
+      setConfigError(e instanceof Error ? e.message : "No se pudo crear el corte")
     }
   }
 
@@ -1157,8 +1222,23 @@ export function LitografiaCalculator() {
 
   const pagedFinishes = useMemo(() => {
     const start = finishesPage * PAGE_SIZE
-    return normalFinishes.slice(start, start + PAGE_SIZE)
-  }, [normalFinishes, finishesPage, PAGE_SIZE])
+    return acabadosFinishes.slice(start, start + PAGE_SIZE)
+  }, [acabadosFinishes, finishesPage, PAGE_SIZE])
+
+  const pagedPlastificados = useMemo(() => {
+    const start = plastificadosPage * PAGE_SIZE
+    return plastificadosFinishes.slice(start, start + PAGE_SIZE)
+  }, [plastificadosFinishes, plastificadosPage, PAGE_SIZE])
+
+  const pagedTroquelados = useMemo(() => {
+    const start = troqueladosPage * PAGE_SIZE
+    return troqueladosFinishes.slice(start, start + PAGE_SIZE)
+  }, [troqueladosFinishes, troqueladosPage, PAGE_SIZE])
+
+  const pagedCortes = useMemo(() => {
+    const start = cortesPage * PAGE_SIZE
+    return cortesFinishes.slice(start, start + PAGE_SIZE)
+  }, [cortesFinishes, cortesPage, PAGE_SIZE])
 
   const pagedSpecialFinishes = useMemo(() => {
     const start = specialFinishesPage * PAGE_SIZE
@@ -2327,7 +2407,7 @@ export function LitografiaCalculator() {
 
               <div className="space-y-2">
                 {finishesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                {normalFinishes.length === 0 && !finishesLoading ? <p className="text-sm text-muted-foreground">No hay acabados.</p> : null}
+                {acabadosFinishes.length === 0 && !finishesLoading ? <p className="text-sm text-muted-foreground">No hay acabados.</p> : null}
 
                 {pagedFinishes.map((f) => (
                   <div key={f.id} className="rounded-md border p-3 space-y-2">
@@ -2365,49 +2445,51 @@ export function LitografiaCalculator() {
                       return (
                         <>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
-                      <div className="md:col-span-2">
-                        <Label className="text-xs">Nombre</Label>
-                        <Input
-                          className={INPUT_COMPACT}
-                          value={draftNombre}
-                          onChange={(e) => {
-                            const v = e.target.value
-                            setFinishEdits((prev) => ({
-                              ...prev,
-                              [f.id]: { nombre: v, valor: prev[f.id]?.valor ?? String(f.valor ?? 0) },
-                            }))
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Valor</Label>
-                        <MoneyInput
-                          className={INPUT_COMPACT}
-                          type="number"
-                          step="1"
-                          min="0"
-                          value={draftValor}
-                          onChange={(e) => {
-                            const v = e.target.value
-                            setFinishEdits((prev) => ({
-                              ...prev,
-                              [f.id]: { nombre: prev[f.id]?.nombre ?? f.nombre, valor: v },
-                            }))
-                          }}
-                        />
-                      </div>
-                    </div>
+                            <div className="md:col-span-2">
+                              <Label className="text-xs">Nombre</Label>
+                              <Input
+                                className={INPUT_COMPACT}
+                                value={draftNombre}
+                                onChange={(e) => {
+                                  const v = e.target.value
+                                  setFinishEdits((prev) => ({
+                                    ...prev,
+                                    [f.id]: { nombre: v, valor: prev[f.id]?.valor ?? String(f.valor ?? 0) },
+                                  }))
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Valor</Label>
+                              <MoneyInput
+                                className={INPUT_COMPACT}
+                                type="number"
+                                step="1"
+                                min="0"
+                                value={draftValor}
+                                onChange={(e) => {
+                                  const v = e.target.value
+                                  setFinishEdits((prev) => ({
+                                    ...prev,
+                                    [f.id]: { nombre: prev[f.id]?.nombre ?? f.nombre, valor: v },
+                                  }))
+                                }}
+                              />
+                            </div>
+                          </div>
 
                           <div className="flex items-center justify-end gap-2">
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => setFinishEdits((prev) => {
-                                const next = { ...prev }
-                                delete next[f.id]
-                                return next
-                              })}
+                              onClick={() =>
+                                setFinishEdits((prev) => {
+                                  const next = { ...prev }
+                                  delete next[f.id]
+                                  return next
+                                })
+                              }
                               disabled={!hasDraft}
                             >
                               Cancelar
@@ -2439,22 +2521,22 @@ export function LitografiaCalculator() {
                   </div>
                 ))}
 
-                {normalFinishes.length > 0 ? (
+                {acabadosFinishes.length > 0 ? (
                   <div className="flex items-center justify-between gap-2 pt-1">
                     <p className="text-xs text-muted-foreground">
-                      Mostrando {finishesPage * PAGE_SIZE + 1}-{Math.min(normalFinishes.length, (finishesPage + 1) * PAGE_SIZE)} de {normalFinishes.length}
+                      Mostrando {finishesPage * PAGE_SIZE + 1}-{Math.min(acabadosFinishes.length, (finishesPage + 1) * PAGE_SIZE)} de {acabadosFinishes.length}
                     </p>
                     <div className="flex items-center gap-2">
                       <Button type="button" variant="outline" size="sm" onClick={() => setFinishesPage((p) => Math.max(0, p - 1))} disabled={finishesPage <= 0}>
                         Anterior
                       </Button>
-                      <p className="text-xs">Página {finishesPage + 1} / {Math.max(1, Math.ceil(normalFinishes.length / PAGE_SIZE))}</p>
+                      <p className="text-xs">Página {finishesPage + 1} / {Math.max(1, Math.ceil(acabadosFinishes.length / PAGE_SIZE))}</p>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => setFinishesPage((p) => Math.min(Math.ceil(normalFinishes.length / PAGE_SIZE) - 1, p + 1))}
-                        disabled={finishesPage >= Math.ceil(normalFinishes.length / PAGE_SIZE) - 1}
+                        onClick={() => setFinishesPage((p) => Math.min(Math.ceil(acabadosFinishes.length / PAGE_SIZE) - 1, p + 1))}
+                        disabled={finishesPage >= Math.ceil(acabadosFinishes.length / PAGE_SIZE) - 1}
                       >
                         Siguiente
                       </Button>
@@ -2636,6 +2718,510 @@ export function LitografiaCalculator() {
                   ) : null}
                 </div>
               </div>
+              </CardContent>
+            </details>
+          </Card>
+
+          <Card>
+            <details>
+              <summary className="cursor-pointer">
+                <CardHeader>
+                  <CardTitle>Plastificado</CardTitle>
+                  <CardDescription>Opciones para el módulo Plastificado del cotizador.</CardDescription>
+                </CardHeader>
+              </summary>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                  <div>
+                    <Label>Nombre</Label>
+                    <Input className={INPUT_COMPACT} value={newPlastificadoNombre} onChange={(e) => setNewPlastificadoNombre(e.target.value)} placeholder="Ej: Mate, Brillo" />
+                  </div>
+                  <div>
+                    <Label>Valor</Label>
+                    <MoneyInput className={INPUT_COMPACT} type="number" step="1" min="0" value={newPlastificadoValor} onChange={(e) => setNewPlastificadoValor(e.target.value)} placeholder="Ej: 15000" />
+                  </div>
+                  <div>
+                    <Button type="button" onClick={createPlastificado} disabled={!newPlastificadoNombre.trim()}>
+                      Agregar plastificado
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {finishesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
+                  {plastificadosFinishes.length === 0 && !finishesLoading ? <p className="text-sm text-muted-foreground">No hay plastificados.</p> : null}
+
+                  {pagedPlastificados.map((f) => (
+                    <div key={f.id} className="rounded-md border p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{f.nombre}</p>
+                          <p className="text-xs text-muted-foreground">Valor: {formatCurrency(f.valor || 0)}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button type="button" variant={f.activo ? "outline" : "default"} onClick={() => patchFinish(f.id, { activo: !f.activo })}>
+                            {f.activo ? "Desactivar" : "Activar"}
+                          </Button>
+                          <Button type="button" variant="ghost" className="text-red-600" onClick={() => deleteFinish(f.id)}>
+                            Eliminar
+                          </Button>
+                        </div>
+                      </div>
+
+                      {(() => {
+                        const draft = finishEdits[f.id]
+                        const draftNombre = draft?.nombre ?? f.nombre
+                        const draftValor = draft?.valor ?? String(f.valor ?? 0)
+                        const parsedDraftValor = parseFloat(draftValor)
+
+                        const isNombreDirty = draft?.nombre !== undefined && draftNombre.trim() !== f.nombre
+                        const isValorDirty =
+                          draft?.valor !== undefined &&
+                          Number.isFinite(parsedDraftValor) &&
+                          parsedDraftValor >= 0 &&
+                          parsedDraftValor !== (f.valor ?? 0)
+
+                        const hasDraft = Boolean(draft)
+                        const canSave = (isNombreDirty || isValorDirty) && (!draftValor.trim() || (Number.isFinite(parsedDraftValor) && parsedDraftValor >= 0))
+
+                        return (
+                          <>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                              <div className="md:col-span-2">
+                                <Label className="text-xs">Nombre</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  value={draftNombre}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setFinishEdits((prev) => ({
+                                      ...prev,
+                                      [f.id]: { nombre: v, valor: prev[f.id]?.valor ?? String(f.valor ?? 0) },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Valor</Label>
+                                <MoneyInput
+                                  className={INPUT_COMPACT}
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  value={draftValor}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setFinishEdits((prev) => ({
+                                      ...prev,
+                                      [f.id]: { nombre: prev[f.id]?.nombre ?? f.nombre, valor: v },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setFinishEdits((prev) => {
+                                    const next = { ...prev }
+                                    delete next[f.id]
+                                    return next
+                                  })
+                                }
+                                disabled={!hasDraft}
+                              >
+                                Cancelar
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => {
+                                  const patch: Partial<FinishOption> = {}
+                                  const nombre = draftNombre.trim()
+                                  if (nombre && nombre !== f.nombre) patch.nombre = nombre
+                                  if (Number.isFinite(parsedDraftValor) && parsedDraftValor >= 0 && parsedDraftValor !== (f.valor ?? 0)) patch.valor = parsedDraftValor
+                                  if (Object.keys(patch).length === 0) return
+                                  void patchFinish(f.id, patch)
+                                  setFinishEdits((prev) => {
+                                    const next = { ...prev }
+                                    delete next[f.id]
+                                    return next
+                                  })
+                                }}
+                                disabled={!canSave}
+                              >
+                                Guardar
+                              </Button>
+                            </div>
+                          </>
+                        )
+                      })()}
+                    </div>
+                  ))}
+
+                  {plastificadosFinishes.length > 0 ? (
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <p className="text-xs text-muted-foreground">
+                        Mostrando {plastificadosPage * PAGE_SIZE + 1}-{Math.min(plastificadosFinishes.length, (plastificadosPage + 1) * PAGE_SIZE)} de {plastificadosFinishes.length}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setPlastificadosPage((p) => Math.max(0, p - 1))} disabled={plastificadosPage <= 0}>
+                          Anterior
+                        </Button>
+                        <p className="text-xs">Página {plastificadosPage + 1} / {Math.max(1, Math.ceil(plastificadosFinishes.length / PAGE_SIZE))}</p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPlastificadosPage((p) => Math.min(Math.ceil(plastificadosFinishes.length / PAGE_SIZE) - 1, p + 1))}
+                          disabled={plastificadosPage >= Math.ceil(plastificadosFinishes.length / PAGE_SIZE) - 1}
+                        >
+                          Siguiente
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </CardContent>
+            </details>
+          </Card>
+
+          <Card>
+            <details>
+              <summary className="cursor-pointer">
+                <CardHeader>
+                  <CardTitle>Troquel / Troquelado</CardTitle>
+                  <CardDescription>Opciones para el módulo Troquelado del cotizador.</CardDescription>
+                </CardHeader>
+              </summary>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                  <div>
+                    <Label>Nombre</Label>
+                    <Input className={INPUT_COMPACT} value={newTroqueladoNombre} onChange={(e) => setNewTroqueladoNombre(e.target.value)} placeholder="Ej: Troquel estándar" />
+                  </div>
+                  <div>
+                    <Label>Valor</Label>
+                    <MoneyInput className={INPUT_COMPACT} type="number" step="1" min="0" value={newTroqueladoValor} onChange={(e) => setNewTroqueladoValor(e.target.value)} placeholder="Ej: 25000" />
+                  </div>
+                  <div>
+                    <Button type="button" onClick={createTroquelado} disabled={!newTroqueladoNombre.trim()}>
+                      Agregar troquelado
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {finishesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
+                  {troqueladosFinishes.length === 0 && !finishesLoading ? <p className="text-sm text-muted-foreground">No hay troquelados.</p> : null}
+
+                  {pagedTroquelados.map((f) => (
+                    <div key={f.id} className="rounded-md border p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{f.nombre}</p>
+                          <p className="text-xs text-muted-foreground">Valor: {formatCurrency(f.valor || 0)}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button type="button" variant={f.activo ? "outline" : "default"} onClick={() => patchFinish(f.id, { activo: !f.activo })}>
+                            {f.activo ? "Desactivar" : "Activar"}
+                          </Button>
+                          <Button type="button" variant="ghost" className="text-red-600" onClick={() => deleteFinish(f.id)}>
+                            Eliminar
+                          </Button>
+                        </div>
+                      </div>
+
+                      {(() => {
+                        const draft = finishEdits[f.id]
+                        const draftNombre = draft?.nombre ?? f.nombre
+                        const draftValor = draft?.valor ?? String(f.valor ?? 0)
+                        const parsedDraftValor = parseFloat(draftValor)
+
+                        const isNombreDirty = draft?.nombre !== undefined && draftNombre.trim() !== f.nombre
+                        const isValorDirty =
+                          draft?.valor !== undefined &&
+                          Number.isFinite(parsedDraftValor) &&
+                          parsedDraftValor >= 0 &&
+                          parsedDraftValor !== (f.valor ?? 0)
+
+                        const hasDraft = Boolean(draft)
+                        const canSave = (isNombreDirty || isValorDirty) && (!draftValor.trim() || (Number.isFinite(parsedDraftValor) && parsedDraftValor >= 0))
+
+                        return (
+                          <>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                              <div className="md:col-span-2">
+                                <Label className="text-xs">Nombre</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  value={draftNombre}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setFinishEdits((prev) => ({
+                                      ...prev,
+                                      [f.id]: { nombre: v, valor: prev[f.id]?.valor ?? String(f.valor ?? 0) },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Valor</Label>
+                                <MoneyInput
+                                  className={INPUT_COMPACT}
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  value={draftValor}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setFinishEdits((prev) => ({
+                                      ...prev,
+                                      [f.id]: { nombre: prev[f.id]?.nombre ?? f.nombre, valor: v },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setFinishEdits((prev) => {
+                                    const next = { ...prev }
+                                    delete next[f.id]
+                                    return next
+                                  })
+                                }
+                                disabled={!hasDraft}
+                              >
+                                Cancelar
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => {
+                                  const patch: Partial<FinishOption> = {}
+                                  const nombre = draftNombre.trim()
+                                  if (nombre && nombre !== f.nombre) patch.nombre = nombre
+                                  if (Number.isFinite(parsedDraftValor) && parsedDraftValor >= 0 && parsedDraftValor !== (f.valor ?? 0)) patch.valor = parsedDraftValor
+                                  if (Object.keys(patch).length === 0) return
+                                  void patchFinish(f.id, patch)
+                                  setFinishEdits((prev) => {
+                                    const next = { ...prev }
+                                    delete next[f.id]
+                                    return next
+                                  })
+                                }}
+                                disabled={!canSave}
+                              >
+                                Guardar
+                              </Button>
+                            </div>
+                          </>
+                        )
+                      })()}
+                    </div>
+                  ))}
+
+                  {troqueladosFinishes.length > 0 ? (
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <p className="text-xs text-muted-foreground">
+                        Mostrando {troqueladosPage * PAGE_SIZE + 1}-{Math.min(troqueladosFinishes.length, (troqueladosPage + 1) * PAGE_SIZE)} de {troqueladosFinishes.length}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setTroqueladosPage((p) => Math.max(0, p - 1))} disabled={troqueladosPage <= 0}>
+                          Anterior
+                        </Button>
+                        <p className="text-xs">Página {troqueladosPage + 1} / {Math.max(1, Math.ceil(troqueladosFinishes.length / PAGE_SIZE))}</p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setTroqueladosPage((p) => Math.min(Math.ceil(troqueladosFinishes.length / PAGE_SIZE) - 1, p + 1))}
+                          disabled={troqueladosPage >= Math.ceil(troqueladosFinishes.length / PAGE_SIZE) - 1}
+                        >
+                          Siguiente
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </CardContent>
+            </details>
+          </Card>
+
+          <Card>
+            <details>
+              <summary className="cursor-pointer">
+                <CardHeader>
+                  <CardTitle>Corte</CardTitle>
+                  <CardDescription>Opciones para el módulo Corte del cotizador.</CardDescription>
+                </CardHeader>
+              </summary>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                  <div>
+                    <Label>Nombre</Label>
+                    <Input className={INPUT_COMPACT} value={newCorteNombre} onChange={(e) => setNewCorteNombre(e.target.value)} placeholder="Ej: Corte guillotina" />
+                  </div>
+                  <div>
+                    <Label>Valor</Label>
+                    <MoneyInput className={INPUT_COMPACT} type="number" step="1" min="0" value={newCorteValor} onChange={(e) => setNewCorteValor(e.target.value)} placeholder="Ej: 8000" />
+                  </div>
+                  <div>
+                    <Button type="button" onClick={createCorte} disabled={!newCorteNombre.trim()}>
+                      Agregar corte
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {finishesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
+                  {cortesFinishes.length === 0 && !finishesLoading ? <p className="text-sm text-muted-foreground">No hay cortes.</p> : null}
+
+                  {pagedCortes.map((f) => (
+                    <div key={f.id} className="rounded-md border p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{f.nombre}</p>
+                          <p className="text-xs text-muted-foreground">Valor: {formatCurrency(f.valor || 0)}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button type="button" variant={f.activo ? "outline" : "default"} onClick={() => patchFinish(f.id, { activo: !f.activo })}>
+                            {f.activo ? "Desactivar" : "Activar"}
+                          </Button>
+                          <Button type="button" variant="ghost" className="text-red-600" onClick={() => deleteFinish(f.id)}>
+                            Eliminar
+                          </Button>
+                        </div>
+                      </div>
+
+                      {(() => {
+                        const draft = finishEdits[f.id]
+                        const draftNombre = draft?.nombre ?? f.nombre
+                        const draftValor = draft?.valor ?? String(f.valor ?? 0)
+                        const parsedDraftValor = parseFloat(draftValor)
+
+                        const isNombreDirty = draft?.nombre !== undefined && draftNombre.trim() !== f.nombre
+                        const isValorDirty =
+                          draft?.valor !== undefined &&
+                          Number.isFinite(parsedDraftValor) &&
+                          parsedDraftValor >= 0 &&
+                          parsedDraftValor !== (f.valor ?? 0)
+
+                        const hasDraft = Boolean(draft)
+                        const canSave = (isNombreDirty || isValorDirty) && (!draftValor.trim() || (Number.isFinite(parsedDraftValor) && parsedDraftValor >= 0))
+
+                        return (
+                          <>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                              <div className="md:col-span-2">
+                                <Label className="text-xs">Nombre</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  value={draftNombre}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setFinishEdits((prev) => ({
+                                      ...prev,
+                                      [f.id]: { nombre: v, valor: prev[f.id]?.valor ?? String(f.valor ?? 0) },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Valor</Label>
+                                <MoneyInput
+                                  className={INPUT_COMPACT}
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  value={draftValor}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setFinishEdits((prev) => ({
+                                      ...prev,
+                                      [f.id]: { nombre: prev[f.id]?.nombre ?? f.nombre, valor: v },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  setFinishEdits((prev) => {
+                                    const next = { ...prev }
+                                    delete next[f.id]
+                                    return next
+                                  })
+                                }
+                                disabled={!hasDraft}
+                              >
+                                Cancelar
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => {
+                                  const patch: Partial<FinishOption> = {}
+                                  const nombre = draftNombre.trim()
+                                  if (nombre && nombre !== f.nombre) patch.nombre = nombre
+                                  if (Number.isFinite(parsedDraftValor) && parsedDraftValor >= 0 && parsedDraftValor !== (f.valor ?? 0)) patch.valor = parsedDraftValor
+                                  if (Object.keys(patch).length === 0) return
+                                  void patchFinish(f.id, patch)
+                                  setFinishEdits((prev) => {
+                                    const next = { ...prev }
+                                    delete next[f.id]
+                                    return next
+                                  })
+                                }}
+                                disabled={!canSave}
+                              >
+                                Guardar
+                              </Button>
+                            </div>
+                          </>
+                        )
+                      })()}
+                    </div>
+                  ))}
+
+                  {cortesFinishes.length > 0 ? (
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <p className="text-xs text-muted-foreground">
+                        Mostrando {cortesPage * PAGE_SIZE + 1}-{Math.min(cortesFinishes.length, (cortesPage + 1) * PAGE_SIZE)} de {cortesFinishes.length}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setCortesPage((p) => Math.max(0, p - 1))} disabled={cortesPage <= 0}>
+                          Anterior
+                        </Button>
+                        <p className="text-xs">Página {cortesPage + 1} / {Math.max(1, Math.ceil(cortesFinishes.length / PAGE_SIZE))}</p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCortesPage((p) => Math.min(Math.ceil(cortesFinishes.length / PAGE_SIZE) - 1, p + 1))}
+                          disabled={cortesPage >= Math.ceil(cortesFinishes.length / PAGE_SIZE) - 1}
+                        >
+                          Siguiente
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               </CardContent>
             </details>
           </Card>

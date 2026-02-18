@@ -53,6 +53,7 @@ type FinishOption = {
   id: string
   key: string
   nombre: string
+  grupo?: "ACABADO" | "PLASTIFICADO" | "TROQUELADO" | "CORTE"
   especial?: boolean
   valor: number
   activo: boolean
@@ -61,6 +62,12 @@ type FinishOption = {
 type SpecialFinishRow = {
   finishId: string
   qty: string
+}
+
+type PaperRow = {
+  paperId: string
+  qty: string
+  formatoKey?: string
 }
 
 type PrintSize = {
@@ -132,6 +139,8 @@ export type LitografiaMeta = {
   margenPct?: string
   cantidad: string
   desperdicioPct: string
+  // Unidades extra mínimas (además del % de desperdicio)
+  sobranteMinimo?: string
   pricingSource: "tarifario" | "calculo"
   formatoKey: string
   colores: string
@@ -146,9 +155,16 @@ export type LitografiaMeta = {
   selectedPlanchaProfileId: string
   selectedTintaProfileId: string
   selectedPaperId: string
+  selectedPlanchaProfileIds?: string[]
+  selectedTintaProfileIds?: string[]
+  selectedPaperIds?: string[]
+  paperItems?: Array<{ paperId: string; qty: string; formatoKey?: string }>
   selectedFinishId: string
   selectedFinishIds?: string[]
   specialFinishItems?: Array<{ finishId: string; qty: string }>
+  selectedPlastificadoId?: string
+  selectedTroqueladoId?: string
+  selectedCorteId?: string
   selectedPaperTipo: string
   selectedPaperGramaje: string
   selectedTransporteKey: TransporteKey | ""
@@ -182,8 +198,9 @@ export function LitografiaQuoteDialog(props: {
   const [descripcion, setDescripcion] = useState("")
 
   const [cantidad, setCantidad] = useState("1000")
-  const [colores, setColores] = useState("4")
+  const [colores, setColores] = useState("1")
   const [desperdicioPct, setDesperdicioPct] = useState("3")
+  const [sobranteMinimo, setSobranteMinimo] = useState("100")
 
   const [costoPlanchaPorColor, setCostoPlanchaPorColor] = useState("25000")
   const [costoTintaPorColor, setCostoTintaPorColor] = useState("15000")
@@ -201,11 +218,15 @@ export function LitografiaQuoteDialog(props: {
   const [finishes, setFinishes] = useState<FinishOption[]>([])
   const [sizes, setSizes] = useState<PrintSize[]>([])
   const [configError, setConfigError] = useState<string | null>(null)
-  const [selectedPlanchaProfileId, setSelectedPlanchaProfileId] = useState<string>("")
-  const [selectedTintaProfileId, setSelectedTintaProfileId] = useState<string>("")
-  const [selectedPaperId, setSelectedPaperId] = useState<string>("")
+  const [selectedPlanchaProfileIds, setSelectedPlanchaProfileIds] = useState<string[]>([""])
+  const [selectedTintaProfileIds, setSelectedTintaProfileIds] = useState<string[]>([""])
+  const [paperRows, setPaperRows] = useState<PaperRow[]>([{ paperId: "", qty: "", formatoKey: "" }])
   const [selectedFinishIds, setSelectedFinishIds] = useState<string[]>([""])
   const [specialFinishRows, setSpecialFinishRows] = useState<SpecialFinishRow[]>([{ finishId: "", qty: "1" }])
+
+  const [selectedPlastificadoId, setSelectedPlastificadoId] = useState<string>("")
+  const [selectedTroqueladoId, setSelectedTroqueladoId] = useState<string>("")
+  const [selectedCorteId, setSelectedCorteId] = useState<string>("")
 
   const [selectedPaperTipo, setSelectedPaperTipo] = useState<string>("")
   const [selectedPaperGramaje, setSelectedPaperGramaje] = useState<string>("")
@@ -225,12 +246,111 @@ export function LitografiaQuoteDialog(props: {
   const [tarifaLoading, setTarifaLoading] = useState(false)
   const [tarifaError, setTarifaError] = useState<string | null>(null)
 
+  const [attemptedSubmit, setAttemptedSubmit] = useState(false)
+
   const [customFields, setCustomFields] = useState<CustomField[]>([])
+
+  const planchaIdsNormalized = useMemo(() => {
+    const ids = selectedPlanchaProfileIds.map((x) => String(x || "").trim()).filter(Boolean)
+    return Array.from(new Set(ids))
+  }, [selectedPlanchaProfileIds])
+  const tintaIdsNormalized = useMemo(() => {
+    const ids = selectedTintaProfileIds.map((x) => String(x || "").trim()).filter(Boolean)
+    return Array.from(new Set(ids))
+  }, [selectedTintaProfileIds])
+
+  const primaryPlanchaProfileId = planchaIdsNormalized[0] ?? ""
+  const primaryTintaProfileId = tintaIdsNormalized[0] ?? ""
+  const primaryPaperId = String(paperRows[0]?.paperId ?? "").trim()
 
   const finishIdsNormalized = useMemo(() => {
     const ids = selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean)
     return Array.from(new Set(ids))
   }, [selectedFinishIds])
+
+  const addPlanchaRow = () => setSelectedPlanchaProfileIds((prev) => [...prev, ""])
+  const removePlanchaRow = (index: number) => {
+    setSelectedPlanchaProfileIds((prev) => {
+      const next = prev.filter((_, i) => i !== index)
+      return next.length ? next : [""]
+    })
+  }
+  const updatePlanchaRow = (index: number, value: string) => {
+    setSelectedPlanchaProfileIds((prev) => {
+      const normalized = String(value || "").trim()
+      if (normalized) {
+        const alreadyUsed = prev.some((v, i) => i !== index && String(v || "").trim() === normalized)
+        if (alreadyUsed) return prev
+      }
+      const next = [...prev]
+      next[index] = normalized
+      if (!next.length) return [""]
+      return next
+    })
+  }
+
+  const addTintaRow = () => setSelectedTintaProfileIds((prev) => [...prev, ""])
+  const removeTintaRow = (index: number) => {
+    setSelectedTintaProfileIds((prev) => {
+      const next = prev.filter((_, i) => i !== index)
+      return next.length ? next : [""]
+    })
+  }
+  const updateTintaRow = (index: number, value: string) => {
+    setSelectedTintaProfileIds((prev) => {
+      const normalized = String(value || "").trim()
+      if (normalized) {
+        const alreadyUsed = prev.some((v, i) => i !== index && String(v || "").trim() === normalized)
+        if (alreadyUsed) return prev
+      }
+      const next = [...prev]
+      next[index] = normalized
+      if (!next.length) return [""]
+      return next
+    })
+  }
+
+  const addPaperRow = () => setPaperRows((prev) => [...prev, { paperId: "", qty: "", formatoKey }])
+  const removePaperRow = (index: number) => {
+    setPaperRows((prev) => {
+      const next = prev.filter((_, i) => i !== index)
+      return next.length ? next : [{ paperId: "", qty: "", formatoKey: "" }]
+    })
+  }
+  const updatePaperRow = (index: number, paperId: string) => {
+    setPaperRows((prev) => {
+      const normalized = String(paperId || "").trim()
+      if (normalized) {
+        const alreadyUsed = prev.some((row, i) => i !== index && String(row.paperId || "").trim() === normalized)
+        if (alreadyUsed) return prev
+      }
+      const next = [...prev]
+      const current = next[index] ?? { paperId: "", qty: "", formatoKey: "" }
+      next[index] = { ...current, paperId: normalized }
+      if (!next.length) return [{ paperId: "", qty: "", formatoKey: "" }]
+      return next
+    })
+  }
+
+  const updatePaperQty = (index: number, qty: string) => {
+    setPaperRows((prev) => {
+      const next = [...prev]
+      const current = next[index] ?? { paperId: "", qty: "", formatoKey: "" }
+      next[index] = { ...current, qty }
+      if (!next.length) return [{ paperId: "", qty: "", formatoKey: "" }]
+      return next
+    })
+  }
+
+  const updatePaperFormato = (index: number, nextFormatoKey: string) => {
+    setPaperRows((prev) => {
+      const next = [...prev]
+      const current = next[index] ?? { paperId: "", qty: "", formatoKey: "" }
+      next[index] = { ...current, formatoKey: nextFormatoKey }
+      if (!next.length) return [{ paperId: "", qty: "", formatoKey: "" }]
+      return next
+    })
+  }
 
   const addFinishRow = () => {
     setSelectedFinishIds((prev) => [...prev, ""])
@@ -310,6 +430,17 @@ export function LitografiaQuoteDialog(props: {
       qtyBySpecialFinishId.set(finishId, (qtyBySpecialFinishId.get(finishId) ?? 0) + qty)
     }
     const specialFinishItems = Array.from(qtyBySpecialFinishId.entries()).map(([finishId, qty]) => ({ finishId, qty: String(qty) }))
+    const paperItems = paperRows
+      .map((row, idx) => {
+        const paperId = String(row.paperId || "").trim()
+        if (!paperId) return null
+        if (idx === 0) return { paperId, qty: "" }
+        const qty = String(row.qty ?? "").trim()
+        const rowFormatoKey = String(row.formatoKey ?? "").trim()
+        return { paperId, qty, formatoKey: rowFormatoKey || undefined }
+      })
+      .filter(Boolean) as Array<{ paperId: string; qty: string; formatoKey?: string }>
+    const selectedPaperIds = paperRows.map((r) => String(r.paperId || "").trim())
     return {
       version: 1,
       titulo,
@@ -317,6 +448,7 @@ export function LitografiaQuoteDialog(props: {
       margenPct,
       cantidad,
       desperdicioPct,
+      sobranteMinimo,
       pricingSource: "tarifario",
       formatoKey,
       colores,
@@ -328,12 +460,19 @@ export function LitografiaQuoteDialog(props: {
       costoPliego,
       pliegoW,
       pliegoH,
-      selectedPlanchaProfileId,
-      selectedTintaProfileId,
-      selectedPaperId,
+      selectedPlanchaProfileId: primaryPlanchaProfileId,
+      selectedTintaProfileId: primaryTintaProfileId,
+      selectedPaperId: primaryPaperId,
+      selectedPlanchaProfileIds,
+      selectedTintaProfileIds,
+      selectedPaperIds,
+      paperItems,
       selectedFinishId: primaryFinishId,
       selectedFinishIds: finishIds,
       specialFinishItems,
+      selectedPlastificadoId,
+      selectedTroqueladoId,
+      selectedCorteId,
       selectedPaperTipo,
       selectedPaperGramaje,
       selectedTransporteKey,
@@ -350,8 +489,9 @@ export function LitografiaQuoteDialog(props: {
     setMargenPct(meta.margenPct ?? "")
     setCantidad(meta.cantidad ?? "")
     setDesperdicioPct(meta.desperdicioPct ?? "")
+    setSobranteMinimo(meta.sobranteMinimo ?? "100")
     setFormatoKey(meta.formatoKey ?? "")
-    setColores(meta.colores ?? "4")
+    setColores(meta.colores ?? "1")
     setCostoPlanchaPorColor(meta.costoPlanchaPorColor ?? "")
     setCostoTintaPorColor(meta.costoTintaPorColor ?? "")
     setCostoPapelUnidad(meta.costoPapelUnidad ?? "")
@@ -360,9 +500,39 @@ export function LitografiaQuoteDialog(props: {
     setCostoPliego(meta.costoPliego ?? "")
     setPliegoW(meta.pliegoW ?? "")
     setPliegoH(meta.pliegoH ?? "")
-    setSelectedPlanchaProfileId(meta.selectedPlanchaProfileId ?? "")
-    setSelectedTintaProfileId(meta.selectedTintaProfileId ?? "")
-    setSelectedPaperId(meta.selectedPaperId ?? "")
+
+    const planchaLegacy = String(meta.selectedPlanchaProfileId ?? "").trim()
+    const tintaLegacy = String(meta.selectedTintaProfileId ?? "").trim()
+    const paperLegacy = String(meta.selectedPaperId ?? "").trim()
+
+    const planchaIds = Array.isArray(meta.selectedPlanchaProfileIds) ? meta.selectedPlanchaProfileIds : []
+    const tintaIds = Array.isArray(meta.selectedTintaProfileIds) ? meta.selectedTintaProfileIds : []
+    const paperIds = Array.isArray(meta.selectedPaperIds) ? meta.selectedPaperIds : []
+
+    const nextPlanchas = planchaIds.map((x) => String(x || "").trim()).filter(Boolean)
+    const nextTintas = tintaIds.map((x) => String(x || "").trim()).filter(Boolean)
+    setSelectedPlanchaProfileIds(nextPlanchas.length ? nextPlanchas : (planchaLegacy ? [planchaLegacy] : [""]))
+    setSelectedTintaProfileIds(nextTintas.length ? nextTintas : (tintaLegacy ? [tintaLegacy] : [""]))
+
+    const paperItems = Array.isArray(meta.paperItems) ? meta.paperItems : []
+    const rowsFromItems: PaperRow[] = []
+    for (let i = 0; i < paperItems.length; i++) {
+      const it = paperItems[i]
+      const id = String((it as { paperId?: unknown }).paperId ?? "").trim()
+      const qty = String((it as { qty?: unknown }).qty ?? "").trim()
+      const rowFormato = String((it as { formatoKey?: unknown }).formatoKey ?? "").trim()
+      if (!id) continue
+      if (i === 0) {
+        rowsFromItems.push({ paperId: id, qty: "", formatoKey: "" })
+        continue
+      }
+      rowsFromItems.push({ paperId: id, qty, formatoKey: rowFormato || undefined })
+    }
+    const paperIdsNormalized = paperIds.map((x) => String(x || "").trim()).filter(Boolean)
+    const rowsFromLegacy: PaperRow[] = (paperIdsNormalized.length ? paperIdsNormalized : (paperLegacy ? [paperLegacy] : [""]))
+      .map((id, idx) => ({ paperId: id, qty: idx === 0 ? "" : "", formatoKey: idx === 0 ? "" : formatoKey }))
+    const finalRows = rowsFromItems.length ? rowsFromItems : rowsFromLegacy
+    setPaperRows(finalRows.length ? finalRows : [{ paperId: "", qty: "", formatoKey: "" }])
     const finishIdsRaw = Array.isArray(meta.selectedFinishIds) ? meta.selectedFinishIds : []
     const fromList = finishIdsRaw.map((x) => String(x || "").trim()).filter(Boolean)
     const fromLegacy = String(meta.selectedFinishId ?? "").trim()
@@ -384,6 +554,9 @@ export function LitografiaQuoteDialog(props: {
     setSelectedPaperTipo(meta.selectedPaperTipo ?? "")
     setSelectedPaperGramaje(meta.selectedPaperGramaje ?? "")
     setSelectedTransporteKey((meta.selectedTransporteKey as TransporteKey | "") ?? "")
+    setSelectedPlastificadoId(meta.selectedPlastificadoId ?? "")
+    setSelectedTroqueladoId(meta.selectedTroqueladoId ?? "")
+    setSelectedCorteId(meta.selectedCorteId ?? "")
     setCostoCorte(meta.costoCorte ?? "0")
     setCostoAcabados(meta.costoAcabados ?? "0")
     setCostoTransporte(meta.costoTransporte ?? "0")
@@ -416,20 +589,71 @@ export function LitografiaQuoteDialog(props: {
     return filtered.length ? filtered : activeProfiles
   }, [activeProfiles])
   const activePapers = useMemo(() => papers.filter((p) => p.activo), [papers])
-  const activeFinishes = useMemo(() => finishes.filter((f) => f.activo && !f.especial), [finishes])
-  const activeSpecialFinishes = useMemo(() => finishes.filter((f) => f.activo && Boolean(f.especial)), [finishes])
+  const getGrupo = (f: FinishOption) => (f.grupo ?? "ACABADO")
 
-  const selectedPlanchaProfile = useMemo(() => {
-    return profiles.find((p) => p.id === selectedPlanchaProfileId) || null
-  }, [profiles, selectedPlanchaProfileId])
+  const activeFinishes = useMemo(
+    () => finishes.filter((f) => f.activo && getGrupo(f) === "ACABADO" && !f.especial),
+    [finishes]
+  )
+  const activeSpecialFinishes = useMemo(
+    () => finishes.filter((f) => f.activo && getGrupo(f) === "ACABADO" && Boolean(f.especial)),
+    [finishes]
+  )
 
-  const selectedTintaProfile = useMemo(() => {
-    return profiles.find((p) => p.id === selectedTintaProfileId) || null
-  }, [profiles, selectedTintaProfileId])
+  const activePlastificados = useMemo(
+    () => finishes.filter((f) => f.activo && getGrupo(f) === "PLASTIFICADO"),
+    [finishes]
+  )
+  const activeTroquelados = useMemo(
+    () => finishes.filter((f) => f.activo && getGrupo(f) === "TROQUELADO"),
+    [finishes]
+  )
+  const activeCortes = useMemo(
+    () => finishes.filter((f) => f.activo && getGrupo(f) === "CORTE"),
+    [finishes]
+  )
 
-  const selectedPaper = useMemo(() => {
-    return papers.find((p) => p.id === selectedPaperId) || null
-  }, [papers, selectedPaperId])
+  const selectedPlastificado = useMemo(() => {
+    if (!selectedPlastificadoId) return null
+    return activePlastificados.find((f) => f.id === selectedPlastificadoId) || null
+  }, [activePlastificados, selectedPlastificadoId])
+
+  const selectedTroquelado = useMemo(() => {
+    if (!selectedTroqueladoId) return null
+    return activeTroquelados.find((f) => f.id === selectedTroqueladoId) || null
+  }, [activeTroquelados, selectedTroqueladoId])
+
+  const selectedCorte = useMemo(() => {
+    if (!selectedCorteId) return null
+    return activeCortes.find((f) => f.id === selectedCorteId) || null
+  }, [activeCortes, selectedCorteId])
+
+  const plastificadoCost = Number(selectedPlastificado?.valor) || 0
+  const troqueladoCost = Number(selectedTroquelado?.valor) || 0
+  const corteCost = Number(selectedCorte?.valor) || 0
+
+  const selectedPlanchaProfiles = useMemo(() => {
+    if (!planchaIdsNormalized.length) return [] as PrintProfile[]
+    const byId = new Map(profiles.map((p) => [p.id, p] as const))
+    return planchaIdsNormalized.map((id) => byId.get(id)).filter(Boolean) as PrintProfile[]
+  }, [profiles, planchaIdsNormalized])
+
+  const selectedTintaProfiles = useMemo(() => {
+    if (!tintaIdsNormalized.length) return [] as PrintProfile[]
+    const byId = new Map(profiles.map((p) => [p.id, p] as const))
+    return tintaIdsNormalized.map((id) => byId.get(id)).filter(Boolean) as PrintProfile[]
+  }, [profiles, tintaIdsNormalized])
+
+  const primaryPlanchaProfile = selectedPlanchaProfiles[0] ?? null
+  const primaryTintaProfile = selectedTintaProfiles[0] ?? null
+  const primaryPaper = (primaryPaperId ? papers.find((p) => p.id === primaryPaperId) || null : null)
+
+  const planchaCostConfigured = useMemo(() => {
+    return selectedPlanchaProfiles.reduce((acc, p) => acc + (Number(p.costoPlanchaPorColor) || 0), 0)
+  }, [selectedPlanchaProfiles])
+  const tintaCostConfigured = useMemo(() => {
+    return selectedTintaProfiles.reduce((acc, p) => acc + (Number(p.costoTintaPorColor) || 0), 0)
+  }, [selectedTintaProfiles])
 
   const selectedFinishes = useMemo(() => {
     const wanted = new Set(selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean))
@@ -474,17 +698,17 @@ export function LitografiaQuoteDialog(props: {
 
   useEffect(() => {
     if (!props.open) return
-    if (!selectedPlanchaProfileId && activePlanchaProfiles.length) {
-      setSelectedPlanchaProfileId(activePlanchaProfiles[0]!.id)
+    if (!primaryPlanchaProfileId && activePlanchaProfiles.length) {
+      setSelectedPlanchaProfileIds([activePlanchaProfiles[0]!.id])
     }
-  }, [props.open, activePlanchaProfiles, selectedPlanchaProfileId])
+  }, [props.open, activePlanchaProfiles, primaryPlanchaProfileId])
 
   useEffect(() => {
     if (!props.open) return
-    if (!selectedTintaProfileId && activeTintaProfiles.length) {
-      setSelectedTintaProfileId(activeTintaProfiles[0]!.id)
+    if (!primaryTintaProfileId && activeTintaProfiles.length) {
+      setSelectedTintaProfileIds([activeTintaProfiles[0]!.id])
     }
-  }, [props.open, activeTintaProfiles, selectedTintaProfileId])
+  }, [props.open, activeTintaProfiles, primaryTintaProfileId])
 
   useEffect(() => {
     if (!props.open) return
@@ -501,10 +725,10 @@ export function LitografiaQuoteDialog(props: {
 
   useEffect(() => {
     if (!props.open) return
-    if (!selectedPaperId && activePapers.length) {
-      setSelectedPaperId(activePapers[0]!.id)
+    if (!primaryPaperId && activePapers.length) {
+      setPaperRows([{ paperId: activePapers[0]!.id, qty: "", formatoKey: "" }])
     }
-  }, [props.open, activePapers, selectedPaperId])
+  }, [props.open, activePapers, primaryPaperId])
 
   useEffect(() => {
     if (!props.open) return
@@ -517,6 +741,7 @@ export function LitografiaQuoteDialog(props: {
     const load = async () => {
       setConfigError(null)
       setTarifaError(null)
+      setAttemptedSubmit(false)
       try {
         const [meRes, r1, r2, r3] = await Promise.all([
           fetch("/api/me", { cache: "no-store" }),
@@ -568,7 +793,7 @@ export function LitografiaQuoteDialog(props: {
         url.searchParams.set("formatoKey", formatoKey)
         url.searchParams.set("tintas", String(tintas))
         url.searchParams.set("cantidad", String(qty))
-        if (selectedPaperId) url.searchParams.set("paperRateId", selectedPaperId)
+        if (primaryPaperId) url.searchParams.set("paperRateId", primaryPaperId)
         const finishIds = selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean)
         if (finishIds.length === 1) url.searchParams.set("finishOptionId", finishIds[0]!)
 
@@ -588,22 +813,18 @@ export function LitografiaQuoteDialog(props: {
 
     void run()
     return () => controller.abort()
-  }, [props.open, meLoaded, isAdmin, cantidad, formatoKey, selectedPaperId, selectedFinishIds])
+  }, [props.open, meLoaded, isAdmin, cantidad, formatoKey, primaryPaperId, selectedFinishIds])
 
   useEffect(() => {
-    const profile = profiles.find((p) => p.id === selectedPlanchaProfileId)
-    if (!profile) return
-    setCostoPlanchaPorColor(String(profile.costoPlanchaPorColor ?? 0))
-  }, [profiles, selectedPlanchaProfileId])
+    setCostoPlanchaPorColor(String(planchaCostConfigured || 0))
+  }, [planchaCostConfigured])
 
   useEffect(() => {
-    const profile = profiles.find((p) => p.id === selectedTintaProfileId)
-    if (!profile) return
-    setCostoTintaPorColor(String(profile.costoTintaPorColor ?? 0))
-  }, [profiles, selectedTintaProfileId])
+    setCostoTintaPorColor(String(tintaCostConfigured || 0))
+  }, [tintaCostConfigured])
 
   useEffect(() => {
-    const paper = papers.find((p) => p.id === selectedPaperId)
+    const paper = papers.find((p) => p.id === primaryPaperId)
     if (!paper) return
     setPapelPorPliego(true)
     setCostoPliego(String(paper.costoPliego ?? 0))
@@ -618,16 +839,23 @@ export function LitografiaQuoteDialog(props: {
     else if (t.includes("propal") || t.includes("cote") || t.includes("couche")) setPapelTipo("propalcote")
     else if (t.includes("period")) setPapelTipo("periodico")
     else setPapelTipo("otro")
-  }, [papers, selectedPaperId])
+
+    setSobranteMinimo((prev) => (String(prev || "").trim() ? prev : "100"))
+  }, [papers, primaryPaperId])
 
   const calc = useMemo(() => {
     if (!isAdmin) return null
-    return computeLitografia({
-      cantidad: parseFloat(cantidad) || 0,
-      colores: parseFloat(colores) || 1,
-      desperdicioPct: parseFloat(desperdicioPct) || 0,
-      costoPlanchaPorColor: parseFloat(costoPlanchaPorColor) || 0,
-      costoTintaPorColor: parseFloat(costoTintaPorColor) || 0,
+    const qtyBase = parseFloat(cantidad) || 0
+    const desperdicio = parseFloat(desperdicioPct) || 0
+    const sobrante = parseFloat(sobranteMinimo) || 0
+
+    const base = computeLitografia({
+      cantidad: qtyBase,
+      colores: 1,
+      desperdicioPct: desperdicio,
+      sobranteMinimo: sobrante,
+      costoPlanchaPorColor: planchaCostConfigured,
+      costoTintaPorColor: tintaCostConfigured,
       costoPapelUnidad: parseFloat(costoPapelUnidad) || 0,
       papelModo: papelPorPliego ? "pliego" : "unidad",
       papelTipo,
@@ -641,13 +869,91 @@ export function LitografiaQuoteDialog(props: {
       costoTransporte: parseFloat(costoTransporte) || 0,
       margenPct: 0,
     })
+
+    if (papelPorPliego && selectedPreset) {
+      const byPaperId = new Map(papers.map((p) => [p.id, p] as const))
+      const presetByKey = new Map(sizeOptions.map((s) => [s.key, s] as const))
+
+      const baseNoPaper = computeLitografia({
+        cantidad: qtyBase,
+        colores: 1,
+        desperdicioPct: desperdicio,
+        sobranteMinimo: sobrante,
+        costoPlanchaPorColor: planchaCostConfigured,
+        costoTintaPorColor: tintaCostConfigured,
+        costoPapelUnidad: 0,
+        papelModo: "pliego",
+        papelTipo,
+        papelPliegoWidthCm: (primaryPaper?.pliegoWidthCm ?? parseFloat(pliegoW)) || 0,
+        papelPliegoHeightCm: (primaryPaper?.pliegoHeightCm ?? parseFloat(pliegoH)) || 0,
+        papelFormatoWidthCm: selectedPreset.widthCm ?? 0,
+        papelFormatoHeightCm: selectedPreset.heightCm ?? 0,
+        costoPliego: 0,
+        costoCorte: parseFloat(costoCorte) || 0,
+        costoAcabados: (parseFloat(costoAcabados) || 0) + selectedFinishesCost + specialFinishesCost,
+        costoTransporte: parseFloat(costoTransporte) || 0,
+        margenPct: 0,
+      })
+
+      let paperTotal = 0
+      for (let idx = 0; idx < paperRows.length; idx++) {
+        const row = paperRows[idx]
+        const paperId = String(row?.paperId || "").trim()
+        if (!paperId) continue
+        const paper = byPaperId.get(paperId)
+        if (!paper) continue
+
+        const rowPreset = idx === 0
+          ? selectedPreset
+          : (presetByKey.get(String(row.formatoKey || "").trim()) || selectedPreset)
+
+        const rowQty = idx === 0 ? qtyBase : (parseFloat(String(row.qty || "0")) || 0)
+        if (rowQty <= 0) continue
+
+        const r = computeLitografia({
+          cantidad: rowQty,
+          colores: 1,
+          desperdicioPct: desperdicio,
+          sobranteMinimo: sobrante,
+          costoPlanchaPorColor: 0,
+          costoTintaPorColor: 0,
+          costoPapelUnidad: 0,
+          papelModo: "pliego",
+          papelTipo,
+          papelPliegoWidthCm: paper.pliegoWidthCm ?? 0,
+          papelPliegoHeightCm: paper.pliegoHeightCm ?? 0,
+          papelFormatoWidthCm: rowPreset?.widthCm ?? 0,
+          papelFormatoHeightCm: rowPreset?.heightCm ?? 0,
+          costoPliego: paper.costoPliego ?? 0,
+          costoCorte: 0,
+          costoAcabados: 0,
+          costoTransporte: 0,
+          margenPct: 0,
+        })
+        paperTotal += r.papel
+      }
+
+      if (paperTotal > 0) {
+        const costoProduccion = baseNoPaper.plancha + baseNoPaper.tinta + paperTotal + baseNoPaper.corte + baseNoPaper.acabados + baseNoPaper.transporte
+        const precioVenta = costoProduccion
+        return {
+          ...baseNoPaper,
+          papel: paperTotal,
+          costoProduccion,
+          precioVenta,
+          costoUnitario: costoProduccion / baseNoPaper.qty,
+          precioUnitario: precioVenta / baseNoPaper.qty,
+        }
+      }
+    }
+    return base
   }, [
     isAdmin,
     cantidad,
-    colores,
     desperdicioPct,
-    costoPlanchaPorColor,
-    costoTintaPorColor,
+    sobranteMinimo,
+    planchaCostConfigured,
+    tintaCostConfigured,
     costoPapelUnidad,
     papelPorPliego,
     papelTipo,
@@ -660,6 +966,10 @@ export function LitografiaQuoteDialog(props: {
     selectedFinishesCost,
     specialFinishesCost,
     costoTransporte,
+    paperRows,
+    primaryPaper,
+    papers,
+    sizeOptions,
   ])
 
   const fallbackCalc = useMemo(() => {
@@ -672,17 +982,16 @@ export function LitografiaQuoteDialog(props: {
 
     // Estimación cuando no hay tarifa exacta. Usa costos del perfil y papel seleccionado.
     const desperdicio = parseFloat(desperdicioPct) || 0
-    const planchaProfile = selectedPlanchaProfile
-    const tintaProfile = selectedTintaProfile
-    const paper = selectedPaper
-    if (!planchaProfile || !tintaProfile || !paper) return null
+    if (!primaryPaper) return null
+    const paper = primaryPaper
 
-    return computeLitografia({
+    const base = computeLitografia({
       cantidad: qty,
-      colores: tintas,
+      colores: 1,
       desperdicioPct: desperdicio,
-      costoPlanchaPorColor: planchaProfile.costoPlanchaPorColor ?? 0,
-      costoTintaPorColor: tintaProfile.costoTintaPorColor ?? 0,
+      sobranteMinimo: parseFloat(sobranteMinimo) || 0,
+      costoPlanchaPorColor: planchaCostConfigured,
+      costoTintaPorColor: tintaCostConfigured,
       costoPapelUnidad: 0,
       papelModo: "pliego",
       papelTipo,
@@ -697,25 +1006,146 @@ export function LitografiaQuoteDialog(props: {
       // Margen 0: se deja como estimación base (se puede ajustar en tarifario).
       margenPct: 0,
     })
+
+    if (selectedPreset) {
+      const byPaperId = new Map(papers.map((p) => [p.id, p] as const))
+      const presetByKey = new Map(sizeOptions.map((s) => [s.key, s] as const))
+
+      const baseNoPaper = computeLitografia({
+        cantidad: qty,
+        colores: 1,
+        desperdicioPct: desperdicio,
+        sobranteMinimo: parseFloat(sobranteMinimo) || 0,
+        costoPlanchaPorColor: planchaCostConfigured,
+        costoTintaPorColor: tintaCostConfigured,
+        costoPapelUnidad: 0,
+        papelModo: "pliego",
+        papelTipo,
+        papelPliegoWidthCm: paper.pliegoWidthCm ?? 0,
+        papelPliegoHeightCm: paper.pliegoHeightCm ?? 0,
+        papelFormatoWidthCm: selectedPreset.widthCm ?? 0,
+        papelFormatoHeightCm: selectedPreset.heightCm ?? 0,
+        costoPliego: 0,
+        costoCorte: 0,
+        costoAcabados: 0,
+        costoTransporte: parseFloat(costoTransporte) || 0,
+        margenPct: 0,
+      })
+
+      let paperTotal = 0
+      for (let idx = 0; idx < paperRows.length; idx++) {
+        const row = paperRows[idx]
+        const paperId = String(row?.paperId || "").trim()
+        if (!paperId) continue
+        const p = byPaperId.get(paperId)
+        if (!p) continue
+
+        const rowPreset = idx === 0
+          ? selectedPreset
+          : (presetByKey.get(String(row.formatoKey || "").trim()) || selectedPreset)
+
+        const rowQty = idx === 0 ? qty : (parseFloat(String(row.qty || "0")) || 0)
+        if (rowQty <= 0) continue
+
+        const r = computeLitografia({
+          cantidad: rowQty,
+          colores: 1,
+          desperdicioPct: desperdicio,
+          sobranteMinimo: parseFloat(sobranteMinimo) || 0,
+          costoPlanchaPorColor: 0,
+          costoTintaPorColor: 0,
+          costoPapelUnidad: 0,
+          papelModo: "pliego",
+          papelTipo,
+          papelPliegoWidthCm: p.pliegoWidthCm ?? 0,
+          papelPliegoHeightCm: p.pliegoHeightCm ?? 0,
+          papelFormatoWidthCm: rowPreset?.widthCm ?? 0,
+          papelFormatoHeightCm: rowPreset?.heightCm ?? 0,
+          costoPliego: p.costoPliego ?? 0,
+          costoCorte: 0,
+          costoAcabados: 0,
+          costoTransporte: 0,
+          margenPct: 0,
+        })
+        paperTotal += r.papel
+      }
+
+      if (paperTotal > 0) {
+        const costoProduccion = baseNoPaper.plancha + baseNoPaper.tinta + paperTotal + baseNoPaper.corte + baseNoPaper.acabados + baseNoPaper.transporte
+        const precioVenta = costoProduccion
+        return {
+          ...baseNoPaper,
+          papel: paperTotal,
+          costoProduccion,
+          precioVenta,
+          costoUnitario: costoProduccion / baseNoPaper.qty,
+          precioUnitario: precioVenta / baseNoPaper.qty,
+        }
+      }
+    }
+    return base
   }, [
     isAdmin,
     props.open,
     cantidad,
     desperdicioPct,
+    sobranteMinimo,
+    planchaCostConfigured,
+    tintaCostConfigured,
     papelTipo,
     costoTransporte,
     selectedPreset,
-    selectedPlanchaProfile,
-    selectedTintaProfile,
-    selectedPaper,
+    primaryPaper,
+    paperRows,
+    papers,
+    sizeOptions,
   ])
 
-  const canAdd = useMemo(() => {
-    if (isAdmin) return Boolean(calc)
-    if (tarifaLoading) return false
+  const validation = useMemo(() => {
     const qty = Math.trunc(parseFloat(cantidad) || 0)
-    return qty > 0
-  }, [isAdmin, calc, tarifaLoading, cantidad])
+    const missingCantidad = qty <= 0
+    const missingFormato = !formatoKey || !selectedPreset
+    const missingPaper = !primaryPaperId && activePapers.length > 0
+    const missingPlancha = !primaryPlanchaProfileId && activePlanchaProfiles.length > 0
+    const missingTinta = !primaryTintaProfileId && activeTintaProfiles.length > 0
+    const missingPricing = !isAdmin && !tarifa && !fallbackCalc
+
+    const hasMissing = missingCantidad || missingFormato || missingPaper || missingPlancha || missingTinta || missingPricing
+    return {
+      qty,
+      missingCantidad,
+      missingFormato,
+      missingPaper,
+      missingPlancha,
+      missingTinta,
+      missingPricing,
+      hasMissing,
+    }
+  }, [
+    isAdmin,
+    cantidad,
+    formatoKey,
+    selectedPreset,
+    primaryPaperId,
+    activePapers.length,
+    primaryPlanchaProfileId,
+    activePlanchaProfiles.length,
+    primaryTintaProfileId,
+    activeTintaProfiles.length,
+    tarifa,
+    fallbackCalc,
+  ])
+
+  const requiredLabelClass = (missing: boolean) => (attemptedSubmit && missing ? "text-red-600" : "")
+  const requiredFieldClass = (missing: boolean) =>
+    attemptedSubmit && missing ? "border-red-500 focus-visible:ring-red-500" : ""
+
+  const canAdd = useMemo(() => {
+    if (tarifaLoading) return false
+    if (validation.hasMissing) return false
+    if (isAdmin) return Boolean(calc)
+    return Boolean(tarifa || fallbackCalc)
+  }, [tarifaLoading, validation.hasMissing, isAdmin, calc, tarifa, fallbackCalc])
 
   const defaultDescripcion = useMemo(() => {
     const base = (titulo || (isAdmin ? "Litografía" : "Litografía")).trim() || (isAdmin ? "Litografía" : "Litografía")
@@ -725,8 +1155,11 @@ export function LitografiaQuoteDialog(props: {
       const tintasLabel = tintas === 4 ? "Policromía (4)" : `${tintas} tinta${tintas === 1 ? "" : "s"}`
       const qty = Math.trunc(parseFloat(cantidad) || 0)
       const parts = [base, presetLabel, tintasLabel]
-      if (selectedPaper) parts.push(`Papel ${selectedPaper.nombre}${selectedPaper.gramaje ? ` ${selectedPaper.gramaje}g` : ""}`)
+      if (primaryPaper) parts.push(`Papel ${primaryPaper.nombre}${primaryPaper.gramaje ? ` ${primaryPaper.gramaje}g` : ""}`)
       if (selectedFinishes.length) parts.push(`Acabados ${selectedFinishes.map((f) => f.nombre).join(", ")}`)
+      if (selectedPlastificado) parts.push(`Plastificado ${selectedPlastificado.nombre}`)
+      if (selectedTroquelado) parts.push(`Troquelado ${selectedTroquelado.nombre}`)
+      if (selectedCorte) parts.push(`Corte ${selectedCorte.nombre}`)
       if (selectedSpecialFinishNames.length) parts.push(`Acabados especiales ${selectedSpecialFinishNames.join(", ")}`)
       if (selectedTransporteKey) {
         const opt = TRANSPORTE_OPTIONS.find((o) => o.key === selectedTransporteKey)
@@ -751,7 +1184,7 @@ export function LitografiaQuoteDialog(props: {
     }
 
     return parts.join(" • ")
-  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, tarifa, calc, papelTipo, selectedPaper, selectedFinishes, selectedSpecialFinishNames, selectedTransporteKey])
+  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, tarifa, calc, papelTipo, primaryPaper, selectedFinishes, selectedSpecialFinishNames, selectedTransporteKey, selectedPlastificado, selectedTroquelado, selectedCorte])
 
   const buildDescripcion = () => {
     const notas = descripcion.trim()
@@ -784,18 +1217,33 @@ export function LitografiaQuoteDialog(props: {
 
   const handleAddToCotizacion = () => {
     {
+      setAttemptedSubmit(true)
       setTarifaError(null)
       const qty = Math.trunc(parseFloat(cantidad) || 0)
       if (qty <= 0) {
         setTarifaError("Cantidad inválida")
         return
       }
+
+      if (validation.hasMissing) {
+        setTarifaError("Completa los campos obligatorios para generar la cotización")
+        return
+      }
+
       const transporte = parseFloat(costoTransporte) || 0
       const base = tarifa ? Number(tarifa.precioTotal) || 0 : 0
       const computed = !tarifa ? (isAdmin ? calc : fallbackCalc) : null
 
-      const addFinishesCost = isAdmin && computed ? 0 : selectedFinishesCost
+      if (!tarifa && !computed) {
+        setTarifaError("No hay tarifa ni cálculo estimado disponible")
+        return
+      }
+
+      const addFinishesCost = tarifa ? 0 : (isAdmin && computed ? 0 : selectedFinishesCost)
       const addSpecialFinishesCost = isAdmin && computed ? 0 : specialFinishesCost
+      const addPlastificadoCost = isAdmin && computed ? 0 : plastificadoCost
+      const addTroqueladoCost = isAdmin && computed ? 0 : troqueladoCost
+      const addCorteCost = isAdmin && computed ? 0 : corteCost
 
       const meta = buildMeta()
       const baseValue = tarifa ? base : (computed?.precioVenta ?? 0)
@@ -805,6 +1253,9 @@ export function LitografiaQuoteDialog(props: {
         (shouldAddTransporte ? transporte : 0) +
         addFinishesCost +
         addSpecialFinishesCost +
+        addPlastificadoCost +
+        addTroqueladoCost +
+        addCorteCost +
         customFieldsTotal
       const payload: AddLitografiaItemPayload = {
         descripcion: buildDescripcion(),
@@ -885,9 +1336,9 @@ export function LitografiaQuoteDialog(props: {
                     <p className="mt-1 text-xs text-muted-foreground">Se aplica al total del ítem de litografía. 0 = sin utilidad adicional.</p>
                   </div>
                       <div>
-                        <Label>Cantidad (tiraje)</Label>
+                        <Label className={requiredLabelClass(validation.missingCantidad)}>Cantidad (tiraje)</Label>
                         <Input
-                          className={INPUT_COMPACT}
+                          className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingCantidad)}`}
                           type="number"
                           step="1"
                           value={cantidad}
@@ -895,10 +1346,10 @@ export function LitografiaQuoteDialog(props: {
                         />
                       </div>
 
-                      <div>
-                        <Label>Tamaño de impresión</Label>
+                      <div className="sm:col-span-2">
+                        <Label className={requiredLabelClass(validation.missingFormato)}>Tamaño de impresión</Label>
                         <select
-                          className={SELECT_COMPACT}
+                          className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
                           value={formatoKey}
                           onChange={(e) => setFormatoKey(e.target.value)}
                           disabled={!sizeOptions.length}
@@ -920,26 +1371,46 @@ export function LitografiaQuoteDialog(props: {
                       </div>
 
                       <div>
-                        <Label>Planchas (costo)</Label>
-                        <select
-                          className={SELECT_COMPACT}
-                          value={selectedPlanchaProfileId}
-                          onChange={(e) => setSelectedPlanchaProfileId(e.target.value)}
-                          disabled={!activePlanchaProfiles.length}
-                        >
-                          {activePlanchaProfiles.length ? (
-                            activePlanchaProfiles.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.nombre}
-                              </option>
-                            ))
-                          ) : (
-                            <option value="">Sin perfiles</option>
-                          )}
-                        </select>
+                        <Label className={requiredLabelClass(validation.missingPlancha)}>Planchas (costo)</Label>
+                        <div className="mt-2 space-y-2">
+                          {selectedPlanchaProfileIds.map((id, idx) => (
+                            <div key={`${idx}-${id}`} className="flex items-center gap-2">
+                              <select
+                                className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPlancha)}`}
+                                value={id}
+                                onChange={(e) => updatePlanchaRow(idx, e.target.value)}
+                                disabled={!activePlanchaProfiles.length}
+                              >
+                                <option value="">Sin planchas</option>
+                                {activePlanchaProfiles.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.nombre}
+                                  </option>
+                                ))}
+                              </select>
+                              {selectedPlanchaProfileIds.length > 1 ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-600"
+                                  onClick={() => removePlanchaRow(idx)}
+                                >
+                                  Quitar
+                                </Button>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <span className="text-[10px] leading-tight text-muted-foreground">Puedes agregar más de un perfil de planchas.</span>
+                          <Button type="button" variant="outline" size="sm" onClick={addPlanchaRow}>
+                            Agregar otro
+                          </Button>
+                        </div>
                         <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                          {selectedPlanchaProfile ? (
-                            <>Plancha/Color: {formatCurrency(selectedPlanchaProfile.costoPlanchaPorColor)}</>
+                          {primaryPlanchaProfile ? (
+                            <>Total planchas: {formatCurrency(planchaCostConfigured)}</>
                           ) : (
                             <>Selecciona planchas.</>
                           )}
@@ -947,57 +1418,148 @@ export function LitografiaQuoteDialog(props: {
                       </div>
 
                       <div>
-                        <Label>Tinta (costo)</Label>
-                        <select
-                          className={SELECT_COMPACT}
-                          value={selectedTintaProfileId}
-                          onChange={(e) => setSelectedTintaProfileId(e.target.value)}
-                          disabled={!activeTintaProfiles.length}
-                        >
-                          {activeTintaProfiles.length ? (
-                            activeTintaProfiles.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.nombre}
-                              </option>
-                            ))
-                          ) : (
-                            <option value="">Sin perfiles</option>
-                          )}
-                        </select>
+                        <Label className={requiredLabelClass(validation.missingTinta)}>Tinta (costo)</Label>
+                        <div className="mt-2 space-y-2">
+                          {selectedTintaProfileIds.map((id, idx) => (
+                            <div key={`${idx}-${id}`} className="flex items-center gap-2">
+                              <select
+                                className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingTinta)}`}
+                                value={id}
+                                onChange={(e) => updateTintaRow(idx, e.target.value)}
+                                disabled={!activeTintaProfiles.length}
+                              >
+                                <option value="">Sin tintas</option>
+                                {activeTintaProfiles.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {p.nombre}
+                                  </option>
+                                ))}
+                              </select>
+                              {selectedTintaProfileIds.length > 1 ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-600"
+                                  onClick={() => removeTintaRow(idx)}
+                                >
+                                  Quitar
+                                </Button>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <span className="text-[10px] leading-tight text-muted-foreground">Puedes agregar más de un perfil de tintas.</span>
+                          <Button type="button" variant="outline" size="sm" onClick={addTintaRow}>
+                            Agregar otro
+                          </Button>
+                        </div>
                         <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                          {selectedTintaProfile ? (
-                            <>Tinta/Color: {formatCurrency(selectedTintaProfile.costoTintaPorColor)}</>
+                          {primaryTintaProfile ? (
+                            <>Total tintas: {formatCurrency(tintaCostConfigured)}</>
                           ) : (
                             <>Selecciona tintas.</>
                           )}
                         </p>
                       </div>
 
-                        <div>
-                          <Label>Papel</Label>
-                          <select
-                            className={SELECT_COMPACT}
-                            value={selectedPaperId}
-                            onChange={(e) => setSelectedPaperId(e.target.value)}
-                            disabled={!activePapers.length}
-                          >
-                            {activePapers.length ? (
-                              activePapers.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.nombre}{p.gramaje ? ` • ${p.gramaje}g` : ""} • {formatCurrency(p.costoPliego)}/pliego
-                                </option>
-                              ))
-                            ) : (
-                              <option value="">Sin papeles</option>
-                            )}
-                          </select>
+                        <div className="sm:col-span-2">
+                          <Label className={requiredLabelClass(validation.missingPaper)}>Papel</Label>
+                          <div className="mt-2 space-y-2">
+                            {paperRows.map((row, idx) => (
+                              <div key={`${idx}-${row.paperId}`} className="flex items-center gap-2">
+                                <select
+                                  className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPaper)}`}
+                                  value={row.paperId}
+                                  onChange={(e) => updatePaperRow(idx, e.target.value)}
+                                  disabled={!activePapers.length}
+                                >
+                                  <option value="">Sin papel</option>
+                                  {activePapers.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.nombre}{p.gramaje ? ` • ${p.gramaje}g` : ""} • {formatCurrency(p.costoPliego)}/pliego
+                                    </option>
+                                  ))}
+                                </select>
+                                {idx === 0 ? (
+                                  <div className="min-w-[120px] text-[10px] leading-tight text-muted-foreground">
+                                    Tiraje: {String(cantidad || "0")}
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="w-24">
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        min={0}
+                                        step="1"
+                                        value={row.qty}
+                                        onChange={(e) => updatePaperQty(idx, e.target.value)}
+                                        placeholder="Cantidad"
+                                      />
+                                    </div>
+                                    <div className="w-28">
+                                      <select
+                                        className={SELECT_COMPACT}
+                                        value={row.formatoKey || formatoKey}
+                                        onChange={(e) => updatePaperFormato(idx, e.target.value)}
+                                        disabled={!sizeOptions.length}
+                                      >
+                                        {sizeOptions.map((s) => (
+                                          <option key={s.key} value={s.key}>
+                                            {s.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </>
+                                )}
+                                {idx > 0 ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-600"
+                                    onClick={() => removePaperRow(idx)}
+                                  >
+                                    Quitar
+                                  </Button>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <span className="text-[10px] leading-tight text-muted-foreground">
+                              El primer papel usa el tiraje y tamaño principal. Los adicionales permiten cantidad y tamaño.
+                            </span>
+                            <Button type="button" variant="outline" size="sm" onClick={addPaperRow}>
+                              Agregar otro
+                            </Button>
+                          </div>
                           <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                            {selectedPaper ? (
-                              <>Pliego: {selectedPaper.pliegoWidthCm}×{selectedPaper.pliegoHeightCm} cm</>
+                            {primaryPaper ? (
+                              <>Pliego (principal): {primaryPaper.pliegoWidthCm}×{primaryPaper.pliegoHeightCm} cm</>
                             ) : (
                               <>Selecciona un papel.</>
                             )}
                           </p>
+
+                          <div className="mt-2">
+                            <Label>Sobrante mínimo (unid.)</Label>
+                            <Input
+                              className={INPUT_COMPACT}
+                              type="number"
+                              min={0}
+                              step="1"
+                              value={sobranteMinimo}
+                              onChange={(e) => setSobranteMinimo(e.target.value)}
+                              placeholder="100"
+                            />
+                            <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                              Se usa como mínimo de unidades extra (además del % de desperdicio).
+                            </p>
+                          </div>
                         </div>
 
                         <div className="sm:col-span-2">
@@ -1042,6 +1604,72 @@ export function LitografiaQuoteDialog(props: {
                               ? <>Seleccionados: {selectedFinishes.map((f) => f.nombre).join(", ")}</>
                               : <>Ej: troquel.</>}
                           </p>
+                        </div>
+
+                        <div>
+                          <Label>Plastificado</Label>
+                          <select
+                            className={SELECT_COMPACT}
+                            value={selectedPlastificadoId}
+                            onChange={(e) => setSelectedPlastificadoId(e.target.value)}
+                            disabled={!activePlastificados.length}
+                          >
+                            <option value="">Sin plastificado</option>
+                            {activePlastificados.map((f) => (
+                              <option key={f.id} value={f.id}>
+                                {f.nombre}
+                              </option>
+                            ))}
+                          </select>
+                          {!activePlastificados.length ? (
+                            <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                              Configura opciones en Configuración &gt; Litografía &gt; Acabados &gt; Plastificado.
+                            </p>
+                          ) : null}
+                        </div>
+
+                        <div>
+                          <Label>Troquel / Troquelado</Label>
+                          <select
+                            className={SELECT_COMPACT}
+                            value={selectedTroqueladoId}
+                            onChange={(e) => setSelectedTroqueladoId(e.target.value)}
+                            disabled={!activeTroquelados.length}
+                          >
+                            <option value="">Sin troquelado</option>
+                            {activeTroquelados.map((f) => (
+                              <option key={f.id} value={f.id}>
+                                {f.nombre}
+                              </option>
+                            ))}
+                          </select>
+                          {!activeTroquelados.length ? (
+                            <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                              Configura opciones en Configuración &gt; Litografía &gt; Acabados &gt; Troquelado.
+                            </p>
+                          ) : null}
+                        </div>
+
+                        <div>
+                          <Label>Corte</Label>
+                          <select
+                            className={SELECT_COMPACT}
+                            value={selectedCorteId}
+                            onChange={(e) => setSelectedCorteId(e.target.value)}
+                            disabled={!activeCortes.length}
+                          >
+                            <option value="">Sin corte</option>
+                            {activeCortes.map((f) => (
+                              <option key={f.id} value={f.id}>
+                                {f.nombre}
+                              </option>
+                            ))}
+                          </select>
+                          {!activeCortes.length ? (
+                            <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                              Configura opciones en Configuración &gt; Litografía &gt; Acabados &gt; Corte.
+                            </p>
+                          ) : null}
                         </div>
 
                         <div className="sm:col-span-2">
@@ -1181,7 +1809,7 @@ export function LitografiaQuoteDialog(props: {
                           {(() => {
                             const wantsFinish = finishIdsNormalized.length > 0
                             const usedGenericFinish = wantsFinish && tarifa.finishOptionId == null
-                            const usedGenericPaper = Boolean(selectedPaperId) && tarifa.paperRateId == null
+                            const usedGenericPaper = Boolean(primaryPaperId) && tarifa.paperRateId == null
                             if (!usedGenericFinish && !usedGenericPaper) return null
                             return (
                               <p className="text-xs text-amber-700">
@@ -1195,8 +1823,8 @@ export function LitografiaQuoteDialog(props: {
                               const base = tarifa.precioTotal || 0
                               const transporte = parseFloat(costoTransporte) || 0
                               const extras = customFieldsTotal
-                              const addFinishesCost = selectedFinishesCost
-                              const total = (base * margenMultiplier) + transporte + addFinishesCost + specialFinishesCost + extras
+                              const addFinishesCost = 0
+                              const total = (base * margenMultiplier) + transporte + addFinishesCost + specialFinishesCost + plastificadoCost + troqueladoCost + corteCost + extras
                               const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
                               return (
                                 <>
@@ -1204,6 +1832,9 @@ export function LitografiaQuoteDialog(props: {
                                   <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Transporte</span><span className="font-medium">{formatCurrency(transporte)}</span></div>
                                   {addFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Acabados</span><span className="font-medium">{formatCurrency(addFinishesCost)}</span></div> : null}
                                   {specialFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Acabados especiales</span><span className="font-medium">{formatCurrency(specialFinishesCost)}</span></div> : null}
+                                  {plastificadoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Plastificado</span><span className="font-medium">{formatCurrency(plastificadoCost)}</span></div> : null}
+                                  {troqueladoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Troquelado</span><span className="font-medium">{formatCurrency(troqueladoCost)}</span></div> : null}
+                                  {corteCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Corte</span><span className="font-medium">{formatCurrency(corteCost)}</span></div> : null}
                                   {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Campos extra</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
                                   <div className="flex justify-between mt-2"><span className="font-medium">Total</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
                                   <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Unitario</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>
@@ -1229,13 +1860,16 @@ export function LitografiaQuoteDialog(props: {
                             {(() => {
                               const extras = customFieldsTotal
                               const baseValue = fallbackCalc.precioVenta || 0
-                              const total = (baseValue * margenMultiplier) + selectedFinishesCost + specialFinishesCost + extras
+                              const total = (baseValue * margenMultiplier) + selectedFinishesCost + specialFinishesCost + plastificadoCost + troqueladoCost + corteCost + extras
                               const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
                               return (
                                 <>
                                   <div className="flex justify-between text-sm"><span className="text-muted-foreground">Base (estimado)</span><span className="font-medium">{formatCurrency(baseValue)}</span></div>
                                   {selectedFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Acabados</span><span className="font-medium">{formatCurrency(selectedFinishesCost)}</span></div> : null}
                                   {specialFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Acabados especiales</span><span className="font-medium">{formatCurrency(specialFinishesCost)}</span></div> : null}
+                                  {plastificadoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Plastificado</span><span className="font-medium">{formatCurrency(plastificadoCost)}</span></div> : null}
+                                  {troqueladoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Troquelado</span><span className="font-medium">{formatCurrency(troqueladoCost)}</span></div> : null}
+                                  {corteCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Corte</span><span className="font-medium">{formatCurrency(corteCost)}</span></div> : null}
                                   {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Campos extra</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
                                   <div className="flex justify-between mt-2"><span className="font-medium">Total</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
                                   <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Unitario</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
-import { ModuleKey } from "@prisma/client"
+import { LitografiaFinishGroup, ModuleKey } from "@prisma/client"
 
 export const runtime = "nodejs"
 
@@ -22,6 +22,14 @@ function asBoolean(value: unknown): boolean | null {
   if (["true", "1", "yes", "si"].includes(s)) return true
   if (["false", "0", "no"].includes(s)) return false
   return null
+}
+
+function asGrupo(value: unknown): LitografiaFinishGroup | null {
+  if (value === null || value === undefined) return null
+  const s = String(value).trim().toUpperCase()
+  if (!s) return null
+  const allowed = new Set(["ACABADO", "PLASTIFICADO", "TROQUELADO", "CORTE"])
+  return allowed.has(s) ? (s as LitografiaFinishGroup) : null
 }
 
 async function getEmpresaIdFromSedeId(sedeId: string): Promise<string | null> {
@@ -52,6 +60,12 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     patch.nombre = nombre
   }
 
+  if (body.grupo !== undefined) {
+    const grupo = asGrupo(body.grupo)
+    if (grupo === null) return NextResponse.json({ ok: false, error: "grupo inválido" }, { status: 400 })
+    patch.grupo = grupo
+  }
+
   if (body.activo !== undefined) patch.activo = Boolean(body.activo)
 
   if (body.especial !== undefined) {
@@ -70,7 +84,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     const updated = await prisma.litografiaFinishOption.update({
       where: { id, empresaId },
       data: patch,
-      select: { id: true, key: true, nombre: true, especial: true, valor: true, activo: true, updatedAt: true },
+      select: { id: true, key: true, nombre: true, grupo: true, especial: true, valor: true, activo: true, updatedAt: true },
     })
     return NextResponse.json({ ok: true, data: updated })
   } catch {
