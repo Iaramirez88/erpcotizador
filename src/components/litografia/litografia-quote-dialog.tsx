@@ -252,11 +252,11 @@ export function LitografiaQuoteDialog(props: {
 
   const planchaIdsNormalized = useMemo(() => {
     const ids = selectedPlanchaProfileIds.map((x) => String(x || "").trim()).filter(Boolean)
-    return Array.from(new Set(ids))
+    return ids
   }, [selectedPlanchaProfileIds])
   const tintaIdsNormalized = useMemo(() => {
     const ids = selectedTintaProfileIds.map((x) => String(x || "").trim()).filter(Boolean)
-    return Array.from(new Set(ids))
+    return ids
   }, [selectedTintaProfileIds])
 
   const primaryPlanchaProfileId = planchaIdsNormalized[0] ?? ""
@@ -265,7 +265,7 @@ export function LitografiaQuoteDialog(props: {
 
   const finishIdsNormalized = useMemo(() => {
     const ids = selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean)
-    return Array.from(new Set(ids))
+    return ids
   }, [selectedFinishIds])
 
   const addPlanchaRow = () => setSelectedPlanchaProfileIds((prev) => [...prev, ""])
@@ -278,10 +278,6 @@ export function LitografiaQuoteDialog(props: {
   const updatePlanchaRow = (index: number, value: string) => {
     setSelectedPlanchaProfileIds((prev) => {
       const normalized = String(value || "").trim()
-      if (normalized) {
-        const alreadyUsed = prev.some((v, i) => i !== index && String(v || "").trim() === normalized)
-        if (alreadyUsed) return prev
-      }
       const next = [...prev]
       next[index] = normalized
       if (!next.length) return [""]
@@ -299,10 +295,6 @@ export function LitografiaQuoteDialog(props: {
   const updateTintaRow = (index: number, value: string) => {
     setSelectedTintaProfileIds((prev) => {
       const normalized = String(value || "").trim()
-      if (normalized) {
-        const alreadyUsed = prev.some((v, i) => i !== index && String(v || "").trim() === normalized)
-        if (alreadyUsed) return prev
-      }
       const next = [...prev]
       next[index] = normalized
       if (!next.length) return [""]
@@ -320,10 +312,6 @@ export function LitografiaQuoteDialog(props: {
   const updatePaperRow = (index: number, paperId: string) => {
     setPaperRows((prev) => {
       const normalized = String(paperId || "").trim()
-      if (normalized) {
-        const alreadyUsed = prev.some((row, i) => i !== index && String(row.paperId || "").trim() === normalized)
-        if (alreadyUsed) return prev
-      }
       const next = [...prev]
       const current = next[index] ?? { paperId: "", qty: "", formatoKey: "" }
       next[index] = { ...current, paperId: normalized }
@@ -386,10 +374,6 @@ export function LitografiaQuoteDialog(props: {
   const updateSpecialFinishRow = (index: number, finishId: string) => {
     setSpecialFinishRows((prev) => {
       const normalized = String(finishId || "").trim()
-      if (normalized) {
-        const alreadyUsedElsewhere = prev.some((row, i) => i !== index && String(row.finishId || "").trim() === normalized)
-        if (alreadyUsedElsewhere) return prev
-      }
       const next = [...prev]
       const current = next[index] ?? { finishId: "", qty: "1" }
       next[index] = { ...current, finishId: normalized }
@@ -656,9 +640,12 @@ export function LitografiaQuoteDialog(props: {
   }, [selectedTintaProfiles])
 
   const selectedFinishes = useMemo(() => {
-    const wanted = new Set(selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean))
-    if (!wanted.size) return [] as FinishOption[]
-    return finishes.filter((f) => !f.especial && wanted.has(f.id))
+    const byId = new Map(finishes.map((f) => [f.id, f] as const))
+    return selectedFinishIds
+      .map((x) => String(x || "").trim())
+      .filter(Boolean)
+      .map((id) => byId.get(id))
+        .filter((f): f is FinishOption => f != null && !f.especial)
   }, [finishes, selectedFinishIds])
 
   const selectedFinishesCost = useMemo(() => {
@@ -1678,11 +1665,6 @@ export function LitografiaQuoteDialog(props: {
                             {specialFinishRows.map((row, idx) => {
                               const finishId = String(row.finishId || "").trim()
                               const selected = finishId ? activeSpecialFinishes.find((f) => f.id === finishId) || null : null
-                              const takenElsewhere = new Set(
-                                specialFinishRows
-                                  .map((r, i) => (i === idx ? "" : String(r.finishId || "").trim()))
-                                  .filter(Boolean)
-                              )
 
                               return (
                                 <div key={`${idx}-${finishId}`} className="flex items-center gap-2">
@@ -1693,7 +1675,7 @@ export function LitografiaQuoteDialog(props: {
                                   >
                                     <option value="">Seleccionar…</option>
                                     {activeSpecialFinishes.map((f) => (
-                                      <option key={f.id} value={f.id} disabled={takenElsewhere.has(f.id)}>
+                                      <option key={f.id} value={f.id}>
                                         {f.nombre}
                                       </option>
                                     ))}
