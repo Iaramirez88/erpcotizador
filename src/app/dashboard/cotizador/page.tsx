@@ -230,7 +230,8 @@ export default function CotizadorPage() {
 
         setEditingId(cot.id)
         setClienteId(String(cot.clienteId || ""))
-        const descuentoAmount = typeof cot.descuento === "number" ? cot.descuento : Number(cot.descuento || 0)
+        // Descuento deshabilitado por el momento.
+        setDescuento(0)
         setValidezDias(String(cot.validezDias ?? 15))
 
         const obsRaw = String(cot.observaciones || "").trim()
@@ -297,10 +298,8 @@ export default function CotizadorPage() {
             })
           : []
 
-        // `cot.descuento` se guarda como valor; en UI lo manejamos como porcentaje.
-        const itemsTotal = mappedItems.reduce((acc, it) => acc + (Number.isFinite(it.subtotal) ? it.subtotal : 0), 0)
-        const pct = itemsTotal > 0 ? (Math.max(0, descuentoAmount) / itemsTotal) * 100 : 0
-        setDescuento(Math.min(100, Math.max(0, pct)))
+        // Descuento deshabilitado por el momento.
+        setDescuento(0)
 
         setItems(mappedItems)
         setShowItemForm(false)
@@ -320,7 +319,7 @@ export default function CotizadorPage() {
   useEffect(() => {
     calcularTotales()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, descuento, taxConfig.pricesIncludeIva, taxConfig.ivaPct])
+  }, [items, taxConfig.pricesIncludeIva, taxConfig.ivaPct])
 
   const fetchClientes = async () => {
     try {
@@ -786,9 +785,8 @@ export default function CotizadorPage() {
 
   const calcularTotales = () => {
     const sub = items.reduce((sum, item) => sum + item.subtotal, 0)
-    const descPct = Math.min(100, Math.max(0, parseFloat(descuento.toString()) || 0))
-    const descValue = sub * (descPct / 100)
-    const subConDescuento = Math.max(0, sub - descValue)
+    // Descuento deshabilitado por el momento.
+    const subConDescuento = sub
 
     const ivaPct = Math.min(100, Math.max(0, taxConfig.ivaPct))
     const rate = ivaPct / 100
@@ -848,7 +846,7 @@ export default function CotizadorPage() {
           })),
           subtotal,
           descuento: 0,
-          descuentoPct: descuento,
+          descuentoPct: 0,
           iva,
           total,
           validezDias,
@@ -1409,20 +1407,6 @@ export default function CotizadorPage() {
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal:</span>
                   <span className="font-medium">{formatCurrency(subtotal)}</span>
-                </div>
-
-                <div>
-                  <Label htmlFor="descuento" className="text-sm">Descuento (%):</Label>
-                  <Input
-                    id="descuento"
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.1"
-                    value={descuento}
-                    onChange={(e) => setDescuento(parseFloat(e.target.value) || 0)}
-                    placeholder="0"
-                  />
                 </div>
 
                 <div className="flex justify-between text-sm pt-2 border-t">

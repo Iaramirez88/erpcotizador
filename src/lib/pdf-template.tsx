@@ -92,7 +92,6 @@ function createStyles(t: CotizacionTemplateSettings) {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'flex-start',
-      gap: 10,
     },
     headerLeft: {
       flexGrow: 1,
@@ -102,7 +101,6 @@ function createStyles(t: CotizacionTemplateSettings) {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'flex-start',
-      gap: 10,
     },
     headerLeftText: {
       flexGrow: 1,
@@ -113,7 +111,6 @@ function createStyles(t: CotizacionTemplateSettings) {
       flexDirection: 'column',
       alignItems: 'flex-end',
       justifyContent: 'flex-start',
-      gap: 6,
     },
     headerRightText: {
       flexDirection: 'column',
@@ -245,7 +242,6 @@ function createStyles(t: CotizacionTemplateSettings) {
     footerRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      gap: 10,
     },
     footerLeft: {
       width: '65%',
@@ -284,7 +280,7 @@ function createStyles(t: CotizacionTemplateSettings) {
       right: '10%',
       textAlign: 'center',
       opacity: t.watermark.opacity,
-      transform: [{ operation: 'rotate' as const, value: [t.watermark.rotateDeg] as [number] }],
+      transform: [{ rotate: `${t.watermark.rotateDeg}deg` } as any],
       color: t.watermark.color,
       fontWeight: 'bold',
       fontSize: t.watermark.fontSize,
@@ -297,7 +293,7 @@ function createStyles(t: CotizacionTemplateSettings) {
       height: `${watermarkScale * 100}%`,
       objectFit: 'contain',
       opacity: t.watermark.opacity,
-      transform: [{ operation: 'rotate' as const, value: [t.watermark.rotateDeg] as [number] }],
+      transform: [{ rotate: `${t.watermark.rotateDeg}deg` } as any],
     },
 
   })

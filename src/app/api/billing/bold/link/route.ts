@@ -25,6 +25,13 @@ export async function POST(request: Request) {
     const access = await requireApiAccess(ModuleKey.CONFIG, 'WRITE')
     if (!access.ok) return access.response
 
+    if (!process.env.BOLD_IDENTITY_KEY) {
+      return NextResponse.json(
+        { ok: false, error: 'BOLD_IDENTITY_KEY no configurada en el servidor.' },
+        { status: 503 }
+      )
+    }
+
     const body = (await request.json().catch(() => null)) as Partial<Body> | null
     if (!body || !isPlanTier(body.tier) || !isBillingCycle(body.cycle)) {
       return NextResponse.json({ ok: false, error: 'Body inválido. Esperado: { tier, cycle }' }, { status: 400 })
@@ -78,6 +85,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, provider: 'BOLD', reference, paymentLinkId, url })
   } catch (e) {
-    return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'Error inesperado' }, { status: 500 })
+    const message = e instanceof Error ? e.message : 'Error inesperado'
+    const status = /no configurad/i.test(message) ? 503 : 500
+    return NextResponse.json({ ok: false, error: message }, { status })
   }
 }
