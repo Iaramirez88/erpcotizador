@@ -19,12 +19,20 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import dotenv from 'dotenv'
 import bcrypt from 'bcryptjs'
+import { Prisma } from '@prisma/client'
 
 dotenv.config()
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 const adapter = new PrismaPg(pool)
 const prisma = new PrismaClient({ adapter })
+
+function randomWorkspaceCode(): string {
+	const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+	let out = 'WS-'
+	for (let i = 0; i < 8; i++) out += chars[Math.floor(Math.random() * chars.length)]
+	return out
+}
 
 function envBool(name: string, defaultValue: boolean): boolean {
 	const raw = (process.env[name] ?? '').trim().toLowerCase()
@@ -46,6 +54,10 @@ async function resolveTargetEmpresa() {
 	const workspaceCode = (process.env.TARGET_WORKSPACE_CODE ?? '').trim()
 	const nit = (process.env.TARGET_EMPRESA_NIT ?? '').trim()
 	const name = (process.env.TARGET_EMPRESA_NAME ?? '').trim()
+	const createTarget = envBool('CREATE_TARGET', false)
+	const createNit = (process.env.TARGET_CREATE_NIT ?? '').trim()
+	const createEmail = (process.env.TARGET_CREATE_EMAIL ?? '').trim()
+	const createSedeName = (process.env.TARGET_CREATE_SEDE_NAME ?? 'Principal').trim() || 'Principal'
 
 	if (id) {
 		const empresa = await prisma.empresa.findUnique({
@@ -83,6 +95,49 @@ async function resolveTargetEmpresa() {
 			take: 2,
 		})
 		if (matches.length === 0) {
+			if (createTarget) {
+				if (!createNit) {
+					throw new Error('CREATE_TARGET=true requiere TARGET_CREATE_NIT (nit único, no PERS-...)')
+				}
+				if (createNit.toUpperCase().startsWith('PERS-')) {
+					throw new Error('TARGET_CREATE_NIT no puede iniciar con PERS- (eso activa paywall personal)')
+				}
+
+				// Crear empresa + sede inicial
+				for (let attempt = 0; attempt < 12; attempt++) {
+					try {
+						const created = await prisma.empresa.create({
+							data: {
+								nombre: name,
+								nit: createNit,
+								email: createEmail || undefined,
+								workspaceCode: randomWorkspaceCode(),
+								registrationCodeHash: null,
+							},
+							select: { id: true, nombre: true, nit: true, workspaceCode: true },
+						})
+
+						await prisma.sede.create({
+							data: {
+								nombre: createSedeName,
+								empresaId: created.id,
+							},
+							select: { id: true },
+						})
+
+						console.log('✅ Empresa creada:', created)
+						return created
+					} catch (error: unknown) {
+						if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+							continue
+						}
+						throw error
+					}
+				}
+
+				throw new Error('CREATE_TARGET_FAILED')
+			}
+
 			const suggestions = await prisma.empresa.findMany({
 				where: { nit: { not: { startsWith: 'PERS-' } } },
 				select: { id: true, nombre: true, nit: true, workspaceCode: true },
