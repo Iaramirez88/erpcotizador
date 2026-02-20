@@ -28,6 +28,7 @@ tsconfig.tsbuildinfo
 # Nota: el worker en producción necesita `scripts/ocr-worker.ts`.
 scripts/*
 !scripts/ocr-worker.ts
+!scripts/migrate-users-to-sgdigital.ts
 
 # Artefactos OS
 .DS_Store
