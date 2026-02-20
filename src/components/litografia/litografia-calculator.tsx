@@ -6,26 +6,31 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { SearchableNativeSelect } from "@/components/ui/searchable-native-select"
 import { computeLitografia } from "@/lib/litografia"
 import { formatCurrency } from "@/lib/utils"
 
 type PapelTipo = "bond" | "propalcote" | "periodico" | "otro"
 
-const TRANSPORTE_OPTIONS = [
-  { key: "norte", label: "Norte", total: 20000 },
-  { key: "sur", label: "Sur", total: 40000 },
-  { key: "fuera_bogota", label: "Fuera de Bogotá", total: 60000 },
-] as const
+const CUSTOM_DROPDOWN_KEYS = {
+  transporte: "litografia_transporte",
+  tirajeTiers: "litografia_tiraje_tiers",
+} as const
 
-type TransporteKey = (typeof TRANSPORTE_OPTIONS)[number]["key"]
+// Plantillas para bootstrap (se copian a BD por empresa y luego son editables)
+const TRANSPORTE_TEMPLATE_ITEMS = [
+  { value: "norte", label: "Norte", meta: { total: 20000 } },
+  { value: "sur", label: "Sur", meta: { total: 40000 } },
+  { value: "fuera_bogota", label: "Fuera de Bogotá", meta: { total: 60000 } },
+]
 
-const DEFAULT_TIRAJE_TIERS = [
-  { key: "1_500", label: "1–500", min: 1, max: 500 },
-  { key: "501_1000", label: "501–1000", min: 501, max: 1000 },
-  { key: "1001_2000", label: "1001–2000", min: 1001, max: 2000 },
-  { key: "2001_5000", label: "2001–5000", min: 2001, max: 5000 },
-  { key: "5001_10000", label: "5001–10000", min: 5001, max: 10000 },
-] as const
+const TIRAJE_TIER_TEMPLATE_ITEMS = [
+  { value: "1_500", label: "1–500", meta: { min: 1, max: 500 } },
+  { value: "501_1000", label: "501–1000", meta: { min: 501, max: 1000 } },
+  { value: "1001_2000", label: "1001–2000", meta: { min: 1001, max: 2000 } },
+  { value: "2001_5000", label: "2001–5000", meta: { min: 2001, max: 5000 } },
+  { value: "5001_10000", label: "5001–10000", meta: { min: 5001, max: 10000 } },
+]
 
 const INPUT_COMPACT = "h-7 px-2 text-xs"
 const SELECT_COMPACT = "mt-2 h-8 w-full rounded-md border bg-background px-2 text-xs"
@@ -103,6 +108,23 @@ type FlyerRate = {
   activo: boolean
 }
 
+type CustomDropdownItem = {
+  id: string
+  value: string
+  label: string
+  meta: unknown
+  sortOrder: number
+  activo: boolean
+}
+
+type CustomDropdown = {
+  id: string
+  key: string
+  nombre: string
+  descripcion: string | null
+  items?: CustomDropdownItem[]
+}
+
 type ApiEnvelope = { ok?: unknown; data?: unknown; error?: unknown }
 
 function asApiEnvelope(value: unknown): ApiEnvelope {
@@ -140,12 +162,12 @@ export function LitografiaCalculator() {
   const [canConfigWrite, setCanConfigWrite] = useState(false)
 
   const [cantidad, setCantidad] = useState("1000")
-  const [colores, setColores] = useState("4")
+  const [colores] = useState("4")
   const [desperdicioPct] = useState("3")
 
   const [costoPlanchaPorColor, setCostoPlanchaPorColor] = useState("25000")
   const [costoTintaPorColor, setCostoTintaPorColor] = useState("15000")
-  const [costoPapelUnidad, setCostoPapelUnidad] = useState("80")
+  const [costoPapelUnidad] = useState("80")
 
   const [papelPorPliego, setPapelPorPliego] = useState(true)
   const [papelTipo, setPapelTipo] = useState<PapelTipo>("propalcote")
@@ -179,7 +201,20 @@ export function LitografiaCalculator() {
   const [selectedPaperTipo, setSelectedPaperTipo] = useState<string>("")
   const [selectedPaperGramaje, setSelectedPaperGramaje] = useState<string>("")
 
-  const [selectedTransporteKey, setSelectedTransporteKey] = useState<TransporteKey | "">("")
+  const [selectedTransporteKey, setSelectedTransporteKey] = useState<string>("")
+
+  // Dropdowns personalizados (por empresa)
+  const [customDropdowns, setCustomDropdowns] = useState<CustomDropdown[]>([])
+  const [customDropdownsLoading, setCustomDropdownsLoading] = useState(false)
+  const [customDropdownsError, setCustomDropdownsError] = useState<string | null>(null)
+
+  const [dropdownsSearch, setDropdownsSearch] = useState("")
+  const [newDropdownNombre, setNewDropdownNombre] = useState("")
+
+  const [dropdownEdits, setDropdownEdits] = useState<Record<string, { nombre?: string }>>({})
+  const [itemSearch, setItemSearch] = useState<Record<string, string>>({})
+  const [newItemDraft, setNewItemDraft] = useState<Record<string, { label: string; costo?: string; min?: string; max?: string }>>({})
+  const [itemEdits, setItemEdits] = useState<Record<string, { label?: string; costo?: string; min?: string; max?: string; activo?: boolean }>>({})
 
   // Formularios independientes (usuarios escriben en ambos módulos)
   const [newPlanchaProfileNombre, setNewPlanchaProfileNombre] = useState("")
@@ -237,6 +272,16 @@ export function LitografiaCalculator() {
 
   const [planchaProfilesPage, setPlanchaProfilesPage] = useState(0)
   const [tintaProfilesPage, setTintaProfilesPage] = useState(0)
+  const [planchaProfilesSearch, setPlanchaProfilesSearch] = useState("")
+  const [tintaProfilesSearch, setTintaProfilesSearch] = useState("")
+  const [papersSearch, setPapersSearch] = useState("")
+  const [sizesSearch, setSizesSearch] = useState("")
+  const [acabadosSearch, setAcabadosSearch] = useState("")
+  const [specialAcabadosSearch, setSpecialAcabadosSearch] = useState("")
+  const [plastificadosSearch, setPlastificadosSearch] = useState("")
+  const [troqueladosSearch, setTroqueladosSearch] = useState("")
+  const [cortesSearch, setCortesSearch] = useState("")
+  const [flyerRatesSearch, setFlyerRatesSearch] = useState("")
   const [papersPage, setPapersPage] = useState(0)
   const [finishesPage, setFinishesPage] = useState(0)
   const [plastificadosPage, setPlastificadosPage] = useState(0)
@@ -285,10 +330,9 @@ export function LitografiaCalculator() {
   >({})
 
   const [pricingSource, setPricingSource] = useState<"tarifario" | "desglose">("tarifario")
-  const [matchedRate, setMatchedRate] = useState<FlyerRate | null>(null)
-  const [matchedRateLoading, setMatchedRateLoading] = useState(false)
+  const [matchedRate] = useState<FlyerRate | null>(null)
+  const [matchedRateLoading] = useState(false)
 
-  const [selectedRateId, setSelectedRateId] = useState<string>("")
   const [newFlyerTierKey, setNewFlyerTierKey] = useState<string>("")
 
   const activeProfiles = useMemo(() => profiles.filter((p) => p.activo), [profiles])
@@ -338,7 +382,7 @@ export function LitografiaCalculator() {
     setFormatoKey(first.key)
     setFormatoW(String(first.widthCm))
     setFormatoH(String(first.heightCm))
-  }, [sizeOptions, formatoKey])
+  }, [sizeOptions, formatoKey, formatoW, formatoH])
 
   useEffect(() => {
     if (!sizeOptions.length) {
@@ -384,6 +428,63 @@ export function LitografiaCalculator() {
   const selectedFinish = useMemo(() => {
     return finishes.find((f) => f.id === selectedFinishId) || null
   }, [finishes, selectedFinishId])
+
+  function metaNumber(meta: unknown, key: string): number | null {
+    if (!meta || typeof meta !== 'object') return null
+    const anyMeta = meta as Record<string, unknown>
+    const raw = anyMeta[key]
+    const num = typeof raw === 'number' ? raw : Number(String(raw ?? '').trim())
+    return Number.isFinite(num) ? num : null
+  }
+
+  const transporteDropdown = useMemo(() => {
+    return customDropdowns.find((d) => d.key === CUSTOM_DROPDOWN_KEYS.transporte) || null
+  }, [customDropdowns])
+
+  const transporteOptions = useMemo(() => {
+    const items = transporteDropdown?.items ?? []
+    return items
+      .filter((i) => i.activo)
+      .map((i) => {
+        const total = Math.max(0, metaNumber(i.meta, 'total') ?? 0)
+        return {
+          value: i.value,
+          total,
+          label: `${i.label} • ${formatCurrency(total)}`,
+        }
+      })
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [transporteDropdown])
+
+  const tirajeTiersDropdown = useMemo(() => {
+    return customDropdowns.find((d) => d.key === CUSTOM_DROPDOWN_KEYS.tirajeTiers) || null
+  }, [customDropdowns])
+
+  const tirajeTierOptions = useMemo(() => {
+    const items = tirajeTiersDropdown?.items ?? []
+    return items
+      .filter((i) => i.activo)
+      .map((i) => {
+        const min = Math.max(0, metaNumber(i.meta, 'min') ?? 0)
+        const max = Math.max(0, metaNumber(i.meta, 'max') ?? 0)
+        return { value: i.value, label: i.label, min, max }
+      })
+      .sort((a, b) => {
+        if (a.min !== b.min) return a.min - b.min
+        return a.label.localeCompare(b.label)
+      })
+  }, [tirajeTiersDropdown])
+
+  const visibleCustomDropdowns = useMemo(() => {
+    const q = dropdownsSearch.trim().toLowerCase()
+    const base = [...customDropdowns].sort((a, b) => a.nombre.localeCompare(b.nombre))
+    if (!q) return base
+    return base.filter((d) => {
+      const nombre = (d.nombre || "").toLowerCase()
+      const key = (d.key || "").toLowerCase()
+      return nombre.includes(q) || key.includes(q)
+    })
+  }, [customDropdowns, dropdownsSearch])
 
   const fetchProfiles = async () => {
     setProfilesLoading(true)
@@ -473,6 +574,137 @@ export function LitografiaCalculator() {
     } finally {
       setSizesLoading(false)
     }
+  }
+
+  const fetchCustomDropdowns = async () => {
+    setCustomDropdownsLoading(true)
+    setCustomDropdownsError(null)
+    try {
+      const res = await fetch('/api/configuracion/dropdowns?includeItems=1', { cache: 'no-store' })
+      const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
+      if (!res.ok || env.ok !== true) {
+        throw new Error(getApiErrorMessage(env, 'Error al cargar dropdowns'))
+      }
+      setCustomDropdowns(Array.isArray(env.data) ? (env.data as CustomDropdown[]) : [])
+    } catch (e) {
+      setCustomDropdownsError(e instanceof Error ? e.message : 'Error al cargar dropdowns')
+    } finally {
+      setCustomDropdownsLoading(false)
+    }
+  }
+
+  function getCostoFromMeta(meta: unknown) {
+    if (!meta || typeof meta !== 'object') return ""
+    const total = (meta as Record<string, unknown>).total
+    if (typeof total === 'number' && Number.isFinite(total)) return String(total)
+    if (typeof total === 'string' && total.trim()) return total.trim()
+    return ""
+  }
+
+  function getNumberFieldFromMeta(meta: unknown, field: 'min' | 'max') {
+    if (!meta || typeof meta !== 'object') return ""
+    const v = (meta as Record<string, unknown>)[field]
+    if (typeof v === 'number' && Number.isFinite(v)) return String(v)
+    if (typeof v === 'string' && v.trim()) return v.trim()
+    return ""
+  }
+
+  const createCustomDropdown = async (payload: { nombre: string; key?: string; descripcion?: string | null; seedItems?: unknown[] }) => {
+    setCustomDropdownsError(null)
+    try {
+      const res = await fetch('/api/configuracion/dropdowns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
+      if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, 'No se pudo crear dropdown'))
+      await fetchCustomDropdowns()
+    } catch (e) {
+      setCustomDropdownsError(e instanceof Error ? e.message : 'No se pudo crear dropdown')
+    }
+  }
+
+  const patchCustomDropdown = async (id: string, patch: { nombre?: string }) => {
+    setCustomDropdownsError(null)
+    try {
+      const res = await fetch(`/api/configuracion/dropdowns/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
+      if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, 'No se pudo actualizar dropdown'))
+      await fetchCustomDropdowns()
+    } catch (e) {
+      setCustomDropdownsError(e instanceof Error ? e.message : 'No se pudo actualizar dropdown')
+    }
+  }
+
+  const deleteCustomDropdown = async (id: string) => {
+    setCustomDropdownsError(null)
+    try {
+      const res = await fetch(`/api/configuracion/dropdowns/${id}`, { method: 'DELETE' })
+      const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
+      if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, 'No se pudo eliminar dropdown'))
+      await fetchCustomDropdowns()
+    } catch (e) {
+      setCustomDropdownsError(e instanceof Error ? e.message : 'No se pudo eliminar dropdown')
+    }
+  }
+
+  const createCustomItem = async (dropdownId: string, payload: { label: string; value?: string; sortOrder?: number; activo?: boolean; meta?: unknown }) => {
+    setCustomDropdownsError(null)
+    try {
+      const res = await fetch(`/api/configuracion/dropdowns/${dropdownId}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
+      if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, 'No se pudo crear opción'))
+      await fetchCustomDropdowns()
+    } catch (e) {
+      setCustomDropdownsError(e instanceof Error ? e.message : 'No se pudo crear opción')
+    }
+  }
+
+  const patchCustomItem = async (itemId: string, patch: { label?: string; value?: string; sortOrder?: number; activo?: boolean; meta?: unknown }) => {
+    setCustomDropdownsError(null)
+    try {
+      const res = await fetch(`/api/configuracion/dropdowns/items/${itemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      })
+      const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
+      if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, 'No se pudo actualizar opción'))
+      await fetchCustomDropdowns()
+    } catch (e) {
+      setCustomDropdownsError(e instanceof Error ? e.message : 'No se pudo actualizar opción')
+    }
+  }
+
+  const deleteCustomItem = async (itemId: string) => {
+    setCustomDropdownsError(null)
+    try {
+      const res = await fetch(`/api/configuracion/dropdowns/items/${itemId}`, { method: 'DELETE' })
+      const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
+      if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, 'No se pudo eliminar opción'))
+      await fetchCustomDropdowns()
+    } catch (e) {
+      setCustomDropdownsError(e instanceof Error ? e.message : 'No se pudo eliminar opción')
+    }
+  }
+
+  const createTemplateIfMissing = async (kind: 'transporte' | 'tirajeTiers') => {
+    const key = kind === 'transporte' ? CUSTOM_DROPDOWN_KEYS.transporte : CUSTOM_DROPDOWN_KEYS.tirajeTiers
+    const exists = customDropdowns.some((d) => d.key === key)
+    if (exists) return
+
+    const seedItems = kind === 'transporte' ? TRANSPORTE_TEMPLATE_ITEMS : TIRAJE_TIER_TEMPLATE_ITEMS
+    const nombre = kind === 'transporte' ? 'Litografía: Transporte' : 'Litografía: Rangos sugeridos (tiraje)'
+    await createCustomDropdown({ nombre, key, descripcion: null, seedItems })
   }
 
   const createFinishInGroup = async (grupo: "ACABADO" | "PLASTIFICADO" | "TROQUELADO" | "CORTE", args: { nombre: string; valor: number }) => {
@@ -643,30 +875,6 @@ export function LitografiaCalculator() {
     }
   }
 
-  const createFlyerRateDirect = async (payload: {
-    formatoKey: string
-    tintas: 1 | 2 | 4
-    tirajeMin: number
-    tirajeMax: number
-    paperRateId: string | null
-    finishOptionId: string | null
-    precioTotal: number
-  }) => {
-    setConfigError(null)
-    try {
-      const res = await fetch("/api/litografia/flyers-tarifas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, activo: true }),
-      })
-      const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
-      if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, "No se pudo crear la tarifa"))
-      await fetchFlyerRates()
-    } catch (e) {
-      setConfigError(e instanceof Error ? e.message : "No se pudo crear la tarifa")
-    }
-  }
-
   useEffect(() => {
     const loadMe = async () => {
       try {
@@ -691,6 +899,7 @@ export function LitografiaCalculator() {
     void fetchSizes()
     void fetchFlyerRates()
     void fetchProductos()
+    void fetchCustomDropdowns()
   }, [])
 
   const assignProductoToGroup = async (groupKey: string, rateIds: string[], productoId: string | null) => {
@@ -795,47 +1004,17 @@ export function LitografiaCalculator() {
     }
   }, [pricingSource, papelPorPliego, costoCorte, costoAcabados, costoTransporte])
 
-  const tintasFromColores = useMemo(() => {
-    const v = Number(colores)
-    return (v === 1 || v === 2 || v === 4 ? v : 4) as 1 | 2 | 4
-  }, [colores])
-
-  const availableTarifas = useMemo(() => {
-    const finishId = selectedFinishId.trim() || null
-
-    const candidates = flyerRates
-      .filter((r) => r.activo)
-      .filter((r) => r.formatoKey === formatoKey)
-      .filter((r) => r.tintas === tintasFromColores)
-      // Tarifas siempre asociadas a un papel (para poder calcular imposición por pliego)
-      .filter((r) => Boolean(selectedPaperId) && r.paperRateId === selectedPaperId)
-      // Acabado exacto: si no hay acabado seleccionado, se usa la tarifa con finishOptionId = null
-      .filter((r) => r.finishOptionId === finishId)
-      .sort((a, b) => {
-        if (a.tirajeMin !== b.tirajeMin) return a.tirajeMin - b.tirajeMin
-        return 0
-      })
-
-    const byRange = new Map<string, FlyerRate>()
-    for (const r of candidates) {
-      const k = `${r.tirajeMin}:${r.tirajeMax}`
-      if (!byRange.has(k)) byRange.set(k, r)
-    }
-
-    return Array.from(byRange.values()).sort((a, b) => a.tirajeMin - b.tirajeMin)
-  }, [flyerRates, formatoKey, tintasFromColores, selectedPaperId, selectedFinishId])
-
   useEffect(() => {
     // Solo Configuración: no se ejecuta lógica de cotización.
   }, [])
 
   useEffect(() => {
     if (!newFlyerTierKey) return
-    const t = DEFAULT_TIRAJE_TIERS.find((x) => x.key === newFlyerTierKey) || null
+    const t = tirajeTierOptions.find((x) => x.value === newFlyerTierKey) || null
     if (!t) return
     setNewFlyerMin(String(t.min))
     setNewFlyerMax(String(t.max))
-  }, [newFlyerTierKey])
+  }, [newFlyerTierKey, tirajeTierOptions])
 
   useEffect(() => {
     if (!selectedPlanchaProfileId && activePlanchaProfiles.length) {
@@ -888,10 +1067,10 @@ export function LitografiaCalculator() {
 
   useEffect(() => {
     if (pricingSource !== "tarifario") return
-    const opt = TRANSPORTE_OPTIONS.find((o) => o.key === selectedTransporteKey) || null
+    const opt = transporteOptions.find((o) => o.value === selectedTransporteKey) || null
     const next = opt ? String(opt.total) : "0"
     if (costoTransporte !== next) setCostoTransporte(next)
-  }, [pricingSource, selectedTransporteKey, costoTransporte])
+  }, [pricingSource, selectedTransporteKey, costoTransporte, transporteOptions])
 
   useEffect(() => {
     if (!newFlyerPaperId && activePapers.length) {
@@ -1213,12 +1392,118 @@ export function LitografiaCalculator() {
   ])
 
   const planchaProfiles = useMemo(() => {
-    return profiles.filter((p) => (p.costoPlanchaPorColor ?? 0) > 0)
+    const base = profiles.filter((p) => (p.costoPlanchaPorColor ?? 0) > 0)
+    const q = planchaProfilesSearch.trim().toLowerCase()
+    if (!q) return base
+    return base.filter((p) => p.nombre.toLowerCase().includes(q))
+  }, [profiles, planchaProfilesSearch])
+
+  const hasPlanchaProfiles = useMemo(() => {
+    return profiles.some((p) => (p.costoPlanchaPorColor ?? 0) > 0)
   }, [profiles])
 
   const tintaProfiles = useMemo(() => {
-    return profiles.filter((p) => (p.costoTintaPorColor ?? 0) > 0)
+    const base = profiles.filter((p) => (p.costoTintaPorColor ?? 0) > 0)
+    const q = tintaProfilesSearch.trim().toLowerCase()
+    if (!q) return base
+    return base.filter((p) => p.nombre.toLowerCase().includes(q))
+  }, [profiles, tintaProfilesSearch])
+
+  const hasTintaProfiles = useMemo(() => {
+    return profiles.some((p) => (p.costoTintaPorColor ?? 0) > 0)
   }, [profiles])
+
+  useEffect(() => {
+    setPlanchaProfilesPage(0)
+  }, [planchaProfilesSearch])
+
+  useEffect(() => {
+    setTintaProfilesPage(0)
+  }, [tintaProfilesSearch])
+
+  useEffect(() => {
+    setPapersPage(0)
+  }, [papersSearch])
+
+  useEffect(() => {
+    setSizesPage(0)
+  }, [sizesSearch])
+
+  useEffect(() => {
+    setFinishesPage(0)
+  }, [acabadosSearch])
+
+  useEffect(() => {
+    setSpecialFinishesPage(0)
+  }, [specialAcabadosSearch])
+
+  useEffect(() => {
+    setPlastificadosPage(0)
+  }, [plastificadosSearch])
+
+  useEffect(() => {
+    setTroqueladosPage(0)
+  }, [troqueladosSearch])
+
+  useEffect(() => {
+    setCortesPage(0)
+  }, [cortesSearch])
+
+  useEffect(() => {
+    setRatesPage(0)
+  }, [flyerRatesSearch])
+
+  const papersList = useMemo(() => {
+    const base = papers
+    const q = papersSearch.trim().toLowerCase()
+    if (!q) return base
+    return base.filter((p) => {
+      const gramaje = p.gramaje != null ? String(p.gramaje) : ""
+      return `${p.nombre} ${p.tipo ?? ""} ${gramaje}`.toLowerCase().includes(q)
+    })
+  }, [papers, papersSearch])
+
+  const sizesList = useMemo(() => {
+    const base = sizes
+    const q = sizesSearch.trim().toLowerCase()
+    if (!q) return base
+    return base.filter((s) => `${s.nombre} ${s.key}`.toLowerCase().includes(q))
+  }, [sizes, sizesSearch])
+
+  const acabadosList = useMemo(() => {
+    const base = acabadosFinishes
+    const q = acabadosSearch.trim().toLowerCase()
+    if (!q) return base
+    return base.filter((f) => f.nombre.toLowerCase().includes(q))
+  }, [acabadosFinishes, acabadosSearch])
+
+  const specialFinishesList = useMemo(() => {
+    const base = specialFinishes
+    const q = specialAcabadosSearch.trim().toLowerCase()
+    if (!q) return base
+    return base.filter((f) => f.nombre.toLowerCase().includes(q))
+  }, [specialFinishes, specialAcabadosSearch])
+
+  const plastificadosList = useMemo(() => {
+    const base = plastificadosFinishes
+    const q = plastificadosSearch.trim().toLowerCase()
+    if (!q) return base
+    return base.filter((f) => f.nombre.toLowerCase().includes(q))
+  }, [plastificadosFinishes, plastificadosSearch])
+
+  const troqueladosList = useMemo(() => {
+    const base = troqueladosFinishes
+    const q = troqueladosSearch.trim().toLowerCase()
+    if (!q) return base
+    return base.filter((f) => f.nombre.toLowerCase().includes(q))
+  }, [troqueladosFinishes, troqueladosSearch])
+
+  const cortesList = useMemo(() => {
+    const base = cortesFinishes
+    const q = cortesSearch.trim().toLowerCase()
+    if (!q) return base
+    return base.filter((f) => f.nombre.toLowerCase().includes(q))
+  }, [cortesFinishes, cortesSearch])
 
   const pagedPlanchaProfiles = useMemo(() => {
     const start = planchaProfilesPage * PAGE_SIZE
@@ -1232,38 +1517,38 @@ export function LitografiaCalculator() {
 
   const pagedPapers = useMemo(() => {
     const start = papersPage * PAGE_SIZE
-    return papers.slice(start, start + PAGE_SIZE)
-  }, [papers, papersPage, PAGE_SIZE])
+    return papersList.slice(start, start + PAGE_SIZE)
+  }, [papersList, papersPage, PAGE_SIZE])
 
   const pagedFinishes = useMemo(() => {
     const start = finishesPage * PAGE_SIZE
-    return acabadosFinishes.slice(start, start + PAGE_SIZE)
-  }, [acabadosFinishes, finishesPage, PAGE_SIZE])
+    return acabadosList.slice(start, start + PAGE_SIZE)
+  }, [acabadosList, finishesPage, PAGE_SIZE])
 
   const pagedPlastificados = useMemo(() => {
     const start = plastificadosPage * PAGE_SIZE
-    return plastificadosFinishes.slice(start, start + PAGE_SIZE)
-  }, [plastificadosFinishes, plastificadosPage, PAGE_SIZE])
+    return plastificadosList.slice(start, start + PAGE_SIZE)
+  }, [plastificadosList, plastificadosPage, PAGE_SIZE])
 
   const pagedTroquelados = useMemo(() => {
     const start = troqueladosPage * PAGE_SIZE
-    return troqueladosFinishes.slice(start, start + PAGE_SIZE)
-  }, [troqueladosFinishes, troqueladosPage, PAGE_SIZE])
+    return troqueladosList.slice(start, start + PAGE_SIZE)
+  }, [troqueladosList, troqueladosPage, PAGE_SIZE])
 
   const pagedCortes = useMemo(() => {
     const start = cortesPage * PAGE_SIZE
-    return cortesFinishes.slice(start, start + PAGE_SIZE)
-  }, [cortesFinishes, cortesPage, PAGE_SIZE])
+    return cortesList.slice(start, start + PAGE_SIZE)
+  }, [cortesList, cortesPage, PAGE_SIZE])
 
   const pagedSpecialFinishes = useMemo(() => {
     const start = specialFinishesPage * PAGE_SIZE
-    return specialFinishes.slice(start, start + PAGE_SIZE)
-  }, [specialFinishes, specialFinishesPage, PAGE_SIZE])
+    return specialFinishesList.slice(start, start + PAGE_SIZE)
+  }, [specialFinishesList, specialFinishesPage, PAGE_SIZE])
 
   const pagedSizes = useMemo(() => {
     const start = sizesPage * PAGE_SIZE
-    return sizes.slice(start, start + PAGE_SIZE)
-  }, [sizes, sizesPage, PAGE_SIZE])
+    return sizesList.slice(start, start + PAGE_SIZE)
+  }, [sizesList, sizesPage, PAGE_SIZE])
 
   const filteredFlyerRates = useMemo(() => {
     return flyerRates.filter((r) => {
@@ -1346,8 +1631,33 @@ export function LitografiaCalculator() {
 
   const pagedFlyerRateGroups = useMemo(() => {
     const start = ratesPage * PAGE_SIZE
-    return groupedFlyerRates.slice(start, start + PAGE_SIZE)
-  }, [groupedFlyerRates, ratesPage, PAGE_SIZE])
+    const q = flyerRatesSearch.trim().toLowerCase()
+    const base = groupedFlyerRates
+    const filtered = !q
+      ? base
+      : base.filter((g) => {
+          const sizeName = getSizeDisplayName(sizeOptions, g.formatoKey)
+          const paperName = g.paperRateId ? (papers.find((p) => p.id === g.paperRateId)?.nombre || g.paperRateId) : ""
+          const finishName = g.finishOptionId ? (finishes.find((f) => f.id === g.finishOptionId)?.nombre || g.finishOptionId) : ""
+          const producto = g.productoNombre || ""
+          return `${sizeName} ${g.formatoKey} ${paperName} ${finishName} ${producto}`.toLowerCase().includes(q)
+        })
+
+    return filtered.slice(start, start + PAGE_SIZE)
+  }, [groupedFlyerRates, ratesPage, PAGE_SIZE, flyerRatesSearch, sizeOptions, papers, finishes])
+
+  const flyerRateGroupsCount = useMemo(() => {
+    const q = flyerRatesSearch.trim().toLowerCase()
+    const base = groupedFlyerRates
+    if (!q) return base.length
+    return base.filter((g) => {
+      const sizeName = getSizeDisplayName(sizeOptions, g.formatoKey)
+      const paperName = g.paperRateId ? (papers.find((p) => p.id === g.paperRateId)?.nombre || g.paperRateId) : ""
+      const finishName = g.finishOptionId ? (finishes.find((f) => f.id === g.finishOptionId)?.nombre || g.finishOptionId) : ""
+      const producto = g.productoNombre || ""
+      return `${sizeName} ${g.formatoKey} ${paperName} ${finishName} ${producto}`.toLowerCase().includes(q)
+    }).length
+  }, [groupedFlyerRates, flyerRatesSearch, sizeOptions, papers, finishes])
 
   return (
     <div className="space-y-4">
@@ -1355,13 +1665,496 @@ export function LitografiaCalculator() {
 
       {tab === "config" ? (
         <div className="space-y-4">
+          
           <Card>
-            <CardHeader>
-              <CardTitle>Configuración (Litografía)</CardTitle>
-              <CardDescription>
-                Módulos separados para evitar pantallas largas. Cada lista muestra 5 ítems y permite paginar.
-              </CardDescription>
-            </CardHeader>
+            <details>
+              <summary className="cursor-pointer">
+                <CardHeader>
+                  <CardTitle>Dropdowns personalizados</CardTitle>
+                  <CardDescription>
+                    Crea nuevas listas (dropdowns) por empresa, con buscador. Puedes editar y eliminar listas y sus opciones.
+                  </CardDescription>
+                </CardHeader>
+              </summary>
+              <CardContent className="space-y-4">
+                {customDropdownsError ? <p className="text-sm text-red-600">{customDropdownsError}</p> : null}
+
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" onClick={() => void createTemplateIfMissing('transporte')} disabled={!meLoaded || !canConfigWrite}>
+                    Crear plantilla Transporte
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => void createTemplateIfMissing('tirajeTiers')} disabled={!meLoaded || !canConfigWrite}>
+                    Crear plantilla Rangos sugeridos
+                  </Button>
+                </div>
+
+                <div>
+                  <Label>Buscar dropdown</Label>
+                  <Input className={INPUT_COMPACT} value={dropdownsSearch} onChange={(e) => setDropdownsSearch(e.target.value)} placeholder="Buscar por nombre o key…" />
+                </div>
+
+                {customDropdownsLoading ? <p className="text-sm text-muted-foreground">Cargando dropdowns…</p> : null}
+                {!customDropdownsLoading && visibleCustomDropdowns.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No hay dropdowns personalizados.</p>
+                ) : null}
+
+                <div className="space-y-3">
+                  {visibleCustomDropdowns.map((d) => {
+                    const draft = dropdownEdits[d.id] || {}
+                    const draftNombre = draft.nombre ?? d.nombre
+
+                    const isNombreDirty = draft.nombre !== undefined && draftNombre.trim() !== d.nombre
+                    const canSave = isNombreDirty && draftNombre.trim()
+
+                    const itemQ = (itemSearch[d.id] || "").trim().toLowerCase()
+                    const items = (d.items ?? []).slice().sort((a, b) => {
+                      if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder
+                      return a.label.localeCompare(b.label)
+                    })
+                    const visibleItems = !itemQ
+                      ? items
+                      : items.filter((it) => it.label.toLowerCase().includes(itemQ) || it.value.toLowerCase().includes(itemQ))
+
+                    const isTirajeTiers = d.key === CUSTOM_DROPDOWN_KEYS.tirajeTiers
+                    const newIt = newItemDraft[d.id] || (isTirajeTiers ? { label: "", min: "", max: "" } : { label: "", costo: "" })
+
+                    return (
+                      <div key={d.id} className="rounded-md border p-3 space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{d.nombre}</p>
+                            <p className="text-xs text-muted-foreground truncate">{d.key}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => void fetchCustomDropdowns()}
+                              disabled={customDropdownsLoading}
+                            >
+                              Refrescar
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="text-red-600"
+                              onClick={() => void deleteCustomDropdown(d.id)}
+                              disabled={!meLoaded || !canConfigWrite}
+                            >
+                              Eliminar
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
+                          <div>
+                            <Label>Nombre</Label>
+                            <Input
+                              className={INPUT_COMPACT}
+                              value={draftNombre}
+                              onChange={(e) =>
+                                setDropdownEdits((prev) => ({
+                                  ...prev,
+                                  [d.id]: { ...prev[d.id], nombre: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div className="md:col-span-2 flex items-center gap-2">
+                            <Button
+                              type="button"
+                              onClick={() => {
+                                const patch: { nombre?: string } = {}
+                                if (isNombreDirty) patch.nombre = draftNombre.trim()
+                                void patchCustomDropdown(d.id, patch).then(() => {
+                                  setDropdownEdits((prev) => {
+                                    const next = { ...prev }
+                                    delete next[d.id]
+                                    return next
+                                  })
+                                })
+                              }}
+                              disabled={!meLoaded || !canConfigWrite || !canSave}
+                            >
+                              Guardar cambios
+                            </Button>
+                            {isNombreDirty && !canSave ? (
+                              <p className="text-xs text-muted-foreground">Revisa nombre (obligatorio).</p>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-end justify-between gap-2">
+                            <div className="flex-1">
+                              <Label>Buscar opción</Label>
+                              <Input
+                                className={INPUT_COMPACT}
+                                value={itemSearch[d.id] || ""}
+                                onChange={(e) => setItemSearch((prev) => ({ ...prev, [d.id]: e.target.value }))}
+                                placeholder="Buscar por nombre…"
+                              />
+                            </div>
+                          </div>
+
+                          {isTirajeTiers ? (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                              <div>
+                                <Label>Nombre</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  value={newIt.label}
+                                  onChange={(e) =>
+                                    setNewItemDraft((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || newIt), label: e.target.value },
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label>Desde</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  value={newIt.min ?? ""}
+                                  onChange={(e) =>
+                                    setNewItemDraft((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || newIt), min: e.target.value },
+                                    }))
+                                  }
+                                  placeholder="1"
+                                />
+                              </div>
+                              <div>
+                                <Label>Hasta</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  value={newIt.max ?? ""}
+                                  onChange={(e) =>
+                                    setNewItemDraft((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || newIt), max: e.target.value },
+                                    }))
+                                  }
+                                  placeholder="500"
+                                />
+                              </div>
+                              <div className="md:col-span-3">
+                                <Button
+                                  type="button"
+                                  onClick={() => {
+                                    const label = newIt.label.trim()
+                                    if (!label) return
+                                    const min = Number.parseInt(String(newIt.min ?? '').trim(), 10)
+                                    const max = Number.parseInt(String(newIt.max ?? '').trim(), 10)
+                                    if (!Number.isFinite(min) || !Number.isFinite(max) || min <= 0 || max <= 0 || min > max) {
+                                      setCustomDropdownsError('Rango inválido (desde/hasta)')
+                                      return
+                                    }
+                                    void createCustomItem(d.id, {
+                                      label,
+                                      activo: true,
+                                      meta: { min, max },
+                                    }).then(() => {
+                                      setNewItemDraft((prev) => ({ ...prev, [d.id]: { label: "", min: "", max: "" } }))
+                                    })
+                                  }}
+                                  disabled={!meLoaded || !canConfigWrite || !newIt.label.trim()}
+                                >
+                                  Agregar opción
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
+                              <div>
+                                <Label>Nombre</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  value={newIt.label}
+                                  onChange={(e) =>
+                                    setNewItemDraft((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || newIt), label: e.target.value },
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label>Costo / Valor</Label>
+                                <MoneyInput
+                                  className={INPUT_COMPACT}
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  value={newIt.costo ?? ""}
+                                  onChange={(e) =>
+                                    setNewItemDraft((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || newIt), costo: e.target.value },
+                                    }))
+                                  }
+                                  placeholder="0"
+                                />
+                              </div>
+                              <div className="md:col-span-2">
+                                <Button
+                                  type="button"
+                                  onClick={() => {
+                                    const label = newIt.label.trim()
+                                    if (!label) return
+                                    const costo = Number.parseFloat(String(newIt.costo ?? '').trim())
+                                    if (!Number.isFinite(costo) || costo < 0) {
+                                      setCustomDropdownsError('Costo/valor inválido')
+                                      return
+                                    }
+                                    void createCustomItem(d.id, {
+                                      label,
+                                      activo: true,
+                                      meta: { total: costo },
+                                    }).then(() => {
+                                      setNewItemDraft((prev) => ({ ...prev, [d.id]: { label: "", costo: "" } }))
+                                    })
+                                  }}
+                                  disabled={!meLoaded || !canConfigWrite || !newIt.label.trim()}
+                                >
+                                  Agregar opción
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+
+                          {visibleItems.length === 0 ? <p className="text-sm text-muted-foreground">Sin opciones.</p> : null}
+
+                          <div className="space-y-2">
+                            {visibleItems.map((it) => {
+                              const edit = itemEdits[it.id] || {}
+                              const draftLabel = edit.label ?? it.label
+                              const draftCosto = edit.costo ?? getCostoFromMeta(it.meta)
+                              const draftMin = edit.min ?? getNumberFieldFromMeta(it.meta, 'min')
+                              const draftMax = edit.max ?? getNumberFieldFromMeta(it.meta, 'max')
+
+                              const isLabelDirty = edit.label !== undefined && draftLabel.trim() !== it.label
+
+                              const parsedCosto = Number.parseFloat(String(draftCosto ?? '').trim())
+                              const parsedMin = Number.parseInt(String(draftMin ?? '').trim(), 10)
+                              const parsedMax = Number.parseInt(String(draftMax ?? '').trim(), 10)
+
+                              const isCostoDirty =
+                                edit.costo !== undefined &&
+                                Number.isFinite(parsedCosto) &&
+                                parsedCosto >= 0 &&
+                                String(parsedCosto) !== String(getCostoFromMeta(it.meta))
+                              const isMinDirty =
+                                edit.min !== undefined &&
+                                Number.isFinite(parsedMin) &&
+                                parsedMin > 0 &&
+                                String(parsedMin) !== String(getNumberFieldFromMeta(it.meta, 'min'))
+                              const isMaxDirty =
+                                edit.max !== undefined &&
+                                Number.isFinite(parsedMax) &&
+                                parsedMax > 0 &&
+                                String(parsedMax) !== String(getNumberFieldFromMeta(it.meta, 'max'))
+
+                              const canItemSave = isTirajeTiers
+                                ? (isLabelDirty || isMinDirty || isMaxDirty) &&
+                                  draftLabel.trim() &&
+                                  Number.isFinite(parsedMin) &&
+                                  Number.isFinite(parsedMax) &&
+                                  parsedMin > 0 &&
+                                  parsedMax > 0 &&
+                                  parsedMin <= parsedMax
+                                : (isLabelDirty || isCostoDirty) && draftLabel.trim() && Number.isFinite(parsedCosto) && parsedCosto >= 0
+
+                              return (
+                                <div key={it.id} className="rounded-md border p-3 space-y-2">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium truncate">{it.label}</p>
+                                      {isTirajeTiers ? (
+                                        <p className="text-xs text-muted-foreground truncate">
+                                          Rango: {getNumberFieldFromMeta(it.meta, 'min') || "?"} - {getNumberFieldFromMeta(it.meta, 'max') || "?"}
+                                        </p>
+                                      ) : (
+                                        <p className="text-xs text-muted-foreground truncate">Costo/valor: {formatCurrency(Number.parseFloat(getCostoFromMeta(it.meta)) || 0)}</p>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Button
+                                        type="button"
+                                        variant={it.activo ? "outline" : "default"}
+                                        onClick={() => void patchCustomItem(it.id, { activo: !it.activo })}
+                                        disabled={!meLoaded || !canConfigWrite}
+                                      >
+                                        {it.activo ? "Desactivar" : "Activar"}
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        className="text-red-600"
+                                        onClick={() => void deleteCustomItem(it.id)}
+                                        disabled={!meLoaded || !canConfigWrite}
+                                      >
+                                        Eliminar
+                                      </Button>
+                                    </div>
+                                  </div>
+
+                                  {isTirajeTiers ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                                      <div>
+                                        <Label>Nombre</Label>
+                                        <Input
+                                          className={INPUT_COMPACT}
+                                          value={draftLabel}
+                                          onChange={(e) => setItemEdits((prev) => ({ ...prev, [it.id]: { ...prev[it.id], label: e.target.value } }))}
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label>Desde</Label>
+                                        <Input
+                                          className={INPUT_COMPACT}
+                                          value={draftMin}
+                                          onChange={(e) => setItemEdits((prev) => ({ ...prev, [it.id]: { ...prev[it.id], min: e.target.value } }))}
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label>Hasta</Label>
+                                        <Input
+                                          className={INPUT_COMPACT}
+                                          value={draftMax}
+                                          onChange={(e) => setItemEdits((prev) => ({ ...prev, [it.id]: { ...prev[it.id], max: e.target.value } }))}
+                                        />
+                                      </div>
+                                      <div className="md:col-span-3 flex items-center gap-2">
+                                        <Button
+                                          type="button"
+                                          onClick={() => {
+                                            const patch: { label?: string; meta?: unknown } = {}
+                                            if (isLabelDirty) patch.label = draftLabel.trim()
+                                            if (isMinDirty || isMaxDirty) {
+                                              const min = Number.parseInt(String(draftMin ?? '').trim(), 10)
+                                              const max = Number.parseInt(String(draftMax ?? '').trim(), 10)
+                                              if (!Number.isFinite(min) || !Number.isFinite(max) || min <= 0 || max <= 0 || min > max) {
+                                                setCustomDropdownsError('Rango inválido (desde/hasta)')
+                                                return
+                                              }
+                                              const baseMeta = it.meta && typeof it.meta === 'object' ? (it.meta as Record<string, unknown>) : {}
+                                              patch.meta = { ...baseMeta, min, max }
+                                            }
+                                            void patchCustomItem(it.id, patch).then(() => {
+                                              setItemEdits((prev) => {
+                                                const next = { ...prev }
+                                                delete next[it.id]
+                                                return next
+                                              })
+                                            })
+                                          }}
+                                          disabled={!meLoaded || !canConfigWrite || !canItemSave}
+                                        >
+                                          Guardar opción
+                                        </Button>
+                                        {(isLabelDirty || isMinDirty || isMaxDirty) && !canItemSave ? (
+                                          <p className="text-xs text-muted-foreground">Revisa nombre/rango.</p>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
+                                      <div>
+                                        <Label>Nombre</Label>
+                                        <Input
+                                          className={INPUT_COMPACT}
+                                          value={draftLabel}
+                                          onChange={(e) => setItemEdits((prev) => ({ ...prev, [it.id]: { ...prev[it.id], label: e.target.value } }))}
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label>Costo / Valor</Label>
+                                        <MoneyInput
+                                          className={INPUT_COMPACT}
+                                          type="number"
+                                          step="1"
+                                          min="0"
+                                          value={draftCosto}
+                                          onChange={(e) => setItemEdits((prev) => ({ ...prev, [it.id]: { ...prev[it.id], costo: e.target.value } }))}
+                                        />
+                                      </div>
+                                      <div className="md:col-span-2 flex items-center gap-2">
+                                        <Button
+                                          type="button"
+                                          onClick={() => {
+                                            const patch: { label?: string; meta?: unknown } = {}
+                                            if (isLabelDirty) patch.label = draftLabel.trim()
+                                            if (isCostoDirty) {
+                                              const costo = Number.parseFloat(String(draftCosto ?? '').trim())
+                                              if (!Number.isFinite(costo) || costo < 0) {
+                                                setCustomDropdownsError('Costo/valor inválido')
+                                                return
+                                              }
+                                              const baseMeta = it.meta && typeof it.meta === 'object' ? (it.meta as Record<string, unknown>) : {}
+                                              patch.meta = { ...baseMeta, total: costo }
+                                            }
+                                            void patchCustomItem(it.id, patch).then(() => {
+                                              setItemEdits((prev) => {
+                                                const next = { ...prev }
+                                                delete next[it.id]
+                                                return next
+                                              })
+                                            })
+                                          }}
+                                          disabled={!meLoaded || !canConfigWrite || !canItemSave}
+                                        >
+                                          Guardar opción
+                                        </Button>
+                                        {(isLabelDirty || isCostoDirty) && !canItemSave ? (
+                                          <p className="text-xs text-muted-foreground">Revisa nombre/costo.</p>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="pt-2 border-t space-y-2">
+                  <Label>Crear nuevo dropdown</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
+                    <div>
+                      <Label>Nombre</Label>
+                      <Input
+                        className={INPUT_COMPACT}
+                        value={newDropdownNombre}
+                        onChange={(e) => setNewDropdownNombre(e.target.value)}
+                        placeholder="Ej: Litografía: Mi lista"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          const nombre = newDropdownNombre.trim()
+                          if (!nombre) return
+                          void createCustomDropdown({ nombre }).then(() => {
+                            setNewDropdownNombre("")
+                          })
+                        }}
+                        disabled={!meLoaded || !canConfigWrite || !newDropdownNombre.trim()}
+                      >
+                        Crear dropdown
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </details>
           </Card>
 
           <Card>
@@ -1404,9 +2197,23 @@ export function LitografiaCalculator() {
                   </div>
                 </div>
 
+                <div>
+                  <Label>Buscar</Label>
+                  <Input
+                    className={INPUT_COMPACT}
+                    value={planchaProfilesSearch}
+                    onChange={(e) => setPlanchaProfilesSearch(e.target.value)}
+                    placeholder="Buscar por nombre…"
+                  />
+                </div>
+
                 <div className="space-y-2">
                   {profilesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                  {planchaProfiles.length === 0 && !profilesLoading ? <p className="text-sm text-muted-foreground">No hay registros de planchas.</p> : null}
+                  {planchaProfiles.length === 0 && !profilesLoading ? (
+                    <p className="text-sm text-muted-foreground">
+                      {hasPlanchaProfiles && planchaProfilesSearch.trim() ? "Sin resultados." : "No hay registros de planchas."}
+                    </p>
+                  ) : null}
 
                   {pagedPlanchaProfiles.map((p) => (
                     <div key={p.id} className="rounded-md border p-3 space-y-2">
@@ -1539,12 +2346,6 @@ export function LitografiaCalculator() {
                                     if (Object.keys(patch).length === 0) return
                                     void patchProfile(p.id, patch)
                                   }
-
-                                  setProfileEdits((prev) => {
-                                    const next = { ...prev }
-                                    delete next[p.id]
-                                    return next
-                                  })
                                 }}
                                 disabled={!canSave}
                               >
@@ -1633,9 +2434,23 @@ export function LitografiaCalculator() {
                   </div>
                 </div>
 
+                <div>
+                  <Label>Buscar</Label>
+                  <Input
+                    className={INPUT_COMPACT}
+                    value={tintaProfilesSearch}
+                    onChange={(e) => setTintaProfilesSearch(e.target.value)}
+                    placeholder="Buscar por nombre…"
+                  />
+                </div>
+
                 <div className="space-y-2">
                   {profilesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                  {tintaProfiles.length === 0 && !profilesLoading ? <p className="text-sm text-muted-foreground">No hay registros de tintas.</p> : null}
+                  {tintaProfiles.length === 0 && !profilesLoading ? (
+                    <p className="text-sm text-muted-foreground">
+                      {hasTintaProfiles && tintaProfilesSearch.trim() ? "Sin resultados." : "No hay registros de tintas."}
+                    </p>
+                  ) : null}
 
                   {pagedTintaProfiles.map((p) => (
                     <div key={p.id} className="rounded-md border p-3 space-y-2">
@@ -1863,9 +2678,21 @@ export function LitografiaCalculator() {
                 </div>
               </div>
 
+              <div>
+                <Label>Buscar</Label>
+                <Input
+                  className={INPUT_COMPACT}
+                  value={papersSearch}
+                  onChange={(e) => setPapersSearch(e.target.value)}
+                  placeholder="Buscar por nombre, tipo o gramaje…"
+                />
+              </div>
+
               <div className="space-y-2">
                 {papersLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                {papers.length === 0 && !papersLoading ? <p className="text-sm text-muted-foreground">No hay papeles.</p> : null}
+                {papersList.length === 0 && !papersLoading ? (
+                  <p className="text-sm text-muted-foreground">{papers.length > 0 && papersSearch.trim() ? "Sin resultados." : "No hay papeles."}</p>
+                ) : null}
 
                 {pagedPapers.map((p) => (
                   <div key={p.id} className="rounded-md border p-3 space-y-2">
@@ -2131,22 +2958,22 @@ export function LitografiaCalculator() {
                   </div>
                 ))}
 
-                {papers.length > 0 ? (
+                {papersList.length > 0 ? (
                   <div className="flex items-center justify-between gap-2 pt-1">
                     <p className="text-xs text-muted-foreground">
-                      Mostrando {papersPage * PAGE_SIZE + 1}-{Math.min(papers.length, (papersPage + 1) * PAGE_SIZE)} de {papers.length}
+                      Mostrando {papersPage * PAGE_SIZE + 1}-{Math.min(papersList.length, (papersPage + 1) * PAGE_SIZE)} de {papersList.length}
                     </p>
                     <div className="flex items-center gap-2">
                       <Button type="button" variant="outline" size="sm" onClick={() => setPapersPage((p) => Math.max(0, p - 1))} disabled={papersPage <= 0}>
                         Anterior
                       </Button>
-                      <p className="text-xs">Página {papersPage + 1} / {Math.max(1, Math.ceil(papers.length / PAGE_SIZE))}</p>
+                      <p className="text-xs">Página {papersPage + 1} / {Math.max(1, Math.ceil(papersList.length / PAGE_SIZE))}</p>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => setPapersPage((p) => Math.min(Math.ceil(papers.length / PAGE_SIZE) - 1, p + 1))}
-                        disabled={papersPage >= Math.ceil(papers.length / PAGE_SIZE) - 1}
+                        onClick={() => setPapersPage((p) => Math.min(Math.ceil(papersList.length / PAGE_SIZE) - 1, p + 1))}
+                        disabled={papersPage >= Math.ceil(papersList.length / PAGE_SIZE) - 1}
                       >
                         Siguiente
                       </Button>
@@ -2195,9 +3022,21 @@ export function LitografiaCalculator() {
                 </div>
               </div>
 
+              <div>
+                <Label>Buscar</Label>
+                <Input
+                  className={INPUT_COMPACT}
+                  value={sizesSearch}
+                  onChange={(e) => setSizesSearch(e.target.value)}
+                  placeholder="Buscar por nombre o código…"
+                />
+              </div>
+
               <div className="space-y-2">
                 {sizesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                {sizes.length === 0 && !sizesLoading ? <p className="text-sm text-muted-foreground">No hay tamaños configurados.</p> : null}
+                {sizesList.length === 0 && !sizesLoading ? (
+                  <p className="text-sm text-muted-foreground">{sizes.length > 0 && sizesSearch.trim() ? "Sin resultados." : "No hay tamaños configurados."}</p>
+                ) : null}
 
                 {pagedSizes.map((s) => (
                   <div key={s.id} className="rounded-md border p-3 space-y-2">
@@ -2374,22 +3213,22 @@ export function LitografiaCalculator() {
                   </div>
                 ))}
 
-                {sizes.length > 0 ? (
+                {sizesList.length > 0 ? (
                   <div className="flex items-center justify-between gap-2 pt-1">
                     <p className="text-xs text-muted-foreground">
-                      Mostrando {sizesPage * PAGE_SIZE + 1}-{Math.min(sizes.length, (sizesPage + 1) * PAGE_SIZE)} de {sizes.length}
+                      Mostrando {sizesPage * PAGE_SIZE + 1}-{Math.min(sizesList.length, (sizesPage + 1) * PAGE_SIZE)} de {sizesList.length}
                     </p>
                     <div className="flex items-center gap-2">
                       <Button type="button" variant="outline" size="sm" onClick={() => setSizesPage((p) => Math.max(0, p - 1))} disabled={sizesPage <= 0}>
                         Anterior
                       </Button>
-                      <p className="text-xs">Página {sizesPage + 1} / {Math.max(1, Math.ceil(sizes.length / PAGE_SIZE))}</p>
+                      <p className="text-xs">Página {sizesPage + 1} / {Math.max(1, Math.ceil(sizesList.length / PAGE_SIZE))}</p>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => setSizesPage((p) => Math.min(Math.ceil(sizes.length / PAGE_SIZE) - 1, p + 1))}
-                        disabled={sizesPage >= Math.ceil(sizes.length / PAGE_SIZE) - 1}
+                        onClick={() => setSizesPage((p) => Math.min(Math.ceil(sizesList.length / PAGE_SIZE) - 1, p + 1))}
+                        disabled={sizesPage >= Math.ceil(sizesList.length / PAGE_SIZE) - 1}
                       >
                         Siguiente
                       </Button>
@@ -2442,9 +3281,21 @@ export function LitografiaCalculator() {
                 </div>
               </div>
 
+              <div>
+                <Label>Buscar</Label>
+                <Input
+                  className={INPUT_COMPACT}
+                  value={acabadosSearch}
+                  onChange={(e) => setAcabadosSearch(e.target.value)}
+                  placeholder="Buscar por nombre…"
+                />
+              </div>
+
               <div className="space-y-2">
                 {finishesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                {acabadosFinishes.length === 0 && !finishesLoading ? <p className="text-sm text-muted-foreground">No hay acabados.</p> : null}
+                {acabadosList.length === 0 && !finishesLoading ? (
+                  <p className="text-sm text-muted-foreground">{acabadosFinishes.length > 0 && acabadosSearch.trim() ? "Sin resultados." : "No hay acabados."}</p>
+                ) : null}
 
                 {pagedFinishes.map((f) => (
                   <div key={f.id} className="rounded-md border p-3 space-y-2">
@@ -2558,22 +3409,22 @@ export function LitografiaCalculator() {
                   </div>
                 ))}
 
-                {acabadosFinishes.length > 0 ? (
+                {acabadosList.length > 0 ? (
                   <div className="flex items-center justify-between gap-2 pt-1">
                     <p className="text-xs text-muted-foreground">
-                      Mostrando {finishesPage * PAGE_SIZE + 1}-{Math.min(acabadosFinishes.length, (finishesPage + 1) * PAGE_SIZE)} de {acabadosFinishes.length}
+                      Mostrando {finishesPage * PAGE_SIZE + 1}-{Math.min(acabadosList.length, (finishesPage + 1) * PAGE_SIZE)} de {acabadosList.length}
                     </p>
                     <div className="flex items-center gap-2">
                       <Button type="button" variant="outline" size="sm" onClick={() => setFinishesPage((p) => Math.max(0, p - 1))} disabled={finishesPage <= 0}>
                         Anterior
                       </Button>
-                      <p className="text-xs">Página {finishesPage + 1} / {Math.max(1, Math.ceil(acabadosFinishes.length / PAGE_SIZE))}</p>
+                      <p className="text-xs">Página {finishesPage + 1} / {Math.max(1, Math.ceil(acabadosList.length / PAGE_SIZE))}</p>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => setFinishesPage((p) => Math.min(Math.ceil(acabadosFinishes.length / PAGE_SIZE) - 1, p + 1))}
-                        disabled={finishesPage >= Math.ceil(acabadosFinishes.length / PAGE_SIZE) - 1}
+                        onClick={() => setFinishesPage((p) => Math.min(Math.ceil(acabadosList.length / PAGE_SIZE) - 1, p + 1))}
+                        disabled={finishesPage >= Math.ceil(acabadosList.length / PAGE_SIZE) - 1}
                       >
                         Siguiente
                       </Button>
@@ -2617,9 +3468,21 @@ export function LitografiaCalculator() {
                   </div>
                 </div>
 
+                <div>
+                  <Label>Buscar</Label>
+                  <Input
+                    className={INPUT_COMPACT}
+                    value={specialAcabadosSearch}
+                    onChange={(e) => setSpecialAcabadosSearch(e.target.value)}
+                    placeholder="Buscar por nombre…"
+                  />
+                </div>
+
                 <div className="space-y-2">
                   {finishesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                  {specialFinishes.length === 0 && !finishesLoading ? <p className="text-sm text-muted-foreground">No hay acabados especiales.</p> : null}
+                  {specialFinishesList.length === 0 && !finishesLoading ? (
+                    <p className="text-sm text-muted-foreground">{specialFinishes.length > 0 && specialAcabadosSearch.trim() ? "Sin resultados." : "No hay acabados especiales."}</p>
+                  ) : null}
 
                   {pagedSpecialFinishes.map((f) => (
                     <div key={f.id} className="rounded-md border p-3 space-y-2">
@@ -2731,22 +3594,22 @@ export function LitografiaCalculator() {
                     </div>
                   ))}
 
-                  {specialFinishes.length > 0 ? (
+                  {specialFinishesList.length > 0 ? (
                     <div className="flex items-center justify-between gap-2 pt-1">
                       <p className="text-xs text-muted-foreground">
-                        Mostrando {specialFinishesPage * PAGE_SIZE + 1}-{Math.min(specialFinishes.length, (specialFinishesPage + 1) * PAGE_SIZE)} de {specialFinishes.length}
+                        Mostrando {specialFinishesPage * PAGE_SIZE + 1}-{Math.min(specialFinishesList.length, (specialFinishesPage + 1) * PAGE_SIZE)} de {specialFinishesList.length}
                       </p>
                       <div className="flex items-center gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={() => setSpecialFinishesPage((p) => Math.max(0, p - 1))} disabled={specialFinishesPage <= 0}>
                           Anterior
                         </Button>
-                        <p className="text-xs">Página {specialFinishesPage + 1} / {Math.max(1, Math.ceil(specialFinishes.length / PAGE_SIZE))}</p>
+                        <p className="text-xs">Página {specialFinishesPage + 1} / {Math.max(1, Math.ceil(specialFinishesList.length / PAGE_SIZE))}</p>
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setSpecialFinishesPage((p) => Math.min(Math.ceil(specialFinishes.length / PAGE_SIZE) - 1, p + 1))}
-                          disabled={specialFinishesPage >= Math.ceil(specialFinishes.length / PAGE_SIZE) - 1}
+                          onClick={() => setSpecialFinishesPage((p) => Math.min(Math.ceil(specialFinishesList.length / PAGE_SIZE) - 1, p + 1))}
+                          disabled={specialFinishesPage >= Math.ceil(specialFinishesList.length / PAGE_SIZE) - 1}
                         >
                           Siguiente
                         </Button>
@@ -2784,9 +3647,21 @@ export function LitografiaCalculator() {
                   </div>
                 </div>
 
+                <div>
+                  <Label>Buscar</Label>
+                  <Input
+                    className={INPUT_COMPACT}
+                    value={plastificadosSearch}
+                    onChange={(e) => setPlastificadosSearch(e.target.value)}
+                    placeholder="Buscar por nombre…"
+                  />
+                </div>
+
                 <div className="space-y-2">
                   {finishesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                  {plastificadosFinishes.length === 0 && !finishesLoading ? <p className="text-sm text-muted-foreground">No hay plastificados.</p> : null}
+                  {plastificadosList.length === 0 && !finishesLoading ? (
+                    <p className="text-sm text-muted-foreground">{plastificadosFinishes.length > 0 && plastificadosSearch.trim() ? "Sin resultados." : "No hay plastificados."}</p>
+                  ) : null}
 
                   {pagedPlastificados.map((f) => (
                     <div key={f.id} className="rounded-md border p-3 space-y-2">
@@ -2900,22 +3775,22 @@ export function LitografiaCalculator() {
                     </div>
                   ))}
 
-                  {plastificadosFinishes.length > 0 ? (
+                  {plastificadosList.length > 0 ? (
                     <div className="flex items-center justify-between gap-2 pt-1">
                       <p className="text-xs text-muted-foreground">
-                        Mostrando {plastificadosPage * PAGE_SIZE + 1}-{Math.min(plastificadosFinishes.length, (plastificadosPage + 1) * PAGE_SIZE)} de {plastificadosFinishes.length}
+                        Mostrando {plastificadosPage * PAGE_SIZE + 1}-{Math.min(plastificadosList.length, (plastificadosPage + 1) * PAGE_SIZE)} de {plastificadosList.length}
                       </p>
                       <div className="flex items-center gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={() => setPlastificadosPage((p) => Math.max(0, p - 1))} disabled={plastificadosPage <= 0}>
                           Anterior
                         </Button>
-                        <p className="text-xs">Página {plastificadosPage + 1} / {Math.max(1, Math.ceil(plastificadosFinishes.length / PAGE_SIZE))}</p>
+                        <p className="text-xs">Página {plastificadosPage + 1} / {Math.max(1, Math.ceil(plastificadosList.length / PAGE_SIZE))}</p>
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setPlastificadosPage((p) => Math.min(Math.ceil(plastificadosFinishes.length / PAGE_SIZE) - 1, p + 1))}
-                          disabled={plastificadosPage >= Math.ceil(plastificadosFinishes.length / PAGE_SIZE) - 1}
+                          onClick={() => setPlastificadosPage((p) => Math.min(Math.ceil(plastificadosList.length / PAGE_SIZE) - 1, p + 1))}
+                          disabled={plastificadosPage >= Math.ceil(plastificadosList.length / PAGE_SIZE) - 1}
                         >
                           Siguiente
                         </Button>
@@ -2952,9 +3827,21 @@ export function LitografiaCalculator() {
                   </div>
                 </div>
 
+                <div>
+                  <Label>Buscar</Label>
+                  <Input
+                    className={INPUT_COMPACT}
+                    value={troqueladosSearch}
+                    onChange={(e) => setTroqueladosSearch(e.target.value)}
+                    placeholder="Buscar por nombre…"
+                  />
+                </div>
+
                 <div className="space-y-2">
                   {finishesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                  {troqueladosFinishes.length === 0 && !finishesLoading ? <p className="text-sm text-muted-foreground">No hay troquelados.</p> : null}
+                  {troqueladosList.length === 0 && !finishesLoading ? (
+                    <p className="text-sm text-muted-foreground">{troqueladosFinishes.length > 0 && troqueladosSearch.trim() ? "Sin resultados." : "No hay troquelados."}</p>
+                  ) : null}
 
                   {pagedTroquelados.map((f) => (
                     <div key={f.id} className="rounded-md border p-3 space-y-2">
@@ -3068,22 +3955,22 @@ export function LitografiaCalculator() {
                     </div>
                   ))}
 
-                  {troqueladosFinishes.length > 0 ? (
+                  {troqueladosList.length > 0 ? (
                     <div className="flex items-center justify-between gap-2 pt-1">
                       <p className="text-xs text-muted-foreground">
-                        Mostrando {troqueladosPage * PAGE_SIZE + 1}-{Math.min(troqueladosFinishes.length, (troqueladosPage + 1) * PAGE_SIZE)} de {troqueladosFinishes.length}
+                        Mostrando {troqueladosPage * PAGE_SIZE + 1}-{Math.min(troqueladosList.length, (troqueladosPage + 1) * PAGE_SIZE)} de {troqueladosList.length}
                       </p>
                       <div className="flex items-center gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={() => setTroqueladosPage((p) => Math.max(0, p - 1))} disabled={troqueladosPage <= 0}>
                           Anterior
                         </Button>
-                        <p className="text-xs">Página {troqueladosPage + 1} / {Math.max(1, Math.ceil(troqueladosFinishes.length / PAGE_SIZE))}</p>
+                        <p className="text-xs">Página {troqueladosPage + 1} / {Math.max(1, Math.ceil(troqueladosList.length / PAGE_SIZE))}</p>
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setTroqueladosPage((p) => Math.min(Math.ceil(troqueladosFinishes.length / PAGE_SIZE) - 1, p + 1))}
-                          disabled={troqueladosPage >= Math.ceil(troqueladosFinishes.length / PAGE_SIZE) - 1}
+                          onClick={() => setTroqueladosPage((p) => Math.min(Math.ceil(troqueladosList.length / PAGE_SIZE) - 1, p + 1))}
+                          disabled={troqueladosPage >= Math.ceil(troqueladosList.length / PAGE_SIZE) - 1}
                         >
                           Siguiente
                         </Button>
@@ -3120,9 +4007,21 @@ export function LitografiaCalculator() {
                   </div>
                 </div>
 
+                <div>
+                  <Label>Buscar</Label>
+                  <Input
+                    className={INPUT_COMPACT}
+                    value={cortesSearch}
+                    onChange={(e) => setCortesSearch(e.target.value)}
+                    placeholder="Buscar por nombre…"
+                  />
+                </div>
+
                 <div className="space-y-2">
                   {finishesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                  {cortesFinishes.length === 0 && !finishesLoading ? <p className="text-sm text-muted-foreground">No hay cortes.</p> : null}
+                  {cortesList.length === 0 && !finishesLoading ? (
+                    <p className="text-sm text-muted-foreground">{cortesFinishes.length > 0 && cortesSearch.trim() ? "Sin resultados." : "No hay cortes."}</p>
+                  ) : null}
 
                   {pagedCortes.map((f) => (
                     <div key={f.id} className="rounded-md border p-3 space-y-2">
@@ -3236,22 +4135,22 @@ export function LitografiaCalculator() {
                     </div>
                   ))}
 
-                  {cortesFinishes.length > 0 ? (
+                  {cortesList.length > 0 ? (
                     <div className="flex items-center justify-between gap-2 pt-1">
                       <p className="text-xs text-muted-foreground">
-                        Mostrando {cortesPage * PAGE_SIZE + 1}-{Math.min(cortesFinishes.length, (cortesPage + 1) * PAGE_SIZE)} de {cortesFinishes.length}
+                        Mostrando {cortesPage * PAGE_SIZE + 1}-{Math.min(cortesList.length, (cortesPage + 1) * PAGE_SIZE)} de {cortesList.length}
                       </p>
                       <div className="flex items-center gap-2">
                         <Button type="button" variant="outline" size="sm" onClick={() => setCortesPage((p) => Math.max(0, p - 1))} disabled={cortesPage <= 0}>
                           Anterior
                         </Button>
-                        <p className="text-xs">Página {cortesPage + 1} / {Math.max(1, Math.ceil(cortesFinishes.length / PAGE_SIZE))}</p>
+                        <p className="text-xs">Página {cortesPage + 1} / {Math.max(1, Math.ceil(cortesList.length / PAGE_SIZE))}</p>
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => setCortesPage((p) => Math.min(Math.ceil(cortesFinishes.length / PAGE_SIZE) - 1, p + 1))}
-                          disabled={cortesPage >= Math.ceil(cortesFinishes.length / PAGE_SIZE) - 1}
+                          onClick={() => setCortesPage((p) => Math.min(Math.ceil(cortesList.length / PAGE_SIZE) - 1, p + 1))}
+                          disabled={cortesPage >= Math.ceil(cortesList.length / PAGE_SIZE) - 1}
                         >
                           Siguiente
                         </Button>
@@ -3277,59 +4176,63 @@ export function LitografiaCalculator() {
               <div className="grid grid-cols-1 md:grid-cols-8 gap-2 items-end">
                 <div className="md:col-span-2">
                   <Label>Filtro Tamaño</Label>
-                  <select
-                    className={SELECT_COMPACT}
+                  <SearchableNativeSelect
                     value={ratesFilterFormatoKey}
-                    onChange={(e) => setRatesFilterFormatoKey(e.target.value)}
+                    onChange={(v) => setRatesFilterFormatoKey(v)}
                     disabled={!sizeOptions.length}
-                  >
-                    <option value="">Todos</option>
-                    {sizeOptions.map((p) => (
-                      <option key={p.key} value={p.key}>
-                        {p.nombre}
-                      </option>
-                    ))}
-                  </select>
+                    searchClassName={INPUT_COMPACT}
+                    selectClassName={SELECT_COMPACT}
+                    includeAllOption={{ value: "", label: "Todos" }}
+                    options={sizeOptions.map((p) => ({ value: p.key, label: p.nombre }))}
+                    searchPlaceholder="Buscar tamaño…"
+                  />
                 </div>
                 <div className="md:col-span-1">
                   <Label>Filtro Tintas</Label>
-                  <select
-                    className={SELECT_COMPACT}
+                  <SearchableNativeSelect
                     value={ratesFilterTintas === "" ? "" : String(ratesFilterTintas)}
-                    onChange={(e) => {
-                      const raw = e.target.value
+                    onChange={(raw) => {
                       const v = raw === "" ? "" : (Number(raw) as 1 | 2 | 4)
                       setRatesFilterTintas(v)
                     }}
-                  >
-                    <option value="">Todas</option>
-                    <option value="4">4</option>
-                    <option value="2">2</option>
-                    <option value="1">1</option>
-                  </select>
+                    searchClassName={INPUT_COMPACT}
+                    selectClassName={SELECT_COMPACT}
+                    includeAllOption={{ value: "", label: "Todas" }}
+                    options={[
+                      { value: "4", label: "4" },
+                      { value: "2", label: "2" },
+                      { value: "1", label: "1" },
+                    ]}
+                    searchPlaceholder="Buscar…"
+                  />
                 </div>
                 <div className="md:col-span-2">
                   <Label>Filtro Papel</Label>
-                  <select className={SELECT_COMPACT} value={ratesFilterPaperId} onChange={(e) => setRatesFilterPaperId(e.target.value)}>
-                    <option value="">Todos</option>
-                    {activePapers.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nombre}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableNativeSelect
+                    value={ratesFilterPaperId}
+                    onChange={(v) => setRatesFilterPaperId(v)}
+                    searchClassName={INPUT_COMPACT}
+                    selectClassName={SELECT_COMPACT}
+                    includeAllOption={{ value: "", label: "Todos" }}
+                    options={activePapers.map((p) => ({ value: p.id, label: p.nombre }))}
+                    searchPlaceholder="Buscar papel…"
+                  />
                 </div>
                 <div className="md:col-span-2">
                   <Label>Filtro Acabado</Label>
-                  <select className={SELECT_COMPACT} value={ratesFilterFinishId} onChange={(e) => setRatesFilterFinishId(e.target.value)} disabled={finishesLoading}>
-                    <option value="">Todos</option>
-                    <option value="__generic__">Solo SIN acabado</option>
-                    {activeFinishes.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.nombre}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableNativeSelect
+                    value={ratesFilterFinishId}
+                    onChange={(v) => setRatesFilterFinishId(v)}
+                    disabled={finishesLoading}
+                    searchClassName={INPUT_COMPACT}
+                    selectClassName={SELECT_COMPACT}
+                    includeAllOption={{ value: "", label: "Todos" }}
+                    options={[
+                      { value: "__generic__", label: "Solo SIN acabado" },
+                      ...activeFinishes.map((f) => ({ value: f.id, label: f.nombre })),
+                    ]}
+                    searchPlaceholder="Buscar acabado…"
+                  />
                 </div>
                 <div className="md:col-span-1">
                   <Button type="button" variant="outline" onClick={() => {
@@ -3346,67 +4249,83 @@ export function LitografiaCalculator() {
               <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
                 <div className="md:col-span-2">
                   <Label>Papel (obligatorio)</Label>
-                  <select className={SELECT_COMPACT} value={newFlyerPaperId} onChange={(e) => setNewFlyerPaperId(e.target.value)}>
-                    <option value="" disabled>
-                      Selecciona un papel
-                    </option>
-                    {activePapers.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nombre}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableNativeSelect
+                    value={newFlyerPaperId}
+                    onChange={(v) => setNewFlyerPaperId(v)}
+                    searchClassName={INPUT_COMPACT}
+                    selectClassName={SELECT_COMPACT}
+                    searchPlaceholder="Buscar papel…"
+                    options={[
+                      { value: "", label: "Selecciona un papel", disabled: true },
+                      ...activePapers.map((p) => ({ value: p.id, label: p.nombre })),
+                    ]}
+                  />
                 </div>
                 <div className="md:col-span-2">
                   <Label>Acabado</Label>
-                  <select className={SELECT_COMPACT} value={newFlyerFinishId} onChange={(e) => setNewFlyerFinishId(e.target.value)} disabled={finishesLoading}>
-                    <option value="">Sin acabado</option>
-                    {activeFinishes.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.nombre}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableNativeSelect
+                    value={newFlyerFinishId}
+                    onChange={(v) => setNewFlyerFinishId(v)}
+                    disabled={finishesLoading}
+                    searchClassName={INPUT_COMPACT}
+                    selectClassName={SELECT_COMPACT}
+                    includeAllOption={{ value: "", label: "Sin acabado" }}
+                    options={activeFinishes.map((f) => ({ value: f.id, label: f.nombre }))}
+                    searchPlaceholder="Buscar acabado…"
+                  />
                 </div>
                 <div className="md:col-span-2">
                   <Label>Formato</Label>
-                  <select
-                    className={SELECT_COMPACT}
+                  <SearchableNativeSelect
                     value={newFlyerFormatoKey}
-                    onChange={(e) => setNewFlyerFormatoKey(e.target.value)}
+                    onChange={(v) => setNewFlyerFormatoKey(v)}
                     disabled={!sizeOptions.length}
-                  >
-                    <option value="" disabled>
-                      {sizeOptions.length ? "Selecciona un tamaño" : "Sin tamaños configurados"}
-                    </option>
-                    {sizeOptions.map((p) => (
-                      <option key={p.key} value={p.key}>
-                        {p.nombre} ({p.widthCm}×{p.heightCm} cm)
-                      </option>
-                    ))}
-                  </select>
+                    searchClassName={INPUT_COMPACT}
+                    selectClassName={SELECT_COMPACT}
+                    searchPlaceholder="Buscar tamaño…"
+                    options={[
+                      {
+                        value: "",
+                        label: sizeOptions.length ? "Selecciona un tamaño" : "Sin tamaños configurados",
+                        disabled: true,
+                      },
+                      ...sizeOptions.map((p) => ({
+                        value: p.key,
+                        label: `${p.nombre} (${p.widthCm}×${p.heightCm} cm)`,
+                      })),
+                    ]}
+                  />
                   {!sizeOptions.length ? (
                     <p className="mt-1 text-xs text-muted-foreground">Crea tamaños en Configuración &gt; Tamaños de impresión.</p>
                   ) : null}
                 </div>
                 <div>
                   <Label>Tintas</Label>
-                  <select className={SELECT_COMPACT} value={String(newFlyerTintas)} onChange={(e) => setNewFlyerTintas(Number(e.target.value) as 1 | 2 | 4)}>
-                    <option value="4">4</option>
-                    <option value="2">2</option>
-                    <option value="1">1</option>
-                  </select>
+                  <SearchableNativeSelect
+                    value={String(newFlyerTintas)}
+                    onChange={(v) => setNewFlyerTintas(Number(v) as 1 | 2 | 4)}
+                    searchClassName={INPUT_COMPACT}
+                    selectClassName={SELECT_COMPACT}
+                    searchPlaceholder="Buscar tintas…"
+                    options={[
+                      { value: "4", label: "4" },
+                      { value: "2", label: "2" },
+                      { value: "1", label: "1" },
+                    ]}
+                  />
                 </div>
                 <div>
                   <Label>Rango sugerido</Label>
-                  <select className={SELECT_COMPACT} value={newFlyerTierKey} onChange={(e) => setNewFlyerTierKey(e.target.value)}>
-                    <option value="">Personalizado</option>
-                    {DEFAULT_TIRAJE_TIERS.map((t) => (
-                      <option key={t.key} value={t.key}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
+                  <SearchableNativeSelect
+                    value={newFlyerTierKey}
+                    onChange={(v) => setNewFlyerTierKey(v)}
+                    searchClassName={INPUT_COMPACT}
+                    selectClassName={SELECT_COMPACT}
+                    includeAllOption={{ value: "", label: "Personalizado" }}
+                    options={tirajeTierOptions.map((t) => ({ value: t.value, label: t.label }))}
+                    searchPlaceholder="Buscar rango…"
+                    emptyText={tirajeTierOptions.length ? 'Sin resultados' : 'Sin rangos configurados'}
+                  />
                 </div>
                 <div>
                   <Label>Min</Label>
@@ -3436,9 +4355,23 @@ export function LitografiaCalculator() {
                 </div>
               </div>
 
+              <div>
+                <Label>Buscar</Label>
+                <Input
+                  className={INPUT_COMPACT}
+                  value={flyerRatesSearch}
+                  onChange={(e) => setFlyerRatesSearch(e.target.value)}
+                  placeholder="Buscar por tamaño, papel, acabado o producto…"
+                />
+              </div>
+
               <div className="space-y-2">
                 {flyerRatesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                {groupedFlyerRates.length === 0 && !flyerRatesLoading ? <p className="text-sm text-muted-foreground">No hay rangos (con estos filtros).</p> : null}
+                {flyerRateGroupsCount === 0 && !flyerRatesLoading ? (
+                  <p className="text-sm text-muted-foreground">
+                    {groupedFlyerRates.length > 0 && flyerRatesSearch.trim() ? "Sin resultados." : "No hay rangos (con estos filtros)."}
+                  </p>
+                ) : null}
 
                 {pagedFlyerRateGroups.map((g) => (
                   <div key={g.key} className="rounded-md border p-3 space-y-2">
@@ -3457,19 +4390,16 @@ export function LitografiaCalculator() {
 
                       <div className="flex flex-col gap-2 md:items-end">
                         <div className="flex flex-wrap items-center gap-2">
-                          <select
-                            className={SELECT_INLINE}
+                          <SearchableNativeSelect
                             value={groupProductoSelection[g.key] ?? (g.productoId ?? "")}
-                            onChange={(e) => setGroupProductoSelection((prev) => ({ ...prev, [g.key]: e.target.value }))}
+                            onChange={(v) => setGroupProductoSelection((prev) => ({ ...prev, [g.key]: v }))}
                             disabled={productosLoading || groupAssignLoadingKey === g.key}
-                          >
-                            <option value="">Sin producto</option>
-                            {productos.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.nombre}
-                              </option>
-                            ))}
-                          </select>
+                            searchClassName={INPUT_COMPACT}
+                            selectClassName={SELECT_INLINE}
+                            searchPlaceholder="Buscar producto…"
+                            includeAllOption={{ value: "", label: "Sin producto" }}
+                            options={productos.map((p) => ({ value: p.id, label: p.nombre }))}
+                          />
                           <Button
                             type="button"
                             size="sm"
@@ -3582,11 +4512,9 @@ export function LitografiaCalculator() {
                                 <div className="grid grid-cols-1 md:grid-cols-6 gap-2 items-end">
                                   <div className="md:col-span-2">
                                     <Label className="text-xs">Papel</Label>
-                                    <select
-                                      className={SELECT_COMPACT}
+                                    <SearchableNativeSelect
                                       value={draftPaperId}
-                                      onChange={(e) => {
-                                        const v = e.target.value
+                                      onChange={(v) => {
                                         setFlyerRateEdits((prev) => ({
                                           ...prev,
                                           [r.id]: {
@@ -3600,26 +4528,24 @@ export function LitografiaCalculator() {
                                           },
                                         }))
                                       }}
-                                    >
-                                      {draftPaperId ? null : (
-                                        <option value="" disabled>
-                                          {r.paperRateId ? "Selecciona un papel" : "Sin papel (legacy)"}
-                                        </option>
-                                      )}
-                                      {activePapers.map((p) => (
-                                        <option key={p.id} value={p.id}>
-                                          {p.nombre}
-                                        </option>
-                                      ))}
-                                    </select>
+                                      searchClassName={INPUT_COMPACT}
+                                      selectClassName={SELECT_COMPACT}
+                                      searchPlaceholder="Buscar papel…"
+                                      options={[
+                                        {
+                                          value: "",
+                                          label: r.paperRateId ? "Selecciona un papel" : "Sin papel (legacy)",
+                                          disabled: true,
+                                        },
+                                        ...activePapers.map((p) => ({ value: p.id, label: p.nombre })),
+                                      ]}
+                                    />
                                   </div>
                                   <div className="md:col-span-2">
                                     <Label className="text-xs">Acabado</Label>
-                                    <select
-                                      className={SELECT_COMPACT}
+                                    <SearchableNativeSelect
                                       value={draftFinishId}
-                                      onChange={(e) => {
-                                        const v = e.target.value
+                                      onChange={(v) => {
                                         setFlyerRateEdits((prev) => ({
                                           ...prev,
                                           [r.id]: {
@@ -3634,22 +4560,18 @@ export function LitografiaCalculator() {
                                         }))
                                       }}
                                       disabled={finishesLoading}
-                                    >
-                                      <option value="">Sin acabado</option>
-                                      {activeFinishes.map((f) => (
-                                        <option key={f.id} value={f.id}>
-                                          {f.nombre}
-                                        </option>
-                                      ))}
-                                    </select>
+                                      searchClassName={INPUT_COMPACT}
+                                      selectClassName={SELECT_COMPACT}
+                                      includeAllOption={{ value: "", label: "Sin acabado" }}
+                                      options={activeFinishes.map((f) => ({ value: f.id, label: f.nombre }))}
+                                      searchPlaceholder="Buscar acabado…"
+                                    />
                                   </div>
                                   <div className="md:col-span-2">
                                     <Label className="text-xs">Tamaño</Label>
-                                    <select
-                                      className={SELECT_COMPACT}
+                                    <SearchableNativeSelect
                                       value={draftFormatoKey}
-                                      onChange={(e) => {
-                                        const v = e.target.value
+                                      onChange={(v) => {
                                         setFlyerRateEdits((prev) => ({
                                           ...prev,
                                           [r.id]: {
@@ -3664,14 +4586,18 @@ export function LitografiaCalculator() {
                                         }))
                                       }}
                                       disabled={!sizeOptions.length}
-                                    >
-                                      {sizeOptions.length ? null : <option value={r.formatoKey}>{r.formatoKey}</option>}
-                                      {sizeOptions.map((p) => (
-                                        <option key={p.key} value={p.key}>
-                                          {p.nombre}
-                                        </option>
-                                      ))}
-                                    </select>
+                                      searchClassName={INPUT_COMPACT}
+                                      selectClassName={SELECT_COMPACT}
+                                      searchPlaceholder="Buscar tamaño…"
+                                      options={
+                                        sizeOptions.length
+                                          ? [
+                                              { value: "", label: "Selecciona un tamaño", disabled: true },
+                                              ...sizeOptions.map((p) => ({ value: p.key, label: p.nombre })),
+                                            ]
+                                          : [{ value: draftFormatoKey, label: draftFormatoKey }]
+                                      }
+                                    />
                                   </div>
                                   <div>
                                     <Label className="text-xs">Tintas</Label>
@@ -3829,22 +4755,22 @@ export function LitografiaCalculator() {
                   </div>
                 ))}
 
-                {groupedFlyerRates.length > 0 ? (
+                {flyerRateGroupsCount > 0 ? (
                   <div className="flex items-center justify-between gap-2 pt-1">
                     <p className="text-xs text-muted-foreground">
-                      Mostrando {ratesPage * PAGE_SIZE + 1}-{Math.min(groupedFlyerRates.length, (ratesPage + 1) * PAGE_SIZE)} de {groupedFlyerRates.length}
+                      Mostrando {ratesPage * PAGE_SIZE + 1}-{Math.min(flyerRateGroupsCount, (ratesPage + 1) * PAGE_SIZE)} de {flyerRateGroupsCount}
                     </p>
                     <div className="flex items-center gap-2">
                       <Button type="button" variant="outline" size="sm" onClick={() => setRatesPage((p) => Math.max(0, p - 1))} disabled={ratesPage <= 0}>
                         Anterior
                       </Button>
-                      <p className="text-xs">Página {ratesPage + 1} / {Math.max(1, Math.ceil(groupedFlyerRates.length / PAGE_SIZE))}</p>
+                      <p className="text-xs">Página {ratesPage + 1} / {Math.max(1, Math.ceil(flyerRateGroupsCount / PAGE_SIZE))}</p>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => setRatesPage((p) => Math.min(Math.ceil(groupedFlyerRates.length / PAGE_SIZE) - 1, p + 1))}
-                        disabled={ratesPage >= Math.ceil(groupedFlyerRates.length / PAGE_SIZE) - 1}
+                        onClick={() => setRatesPage((p) => Math.min(Math.ceil(flyerRateGroupsCount / PAGE_SIZE) - 1, p + 1))}
+                        disabled={ratesPage >= Math.ceil(flyerRateGroupsCount / PAGE_SIZE) - 1}
                       >
                         Siguiente
                       </Button>
@@ -3871,11 +4797,9 @@ export function LitografiaCalculator() {
 
           <div>
             <Label>Tamaño de impresión</Label>
-            <select
-              className={SELECT_COMPACT}
+            <SearchableNativeSelect
               value={formatoKey}
-              onChange={(e) => {
-                const nextKey = e.target.value
+              onChange={(nextKey) => {
                 setFormatoKey(nextKey)
                 const preset = sizeOptions.find((p) => p.key === nextKey)
                 if (!preset) return
@@ -3883,16 +4807,21 @@ export function LitografiaCalculator() {
                 setFormatoH(String(preset.heightCm))
               }}
               disabled={!sizeOptions.length}
-            >
-              <option value="" disabled>
-                {sizeOptions.length ? "Selecciona un tamaño" : "Sin tamaños configurados"}
-              </option>
-              {sizeOptions.map((p) => (
-                <option key={p.key} value={p.key}>
-                  {p.nombre} ({p.widthCm}×{p.heightCm} cm)
-                </option>
-              ))}
-            </select>
+              searchClassName={INPUT_COMPACT}
+              selectClassName={SELECT_COMPACT}
+              searchPlaceholder="Buscar tamaño…"
+              options={[
+                {
+                  value: "",
+                  label: sizeOptions.length ? "Selecciona un tamaño" : "Sin tamaños configurados",
+                  disabled: true,
+                },
+                ...sizeOptions.map((p) => ({
+                  value: p.key,
+                  label: `${p.nombre} (${p.widthCm}×${p.heightCm} cm)`,
+                })),
+              ]}
+            />
             {!sizeOptions.length ? (
               <p className="mt-1 text-xs text-muted-foreground">Crea tamaños en Configuración &gt; Tamaños de impresión para poder cotizar.</p>
             ) : null}
@@ -3900,22 +4829,19 @@ export function LitografiaCalculator() {
 
           <div>
             <Label>Planchas (costo)</Label>
-            <select
-              className={SELECT_COMPACT}
+            <SearchableNativeSelect
               value={selectedPlanchaProfileId}
-              onChange={(e) => setSelectedPlanchaProfileId(e.target.value)}
+              onChange={(v) => setSelectedPlanchaProfileId(v)}
               disabled={!activePlanchaProfiles.length}
-            >
-              {activePlanchaProfiles.length ? (
-                activePlanchaProfiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nombre}
-                  </option>
-                ))
-              ) : (
-                <option value="">Sin perfiles</option>
-              )}
-            </select>
+              searchClassName={INPUT_COMPACT}
+              selectClassName={SELECT_COMPACT}
+              searchPlaceholder="Buscar planchas…"
+              options={
+                activePlanchaProfiles.length
+                  ? activePlanchaProfiles.map((p) => ({ value: p.id, label: p.nombre }))
+                  : [{ value: "", label: "Sin perfiles", disabled: true }]
+              }
+            />
             <p className="mt-1 text-xs text-muted-foreground">
               {selectedPlanchaProfile ? (
                 <>
@@ -3929,22 +4855,19 @@ export function LitografiaCalculator() {
 
           <div>
             <Label>Tinta (costo)</Label>
-            <select
-              className={SELECT_COMPACT}
+            <SearchableNativeSelect
               value={selectedTintaProfileId}
-              onChange={(e) => setSelectedTintaProfileId(e.target.value)}
+              onChange={(v) => setSelectedTintaProfileId(v)}
               disabled={!activeTintaProfiles.length}
-            >
-              {activeTintaProfiles.length ? (
-                activeTintaProfiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nombre}
-                  </option>
-                ))
-              ) : (
-                <option value="">Sin perfiles</option>
-              )}
-            </select>
+              searchClassName={INPUT_COMPACT}
+              selectClassName={SELECT_COMPACT}
+              searchPlaceholder="Buscar tinta…"
+              options={
+                activeTintaProfiles.length
+                  ? activeTintaProfiles.map((p) => ({ value: p.id, label: p.nombre }))
+                  : [{ value: "", label: "Sin perfiles", disabled: true }]
+              }
+            />
             <p className="mt-1 text-xs text-muted-foreground">
               {selectedTintaProfile ? (
                 <>
@@ -3958,11 +4881,9 @@ export function LitografiaCalculator() {
 
           <div>
             <Label>Papel</Label>
-            <select
-              className={SELECT_COMPACT}
+            <SearchableNativeSelect
               value={selectedPaperId}
-              onChange={(e) => {
-                const nextId = e.target.value
+              onChange={(nextId) => {
                 setSelectedPaperId(nextId)
                 const p = activePapers.find((x) => x.id === nextId) || null
                 if (p) {
@@ -3971,17 +4892,18 @@ export function LitografiaCalculator() {
                 }
               }}
               disabled={!activePapers.length}
-            >
-              {activePapers.length ? (
-                activePapers.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nombre}{p.gramaje ? ` • ${p.gramaje}g` : ""} • {formatCurrency(p.costoPliego)}/pliego
-                  </option>
-                ))
-              ) : (
-                <option value="">Sin papeles</option>
-              )}
-            </select>
+              searchClassName={INPUT_COMPACT}
+              selectClassName={SELECT_COMPACT}
+              searchPlaceholder="Buscar papel…"
+              options={
+                activePapers.length
+                  ? activePapers.map((p) => ({
+                      value: p.id,
+                      label: `${p.nombre}${p.gramaje ? ` • ${p.gramaje}g` : ""} • ${formatCurrency(p.costoPliego)}/pliego`,
+                    }))
+                  : [{ value: "", label: "Sin papeles", disabled: true }]
+              }
+            />
             <p className="mt-1 text-xs text-muted-foreground">
               {selectedPaper ? (
                 <>Pliego: {selectedPaper.pliegoWidthCm}×{selectedPaper.pliegoHeightCm} cm</>
@@ -3993,26 +4915,38 @@ export function LitografiaCalculator() {
 
           <div>
             <Label>Acabados</Label>
-            <select className={SELECT_COMPACT} value={selectedFinishId} onChange={(e) => setSelectedFinishId(e.target.value)} disabled={finishesLoading}>
-              <option value="">Sin acabado</option>
-              {activeFinishes.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.nombre}
-                </option>
-              ))}
-            </select>
+            <SearchableNativeSelect
+              value={selectedFinishId}
+              onChange={(v) => setSelectedFinishId(v)}
+              disabled={finishesLoading}
+              searchClassName={INPUT_COMPACT}
+              selectClassName={SELECT_COMPACT}
+              includeAllOption={{ value: "", label: "Sin acabado" }}
+              options={activeFinishes.map((f) => ({ value: f.id, label: f.nombre }))}
+              searchPlaceholder="Buscar acabado…"
+            />
           </div>
 
           <div className="sm:col-span-2">
             <Label>Transporte</Label>
-            <select className={SELECT_COMPACT} value={selectedTransporteKey} onChange={(e) => setSelectedTransporteKey(e.target.value as TransporteKey | "")}>
-              <option value="">Sin transporte</option>
-              {TRANSPORTE_OPTIONS.map((o) => (
-                <option key={o.key} value={o.key}>
-                  {o.label} • {formatCurrency(o.total)}
-                </option>
-              ))}
-            </select>
+            <SearchableNativeSelect
+              value={selectedTransporteKey}
+              onChange={(v) => setSelectedTransporteKey(v)}
+              searchClassName={INPUT_COMPACT}
+              selectClassName={SELECT_COMPACT}
+              includeAllOption={{ value: "", label: "Sin transporte" }}
+              options={transporteOptions.map((o) => ({ value: o.value, label: `${o.label} • ${formatCurrency(o.total)}` }))}
+              searchPlaceholder="Buscar transporte…"
+              emptyText={transporteOptions.length ? 'Sin resultados' : 'Sin transportes configurados'}
+            />
+            {!transporteOptions.length ? (
+              <div className="mt-2 flex items-center gap-2">
+                <p className="text-xs text-muted-foreground">No hay opciones de transporte configuradas.</p>
+                <Button type="button" variant="outline" size="sm" onClick={() => void createTemplateIfMissing('transporte')}>
+                  Crear plantilla
+                </Button>
+              </div>
+            ) : null}
             <p className="mt-1 text-xs text-muted-foreground">Opcional. Se suma como valor fijo al total.</p>
           </div>
 

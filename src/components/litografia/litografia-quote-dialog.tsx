@@ -14,18 +14,15 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { SearchableNativeSelect } from "@/components/ui/searchable-native-select"
 import { formatCurrency } from "@/lib/utils"
 import { computeLitografia } from "@/lib/litografia"
 
 type PapelTipo = "bond" | "propalcote" | "periodico" | "otro"
 
-const TRANSPORTE_OPTIONS = [
-  { key: "norte", label: "Norte", total: 20000 },
-  { key: "sur", label: "Sur", total: 40000 },
-  { key: "fuera_bogota", label: "Fuera de Bogotá", total: 60000 },
-] as const
-
-type TransporteKey = (typeof TRANSPORTE_OPTIONS)[number]["key"]
+const CUSTOM_DROPDOWN_KEYS = {
+  transporte: "litografia_transporte",
+} as const
 
 const INPUT_COMPACT = "h-7 px-2 text-xs"
 const SELECT_COMPACT = "mt-2 h-8 w-full rounded-md border bg-background px-2 text-xs"
@@ -101,6 +98,14 @@ function getApiErrorMessage(env: ApiEnvelope, fallback: string) {
   return typeof env.error === "string" ? env.error : fallback
 }
 
+function metaNumber(meta: unknown, key: string): number | null {
+  if (!meta || typeof meta !== "object") return null
+  const anyMeta = meta as Record<string, unknown>
+  const raw = anyMeta[key]
+  const num = typeof raw === "number" ? raw : Number(String(raw ?? "").trim())
+  return Number.isFinite(num) ? num : null
+}
+
 function getDefaultCostoPliego(tipo: PapelTipo) {
   switch (tipo) {
     case "bond":
@@ -167,7 +172,7 @@ export type LitografiaMeta = {
   selectedCorteId?: string
   selectedPaperTipo: string
   selectedPaperGramaje: string
-  selectedTransporteKey: TransporteKey | ""
+  selectedTransporteKey: string
   costoCorte: string
   costoAcabados: string
   costoTransporte: string
@@ -231,7 +236,9 @@ export function LitografiaQuoteDialog(props: {
   const [selectedPaperTipo, setSelectedPaperTipo] = useState<string>("")
   const [selectedPaperGramaje, setSelectedPaperGramaje] = useState<string>("")
 
-  const [selectedTransporteKey, setSelectedTransporteKey] = useState<TransporteKey | "">("")
+  const [selectedTransporteKey, setSelectedTransporteKey] = useState<string>("")
+  const [transporteOptions, setTransporteOptions] = useState<Array<{ value: string; label: string; total: number }>>([])
+  const [transporteOptionsLoading, setTransporteOptionsLoading] = useState(false)
 
   const [costoCorte, setCostoCorte] = useState("0")
   const [costoAcabados, setCostoAcabados] = useState("0")
@@ -537,7 +544,7 @@ export function LitografiaQuoteDialog(props: {
     setSpecialFinishRows(rows.length ? rows : [{ finishId: "", qty: "1" }])
     setSelectedPaperTipo(meta.selectedPaperTipo ?? "")
     setSelectedPaperGramaje(meta.selectedPaperGramaje ?? "")
-    setSelectedTransporteKey((meta.selectedTransporteKey as TransporteKey | "") ?? "")
+    setSelectedTransporteKey(String(meta.selectedTransporteKey || ""))
     setSelectedPlastificadoId(meta.selectedPlastificadoId ?? "")
     setSelectedTroqueladoId(meta.selectedTroqueladoId ?? "")
     setSelectedCorteId(meta.selectedCorteId ?? "")
@@ -719,10 +726,42 @@ export function LitografiaQuoteDialog(props: {
 
   useEffect(() => {
     if (!props.open) return
-    const opt = TRANSPORTE_OPTIONS.find((o) => o.key === selectedTransporteKey) || null
+    const load = async () => {
+      setTransporteOptionsLoading(true)
+      try {
+        const res = await fetch("/api/configuracion/dropdowns?includeItems=1", { cache: "no-store" })
+        const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
+        const dropdowns = Array.isArray(env.data) ? (env.data as Array<{ key?: unknown; items?: unknown }>) : []
+        const transporte = dropdowns.find((d) => String(d.key || "") === CUSTOM_DROPDOWN_KEYS.transporte) || null
+        const items = transporte && Array.isArray((transporte as any).items) ? ((transporte as any).items as any[]) : []
+
+        const mapped = items
+          .filter((it) => Boolean(it) && Boolean((it as any).activo))
+          .map((it) => {
+            const value = String((it as any).value || "").trim()
+            const label = String((it as any).label || value).trim() || value
+            const total = Math.max(0, metaNumber((it as any).meta, "total") ?? 0)
+            return value ? { value, label, total } : null
+          })
+          .filter(Boolean) as Array<{ value: string; label: string; total: number }>
+
+        setTransporteOptions(mapped.sort((a, b) => a.label.localeCompare(b.label)))
+      } catch {
+        setTransporteOptions([])
+      } finally {
+        setTransporteOptionsLoading(false)
+      }
+    }
+
+    void load()
+  }, [props.open])
+
+  useEffect(() => {
+    if (!props.open) return
+    const opt = transporteOptions.find((o) => o.value === selectedTransporteKey) || null
     const next = opt ? String(opt.total) : "0"
     if (costoTransporte !== next) setCostoTransporte(next)
-  }, [props.open, selectedTransporteKey, costoTransporte])
+  }, [props.open, selectedTransporteKey, costoTransporte, transporteOptions])
 
   useEffect(() => {
     const load = async () => {
@@ -1154,7 +1193,7 @@ export function LitografiaQuoteDialog(props: {
       if (selectedCorte) parts.push(`Corte ${selectedCorte.nombre}`)
       if (selectedSpecialFinishNames.length) parts.push(`Acabados especiales ${selectedSpecialFinishNames.join(", ")}`)
       if (selectedTransporteKey) {
-        const opt = TRANSPORTE_OPTIONS.find((o) => o.key === selectedTransporteKey)
+        const opt = transporteOptions.find((o) => o.value === selectedTransporteKey)
         parts.push(`Transporte ${opt?.label ?? ""}`.trim())
       }
       if (qty > 0) parts.push(`Tiraje ${qty}`)
@@ -1732,14 +1771,17 @@ export function LitografiaQuoteDialog(props: {
 
                       <div className="sm:col-span-2">
                         <Label>Transporte</Label>
-                        <select className={SELECT_COMPACT} value={selectedTransporteKey} onChange={(e) => setSelectedTransporteKey(e.target.value as TransporteKey | "")}>
-                          <option value="">Sin transporte</option>
-                          {TRANSPORTE_OPTIONS.map((o) => (
-                            <option key={o.key} value={o.key}>
-                              {o.label} • {formatCurrency(o.total)}
-                            </option>
-                          ))}
-                        </select>
+                        <SearchableNativeSelect
+                          value={selectedTransporteKey}
+                          onChange={(v) => setSelectedTransporteKey(v)}
+                          disabled={transporteOptionsLoading}
+                          searchClassName={INPUT_COMPACT}
+                          selectClassName={SELECT_COMPACT}
+                          includeAllOption={{ value: "", label: "Sin transporte" }}
+                          options={transporteOptions.map((o) => ({ value: o.value, label: `${o.label} • ${formatCurrency(o.total)}` }))}
+                          searchPlaceholder="Buscar transporte…"
+                          emptyText={transporteOptions.length ? "Sin resultados" : "Sin transportes configurados"}
+                        />
                         <p className="mt-1 text-[10px] leading-tight text-muted-foreground">Opcional. Se suma como valor fijo al total.</p>
                       </div>
 

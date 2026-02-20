@@ -472,6 +472,9 @@ model Empresa {
   litografiaProductos     LitografiaProducto[]
   litografiaFinishOptions LitografiaFinishOption[]
   litografiaPrintSizes    LitografiaPrintSize[]
+
+  // Dropdowns configurables (por empresa)
+  configDropdowns ConfigDropdown[]
   
   inventoryTransfers InventoryTransfer[]
 
@@ -682,6 +685,57 @@ model LitografiaFlyerRate {
   @@index([empresaId, productoId, activo])
   @@index([empresaId, tirajeMin, tirajeMax])
   @@map("litografia_flyer_rates")
+}
+
+// ============================================
+// CONFIGURACIÓN - DROPDOWNS PERSONALIZADOS (POR EMPRESA)
+// ============================================
+
+model ConfigDropdown {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  // Key estable para referenciar el dropdown (ej: "transporte", "tiraje_tiers", "mis_opciones")
+  key   String
+  nombre String
+
+  descripcion String?
+
+  items ConfigDropdownItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, key])
+  @@index([empresaId])
+  @@map("config_dropdowns")
+}
+
+model ConfigDropdownItem {
+  id String @id @default(cuid())
+
+  dropdownId String
+  dropdown   ConfigDropdown @relation(fields: [dropdownId], references: [id], onDelete: Cascade)
+
+  // Value estable para almacenar el valor seleccionado
+  value String
+  // Label visible para el usuario
+  label String
+
+  // Metadata opcional por opción (ej: { total: 20000 } o { min: 1, max: 500 })
+  meta Json @default("{}")
+
+  sortOrder Int @default(0)
+  activo    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([dropdownId, value])
+  @@index([dropdownId, activo])
+  @@index([dropdownId, sortOrder])
+  @@map("config_dropdown_items")
 }
 
 model InventoryMovement {
