@@ -35,9 +35,13 @@ export default function Header({ user }: HeaderProps) {
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const [planName, setPlanName] = useState<string>("")
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
-  const [canManageBilling, setCanManageBilling] = useState(false)
+  const [canManageBilling, setCanManageBilling] = useState(() => user.role === 'ADMIN')
   const toggleMobileNav = useUiStore((s) => s.toggleMobileNav)
   const { hasCurrentTour, startCurrentTour, resetCurrentTour } = useTour()
+
+  useEffect(() => {
+    if (user.role === 'ADMIN') setCanManageBilling(true)
+  }, [user.role])
 
   const initials = useMemo(() => {
     const name = (user.name ?? '').trim()

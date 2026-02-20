@@ -69,6 +69,8 @@ function moduleForHref(href: string): string | null {
     case '/dashboard/configuracion/plan':
     case '/dashboard/configuracion/desperdicios':
     case '/dashboard/configuracion/super-admin/modulos-por-plan':
+    case '/dashboard/configuracion/super-admin/empresas':
+    case '/dashboard/configuracion/super-admin/usuarios':
       return 'CONFIG'
     default:
       return null
@@ -303,6 +305,24 @@ const moduleNavigation: NavItem[] = [
       </svg>
     ),
   },
+  {
+    name: "Super Admin · Empresas",
+    href: "/dashboard/configuracion/super-admin/empresas",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21h18M4 21V7a2 2 0 012-2h3V3h6v2h3a2 2 0 012 2v14M8 11h.01M8 15h.01M12 11h.01M12 15h.01M16 11h.01M16 15h.01" />
+      </svg>
+    ),
+  },
+  {
+    name: "Super Admin · Usuarios",
+    href: "/dashboard/configuracion/super-admin/usuarios",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    ),
+  },
 ]
 
 const preferenceNavigation: NavItem[] = [
@@ -351,7 +371,7 @@ type EmpresaBranding = {
 export default function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname()
 
-  const [canManageBilling, setCanManageBilling] = useState(false)
+  const [canManageBilling, setCanManageBilling] = useState(() => user.role === 'ADMIN')
 
   const mobileNavOpen = useUiStore((s) => s.mobileNavOpen)
   const setMobileNavOpen = useUiStore((s) => s.setMobileNavOpen)
@@ -364,6 +384,10 @@ export default function Sidebar({ user }: SidebarProps) {
   const [enabledModules, setEnabledModules] = useState<Set<string> | null>(null)
   const [empresa, setEmpresa] = useState<EmpresaBranding | null>(null)
   const [openSectionTitle, setOpenSectionTitle] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (user.role === 'ADMIN') setCanManageBilling(true)
+  }, [user.role])
 
   function isNavActive(href: string) {
     if (href === '/dashboard') return pathname === '/dashboard'
@@ -475,7 +499,11 @@ export default function Sidebar({ user }: SidebarProps) {
     const base = !navPrefs ? moduleNavigation : moduleNavigation.filter((it) => navPrefs[it.href] !== false)
 
     const withAdminGate = base.filter((it) => {
-      if (it.href !== '/dashboard/configuracion/super-admin/modulos-por-plan') return true
+      const isSuperAdminRoute =
+        it.href === '/dashboard/configuracion/super-admin/modulos-por-plan' ||
+        it.href === '/dashboard/configuracion/super-admin/empresas' ||
+        it.href === '/dashboard/configuracion/super-admin/usuarios'
+      if (!isSuperAdminRoute) return true
       return user?.role === 'ADMIN'
     })
 
@@ -500,9 +528,17 @@ export default function Sidebar({ user }: SidebarProps) {
   const navSettingsItems: NavSettingsItem[] = useMemo(() => {
     const base = moduleNavigation
       .filter((it) => (it.href === '/dashboard/configuracion/plan' ? canManageBilling : true))
+      .filter((it) => {
+        const isSuperAdminRoute =
+          it.href === '/dashboard/configuracion/super-admin/modulos-por-plan' ||
+          it.href === '/dashboard/configuracion/super-admin/empresas' ||
+          it.href === '/dashboard/configuracion/super-admin/usuarios'
+        if (!isSuperAdminRoute) return true
+        return user?.role === 'ADMIN'
+      })
       .map((it) => ({ name: it.name, href: it.href }))
     return base
-  }, [canManageBilling])
+  }, [canManageBilling, user?.role])
 
   async function saveNav(next: Record<string, boolean>) {
     setNavPrefs(next)
@@ -559,6 +595,14 @@ export default function Sidebar({ user }: SidebarProps) {
           get('/dashboard/configuracion/permisos'),
           get('/dashboard/configuracion/empresa'),
           get('/dashboard/configuracion/plan'),
+        ].filter(Boolean) as NavItem[],
+      },
+      {
+        title: 'Super Admin',
+        items: [
+          get('/dashboard/configuracion/super-admin/empresas'),
+          get('/dashboard/configuracion/super-admin/usuarios'),
+          get('/dashboard/configuracion/super-admin/modulos-por-plan'),
         ].filter(Boolean) as NavItem[],
       },
     ]

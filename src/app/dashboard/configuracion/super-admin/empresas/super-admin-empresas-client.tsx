@@ -5,6 +5,15 @@ import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -60,10 +69,12 @@ type DetailInvoice = {
 type DetailEmpresa = {
   id: string
   workspaceCode: string
+  planOwnerEmail?: string | null
   nombre: string
   nit: string
   direccion: string | null
   telefono: string | null
+  whatsapp?: string | null
   email: string | null
   logo: string | null
   planTier: PlanTier
@@ -106,16 +117,63 @@ function moneyCOP(value: number | null | undefined): string {
   }
 }
 
+const PLAN_OPTIONS: { value: PlanTier; label: string }[] = [
+  { value: 'BASIC', label: 'BASIC' },
+  { value: 'MEDIO', label: 'MEDIO' },
+  { value: 'INTERMEDIO', label: 'INTERMEDIO' },
+  { value: 'FULL', label: 'FULL' },
+]
+
+const BILLING_OPTIONS: { value: BillingCycle; label: string }[] = [
+  { value: 'MONTHLY', label: 'Mensual' },
+  { value: 'YEARLY', label: 'Anual' },
+]
+
 export default function SuperAdminEmpresasClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [items, setItems] = useState<ListRow[]>([])
   const [search, setSearch] = useState('')
 
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createLoading, setCreateLoading] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [createForm, setCreateForm] = useState({
+    nombre: '',
+    nit: '',
+    direccion: '',
+    telefono: '',
+    whatsapp: '',
+    companyEmail: '',
+    logo: '',
+    planOwnerEmail: '',
+    planTier: 'FULL' as PlanTier,
+    billingCycle: 'MONTHLY' as BillingCycle,
+    isPaid: false,
+  })
+
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [detail, setDetail] = useState<DetailEmpresa | null>(null)
+
+  const [editMode, setEditMode] = useState(false)
+  const [editLoading, setEditLoading] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({
+    nombre: '',
+    nit: '',
+    direccion: '',
+    telefono: '',
+    whatsapp: '',
+    companyEmail: '',
+    logo: '',
+    planOwnerEmail: '',
+    planTier: 'FULL' as PlanTier,
+    billingCycle: 'MONTHLY' as BillingCycle,
+    isPaid: false,
+    isPaidTouched: false,
+  })
 
   const [generatingForId, setGeneratingForId] = useState<string | null>(null)
   const [generatedCode, setGeneratedCode] = useState<Record<string, string>>({})
@@ -154,6 +212,8 @@ export default function SuperAdminEmpresasClient() {
     setDetailLoading(true)
     setDetailError(null)
     setDetail(null)
+    setEditMode(false)
+    setEditError(null)
     try {
       const res = await fetch(`/api/super-admin/empresas/${encodeURIComponent(id)}`, { cache: 'no-store' })
       const json = (await res.json().catch(() => ({}))) as DetailResponse
@@ -162,10 +222,115 @@ export default function SuperAdminEmpresasClient() {
         return
       }
       setDetail(json.empresa)
+
+      setEditForm({
+        nombre: json.empresa.nombre ?? '',
+        nit: json.empresa.nit ?? '',
+        direccion: json.empresa.direccion ?? '',
+        telefono: json.empresa.telefono ?? '',
+        whatsapp: json.empresa.whatsapp ?? '',
+        companyEmail: json.empresa.email ?? '',
+        logo: json.empresa.logo ?? '',
+        planOwnerEmail: json.empresa.planOwnerEmail ?? '',
+        planTier: json.empresa.planTier,
+        billingCycle: json.empresa.billingCycle,
+        isPaid: Boolean(json.empresa.planValidUntil && new Date(json.empresa.planValidUntil) > new Date()),
+        isPaidTouched: false,
+      })
     } catch (e) {
       setDetailError(e instanceof Error ? e.message : 'Error inesperado')
     } finally {
       setDetailLoading(false)
+    }
+  }
+
+  async function createEmpresa() {
+    setCreateLoading(true)
+    setCreateError(null)
+    try {
+      const res = await fetch('/api/super-admin/empresas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nombre: createForm.nombre,
+          nit: createForm.nit,
+          direccion: createForm.direccion,
+          telefono: createForm.telefono,
+          whatsapp: createForm.whatsapp,
+          companyEmail: createForm.companyEmail,
+          logo: createForm.logo,
+          planOwnerEmail: createForm.planOwnerEmail,
+          planTier: createForm.planTier,
+          billingCycle: createForm.billingCycle,
+          isPaid: createForm.isPaid,
+        }),
+      })
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; empresaId?: string }
+      if (!res.ok || !json.ok) {
+        setCreateError(json.error || 'No se pudo crear la empresa')
+        return
+      }
+      setCreateOpen(false)
+      setCreateForm({
+        nombre: '',
+        nit: '',
+        direccion: '',
+        telefono: '',
+        whatsapp: '',
+        companyEmail: '',
+        logo: '',
+        planOwnerEmail: '',
+        planTier: 'FULL',
+        billingCycle: 'MONTHLY',
+        isPaid: false,
+      })
+      await load()
+      if (json.empresaId) {
+        await openDetail(json.empresaId)
+      }
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Error inesperado')
+    } finally {
+      setCreateLoading(false)
+    }
+  }
+
+  async function saveEmpresaEdits() {
+    if (!detail?.id) return
+    setEditLoading(true)
+    setEditError(null)
+    try {
+      const payload: Record<string, unknown> = {
+        nombre: editForm.nombre,
+        nit: editForm.nit,
+        direccion: editForm.direccion,
+        telefono: editForm.telefono,
+        whatsapp: editForm.whatsapp,
+        companyEmail: editForm.companyEmail,
+        logo: editForm.logo,
+        planOwnerEmail: editForm.planOwnerEmail,
+        planTier: editForm.planTier,
+        billingCycle: editForm.billingCycle,
+      }
+      if (editForm.isPaidTouched) payload.isPaid = editForm.isPaid
+
+      const res = await fetch(`/api/super-admin/empresas/${encodeURIComponent(detail.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
+      if (!res.ok || !json.ok) {
+        setEditError(json.error || 'No se pudo guardar')
+        return
+      }
+      setEditMode(false)
+      await load()
+      await openDetail(detail.id)
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : 'Error inesperado')
+    } finally {
+      setEditLoading(false)
     }
   }
 
@@ -194,9 +359,10 @@ export default function SuperAdminEmpresasClient() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Super Admin · Empresas</h1>
-          <p className="text-sm text-gray-600">Plan, vigencia, pagos y código de acceso por empresa.</p>
+          <p className="text-sm text-gray-600">Plan, vigencia, pagos y ID de empresa (EMP-...) por empresa.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button onClick={() => setCreateOpen(true)}>Crear empresa</Button>
           <Button asChild variant="outline">
             <Link href="/dashboard/configuracion/super-admin/modulos-por-plan">Módulos por plan</Link>
           </Button>
@@ -255,11 +421,11 @@ export default function SuperAdminEmpresasClient() {
                     onClick={() => void generateCode(e.id)}
                     disabled={generatingForId === e.id}
                   >
-                    {generatingForId === e.id ? 'Generando…' : 'Generar código'}
+                    {generatingForId === e.id ? 'Generando…' : 'Generar ID'}
                   </Button>
                   {generatedCode[e.id] ? (
                     <div className="text-xs">
-                      <span className="text-muted-foreground">Código: </span>
+                      <span className="text-muted-foreground">ID de empresa: </span>
                       <span className="font-mono">{generatedCode[e.id]}</span>
                     </div>
                   ) : null}
@@ -280,49 +446,263 @@ export default function SuperAdminEmpresasClient() {
           {detailLoading ? <div className="text-sm text-gray-600">Cargando…</div> : null}
           {detailError ? <div className="text-sm text-red-600">{detailError}</div> : null}
 
-          {detail ? (
-            <div className="space-y-2 text-sm">
-              <div>
-                <b>{detail.nombre}</b> · NIT: {detail.nit}
-              </div>
-              <div>
-                Código: <span className="font-mono">{detail.workspaceCode}</span> · ID: <span className="font-mono">{detail.id}</span>
-              </div>
-              <div>
-                Creada: <b>{fmtDate(detail.createdAt)}</b> · Actualizada: <b>{fmtDate(detail.updatedAt)}</b>
-              </div>
-              <div>
-                Plan: <b>{detail.planTier}</b> · {detail.billingCycle} · Vigencia: <b>{fmtDate(detail.planValidUntil)}</b>
-              </div>
-              <div>
-                Stripe: {detail.stripeSubscriptionStatus || '—'} · Periodo fin: {fmtDate(detail.stripeCurrentPeriodEnd)}
-              </div>
+          {editError ? <div className="text-sm text-red-600">{editError}</div> : null}
 
-              <div className="pt-2">
-                <div className="font-medium">Últimas facturas</div>
-                {detail.billingInvoices.length ? (
-                  <div className="space-y-1">
-                    {detail.billingInvoices.map((inv) => (
-                      <div key={inv.id} className="border rounded-md p-2">
-                        <div>
-                          {inv.status} · {moneyCOP(inv.amountCOP)} · Pagada: <b>{fmtDate(inv.paidAt)}</b>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Ref: {inv.externalReference} · Creada: {fmtDate(inv.createdAt)}
-                        </div>
-                      </div>
-                    ))}
+          {detail ? (
+            <div className="space-y-4 text-sm">
+              {!editMode ? (
+                <>
+                  <div>
+                    <b>{detail.nombre}</b> · NIT: {detail.nit}
                   </div>
-                ) : (
-                  <div className="text-muted-foreground">Sin facturas registradas.</div>
-                )}
-              </div>
+                  <div>
+                    Código: <span className="font-mono">{detail.workspaceCode}</span> · ID: <span className="font-mono">{detail.id}</span>
+                  </div>
+                  <div>
+                    Propietario (email): <b>{detail.planOwnerEmail || '—'}</b>
+                  </div>
+                  <div>
+                    Dirección: <b>{detail.direccion || '—'}</b> · Teléfono: <b>{detail.telefono || '—'}</b> · WhatsApp: <b>{detail.whatsapp || '—'}</b>
+                  </div>
+                  <div>
+                    Email empresa: <b>{detail.email || '—'}</b>
+                  </div>
+                  <div>
+                    Creada: <b>{fmtDate(detail.createdAt)}</b> · Actualizada: <b>{fmtDate(detail.updatedAt)}</b>
+                  </div>
+                  <div>
+                    Plan: <b>{detail.planTier}</b> · {detail.billingCycle} · Vigencia: <b>{fmtDate(detail.planValidUntil)}</b>
+                  </div>
+                  <div>
+                    Stripe: {detail.stripeSubscriptionStatus || '—'} · Periodo fin: {fmtDate(detail.stripeCurrentPeriodEnd)}
+                  </div>
+
+                  <div>
+                    <div className="font-medium">Últimas facturas</div>
+                    {detail.billingInvoices.length ? (
+                      <div className="space-y-1">
+                        {detail.billingInvoices.map((inv) => (
+                          <div key={inv.id} className="border rounded-md p-2">
+                            <div>
+                              {inv.status} · {moneyCOP(inv.amountCOP)} · Pagada: <b>{fmtDate(inv.paidAt)}</b>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Ref: {inv.externalReference} · Creada: {fmtDate(inv.createdAt)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-muted-foreground">Sin facturas registradas.</div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>Nombre</Label>
+                    <Input value={editForm.nombre} onChange={(e) => setEditForm((p) => ({ ...p, nombre: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>NIT</Label>
+                    <Input value={editForm.nit} onChange={(e) => setEditForm((p) => ({ ...p, nit: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Dirección</Label>
+                    <Input value={editForm.direccion} onChange={(e) => setEditForm((p) => ({ ...p, direccion: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Teléfono</Label>
+                    <Input value={editForm.telefono} onChange={(e) => setEditForm((p) => ({ ...p, telefono: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>WhatsApp</Label>
+                    <Input value={editForm.whatsapp} onChange={(e) => setEditForm((p) => ({ ...p, whatsapp: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Email empresa</Label>
+                    <Input value={editForm.companyEmail} onChange={(e) => setEditForm((p) => ({ ...p, companyEmail: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Logo (URL)</Label>
+                    <Input value={editForm.logo} onChange={(e) => setEditForm((p) => ({ ...p, logo: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Owner email</Label>
+                    <Input value={editForm.planOwnerEmail} onChange={(e) => setEditForm((p) => ({ ...p, planOwnerEmail: e.target.value }))} placeholder="owner@empresa.com" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label>Plan</Label>
+                    <Select value={editForm.planTier} onValueChange={(v) => setEditForm((p) => ({ ...p, planTier: v as PlanTier }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona plan" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PLAN_OPTIONS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>
+                            {o.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label>Ciclo</Label>
+                    <Select value={editForm.billingCycle} onValueChange={(v) => setEditForm((p) => ({ ...p, billingCycle: v as BillingCycle }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona ciclo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BILLING_OPTIONS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>
+                            {o.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-center gap-3 sm:col-span-2 pt-2">
+                    <Switch
+                      checked={editForm.isPaid}
+                      onCheckedChange={(checked) =>
+                        setEditForm((p) => ({ ...p, isPaid: Boolean(checked), isPaidTouched: true }))
+                      }
+                      disabled={editLoading}
+                    />
+                    <div>
+                      <div className="font-medium">Ya pagó</div>
+                      <div className="text-xs text-muted-foreground">Si lo activas, la vigencia se recalcula desde hoy (según ciclo).</div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : null}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDetailOpen(false)} disabled={detailLoading}>
-              Cerrar
+            {!editMode ? (
+              <>
+                <Button variant="outline" onClick={() => setDetailOpen(false)} disabled={detailLoading}>
+                  Cerrar
+                </Button>
+                <Button onClick={() => setEditMode(true)} disabled={detailLoading || !detail}>
+                  Editar
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setEditMode(false)
+                    setEditError(null)
+                  }}
+                  disabled={editLoading}
+                >
+                  Cancelar
+                </Button>
+                <Button onClick={() => void saveEmpresaEdits()} disabled={editLoading}>
+                  {editLoading ? 'Guardando…' : 'Guardar'}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={createOpen} onOpenChange={(v) => (!createLoading ? setCreateOpen(v) : null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Crear empresa</DialogTitle>
+            <DialogDescription>Registro administrable desde SuperAdmin.</DialogDescription>
+          </DialogHeader>
+
+          {createError ? <div className="text-sm text-red-600">{createError}</div> : null}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label>Nombre</Label>
+              <Input value={createForm.nombre} onChange={(e) => setCreateForm((p) => ({ ...p, nombre: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>NIT</Label>
+              <Input value={createForm.nit} onChange={(e) => setCreateForm((p) => ({ ...p, nit: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Dirección</Label>
+              <Input value={createForm.direccion} onChange={(e) => setCreateForm((p) => ({ ...p, direccion: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Teléfono</Label>
+              <Input value={createForm.telefono} onChange={(e) => setCreateForm((p) => ({ ...p, telefono: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>WhatsApp</Label>
+              <Input value={createForm.whatsapp} onChange={(e) => setCreateForm((p) => ({ ...p, whatsapp: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Email empresa</Label>
+              <Input value={createForm.companyEmail} onChange={(e) => setCreateForm((p) => ({ ...p, companyEmail: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Logo (URL)</Label>
+              <Input value={createForm.logo} onChange={(e) => setCreateForm((p) => ({ ...p, logo: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Owner email</Label>
+              <Input value={createForm.planOwnerEmail} onChange={(e) => setCreateForm((p) => ({ ...p, planOwnerEmail: e.target.value }))} placeholder="owner@empresa.com" />
+            </div>
+
+            <div className="space-y-1">
+              <Label>Plan inicial</Label>
+              <Select value={createForm.planTier} onValueChange={(v) => setCreateForm((p) => ({ ...p, planTier: v as PlanTier }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona plan" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PLAN_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label>Ciclo</Label>
+              <Select value={createForm.billingCycle} onValueChange={(v) => setCreateForm((p) => ({ ...p, billingCycle: v as BillingCycle }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona ciclo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {BILLING_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-3 sm:col-span-2 pt-2">
+              <Switch checked={createForm.isPaid} onCheckedChange={(checked) => setCreateForm((p) => ({ ...p, isPaid: Boolean(checked) }))} disabled={createLoading} />
+              <div>
+                <div className="font-medium">Ya pagó</div>
+                <div className="text-xs text-muted-foreground">Si está activo, se setea la vigencia (mensual/anual) desde hoy.</div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={createLoading}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void createEmpresa()} disabled={createLoading}>
+              {createLoading ? 'Creando…' : 'Crear'}
             </Button>
           </DialogFooter>
         </DialogContent>

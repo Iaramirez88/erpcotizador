@@ -405,6 +405,7 @@ model Empresa {
   nit       String  @unique
   direccion String?
   telefono  String?
+  whatsapp  String?
   email     String?
   logo      String?
 

@@ -24,7 +24,8 @@
     "perf:indexes": "tsx scripts/database-indexes-check.ts",
     "perf:apply-indexes": "tsx scripts/apply-performance-indexes.ts",
     "backfill:inventory-stock": "tsx scripts/backfill-inventory-stock-default-warehouse.ts",
-    "billing:reminders": "tsx scripts/send-plan-expiration-reminders.ts"
+    "billing:reminders": "tsx scripts/send-plan-expiration-reminders.ts",
+    "migrate:users-to-sgdigital": "tsx scripts/migrate-users-to-sgdigital.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",

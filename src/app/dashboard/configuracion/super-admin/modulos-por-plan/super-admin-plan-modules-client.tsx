@@ -221,9 +221,9 @@ export default function SuperAdminPlanModulesClient() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Código de empresa</CardTitle>
+          <CardTitle>ID de empresa (EMP-...)</CardTitle>
           <CardDescription>
-            Genera un código para asignar usuarios a una empresa ya registrada (formato: EMP-&lt;empresaId&gt;-...).
+            Genera un ID para registrar/asignar usuarios a una empresa ya registrada (formato: EMP-&lt;empresaId&gt;-...).
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3">
@@ -258,11 +258,11 @@ export default function SuperAdminPlanModulesClient() {
               onClick={() => void generateEmpresaCode()}
               disabled={generatingCode || (!empresaNit.trim() && !empresaId.trim())}
             >
-              Generar código
+              Generar ID
             </Button>
             {generatedCode ? (
               <div className="text-sm">
-                <span className="text-muted-foreground">Código: </span>
+                <span className="text-muted-foreground">ID de empresa: </span>
                 <span className="font-mono">{generatedCode}</span>
               </div>
             ) : null}

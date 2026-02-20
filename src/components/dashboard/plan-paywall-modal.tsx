@@ -176,6 +176,8 @@ export default function PlanPaywallModal() {
   }
 
   function goToPlans() {
+    // Permite que el usuario salga del modal al ir a la pantalla de planes.
+    setOpen(false)
     router.push('/dashboard/configuracion/plan')
   }
 

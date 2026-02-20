@@ -14,6 +14,8 @@ import { randomDigits, sha256Hex } from "@/lib/auth-tokens"
 import { sendEmail } from "@/lib/email"
 import { ensureDefaultSedeForEmpresa } from "@/lib/rbac"
 import { isSuperAdminEmail } from "@/lib/super-admin"
+import { generateWorkspaceCode } from "@/lib/workspace-code"
+import { Prisma } from "@prisma/client"
 
 function parseEmpresaIdFromEmpCode(code: string): string | null {
   const raw = code.trim()
@@ -23,6 +25,33 @@ function parseEmpresaIdFromEmpCode(code: string): string | null {
   const parts = raw.split('-')
   const empresaId = (parts[1] ?? '').trim()
   return empresaId || null
+}
+
+async function createPersonalEmpresa(args: { nombre: string; email: string }) {
+  // Empresa personal habilita paywall/trial (nit inicia con PERS-)
+  for (let attempt = 0; attempt < 12; attempt++) {
+    try {
+      const nit = `PERS-${randomDigits(10)}`
+      const created = await prisma.empresa.create({
+        data: {
+          nombre: args.nombre.trim() || 'Cuenta personal',
+          nit,
+          email: args.email,
+          workspaceCode: generateWorkspaceCode(),
+          registrationCodeHash: null,
+        },
+        select: { id: true, nombre: true, registrationCodeHash: true },
+      })
+      return created
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        continue
+      }
+      throw error
+    }
+  }
+
+  throw new Error('PERSONAL_EMPRESA_CREATE_FAILED')
 }
 
 export async function POST(request: Request) {
@@ -53,12 +82,24 @@ export async function POST(request: Request) {
 
     const normalizedEmail = email.trim().toLowerCase()
 
+    // Verificar si el email ya está registrado
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail }
+    })
+
+    if (existingUser) {
+      return NextResponse.json(
+        { error: "Este email ya está registrado" },
+        { status: 409 }
+      )
+    }
+
     const requestedSedeId = typeof sedeId === 'string' ? sedeId.trim() : ''
 
-    // Resolver empresa (entidad cabeza) - requerido
+    // Resolver empresa (entidad cabeza). Si no llega empresaId, creamos una cuenta personal.
     const rawEmpresaId = typeof empresaId === 'string' ? empresaId.trim() : ''
 
-    // Compat: si llega el código EMP-... en el campo empresaId, derivamos el ID.
+    // Compat: si llega el código EMP-... en el campo empresaId, derivamos el ID y usamos el mismo string como código.
     let derivedAccessCode = typeof accessCode === 'string' ? accessCode.trim() : ''
     const parsedFromEmp = rawEmpresaId ? parseEmpresaIdFromEmpCode(rawEmpresaId) : null
 
@@ -67,20 +108,18 @@ export async function POST(request: Request) {
       derivedAccessCode = rawEmpresaId
     }
 
-    if (!resolvedEmpresaId) {
-      return NextResponse.json({ error: 'Debes seleccionar una empresa' }, { status: 400 })
-    }
-
-    const empresa = await prisma.empresa.findUnique({
-      where: { id: resolvedEmpresaId },
-      select: { id: true, nombre: true, registrationCodeHash: true },
-    })
+    const empresa = resolvedEmpresaId
+      ? await prisma.empresa.findUnique({
+          where: { id: resolvedEmpresaId },
+          select: { id: true, nombre: true, registrationCodeHash: true },
+        })
+      : await createPersonalEmpresa({ nombre: name, email: normalizedEmail })
 
     if (!empresa?.id) {
       return NextResponse.json({ error: 'Entidad no encontrada' }, { status: 400 })
     }
 
-    if (empresa?.registrationCodeHash) {
+    if (resolvedEmpresaId && empresa?.registrationCodeHash) {
       const code = derivedAccessCode
       if (!code) {
         return NextResponse.json({ error: 'Código de acceso requerido' }, { status: 400 })
@@ -110,18 +149,6 @@ export async function POST(request: Request) {
           data: { consumedAt: new Date() },
         })
       }
-    }
-
-    // Verificar si el email ya está registrado
-    const existingUser = await prisma.user.findUnique({
-      where: { email: normalizedEmail }
-    })
-
-    if (existingUser) {
-      return NextResponse.json(
-        { error: "Este email ya está registrado" },
-        { status: 409 }
-      )
     }
 
     // Encriptar contraseña

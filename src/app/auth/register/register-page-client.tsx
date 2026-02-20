@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 function parseEmpresaIdFromEmpCode(code: string): string | null {
   const raw = code.trim()
@@ -49,11 +50,10 @@ export function RegisterPageClient() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
+  const [registerMode, setRegisterMode] = useState<'individual' | 'empresa'>('individual')
+
   const [empresaIdInput, setEmpresaIdInput] = useState("")
-  const [empresaId, setEmpresaId] = useState("")
   const [invitedSedeId, setInvitedSedeId] = useState<string | null>(null)
-  const [accessCode, setAccessCode] = useState("")
-  const [lockedEmpresaId, setLockedEmpresaId] = useState<string | null>(null)
   const [lockedEmail, setLockedEmail] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
@@ -74,8 +74,7 @@ export function RegisterPageClient() {
 
       if (empresaIdFromUrl) {
         setEmpresaIdInput(empresaIdFromUrl)
-        setEmpresaId(empresaIdFromUrl)
-        setLockedEmpresaId(empresaIdFromUrl)
+        setRegisterMode('empresa')
       }
 
       if (emailFromUrl && emailFromUrl.includes("@")) {
@@ -94,10 +93,10 @@ export function RegisterPageClient() {
   }, [searchParams])
 
   const empresaHelperText = useMemo(() => {
-    if (!empresaIdInput.trim()) return 'Pega el ID de la empresa o el código EMP-... que te compartieron.'
+    if (!empresaIdInput.trim()) return 'Pega el ID de la empresa o el ID tipo EMP-... que te compartieron.'
     const parsed = parseEmpresaIdFromEmpCode(empresaIdInput)
-    if (parsed) return 'Detectamos un código EMP-...; el ID y el acceso se completan automáticamente.'
-    return 'Si tu empresa tiene código de acceso, ingrésalo abajo.'
+    if (parsed) return 'Detectamos un ID tipo EMP-...; puedes continuar.'
+    return 'Si tu empresa requiere acceso, normalmente te comparten un ID tipo EMP-... por correo o WhatsApp.'
   }, [empresaIdInput])
 
   // Estado para validaciones en tiempo real
@@ -115,8 +114,9 @@ export function RegisterPageClient() {
     setIsLoading(true)
     setError("")
 
-    if (!empresaId.trim()) {
-      setError('Ingresa el ID o código de empresa')
+    const isEmpresa = registerMode === 'empresa'
+    if (isEmpresa && !empresaIdInput.trim()) {
+      setError('Ingresa el ID de la empresa')
       setIsLoading(false)
       return
     }
@@ -146,8 +146,7 @@ export function RegisterPageClient() {
           name: formData.name,
           email: formData.email,
           password: formData.password,
-          empresaId: empresaId,
-          accessCode: accessCode || undefined,
+          empresaId: isEmpresa ? empresaIdInput.trim() : undefined,
           sedeId: invitedSedeId || undefined,
         }),
       })
@@ -238,30 +237,37 @@ export function RegisterPageClient() {
               <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">{error}</div>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="empresaId" className="sr-only">ID o código de empresa</Label>
-              <Input
-                id="empresaId"
-                value={empresaIdInput}
-                onChange={(e) => {
-                  const next = e.target.value
-                  setEmpresaIdInput(next)
+            <Tabs value={registerMode} onValueChange={(v) => setRegisterMode(v as 'individual' | 'empresa')} className="w-full">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="individual">Registro plan individual</TabsTrigger>
+                <TabsTrigger value="empresa">Registro bajo ID de empresa</TabsTrigger>
+              </TabsList>
 
-                  const parsed = parseEmpresaIdFromEmpCode(next)
-                  if (parsed) {
-                    setEmpresaId(parsed)
-                    setAccessCode(next.trim())
-                    return
-                  }
+              <TabsContent value="individual">
+                {registerMode === 'individual' ? (
+                  <p className="text-xs text-muted-foreground">
+                    Crea una cuenta personal. Luego puedes configurar tu plan desde el panel.
+                  </p>
+                ) : null}
+              </TabsContent>
 
-                  setEmpresaId(next.trim())
-                }}
-                placeholder="ID de empresa (cuid...) o código EMP-..."
-                disabled={isLoading || Boolean(lockedEmpresaId)}
-                required
-              />
-              <p className="text-xs text-muted-foreground">{empresaHelperText}</p>
-            </div>
+              <TabsContent value="empresa">
+                {registerMode === 'empresa' ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="empresaId" className="sr-only">ID de empresa</Label>
+                    <Input
+                      id="empresaId"
+                      value={empresaIdInput}
+                      onChange={(e) => setEmpresaIdInput(e.target.value)}
+                      placeholder="Ingresa el ID de empresa (cuid...) o EMP-..."
+                      disabled={isLoading}
+                      required={registerMode === 'empresa'}
+                    />
+                    <p className="text-xs text-muted-foreground">{empresaHelperText}</p>
+                  </div>
+                ) : null}
+              </TabsContent>
+            </Tabs>
 
             <div className="space-y-2">
               <Label htmlFor="name" className="sr-only">Nombre</Label>
@@ -284,17 +290,6 @@ export function RegisterPageClient() {
                 placeholder="tu@email.com"
                 disabled={isLoading || Boolean(lockedEmail)}
                 required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="accessCode" className="sr-only">Código de acceso</Label>
-              <Input
-                id="accessCode"
-                value={accessCode}
-                onChange={(e) => setAccessCode(e.target.value)}
-                placeholder="Código de acceso (si aplica)"
-                disabled={isLoading}
               />
             </div>
 

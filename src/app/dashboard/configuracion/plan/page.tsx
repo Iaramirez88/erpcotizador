@@ -289,22 +289,22 @@ export default function PlanPage() {
         </Card>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Plan actual</CardTitle>
-          <CardDescription>Este es el plan asociado a tu empresa.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-sm text-gray-600">Cargando…</div>
-          ) : error ? (
-            <div className="text-sm text-red-600">{error}</div>
-          ) : current ? (
-            <div className="flex items-start justify-between gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 items-start">
+        <Card>
+          <CardHeader className="p-3">
+            <CardTitle>Plan actual</CardTitle>
+            <CardDescription>Este es el plan asociado a tu empresa.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-3 pt-0">
+            {isLoading ? (
+              <div className="text-sm text-gray-600">Cargando…</div>
+            ) : error ? (
+              <div className="text-sm text-red-600">{error}</div>
+            ) : current ? (
               <div>
-                <div className="text-lg font-semibold text-gray-900">{current.nombre}</div>
+                <div className="text-base font-semibold text-gray-900">{current.nombre}</div>
                 <div className="text-sm text-gray-600">{current.descripcion}</div>
-                <div className="mt-2 text-sm text-gray-700">
+                <div className="mt-1 text-sm text-gray-700">
                   <span className="font-medium">{formatCOP(current.precioMensualCOP)}</span> / mes
                 </div>
                 {empresa?.planValidUntil ? (
@@ -320,89 +320,96 @@ export default function PlanPage() {
                   </div>
                 ) : null}
               </div>
+            ) : (
+              <div className="text-sm text-gray-600">No se encontró el plan actual.</div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="p-3">
+            <CardTitle>Facturación</CardTitle>
+            <CardDescription>Elige mensual o anual (10% de descuento anual).</CardDescription>
+          </CardHeader>
+          <CardContent className="p-3 pt-0">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={cycle === "MONTHLY" ? "default" : "secondary"}
+                onClick={() => setCycle("MONTHLY")}
+                disabled={isPaying}
+              >
+                Mensual
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={cycle === "YEARLY" ? "default" : "secondary"}
+                onClick={() => setCycle("YEARLY")}
+                disabled={isPaying}
+              >
+                Anual (-10%)
+              </Button>
             </div>
-          ) : (
-            <div className="text-sm text-gray-600">No se encontró el plan actual.</div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Facturación</CardTitle>
-          <CardDescription>Elige mensual o anual (10% de descuento anual).</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant={cycle === "MONTHLY" ? "default" : "secondary"}
-              onClick={() => setCycle("MONTHLY")}
-              disabled={isPaying}
-            >
-              Mensual
-            </Button>
-            <Button
-              type="button"
-              variant={cycle === "YEARLY" ? "default" : "secondary"}
-              onClick={() => setCycle("YEARLY")}
-              disabled={isPaying}
-            >
-              Anual (-10%)
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Último cobro</CardTitle>
-          <CardDescription>Estado del último intento de pago registrado.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!lastInvoice ? (
-            <div className="text-sm text-gray-600">Aún no hay cobros registrados.</div>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={cn(
-                    "text-xs font-semibold px-2 py-1 rounded",
-                    lastInvoice.status === "PAID"
-                      ? "bg-green-50 text-green-700"
-                      : lastInvoice.status === "PENDING"
-                        ? "bg-yellow-50 text-yellow-800"
-                        : lastInvoice.status === "REJECTED"
-                          ? "bg-red-50 text-red-700"
-                          : "bg-gray-100 text-gray-700"
-                  )}
-                >
-                  {lastInvoice.status}
-                </span>
-                <span className="text-sm text-gray-700">
-                  {formatCOP(lastInvoice.amountCOP)} ({lastInvoice.billingCycle === "YEARLY" ? "Anual" : "Mensual"})
-                </span>
-              </div>
-
-              <div className="text-sm text-gray-700">
-                Referencia: <span className="font-mono text-xs">{lastInvoice.externalReference}</span>
-              </div>
-              <div className="text-xs text-gray-500">
-                Creado: {new Date(lastInvoice.createdAt).toLocaleString("es-CO")}
-                {lastInvoice.paidAt ? ` · Pagado: ${new Date(lastInvoice.paidAt).toLocaleString("es-CO")}` : ""}
-              </div>
-
-              {lastInvoice.status === "PENDING" && lastInvoice.checkoutUrl ? (
-                <div className="pt-2">
-                  <Button type="button" variant="secondary" onClick={() => (window.location.href = lastInvoice.checkoutUrl!)}>
-                    Continuar pago
-                  </Button>
+        <Card>
+          <CardHeader className="p-3">
+            <CardTitle>Último cobro</CardTitle>
+            <CardDescription>Estado del último intento de pago registrado.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-3 pt-0">
+            {!lastInvoice ? (
+              <div className="text-sm text-gray-600">Aún no hay cobros registrados.</div>
+            ) : (
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={cn(
+                      "text-xs font-semibold px-2 py-1 rounded",
+                      lastInvoice.status === "PAID"
+                        ? "bg-green-50 text-green-700"
+                        : lastInvoice.status === "PENDING"
+                          ? "bg-yellow-50 text-yellow-800"
+                          : lastInvoice.status === "REJECTED"
+                            ? "bg-red-50 text-red-700"
+                            : "bg-gray-100 text-gray-700"
+                    )}
+                  >
+                    {lastInvoice.status}
+                  </span>
+                  <span className="text-sm text-gray-700">
+                    {formatCOP(lastInvoice.amountCOP)} ({lastInvoice.billingCycle === "YEARLY" ? "Anual" : "Mensual"})
+                  </span>
                 </div>
-              ) : null}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+
+                <div className="text-sm text-gray-700">
+                  Referencia: <span className="font-mono text-xs">{lastInvoice.externalReference}</span>
+                </div>
+                <div className="text-xs text-gray-500">
+                  Creado: {new Date(lastInvoice.createdAt).toLocaleString("es-CO")}
+                  {lastInvoice.paidAt ? ` · Pagado: ${new Date(lastInvoice.paidAt).toLocaleString("es-CO")}` : ""}
+                </div>
+
+                {lastInvoice.status === "PENDING" && lastInvoice.checkoutUrl ? (
+                  <div className="pt-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => (window.location.href = lastInvoice.checkoutUrl!)}
+                    >
+                      Continuar pago
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {sortedPlans.map((p) => {

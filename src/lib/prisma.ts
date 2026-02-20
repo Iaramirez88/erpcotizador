@@ -41,7 +41,8 @@ let prismaClient = globalForPrisma.prisma
 if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasTrialTier = runtimeModelHasField(prismaClient, 'Empresa', 'trialTier')
   const hasWorkspaceCode = runtimeModelHasField(prismaClient, 'Empresa', 'workspaceCode')
-  if (!hasTrialTier || !hasWorkspaceCode) prismaClient = undefined
+  const hasPlanOwnerUserId = runtimeModelHasField(prismaClient, 'Empresa', 'planOwnerUserId')
+  if (!hasTrialTier || !hasWorkspaceCode || !hasPlanOwnerUserId) prismaClient = undefined
 }
 
 export const prisma =

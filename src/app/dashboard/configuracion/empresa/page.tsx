@@ -239,7 +239,7 @@ export default function ConfigEmpresaPage() {
     <div className="max-w-3xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Empresa</h1>
-        <p className="text-muted-foreground">Personaliza nombre, logo y el código de acceso para registros.</p>
+        <p className="text-muted-foreground">Personaliza nombre, logo y el ID de empresa para registros.</p>
       </div>
 
       <Card>
@@ -318,9 +318,9 @@ export default function ConfigEmpresaPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Código de acceso (registro)</CardTitle>
+          <CardTitle>ID de empresa (registro)</CardTitle>
           <CardDescription>
-            Si está activo, cualquier usuario nuevo deberá ingresar este código para crear cuenta en esta entidad.
+            Si está activo, cualquier usuario nuevo deberá ingresar el ID de empresa (EMP-...) para crear cuenta en esta entidad.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -342,7 +342,7 @@ export default function ConfigEmpresaPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <Input
                     type={showRegistrationCode ? 'text' : 'password'}
-                    placeholder="Define un código para nuevos registros"
+                    placeholder="Define un ID (recomendado: formato EMP-...)"
                     value={registrationCode}
                     onChange={(e) => setRegistrationCode(e.target.value)}
                     disabled={saving}
@@ -371,7 +371,7 @@ export default function ConfigEmpresaPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Código de empresa (unirse al espacio)</CardTitle>
+          <CardTitle>ID de empresa (unirse / registrar)</CardTitle>
           <CardDescription>
             Úsalo para que usuarios existentes puedan unirse al espacio o para registrar nuevos usuarios si el acceso está habilitado.
           </CardDescription>
@@ -379,11 +379,11 @@ export default function ConfigEmpresaPage() {
         <CardContent className="space-y-4">
           <div className="flex items-center gap-2 flex-wrap">
             <Button type="button" variant="outline" disabled={saving || loading || !config} onClick={() => void generateCompanyCode()}>
-              Generar código
+              Generar ID
             </Button>
             {companyCode ? (
               <div className="text-sm">
-                <span className="text-muted-foreground">Código: </span>
+                <span className="text-muted-foreground">ID de empresa: </span>
                 <span className="font-mono">{companyCode}</span>
               </div>
             ) : (
