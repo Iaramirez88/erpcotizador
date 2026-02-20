@@ -181,9 +181,12 @@ export function LitografiaCalculator() {
 
   const [selectedTransporteKey, setSelectedTransporteKey] = useState<TransporteKey | "">("")
 
-  const [newProfileNombre, setNewProfileNombre] = useState("")
-  const [newProfilePlancha, setNewProfilePlancha] = useState("0")
-  const [newProfileTinta, setNewProfileTinta] = useState("0")
+  // Formularios independientes (usuarios escriben en ambos módulos)
+  const [newPlanchaProfileNombre, setNewPlanchaProfileNombre] = useState("")
+  const [newPlanchaProfilePlancha, setNewPlanchaProfilePlancha] = useState("0")
+
+  const [newTintaProfileNombre, setNewTintaProfileNombre] = useState("")
+  const [newTintaProfileTinta, setNewTintaProfileTinta] = useState("0")
 
   const [profileEdits, setProfileEdits] = useState<Record<string, { nombre: string; plancha: string; tinta: string }>>({})
 
@@ -923,27 +926,39 @@ export function LitografiaCalculator() {
     else setPapelTipo("otro")
   }, [papers, selectedPaperId])
 
-  const createProfile = async (mode: "plancha" | "tinta" | "ambos" = "ambos") => {
-    setConfigError(null)
-    try {
-      const res = await fetch("/api/litografia/perfiles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nombre: newProfileNombre,
-          costoPlanchaPorColor: mode === "tinta" ? 0 : parseFloat(newProfilePlancha) || 0,
-          costoTintaPorColor: mode === "plancha" ? 0 : parseFloat(newProfileTinta) || 0,
-          activo: true,
-        }),
-      })
-      const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
-      if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, "No se pudo crear el perfil"))
-      setNewProfileNombre("")
-      setNewProfilePlancha("0")
-      setNewProfileTinta("0")
-      await fetchProfiles()
-    } catch (e) {
-      setConfigError(e instanceof Error ? e.message : "No se pudo crear el perfil")
+  const createPlanchaProfile = async () => {
+    const nombre = newPlanchaProfileNombre.trim()
+    const plancha = parseFloat(newPlanchaProfilePlancha) || 0
+    if (!nombre || plancha <= 0) return
+
+    const created = await createProfileDirect({
+      nombre,
+      costoPlanchaPorColor: plancha,
+      costoTintaPorColor: 0,
+      activo: true,
+    })
+
+    if (created) {
+      setNewPlanchaProfileNombre("")
+      setNewPlanchaProfilePlancha("0")
+    }
+  }
+
+  const createTintaProfile = async () => {
+    const nombre = newTintaProfileNombre.trim()
+    const tinta = parseFloat(newTintaProfileTinta) || 0
+    if (!nombre || tinta <= 0) return
+
+    const created = await createProfileDirect({
+      nombre,
+      costoPlanchaPorColor: 0,
+      costoTintaPorColor: tinta,
+      activo: true,
+    })
+
+    if (created) {
+      setNewTintaProfileNombre("")
+      setNewTintaProfileTinta("0")
     }
   }
 
@@ -1361,17 +1376,28 @@ export function LitografiaCalculator() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                   <div className="md:col-span-2">
                     <Label>Nombre</Label>
-                    <Input className={INPUT_COMPACT} value={newProfileNombre} onChange={(e) => setNewProfileNombre(e.target.value)} placeholder="Ej: Offset 70×100" />
+                    <Input
+                      className={INPUT_COMPACT}
+                      value={newPlanchaProfileNombre}
+                      onChange={(e) => setNewPlanchaProfileNombre(e.target.value)}
+                      placeholder="Ej: Offset 70×100"
+                    />
                   </div>
                   <div>
                     <Label>Plancha/Color</Label>
-                    <MoneyInput className={INPUT_COMPACT} type="number" step="1" value={newProfilePlancha} onChange={(e) => setNewProfilePlancha(e.target.value)} />
+                    <MoneyInput
+                      className={INPUT_COMPACT}
+                      type="number"
+                      step="1"
+                      value={newPlanchaProfilePlancha}
+                      onChange={(e) => setNewPlanchaProfilePlancha(e.target.value)}
+                    />
                   </div>
                   <div className="md:col-span-3">
                     <Button
                       type="button"
-                      onClick={() => void createProfile("plancha")}
-                      disabled={!newProfileNombre.trim() || (parseFloat(newProfilePlancha) || 0) <= 0}
+                      onClick={() => void createPlanchaProfile()}
+                      disabled={!newPlanchaProfileNombre.trim() || (parseFloat(newPlanchaProfilePlancha) || 0) <= 0}
                     >
                       Agregar plancha
                     </Button>
@@ -1579,17 +1605,28 @@ export function LitografiaCalculator() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                   <div className="md:col-span-2">
                     <Label>Nombre</Label>
-                    <Input className={INPUT_COMPACT} value={newProfileNombre} onChange={(e) => setNewProfileNombre(e.target.value)} placeholder="Ej: Offset 70×100" />
+                    <Input
+                      className={INPUT_COMPACT}
+                      value={newTintaProfileNombre}
+                      onChange={(e) => setNewTintaProfileNombre(e.target.value)}
+                      placeholder="Ej: Offset 70×100"
+                    />
                   </div>
                   <div>
                     <Label>Tinta/Color</Label>
-                    <MoneyInput className={INPUT_COMPACT} type="number" step="1" value={newProfileTinta} onChange={(e) => setNewProfileTinta(e.target.value)} />
+                    <MoneyInput
+                      className={INPUT_COMPACT}
+                      type="number"
+                      step="1"
+                      value={newTintaProfileTinta}
+                      onChange={(e) => setNewTintaProfileTinta(e.target.value)}
+                    />
                   </div>
                   <div className="md:col-span-3">
                     <Button
                       type="button"
-                      onClick={() => void createProfile("tinta")}
-                      disabled={!newProfileNombre.trim() || (parseFloat(newProfileTinta) || 0) <= 0}
+                      onClick={() => void createTintaProfile()}
+                      disabled={!newTintaProfileNombre.trim() || (parseFloat(newTintaProfileTinta) || 0) <= 0}
                     >
                       Agregar tinta
                     </Button>
