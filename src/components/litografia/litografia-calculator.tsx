@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, type ComponentProps } from "react"
+import { ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -1667,9 +1668,10 @@ export function LitografiaCalculator() {
         <div className="space-y-4">
           
           <Card>
-            <details>
-              <summary className="cursor-pointer">
-                <CardHeader>
+            <details className="group">
+              <summary className="relative cursor-pointer list-none [&::-webkit-details-marker]:hidden [&::marker]:content-['']">
+                <ChevronRight className="absolute left-2.5 top-4 h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                <CardHeader className="pl-8">
                   <CardTitle>Dropdowns personalizados</CardTitle>
                   <CardDescription>
                     Crea nuevas listas (dropdowns) por empresa, con buscador. Puedes editar y eliminar listas y sus opciones.
@@ -2158,9 +2160,10 @@ export function LitografiaCalculator() {
           </Card>
 
           <Card>
-            <details>
-              <summary className="cursor-pointer">
-                <CardHeader>
+            <details className="group">
+              <summary className="relative cursor-pointer list-none [&::-webkit-details-marker]:hidden [&::marker]:content-['']">
+                <ChevronRight className="absolute left-2.5 top-4 h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                <CardHeader className="pl-8">
                   <CardTitle>Planchas</CardTitle>
                   <CardDescription>Costo de plancha por color.</CardDescription>
                 </CardHeader>
@@ -2395,9 +2398,10 @@ export function LitografiaCalculator() {
           </Card>
 
           <Card>
-            <details>
-              <summary className="cursor-pointer">
-                <CardHeader>
+            <details className="group">
+              <summary className="relative cursor-pointer list-none [&::-webkit-details-marker]:hidden [&::marker]:content-['']">
+                <ChevronRight className="absolute left-2.5 top-4 h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                <CardHeader className="pl-8">
                   <CardTitle>Tintas</CardTitle>
                   <CardDescription>Costo de tinta por color.</CardDescription>
                 </CardHeader>
@@ -2638,9 +2642,10 @@ export function LitografiaCalculator() {
           </Card>
 
           <Card>
-            <details>
-              <summary className="cursor-pointer">
-                <CardHeader>
+            <details className="group">
+              <summary className="relative cursor-pointer list-none [&::-webkit-details-marker]:hidden [&::marker]:content-['']">
+                <ChevronRight className="absolute left-2.5 top-4 h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                <CardHeader className="pl-8">
                   <CardTitle>Papeles</CardTitle>
                   <CardDescription>Tipo, gramaje, pliego base y costo por pliego.</CardDescription>
                 </CardHeader>
@@ -2986,9 +2991,10 @@ export function LitografiaCalculator() {
           </Card>
 
           <Card>
-            <details>
-              <summary className="cursor-pointer">
-                <CardHeader>
+            <details className="group">
+              <summary className="relative cursor-pointer list-none [&::-webkit-details-marker]:hidden [&::marker]:content-['']">
+                <ChevronRight className="absolute left-2.5 top-4 h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                <CardHeader className="pl-8">
                   <CardTitle>Tamaños de impresión</CardTitle>
                   <CardDescription>Define los formatos disponibles (código, nombre y dimensiones).</CardDescription>
                 </CardHeader>
@@ -3241,9 +3247,10 @@ export function LitografiaCalculator() {
           </Card>
 
           <Card>
-            <details>
-              <summary className="cursor-pointer">
-                <CardHeader>
+            <details className="group">
+              <summary className="relative cursor-pointer list-none [&::-webkit-details-marker]:hidden [&::marker]:content-['']">
+                <ChevronRight className="absolute left-2.5 top-4 h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                <CardHeader className="pl-8">
                   <CardTitle>Acabados</CardTitle>
                   <CardDescription>Lista de acabados disponibles para el tarifario y la cotización.</CardDescription>
                 </CardHeader>
@@ -3623,9 +3630,10 @@ export function LitografiaCalculator() {
           </Card>
 
           <Card>
-            <details>
-              <summary className="cursor-pointer">
-                <CardHeader>
+            <details className="group">
+              <summary className="relative cursor-pointer list-none [&::-webkit-details-marker]:hidden [&::marker]:content-['']">
+                <ChevronRight className="absolute left-2.5 top-4 h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                <CardHeader className="pl-8">
                   <CardTitle>Plastificado</CardTitle>
                   <CardDescription>Opciones para el módulo Plastificado del cotizador.</CardDescription>
                 </CardHeader>
@@ -3803,9 +3811,10 @@ export function LitografiaCalculator() {
           </Card>
 
           <Card>
-            <details>
-              <summary className="cursor-pointer">
-                <CardHeader>
+            <details className="group">
+              <summary className="relative cursor-pointer list-none [&::-webkit-details-marker]:hidden [&::marker]:content-['']">
+                <ChevronRight className="absolute left-2.5 top-4 h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                <CardHeader className="pl-8">
                   <CardTitle>Troquel / Troquelado</CardTitle>
                   <CardDescription>Opciones para el módulo Troquelado del cotizador.</CardDescription>
                 </CardHeader>
@@ -3983,9 +3992,10 @@ export function LitografiaCalculator() {
           </Card>
 
           <Card>
-            <details>
-              <summary className="cursor-pointer">
-                <CardHeader>
+            <details className="group">
+              <summary className="relative cursor-pointer list-none [&::-webkit-details-marker]:hidden [&::marker]:content-['']">
+                <ChevronRight className="absolute left-2.5 top-4 h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                <CardHeader className="pl-8">
                   <CardTitle>Corte</CardTitle>
                   <CardDescription>Opciones para el módulo Corte del cotizador.</CardDescription>
                 </CardHeader>
@@ -4163,9 +4173,10 @@ export function LitografiaCalculator() {
           </Card>
 
           <Card>
-            <details>
-              <summary className="cursor-pointer">
-                <CardHeader>
+            <details className="group">
+              <summary className="relative cursor-pointer list-none [&::-webkit-details-marker]:hidden [&::marker]:content-['']">
+                <ChevronRight className="absolute left-2.5 top-4 h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+                <CardHeader className="pl-8">
                   <CardTitle>Rangos (Flyers)</CardTitle>
                   <CardDescription>
                     Un mismo ítem agrupa varios rangos de cantidad (ej: 1–500, 501–1000) para el mismo Papel + Tamaño + Tintas + Acabado.
