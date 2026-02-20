@@ -93,7 +93,6 @@ export async function ensureDefaultSedeForEmpresa(empresaId: string, userId: str
       },
     }))
 
-  const membershipCount = await prisma.sedeMembership.count({ where: { sedeId: sede.id } })
   const existingMembership = await prisma.sedeMembership.findUnique({
     where: { sedeId_userId: { sedeId: sede.id, userId } },
   })
@@ -101,18 +100,23 @@ export async function ensureDefaultSedeForEmpresa(empresaId: string, userId: str
   if (!existingMembership) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { role: true, globalAccess: { select: { level: true } } },
+      select: { role: true, email: true, globalAccess: { select: { level: true } } },
     })
 
     const globalLevel = user?.globalAccess?.level ?? 'NONE'
     const roleFromGlobal: SedeRole =
       globalLevel === 'ADMIN' ? 'ADMIN' : globalLevel === 'WRITE' ? 'MEMBER' : globalLevel === 'READ' ? 'READER' : 'READER'
 
+    // Política: usuarios nuevos entran con permisos básicos (solo lectura) por defecto.
+    // El único caso que se auto-eleva es el super-admin del sistema.
+    const isSystemSuperAdmin = isSuperAdminEmail(user?.email)
+    const roleForNewMembership: SedeRole = isSystemSuperAdmin ? 'ADMIN' : roleFromGlobal
+
     await prisma.sedeMembership.create({
       data: {
         sedeId: sede.id,
         userId,
-        role: membershipCount === 0 || user?.role === UserRole.ADMIN ? 'ADMIN' : roleFromGlobal,
+        role: roleForNewMembership,
       },
     })
   }
@@ -144,7 +148,7 @@ export async function getEffectiveAccess(args: {
     select: { role: true, email: true, globalAccess: { select: { level: true } } },
   })
 
-  if (user?.role === UserRole.ADMIN && isSuperAdminEmail(user.email)) return 'ADMIN'
+  if (isSuperAdminEmail(user?.email)) return 'ADMIN'
 
   const globalBase: AccessLevel = user?.globalAccess?.level ?? 'NONE'
 

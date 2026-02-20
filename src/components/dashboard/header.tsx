@@ -35,6 +35,7 @@ export default function Header({ user }: HeaderProps) {
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const [planName, setPlanName] = useState<string>("")
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
+  const [canManageBilling, setCanManageBilling] = useState(false)
   const toggleMobileNav = useUiStore((s) => s.toggleMobileNav)
   const { hasCurrentTour, startCurrentTour, resetCurrentTour } = useTour()
 
@@ -78,29 +79,53 @@ export default function Header({ user }: HeaderProps) {
     }
   }, [])
 
-  const navItems = [
-    { name: 'Dashboard', href: '/dashboard' },
-    { name: 'Reportes', href: '/dashboard/reportes' },
-    { name: 'Cotizador', href: '/dashboard/cotizador' },
-    { name: 'Cotizaciones', href: '/dashboard/cotizaciones' },
-    { name: 'Facturación', href: '/dashboard/pos' },
-    { name: 'Remisiones', href: '/dashboard/remisiones' },
-    { name: 'Clientes', href: '/dashboard/clientes' },
-    { name: 'Órdenes de Trabajo', href: '/dashboard/ordenes' },
-    { name: 'Litografía', href: '/dashboard/litografia' },
-    { name: 'Escaneos', href: '/dashboard/escaneos' },
-    { name: 'Terminados', href: '/dashboard/terminados' },
-    { name: 'Inventario', href: '/dashboard/inventario' },
-    { name: 'Traslados', href: '/dashboard/inventario/traslados' },
-    { name: 'Compras', href: '/dashboard/compras' },
-    { name: 'Proveedores', href: '/dashboard/proveedores' },
-    { name: 'Desperdicios', href: '/dashboard/configuracion/desperdicios' },
-    { name: 'Sedes', href: '/dashboard/bodegas' },
-    { name: 'Usuarios', href: '/dashboard/configuracion/usuarios' },
-    { name: 'Permisos', href: '/dashboard/configuracion/permisos' },
-    { name: 'Empresa', href: '/dashboard/configuracion/empresa' },
-    { name: 'Plan', href: '/dashboard/configuracion/plan' },
-  ]
+  useEffect(() => {
+    let cancelled = false
+    async function loadBillingAccess() {
+      try {
+        const res = await fetch('/api/me', { cache: 'no-store' })
+        const json = (await res.json().catch(() => null)) as
+          | { success?: boolean; data?: { canManageBilling?: boolean } | null }
+          | null
+        if (!cancelled && res.ok && json?.success) {
+          setCanManageBilling(Boolean(json.data?.canManageBilling))
+        }
+      } catch {
+        // ignore
+      }
+    }
+    void loadBillingAccess()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const navItems = useMemo(() => {
+    const base = [
+      { name: 'Dashboard', href: '/dashboard' },
+      { name: 'Reportes', href: '/dashboard/reportes' },
+      { name: 'Cotizador', href: '/dashboard/cotizador' },
+      { name: 'Cotizaciones', href: '/dashboard/cotizaciones' },
+      { name: 'Facturación', href: '/dashboard/pos' },
+      { name: 'Remisiones', href: '/dashboard/remisiones' },
+      { name: 'Clientes', href: '/dashboard/clientes' },
+      { name: 'Órdenes de Trabajo', href: '/dashboard/ordenes' },
+      { name: 'Litografía', href: '/dashboard/litografia' },
+      { name: 'Escaneos', href: '/dashboard/escaneos' },
+      { name: 'Terminados', href: '/dashboard/terminados' },
+      { name: 'Inventario', href: '/dashboard/inventario' },
+      { name: 'Traslados', href: '/dashboard/inventario/traslados' },
+      { name: 'Compras', href: '/dashboard/compras' },
+      { name: 'Proveedores', href: '/dashboard/proveedores' },
+      { name: 'Desperdicios', href: '/dashboard/configuracion/desperdicios' },
+      { name: 'Sedes', href: '/dashboard/bodegas' },
+      { name: 'Usuarios', href: '/dashboard/configuracion/usuarios' },
+      { name: 'Permisos', href: '/dashboard/configuracion/permisos' },
+      { name: 'Empresa', href: '/dashboard/configuracion/empresa' },
+      ...(canManageBilling ? [{ name: 'Plan', href: '/dashboard/configuracion/plan' }] : []),
+    ]
+    return base
+  }, [canManageBilling])
 
   async function saveNav(next: Record<string, boolean>) {
     setNavPrefs(next)

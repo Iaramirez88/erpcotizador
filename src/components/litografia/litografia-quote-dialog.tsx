@@ -836,6 +836,8 @@ export function LitografiaQuoteDialog(props: {
     const desperdicio = parseFloat(desperdicioPct) || 0
     const sobrante = parseFloat(sobranteMinimo) || 0
 
+    const extraFinishCosts = plastificadoCost + troqueladoCost + corteCost
+
     const base = computeLitografia({
       cantidad: qtyBase,
       colores: 1,
@@ -852,7 +854,7 @@ export function LitografiaQuoteDialog(props: {
       papelFormatoHeightCm: selectedPreset?.heightCm ?? 0,
       costoPliego: parseFloat(costoPliego) || 0,
       costoCorte: parseFloat(costoCorte) || 0,
-      costoAcabados: (parseFloat(costoAcabados) || 0) + selectedFinishesCost + specialFinishesCost,
+      costoAcabados: (parseFloat(costoAcabados) || 0) + selectedFinishesCost + specialFinishesCost + extraFinishCosts,
       costoTransporte: parseFloat(costoTransporte) || 0,
       margenPct: 0,
     })
@@ -877,7 +879,7 @@ export function LitografiaQuoteDialog(props: {
         papelFormatoHeightCm: selectedPreset.heightCm ?? 0,
         costoPliego: 0,
         costoCorte: parseFloat(costoCorte) || 0,
-        costoAcabados: (parseFloat(costoAcabados) || 0) + selectedFinishesCost + specialFinishesCost,
+        costoAcabados: (parseFloat(costoAcabados) || 0) + selectedFinishesCost + specialFinishesCost + extraFinishCosts,
         costoTransporte: parseFloat(costoTransporte) || 0,
         margenPct: 0,
       })
@@ -952,6 +954,9 @@ export function LitografiaQuoteDialog(props: {
     costoAcabados,
     selectedFinishesCost,
     specialFinishesCost,
+    plastificadoCost,
+    troqueladoCost,
+    corteCost,
     costoTransporte,
     paperRows,
     primaryPaper,

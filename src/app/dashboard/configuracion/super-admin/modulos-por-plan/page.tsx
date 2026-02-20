@@ -10,7 +10,7 @@ export default async function SuperAdminPlanModulesPage() {
   if (!session?.user) redirect('/auth/login')
 
   const email = session.user.email ?? null
-  if (session.user.role !== 'ADMIN' || !isSuperAdminEmail(email)) {
+  if (!isSuperAdminEmail(email)) {
     redirect('/dashboard')
   }
 

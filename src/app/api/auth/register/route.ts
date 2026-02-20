@@ -15,6 +15,16 @@ import { sendEmail } from "@/lib/email"
 import { ensureDefaultSedeForEmpresa } from "@/lib/rbac"
 import { isSuperAdminEmail } from "@/lib/super-admin"
 
+function parseEmpresaIdFromEmpCode(code: string): string | null {
+  const raw = code.trim()
+  if (!raw) return null
+  const up = raw.toUpperCase()
+  if (!up.startsWith('EMP-')) return null
+  const parts = raw.split('-')
+  const empresaId = (parts[1] ?? '').trim()
+  return empresaId || null
+}
+
 export async function POST(request: Request) {
   try {
     // Obtener datos del body
@@ -45,22 +55,33 @@ export async function POST(request: Request) {
 
     const requestedSedeId = typeof sedeId === 'string' ? sedeId.trim() : ''
 
-    // Resolver empresa (entidad cabeza)
-    const resolvedEmpresaId = typeof empresaId === 'string' ? empresaId.trim() : ''
+    // Resolver empresa (entidad cabeza) - requerido
+    const rawEmpresaId = typeof empresaId === 'string' ? empresaId.trim() : ''
 
-    const empresa = resolvedEmpresaId
-      ? await prisma.empresa.findUnique({
-          where: { id: resolvedEmpresaId },
-          select: { id: true, nombre: true, registrationCodeHash: true },
-        })
-      : null
+    // Compat: si llega el código EMP-... en el campo empresaId, derivamos el ID.
+    let derivedAccessCode = typeof accessCode === 'string' ? accessCode.trim() : ''
+    const parsedFromEmp = rawEmpresaId ? parseEmpresaIdFromEmpCode(rawEmpresaId) : null
 
-    if (resolvedEmpresaId && !empresa?.id) {
+    const resolvedEmpresaId = parsedFromEmp ?? rawEmpresaId
+    if (parsedFromEmp && !derivedAccessCode) {
+      derivedAccessCode = rawEmpresaId
+    }
+
+    if (!resolvedEmpresaId) {
+      return NextResponse.json({ error: 'Debes seleccionar una empresa' }, { status: 400 })
+    }
+
+    const empresa = await prisma.empresa.findUnique({
+      where: { id: resolvedEmpresaId },
+      select: { id: true, nombre: true, registrationCodeHash: true },
+    })
+
+    if (!empresa?.id) {
       return NextResponse.json({ error: 'Entidad no encontrada' }, { status: 400 })
     }
 
     if (empresa?.registrationCodeHash) {
-      const code = typeof accessCode === 'string' ? accessCode.trim() : ''
+      const code = derivedAccessCode
       if (!code) {
         return NextResponse.json({ error: 'Código de acceso requerido' }, { status: 400 })
       }
@@ -113,33 +134,17 @@ export async function POST(request: Request) {
         email: normalizedEmail,
         password: hashedPassword,
         role: isSuperAdminEmail(normalizedEmail) ? "ADMIN" : "USER",
-        empresaId: empresa?.id ?? null,
+        empresaId: empresa.id,
       }
     })
 
-    // Si no eligió entidad, creamos su espacio personal (Empresa propia).
-    let empresaFinal = empresa
-    if (!empresaFinal) {
-      const personalNit = `PERS-${user.id}`
-      const personalNombre = `Espacio personal (${normalizedEmail})`
+    // Si la empresa aún no tiene owner de planes, asignar al primer usuario que se registra.
+    await prisma.empresa.updateMany({
+      where: { id: empresa.id, planOwnerUserId: null },
+      data: { planOwnerUserId: user.id },
+    })
 
-      const created = await prisma.empresa.upsert({
-        where: { nit: personalNit },
-        create: {
-          nombre: personalNombre,
-          nit: personalNit,
-          email: normalizedEmail,
-          planTier: 'BASIC',
-          billingCycle: 'MONTHLY',
-          planValidUntil: null,
-        },
-        update: {},
-        select: { id: true, nombre: true, registrationCodeHash: true },
-      })
-
-      await prisma.user.update({ where: { id: user.id }, data: { empresaId: created.id } })
-      empresaFinal = created
-    }
+    const empresaFinal = empresa
 
     // Asegurar sede/membresía inicial (para RBAC por sede)
     await ensureDefaultSedeForEmpresa(empresaFinal.id, user.id)

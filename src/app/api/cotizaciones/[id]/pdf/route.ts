@@ -28,19 +28,29 @@ function sanitizeText(value: unknown, fallback = ''): string {
   return cleaned || fallback
 }
 
-function stripItemImages<T extends { items: Array<any> }>(data: T): T {
+type ItemRecord = Record<string, unknown> & { material?: unknown; imagenUrl?: unknown }
+
+function stripItemImages<T extends { items: ItemRecord[] }>(data: T): T {
   return {
     ...data,
-    items: data.items.map((item) => ({
-      ...item,
-      imagenUrl: null,
-      material: item.material
-        ? {
-            ...item.material,
-            imagenUrl: null,
-          }
-        : null,
-    })),
+    items: data.items.map((item) => {
+      const material = item.material
+      const materialObject =
+        material && typeof material === 'object' && !Array.isArray(material)
+          ? (material as Record<string, unknown>)
+          : null
+
+      return {
+        ...item,
+        imagenUrl: null,
+        material: materialObject
+          ? {
+              ...materialObject,
+              imagenUrl: null,
+            }
+          : null,
+      }
+    }),
   }
 }
 

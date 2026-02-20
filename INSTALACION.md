@@ -119,6 +119,25 @@ docker run --name postgres-sgdigital \
 npm run dev
 ```
 
+### Abrir el preview desde el celular (misma red)
+
+Si compartes el link de PDF (WhatsApp) desde tu PC y lo abres en el celular, **no debe apuntar a `localhost`**.
+
+1. En tu `.env`, configura una URL accesible desde el celular:
+
+   ```env
+   APP_URL="http://TU-IP-LOCAL:3000"
+   # Ej: APP_URL="http://192.168.1.50:3000"
+   ```
+
+2. Asegura que el servidor de Next escuche en la red (LAN). Puedes ejecutar:
+
+   ```bash
+   npm run dev -- --hostname 0.0.0.0
+   ```
+
+3. Verifica que el firewall de Windows permita conexiones entrantes al puerto `3000`.
+
 Abre http://localhost:3000 en tu navegador
 
 ### Modo Producción

@@ -47,8 +47,15 @@ export async function POST(
     throw e
   }
 
-  const origin = request.nextUrl.origin
-  const url = `${origin}/api/public/cotizaciones/pdf?token=${encodeURIComponent(token)}`
+  const baseUrlRaw =
+    process.env.APP_URL ||
+    process.env.NEXTAUTH_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    request.nextUrl.origin
+  const baseUrl = String(baseUrlRaw || '').replace(/\/+$/, '')
+
+  const url = `${baseUrl}/api/public/cotizaciones/pdf?token=${encodeURIComponent(token)}`
 
   return NextResponse.json({ success: true, data: { url, token, expSeconds: ttlSeconds } })
 }

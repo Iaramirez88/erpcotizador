@@ -20,9 +20,9 @@ export type CreateBoldPaymentLinkResult = {
 const BOLD_LINKS_BASE_URL = 'https://integrations.api.bold.co'
 
 export async function createBoldPaymentLink(input: CreateBoldPaymentLinkInput): Promise<CreateBoldPaymentLinkResult> {
-  const apiKey = process.env.BOLD_IDENTITY_KEY
+  const apiKey = process.env.BOLD_API_KEY ?? process.env.BOLD_IDENTITY_KEY
   if (!apiKey) {
-    throw new Error('BOLD_IDENTITY_KEY no configurada')
+    throw new Error('BOLD_API_KEY (o BOLD_IDENTITY_KEY) no configurada')
   }
 
   const body: Record<string, unknown> = {

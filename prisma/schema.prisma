@@ -395,6 +395,12 @@ enum DianEventType {
 
 model Empresa {
   id        String  @id @default(cuid())
+  // Código corto, visible y único para identificar el espacio de trabajo.
+  // No es un token de acceso; se usa para referenciar/simplificar.
+  workspaceCode String? @unique
+  // Usuario dueño de facturación/planes. Solo este usuario debe ver la vista de Plan.
+  // Se guarda como id (string) para evitar ambigüedad de múltiples relaciones User↔Empresa.
+  planOwnerUserId String?
   nombre    String
   nit       String  @unique
   direccion String?
@@ -456,6 +462,7 @@ model Empresa {
 
   sedes         Sede[]
   notifications Notification[]
+  billingReminderLogs BillingReminderLog[]
 
   // Tarifario global de Litografía (misma configuración para todas las sedes)
   litografiaPrintProfiles LitografiaPrintProfile[]
@@ -471,6 +478,24 @@ model Empresa {
   updatedAt DateTime @updatedAt
 
   @@map("empresas")
+}
+
+model BillingReminderLog {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  planValidUntil DateTime
+  billingCycle   BillingCycle
+  daysBefore     Int
+  channel        String
+  sentAt         DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@unique([empresaId, planValidUntil, billingCycle, daysBefore, channel])
+  @@index([empresaId])
+  @@map("billing_reminder_logs")
 }
 
 // ============================================
@@ -1825,7 +1850,6 @@ model Compra {
   id          String       @id @default(cuid())
   fechaCompra DateTime     @default(now())
   estado      EstadoCompra @default(BORRADOR)
-
   // Multi-sede (MVP): opcional para compatibilidad con registros antiguos
   sedeId  String?
   sedeRef Sede?   @relation("SedeCompras", fields: [sedeId], references: [id])

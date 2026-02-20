@@ -351,6 +351,8 @@ type EmpresaBranding = {
 export default function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname()
 
+  const [canManageBilling, setCanManageBilling] = useState(false)
+
   const mobileNavOpen = useUiStore((s) => s.mobileNavOpen)
   const setMobileNavOpen = useUiStore((s) => s.setMobileNavOpen)
 
@@ -426,6 +428,27 @@ export default function Sidebar({ user }: SidebarProps) {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+    async function loadBillingAccess() {
+      try {
+        const res = await fetch('/api/me', { cache: 'no-store' })
+        const json = (await res.json().catch(() => null)) as
+          | { success?: boolean; data?: { canManageBilling?: boolean } | null }
+          | null
+        if (!cancelled && res.ok && json?.success) {
+          setCanManageBilling(Boolean(json.data?.canManageBilling))
+        }
+      } catch {
+        // ignore
+      }
+    }
+    void loadBillingAccess()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     function onBrandingUpdated(e: Event) {
       const ce = e as CustomEvent<Partial<EmpresaBranding>>
       const next = ce.detail
@@ -456,22 +479,30 @@ export default function Sidebar({ user }: SidebarProps) {
       return user?.role === 'ADMIN'
     })
 
-    if (!enabledModules) return withAdminGate
+    const withBillingGate = withAdminGate.filter((it) => {
+      if (it.href !== '/dashboard/configuracion/plan') return true
+      return canManageBilling
+    })
 
-    return withAdminGate.filter((it) => {
+    if (!enabledModules) return withBillingGate
+
+    return withBillingGate.filter((it) => {
       const moduleKey = moduleForHref(it.href)
       if (!moduleKey) return true
       return enabledModules.has(moduleKey)
     })
-  }, [navPrefs, enabledModules, user?.role])
+  }, [navPrefs, enabledModules, user?.role, canManageBilling])
 
   const visibleHrefs = useMemo(() => {
     return new Set(visibleNavigation.map((it) => it.href))
   }, [visibleNavigation])
 
   const navSettingsItems: NavSettingsItem[] = useMemo(() => {
-    return moduleNavigation.map((it) => ({ name: it.name, href: it.href }))
-  }, [])
+    const base = moduleNavigation
+      .filter((it) => (it.href === '/dashboard/configuracion/plan' ? canManageBilling : true))
+      .map((it) => ({ name: it.name, href: it.href }))
+    return base
+  }, [canManageBilling])
 
   async function saveNav(next: Record<string, boolean>) {
     setNavPrefs(next)

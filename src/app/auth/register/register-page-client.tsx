@@ -16,6 +16,17 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 
+function parseEmpresaIdFromEmpCode(code: string): string | null {
+  const raw = code.trim()
+  if (!raw) return null
+  const up = raw.toUpperCase()
+  if (!up.startsWith('EMP-')) return null
+  const parts = raw.split('-')
+  // Formato esperado: EMP-<empresaId>-<random>
+  const empresaId = (parts[1] ?? '').trim()
+  return empresaId || null
+}
+
 function validatePassword(password: string): string | null {
   if (password.length < 8) return "La contraseña debe tener al menos 8 caracteres"
   if (!/[A-Z]/.test(password)) return "La contraseña debe incluir al menos 1 mayúscula"
@@ -38,9 +49,7 @@ export function RegisterPageClient() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
-  const [empresas, setEmpresas] = useState<
-    Array<{ id: string; nombre: string; logo?: string | null; requiresAccessCode: boolean }>
-  >([])
+  const [empresaIdInput, setEmpresaIdInput] = useState("")
   const [empresaId, setEmpresaId] = useState("")
   const [invitedSedeId, setInvitedSedeId] = useState<string | null>(null)
   const [accessCode, setAccessCode] = useState("")
@@ -57,38 +66,25 @@ export function RegisterPageClient() {
   useEffect(() => {
     let cancelled = false
     async function load() {
-      try {
-        const res = await fetch("/api/public/empresas", { cache: "no-store" })
-        const json = (await res.json().catch(() => null)) as {
-          ok?: boolean
-          data?: Array<{ id: string; nombre: string; logo?: string | null; requiresAccessCode: boolean }>
-        } | null
-        if (cancelled) return
-        if (json?.ok && Array.isArray(json.data)) {
-          setEmpresas(json.data)
-          const empresaIdFromUrl = (searchParams.get("empresaId") ?? "").trim()
-          const sedeIdFromUrl = (searchParams.get("sedeId") ?? "").trim()
-          const emailFromUrl = (searchParams.get("email") ?? "").trim().toLowerCase()
+      if (cancelled) return
 
-          if (empresaIdFromUrl) {
-            setEmpresaId(empresaIdFromUrl)
-            setLockedEmpresaId(empresaIdFromUrl)
-          } else {
-            // Por defecto: espacio personal (empresaId vacío)
-            setEmpresaId("")
-          }
+      const empresaIdFromUrl = (searchParams.get("empresaId") ?? "").trim()
+      const sedeIdFromUrl = (searchParams.get("sedeId") ?? "").trim()
+      const emailFromUrl = (searchParams.get("email") ?? "").trim().toLowerCase()
 
-          if (emailFromUrl && emailFromUrl.includes("@")) {
-            setFormData((p) => ({ ...p, email: emailFromUrl }))
-            setLockedEmail(emailFromUrl)
-          }
+      if (empresaIdFromUrl) {
+        setEmpresaIdInput(empresaIdFromUrl)
+        setEmpresaId(empresaIdFromUrl)
+        setLockedEmpresaId(empresaIdFromUrl)
+      }
 
-          if (sedeIdFromUrl) {
-            setInvitedSedeId(sedeIdFromUrl)
-          }
-        }
-      } catch {
-        // ignore
+      if (emailFromUrl && emailFromUrl.includes("@")) {
+        setFormData((p) => ({ ...p, email: emailFromUrl }))
+        setLockedEmail(emailFromUrl)
+      }
+
+      if (sedeIdFromUrl) {
+        setInvitedSedeId(sedeIdFromUrl)
       }
     }
     void load()
@@ -97,7 +93,12 @@ export function RegisterPageClient() {
     }
   }, [searchParams])
 
-  const selectedEmpresa = useMemo(() => empresas.find((e) => e.id === empresaId) ?? null, [empresas, empresaId])
+  const empresaHelperText = useMemo(() => {
+    if (!empresaIdInput.trim()) return 'Pega el ID de la empresa o el código EMP-... que te compartieron.'
+    const parsed = parseEmpresaIdFromEmpCode(empresaIdInput)
+    if (parsed) return 'Detectamos un código EMP-...; el ID y el acceso se completan automáticamente.'
+    return 'Si tu empresa tiene código de acceso, ingrésalo abajo.'
+  }, [empresaIdInput])
 
   // Estado para validaciones en tiempo real
   const [passwordChecks, setPasswordChecks] = useState({
@@ -114,6 +115,12 @@ export function RegisterPageClient() {
     setIsLoading(true)
     setError("")
 
+    if (!empresaId.trim()) {
+      setError('Ingresa el ID o código de empresa')
+      setIsLoading(false)
+      return
+    }
+
     // Validaciones
     if (formData.password !== formData.confirmPassword) {
       setError("Las contraseñas no coinciden")
@@ -124,12 +131,6 @@ export function RegisterPageClient() {
     const passwordError = validatePassword(formData.password)
     if (passwordError) {
       setError(passwordError)
-      setIsLoading(false)
-      return
-    }
-
-    if (selectedEmpresa?.requiresAccessCode && !accessCode.trim()) {
-      setError("Ingresa el código de acceso")
       setIsLoading(false)
       return
     }
@@ -145,7 +146,7 @@ export function RegisterPageClient() {
           name: formData.name,
           email: formData.email,
           password: formData.password,
-          empresaId: empresaId || undefined,
+          empresaId: empresaId,
           accessCode: accessCode || undefined,
           sedeId: invitedSedeId || undefined,
         }),
@@ -237,30 +238,30 @@ export function RegisterPageClient() {
               <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md text-sm">{error}</div>
             )}
 
-            {empresas.length > 0 ? (
-              <div className="space-y-2">
-                <Label htmlFor="empresa" className="sr-only">Espacio</Label>
-                <select
-                  id="empresa"
-                  value={empresaId}
-                  onChange={(e) => setEmpresaId(e.target.value)}
-                  disabled={isLoading || Boolean(lockedEmpresaId)}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <option value="">Mi espacio personal (requiere plan básico)</option>
-                  <optgroup label="Empresas">
-                    {empresas.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.nombre}
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
-                <p className="text-xs text-muted-foreground">
-                  Tu información se guarda separada por empresa. Si eliges “Mi espacio personal”, trabajas en un entorno solo para tu cuenta.
-                </p>
-              </div>
-            ) : null}
+            <div className="space-y-2">
+              <Label htmlFor="empresaId" className="sr-only">ID o código de empresa</Label>
+              <Input
+                id="empresaId"
+                value={empresaIdInput}
+                onChange={(e) => {
+                  const next = e.target.value
+                  setEmpresaIdInput(next)
+
+                  const parsed = parseEmpresaIdFromEmpCode(next)
+                  if (parsed) {
+                    setEmpresaId(parsed)
+                    setAccessCode(next.trim())
+                    return
+                  }
+
+                  setEmpresaId(next.trim())
+                }}
+                placeholder="ID de empresa (cuid...) o código EMP-..."
+                disabled={isLoading || Boolean(lockedEmpresaId)}
+                required
+              />
+              <p className="text-xs text-muted-foreground">{empresaHelperText}</p>
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="name" className="sr-only">Nombre</Label>
@@ -286,18 +287,16 @@ export function RegisterPageClient() {
               />
             </div>
 
-            {selectedEmpresa?.requiresAccessCode ? (
-              <div className="space-y-2">
-                <Label htmlFor="accessCode" className="sr-only">Código de acceso</Label>
-                <Input
-                  id="accessCode"
-                  value={accessCode}
-                  onChange={(e) => setAccessCode(e.target.value)}
-                  placeholder="Código de acceso"
-                  required
-                />
-              </div>
-            ) : null}
+            <div className="space-y-2">
+              <Label htmlFor="accessCode" className="sr-only">Código de acceso</Label>
+              <Input
+                id="accessCode"
+                value={accessCode}
+                onChange={(e) => setAccessCode(e.target.value)}
+                placeholder="Código de acceso (si aplica)"
+                disabled={isLoading}
+              />
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="password" className="sr-only">Contraseña</Label>

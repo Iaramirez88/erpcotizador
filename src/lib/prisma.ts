@@ -40,7 +40,8 @@ let prismaClient = globalForPrisma.prisma
 // faltan campos nuevos, forzamos una nueva instancia.
 if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasTrialTier = runtimeModelHasField(prismaClient, 'Empresa', 'trialTier')
-  if (!hasTrialTier) prismaClient = undefined
+  const hasWorkspaceCode = runtimeModelHasField(prismaClient, 'Empresa', 'workspaceCode')
+  if (!hasTrialTier || !hasWorkspaceCode) prismaClient = undefined
 }
 
 export const prisma =

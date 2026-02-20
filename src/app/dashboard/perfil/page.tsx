@@ -2,11 +2,14 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isPlanOwnerForEmpresa } from '@/lib/plan-owner'
+import { isSuperAdminEmail } from '@/lib/super-admin'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { AvatarUploader } from '@/components/profile/avatar-uploader'
 import { ProfileBasicsForm } from '@/components/profile/profile-basics-form'
 import { LeaveWorkspaceCard } from '@/components/profile/leave-workspace-card'
+import { WorkspaceAccessCard } from '@/components/profile/workspace-access-card'
 
 function fmtDate(date: Date | null | undefined) {
   if (!date) return '—'
@@ -79,6 +82,11 @@ export default async function PerfilPage() {
     }),
   ])
 
+  const empresaId = user.empresa?.id ?? null
+  const isSystemSuperAdmin = isSuperAdminEmail(user.email)
+  const isPlanOwner = empresaId ? await isPlanOwnerForEmpresa({ empresaId, userId: user.id }) : false
+  const canManageBilling = isSystemSuperAdmin || isPlanOwner
+
   return (
     <div className="p-3 sm:p-4 lg:p-6 space-y-4">
       <div className="rounded-xl border bg-gradient-to-r from-slate-950 to-slate-900 text-slate-50 p-5">
@@ -115,9 +123,11 @@ export default async function PerfilPage() {
                     <div className="text-xs text-muted-foreground">
                       Plan: {String(user.empresa.planTier)} · {String(user.empresa.billingCycle)} · Vigente hasta: {fmtDate(user.empresa.planValidUntil)}
                     </div>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href="/dashboard/configuracion/plan">Actualizar plan</Link>
-                    </Button>
+                    {canManageBilling ? (
+                      <Button asChild size="sm" variant="outline">
+                        <Link href="/dashboard/configuracion/plan">Actualizar plan</Link>
+                      </Button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -191,6 +201,8 @@ export default async function PerfilPage() {
           </Card>
 
           <LeaveWorkspaceCard empresaNombre={user.empresa?.nombre ?? null} />
+
+          <WorkspaceAccessCard />
         </div>
       </div>
 

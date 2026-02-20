@@ -9,7 +9,7 @@ export const runtime = 'nodejs'
 
 function requireSuperAdmin(session: { user?: { role?: string; email?: string | null } } | null) {
   const email = session?.user?.email ?? null
-  if (!session?.user || session.user.role !== 'ADMIN' || !isSuperAdminEmail(email)) return null
+  if (!session?.user || !isSuperAdminEmail(email)) return null
   return session
 }
 

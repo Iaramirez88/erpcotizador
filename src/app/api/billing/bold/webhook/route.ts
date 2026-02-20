@@ -33,7 +33,7 @@ type BoldWebhookEvent = {
 
 export async function POST(request: Request) {
   const signature = request.headers.get('x-bold-signature') ?? ''
-  const secret = process.env.BOLD_WEBHOOK_SECRET ?? ''
+  const secret = process.env.BOLD_WEBHOOK_SECRET ?? process.env.BOLD_SECRET_KEY ?? ''
 
   const rawBuffer = Buffer.from(await request.arrayBuffer())
   const rawBodyText = rawBuffer.toString('utf8')

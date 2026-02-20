@@ -10,6 +10,7 @@ import { Eye, EyeOff } from 'lucide-react'
 
 type EmpresaConfig = {
   empresaId: string
+  workspaceCode: string
   nombre: string
   nit: string
   logo: string | null
@@ -28,6 +29,9 @@ export default function ConfigEmpresaPage() {
   const [logo, setLogo] = useState<string | null>(null)
   const [registrationCode, setRegistrationCode] = useState('')
   const [showRegistrationCode, setShowRegistrationCode] = useState(false)
+
+  const [companyCode, setCompanyCode] = useState<string | null>(null)
+  const [companyEmail, setCompanyEmail] = useState('')
 
   const logoPreview = useMemo(() => (logo ?? config?.logo ?? null), [logo, config?.logo])
 
@@ -153,6 +157,61 @@ export default function ConfigEmpresaPage() {
     }
   }
 
+  async function generateCompanyCode() {
+    if (!config) return
+    setSaving(true)
+    setError(null)
+    setStatus(null)
+    setCompanyCode(null)
+    try {
+      const res = await fetch('/api/configuracion/empresa/company-code', { method: 'POST' })
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; code?: string; error?: string } | null
+      if (!res.ok || !json?.ok || !json.code) {
+        setError(json?.error ?? 'No se pudo generar el código.')
+        return
+      }
+      setCompanyCode(json.code)
+      setStatus('Código generado.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function sendCompanyCodeEmail() {
+    if (!config) return
+    const email = companyEmail.trim().toLowerCase()
+    if (!email || !email.includes('@')) {
+      setError('Email inválido.')
+      return
+    }
+
+    setSaving(true)
+    setError(null)
+    setStatus(null)
+    setCompanyCode(null)
+    try {
+      const res = await fetch('/api/configuracion/empresa/company-code/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; debugCode?: string } | null
+      if (!res.ok || !json?.ok) {
+        setError(json?.error ?? 'No se pudo enviar el correo.')
+        return
+      }
+
+      if (typeof json?.debugCode === 'string') {
+        setCompanyCode(json.debugCode)
+      }
+
+      setCompanyEmail('')
+      setStatus('Correo enviado.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function handleLogoFile(file: File) {
     const maxBytes = 400 * 1024
     if (file.size > maxBytes) {
@@ -195,6 +254,19 @@ export default function ConfigEmpresaPage() {
 
           {config ? (
             <>
+              <div className="space-y-2">
+                <Label>Código de espacio de trabajo</Label>
+                <Input value={config.workspaceCode} readOnly disabled className="font-mono" />
+                <p className="text-xs text-muted-foreground">
+                  Comparte este código para identificar el espacio de trabajo y solicitar acceso.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>ID interno (técnico)</Label>
+                <Input value={config.empresaId} readOnly disabled className="font-mono" />
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Nombre</Label>
@@ -294,6 +366,47 @@ export default function ConfigEmpresaPage() {
               </div>
             </>
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Código de empresa (unirse al espacio)</CardTitle>
+          <CardDescription>
+            Úsalo para que usuarios existentes puedan unirse al espacio o para registrar nuevos usuarios si el acceso está habilitado.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button type="button" variant="outline" disabled={saving || loading || !config} onClick={() => void generateCompanyCode()}>
+              Generar código
+            </Button>
+            {companyCode ? (
+              <div className="text-sm">
+                <span className="text-muted-foreground">Código: </span>
+                <span className="font-mono">{companyCode}</span>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">El código se muestra solo al generarlo o en modo dev.</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Enviar por email</Label>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Input
+                value={companyEmail}
+                onChange={(e) => setCompanyEmail(e.target.value)}
+                placeholder="usuario@correo.com"
+                disabled={saving || loading}
+                className="max-w-sm"
+              />
+              <Button type="button" disabled={saving || loading || !companyEmail.trim()} onClick={() => void sendCompanyCodeEmail()}>
+                Enviar
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Por seguridad, al enviar se genera un nuevo código (rota el anterior).</p>
+          </div>
         </CardContent>
       </Card>
     </div>

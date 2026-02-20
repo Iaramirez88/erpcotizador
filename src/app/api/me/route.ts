@@ -3,22 +3,14 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getActiveSedeForUser, getEffectiveAccess } from '@/lib/rbac'
 import { AccessLevel, ModuleKey } from '@prisma/client'
+import { resolveUserIdFromSession } from '@/lib/session-user'
+import { isPlanOwnerForEmpresa } from '@/lib/plan-owner'
+import { isSuperAdminEmail } from '@/lib/super-admin'
 
 export const runtime = 'nodejs'
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
-}
-
-async function resolveUserIdFromSession(session: { user?: { id?: string; email?: string | null } }) {
-  if (session.user?.id) {
-    const userById = await prisma.user.findUnique({ where: { id: session.user.id }, select: { id: true } })
-    if (userById?.id) return userById.id
-  }
-  const email = session.user?.email
-  if (!email) return null
-  const user = await prisma.user.findUnique({ where: { email }, select: { id: true } })
-  return user?.id ?? null
 }
 
 export async function GET() {
@@ -30,7 +22,7 @@ export async function GET() {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, name: true, email: true, role: true, image: true, createdAt: true, updatedAt: true },
+    select: { id: true, name: true, email: true, role: true, image: true, empresaId: true, createdAt: true, updatedAt: true },
   })
 
   // Para UI: incluir acceso efectivo (por sede) a CONFIG
@@ -45,9 +37,23 @@ export async function GET() {
   const order: Record<AccessLevel, number> = { NONE: 0, READ: 1, WRITE: 2, ADMIN: 3 }
   const canConfigWrite = order[configAccess] >= order.WRITE
 
+  const empresaId = user?.empresaId ?? null
+  const isSystemSuperAdmin = isSuperAdminEmail(user?.email)
+  const isPlanOwner = Boolean(empresaId && user?.id ? await isPlanOwnerForEmpresa({ empresaId, userId: user.id }) : false)
+  const canManageBilling = isSystemSuperAdmin || isPlanOwner
+
   return NextResponse.json({
     success: true,
-    data: user ? { ...user, access: { config: configAccess }, canConfigWrite } : null,
+    data: user
+      ? {
+          ...user,
+          access: { config: configAccess },
+          canConfigWrite,
+          empresaId,
+          isPlanOwner,
+          canManageBilling,
+        }
+      : null,
   })
 }
 

@@ -5,6 +5,7 @@ import { getActiveSedeForUser, requireSedeAccess } from '@/lib/rbac'
 import type { Session } from 'next-auth'
 import { AccessLevel, ModuleKey } from '@prisma/client'
 import { isModuleEnabledForEmpresa } from '@/lib/plan-modules'
+import { resolveUserIdFromSession } from '@/lib/session-user'
 
 export type ApiAccessOk = {
   ok: true
@@ -17,20 +18,6 @@ export type ApiAccessOk = {
 export type ApiAccessFail = {
   ok: false
   response: NextResponse
-}
-
-async function resolveUserIdFromSession(session: Session): Promise<string | null> {
-  const id = session.user?.id
-  if (id) {
-    const userById = await prisma.user.findUnique({ where: { id }, select: { id: true } })
-    if (userById?.id) return userById.id
-  }
-
-  const email = session.user?.email
-  if (!email) return null
-
-  const user = await prisma.user.findUnique({ where: { email }, select: { id: true } })
-  return user?.id ?? null
 }
 
 export async function requireApiAccess(

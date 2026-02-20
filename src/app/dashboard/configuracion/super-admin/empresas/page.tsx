@@ -1,11 +1,11 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { isSuperAdminEmail } from '@/lib/super-admin'
-import SuperAdminUsersClient from './super-admin-users-client'
+import SuperAdminEmpresasClient from './super-admin-empresas-client'
 
 export const runtime = 'nodejs'
 
-export default async function SuperAdminUsersPage() {
+export default async function SuperAdminEmpresasPage() {
   const session = await auth()
   if (!session?.user) redirect('/auth/login')
 
@@ -14,5 +14,5 @@ export default async function SuperAdminUsersPage() {
     redirect('/dashboard')
   }
 
-  return <SuperAdminUsersClient />
+  return <SuperAdminEmpresasClient />
 }

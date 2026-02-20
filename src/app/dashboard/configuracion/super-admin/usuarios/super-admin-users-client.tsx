@@ -185,6 +185,9 @@ export default function SuperAdminUsersClient() {
         </div>
         <div className="flex items-center gap-2">
           <Button asChild variant="outline">
+            <Link href="/dashboard/configuracion/super-admin/empresas">Empresas</Link>
+          </Button>
+          <Button asChild variant="outline">
             <Link href="/dashboard/configuracion/super-admin/modulos-por-plan">Módulos por plan</Link>
           </Button>
         </div>

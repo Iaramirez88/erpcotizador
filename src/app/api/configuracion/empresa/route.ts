@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { ModuleKey } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
 
 export const runtime = 'nodejs'
 
@@ -20,6 +21,7 @@ export async function GET() {
       empresa: {
         select: {
           id: true,
+          workspaceCode: true,
           nombre: true,
           nit: true,
           logo: true,
@@ -34,10 +36,13 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: 'Empresa no encontrada' }, { status: 404 })
   }
 
+  const workspaceCode = empresa.workspaceCode || (await ensureWorkspaceCodeForEmpresa(empresa.id))
+
   return NextResponse.json({
     ok: true,
     data: {
       empresaId: empresa.id,
+      workspaceCode,
       nombre: empresa.nombre,
       nit: empresa.nit,
       logo: empresa.logo,

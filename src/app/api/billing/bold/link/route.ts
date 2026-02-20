@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
-import { BillingCycle as PrismaBillingCycle, ModuleKey, PlanTier as PrismaPlanTier } from '@prisma/client'
+import { BillingCycle as PrismaBillingCycle, PlanTier as PrismaPlanTier } from '@prisma/client'
+import { auth } from '@/lib/auth'
 import { createBoldPaymentLink } from '@/lib/bold'
 import { ANNUAL_DISCOUNT_PCT, type BillingCycle, getPlanPriceCOP, type PlanTier } from '@/lib/plans'
+import { resolveUserIdFromSession } from '@/lib/session-user'
+import { ensurePlanOwnerUserIdForEmpresa } from '@/lib/plan-owner'
+import { isSuperAdminEmail } from '@/lib/super-admin'
 
 export const runtime = 'nodejs'
 
@@ -22,12 +25,19 @@ function isBillingCycle(value: unknown): value is BillingCycle {
 
 export async function POST(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.CONFIG, 'WRITE')
-    if (!access.ok) return access.response
+    const session = await auth()
+    if (!session?.user) {
+      return NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 401 })
+    }
 
-    if (!process.env.BOLD_IDENTITY_KEY) {
+    const userId = await resolveUserIdFromSession(session)
+    if (!userId) {
+      return NextResponse.json({ ok: false, error: 'Sesión inválida. Vuelve a iniciar sesión.' }, { status: 401 })
+    }
+
+    if (!process.env.BOLD_API_KEY && !process.env.BOLD_IDENTITY_KEY) {
       return NextResponse.json(
-        { ok: false, error: 'BOLD_IDENTITY_KEY no configurada en el servidor.' },
+        { ok: false, error: 'BOLD_API_KEY (o BOLD_IDENTITY_KEY) no configurada en el servidor.' },
         { status: 503 }
       )
     }
@@ -37,9 +47,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'Body inválido. Esperado: { tier, cycle }' }, { status: 400 })
     }
 
-    const userId = access.userId
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
-    const empresaId = access.empresaId
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, role: true, empresaId: true },
+    })
+
+    const empresaId = user?.empresaId
+    if (!empresaId) {
+      return NextResponse.json({ ok: false, error: 'Empresa no encontrada para el usuario.' }, { status: 400 })
+    }
+
+    const isSystemSuperAdmin = isSuperAdminEmail(user?.email)
+    if (!isSystemSuperAdmin) {
+      const ownerUserId = await ensurePlanOwnerUserIdForEmpresa(empresaId)
+      if (!ownerUserId || ownerUserId !== userId) {
+        return NextResponse.json({ ok: false, error: 'Prohibido' }, { status: 403 })
+      }
+    }
 
     const tier = body.tier
     const cycle = body.cycle

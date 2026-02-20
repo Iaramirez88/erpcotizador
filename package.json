@@ -23,7 +23,8 @@
     "perf:startup": "tsx scripts/startup-performance.ts",
     "perf:indexes": "tsx scripts/database-indexes-check.ts",
     "perf:apply-indexes": "tsx scripts/apply-performance-indexes.ts",
-    "backfill:inventory-stock": "tsx scripts/backfill-inventory-stock-default-warehouse.ts"
+    "backfill:inventory-stock": "tsx scripts/backfill-inventory-stock-default-warehouse.ts",
+    "billing:reminders": "tsx scripts/send-plan-expiration-reminders.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",

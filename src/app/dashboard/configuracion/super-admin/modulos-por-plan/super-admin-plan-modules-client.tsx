@@ -212,6 +212,9 @@ export default function SuperAdminPlanModulesClient() {
           <p className="text-sm text-gray-600">Habilita o deshabilita módulos para cada plan.</p>
         </div>
         <Button asChild variant="outline">
+          <Link href="/dashboard/configuracion/super-admin/empresas">Empresas</Link>
+        </Button>
+        <Button asChild variant="outline">
           <Link href="/dashboard/configuracion/super-admin/usuarios">Usuarios</Link>
         </Button>
       </div>
