@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useI18n } from '@/components/providers/i18n-provider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -174,10 +175,10 @@ function bucketDateFromKey(key: string, gb: GroupBy) {
   return new Date(Number(key), 0, 1);
 }
 
-function bucketLabelFromKey(key: string, gb: GroupBy) {
+function bucketLabelFromKey(key: string, gb: GroupBy, locale: string) {
   if (gb === 'dia') return key;
   const dt = bucketDateFromKey(key, gb);
-  if (gb === 'mes') return dt.toLocaleDateString('es-MX', { month: 'short', year: 'numeric' });
+  if (gb === 'mes') return dt.toLocaleDateString(locale, { month: 'short', year: 'numeric' });
   return key;
 }
 
@@ -191,6 +192,13 @@ function buildParams(params: Record<string, string | undefined>) {
 }
 
 export default function ReportesPage() {
+  const { t, language } = useI18n();
+  const locale = language === 'en' ? 'en-US' : 'es-CO';
+  const naText = t('common.na');
+
+  const ordersNoun = (count: number) => (count === 1 ? t('reports.common.order') : t('reports.common.orders'));
+  const purchasesNoun = (count: number) => (count === 1 ? t('reports.common.purchase') : t('reports.common.purchases'));
+
   const [loading, setLoading] = useState(true);
   const [periodo, setPeriodo] = useState('mes'); // mes, trimestre, año
   const [groupByDraft, setGroupByDraft] = useState<GroupBy>('mes');
@@ -333,7 +341,7 @@ export default function ReportesPage() {
           .map(([key, data]) => ({
             key,
             date: bucketDateFromKey(key, groupBy),
-            mes: bucketLabelFromKey(key, groupBy),
+            mes: bucketLabelFromKey(key, groupBy, locale),
             ventas: data.ventas,
             ordenes: data.ordenes,
           }))
@@ -390,10 +398,10 @@ export default function ReportesPage() {
       cancelled = true;
       controller.abort();
     };
-  }, [periodo, from, to, groupBy]);
+  }, [periodo, from, to, groupBy, locale]);
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('es-CO', {
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: 'COP',
     }).format(value);
@@ -423,8 +431,8 @@ export default function ReportesPage() {
     <div className="p-8">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-bold">Reportes y Análisis</h1>
-          <p className="text-gray-600 mt-1">Dashboard de métricas del negocio</p>
+          <h1 className="text-3xl font-bold">{t('reports.title')}</h1>
+          <p className="text-gray-600 mt-1">{t('reports.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -436,16 +444,16 @@ export default function ReportesPage() {
             }}
             disabled={prefsLoading}
           >
-            Personalizar
+            {t('reports.actions.customize')}
           </Button>
           <select
             className="px-4 py-2 border rounded-md"
             value={periodo}
             onChange={(e) => setPeriodo(e.target.value)}
           >
-            <option value="mes">Este mes</option>
-            <option value="trimestre">Trimestre</option>
-            <option value="año">Año</option>
+            <option value="mes">{t('reports.period.thisMonth')}</option>
+            <option value="trimestre">{t('reports.period.quarter')}</option>
+            <option value="año">{t('reports.period.year')}</option>
           </select>
         </div>
       </div>
@@ -454,29 +462,29 @@ export default function ReportesPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
-            Filtros
+            {t('reports.filters.title')}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div className="space-y-2">
-              <Label>Desde</Label>
+              <Label>{t('reports.filters.from')}</Label>
               <Input type="date" value={fromDraft} onChange={(e) => setFromDraft(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Hasta</Label>
+              <Label>{t('reports.filters.to')}</Label>
               <Input type="date" value={toDraft} onChange={(e) => setToDraft(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>Agrupar por</Label>
+              <Label>{t('reports.filters.groupBy')}</Label>
               <select
                 className="px-3 py-2 border rounded-md w-full"
                 value={groupByDraft}
                 onChange={(e) => setGroupByDraft(e.target.value as GroupBy)}
               >
-                <option value="dia">Día</option>
-                <option value="mes">Mes</option>
-                <option value="año">Año</option>
+                <option value="dia">{t('reports.groupBy.day')}</option>
+                <option value="mes">{t('reports.groupBy.month')}</option>
+                <option value="año">{t('reports.groupBy.year')}</option>
               </select>
             </div>
             <div className="flex gap-2">
@@ -488,7 +496,7 @@ export default function ReportesPage() {
                   setGroupBy(groupByDraft);
                 }}
               >
-                Aplicar
+                {t('reports.filters.apply')}
               </Button>
               <Button
                 type="button"
@@ -503,7 +511,7 @@ export default function ReportesPage() {
                   setGroupBy('mes');
                 }}
               >
-                Restablecer
+                {t('reports.filters.reset')}
               </Button>
             </div>
           </div>
@@ -513,20 +521,20 @@ export default function ReportesPage() {
       <Dialog open={prefsOpen} onOpenChange={setPrefsOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Personalizar Reportes</DialogTitle>
-            <DialogDescription>Muestra/oculta secciones y gráficas para tu usuario.</DialogDescription>
+            <DialogTitle>{t('reports.prefs.title')}</DialogTitle>
+            <DialogDescription>{t('reports.prefs.subtitle')}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <div className="font-medium">Secciones</div>
+              <div className="font-medium">{t('reports.prefs.sectionsTitle')}</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {([
-                  ['kpis', 'KPIs'],
-                  ['ventas', 'Ventas'],
-                  ['topClientes', 'Top clientes'],
-                  ['documentos', 'Documentos escaneados'],
-                  ['compras', 'Compras'],
+                  ['kpis', t('reports.prefs.sections.kpis')],
+                  ['ventas', t('reports.prefs.sections.sales')],
+                  ['topClientes', t('reports.prefs.sections.topCustomers')],
+                  ['documentos', t('reports.prefs.sections.scannedDocs')],
+                  ['compras', t('reports.prefs.sections.purchases')],
                 ] as const).map(([key, label]) => (
                   <label key={key} className="flex items-center gap-2 rounded-md border p-2">
                     <input
@@ -546,12 +554,12 @@ export default function ReportesPage() {
             </div>
 
             <div className="space-y-2">
-              <div className="font-medium">Gráficas</div>
+              <div className="font-medium">{t('reports.prefs.chartsTitle')}</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {([
-                  ['ventasMensuales', 'Ventas mensuales'],
-                  ['documentosPorTipo', 'Documentos por tipo'],
-                  ['comprasPorProveedor', 'Compras por proveedor'],
+                  ['ventasMensuales', t('reports.prefs.charts.monthlySales')],
+                  ['documentosPorTipo', t('reports.prefs.charts.docsByType')],
+                  ['comprasPorProveedor', t('reports.prefs.charts.purchasesBySupplier')],
                 ] as const).map(([key, label]) => (
                   <label key={key} className="flex items-center gap-2 rounded-md border p-2">
                     <input
@@ -573,7 +581,7 @@ export default function ReportesPage() {
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setPrefsOpen(false)}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
             <Button
               type="button"
@@ -582,7 +590,7 @@ export default function ReportesPage() {
                 setPrefsOpen(false);
               }}
             >
-              Guardar
+              {t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -595,7 +603,7 @@ export default function ReportesPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Ventas Totales</p>
+                  <p className="text-sm text-gray-600">{t('reports.kpis.totalSales')}</p>
                   <p className="text-2xl font-bold">{formatCurrency(estadisticas.ventasTotales)}</p>
                 </div>
                 <DollarSign className="w-12 h-12 text-green-600 opacity-20" />
@@ -607,7 +615,7 @@ export default function ReportesPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Órdenes de Trabajo</p>
+                  <p className="text-sm text-gray-600">{t('reports.kpis.workOrders')}</p>
                   <p className="text-2xl font-bold">{estadisticas.ordenesTrabajo}</p>
                 </div>
                 <Package className="w-12 h-12 text-blue-600 opacity-20" />
@@ -619,7 +627,7 @@ export default function ReportesPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Cotizaciones</p>
+                  <p className="text-sm text-gray-600">{t('reports.kpis.quotes')}</p>
                   <p className="text-2xl font-bold">{estadisticas.cotizacionesTotales}</p>
                 </div>
                 <FileText className="w-12 h-12 text-purple-600 opacity-20" />
@@ -631,7 +639,7 @@ export default function ReportesPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Clientes Activos</p>
+                  <p className="text-sm text-gray-600">{t('reports.kpis.activeCustomers')}</p>
                   <p className="text-2xl font-bold">{estadisticas.clientesActivos}</p>
                 </div>
                 <Users className="w-12 h-12 text-orange-600 opacity-20" />
@@ -646,8 +654,8 @@ export default function ReportesPage() {
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-xl font-semibold">Documentos escaneados</h2>
-            <p className="text-sm text-gray-600">Resumen por tipo detectado (OCR/IA)</p>
+            <h2 className="text-xl font-semibold">{t('reports.docs.title')}</h2>
+            <p className="text-sm text-gray-600">{t('reports.docs.subtitle')}</p>
           </div>
           <FileText className="w-6 h-6 text-gray-400" />
         </div>
@@ -655,31 +663,33 @@ export default function ReportesPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Total escaneos</CardTitle>
+              <CardTitle className="text-base">{t('reports.docs.totalScans')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">{docs?.totals.total ?? 0}</div>
-              <p className="text-sm text-gray-600 mt-1">Desde {docs?.from ? new Date(docs.from).toLocaleDateString('es-CO') : '-'}</p>
+              <p className="text-sm text-gray-600 mt-1">
+                {t('reports.common.since')} {docs?.from ? new Date(docs.from).toLocaleDateString(locale) : naText}
+              </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Procesados</CardTitle>
+              <CardTitle className="text-base">{t('reports.docs.processed')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">{docs?.totals.processed ?? 0}</div>
-              <p className="text-sm text-gray-600 mt-1">Incluye aprobados</p>
+              <p className="text-sm text-gray-600 mt-1">{t('reports.docs.processedHint')}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Aprobados</CardTitle>
+              <CardTitle className="text-base">{t('reports.docs.approved')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">{docs?.totals.approved ?? 0}</div>
-              <p className="text-sm text-gray-600 mt-1">Listos para contabilidad</p>
+              <p className="text-sm text-gray-600 mt-1">{t('reports.docs.approvedHint')}</p>
             </CardContent>
           </Card>
         </div>
@@ -687,7 +697,7 @@ export default function ReportesPage() {
         <div className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Por tipo detectado</CardTitle>
+              <CardTitle className="text-base">{t('reports.docs.byDetected')}</CardTitle>
             </CardHeader>
             <CardContent>
               {docs && docs.byDetected ? (
@@ -727,7 +737,7 @@ export default function ReportesPage() {
                   </div>
                 )
               ) : (
-                <p className="text-sm text-gray-600">No hay datos de documentos para el período seleccionado.</p>
+                <p className="text-sm text-gray-600">{t('reports.docs.empty')}</p>
               )}
             </CardContent>
           </Card>
@@ -740,8 +750,8 @@ export default function ReportesPage() {
       <div className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-xl font-semibold">Compras</h2>
-            <p className="text-sm text-gray-600">Totales, autorización y top proveedores</p>
+            <h2 className="text-xl font-semibold">{t('reports.purchases.title')}</h2>
+            <p className="text-sm text-gray-600">{t('reports.purchases.subtitle')}</p>
           </div>
           <DollarSign className="w-6 h-6 text-gray-400" />
         </div>
@@ -749,41 +759,43 @@ export default function ReportesPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base"># Compras</CardTitle>
+              <CardTitle className="text-base">{t('reports.purchases.count')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">{compras?.totals.count ?? 0}</div>
-              <p className="text-sm text-gray-600 mt-1">Desde {compras?.from ? new Date(compras.from).toLocaleDateString('es-CO') : '-'}</p>
+              <p className="text-sm text-gray-600 mt-1">
+                {t('reports.common.since')} {compras?.from ? new Date(compras.from).toLocaleDateString(locale) : naText}
+              </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Gasto total</CardTitle>
+              <CardTitle className="text-base">{t('reports.purchases.totalSpend')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{formatCurrency(compras?.totals.total ?? 0)}</div>
-              <p className="text-sm text-gray-600 mt-1">Subtotal con IVA incluido</p>
+              <p className="text-sm text-gray-600 mt-1">{t('reports.purchases.totalSpendHint')}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">IVA</CardTitle>
+              <CardTitle className="text-base">{t('reports.purchases.vat')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{formatCurrency(compras?.totals.iva ?? 0)}</div>
-              <p className="text-sm text-gray-600 mt-1">Acumulado del período</p>
+              <p className="text-sm text-gray-600 mt-1">{t('reports.purchases.vatHint')}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Autorización</CardTitle>
+              <CardTitle className="text-base">{t('reports.purchases.authorization')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{compras?.totals.authorizedCount ?? 0} / {compras?.totals.count ?? 0}</div>
-              <p className="text-sm text-gray-600 mt-1">Autorizadas</p>
+              <p className="text-sm text-gray-600 mt-1">{t('reports.purchases.authorizationHint')}</p>
             </CardContent>
           </Card>
         </div>
@@ -791,7 +803,7 @@ export default function ReportesPage() {
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Top proveedores (por gasto)</CardTitle>
+              <CardTitle className="text-base">{t('reports.purchases.topSuppliers')}</CardTitle>
             </CardHeader>
             <CardContent>
               {compras?.byProveedor?.length ? (
@@ -807,14 +819,14 @@ export default function ReportesPage() {
                         <YAxis />
                         <Tooltip />
                         <Legend />
-                        <Bar dataKey="total" name="Total" fill="#2563eb" />
+                        <Bar dataKey="total" name={t('reports.common.total')} fill="#2563eb" />
                       </BarChart>
                     </ResponsiveContainer>
-                    <div className="mt-2 text-xs text-muted-foreground">Top 8 por total (la lista completa sigue en la tabla)</div>
+                    <div className="mt-2 text-xs text-muted-foreground">{t('reports.purchases.top8Hint')}</div>
                   </div>
                 ) : null
               ) : (
-                <p className="text-sm text-gray-600">No hay compras en el período seleccionado.</p>
+                <p className="text-sm text-gray-600">{t('reports.purchases.empty')}</p>
               )}
 
               {compras?.byProveedor?.length ? (
@@ -822,11 +834,11 @@ export default function ReportesPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b">
-                        <th className="py-2 text-left">Proveedor</th>
-                        <th className="py-2 text-left">#</th>
-                        <th className="py-2 text-left">Subtotal</th>
-                        <th className="py-2 text-left">IVA</th>
-                        <th className="py-2 text-left">Total</th>
+                        <th className="py-2 text-left">{t('reports.purchases.table.supplier')}</th>
+                        <th className="py-2 text-left">{t('reports.purchases.table.count')}</th>
+                        <th className="py-2 text-left">{t('reports.purchases.table.subtotal')}</th>
+                        <th className="py-2 text-left">{t('reports.purchases.table.vat')}</th>
+                        <th className="py-2 text-left">{t('reports.purchases.table.total')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -848,7 +860,7 @@ export default function ReportesPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Por sede</CardTitle>
+              <CardTitle className="text-base">{t('reports.purchases.bySite')}</CardTitle>
             </CardHeader>
             <CardContent>
               {compras?.bySede?.length ? (
@@ -856,13 +868,13 @@ export default function ReportesPage() {
                   {compras.bySede.map((s) => (
                     <div key={s.sede} className="rounded-md border p-3">
                       <div className="text-sm text-gray-600">{s.sede}</div>
-                      <div className="text-sm text-gray-500">{s.count} compras</div>
+                      <div className="text-sm text-gray-500">{s.count} {purchasesNoun(s.count)}</div>
                       <div className="text-xl font-bold mt-1">{formatCurrency(s.total)}</div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-gray-600">No hay datos por sede.</p>
+                <p className="text-sm text-gray-600">{t('reports.purchases.bySiteEmpty')}</p>
               )}
             </CardContent>
           </Card>
@@ -876,22 +888,22 @@ export default function ReportesPage() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-sm text-gray-600">Tasa de Conversión</p>
+                <p className="text-sm text-gray-600">{t('reports.kpis.conversionRate')}</p>
                 <TrendingUp className="w-5 h-5 text-green-600" />
               </div>
               <p className="text-3xl font-bold">{estadisticas.tasaConversion.toFixed(1)}%</p>
-              <p className="text-xs text-gray-500 mt-1">Cotizaciones → Órdenes de trabajo</p>
+              <p className="text-xs text-gray-500 mt-1">{t('reports.kpis.conversionRateHint')}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-sm text-gray-600">Promedio por Venta</p>
+                <p className="text-sm text-gray-600">{t('reports.kpis.avgSale')}</p>
                 <BarChart3 className="w-5 h-5 text-blue-600" />
               </div>
               <p className="text-3xl font-bold">{formatCurrency(estadisticas.promedioVenta)}</p>
-              <p className="text-xs text-gray-500 mt-1">Ticket promedio</p>
+              <p className="text-xs text-gray-500 mt-1">{t('reports.kpis.avgSaleHint')}</p>
             </CardContent>
           </Card>
         </div>
@@ -903,7 +915,7 @@ export default function ReportesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Calendar className="w-5 h-5" />
-              Ventas Últimos 6 Meses
+              {t('reports.sales.title')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -915,8 +927,8 @@ export default function ReportesPage() {
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="ventas" name="Ventas" fill="#2563eb" />
-                    <Bar dataKey="ordenes" name="Órdenes" fill="#16a34a" />
+                    <Bar dataKey="ventas" name={t('reports.common.sales')} fill="#2563eb" />
+                    <Bar dataKey="ordenes" name={t('reports.common.orders')} fill="#16a34a" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -933,7 +945,7 @@ export default function ReportesPage() {
                         <div className="text-right">
                           <span className="text-sm font-bold">{formatCurrency(mes.ventas)}</span>
                           <span className="text-xs text-gray-500 ml-2">
-                            ({mes.ordenes} {mes.ordenes === 1 ? 'orden' : 'órdenes'})
+                            ({mes.ordenes} {ordersNoun(mes.ordenes)})
                           </span>
                         </div>
                       </div>
@@ -958,12 +970,12 @@ export default function ReportesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="w-5 h-5" />
-              Top 5 Clientes
+              {t('reports.topCustomers.title')}
             </CardTitle>
           </CardHeader>
           <CardContent>
             {topClientes.length === 0 ? (
-              <p className="text-center text-gray-500 py-8">No hay datos de clientes disponibles</p>
+              <p className="text-center text-gray-500 py-8">{t('reports.topCustomers.empty')}</p>
             ) : (
               <div className="space-y-4">
                 {topClientes.map((cliente, index) => (
@@ -983,7 +995,7 @@ export default function ReportesPage() {
                     <div className="text-right">
                       <p className="font-bold text-lg">{formatCurrency(cliente.totalCompras)}</p>
                       <p className="text-sm text-gray-500">
-                        {cliente.numOrdenes} {cliente.numOrdenes === 1 ? 'orden' : 'órdenes'}
+                        {cliente.numOrdenes} {ordersNoun(cliente.numOrdenes)}
                       </p>
                     </div>
                   </div>

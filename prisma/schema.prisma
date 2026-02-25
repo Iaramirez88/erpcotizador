@@ -87,6 +87,9 @@ model User {
   transfersCreated   InventoryTransfer[] @relation("TransferCreated")
   transfersCompleted InventoryTransfer[] @relation("TransferCompleted")
 
+  // Contabilidad
+  accountingJournalEntriesCreated AccountingJournalEntry[] @relation("AccountingJournalEntryCreatedBy")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -176,6 +179,9 @@ model UiPreference {
   nav      Json @default("{}")
   report   Json @default("{}")
   tutorial Json @default("{}")
+
+  // Idioma preferido para la UI (ES/EN)
+  language String @default("es")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -288,6 +294,7 @@ enum ModuleKey {
   ORDENES
   ESCANEOS
   REPORTES
+  CONTABILIDAD
   NOTIFICACIONES
   CONFIG
 }
@@ -477,6 +484,14 @@ model Empresa {
   configDropdowns ConfigDropdown[]
   
   inventoryTransfers InventoryTransfer[]
+
+  // Contabilidad (configurable por empresa)
+  accountingAccounts       AccountingAccount[]
+  accountingCostCenters    AccountingCostCenter[]
+  accountingRules          AccountingRule[]
+  accountingJournalEntries AccountingJournalEntry[]
+  treasuryBankAccounts     TreasuryBankAccount[]
+  treasuryBankMovements    TreasuryBankMovement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1541,6 +1556,8 @@ enum EstadoCotizacion {
 
 model Material {
   id        String       @id @default(cuid())
+  // Identificador/código opcional asignado por el cliente (p.ej. sistema de caja)
+  externalId String?
   nombre    String
   tipo      TipoMaterial
   categoria String?
@@ -1590,6 +1607,8 @@ model Material {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([empresaId, externalId], map: "uq_materiales_empresa_external_id")
+  @@index([empresaId, externalId], map: "idx_materiales_empresa_external_id")
   @@index([empresaId, activo], map: "idx_materiales_empresa_activo")
   @@map("materiales")
 }
@@ -2095,4 +2114,273 @@ model DocumentScanFieldFeedback {
   @@index([sedeId])
   @@index([path])
   @@map("document_scan_field_feedback")
+}
+
+// ============================================
+// CONTABILIDAD (CONFIGURABLE POR EMPRESA)
+// ============================================
+
+enum AccountingAccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+enum AccountingNormalBalance {
+  DEBIT
+  CREDIT
+}
+
+enum AccountingPostingSide {
+  DEBIT
+  CREDIT
+}
+
+enum AccountingEntryStatus {
+  DRAFT
+  POSTED
+  VOID
+}
+
+// Eventos “fuente” para reglas contables (Evento → Regla → Asiento)
+enum AccountingEventType {
+  POS_INVOICE
+  POS_RETURN
+  COMPRA
+  COMPRA_PAGO
+  DIAN_DOCUMENT
+  MANUAL
+}
+
+// Claves estándar de monto para reglas (evita hardcodear por módulo)
+enum AccountingAmountKey {
+  SUBTOTAL
+  IVA
+  DESCUENTO
+  RETENCION
+  RETEICA
+  AUTORETENCION
+  TOTAL
+}
+
+model AccountingAccount {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  code String
+  name String
+
+  type          AccountingAccountType
+  normalBalance AccountingNormalBalance
+
+  parentId String?
+  parent   AccountingAccount?  @relation("AccountingAccountParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children AccountingAccount[] @relation("AccountingAccountParent")
+
+  ruleLines      AccountingRuleLine[]
+  journalLines   AccountingJournalLine[]
+  bankAccounts   TreasuryBankAccount[]
+
+  // Cuenta auxiliar (posteable). Si es false, actúa como agrupadora.
+  isPosting Boolean @default(true)
+  isActive  Boolean @default(true)
+
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, code])
+  @@index([empresaId, type])
+  @@index([empresaId, parentId])
+  @@map("accounting_accounts")
+}
+
+model AccountingCostCenter {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  code String
+  name String
+
+  ruleLines    AccountingRuleLine[]
+  journalLines AccountingJournalLine[]
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, code])
+  @@index([empresaId])
+  @@map("accounting_cost_centers")
+}
+
+model AccountingRule {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  eventType    AccountingEventType
+  documentType String?
+
+  name        String
+  description String?
+  priority    Int     @default(100)
+  isActive    Boolean @default(true)
+
+  // Espacio para condiciones por empresa (ej: método de pago, prefijos, etc.)
+  conditions Json @default("{}")
+
+  lines AccountingRuleLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, eventType, priority])
+  @@index([empresaId, isActive])
+  @@map("accounting_rules")
+}
+
+model AccountingRuleLine {
+  id     String @id @default(cuid())
+  ruleId String
+  rule   AccountingRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  order Int @default(0)
+
+  side      AccountingPostingSide
+  accountId String
+  account   AccountingAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  costCenterId String?
+  costCenter   AccountingCostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+
+  amountKey  AccountingAmountKey
+  multiplier Float @default(1)
+
+  memoTemplate String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ruleId, order])
+  @@index([accountId])
+  @@map("accounting_rule_lines")
+}
+
+model AccountingJournalEntry {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  status AccountingEntryStatus @default(POSTED)
+
+  // Fuente
+  eventType      AccountingEventType
+  referenceType  String
+  referenceId    String
+  referenceExtra Json @default("{}")
+
+  date        DateTime
+  description String
+  currency    String @default("COP")
+
+  totalDebit  Float @default(0)
+  totalCredit Float @default(0)
+
+  createdById String?
+  createdBy   User? @relation("AccountingJournalEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  lines AccountingJournalLine[]
+
+  treasuryMovements TreasuryBankMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, referenceType, referenceId])
+  @@index([empresaId, date])
+  @@index([empresaId, eventType, date])
+  @@map("accounting_journal_entries")
+}
+
+model AccountingJournalLine {
+  id      String @id @default(cuid())
+  entryId String
+  entry   AccountingJournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  accountId String
+  account   AccountingAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  costCenterId String?
+  costCenter   AccountingCostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+
+  debit  Float @default(0)
+  credit Float @default(0)
+  memo   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([entryId])
+  @@index([accountId])
+  @@index([costCenterId])
+  @@map("accounting_journal_lines")
+}
+
+// Tesorería (cuentas bancarias, movimientos y conciliación)
+model TreasuryBankAccount {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  name          String
+  bankName      String?
+  accountNumber String?
+  currency      String @default("COP")
+  isActive      Boolean @default(true)
+
+  // Cuenta contable asociada (opcional)
+  accountingAccountId String?
+  accountingAccount   AccountingAccount? @relation(fields: [accountingAccountId], references: [id], onDelete: SetNull)
+
+  movements TreasuryBankMovement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId])
+  @@map("treasury_bank_accounts")
+}
+
+model TreasuryBankMovement {
+  id            String @id @default(cuid())
+  empresaId     String
+  empresa       Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  bankAccountId String
+  bankAccount   TreasuryBankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  date        DateTime
+  description String
+  // + ingreso, - egreso
+  amount Float
+
+  referenceType String?
+  referenceId   String?
+
+  // Link opcional al asiento generado
+  journalEntryId String?
+  journalEntry   AccountingJournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, date])
+  @@index([bankAccountId, date])
+  @@index([journalEntryId])
+  @@map("treasury_bank_movements")
 }

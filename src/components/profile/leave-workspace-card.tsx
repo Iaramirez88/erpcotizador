@@ -11,13 +11,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { useI18n } from '@/components/providers/i18n-provider'
 
 export function LeaveWorkspaceCard(props: { empresaNombre: string | null }) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
 
-  const empresaNombre = (props.empresaNombre || '').trim() || 'este espacio de trabajo'
+  const empresaNombre = (props.empresaNombre || '').trim() || t('profile.workspace.defaultName')
 
   async function leave() {
     setBusy(true)
@@ -29,7 +31,7 @@ export function LeaveWorkspaceCard(props: { empresaNombre: string | null }) {
         | null
 
       if (!res.ok || !json?.success) {
-        setStatus(json?.error ?? 'No se pudo completar la solicitud.')
+        setStatus(json?.error ?? t('profile.leave.errors.requestFailed'))
         return
       }
 
@@ -37,7 +39,7 @@ export function LeaveWorkspaceCard(props: { empresaNombre: string | null }) {
       // Lleva al usuario a un estado consistente (su espacio personal).
       window.location.assign('/dashboard')
     } catch {
-      setStatus('No se pudo completar la solicitud. Verifica tu conexión e intenta de nuevo.')
+      setStatus(t('common.errors.requestFailedTryAgain'))
     } finally {
       setBusy(false)
     }
@@ -46,39 +48,36 @@ export function LeaveWorkspaceCard(props: { empresaNombre: string | null }) {
   return (
     <Card>
       <CardHeader className="py-3">
-        <CardTitle className="text-base">Espacio de trabajo</CardTitle>
+        <CardTitle className="text-base">{t('profile.workspace.title')}</CardTitle>
       </CardHeader>
       <CardContent className="pt-0 space-y-3 text-sm">
-        <div className="text-muted-foreground">
-          Si ya no deseas usar <span className="font-medium text-foreground">{empresaNombre}</span>, puedes darte de baja.
-        </div>
+        <div className="text-muted-foreground">{t('profile.leave.description', { name: empresaNombre })}</div>
 
         <Button type="button" variant="destructive" onClick={() => setOpen(true)}>
-          Darme de baja del espacio de trabajo
+          {t('profile.leave.openDialog')}
         </Button>
 
         <Dialog open={open} onOpenChange={(v) => (!busy ? setOpen(v) : null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Confirmar baja</DialogTitle>
+              <DialogTitle>{t('profile.leave.dialogTitle')}</DialogTitle>
               <DialogDescription>
-                Esta acción te quitará el acceso a la información y configuración de “{empresaNombre}”.
-                Para volver a entrar necesitarás que un administrador te invite nuevamente.
+                {t('profile.leave.dialogDescription', { name: empresaNombre })}
               </DialogDescription>
             </DialogHeader>
 
             <div className="text-sm text-muted-foreground">
-              Si eres el último administrador del espacio, el sistema no permitirá la baja.
+              {t('profile.leave.lastAdminNote')}
             </div>
 
             {status ? <div className="text-sm text-muted-foreground">{status}</div> : null}
 
             <DialogFooter>
               <Button type="button" variant="outline" disabled={busy} onClick={() => setOpen(false)}>
-                Cancelar
+                {t('common.cancel')}
               </Button>
               <Button type="button" variant="destructive" disabled={busy} onClick={() => void leave()}>
-                {busy ? 'Procesando…' : 'Sí, darme de baja'}
+                {busy ? t('common.processing') : t('profile.leave.confirmAction')}
               </Button>
             </DialogFooter>
           </DialogContent>

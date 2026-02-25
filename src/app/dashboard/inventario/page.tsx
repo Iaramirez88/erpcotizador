@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { cn, formatUnidadMedidaLabel } from "@/lib/utils"
+import { useI18n } from "@/components/providers/i18n-provider"
 import { Download } from 'lucide-react'
 
 type Material = {
@@ -68,6 +69,10 @@ function n(value: unknown, fallback = 0) {
 }
 
 export default function InventarioPage() {
+  const { t, language } = useI18n()
+  const locale = language === 'en' ? 'en-US' : 'es-CO'
+  const naText = t('common.na')
+
   const [materials, setMaterials] = useState<Material[]>([])
   const [movements, setMovements] = useState<Movement[]>([])
   const [bodegas, setBodegas] = useState<Bodega[]>([])
@@ -140,11 +145,11 @@ export default function InventarioPage() {
         setBodegas(jsonBodegas.data)
       }
 
-      if (!resMaterials.ok) setError("No se pudo cargar materiales")
-      if (!resMovements.ok) setError("No se pudo cargar movimientos")
-      if (!resBodegas.ok) setError("No se pudo cargar sedes")
+      if (!resMaterials.ok) setError(t('inventory.errors.loadMaterials'))
+      if (!resMovements.ok) setError(t('inventory.errors.loadMovements'))
+      if (!resBodegas.ok) setError(t('inventory.errors.loadSites'))
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error inesperado")
+      setError(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setIsLoading(false)
     }
@@ -228,7 +233,7 @@ export default function InventarioPage() {
     const nombre = proveedorNuevoNombre.trim()
     const nit = proveedorNuevoNit.trim()
     if (!nombre) {
-      setProveedorError('El nombre del proveedor es requerido.')
+      setProveedorError(t('inventory.supplier.errors.nameRequired'))
       return
     }
 
@@ -242,7 +247,7 @@ export default function InventarioPage() {
       })
       const json = (await res.json().catch(() => null)) as { success?: boolean; data?: ProveedorLite; error?: string } | null
       if (!res.ok || !json?.success || !json.data?.nombre) {
-        setProveedorError(json?.error || 'No se pudo crear el proveedor.')
+        setProveedorError(json?.error || t('inventory.supplier.errors.createFailed'))
         return
       }
 
@@ -291,7 +296,7 @@ export default function InventarioPage() {
 
       const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string }
       if (!res.ok || !json.success) {
-        setError(json.error || "No se pudo registrar el movimiento")
+        setError(json.error || t('inventory.errors.registerMovementFailed'))
         return
       }
 
@@ -304,16 +309,16 @@ export default function InventarioPage() {
       setProveedorError("")
       await load()
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error inesperado")
+      setError(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setIsSubmitting(false)
     }
   }
 
   function movementLabel(type: Movement["type"]) {
-    if (type === "IN") return "Entrada"
-    if (type === "OUT") return "Salida"
-    if (type === "ADJUST") return "Ajuste"
+    if (type === "IN") return t('inventory.movementType.in')
+    if (type === "OUT") return t('inventory.movementType.out')
+    if (type === "ADJUST") return t('inventory.movementType.adjust')
     return String(type)
   }
 
@@ -328,16 +333,16 @@ export default function InventarioPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight" data-tour="inventario-title">Inventario</h1>
-          <p className="text-muted-foreground">Entradas, salidas y ajustes de stock por material.</p>
+          <h1 className="text-3xl font-bold tracking-tight" data-tour="inventario-title">{t('inventory.title')}</h1>
+          <p className="text-muted-foreground">{t('inventory.subtitle')}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={exportExcel} disabled={isLoading}>
             <Download className="w-4 h-4 mr-2" />
-            Exportar Excel
+            {t('inventory.actions.exportExcel')}
           </Button>
           <Button onClick={openModal} disabled={isLoading} data-tour="inventario-movimiento">
-            Registrar movimiento
+            {t('inventory.actions.registerMovement')}
           </Button>
         </div>
       </div>
@@ -346,38 +351,38 @@ export default function InventarioPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Stock por material</CardTitle>
-          <CardDescription>Busca y revisa niveles de stock actuales.</CardDescription>
+          <CardTitle>{t('inventory.stock.title')}</CardTitle>
+          <CardDescription>{t('inventory.stock.description')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex gap-2 mb-4">
             <Input
               data-tour="inventario-search"
-              placeholder="Buscar material…"
+              placeholder={t('inventory.stock.searchPlaceholder')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
             <Button type="button" variant="secondary" onClick={() => void load()} disabled={isLoading}>
-              Refrescar
+              {t('inventory.actions.refresh')}
             </Button>
           </div>
 
           {isLoading ? (
-            <div className="text-sm text-gray-600">Cargando…</div>
+            <div className="text-sm text-gray-600">{t('common.loading')}</div>
           ) : activeMaterials.length === 0 ? (
-            <div className="text-sm text-gray-600">No hay materiales para mostrar.</div>
+            <div className="text-sm text-gray-600">{t('inventory.stock.empty')}</div>
           ) : (
             <div className="overflow-auto">
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="text-left text-gray-600 border-b">
-                    <th className="py-2 pr-3 w-12">Img</th>
-                    <th className="py-2 pr-4">Material</th>
-                    <th className="py-2 pr-4">Bodega</th>
-                    <th className="py-2 pr-4">Stock</th>
-                    <th className="py-2 pr-4">Mínimo</th>
-                    <th className="py-2 pr-4">Unidad</th>
-                    <th className="py-2 pr-4">Proveedor</th>
+                    <th className="py-2 pr-3 w-12">{t('inventory.stock.columns.image')}</th>
+                    <th className="py-2 pr-4">{t('inventory.stock.columns.material')}</th>
+                    <th className="py-2 pr-4">{t('inventory.stock.columns.site')}</th>
+                    <th className="py-2 pr-4">{t('inventory.stock.columns.stock')}</th>
+                    <th className="py-2 pr-4">{t('inventory.stock.columns.minimum')}</th>
+                    <th className="py-2 pr-4">{t('inventory.stock.columns.unit')}</th>
+                    <th className="py-2 pr-4">{t('inventory.stock.columns.supplier')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -399,14 +404,14 @@ export default function InventarioPage() {
                         </td>
                         <td className="py-2 pr-4 font-medium text-gray-900">{m.nombre}</td>
                         <td className="py-2 pr-4 text-gray-700">
-                          {wh ? `${wh.nombre}${wh.isDefault ? ' (Principal)' : ''}` : '—'}
+                          {wh ? `${wh.nombre}${wh.isDefault ? ` (${t('inventory.site.primary')})` : ''}` : naText}
                         </td>
                         <td className={cn("py-2 pr-4", low ? "text-red-700 font-semibold" : "text-gray-900")}>
-                          {n(m.stockActual).toLocaleString("es-CO")} 
+                          {n(m.stockActual).toLocaleString(locale)} 
                         </td>
-                        <td className="py-2 pr-4 text-gray-700">{n(m.stockMinimo).toLocaleString("es-CO")}</td>
+                        <td className="py-2 pr-4 text-gray-700">{n(m.stockMinimo).toLocaleString(locale)}</td>
                         <td className="py-2 pr-4 text-gray-700">{formatUnidadMedidaLabel(m.unidadMedida)}</td>
-                        <td className="py-2 pr-4 text-gray-700">{m.proveedor || "—"}</td>
+                        <td className="py-2 pr-4 text-gray-700">{m.proveedor || naText}</td>
                       </tr>
                     )
                   })}
@@ -419,60 +424,60 @@ export default function InventarioPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Movimientos recientes</CardTitle>
-          <CardDescription>Últimos movimientos registrados.</CardDescription>
+          <CardTitle>{t('inventory.movements.title')}</CardTitle>
+          <CardDescription>{t('inventory.movements.description')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4">
-            <div className="text-sm text-gray-700">Filtrar por sede:</div>
+            <div className="text-sm text-gray-700">{t('inventory.filters.filterBySite')}</div>
             <select
               className="border border-gray-200 rounded-md px-3 py-2 text-sm max-w-sm"
               value={warehouseFilterId}
               onChange={(e) => setWarehouseFilterId(e.target.value)}
             >
-              <option value="">Todas</option>
+              <option value="">{t('inventory.filters.allSites')}</option>
               {bodegas.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.nombre}{b.isDefault ? " (Principal)" : ""}
+                  {b.nombre}{b.isDefault ? ` (${t('inventory.site.primary')})` : ""}
                 </option>
               ))}
             </select>
           </div>
 
           {movements.length === 0 ? (
-            <div className="text-sm text-gray-600">Sin movimientos aún.</div>
+            <div className="text-sm text-gray-600">{t('inventory.movements.empty')}</div>
           ) : (
             <div className="overflow-auto">
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="text-left text-gray-600 border-b">
-                    <th className="py-2 pr-4">Fecha</th>
-                    <th className="py-2 pr-4">Material</th>
-                    <th className="py-2 pr-4">Sede</th>
-                    <th className="py-2 pr-4">Tipo</th>
-                    <th className="py-2 pr-4">Delta</th>
-                    <th className="py-2 pr-4">Antes → Después</th>
-                    <th className="py-2 pr-4">Nota</th>
+                    <th className="py-2 pr-4">{t('inventory.movements.columns.date')}</th>
+                    <th className="py-2 pr-4">{t('inventory.movements.columns.material')}</th>
+                    <th className="py-2 pr-4">{t('inventory.movements.columns.site')}</th>
+                    <th className="py-2 pr-4">{t('inventory.movements.columns.type')}</th>
+                    <th className="py-2 pr-4">{t('inventory.movements.columns.delta')}</th>
+                    <th className="py-2 pr-4">{t('inventory.movements.columns.beforeAfter')}</th>
+                    <th className="py-2 pr-4">{t('inventory.movements.columns.note')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {movements.map((mv) => (
                     <tr key={mv.id} className="border-b last:border-b-0">
                       <td className="py-2 pr-4 text-gray-700">
-                        {new Date(mv.createdAt).toLocaleString("es-CO")}
+                        {new Date(mv.createdAt).toLocaleString(locale)}
                       </td>
-                      <td className="py-2 pr-4 font-medium text-gray-900">{mv.material?.nombre || "—"}</td>
-                      <td className="py-2 pr-4 text-gray-700">{mv.warehouse?.nombre || "—"}</td>
+                      <td className="py-2 pr-4 font-medium text-gray-900">{mv.material?.nombre || naText}</td>
+                      <td className="py-2 pr-4 text-gray-700">{mv.warehouse?.nombre || naText}</td>
                       <td className="py-2 pr-4">
                         <span className={cn("text-xs font-semibold px-2 py-1 rounded", movementBadgeClass(mv.type))}>
                           {movementLabel(mv.type)}
                         </span>
                       </td>
-                      <td className="py-2 pr-4 text-gray-900">{n(mv.quantity).toLocaleString("es-CO")}</td>
+                      <td className="py-2 pr-4 text-gray-900">{n(mv.quantity).toLocaleString(locale)}</td>
                       <td className="py-2 pr-4 text-gray-700">
-                        {n(mv.stockBefore).toLocaleString("es-CO")} → {n(mv.stockAfter).toLocaleString("es-CO")}
+                        {n(mv.stockBefore).toLocaleString(locale)} → {n(mv.stockAfter).toLocaleString(locale)}
                       </td>
-                      <td className="py-2 pr-4 text-gray-700">{mv.note || "—"}</td>
+                      <td className="py-2 pr-4 text-gray-700">{mv.note || naText}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -485,13 +490,13 @@ export default function InventarioPage() {
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Registrar movimiento</DialogTitle>
-            <DialogDescription>Registra una entrada, salida o ajuste de stock.</DialogDescription>
+            <DialogTitle>{t('inventory.dialog.title')}</DialogTitle>
+            <DialogDescription>{t('inventory.dialog.description')}</DialogDescription>
           </DialogHeader>
 
           <form onSubmit={submitMovement} className="space-y-4">
             <div className="space-y-2">
-              <Label>Material</Label>
+              <Label>{t('inventory.fields.material')}</Label>
               <select
                 className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
                 value={form.materialId}
@@ -507,27 +512,27 @@ export default function InventarioPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>Sede</Label>
+              <Label>{t('inventory.fields.site')}</Label>
               <select
                 className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
                 value={form.warehouseId}
                 onChange={(e) => setForm((p) => ({ ...p, warehouseId: e.target.value }))}
               >
-                <option value="">Global (sin sede)</option>
+                <option value="">{t('inventory.site.global')}</option>
                 {bodegas.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {b.nombre}{b.isDefault ? " (Principal)" : ""}
+                    {b.nombre}{b.isDefault ? ` (${t('inventory.site.primary')})` : ""}
                   </option>
                 ))}
               </select>
               <div className="text-xs text-gray-600">
-                Si eliges sede, el movimiento afecta el stock de esa sede y el global.
+                {t('inventory.fields.siteHelp')}
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Tipo</Label>
+                <Label>{t('inventory.fields.type')}</Label>
                 <select
                   className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm"
                   value={form.type}
@@ -541,15 +546,15 @@ export default function InventarioPage() {
                     }))
                   }
                 >
-                  <option value="IN">Entrada</option>
-                  <option value="OUT">Salida</option>
-                  <option value="ADJUST">Ajuste</option>
+                  <option value="IN">{t('inventory.movementType.in')}</option>
+                  <option value="OUT">{t('inventory.movementType.out')}</option>
+                  <option value="ADJUST">{t('inventory.movementType.adjust')}</option>
                 </select>
               </div>
 
               {form.type === "ADJUST" ? (
                 <div className="space-y-2">
-                  <Label>Nuevo stock</Label>
+                  <Label>{t('inventory.fields.newStock')}</Label>
                   <Input
                     inputMode="decimal"
                     value={form.newStock}
@@ -560,12 +565,12 @@ export default function InventarioPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <Label>Cantidad</Label>
+                  <Label>{t('inventory.fields.quantity')}</Label>
                   <Input
                     inputMode="decimal"
                     value={form.quantity}
                     onChange={(e) => setForm((p) => ({ ...p, quantity: e.target.value }))}
-                    placeholder="0"
+                    placeholder={t('inventory.fields.quantityPlaceholder')}
                     required
                   />
                 </div>
@@ -574,16 +579,16 @@ export default function InventarioPage() {
 
             {selectedMaterial ? (
               <div className="text-xs text-gray-600">
-                Stock actual: <span className="font-medium">{n(selectedMaterial.stockActual).toLocaleString("es-CO")}</span> {formatUnidadMedidaLabel(selectedMaterial.unidadMedida)}
+                {t('inventory.currentStock')}: <span className="font-medium">{n(selectedMaterial.stockActual).toLocaleString(locale)}</span> {formatUnidadMedidaLabel(selectedMaterial.unidadMedida)}
               </div>
             ) : null}
 
             <div className="space-y-2">
-              <Label>Nota (opcional)</Label>
+              <Label>{t('inventory.fields.noteOptional')}</Label>
               <Textarea
                 value={form.note}
                 onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))}
-                placeholder="Ej: compra proveedor / ajuste por conteo físico"
+                placeholder={t('inventory.fields.notePlaceholder')}
               />
             </div>
 
@@ -609,12 +614,12 @@ export default function InventarioPage() {
                     }}
                     className="w-4 h-4"
                   />
-                  <span className="text-sm">Actualizar proveedor del producto (si cambió)</span>
+                  <span className="text-sm">{t('inventory.supplier.updateCheckbox')}</span>
                 </label>
 
                 {form.updateProveedor ? (
                   <div className="space-y-2">
-                    <Label>Proveedor</Label>
+                    <Label>{t('inventory.fields.supplier')}</Label>
                     <Input
                       value={form.proveedor}
                       onChange={(e) => {
@@ -622,12 +627,12 @@ export default function InventarioPage() {
                         setProveedorCreateOpen(false)
                         setProveedorError("")
                       }}
-                      placeholder="Busca o escribe el nombre del proveedor"
+                      placeholder={t('inventory.supplier.searchPlaceholder')}
                       required
                     />
 
                     {proveedorLoading ? (
-                      <div className="text-xs text-muted-foreground">Buscando proveedores…</div>
+                      <div className="text-xs text-muted-foreground">{t('inventory.supplier.searching')}</div>
                     ) : null}
 
                     {!proveedorCreateOpen && proveedorMatches.length > 0 ? (
@@ -663,18 +668,18 @@ export default function InventarioPage() {
                             setProveedorNuevoNit("")
                           }}
                         >
-                          Crear proveedor nuevo
+                          {t('inventory.supplier.createNew')}
                         </Button>
                       </div>
                     ) : (
                       <div className="rounded-md border border-input p-3 space-y-3">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="space-y-2">
-                            <Label>Nombre</Label>
+                            <Label>{t('inventory.supplier.fields.name')}</Label>
                             <Input value={proveedorNuevoNombre} onChange={(e) => setProveedorNuevoNombre(e.target.value)} disabled={proveedorCreateSaving} />
                           </div>
                           <div className="space-y-2">
-                            <Label>NIT (opcional)</Label>
+                            <Label>{t('inventory.supplier.fields.nitOptional')}</Label>
                             <Input value={proveedorNuevoNit} onChange={(e) => setProveedorNuevoNit(e.target.value)} disabled={proveedorCreateSaving} />
                           </div>
                         </div>
@@ -691,10 +696,10 @@ export default function InventarioPage() {
                             }}
                             disabled={proveedorCreateSaving}
                           >
-                            Cancelar
+                            {t('common.cancel')}
                           </Button>
                           <Button type="button" onClick={() => void createProveedor()} disabled={proveedorCreateSaving}>
-                            {proveedorCreateSaving ? 'Creando…' : 'Crear'}
+                            {proveedorCreateSaving ? t('inventory.supplier.creating') : t('inventory.supplier.create')}
                           </Button>
                         </div>
                       </div>
@@ -706,10 +711,10 @@ export default function InventarioPage() {
 
             <DialogFooter>
               <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)} disabled={isSubmitting}>
-                Cancelar
+                {t('common.cancel')}
               </Button>
               <Button type="submit" disabled={isSubmitting || !form.materialId}>
-                {isSubmitting ? "Guardando…" : "Registrar"}
+                {isSubmitting ? t('common.saving') : t('inventory.actions.submit')}
               </Button>
             </DialogFooter>
           </form>

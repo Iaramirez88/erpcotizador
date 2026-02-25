@@ -16,8 +16,8 @@ export function cn(...inputs: ClassValue[]) {
 /**
  * Formatea números como moneda colombiana
  */
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-CO', {
+export function formatCurrency(amount: number, locale: string = 'es-CO'): string {
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: 'COP',
     minimumFractionDigits: 0,
@@ -28,9 +28,9 @@ export function formatCurrency(amount: number): string {
 /**
  * Formatea fechas en español
  */
-export function formatDate(date: Date | string): string {
+export function formatDate(date: Date | string, locale: string = 'es-CO'): string {
   const d = typeof date === 'string' ? new Date(date) : date
-  return new Intl.DateTimeFormat('es-CO', {
+  return new Intl.DateTimeFormat(locale, {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -40,9 +40,9 @@ export function formatDate(date: Date | string): string {
 /**
  * Formatea fechas cortas
  */
-export function formatDateShort(date: Date | string): string {
+export function formatDateShort(date: Date | string, locale: string = 'es-CO'): string {
   const d = typeof date === 'string' ? new Date(date) : date
-  return new Intl.DateTimeFormat('es-CO', {
+  return new Intl.DateTimeFormat(locale, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { useI18n } from '@/components/providers/i18n-provider'
 
 type Proveedor = {
   id: string
@@ -24,6 +25,9 @@ type Proveedor = {
 }
 
 export default function ProveedoresPage() {
+  const { t } = useI18n()
+  const naText = t('common.na')
+
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
@@ -81,7 +85,7 @@ export default function ProveedoresPage() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => null)
-        throw new Error(err?.error ?? 'No se pudo crear')
+        throw new Error(err?.error ?? t('suppliers.errors.createFailed'))
       }
 
       setNombre('')
@@ -95,7 +99,7 @@ export default function ProveedoresPage() {
       setObservaciones('')
       await load()
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error')
+      alert(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setSaving(false)
     }
@@ -111,65 +115,65 @@ export default function ProveedoresPage() {
     <div className="p-8 space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Proveedores</h1>
-          <p className="text-muted-foreground mt-1">Maestro de proveedores (NIT, contacto, dirección).</p>
+          <h1 className="text-3xl font-bold">{t('suppliers.title')}</h1>
+          <p className="text-muted-foreground mt-1">{t('suppliers.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
-          <ImportDialog module="proveedores" title="Importar proveedores" />
+          <ImportDialog module="proveedores" title={t('suppliers.actions.import')} />
           <Button variant="outline" onClick={exportExcel}>
-            Exportar Excel
+            {t('suppliers.actions.exportExcel')}
           </Button>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Crear proveedor</CardTitle>
-          <CardDescription>Campos mínimos para compras y reportes.</CardDescription>
+          <CardTitle>{t('suppliers.create.title')}</CardTitle>
+          <CardDescription>{t('suppliers.create.description')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-2 lg:col-span-2">
-              <Label>Nombre</Label>
-              <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Proveedor S.A.S" />
+              <Label>{t('suppliers.fields.name')}</Label>
+              <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder={t('suppliers.placeholders.name')} />
             </div>
             <div className="space-y-2">
-              <Label>NIT</Label>
-              <Input value={nit} onChange={(e) => setNit(e.target.value)} placeholder="900123456-7" />
+              <Label>{t('suppliers.fields.nit')}</Label>
+              <Input value={nit} onChange={(e) => setNit(e.target.value)} placeholder={t('suppliers.placeholders.nit')} />
             </div>
             <div className="space-y-2">
-              <Label>Teléfono</Label>
-              <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="3001234567" />
+              <Label>{t('suppliers.fields.phone')}</Label>
+              <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder={t('suppliers.placeholders.phone')} />
             </div>
             <div className="space-y-2">
-              <Label>Email</Label>
-              <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="compras@proveedor.com" />
+              <Label>{t('suppliers.fields.email')}</Label>
+              <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('suppliers.placeholders.email')} />
             </div>
             <div className="space-y-2">
-              <Label>Contacto</Label>
-              <Input value={contacto} onChange={(e) => setContacto(e.target.value)} placeholder="Nombre contacto" />
+              <Label>{t('suppliers.fields.contact')}</Label>
+              <Input value={contacto} onChange={(e) => setContacto(e.target.value)} placeholder={t('suppliers.placeholders.contact')} />
             </div>
             <div className="space-y-2">
-              <Label>Ciudad</Label>
-              <Input value={ciudad} onChange={(e) => setCiudad(e.target.value)} placeholder="Medellín" />
+              <Label>{t('suppliers.fields.city')}</Label>
+              <Input value={ciudad} onChange={(e) => setCiudad(e.target.value)} placeholder={t('suppliers.placeholders.city')} />
             </div>
             <div className="space-y-2">
-              <Label>Departamento</Label>
-              <Input value={departamento} onChange={(e) => setDepartamento(e.target.value)} placeholder="Antioquia" />
+              <Label>{t('suppliers.fields.state')}</Label>
+              <Input value={departamento} onChange={(e) => setDepartamento(e.target.value)} placeholder={t('suppliers.placeholders.state')} />
             </div>
             <div className="space-y-2 lg:col-span-4">
-              <Label>Dirección</Label>
-              <Input value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Calle 123 #45-67" />
+              <Label>{t('suppliers.fields.address')}</Label>
+              <Input value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder={t('suppliers.placeholders.address')} />
             </div>
             <div className="space-y-2 lg:col-span-4">
-              <Label>Observaciones</Label>
-              <Textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Notas internas..." />
+              <Label>{t('suppliers.fields.notes')}</Label>
+              <Textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder={t('suppliers.placeholders.notes')} />
             </div>
           </div>
 
           <div className="mt-4 flex justify-end">
             <Button onClick={create} disabled={saving || !nombre.trim()}>
-              {saving ? 'Guardando...' : 'Crear proveedor'}
+              {saving ? t('common.saving') : t('suppliers.actions.create')}
             </Button>
           </div>
         </CardContent>
@@ -179,11 +183,11 @@ export default function ProveedoresPage() {
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <CardTitle>Listado</CardTitle>
-              <CardDescription>Busca por nombre, NIT, teléfono o email.</CardDescription>
+              <CardTitle>{t('suppliers.list.title')}</CardTitle>
+              <CardDescription>{t('suppliers.list.description')}</CardDescription>
             </div>
             <div className="w-full max-w-md">
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar..." />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('suppliers.list.searchPlaceholder')} />
             </div>
           </div>
         </CardHeader>
@@ -192,34 +196,34 @@ export default function ProveedoresPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b">
-                  <th className="py-2 text-left">Nombre</th>
-                  <th className="py-2 text-left">NIT</th>
-                  <th className="py-2 text-left">Teléfono</th>
-                  <th className="py-2 text-left">Email</th>
-                  <th className="py-2 text-left">Dirección</th>
+                  <th className="py-2 text-left">{t('suppliers.table.columns.name')}</th>
+                  <th className="py-2 text-left">{t('suppliers.table.columns.nit')}</th>
+                  <th className="py-2 text-left">{t('suppliers.table.columns.phone')}</th>
+                  <th className="py-2 text-left">{t('suppliers.table.columns.email')}</th>
+                  <th className="py-2 text-left">{t('suppliers.table.columns.address')}</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((p) => (
                   <tr key={p.id} className="border-b">
                     <td className="py-2">{p.nombre}</td>
-                    <td className="py-2">{p.nit ?? '—'}</td>
-                    <td className="py-2">{p.telefono ?? '—'}</td>
-                    <td className="py-2">{p.email ?? '—'}</td>
-                    <td className="py-2">{p.direccion ?? '—'}</td>
+                    <td className="py-2">{p.nit ?? naText}</td>
+                    <td className="py-2">{p.telefono ?? naText}</td>
+                    <td className="py-2">{p.email ?? naText}</td>
+                    <td className="py-2">{p.direccion ?? naText}</td>
                   </tr>
                 ))}
                 {!loading && items.length === 0 && (
                   <tr>
                     <td className="py-6 text-center text-muted-foreground" colSpan={5}>
-                      Sin resultados
+                      {t('common.noResults')}
                     </td>
                   </tr>
                 )}
                 {loading && (
                   <tr>
                     <td className="py-6 text-center text-muted-foreground" colSpan={5}>
-                      Cargando...
+                      {t('common.loading')}
                     </td>
                   </tr>
                 )}

@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ImportDialog } from '@/components/import/import-dialog';
 import { Input } from '@/components/ui/input';
+import { useI18n } from '@/components/providers/i18n-provider';
 import {
   FileText,
   Download,
@@ -42,6 +43,10 @@ interface OrdenTrabajo {
 }
 
 export default function OrdenesPage() {
+  const { t, language } = useI18n();
+  const locale = language === 'en' ? 'en-US' : 'es-CO';
+  const naText = t('common.na');
+
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>([]);
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
@@ -83,15 +88,15 @@ export default function OrdenesPage() {
     window.location.href = url;
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('es-MX', {
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat(locale, {
       style: 'currency',
-      currency: 'MXN',
+      currency: 'COP',
+      maximumFractionDigits: 0,
     }).format(value);
-  };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('es-MX', {
+    return new Date(dateString).toLocaleDateString(locale, {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -129,34 +134,26 @@ export default function OrdenesPage() {
   };
 
   const getEstadoLabel = (estado: string) => {
-    const labels: Record<string, string> = {
-      PENDIENTE: 'Pendiente',
-      EN_PROCESO: 'En Proceso',
-      EN_PRODUCCION: 'En Producción',
-      TERMINADO: 'Terminado',
-      ENTREGADO: 'Entregado',
-      CANCELADO: 'Cancelado',
-    };
-    return labels[estado] || estado;
+    return t(`orders.status.${estado}`);
   };
 
   return (
     <div className="p-8">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-bold">Órdenes de Trabajo</h1>
-          <p className="text-gray-600 mt-1">Gestiona las órdenes de producción</p>
+          <h1 className="text-3xl font-bold">{t('orders.title')}</h1>
+          <p className="text-gray-600 mt-1">{t('orders.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
-          <ImportDialog module="ordenes" title="Importar órdenes" />
+          <ImportDialog module="ordenes" title={t('orders.actions.import')} />
           <Button variant="outline" onClick={exportExcel}>
             <Download className="w-4 h-4 mr-2" />
-            Exportar Excel
+            {t('orders.actions.exportExcel')}
           </Button>
           <Link href="/dashboard/cotizaciones">
             <Button>
               <Plus className="w-4 h-4 mr-2" />
-              Desde Cotización
+              {t('orders.actions.fromQuote')}
             </Button>
           </Link>
         </div>
@@ -169,7 +166,7 @@ export default function OrdenesPage() {
             <div className="relative">
               <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
               <Input
-                placeholder="Buscar por número, cliente..."
+                placeholder={t('orders.filters.searchPlaceholder')}
                 className="pl-10"
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
@@ -180,17 +177,17 @@ export default function OrdenesPage() {
               value={filtroEstado}
               onChange={(e) => setFiltroEstado(e.target.value)}
             >
-              <option value="">Todos los estados</option>
-              <option value="PENDIENTE">Pendiente</option>
-              <option value="EN_PROCESO">En Proceso</option>
-              <option value="EN_PRODUCCION">En Producción</option>
-              <option value="TERMINADO">Terminado</option>
-              <option value="ENTREGADO">Entregado</option>
-              <option value="CANCELADO">Cancelado</option>
+              <option value="">{t('orders.filters.allStatuses')}</option>
+              <option value="PENDIENTE">{t('orders.status.PENDIENTE')}</option>
+              <option value="EN_PROCESO">{t('orders.status.EN_PROCESO')}</option>
+              <option value="EN_PRODUCCION">{t('orders.status.EN_PRODUCCION')}</option>
+              <option value="TERMINADO">{t('orders.status.TERMINADO')}</option>
+              <option value="ENTREGADO">{t('orders.status.ENTREGADO')}</option>
+              <option value="CANCELADO">{t('orders.status.CANCELADO')}</option>
             </select>
             <Button onClick={cargarOrdenes} variant="outline">
               <Filter className="w-4 h-4 mr-2" />
-              Aplicar Filtros
+              {t('orders.filters.apply')}
             </Button>
           </div>
         </CardContent>
@@ -205,9 +202,9 @@ export default function OrdenesPage() {
         <Card>
           <CardContent className="text-center py-12">
             <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500 mb-4">No hay órdenes de trabajo</p>
+            <p className="text-gray-500 mb-4">{t('orders.empty')}</p>
             <Link href="/dashboard/cotizaciones">
-              <Button>Crear desde cotización</Button>
+              <Button>{t('orders.actions.createFromQuote')}</Button>
             </Link>
           </CardContent>
         </Card>
@@ -230,29 +227,29 @@ export default function OrdenesPage() {
                       </span>
                       {orden.cotizacion && (
                         <span className="text-xs text-gray-500">
-                          De cotización: {orden.cotizacion.numero}
+                          {t('orders.fromQuote')}: {orden.cotizacion.numero}
                         </span>
                       )}
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-3">
                       <div>
-                        <span className="font-medium">Cliente:</span>
-                        <p className="text-gray-900">{orden.cliente.nombre}</p>
+                        <span className="font-medium">{t('orders.columns.client')}:</span>
+                        <p className="text-gray-900">{orden.cliente.nombre || naText}</p>
                         {orden.cliente.empresa && (
                           <p className="text-xs text-gray-500">{orden.cliente.empresa}</p>
                         )}
                       </div>
                       <div>
-                        <span className="font-medium">Fecha Creación:</span>
+                        <span className="font-medium">{t('orders.columns.createdAt')}:</span>
                         <p className="text-gray-900">{formatDate(orden.createdAt)}</p>
                       </div>
                       <div>
-                        <span className="font-medium">Items:</span>
+                        <span className="font-medium">{t('orders.columns.items')}:</span>
                         <p className="text-gray-900">{orden.cotizacion?._count?.items ?? 0}</p>
                       </div>
                       <div>
-                        <span className="font-medium">Total:</span>
+                        <span className="font-medium">{t('orders.columns.total')}:</span>
                         <p className="text-gray-900 text-lg font-semibold">
                           {formatCurrency(orden.total)}
                         </p>

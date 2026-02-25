@@ -7,7 +7,9 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
-import { ModuleKey } from "@prisma/client"
+import { checkPlanLimit } from "@/lib/plan-limits"
+import { AccessLevel, ModuleKey } from "@prisma/client"
+import { requireSedeAccess } from "@/lib/rbac"
 
 function normalizeUnidadMedida(value: unknown): 'm2' | 'ml' | 'unidad' {
   const u = String(value ?? '').trim().toLowerCase()
@@ -32,6 +34,15 @@ function normalizeUnidadMedidaFilter(value: string | null): 'm2' | 'ml' | 'unida
   return null
 }
 
+function parseNumberParam(value: string | null): number | null {
+  if (value === null || value === undefined) return null
+  const v = String(value).trim()
+  if (!v) return null
+  const n = Number(v)
+  if (!Number.isFinite(n)) return null
+  return n
+}
+
 // GET - Listar todos los materiales
 export async function GET(request: Request) {
   try {
@@ -41,24 +52,71 @@ export async function GET(request: Request) {
     const empresaId = access.empresaId
 
     const sede = await prisma.sede.findUnique({ where: { id: access.sedeId }, select: { id: true } })
-    const sedeId = sede?.id ?? access.sedeId
+    let sedeId = sede?.id ?? access.sedeId
 
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
     const tipo = searchParams.get('tipo')
     const activo = searchParams.get('activo')
     const unidadMedida = searchParams.get('unidadMedida')
+    const categoria = searchParams.get('categoria')
+    const proveedor = searchParams.get('proveedor')
+    const withDiscount = searchParams.get('withDiscount')
+    const costoMin = searchParams.get('costoMin')
+    const costoMax = searchParams.get('costoMax')
+    const createdFrom = searchParams.get('createdFrom')
+    const createdTo = searchParams.get('createdTo')
+    const sort = (searchParams.get('sort') || '').trim()
+    const warehouseId = (searchParams.get('warehouseId') || '').trim() || null
+    const sedeIdParam = (searchParams.get('sedeId') || '').trim() || null
+    const precioMin = searchParams.get('precioMin')
+    const precioMax = searchParams.get('precioMax')
+    const stockMin = searchParams.get('stockMin')
+    const stockMax = searchParams.get('stockMax')
+
+    if (sedeIdParam) {
+      const sedeTarget = await prisma.sede.findFirst({ where: { id: sedeIdParam, empresaId }, select: { id: true } })
+      if (sedeTarget?.id) {
+        try {
+          await requireSedeAccess({
+            userId: access.userId,
+            sedeId: sedeTarget.id,
+            module: ModuleKey.MATERIALES,
+            minLevel: AccessLevel.READ,
+          })
+          sedeId = sedeTarget.id
+        } catch (error) {
+          if (error instanceof Error && error.message === 'FORBIDDEN') {
+            return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
+          }
+          throw error
+        }
+      }
+    }
 
     // Construir filtros
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = { empresaId }
 
+    const andFilters: unknown[] = []
+
     if (search) {
-      where.OR = [
+      andFilters.push({
+        OR: [
         { nombre: { contains: search, mode: 'insensitive' as const } },
+        { externalId: { contains: search, mode: 'insensitive' as const } },
         { categoria: { contains: search, mode: 'insensitive' as const } },
         { proveedor: { contains: search, mode: 'insensitive' as const } },
-      ]
+        ],
+      })
+    }
+
+    if (categoria && categoria.trim()) {
+      where.categoria = { contains: categoria.trim(), mode: 'insensitive' as const }
+    }
+
+    if (proveedor && proveedor.trim()) {
+      where.proveedor = { contains: proveedor.trim(), mode: 'insensitive' as const }
     }
 
     if (tipo) {
@@ -74,7 +132,113 @@ export async function GET(request: Request) {
       where.activo = activo === 'true'
     }
 
-    const materiales = await prisma.material.findMany({
+    if (withDiscount === 'true') {
+      where.quantityDiscounts = { some: {} }
+    } else if (withDiscount === 'false') {
+      where.quantityDiscounts = { none: {} }
+    }
+
+    const costoMinN = costoMin ? Number(costoMin) : null
+    const costoMaxN = costoMax ? Number(costoMax) : null
+    if (Number.isFinite(costoMinN) || Number.isFinite(costoMaxN)) {
+      where.precioCompra = {
+        ...(Number.isFinite(costoMinN) ? { gte: Math.max(0, costoMinN as number) } : {}),
+        ...(Number.isFinite(costoMaxN) ? { lte: Math.max(0, costoMaxN as number) } : {}),
+      }
+    }
+
+    if (createdFrom || createdTo) {
+      const createdAt: { gte?: Date; lt?: Date } = {}
+
+      if (createdFrom) {
+        const fromDate = new Date(`${createdFrom}T00:00:00`)
+        if (!Number.isNaN(fromDate.getTime())) createdAt.gte = fromDate
+      }
+
+      if (createdTo) {
+        const toDate = new Date(`${createdTo}T00:00:00`)
+        if (!Number.isNaN(toDate.getTime())) {
+          toDate.setDate(toDate.getDate() + 1)
+          createdAt.lt = toDate
+        }
+      }
+
+      if (createdAt.gte || createdAt.lt) where.createdAt = createdAt
+    }
+
+    const precioMinN = parseNumberParam(precioMin)
+    const precioMaxN = parseNumberParam(precioMax)
+    if (Number.isFinite(precioMinN) || Number.isFinite(precioMaxN)) {
+      const buildRange = () => ({
+        ...(Number.isFinite(precioMinN) ? { gte: Math.max(0, precioMinN as number) } : {}),
+        ...(Number.isFinite(precioMaxN) ? { lte: Math.max(0, precioMaxN as number) } : {}),
+      })
+
+      andFilters.push({
+        OR: [
+          { unidadMedida: 'm2', precioM2: buildRange() },
+          { unidadMedida: 'ml', precioMetro: buildRange() },
+          { unidadMedida: 'unidad', precioUnidad: buildRange() },
+        ],
+      })
+    }
+
+    if (andFilters.length) where.AND = andFilters
+
+    const sortMode = new Set([
+      'nameAsc',
+      'stockDesc',
+      'createdDesc',
+      'createdAsc',
+      'costDesc',
+      'costAsc',
+      'mostSold',
+      'mostQuoted',
+    ]).has(sort)
+      ? sort
+      : 'nameAsc'
+
+    const mostSoldAgg =
+      sortMode === 'mostSold'
+        ? await prisma.posInvoiceItem
+            .groupBy({
+              by: ['materialId'],
+              where: {
+                materialId: { not: null },
+                invoice: { empresaId, status: 'PAID' },
+              },
+              _sum: { quantity: true },
+              orderBy: { _sum: { quantity: 'desc' } },
+              take: 500,
+            })
+            .catch(() => [])
+        : null
+
+    const mostQuotedAgg =
+      sortMode === 'mostQuoted'
+        ? await prisma.itemCotizacion
+            .groupBy({
+              by: ['materialId'],
+              where: {
+                materialId: { not: null },
+                cotizacion: { cliente: { empresaId } },
+              },
+              _count: { id: true },
+              orderBy: { _count: { id: 'desc' } },
+              take: 500,
+            })
+            .catch(() => [])
+        : null
+
+    const soldMap = mostSoldAgg
+      ? new Map(mostSoldAgg.map((x) => [String(x.materialId), Number(x._sum.quantity ?? 0)]))
+      : null
+
+    const quotedMap = mostQuotedAgg
+      ? new Map(mostQuotedAgg.map((x) => [String(x.materialId), Number(x._count?.id ?? 0)]))
+      : null
+
+    let materiales = await prisma.material.findMany({
       where,
       include: {
         quantityDiscounts: {
@@ -83,13 +247,17 @@ export async function GET(request: Request) {
         // “Anclaje” por bodega: traemos 1 stock, priorizando la bodega principal de la sede.
         // Si el material solo tiene stocks globales (sedeId null), también lo consideramos.
         stocks: {
-          where: {
-            warehouse: {
-              OR: [{ sedeId }, { sedeId: null }],
-            },
-          },
-          take: 1,
-          orderBy: [{ warehouse: { isDefault: 'desc' } }, { updatedAt: 'desc' }],
+          ...(warehouseId
+            ? { where: { warehouseId }, take: 1, orderBy: [{ updatedAt: 'desc' }] }
+            : {
+                where: {
+                  warehouse: {
+                    OR: [{ sedeId }, { sedeId: null }],
+                  },
+                },
+                take: 1,
+                orderBy: [{ warehouse: { isDefault: 'desc' } }, { updatedAt: 'desc' }],
+              }),
           include: {
             warehouse: {
               select: { id: true, nombre: true, codigo: true, isDefault: true, sedeId: true },
@@ -97,14 +265,51 @@ export async function GET(request: Request) {
           },
         },
       },
-      orderBy: {
-        nombre: 'asc'
-      }
+      orderBy:
+        sortMode === 'stockDesc'
+          ? ({ stockActual: 'desc' } as const)
+          : sortMode === 'createdDesc'
+            ? ({ createdAt: 'desc' } as const)
+            : sortMode === 'createdAsc'
+              ? ({ createdAt: 'asc' } as const)
+              : sortMode === 'costDesc'
+                ? ({ precioCompra: 'desc' } as const)
+                : sortMode === 'costAsc'
+                  ? ({ precioCompra: 'asc' } as const)
+                  : ({ nombre: 'asc' } as const)
     })
+
+    const stockMinN = parseNumberParam(stockMin)
+    const stockMaxN = parseNumberParam(stockMax)
+    if (Number.isFinite(stockMinN) || Number.isFinite(stockMaxN)) {
+      materiales = materiales.filter((m) => {
+        const stockForView = warehouseId ? (m.stocks?.[0]?.quantity ?? 0) : (m.stockActual ?? 0)
+        if (Number.isFinite(stockMinN) && stockForView < (stockMinN as number)) return false
+        if (Number.isFinite(stockMaxN) && stockForView > (stockMaxN as number)) return false
+        return true
+      })
+    }
+
+    const sorted =
+      sortMode === 'mostSold' && soldMap
+        ? [...materiales].sort((a, b) => {
+            const av = soldMap.get(a.id) ?? 0
+            const bv = soldMap.get(b.id) ?? 0
+            if (bv !== av) return bv - av
+            return a.nombre.localeCompare(b.nombre)
+          })
+        : sortMode === 'mostQuoted' && quotedMap
+          ? [...materiales].sort((a, b) => {
+              const av = quotedMap.get(a.id) ?? 0
+              const bv = quotedMap.get(b.id) ?? 0
+              if (bv !== av) return bv - av
+              return a.nombre.localeCompare(b.nombre)
+            })
+          : materiales
 
     return NextResponse.json({
       success: true,
-      data: materiales
+      data: sorted
     })
 
   } catch (error) {
@@ -124,8 +329,14 @@ export async function POST(request: Request) {
 
     const empresaId = access.empresaId
 
+    const limit = await checkPlanLimit(empresaId, 'PRODUCTOS_MAX')
+    if (!limit.ok) {
+      return NextResponse.json(limit, { status: 402 })
+    }
+
     const body = await request.json()
     const {
+      externalId,
       nombre,
       tipo,
       categoria,
@@ -146,6 +357,9 @@ export async function POST(request: Request) {
       activo,
       warehouseId: warehouseIdInput,
     } = body
+
+    const externalIdNorm = typeof externalId === 'string' ? externalId.trim() : ''
+    const externalIdValue = externalIdNorm ? externalIdNorm : null
 
     const imagenUrlNorm = typeof imagenUrl === 'string' ? imagenUrl.trim() : null
 
@@ -190,10 +404,25 @@ export async function POST(request: Request) {
       )
     }
 
+    if (externalIdValue) {
+      const dup = await prisma.material.findFirst({
+        where: { empresaId, externalId: externalIdValue },
+        select: { id: true },
+      })
+
+      if (dup?.id) {
+        return NextResponse.json(
+          { error: 'Ya existe un producto con ese código/ID externo en tu empresa.' },
+          { status: 409 }
+        )
+      }
+    }
+
     // Crear material
     const material = await prisma.$transaction(async (tx) => {
       const created = await tx.material.create({
         data: {
+          externalId: externalIdValue,
           nombre,
           tipo,
           categoria,
@@ -297,10 +526,17 @@ export async function POST(request: Request) {
     )
 
   } catch (error) {
+    // Prisma: constraint unique (empresaId, externalId)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const code = (error as any)?.code
+    if (code === 'P2002') {
+      return NextResponse.json(
+        { error: 'Ya existe un producto con ese código/ID externo en tu empresa.' },
+        { status: 409 }
+      )
+    }
+
     console.error("Error al crear material:", error)
-    return NextResponse.json(
-      { error: "Error al crear material" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Error al crear material" }, { status: 500 })
   }
 }

@@ -5,6 +5,8 @@ import { ensureDefaultSedeForEmpresa, requireEmpresaIdForUser } from '@/lib/rbac
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ModuleKey, AccessLevel, SedeRole } from '@prisma/client'
+import { getServerLanguage } from '@/lib/i18n/server'
+import { translate } from '@/lib/i18n/messages'
 
 export const runtime = 'nodejs'
 
@@ -29,21 +31,15 @@ const MODULES: ModuleKey[] = [
 const ACCESS: AccessLevel[] = ['NONE', 'READ', 'WRITE', 'ADMIN']
 const SEDE_ROLES: SedeRole[] = ['ADMIN', 'MANAGER', 'MEMBER', 'READER']
 
-const SEDE_ROLE_LABEL: Record<SedeRole, string> = {
-  ADMIN: 'Administrador',
-  MANAGER: 'Editor',
-  MEMBER: 'Editor',
-  READER: 'Lectura',
-}
-
-const ACCESS_LABEL: Record<AccessLevel, string> = {
-  NONE: 'Sin acceso',
-  READ: 'Lectura',
-  WRITE: 'Editor',
-  ADMIN: 'Administrador',
-}
-
 export default async function PermisosPage() {
+  const language = await getServerLanguage()
+  const t = (key: string, vars?: Record<string, string | number>) => translate(language, key, vars)
+  const naText = t('common.na')
+
+  const sedeRoleLabel = (role: SedeRole) => t(`rbac.sedeRole.${role}`)
+  const accessLabel = (level: AccessLevel) => t(`rbac.access.${level}`)
+  const moduleLabel = (moduleKey: ModuleKey) => t(`rbac.module.${moduleKey}`)
+
   const session = await auth()
   if (!session) redirect('/auth/login')
 
@@ -243,29 +239,27 @@ export default async function PermisosPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Permisos</h1>
-        <p className="text-sm text-muted-foreground">
-          Define permisos generales (todas las sedes) y permisos por sede/módulo.
-        </p>
+        <h1 className="text-2xl font-bold">{t('rbac.permissions.title')}</h1>
+        <p className="text-sm text-muted-foreground">{t('rbac.permissions.subtitle')}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Permisos generales (todas las sedes)</CardTitle>
+          <CardTitle>{t('rbac.globalAccess.title')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <form action={setGlobalAccess} className="grid gap-2 max-w-lg">
-            <input name="email" placeholder="Email del usuario" className="border rounded px-3 py-2" />
+            <input name="email" placeholder={t('rbac.common.emailPlaceholder')} className="border rounded px-3 py-2" />
             <select name="level" className="border rounded px-3 py-2">
               {ACCESS.map((l) => (
                 <option key={l} value={l}>
-                  {ACCESS_LABEL[l]}
+                  {accessLabel(l)}
                 </option>
               ))}
             </select>
-            <Button type="submit" variant="outline">Guardar permiso general</Button>
+            <Button type="submit" variant="outline">{t('rbac.globalAccess.save')}</Button>
             <div className="text-xs text-muted-foreground">
-              Nota: si un usuario tiene rol por sede, ese rol puede sobreescribir el permiso general.
+              {t('rbac.globalAccess.note')}
             </div>
           </form>
 
@@ -276,11 +270,11 @@ export default async function PermisosPage() {
                   <div className="font-medium">{ga.user.name ?? ga.user.email}</div>
                   <div className="text-xs text-muted-foreground">{ga.user.email}</div>
                 </div>
-                <div className="text-sm">{ACCESS_LABEL[ga.level]}</div>
+                <div className="text-sm">{accessLabel(ga.level)}</div>
               </div>
             ))}
             {globalAccess.length === 0 && (
-              <div className="text-sm text-muted-foreground">Sin permisos generales.</div>
+              <div className="text-sm text-muted-foreground">{t('rbac.globalAccess.empty')}</div>
             )}
           </div>
         </CardContent>
@@ -288,41 +282,41 @@ export default async function PermisosPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Crear sede</CardTitle>
+          <CardTitle>{t('rbac.sedes.createTitle')}</CardTitle>
         </CardHeader>
         <CardContent>
           <form action={createSede} className="flex flex-col gap-3 max-w-md">
             <input
               name="nombre"
-              placeholder="Nombre (ej: Principal, Norte, Medellín)"
+              placeholder={t('rbac.sedes.namePlaceholder')}
               className="border rounded px-3 py-2"
             />
             <input
               name="codigo"
-              placeholder="Código (opcional)"
+              placeholder={t('rbac.sedes.codePlaceholder')}
               className="border rounded px-3 py-2"
             />
-            <Button type="submit">Crear</Button>
+            <Button type="submit">{t('rbac.sedes.create')}</Button>
           </form>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Miembros ({activeSede?.nombre ?? '—'})</CardTitle>
+          <CardTitle>{t('rbac.members.title', { sede: activeSede?.nombre ?? naText })}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <form action={addMember} className="grid gap-2 max-w-lg">
             <input type="hidden" name="sedeId" value={activeSedeId ?? ''} />
-            <input name="email" placeholder="Email del usuario" className="border rounded px-3 py-2" />
+            <input name="email" placeholder={t('rbac.common.emailPlaceholder')} className="border rounded px-3 py-2" />
             <select name="role" className="border rounded px-3 py-2">
               {SEDE_ROLES.map((r) => (
                 <option key={r} value={r}>
-                  {SEDE_ROLE_LABEL[r]}
+                  {sedeRoleLabel(r)}
                 </option>
               ))}
             </select>
-            <Button type="submit" variant="outline">Agregar/Actualizar miembro</Button>
+            <Button type="submit" variant="outline">{t('rbac.members.addOrUpdate')}</Button>
           </form>
 
           <div className="grid gap-2">
@@ -332,37 +326,37 @@ export default async function PermisosPage() {
                   <div className="font-medium">{m.user.name ?? m.user.email}</div>
                   <div className="text-xs text-muted-foreground">{m.user.email}</div>
                 </div>
-                <div className="text-sm">{SEDE_ROLE_LABEL[m.role]}</div>
+                <div className="text-sm">{sedeRoleLabel(m.role)}</div>
               </div>
             ))}
-            {members.length === 0 && <div className="text-sm text-muted-foreground">Sin miembros.</div>}
+            {members.length === 0 && <div className="text-sm text-muted-foreground">{t('rbac.members.empty')}</div>}
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Permisos por módulo ({activeSede?.nombre ?? '—'})</CardTitle>
+          <CardTitle>{t('rbac.moduleAccess.title', { sede: activeSede?.nombre ?? naText })}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <form action={setModuleAccess} className="grid gap-2 max-w-lg">
             <input type="hidden" name="sedeId" value={activeSedeId ?? ''} />
-            <input name="email" placeholder="Email del usuario" className="border rounded px-3 py-2" />
+            <input name="email" placeholder={t('rbac.common.emailPlaceholder')} className="border rounded px-3 py-2" />
             <select name="module" className="border rounded px-3 py-2">
               {MODULES.map((m) => (
                 <option key={m} value={m}>
-                  {m}
+                  {moduleLabel(m)}
                 </option>
               ))}
             </select>
             <select name="level" className="border rounded px-3 py-2">
               {ACCESS.map((l) => (
                 <option key={l} value={l}>
-                  {ACCESS_LABEL[l]}
+                  {accessLabel(l)}
                 </option>
               ))}
             </select>
-            <Button type="submit" variant="outline">Guardar permiso</Button>
+            <Button type="submit" variant="outline">{t('rbac.moduleAccess.save')}</Button>
           </form>
 
           <div className="grid gap-2">
@@ -372,17 +366,17 @@ export default async function PermisosPage() {
                   <div className="font-medium">{p.user.name ?? p.user.email}</div>
                   <div className="text-xs text-muted-foreground">{p.user.email}</div>
                 </div>
-                <div className="text-sm">{p.module}: {ACCESS_LABEL[p.level]}</div>
+                <div className="text-sm">{moduleLabel(p.module)}: {accessLabel(p.level)}</div>
               </div>
             ))}
-            {permisos.length === 0 && <div className="text-sm text-muted-foreground">Sin permisos explícitos.</div>}
+            {permisos.length === 0 && <div className="text-sm text-muted-foreground">{t('rbac.moduleAccess.empty')}</div>}
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Sedes</CardTitle>
+          <CardTitle>{t('rbac.sedes.title')}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-2">
@@ -390,7 +384,7 @@ export default async function PermisosPage() {
               <div key={s.id} className="flex items-center justify-between border rounded px-3 py-2">
                 <div>
                   <div className="font-medium">{s.nombre}</div>
-                  <div className="text-xs text-muted-foreground">{s.codigo ?? '—'}</div>
+                  <div className="text-xs text-muted-foreground">{s.codigo ?? naText}</div>
                 </div>
                 <div className="text-xs text-muted-foreground">{s.id}</div>
               </div>

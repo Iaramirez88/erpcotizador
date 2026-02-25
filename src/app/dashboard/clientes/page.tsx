@@ -11,6 +11,7 @@ import { ImportDialog } from "@/components/import/import-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useI18n } from "@/components/providers/i18n-provider"
 import {
   Dialog,
   DialogContent,
@@ -56,32 +57,19 @@ interface Sede {
 
 type ClienteSegmento = NonNullable<Cliente["segmento"]>
 
-const SEGMENTOS: Array<{ value: "" | "POTENCIAL" | "OCASIONAL" | "FRECUENTE"; label: string }> = [
-  { value: "", label: "Todos" },
-  { value: "POTENCIAL", label: "Potenciales" },
-  { value: "OCASIONAL", label: "Ocasionales" },
-  { value: "FRECUENTE", label: "Frecuentes" },
-]
-
-const SEGMENTO_LABEL: Record<ClienteSegmento, string> = {
-  POTENCIAL: "Potencial",
-  OCASIONAL: "Ocasional",
-  FRECUENTE: "Frecuente",
-}
-
-function fmtDate(date: string | null | undefined) {
-  if (!date) return "—"
+function fmtDate(date: string | null | undefined, locale: string, naText: string) {
+  if (!date) return naText
   try {
-    return new Intl.DateTimeFormat("es-CO", { dateStyle: "medium" }).format(new Date(date))
+    return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(date))
   } catch {
     return String(date)
   }
 }
 
-function fmtMoney(value: number | null | undefined) {
+function fmtMoney(value: number | null | undefined, locale: string) {
   const n = typeof value === 'number' ? value : 0
   try {
-    return new Intl.NumberFormat('es-CO', {
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: 'COP',
       maximumFractionDigits: 0,
@@ -92,16 +80,26 @@ function fmtMoney(value: number | null | undefined) {
 }
 
 export default function ClientesPage() {
+  const { t, language } = useI18n()
+  const locale = language === 'en' ? 'en-US' : 'es-CO'
+  const naText = t('common.na')
+
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [segmentoFiltro, setSegmentoFiltro] = useState<"" | "POTENCIAL" | "OCASIONAL" | "FRECUENTE">("")
+  const [tipoDocumentoFiltro, setTipoDocumentoFiltro] = useState("")
+  const [ciudadFiltro, setCiudadFiltro] = useState("")
   const [sedes, setSedes] = useState<Sede[]>([])
   const [sedeFiltro, setSedeFiltro] = useState("")
   const [createdAtMode, setCreatedAtMode] = useState<"" | "day" | "month" | "year">("")
   const [createdAtValue, setCreatedAtValue] = useState("")
   const [actividadDesde, setActividadDesde] = useState("")
   const [actividadHasta, setActividadHasta] = useState("")
+  const [facturadoMin, setFacturadoMin] = useState("")
+  const [facturadoMax, setFacturadoMax] = useState("")
+  const [isExportOpen, setIsExportOpen] = useState(false)
+  const [exportPeriodo, setExportPeriodo] = useState<'' | 'day' | 'week' | 'month' | 'quarter'>('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -126,6 +124,8 @@ export default function ClientesPage() {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
       if (segmentoFiltro) params.set('segmento', segmentoFiltro)
+      if (tipoDocumentoFiltro) params.set('tipoDocumento', tipoDocumentoFiltro)
+      if (ciudadFiltro) params.set('ciudad', ciudadFiltro)
       if (sedeFiltro) params.set('sedeId', sedeFiltro)
 
       if (createdAtMode === 'day' && createdAtValue) params.set('createdAtDay', createdAtValue)
@@ -134,6 +134,9 @@ export default function ClientesPage() {
 
       if (actividadDesde) params.set('activityFrom', actividadDesde)
       if (actividadHasta) params.set('activityTo', actividadHasta)
+
+      if (facturadoMin) params.set('invoiceTotalMin', facturadoMin)
+      if (facturadoMax) params.set('invoiceTotalMax', facturadoMax)
 
       const url = params.toString() ? `/api/clientes?${params.toString()}` : '/api/clientes'
 
@@ -153,7 +156,7 @@ export default function ClientesPage() {
   useEffect(() => {
     fetchClientes()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, segmentoFiltro, sedeFiltro, createdAtMode, createdAtValue, actividadDesde, actividadHasta])
+  }, [search, segmentoFiltro, tipoDocumentoFiltro, ciudadFiltro, sedeFiltro, createdAtMode, createdAtValue, actividadDesde, actividadHasta, facturadoMin, facturadoMax])
 
   useEffect(() => {
     const fetchSedes = async () => {
@@ -195,11 +198,11 @@ export default function ClientesPage() {
         resetForm()
         fetchClientes()
       } else {
-        alert(data.error || 'Error al guardar cliente')
+        alert(data.error || t('customers.errors.saveFailed'))
       }
     } catch (error) {
       console.error('Error:', error)
-      alert('Error al guardar cliente')
+      alert(t('customers.errors.saveFailed'))
     } finally {
       setIsSubmitting(false)
     }
@@ -223,7 +226,7 @@ export default function ClientesPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar este cliente?')) return
+    if (!confirm(t('customers.confirm.delete'))) return
 
     try {
       const response = await fetch(`/api/clientes/${id}`, {
@@ -235,13 +238,16 @@ export default function ClientesPage() {
       if (data.success) {
         fetchClientes()
       } else {
-        alert(data.error || 'Error al eliminar cliente')
+        alert(data.error || t('customers.errors.deleteFailed'))
       }
     } catch (error) {
       console.error('Error:', error)
-      alert('Error al eliminar cliente')
+      alert(t('customers.errors.deleteFailed'))
     }
   }
+
+  const segmentoLabel = (segmento: ClienteSegmento) => t(`customers.segment.${segmento}`)
+  const segmentoLabelPlural = (segmento: ClienteSegmento) => t(`customers.segment.${segmento}.plural`)
 
   const resetForm = () => {
     setEditingCliente(null)
@@ -264,10 +270,32 @@ export default function ClientesPage() {
     setIsModalOpen(true)
   }
 
+  const formatLocalDateInput = (date: Date) => {
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+
+  const applyExportPeriod = (period: '' | 'day' | 'week' | 'month' | 'quarter') => {
+    setExportPeriodo(period)
+    if (!period) return
+    const now = new Date()
+    const to = formatLocalDateInput(now)
+    const days = period === 'day' ? 0 : period === 'week' ? 7 : period === 'month' ? 30 : 90
+    const fromDate = new Date(now)
+    fromDate.setDate(fromDate.getDate() - days)
+    const from = formatLocalDateInput(fromDate)
+    setActividadDesde(from)
+    setActividadHasta(to)
+  }
+
   const exportExcel = () => {
     const params = new URLSearchParams()
     if (search) params.set('search', search)
     if (segmentoFiltro) params.set('segmento', segmentoFiltro)
+    if (tipoDocumentoFiltro) params.set('tipoDocumento', tipoDocumentoFiltro)
+    if (ciudadFiltro) params.set('ciudad', ciudadFiltro)
     if (sedeFiltro) params.set('sedeId', sedeFiltro)
 
     if (createdAtMode === 'day' && createdAtValue) params.set('createdAtDay', createdAtValue)
@@ -277,6 +305,9 @@ export default function ClientesPage() {
     if (actividadDesde) params.set('activityFrom', actividadDesde)
     if (actividadHasta) params.set('activityTo', actividadHasta)
 
+    if (facturadoMin) params.set('invoiceTotalMin', facturadoMin)
+    if (facturadoMax) params.set('invoiceTotalMax', facturadoMax)
+
     const url = params.toString() ? `/api/clientes/export?${params.toString()}` : '/api/clientes/export'
     window.location.href = url
   }
@@ -284,11 +315,15 @@ export default function ClientesPage() {
   const clearFilters = () => {
     setSearch("")
     setSegmentoFiltro("")
+    setTipoDocumentoFiltro("")
+    setCiudadFiltro("")
     setSedeFiltro("")
     setCreatedAtMode("")
     setCreatedAtValue("")
     setActividadDesde("")
     setActividadHasta("")
+    setFacturadoMin("")
+    setFacturadoMax("")
   }
 
   return (
@@ -296,58 +331,204 @@ export default function ClientesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight" data-tour="clientes-title">Clientes</h1>
+          <h1 className="text-3xl font-bold tracking-tight" data-tour="clientes-title">{t('customers.title')}</h1>
           <p className="text-muted-foreground">
-            Gestiona tu base de datos de clientes
+            {t('customers.subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <span data-tour="clientes-import">
-            <ImportDialog module="clientes" title="Importar clientes" />
+            <ImportDialog module="clientes" title={t('customers.actions.import')} />
           </span>
-          <Button variant="outline" onClick={exportExcel}>
-            Exportar Excel
+          <Button variant="outline" onClick={() => setIsExportOpen(true)}>
+            {t('customers.actions.exportExcel')}
           </Button>
           <Button onClick={openNewClienteModal} data-tour="clientes-new">
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            Nuevo Cliente
+            {t('customers.actions.new')}
           </Button>
         </div>
       </div>
+
+      {/* Modal de exportación */}
+      <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>{t('customers.export.title')}</DialogTitle>
+            <DialogDescription>{t('customers.export.description')}</DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto pr-1">
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <Label>{t('customers.filters.site')}</Label>
+                <select
+                  value={sedeFiltro}
+                  onChange={(e) => setSedeFiltro(e.target.value)}
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value="">{t('customers.filters.allSites')}</option>
+                  {sedes.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <Label>{t('customers.filters.segment')}</Label>
+                <select
+                  value={segmentoFiltro}
+                  onChange={(e) =>
+                    setSegmentoFiltro(e.target.value as "" | "POTENCIAL" | "OCASIONAL" | "FRECUENTE")
+                  }
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value="">{t('customers.filters.segment.all')}</option>
+                  <option value="POTENCIAL">{segmentoLabelPlural('POTENCIAL')}</option>
+                  <option value="OCASIONAL">{segmentoLabelPlural('OCASIONAL')}</option>
+                  <option value="FRECUENTE">{segmentoLabelPlural('FRECUENTE')}</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <Label>{t('customers.filters.documentType')}</Label>
+                <select
+                  value={tipoDocumentoFiltro}
+                  onChange={(e) => setTipoDocumentoFiltro(e.target.value)}
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value="">{t('customers.filters.all')}</option>
+                  <option value="NIT">NIT</option>
+                  <option value="CC">CC</option>
+                  <option value="CE">CE</option>
+                  <option value="PASAPORTE">{t('customers.form.documentType.PASAPORTE')}</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <Label>{t('customers.filters.city')}</Label>
+                <Input
+                  value={ciudadFiltro}
+                  onChange={(e) => setCiudadFiltro(e.target.value)}
+                  placeholder={t('customers.form.cityPlaceholder')}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label>{t('customers.export.period')}</Label>
+                <select
+                  value={exportPeriodo}
+                  onChange={(e) => applyExportPeriod(e.target.value as ('' | 'day' | 'week' | 'month' | 'quarter'))}
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value="">{t('customers.export.period.none')}</option>
+                  <option value="day">{t('customers.export.period.day')}</option>
+                  <option value="week">{t('customers.export.period.week')}</option>
+                  <option value="month">{t('customers.export.period.month')}</option>
+                  <option value="quarter">{t('customers.export.period.quarter')}</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1">
+                  <Label>{t('customers.filters.activityFrom')}</Label>
+                  <Input
+                    type="date"
+                    value={actividadDesde}
+                    onChange={(e) => {
+                      setExportPeriodo('')
+                      setActividadDesde(e.target.value)
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>{t('customers.filters.activityTo')}</Label>
+                  <Input
+                    type="date"
+                    value={actividadHasta}
+                    onChange={(e) => {
+                      setExportPeriodo('')
+                      setActividadHasta(e.target.value)
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label>{t('customers.filters.billingMin')}</Label>
+                  <Input
+                    inputMode="numeric"
+                    value={facturadoMin}
+                    onChange={(e) => setFacturadoMin(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>{t('customers.filters.billingMax')}</Label>
+                  <Input
+                    inputMode="numeric"
+                    value={facturadoMax}
+                    onChange={(e) => setFacturadoMax(e.target.value)}
+                    placeholder=""
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsExportOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                exportExcel()
+                setIsExportOpen(false)
+              }}
+            >
+              {t('common.download')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_360px]">
         {/* Lista (primero) */}
         <Card className="min-w-0">
           <CardHeader>
-            <CardTitle>Lista de Clientes ({clientes.length})</CardTitle>
-            <CardDescription>Todos tus clientes registrados</CardDescription>
+            <CardTitle>{t('customers.list.title', { count: String(clientes.length) })}</CardTitle>
+            <CardDescription>{t('customers.list.subtitle')}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2 flex-wrap mb-4">
               <div className="min-w-[240px] flex-1">
                 <Input
                   data-tour="clientes-search"
-                  placeholder="Buscar por nombre, documento o email..."
+                  placeholder={t('customers.searchPlaceholder')}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
               <Button type="button" variant="outline" onClick={clearFilters}>
-                Limpiar
+                {t('customers.filters.clear')}
               </Button>
             </div>
 
             {isLoading ? (
               <div className="text-center py-8">
-                <p className="text-muted-foreground">Cargando...</p>
+                <p className="text-muted-foreground">{t('common.loading')}</p>
               </div>
             ) : clientes.length === 0 ? (
               <div className="text-center py-8">
-                <p className="text-muted-foreground">No hay clientes registrados</p>
+                <p className="text-muted-foreground">{t('customers.empty')}</p>
                 <Button onClick={openNewClienteModal} className="mt-4">
-                  Crear primer cliente
+                  {t('customers.actions.createFirst')}
                 </Button>
               </div>
             ) : (
@@ -355,19 +536,19 @@ export default function ClientesPage() {
                 <table className="min-w-[1400px] w-full">
                   <thead className="border-b">
                     <tr className="text-left">
-                      <th className="pb-3 font-medium">Nombre</th>
-                      <th className="pb-3 font-medium">Documento</th>
-                      <th className="pb-3 font-medium">Sede</th>
-                      <th className="pb-3 font-medium">Segmento</th>
-                      <th className="pb-3 font-medium">Contacto</th>
-                      <th className="pb-3 font-medium">Ciudad</th>
-                      <th className="pb-3 font-medium text-center">Cotizaciones (rango)</th>
-                      <th className="pb-3 font-medium text-center">Órdenes</th>
-                      <th className="pb-3 font-medium text-center">Facturas</th>
-                      <th className="pb-3 font-medium text-right">Facturado</th>
-                      <th className="pb-3 font-medium text-right">Costo aprox.</th>
-                      <th className="pb-3 font-medium">Última actividad</th>
-                      <th className="pb-3 font-medium text-right">Acciones</th>
+                      <th className="pb-3 font-medium">{t('customers.columns.name')}</th>
+                      <th className="pb-3 font-medium">{t('customers.columns.document')}</th>
+                      <th className="pb-3 font-medium">{t('customers.columns.site')}</th>
+                      <th className="pb-3 font-medium">{t('customers.columns.segment')}</th>
+                      <th className="pb-3 font-medium">{t('customers.columns.contact')}</th>
+                      <th className="pb-3 font-medium">{t('customers.columns.city')}</th>
+                      <th className="pb-3 font-medium text-center">{t('customers.columns.quotesRange')}</th>
+                      <th className="pb-3 font-medium text-center">{t('customers.columns.orders')}</th>
+                      <th className="pb-3 font-medium text-center">{t('customers.columns.invoices')}</th>
+                      <th className="pb-3 font-medium text-right">{t('customers.columns.billed')}</th>
+                      <th className="pb-3 font-medium text-right">{t('customers.columns.costApprox')}</th>
+                      <th className="pb-3 font-medium">{t('customers.columns.lastActivity')}</th>
+                      <th className="pb-3 font-medium text-right">{t('customers.columns.actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -376,7 +557,7 @@ export default function ClientesPage() {
                         <td className="py-4">
                           <div>
                             <p className="font-medium">{cliente.nombre}</p>
-                            <p className="text-sm text-muted-foreground">{cliente.email || 'Sin email'}</p>
+                            <p className="text-sm text-muted-foreground">{cliente.email || t('customers.noEmail')}</p>
                           </div>
                         </td>
                         <td className="py-4">
@@ -385,7 +566,7 @@ export default function ClientesPage() {
                             <p className="font-mono text-sm">{cliente.documento}</p>
                           </div>
                         </td>
-                        <td className="py-4 text-sm">{cliente.sede?.nombre || '—'}</td>
+                        <td className="py-4 text-sm">{cliente.sede?.nombre || naText}</td>
                         <td className="py-4">
                           <span
                             className={
@@ -397,11 +578,11 @@ export default function ClientesPage() {
                                   : "bg-slate-50 text-slate-700 border-slate-200")
                             }
                           >
-                            {cliente.segmento ? SEGMENTO_LABEL[cliente.segmento] : "—"}
+                            {cliente.segmento ? segmentoLabel(cliente.segmento) : naText}
                           </span>
                         </td>
-                        <td className="py-4 text-sm">{cliente.celular || cliente.telefono || 'Sin teléfono'}</td>
-                        <td className="py-4 text-sm">{cliente.ciudad || '-'}</td>
+                        <td className="py-4 text-sm">{cliente.celular || cliente.telefono || t('customers.noPhone')}</td>
+                        <td className="py-4 text-sm">{cliente.ciudad || t('customers.naDash')}</td>
                         <td className="py-4 text-center">
                           <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 text-sm font-medium">
                             {cliente.cotizacionesRangeCount || 0}
@@ -417,13 +598,13 @@ export default function ClientesPage() {
                             {cliente.invoiceCount || 0}
                           </span>
                         </td>
-                        <td className="py-4 text-sm text-right">{fmtMoney(cliente.invoiceTotal)}</td>
-                        <td className="py-4 text-sm text-right">{fmtMoney(cliente.invoiceCost)}</td>
-                        <td className="py-4 text-sm">{fmtDate(cliente.ultimaActividadAt)}</td>
+                        <td className="py-4 text-sm text-right">{fmtMoney(cliente.invoiceTotal, locale)}</td>
+                        <td className="py-4 text-sm text-right">{fmtMoney(cliente.invoiceCost, locale)}</td>
+                        <td className="py-4 text-sm">{fmtDate(cliente.ultimaActividadAt, locale, naText)}</td>
                         <td className="py-4">
                           <div className="flex justify-end gap-2">
                             <Button variant="outline" size="sm" onClick={() => handleEdit(cliente)}>
-                              Editar
+                              {t('common.edit')}
                             </Button>
                             <Button
                               variant="outline"
@@ -431,7 +612,7 @@ export default function ClientesPage() {
                               onClick={() => handleDelete(cliente.id)}
                               className="text-red-600 hover:text-red-700"
                             >
-                              Eliminar
+                              {t('common.delete')}
                             </Button>
                           </div>
                         </td>
@@ -447,18 +628,18 @@ export default function ClientesPage() {
         {/* Filtros (compacto, al lado) */}
         <Card>
           <CardHeader>
-            <CardTitle>Filtros</CardTitle>
-            <CardDescription>Refina la lista de clientes</CardDescription>
+            <CardTitle>{t('customers.filters.title')}</CardTitle>
+            <CardDescription>{t('customers.filters.subtitle')}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1">
-              <Label>Sede</Label>
+              <Label>{t('customers.filters.site')}</Label>
               <select
                 value={sedeFiltro}
                 onChange={(e) => setSedeFiltro(e.target.value)}
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               >
-                <option value="">Todas</option>
+                <option value="">{t('customers.filters.allSites')}</option>
                 {sedes.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.nombre}
@@ -468,23 +649,48 @@ export default function ClientesPage() {
             </div>
 
             <div className="space-y-1">
-              <Label>Segmento</Label>
+              <Label>{t('customers.filters.segment')}</Label>
               <select
                 value={segmentoFiltro}
-                onChange={(e) => setSegmentoFiltro(e.target.value as (typeof SEGMENTOS)[number]["value"])}
+                onChange={(e) =>
+                  setSegmentoFiltro(e.target.value as "" | "POTENCIAL" | "OCASIONAL" | "FRECUENTE")
+                }
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               >
-                {SEGMENTOS.map((s) => (
-                  <option key={s.value || 'ALL'} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
+                <option value="">{t('customers.filters.segment.all')}</option>
+                <option value="POTENCIAL">{segmentoLabelPlural('POTENCIAL')}</option>
+                <option value="OCASIONAL">{segmentoLabelPlural('OCASIONAL')}</option>
+                <option value="FRECUENTE">{segmentoLabelPlural('FRECUENTE')}</option>
               </select>
+            </div>
+
+            <div className="space-y-1">
+              <Label>{t('customers.filters.documentType')}</Label>
+              <select
+                value={tipoDocumentoFiltro}
+                onChange={(e) => setTipoDocumentoFiltro(e.target.value)}
+                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+              >
+                <option value="">{t('customers.filters.all')}</option>
+                <option value="NIT">NIT</option>
+                <option value="CC">CC</option>
+                <option value="CE">CE</option>
+                <option value="PASAPORTE">{t('customers.form.documentType.PASAPORTE')}</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <Label>{t('customers.filters.city')}</Label>
+              <Input
+                value={ciudadFiltro}
+                onChange={(e) => setCiudadFiltro(e.target.value)}
+                placeholder={t('customers.form.cityPlaceholder')}
+              />
             </div>
 
             <div className="grid grid-cols-1 gap-3">
               <div className="space-y-1">
-                <Label>Fecha creación</Label>
+                <Label>{t('customers.filters.createdAt')}</Label>
                 <select
                   value={createdAtMode}
                   onChange={(e) => {
@@ -493,18 +699,18 @@ export default function ClientesPage() {
                   }}
                   className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                 >
-                  <option value="">Sin filtro</option>
-                  <option value="day">Día</option>
-                  <option value="month">Mes</option>
-                  <option value="year">Año</option>
+                  <option value="">{t('customers.filters.none')}</option>
+                  <option value="day">{t('customers.filters.day')}</option>
+                  <option value="month">{t('customers.filters.month')}</option>
+                  <option value="year">{t('customers.filters.year')}</option>
                 </select>
               </div>
               <div className="space-y-1">
-                <Label>Valor</Label>
+                <Label>{t('customers.filters.value')}</Label>
                 <Input
                   disabled={!createdAtMode}
                   type={createdAtMode === 'day' ? 'date' : createdAtMode === 'month' ? 'month' : 'number'}
-                  placeholder={createdAtMode === 'year' ? '2026' : undefined}
+                  placeholder={createdAtMode === 'year' ? t('customers.filters.yearPlaceholder') : undefined}
                   value={createdAtValue}
                   onChange={(e) => setCreatedAtValue(e.target.value)}
                 />
@@ -513,13 +719,35 @@ export default function ClientesPage() {
 
             <div className="grid grid-cols-1 gap-3">
               <div className="space-y-1">
-                <Label>Actividad (desde)</Label>
+                <Label>{t('customers.filters.activityFrom')}</Label>
                 <Input type="date" value={actividadDesde} onChange={(e) => setActividadDesde(e.target.value)} />
               </div>
               <div className="space-y-1">
-                <Label>Actividad (hasta)</Label>
+                <Label>{t('customers.filters.activityTo')}</Label>
                 <Input type="date" value={actividadHasta} onChange={(e) => setActividadHasta(e.target.value)} />
               </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label>{t('customers.filters.billingMin')}</Label>
+                  <Input
+                    inputMode="numeric"
+                    value={facturadoMin}
+                    onChange={(e) => setFacturadoMin(e.target.value)}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>{t('customers.filters.billingMax')}</Label>
+                  <Input
+                    inputMode="numeric"
+                    value={facturadoMax}
+                    onChange={(e) => setFacturadoMax(e.target.value)}
+                    placeholder=""
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   type="button"
@@ -529,10 +757,10 @@ export default function ClientesPage() {
                     setActividadHasta("")
                   }}
                 >
-                  Limpiar rango
+                  {t('customers.filters.clearRange')}
                 </Button>
                 <Button type="button" variant="outline" onClick={clearFilters}>
-                  Limpiar todo
+                  {t('customers.filters.clearAll')}
                 </Button>
               </div>
             </div>
@@ -545,13 +773,10 @@ export default function ClientesPage() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingCliente ? 'Editar Cliente' : 'Nuevo Cliente'}
+              {editingCliente ? t('customers.dialog.editTitle') : t('customers.dialog.newTitle')}
             </DialogTitle>
             <DialogDescription>
-              {editingCliente 
-                ? 'Actualiza la información del cliente'
-                : 'Completa los datos del nuevo cliente'
-              }
+              {editingCliente ? t('customers.dialog.editDescription') : t('customers.dialog.newDescription')}
             </DialogDescription>
           </DialogHeader>
 
@@ -559,19 +784,19 @@ export default function ClientesPage() {
             <div className="grid grid-cols-2 gap-4">
               {/* Nombre */}
               <div className="col-span-2">
-                <Label htmlFor="nombre">Nombre / Razón Social *</Label>
+                <Label htmlFor="nombre">{t('customers.form.name')} *</Label>
                 <Input
                   id="nombre"
                   value={formData.nombre}
                   onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
                   required
-                  placeholder="Nombre del cliente"
+                  placeholder={t('customers.form.namePlaceholder')}
                 />
               </div>
 
               {/* Segmento */}
               <div className="col-span-2">
-                <Label htmlFor="segmento">Tipo de cliente (segmento)</Label>
+                <Label htmlFor="segmento">{t('customers.form.segment')}</Label>
                 <select
                   id="segmento"
                   value={formData.segmento}
@@ -583,19 +808,19 @@ export default function ClientesPage() {
                   }
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                 >
-                  <option value="">Automático (según actividad)</option>
-                  <option value="POTENCIAL">Potencial</option>
-                  <option value="OCASIONAL">Ocasional</option>
-                  <option value="FRECUENTE">Frecuente</option>
+                  <option value="">{t('customers.form.segmentAuto')}</option>
+                  <option value="POTENCIAL">{segmentoLabel('POTENCIAL')}</option>
+                  <option value="OCASIONAL">{segmentoLabel('OCASIONAL')}</option>
+                  <option value="FRECUENTE">{segmentoLabel('FRECUENTE')}</option>
                 </select>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Si lo dejas en automático, el sistema lo calcula por cotizaciones/órdenes.
+                  {t('customers.form.segmentHelp')}
                 </p>
               </div>
 
               {/* Tipo Documento */}
               <div>
-                <Label htmlFor="tipoDocumento">Tipo de Documento *</Label>
+                <Label htmlFor="tipoDocumento">{t('customers.form.documentType')} *</Label>
                 <select
                   id="tipoDocumento"
                   value={formData.tipoDocumento}
@@ -604,15 +829,15 @@ export default function ClientesPage() {
                   required
                 >
                   <option value="NIT">NIT</option>
-                  <option value="CC">Cédula de Ciudadanía</option>
-                  <option value="CE">Cédula de Extranjería</option>
-                  <option value="PASAPORTE">Pasaporte</option>
+                  <option value="CC">{t('customers.form.documentType.CC')}</option>
+                  <option value="CE">{t('customers.form.documentType.CE')}</option>
+                  <option value="PASAPORTE">{t('customers.form.documentType.PASAPORTE')}</option>
                 </select>
               </div>
 
               {/* Documento */}
               <div>
-                <Label htmlFor="documento">Número de Documento *</Label>
+                <Label htmlFor="documento">{t('customers.form.documentNumber')} *</Label>
                 <Input
                   id="documento"
                   value={formData.documento}
@@ -624,68 +849,68 @@ export default function ClientesPage() {
 
               {/* Email */}
               <div>
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{t('customers.form.email')}</Label>
                 <Input
                   id="email"
                   type="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="cliente@empresa.com"
+                  placeholder={t('customers.form.emailPlaceholder')}
                 />
               </div>
 
               {/* Teléfono */}
               <div>
-                <Label htmlFor="telefono">Teléfono</Label>
+                <Label htmlFor="telefono">{t('customers.form.phone')}</Label>
                 <Input
                   id="telefono"
                   value={formData.telefono}
                   onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                  placeholder="(1) 234 5678"
+                  placeholder={t('customers.form.phonePlaceholder')}
                 />
               </div>
 
               {/* Celular */}
               <div className="col-span-2">
-                <Label htmlFor="celular">Celular</Label>
+                <Label htmlFor="celular">{t('customers.form.mobile')}</Label>
                 <Input
                   id="celular"
                   value={formData.celular}
                   onChange={(e) => setFormData({ ...formData, celular: e.target.value })}
-                  placeholder="300 123 4567"
+                  placeholder={t('customers.form.mobilePlaceholder')}
                 />
               </div>
 
               {/* Dirección */}
               <div className="col-span-2">
-                <Label htmlFor="direccion">Dirección</Label>
+                <Label htmlFor="direccion">{t('customers.form.address')}</Label>
                 <Input
                   id="direccion"
                   value={formData.direccion}
                   onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
-                  placeholder="Calle 123 #45-67"
+                  placeholder={t('customers.form.addressPlaceholder')}
                 />
               </div>
 
               {/* Ciudad */}
               <div>
-                <Label htmlFor="ciudad">Ciudad</Label>
+                <Label htmlFor="ciudad">{t('customers.form.city')}</Label>
                 <Input
                   id="ciudad"
                   value={formData.ciudad}
                   onChange={(e) => setFormData({ ...formData, ciudad: e.target.value })}
-                  placeholder="Bogotá"
+                  placeholder={t('customers.form.cityPlaceholder')}
                 />
               </div>
 
               {/* Departamento */}
               <div>
-                <Label htmlFor="departamento">Departamento</Label>
+                <Label htmlFor="departamento">{t('customers.form.state')}</Label>
                 <Input
                   id="departamento"
                   value={formData.departamento}
                   onChange={(e) => setFormData({ ...formData, departamento: e.target.value })}
-                  placeholder="Cundinamarca"
+                  placeholder={t('customers.form.statePlaceholder')}
                 />
               </div>
             </div>
@@ -700,14 +925,14 @@ export default function ClientesPage() {
                 }}
                 disabled={isSubmitting}
               >
-                Cancelar
+                {t('common.cancel')}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting 
-                  ? 'Guardando...' 
+                  ? t('common.saving')
                   : editingCliente 
-                    ? 'Actualizar' 
-                    : 'Crear Cliente'
+                    ? t('customers.actions.update')
+                    : t('customers.actions.create')
                 }
               </Button>
             </DialogFooter>

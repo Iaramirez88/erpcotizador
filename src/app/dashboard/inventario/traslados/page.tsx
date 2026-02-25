@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { formatUnidadMedidaLabel } from "@/lib/utils"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 type Warehouse = { id: string; nombre: string; codigo?: string | null }
 
@@ -45,6 +46,9 @@ function asString(value: unknown): string {
 }
 
 export default function TrasladosPage() {
+  const { t, language } = useI18n()
+  const locale = language === 'en' ? 'en-US' : 'es-CO'
+
   const [loading, setLoading] = useState(true)
   const [traslados, setTraslados] = useState<Traslado[]>([])
   const [search, setSearch] = useState("")
@@ -142,23 +146,23 @@ export default function TrasladosPage() {
   async function submit() {
     const qty = Number(form.quantity)
     if (!form.fromWarehouseId) {
-      alert("Selecciona la sede origen")
+      alert(t('inventoryTransfers.validation.selectFromSite'))
       return
     }
     if (!form.toWarehouseId) {
-      alert("Selecciona la sede destino")
+      alert(t('inventoryTransfers.validation.selectToSite'))
       return
     }
     if (form.fromWarehouseId === form.toWarehouseId) {
-      alert("La sede origen y destino no pueden ser iguales")
+      alert(t('inventoryTransfers.validation.sitesMustDiffer'))
       return
     }
     if (!form.materialId) {
-      alert("Selecciona un material")
+      alert(t('inventoryTransfers.validation.selectMaterial'))
       return
     }
     if (!Number.isFinite(qty) || qty <= 0) {
-      alert("Cantidad inválida")
+      alert(t('inventoryTransfers.validation.invalidQuantity'))
       return
     }
 
@@ -179,7 +183,7 @@ export default function TrasladosPage() {
       })
       const json = await res.json().catch(() => null)
       if (!res.ok || !json?.success) {
-        alert(json?.error || "No se pudo crear el traslado")
+        alert(json?.error || t('inventoryTransfers.errors.createFailed'))
         return
       }
 
@@ -202,20 +206,27 @@ export default function TrasladosPage() {
     return w
   }, [warehouses])
 
+  function statusLabel(status: Traslado['status'] | string): string {
+    if (status === 'COMPLETADO') return t('inventoryTransfers.status.completed')
+    if (status === 'PENDIENTE') return t('inventoryTransfers.status.pending')
+    if (status === 'CANCELADO') return t('inventoryTransfers.status.canceled')
+    return String(status)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Traslados de Inventario</h1>
-          <p className="text-muted-foreground">Mueve productos entre sedes con trazabilidad completa.</p>
+          <h1 className="text-3xl font-bold tracking-tight">{t('inventoryTransfers.title')}</h1>
+          <p className="text-muted-foreground">{t('inventoryTransfers.subtitle')}</p>
         </div>
-        <Button onClick={openNew}>Nuevo traslado</Button>
+        <Button onClick={openNew}>{t('inventoryTransfers.actions.new')}</Button>
       </div>
 
       <Card>
         <CardContent className="pt-6">
           <Input
-            placeholder="Buscar por número, sede origen/destino o material..."
+            placeholder={t('inventoryTransfers.searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -224,49 +235,49 @@ export default function TrasladosPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Listado ({filtered.length})</CardTitle>
+          <CardTitle>{t('inventoryTransfers.list.title', { count: filtered.length })}</CardTitle>
           <CardDescription>
-            Los traslados se completan automáticamente al crearlos, descontando de origen y sumando en destino.
+            {t('inventoryTransfers.list.description')}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="text-center py-8 text-muted-foreground">Cargando...</div>
+            <div className="text-center py-8 text-muted-foreground">{t('common.loading')}</div>
           ) : filtered.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No hay traslados registrados.</div>
+            <div className="text-center py-8 text-muted-foreground">{t('inventoryTransfers.list.empty')}</div>
           ) : (
             <div className="space-y-3">
-              {filtered.map((t) => (
-                <div key={t.id} className="rounded-lg border p-4">
+              {filtered.map((transfer) => (
+                <div key={transfer.id} className="rounded-lg border p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <div className="font-semibold">{t.numero}</div>
+                        <div className="font-semibold">{transfer.numero}</div>
                         <span
                           className={
                             "text-xs px-2 py-1 rounded border " +
-                            (t.status === "COMPLETADO"
+                            (transfer.status === "COMPLETADO"
                               ? "bg-green-50 text-green-700 border-green-200"
-                              : t.status === "PENDIENTE"
+                              : transfer.status === "PENDIENTE"
                               ? "bg-yellow-50 text-yellow-700 border-yellow-200"
                               : "bg-slate-50 text-slate-700 border-slate-200")
                           }
                         >
-                          {t.status}
+                          {statusLabel(transfer.status)}
                         </span>
                       </div>
                       <div className="text-sm text-muted-foreground mt-1">
-                        <strong>{t.material.nombre}</strong> — {t.quantity} {formatUnidadMedidaLabel(t.material.unidadMedida)}
+                        <strong>{transfer.material.nombre}</strong> — {transfer.quantity} {formatUnidadMedidaLabel(transfer.material.unidadMedida)}
                       </div>
                       <div className="text-sm text-muted-foreground mt-1">
-                        De: <strong>{t.fromWarehouse.nombre}</strong> → A: <strong>{t.toWarehouse.nombre}</strong>
+                        {t('inventoryTransfers.labels.from')}: <strong>{transfer.fromWarehouse.nombre}</strong> → {t('inventoryTransfers.labels.to')}: <strong>{transfer.toWarehouse.nombre}</strong>
                       </div>
-                      {t.note ? <div className="text-sm mt-2">{t.note}</div> : null}
+                      {transfer.note ? <div className="text-sm mt-2">{transfer.note}</div> : null}
                       <div className="text-xs text-muted-foreground mt-2">
-                        Creado: {new Date(t.createdAt).toLocaleString("es-CO")}
-                        {t.createdBy?.name ? ` por ${t.createdBy.name}` : ""}
-                        {t.completedAt
-                          ? ` · Completado: ${new Date(t.completedAt).toLocaleString("es-CO")}`
+                        {t('inventoryTransfers.meta.created')}: {new Date(transfer.createdAt).toLocaleString(locale)}
+                        {transfer.createdBy?.name ? ` ${t('inventoryTransfers.meta.by')} ${transfer.createdBy.name}` : ""}
+                        {transfer.completedAt
+                          ? ` · ${t('inventoryTransfers.meta.completed')}: ${new Date(transfer.completedAt).toLocaleString(locale)}`
                           : ""}
                       </div>
                     </div>
@@ -281,21 +292,21 @@ export default function TrasladosPage() {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Nuevo traslado de inventario</DialogTitle>
+            <DialogTitle>{t('inventoryTransfers.dialog.title')}</DialogTitle>
             <DialogDescription>
-              Traslada productos entre sedes. El stock se descuenta de origen y se suma a destino inmediatamente.
+              {t('inventoryTransfers.dialog.description')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label>Sede origen *</Label>
+              <Label>{t('inventoryTransfers.fields.fromSite')}</Label>
               <select
                 value={form.fromWarehouseId}
                 onChange={(e) => setForm((p) => ({ ...p, fromWarehouseId: e.target.value }))}
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               >
-                <option value="">Seleccionar sede origen...</option>
+                <option value="">{t('inventoryTransfers.placeholders.fromSite')}</option>
                 {warehouses.map((w) => (
                   <option key={w.id} value={w.id}>
                     {w.nombre}
@@ -305,13 +316,13 @@ export default function TrasladosPage() {
             </div>
 
             <div>
-              <Label>Sede destino *</Label>
+              <Label>{t('inventoryTransfers.fields.toSite')}</Label>
               <select
                 value={form.toWarehouseId}
                 onChange={(e) => setForm((p) => ({ ...p, toWarehouseId: e.target.value }))}
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               >
-                <option value="">Seleccionar sede destino...</option>
+                <option value="">{t('inventoryTransfers.placeholders.toSite')}</option>
                 {warehouses
                   .filter((w) => w.id !== form.fromWarehouseId)
                   .map((w) => (
@@ -323,16 +334,16 @@ export default function TrasladosPage() {
             </div>
 
             <div>
-              <Label>Material *</Label>
+              <Label>{t('inventoryTransfers.fields.material')}</Label>
               <select
                 value={form.materialId}
                 onChange={(e) => setForm((p) => ({ ...p, materialId: e.target.value }))}
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               >
-                <option value="">Seleccionar material...</option>
+                <option value="">{t('inventoryTransfers.placeholders.material')}</option>
                 {materials
                   .slice()
-                  .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
+                  .sort((a, b) => a.nombre.localeCompare(b.nombre, language === 'en' ? 'en' : 'es'))
                   .map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.nombre}
@@ -342,7 +353,7 @@ export default function TrasladosPage() {
             </div>
 
             <div>
-              <Label>Cantidad *</Label>
+              <Label>{t('inventoryTransfers.fields.quantity')}</Label>
               <Input
                 type="number"
                 step="0.01"
@@ -352,27 +363,27 @@ export default function TrasladosPage() {
               />
               {form.materialId && materialById.get(form.materialId) ? (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Unidad: {formatUnidadMedidaLabel(materialById.get(form.materialId)!.unidadMedida)}
+                  {t('inventoryTransfers.fields.unit')}: {formatUnidadMedidaLabel(materialById.get(form.materialId)!.unidadMedida)}
                 </p>
               ) : null}
             </div>
 
             <div className="md:col-span-2">
-              <Label>Nota (opcional)</Label>
+              <Label>{t('inventoryTransfers.fields.noteOptional')}</Label>
               <Input
                 value={form.note}
                 onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))}
-                placeholder="Ej: Traslado por faltante en sede principal"
+                placeholder={t('inventoryTransfers.placeholders.note')}
               />
             </div>
           </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
             <Button type="button" onClick={submit} disabled={submitting}>
-              {submitting ? "Creando..." : "Crear traslado"}
+              {submitting ? t('inventoryTransfers.actions.creating') : t('inventoryTransfers.actions.create')}
             </Button>
           </DialogFooter>
         </DialogContent>

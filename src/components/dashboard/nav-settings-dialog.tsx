@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { useI18n } from '@/components/providers/i18n-provider'
 
 type NavPrefs = Record<string, boolean>
 
@@ -30,13 +31,14 @@ export function NavSettingsDialog({
   onSave: (next: NavPrefs) => Promise<void> | void
   trigger?: (open: () => void) => React.ReactNode
 }) {
+  const { t, language } = useI18n()
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [draft, setDraft] = useState<NavPrefs>(value)
 
   const sorted = useMemo(() => {
-    return [...items].sort((a, b) => a.name.localeCompare(b.name, 'es'))
-  }, [items])
+    return [...items].sort((a, b) => a.name.localeCompare(b.name, language === 'en' ? 'en' : 'es'))
+  }, [items, language])
 
   function resetAll(enabled: boolean) {
     const next: NavPrefs = {}
@@ -71,26 +73,24 @@ export function NavSettingsDialog({
             setOpen(true)
           }}
         >
-          Personalizar menú
+          {t('navSettings.title')}
         </Button>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>Personalizar menú</DialogTitle>
-            <DialogDescription>
-              Activa/desactiva módulos en el sidebar. Esto solo afecta tu usuario.
-            </DialogDescription>
+            <DialogTitle>{t('navSettings.title')}</DialogTitle>
+            <DialogDescription>{t('navSettings.description')}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => resetAll(true)} disabled={saving}>
-                Mostrar todo
+                {t('navSettings.showAll')}
               </Button>
               <Button type="button" variant="outline" size="sm" onClick={() => resetAll(false)} disabled={saving}>
-                Ocultar todo
+                {t('navSettings.hideAll')}
               </Button>
             </div>
 
@@ -114,10 +114,10 @@ export function NavSettingsDialog({
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
             <Button type="button" onClick={() => void save()} disabled={saving}>
-              {saving ? 'Guardando…' : 'Guardar'}
+              {saving ? t('navSettings.saving') : t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>

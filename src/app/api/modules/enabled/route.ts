@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { ALL_MODULE_KEYS, getEnabledModulesForPlan } from '@/lib/plan-modules'
+import { ALL_MODULE_KEYS } from '@/lib/plan-modules'
 import { resolveEffectivePlanTier } from '@/lib/plan-access'
 import { requireEmpresaIdForUser } from '@/lib/rbac'
 
@@ -34,9 +34,9 @@ export async function GET() {
     })
 
     const planTier = empresa ? resolveEffectivePlanTier(empresa, new Date()) : 'FULL'
-    const enabled = await getEnabledModulesForPlan(planTier)
 
-    return NextResponse.json({ ok: true, enabled, planTier })
+    // Todos los módulos disponibles: el control se hace por límites de uso (transacciones), no por módulos.
+    return NextResponse.json({ ok: true, enabled: ALL_MODULE_KEYS, planTier })
   } catch (error: unknown) {
     console.error('GET /api/modules/enabled error:', error)
     return NextResponse.json({ ok: true, enabled: ALL_MODULE_KEYS, planTier: 'FULL', degraded: true })

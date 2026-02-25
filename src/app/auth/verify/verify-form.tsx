@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 export default function VerifyForm({ initialEmail }: { initialEmail: string }) {
+  const { t } = useI18n()
   const router = useRouter()
 
   const [email, setEmail] = useState(initialEmail)
@@ -35,15 +37,15 @@ export default function VerifyForm({ initialEmail }: { initialEmail: string }) {
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data?.error || "No se pudo verificar")
+        throw new Error(data?.error || t('auth.verify.errors.verifyFailed'))
       }
 
-      setMessage("Cuenta verificada. Ya puedes iniciar sesión.")
+      setMessage(t('auth.verify.success'))
       setTimeout(() => {
         router.push("/auth/login")
       }, 1000)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Ocurrió un error")
+      setError(err instanceof Error ? err.message : t('auth.common.genericError'))
     } finally {
       setIsLoading(false)
     }
@@ -65,16 +67,16 @@ export default function VerifyForm({ initialEmail }: { initialEmail: string }) {
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data?.error || "No se pudo reenviar")
+        throw new Error(data?.error || t('auth.verify.errors.resendFailed'))
       }
 
       if (typeof data?.debugCode === "string") {
         setDebugCode(data.debugCode)
       }
 
-      setMessage(typeof data?.message === "string" ? data.message : "Código reenviado.")
+      setMessage(typeof data?.message === "string" ? data.message : t('auth.verify.resent'))
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Ocurrió un error")
+      setError(err instanceof Error ? err.message : t('auth.common.genericError'))
     } finally {
       setIsResending(false)
     }
@@ -83,9 +85,9 @@ export default function VerifyForm({ initialEmail }: { initialEmail: string }) {
   return (
     <Card className="w-full max-w-md border-0 shadow-sm">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl text-center">Verificar cuenta</CardTitle>
+          <CardTitle className="text-2xl text-center">{t('auth.verify.title')}</CardTitle>
           <CardDescription className="text-center">
-            Ingresa el código que enviamos a tu correo
+            {t('auth.verify.description')}
           </CardDescription>
         </CardHeader>
 
@@ -103,17 +105,17 @@ export default function VerifyForm({ initialEmail }: { initialEmail: string }) {
             )}
             {debugCode && (
               <div className="bg-yellow-50 border border-yellow-200 text-yellow-900 px-4 py-3 rounded-md text-sm">
-                <div className="font-semibold">Código (modo dev)</div>
+                <div className="font-semibold">{t('auth.verify.devCode')}</div>
                 <div className="font-mono tracking-widest text-lg">{debugCode}</div>
               </div>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="sr-only">Email</Label>
+              <Label htmlFor="email" className="sr-only">{t('auth.fields.email')}</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="tu@email.com"
+                placeholder={t('auth.placeholders.email')}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -122,7 +124,7 @@ export default function VerifyForm({ initialEmail }: { initialEmail: string }) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="code" className="sr-only">Código</Label>
+              <Label htmlFor="code" className="sr-only">{t('auth.fields.code')}</Label>
               <Input
                 id="code"
                 inputMode="numeric"
@@ -133,14 +135,14 @@ export default function VerifyForm({ initialEmail }: { initialEmail: string }) {
                 disabled={isLoading}
               />
               <div className="text-xs text-muted-foreground">
-                Si no lo ves, revisa spam o reenvía el código.
+                {t('auth.verify.tip')}
               </div>
             </div>
           </CardContent>
 
           <CardFooter className="flex flex-col gap-3">
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Verificando..." : "Verificar"}
+              {isLoading ? t('auth.verify.verifying') : t('auth.verify.submit')}
             </Button>
             <Button
               type="button"
@@ -149,11 +151,11 @@ export default function VerifyForm({ initialEmail }: { initialEmail: string }) {
               onClick={onResend}
               disabled={isResending || !email}
             >
-              {isResending ? "Reenviando..." : "Reenviar código"}
+              {isResending ? t('auth.verify.resending') : t('auth.verify.resend')}
             </Button>
             <div className="text-sm text-center text-gray-600">
               <Link href="/auth/login" className="text-blue-600 hover:underline font-medium">
-                Volver al login
+                {t('auth.common.backToLogin')}
               </Link>
             </div>
           </CardFooter>

@@ -10,33 +10,33 @@ import { AvatarUploader } from '@/components/profile/avatar-uploader'
 import { ProfileBasicsForm } from '@/components/profile/profile-basics-form'
 import { LeaveWorkspaceCard } from '@/components/profile/leave-workspace-card'
 import { WorkspaceAccessCard } from '@/components/profile/workspace-access-card'
+import { getServerLanguage } from '@/lib/i18n/server'
+import { translate, type UiLanguage } from '@/lib/i18n/messages'
 
-function fmtDate(date: Date | null | undefined) {
-  if (!date) return '—'
+function fmtDate(date: Date | null | undefined, locale: string, naText: string) {
+  if (!date) return naText
   try {
-    return new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(date))
+    return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(date))
   } catch {
     return String(date)
   }
 }
 
-function roleLabel(role?: string | null) {
-  switch (role) {
-    case 'ADMIN':
-      return 'Administrador'
-    case 'VENDEDOR':
-      return 'Vendedor'
-    case 'PRODUCCION':
-      return 'Producción'
-    case 'CLIENTE':
-      return 'Cliente'
-    case 'USER':
-    default:
-      return 'Usuario'
-  }
+function makeT(language: UiLanguage) {
+  return (key: string, vars?: Record<string, string>) => translate(language, key, vars)
+}
+
+function tOrFallback(t: (key: string, vars?: Record<string, string>) => string, key: string, fallback: string) {
+  const value = t(key)
+  return value === key ? fallback : value
 }
 
 export default async function PerfilPage() {
+  const language = await getServerLanguage()
+  const t = makeT(language)
+  const locale = language === 'en' ? 'en-US' : 'es-CO'
+  const naText = t('common.na')
+
   const session = await auth()
   if (!session?.user) redirect('/auth/login')
 
@@ -87,17 +87,28 @@ export default async function PerfilPage() {
   const isPlanOwner = empresaId ? await isPlanOwnerForEmpresa({ empresaId, userId: user.id }) : false
   const canManageBilling = isSystemSuperAdmin || isPlanOwner
 
+  const roleLabel = (role?: string | null) => tOrFallback(t, `rbac.userRole.${role || 'USER'}`, String(role || 'USER'))
+  const sedeRoleLabel = (role?: string | null) => tOrFallback(t, `rbac.sedeRole.${role || ''}`, String(role || naText))
+  const moduleLabel = (module?: string | null) => tOrFallback(t, `rbac.module.${module || ''}`, String(module || naText))
+  const accessLabel = (level?: string | null) => tOrFallback(t, `rbac.access.${level || ''}`, String(level || naText))
+  const planTierLabel = (tier?: string | null) => tOrFallback(t, `plans.tier.${tier || ''}.name`, String(tier || naText))
+  const billingCycleLabel = (cycle?: string | null) => tOrFallback(t, `plans.billing.${cycle || ''}`, String(cycle || naText))
+
   return (
     <div className="p-3 sm:p-4 lg:p-6 space-y-4">
       <div className="rounded-xl border bg-gradient-to-r from-slate-950 to-slate-900 text-slate-50 p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">Mi perfil</h1>
-            <p className="text-slate-200 mt-1 text-sm">Gestiona tu información, tu foto y revisa seguridad.</p>
+            <h1 className="text-2xl sm:text-3xl font-bold">{t('profile.title')}</h1>
+            <p className="text-slate-200 mt-1 text-sm">{t('profile.subtitle')}</p>
           </div>
           <div className="text-xs text-slate-300">
-            <div>Rol: <span className="text-slate-100 font-medium">{roleLabel(user.role)}</span></div>
-            <div>Usuario desde: <span className="text-slate-100 font-medium">{fmtDate(user.createdAt)}</span></div>
+            <div>
+              {t('profile.meta.role')}: <span className="text-slate-100 font-medium">{roleLabel(user.role)}</span>
+            </div>
+            <div>
+              {t('profile.meta.memberSince')}: <span className="text-slate-100 font-medium">{fmtDate(user.createdAt, locale, naText)}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -105,27 +116,27 @@ export default async function PerfilPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <CardHeader className="py-3">
-            <CardTitle className="text-base">Información</CardTitle>
+            <CardTitle className="text-base">{t('profile.section.info')}</CardTitle>
           </CardHeader>
           <CardContent className="pt-0 space-y-4">
             <AvatarUploader userName={user.name} imageUrl={user.image} />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Email</div>
+                <div className="text-xs text-muted-foreground">{t('profile.fields.email')}</div>
                 <div className="font-medium break-all">{user.email}</div>
               </div>
               <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Empresa</div>
-                <div className="font-medium">{user.empresa?.nombre ?? '—'}</div>
+                <div className="text-xs text-muted-foreground">{t('profile.fields.company')}</div>
+                <div className="font-medium">{user.empresa?.nombre ?? naText}</div>
                 {user.empresa ? (
                   <div className="space-y-2">
                     <div className="text-xs text-muted-foreground">
-                      Plan: {String(user.empresa.planTier)} · {String(user.empresa.billingCycle)} · Vigente hasta: {fmtDate(user.empresa.planValidUntil)}
+                      {t('profile.company.plan')}: {planTierLabel(user.empresa.planTier)} · {billingCycleLabel(user.empresa.billingCycle)} · {t('profile.company.validUntil')}: {fmtDate(user.empresa.planValidUntil, locale, naText)}
                     </div>
                     {canManageBilling ? (
                       <Button asChild size="sm" variant="outline">
-                        <Link href="/dashboard/configuracion/plan">Actualizar plan</Link>
+                        <Link href="/dashboard/configuracion/plan">{t('profile.company.managePlan')}</Link>
                       </Button>
                     ) : null}
                   </div>
@@ -136,7 +147,7 @@ export default async function PerfilPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Card className="border-dashed">
                 <CardHeader className="py-3">
-                  <CardTitle className="text-sm">Editar datos</CardTitle>
+                  <CardTitle className="text-sm">{t('profile.section.edit')}</CardTitle>
                 </CardHeader>
                 <CardContent className="pt-0">
                   <ProfileBasicsForm initialName={user.name} />
@@ -145,12 +156,14 @@ export default async function PerfilPage() {
 
               <Card className="border-dashed">
                 <CardHeader className="py-3">
-                  <CardTitle className="text-sm">Seguridad</CardTitle>
+                  <CardTitle className="text-sm">{t('profile.section.security')}</CardTitle>
                 </CardHeader>
                 <CardContent className="pt-0 space-y-2 text-sm">
-                  <div className="text-muted-foreground">Acciones recomendadas:</div>
-                  <Link className="text-sky-600 hover:underline" href="/auth/change-password">Cambiar contraseña</Link>
-                  <div className="text-xs text-muted-foreground">Última actualización del perfil: {fmtDate(user.updatedAt)}</div>
+                  <div className="text-muted-foreground">{t('profile.security.recommended')}</div>
+                  <Link className="text-sky-600 hover:underline" href="/auth/change-password">{t('profile.security.changePassword')}</Link>
+                  <div className="text-xs text-muted-foreground">
+                    {t('profile.security.lastUpdated')}: {fmtDate(user.updatedAt, locale, naText)}
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -160,7 +173,7 @@ export default async function PerfilPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader className="py-3">
-              <CardTitle className="text-base">Sedes</CardTitle>
+              <CardTitle className="text-base">{t('profile.section.sites')}</CardTitle>
             </CardHeader>
             <CardContent className="pt-0 space-y-2 text-sm">
               {user.sedeMemberships.length ? (
@@ -168,34 +181,36 @@ export default async function PerfilPage() {
                   <div key={m.id} className="flex items-center justify-between gap-2">
                     <div className="truncate">
                       <div className="font-medium truncate">{m.sede.nombre}</div>
-                      <div className="text-xs text-muted-foreground truncate">{m.sede.codigo ? `Código: ${m.sede.codigo}` : '—'}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {m.sede.codigo ? `${t('profile.sites.code')}: ${m.sede.codigo}` : naText}
+                      </div>
                     </div>
-                    <span className="text-xs rounded-md border px-2 py-1">{String(m.role)}</span>
+                    <span className="text-xs rounded-md border px-2 py-1">{sedeRoleLabel(m.role)}</span>
                   </div>
                 ))
               ) : (
-                <div className="text-muted-foreground">No tienes sedes asignadas.</div>
+                <div className="text-muted-foreground">{t('profile.sites.empty')}</div>
               )}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="py-3">
-              <CardTitle className="text-base">Accesos</CardTitle>
+              <CardTitle className="text-base">{t('profile.section.access')}</CardTitle>
             </CardHeader>
             <CardContent className="pt-0 space-y-2 text-sm">
               {user.moduleAccess.length ? (
                 user.moduleAccess.slice(0, 10).map((a) => (
                   <div key={a.id} className="flex items-center justify-between gap-2">
                     <div className="truncate">
-                      <div className="font-medium truncate">{String(a.module)}</div>
+                      <div className="font-medium truncate">{moduleLabel(a.module)}</div>
                       <div className="text-xs text-muted-foreground truncate">{a.sede.nombre}</div>
                     </div>
-                    <span className="text-xs rounded-md border px-2 py-1">{String(a.level)}</span>
+                    <span className="text-xs rounded-md border px-2 py-1">{accessLabel(a.level)}</span>
                   </div>
                 ))
               ) : (
-                <div className="text-muted-foreground">No hay accesos configurados.</div>
+                <div className="text-muted-foreground">{t('profile.access.empty')}</div>
               )}
             </CardContent>
           </Card>
@@ -209,39 +224,43 @@ export default async function PerfilPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="py-3">
-            <CardTitle className="text-base">Seguridad · Restablecimientos</CardTitle>
+            <CardTitle className="text-base">{t('profile.security.resetsTitle')}</CardTitle>
           </CardHeader>
           <CardContent className="pt-0 space-y-2">
             {recentPasswordResets.length ? (
-              recentPasswordResets.map((t) => (
-                <div key={t.id} className="border rounded-lg px-3 py-2">
-                  <div className="font-medium break-all">{t.email}</div>
-                  <div className="text-xs text-muted-foreground">Solicitado: {fmtDate(t.createdAt)} · Expira: {fmtDate(t.expiresAt)}</div>
+              recentPasswordResets.map((resetToken) => (
+                <div key={resetToken.id} className="border rounded-lg px-3 py-2">
+                  <div className="font-medium break-all">{resetToken.email}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {t('profile.security.requested')}: {fmtDate(resetToken.createdAt, locale, naText)} · {t('profile.security.expires')}: {fmtDate(resetToken.expiresAt, locale, naText)}
+                  </div>
                 </div>
               ))
             ) : (
-              <div className="text-muted-foreground">Sin solicitudes recientes.</div>
+              <div className="text-muted-foreground">{t('profile.security.noResets')}</div>
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="py-3">
-            <CardTitle className="text-base">Seguridad · Verificación de email</CardTitle>
+            <CardTitle className="text-base">{t('profile.security.emailVerificationTitle')}</CardTitle>
           </CardHeader>
           <CardContent className="pt-0 space-y-2">
             {recentEmailVerifications.length ? (
               recentEmailVerifications.map((c) => (
                 <div key={c.id} className="border rounded-lg px-3 py-2">
                   <div className="font-medium break-all">{c.email}</div>
-                  <div className="text-xs text-muted-foreground">Creado: {fmtDate(c.createdAt)} · Expira: {fmtDate(c.expiresAt)}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {t('profile.security.created')}: {fmtDate(c.createdAt, locale, naText)} · {t('profile.security.expires')}: {fmtDate(c.expiresAt, locale, naText)}
+                  </div>
                 </div>
               ))
             ) : (
-              <div className="text-muted-foreground">Sin verificaciones recientes.</div>
+              <div className="text-muted-foreground">{t('profile.security.noVerifications')}</div>
             )}
             <div className="text-xs text-muted-foreground pt-2">
-              Estado actual: {user.emailVerified ? `Verificado (${fmtDate(user.emailVerified)})` : 'No verificado'}
+              {t('profile.security.currentStatus')}: {user.emailVerified ? `${t('profile.security.verified')} (${fmtDate(user.emailVerified, locale, naText)})` : t('profile.security.notVerified')}
             </div>
           </CardContent>
         </Card>

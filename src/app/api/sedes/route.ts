@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
+import { checkPlanLimit } from '@/lib/plan-limits'
 import { ModuleKey } from '@prisma/client'
 
 export const runtime = 'nodejs'
@@ -23,6 +24,11 @@ export async function GET() {
 export async function POST(request: Request) {
   const access = await requireApiAccess(ModuleKey.CONFIG, 'WRITE')
   if (!access.ok) return access.response
+
+  const limit = await checkPlanLimit(access.empresaId, 'SEDES_MAX')
+  if (!limit.ok) {
+    return NextResponse.json(limit, { status: 402 })
+  }
 
   const body = (await request.json().catch(() => null)) as { nombre?: unknown; codigo?: unknown } | null
   const nombre = typeof body?.nombre === 'string' ? body.nombre.trim() : ''

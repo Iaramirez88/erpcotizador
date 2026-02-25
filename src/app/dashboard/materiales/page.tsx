@@ -24,6 +24,7 @@ import { formatCurrency, formatUnidadMedidaLabel } from "@/lib/utils"
 
 interface Material {
   id: string
+  externalId?: string | null
   nombre: string
   tipo: string
   categoria?: string | null
@@ -68,6 +69,12 @@ type ProveedorLite = {
   nit?: string | null
 }
 
+type SedeLite = {
+  id: string
+  nombre: string
+  codigo: string | null
+}
+
 const TIPOS_MATERIAL = [
   { value: "VINILO", label: "Vinilo" },
   { value: "LONA", label: "Lona" },
@@ -103,10 +110,28 @@ const UNIDADES_MEDIDA = [
 export default function ProductosPage() {
   const [materiales, setMateriales] = useState<Material[]>([])
   const [bodegas, setBodegas] = useState<Bodega[]>([])
+  const [bodegasFiltroList, setBodegasFiltroList] = useState<Bodega[]>([])
+  const [sedes, setSedes] = useState<SedeLite[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [tipoFiltro, setTipoFiltro] = useState("")
   const [unidadFiltro, setUnidadFiltro] = useState("")
+  const [sortFiltro, setSortFiltro] = useState<'nameAsc' | 'mostSold' | 'stockDesc' | 'mostQuoted' | 'createdDesc' | 'createdAsc' | 'costDesc' | 'costAsc'>('nameAsc')
+  const [sedeFiltro, setSedeFiltro] = useState("")
+  const [bodegaFiltro, setBodegaFiltro] = useState("")
+  const [categoriaFiltro, setCategoriaFiltro] = useState("")
+  const [proveedorFiltro, setProveedorFiltro] = useState("")
+  const [descuentoFiltro, setDescuentoFiltro] = useState<'all' | 'true' | 'false'>('all')
+  const [costoMinFiltro, setCostoMinFiltro] = useState("")
+  const [costoMaxFiltro, setCostoMaxFiltro] = useState("")
+  const [precioMinFiltro, setPrecioMinFiltro] = useState("")
+  const [precioMaxFiltro, setPrecioMaxFiltro] = useState("")
+  const [stockMinFiltro, setStockMinFiltro] = useState("")
+  const [stockMaxFiltro, setStockMaxFiltro] = useState("")
+  const [createdFromFiltro, setCreatedFromFiltro] = useState("")
+  const [createdToFiltro, setCreatedToFiltro] = useState("")
+  const [isExportOpen, setIsExportOpen] = useState(false)
+  const [exportPeriodo, setExportPeriodo] = useState<'' | 'day' | 'week' | 'month' | 'quarter'>('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -124,6 +149,7 @@ export default function ProductosPage() {
   const [proveedorError, setProveedorError] = useState("")
   
   const [formData, setFormData] = useState({
+    externalId: "",
     nombre: "",
     tipo: "VINILO",
     categoria: "",
@@ -186,6 +212,76 @@ export default function ProductosPage() {
   }, [isModalOpen])
 
   useEffect(() => {
+    let cancelled = false
+    const loadBodegas = async () => {
+      try {
+        const res = await fetch('/api/bodegas', { cache: 'no-store' })
+        const json = (await res.json().catch(() => ({}))) as { success?: boolean; data?: Bodega[] }
+        if (!cancelled && res.ok && json.success && Array.isArray(json.data)) {
+          setBodegas(json.data)
+        }
+      } catch {
+        // noop
+      }
+    }
+
+    void loadBodegas()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadSedes = async () => {
+      try {
+        const res = await fetch('/api/sedes', { cache: 'no-store' })
+        const json = (await res.json().catch(() => ({}))) as { success?: boolean; data?: Array<{ id: string; nombre: string; codigo: string | null }> }
+        if (!cancelled && res.ok && json.success && Array.isArray(json.data)) {
+          setSedes(json.data.map((s) => ({ id: s.id, nombre: s.nombre, codigo: s.codigo ?? null })))
+        }
+      } catch {
+        // noop
+      }
+    }
+
+    void loadSedes()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadBodegasFiltro = async () => {
+      try {
+        const url = new URL('/api/bodegas', window.location.origin)
+        if (sedeFiltro) url.searchParams.set('sedeId', sedeFiltro)
+        const res = await fetch(url.toString(), { cache: 'no-store' })
+        const json = (await res.json().catch(() => ({}))) as { success?: boolean; data?: Bodega[] }
+        if (!cancelled && res.ok && json.success && Array.isArray(json.data)) {
+          setBodegasFiltroList(json.data)
+        } else if (!cancelled) {
+          setBodegasFiltroList([])
+        }
+      } catch {
+        if (!cancelled) setBodegasFiltroList([])
+      }
+    }
+
+    void loadBodegasFiltro()
+    return () => {
+      cancelled = true
+    }
+  }, [sedeFiltro])
+
+  useEffect(() => {
+    if (!bodegaFiltro) return
+    const exists = bodegasFiltroList.some((b) => b.id === bodegaFiltro)
+    if (!exists) setBodegaFiltro("")
+  }, [bodegaFiltro, bodegasFiltroList])
+
+  useEffect(() => {
     if (!isModalOpen) return
     if (editingMaterial) return
     if (formData.warehouseId) return
@@ -218,15 +314,49 @@ export default function ProductosPage() {
   useEffect(() => {
     fetchMateriales()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, tipoFiltro, unidadFiltro])
+  }, [search, tipoFiltro, unidadFiltro, sortFiltro, sedeFiltro, bodegaFiltro, categoriaFiltro, proveedorFiltro, descuentoFiltro, costoMinFiltro, costoMaxFiltro, precioMinFiltro, precioMaxFiltro, stockMinFiltro, stockMaxFiltro, createdFromFiltro, createdToFiltro])
 
   const exportExcel = () => {
     const params = new URLSearchParams()
     if (search) params.set('search', search)
     if (tipoFiltro) params.set('tipo', tipoFiltro)
     if (unidadFiltro) params.set('unidadMedida', unidadFiltro)
+    if (sortFiltro && sortFiltro !== 'nameAsc') params.set('sort', sortFiltro)
+    if (sedeFiltro) params.set('sedeId', sedeFiltro)
+    if (bodegaFiltro) params.set('warehouseId', bodegaFiltro)
+    if (categoriaFiltro) params.set('categoria', categoriaFiltro)
+    if (proveedorFiltro) params.set('proveedor', proveedorFiltro)
+    if (descuentoFiltro !== 'all') params.set('withDiscount', descuentoFiltro)
+    if (costoMinFiltro) params.set('costoMin', costoMinFiltro)
+    if (costoMaxFiltro) params.set('costoMax', costoMaxFiltro)
+    if (precioMinFiltro) params.set('precioMin', precioMinFiltro)
+    if (precioMaxFiltro) params.set('precioMax', precioMaxFiltro)
+    if (stockMinFiltro) params.set('stockMin', stockMinFiltro)
+    if (stockMaxFiltro) params.set('stockMax', stockMaxFiltro)
+    if (createdFromFiltro) params.set('createdFrom', createdFromFiltro)
+    if (createdToFiltro) params.set('createdTo', createdToFiltro)
     const url = params.toString() ? `/api/materiales/export?${params.toString()}` : '/api/materiales/export'
     window.location.href = url
+  }
+
+  const formatLocalDateInput = (date: Date) => {
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+
+  const applyExportPeriod = (period: '' | 'day' | 'week' | 'month' | 'quarter') => {
+    setExportPeriodo(period)
+    if (!period) return
+    const now = new Date()
+    const to = formatLocalDateInput(now)
+    const days = period === 'day' ? 0 : period === 'week' ? 7 : period === 'month' ? 30 : 90
+    const fromDate = new Date(now)
+    fromDate.setDate(fromDate.getDate() - days)
+    const from = formatLocalDateInput(fromDate)
+    setCreatedFromFiltro(from)
+    setCreatedToFiltro(to)
   }
 
   useEffect(() => {
@@ -305,12 +435,26 @@ export default function ProductosPage() {
   const fetchMateriales = async () => {
     setIsLoading(true)
     try {
-      let url = '/api/materiales?'
-      if (search) url += `search=${encodeURIComponent(search)}&`
-      if (tipoFiltro) url += `tipo=${tipoFiltro}&`
-      if (unidadFiltro) url += `unidadMedida=${encodeURIComponent(unidadFiltro)}&`
+      const url = new URL('/api/materiales', window.location.origin)
+      if (search) url.searchParams.set('search', search)
+      if (tipoFiltro) url.searchParams.set('tipo', tipoFiltro)
+      if (unidadFiltro) url.searchParams.set('unidadMedida', unidadFiltro)
+      if (sortFiltro && sortFiltro !== 'nameAsc') url.searchParams.set('sort', sortFiltro)
+      if (sedeFiltro) url.searchParams.set('sedeId', sedeFiltro)
+      if (bodegaFiltro) url.searchParams.set('warehouseId', bodegaFiltro)
+      if (categoriaFiltro) url.searchParams.set('categoria', categoriaFiltro)
+      if (proveedorFiltro) url.searchParams.set('proveedor', proveedorFiltro)
+      if (descuentoFiltro !== 'all') url.searchParams.set('withDiscount', descuentoFiltro)
+      if (costoMinFiltro) url.searchParams.set('costoMin', costoMinFiltro)
+      if (costoMaxFiltro) url.searchParams.set('costoMax', costoMaxFiltro)
+      if (precioMinFiltro) url.searchParams.set('precioMin', precioMinFiltro)
+      if (precioMaxFiltro) url.searchParams.set('precioMax', precioMaxFiltro)
+      if (stockMinFiltro) url.searchParams.set('stockMin', stockMinFiltro)
+      if (stockMaxFiltro) url.searchParams.set('stockMax', stockMaxFiltro)
+      if (createdFromFiltro) url.searchParams.set('createdFrom', createdFromFiltro)
+      if (createdToFiltro) url.searchParams.set('createdTo', createdToFiltro)
       
-      const response = await fetch(url)
+      const response = await fetch(url.toString())
       const data = await response.json()
       
       if (data.success) {
@@ -399,6 +543,7 @@ export default function ProductosPage() {
     )
 
     setFormData({
+      externalId: "",
       nombre: `${material.nombre} (copia)`,
       tipo: material.tipo,
       categoria: material.categoria ?? "",
@@ -425,6 +570,7 @@ export default function ProductosPage() {
   const handleEdit = (material: Material) => {
     setEditingMaterial(material)
     setFormData({
+      externalId: material.externalId ?? "",
       nombre: material.nombre,
       tipo: material.tipo,
       categoria: material.categoria || "",
@@ -488,6 +634,7 @@ export default function ProductosPage() {
     setProveedorCreateSaving(false)
     setProveedorError("")
     setFormData({
+      externalId: "",
       nombre: "",
       tipo: "VINILO",
       categoria: "",
@@ -582,7 +729,7 @@ export default function ProductosPage() {
           <span data-tour="materiales-import">
             <ImportDialog module="materiales" title="Importar productos" />
           </span>
-          <Button variant="outline" onClick={exportExcel}>
+          <Button variant="outline" onClick={() => setIsExportOpen(true)}>
             Exportar Excel
           </Button>
           <Button onClick={() => { resetForm(); setIsModalOpen(true) }} data-tour="materiales-new">
@@ -594,39 +741,335 @@ export default function ProductosPage() {
         </div>
       </div>
 
+      {/* Modal de exportación */}
+      <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Exportar productos</DialogTitle>
+            <DialogDescription>Aplica un periodo o un rango para la descarga.</DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto pr-1">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1">
+                  <Label>Sede</Label>
+                  <select
+                    value={sedeFiltro}
+                    onChange={(e) => setSedeFiltro(e.target.value)}
+                    className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  >
+                    <option value="">Sede activa</option>
+                    {sedes.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.nombre}{s.codigo ? ` (${s.codigo})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <Label>Bodega</Label>
+                  <select
+                    value={bodegaFiltro}
+                    onChange={(e) => setBodegaFiltro(e.target.value)}
+                    className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  >
+                    <option value="">Todas las bodegas</option>
+                    {bodegasFiltroList.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Periodo</Label>
+                <select
+                  value={exportPeriodo}
+                  onChange={(e) => applyExportPeriod(e.target.value as ('' | 'day' | 'week' | 'month' | 'quarter'))}
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value="">Sin periodo</option>
+                  <option value="day">1 día</option>
+                  <option value="week">1 semana</option>
+                  <option value="month">1 mes</option>
+                  <option value="quarter">Trimestral</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1">
+                  <Label>Creado desde</Label>
+                  <Input
+                    type="date"
+                    value={createdFromFiltro}
+                    onChange={(e) => {
+                      setExportPeriodo('')
+                      setCreatedFromFiltro(e.target.value)
+                    }}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Creado hasta</Label>
+                  <Input
+                    type="date"
+                    value={createdToFiltro}
+                    onChange={(e) => {
+                      setExportPeriodo('')
+                      setCreatedToFiltro(e.target.value)
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1">
+                  <Label>Precio min</Label>
+                  <Input
+                    placeholder="Precio min"
+                    value={precioMinFiltro}
+                    onChange={(e) => setPrecioMinFiltro(e.target.value)}
+                    inputMode="decimal"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Precio max</Label>
+                  <Input
+                    placeholder="Precio max"
+                    value={precioMaxFiltro}
+                    onChange={(e) => setPrecioMaxFiltro(e.target.value)}
+                    inputMode="decimal"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <div className="space-y-1">
+                  <Label>Stock min</Label>
+                  <Input
+                    placeholder="Stock min"
+                    value={stockMinFiltro}
+                    onChange={(e) => setStockMinFiltro(e.target.value)}
+                    inputMode="decimal"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Stock max</Label>
+                  <Input
+                    placeholder="Stock max"
+                    value={stockMaxFiltro}
+                    onChange={(e) => setStockMaxFiltro(e.target.value)}
+                    inputMode="decimal"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Categoría</Label>
+                <Input
+                  list="export-categorias-sugeridas"
+                  placeholder="Categoría"
+                  value={categoriaFiltro}
+                  onChange={(e) => setCategoriaFiltro(e.target.value)}
+                />
+                <datalist id="export-categorias-sugeridas">
+                  {CATEGORIAS_SUGERIDAS.map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsExportOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                exportExcel()
+                setIsExportOpen(false)
+              }}
+            >
+              Descargar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Filtros */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <Input
-                data-tour="materiales-search"
-                placeholder="Buscar producto..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <select
-              value={tipoFiltro}
-              onChange={(e) => setTipoFiltro(e.target.value)}
-              className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-            >
-              <option value="">Todos los tipos</option>
-              {TIPOS_MATERIAL.map(tipo => (
-                <option key={tipo.value} value={tipo.value}>{tipo.label}</option>
-              ))}
-            </select>
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-3">
+              <div className="flex-1 min-w-[240px]">
+                <Input
+                  data-tour="materiales-search"
+                  placeholder="Buscar producto..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
 
-            <select
-              value={unidadFiltro}
-              onChange={(e) => setUnidadFiltro(e.target.value)}
-              className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-            >
-              <option value="">Todas las unidades</option>
-              {UNIDADES_MEDIDA.map((u) => (
-                <option key={u.value} value={u.value}>{u.label}</option>
-              ))}
-            </select>
+              <select
+                value={tipoFiltro}
+                onChange={(e) => setTipoFiltro(e.target.value)}
+                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+              >
+                <option value="">Todos los tipos</option>
+                {TIPOS_MATERIAL.map(tipo => (
+                  <option key={tipo.value} value={tipo.value}>{tipo.label}</option>
+                ))}
+              </select>
+
+              <select
+                value={unidadFiltro}
+                onChange={(e) => setUnidadFiltro(e.target.value)}
+                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+              >
+                <option value="">Todas las unidades</option>
+                {UNIDADES_MEDIDA.map((u) => (
+                  <option key={u.value} value={u.value}>{u.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <select
+                value={sortFiltro}
+                onChange={(e) => setSortFiltro(e.target.value as typeof sortFiltro)}
+                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+              >
+                <option value="nameAsc">Orden: Nombre</option>
+                <option value="mostSold">Más vendido</option>
+                <option value="mostQuoted">Más cotizado</option>
+                <option value="stockDesc">Mayor stock</option>
+                <option value="createdDesc">Más reciente</option>
+                <option value="createdAsc">Más antiguo</option>
+                <option value="costDesc">Mayor costo</option>
+                <option value="costAsc">Menor costo</option>
+              </select>
+
+              <select
+                value={sedeFiltro}
+                onChange={(e) => setSedeFiltro(e.target.value)}
+                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+              >
+                <option value="">Sede: activa</option>
+                {sedes.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nombre}{s.codigo ? ` (${s.codigo})` : ''}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={bodegaFiltro}
+                onChange={(e) => setBodegaFiltro(e.target.value)}
+                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+              >
+                <option value="">Todas las bodegas</option>
+                {bodegasFiltroList.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.nombre}
+                  </option>
+                ))}
+              </select>
+
+              <Input
+                placeholder="Proveedor"
+                value={proveedorFiltro}
+                onChange={(e) => setProveedorFiltro(e.target.value)}
+                className="h-9 w-[180px]"
+              />
+
+              <Input
+                placeholder="Categoría"
+                value={categoriaFiltro}
+                onChange={(e) => setCategoriaFiltro(e.target.value)}
+                className="h-9 w-[180px]"
+              />
+
+              <select
+                value={descuentoFiltro}
+                onChange={(e) => setDescuentoFiltro(e.target.value as typeof descuentoFiltro)}
+                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+              >
+                <option value="all">Descuento: Todos</option>
+                <option value="true">Con descuento</option>
+                <option value="false">Sin descuento</option>
+              </select>
+
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Costo min"
+                  value={costoMinFiltro}
+                  onChange={(e) => setCostoMinFiltro(e.target.value)}
+                  className="h-9 w-[110px]"
+                  inputMode="decimal"
+                />
+                <Input
+                  placeholder="Costo max"
+                  value={costoMaxFiltro}
+                  onChange={(e) => setCostoMaxFiltro(e.target.value)}
+                  className="h-9 w-[110px]"
+                  inputMode="decimal"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Precio min"
+                  value={precioMinFiltro}
+                  onChange={(e) => setPrecioMinFiltro(e.target.value)}
+                  className="h-9 w-[110px]"
+                  inputMode="decimal"
+                />
+                <Input
+                  placeholder="Precio max"
+                  value={precioMaxFiltro}
+                  onChange={(e) => setPrecioMaxFiltro(e.target.value)}
+                  className="h-9 w-[110px]"
+                  inputMode="decimal"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Stock min"
+                  value={stockMinFiltro}
+                  onChange={(e) => setStockMinFiltro(e.target.value)}
+                  className="h-9 w-[110px]"
+                  inputMode="decimal"
+                />
+                <Input
+                  placeholder="Stock max"
+                  value={stockMaxFiltro}
+                  onChange={(e) => setStockMaxFiltro(e.target.value)}
+                  className="h-9 w-[110px]"
+                  inputMode="decimal"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  value={createdFromFiltro}
+                  onChange={(e) => setCreatedFromFiltro(e.target.value)}
+                  className="h-9"
+                />
+                <Input
+                  type="date"
+                  value={createdToFiltro}
+                  onChange={(e) => setCreatedToFiltro(e.target.value)}
+                  className="h-9"
+                />
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -655,6 +1098,7 @@ export default function ProductosPage() {
                 ].filter(Boolean).join(" • ")
 
                 const wh = material.stocks?.[0]?.warehouse ?? null
+                const stockForView = bodegaFiltro ? (material.stocks?.[0]?.quantity ?? 0) : material.stockActual
 
                 return (
                   <div key={material.id} className={`px-4 py-3 ${!material.activo ? "opacity-60" : ""}`}>
@@ -689,9 +1133,9 @@ export default function ProductosPage() {
                             {getPrecioDisplay(material)}
                           </div>
                           <div
-                            className={`text-xs whitespace-nowrap ${material.stockActual <= material.stockMinimo ? "text-red-600 font-medium" : "text-muted-foreground"}`}
+                            className={`text-xs whitespace-nowrap ${stockForView <= material.stockMinimo ? "text-red-600 font-medium" : "text-muted-foreground"}`}
                           >
-                            Stock: {material.stockActual} {formatUnidadMedidaLabel(material.unidadMedida)}
+                            Stock: {stockForView} {formatUnidadMedidaLabel(material.unidadMedida)}
                           </div>
                           <div className="text-xs whitespace-nowrap text-muted-foreground">
                             Bodega: {wh ? `${wh.nombre}${wh.isDefault ? ' (Principal)' : ''}` : '—'}
@@ -761,6 +1205,20 @@ export default function ProductosPage() {
                   required
                   placeholder="Ej: Vinilo Adhesivo Blanco 3M"
                 />
+              </div>
+
+              {/* Código/ID externo */}
+              <div className="col-span-2">
+                <Label htmlFor="externalId">Código/ID externo (Caja)</Label>
+                <Input
+                  id="externalId"
+                  value={formData.externalId}
+                  onChange={(e) => setFormData({ ...formData, externalId: e.target.value })}
+                  placeholder="Ej: 12345 / SKU-001"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Opcional. Útil para mapear con tu sistema de caja.
+                </p>
               </div>
 
               {/* Tipo de producto (metraje vs físico) */}

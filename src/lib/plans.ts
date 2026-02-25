@@ -1,4 +1,4 @@
-export type PlanTier = 'BASIC' | 'MEDIO' | 'INTERMEDIO' | 'FULL'
+export type PlanTier = 'BASIC' | 'INTERMEDIO' | 'FULL'
 
 export type BillingCycle = 'MONTHLY' | 'YEARLY'
 
@@ -13,26 +13,20 @@ export const PLANES: PlanInfo[] = [
   {
     tier: 'BASIC',
     nombre: 'Básico',
-    descripcion: 'Lo esencial para empezar.',
-    precioMensualCOP: 99000,
-  },
-  {
-    tier: 'MEDIO',
-    nombre: 'Medio',
-    descripcion: 'Operación diaria organizada.',
-    precioMensualCOP: 199000,
+    descripcion: 'Ideal para comenzar. Incluye 100 reportes, 100 remisiones, 100 órdenes de trabajo, 50 proveedores, 500 clientes, 200 productos, 1 sede, 2 usuarios, 300 cotizaciones/mes. Sin límite en Litografía, Escaneos y Terminados.',
+    precioMensualCOP: 750000,
   },
   {
     tier: 'INTERMEDIO',
     nombre: 'Intermedio',
-    descripcion: 'Control real de la empresa.',
-    precioMensualCOP: 299000,
+    descripcion: 'Todo ilimitado excepto: 6 sedes, 10 usuarios, 8.000 clientes, 5.000 cotizaciones/mes.',
+    precioMensualCOP: 1650000,
   },
   {
     tier: 'FULL',
     nombre: 'Full',
-    descripcion: 'Escala sin límites.',
-    precioMensualCOP: 399000,
+    descripcion: 'Sin límites. Todas las funcionalidades y módulos habilitados.',
+    precioMensualCOP: 2400000,
   },
 ]
 
@@ -56,14 +50,14 @@ export function getDefaultPlanTier(): PlanTier {
   return 'BASIC'
 }
 
-export function formatCOP(value: number): string {
+export function formatCOP(value: number, locale: string = 'es-CO'): string {
   try {
-    return new Intl.NumberFormat('es-CO', {
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: 'COP',
       maximumFractionDigits: 0,
     }).format(value)
   } catch {
-    return `$${Math.round(value).toLocaleString('es-CO')}`
+    return `$${Math.round(value).toLocaleString(locale)}`
   }
 }

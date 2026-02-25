@@ -17,39 +17,29 @@ type PlanDetails = {
 
 const PLAN_DETAILS: Record<PlanTier, PlanDetails> = {
   BASIC: {
-    tagline: '“Lo esencial para empezar”',
+    tagline: '“Ideal para comenzar”',
     forWho: 'Para emprendedores y equipos pequeños.',
     incluye: [
-      { title: '📊 Centro de Control', items: ['Dashboard'] },
-      { title: '💰 Comercial', items: ['Cotizador', 'Cotizaciones', 'Clientes'] },
-      { title: '📦 Logística', items: ['Inventario'] },
+      { title: '📊 Centro de Control', items: ['Dashboard', 'Reportes (100)'] },
+      { title: '💰 Comercial', items: ['Cotizador', 'Cotizaciones (300/mes)', 'Remisiones (100)', 'Clientes (500)'] },
+      { title: '🏭 Operaciones', items: ['Órdenes de Trabajo (100)', 'Litografía (sin límite)', 'Escaneos (sin límite)', 'Terminados (sin límite)'] },
+      { title: '📦 Logística', items: ['Inventario', 'Proveedores (50)', 'Productos (200)'] },
+      { title: '⚙️ Gestión', items: ['1 sede', '2 usuarios'] },
       { title: '🛠 Preferencias', items: ['Mi perfil', 'Notificaciones'] },
     ],
-    alcance: ['1 sede', '2 usuarios', '500 clientes', '300 cotizaciones / mes'],
-  },
-  MEDIO: {
-    tagline: '“Operación diaria organizada”',
-    forWho: 'Para negocios con flujo constante.',
-    incluye: [
-      { title: 'Incluye todo el Básico +', items: [] },
-      { title: '📊 Centro de Control', items: ['Reportes'] },
-      { title: '💰 Comercial', items: ['POS', 'Remisiones'] },
-      { title: '🏭 Operaciones', items: ['Órdenes de Trabajo'] },
-      { title: '📦 Logística', items: ['Compras', 'Proveedores'] },
-      { title: '⚙️ Gestión', items: ['Sedes'] },
-    ],
-    alcance: ['3 sedes', '5 usuarios', '2.000 clientes', '1.500 cotizaciones / mes'],
+    alcance: ['1 sede', '2 usuarios', '500 clientes', '300 cotizaciones / mes', 'Litografía, Escaneos y Terminados sin límite'],
   },
   INTERMEDIO: {
     tagline: '“Control real de la empresa”',
     forWho: 'Para equipos en crecimiento.',
     incluye: [
-      { title: 'Incluye todo el Medio +', items: [] },
-      { title: '💰 Comercial', items: ['Facturación'] },
-      { title: '🏭 Operaciones', items: ['Litografía', 'Escaneos', 'Terminados'] },
-      { title: '📦 Logística', items: ['Traslados', 'Desperdicios'] },
-      { title: '⚙️ Gestión', items: ['Usuarios'] },
-      { title: '📊 Centro de Control', items: ['Reportes avanzados'] },
+      { title: 'Incluye todo el Básico +', items: [] },
+      { title: '📊 Centro de Control', items: ['Reportes ilimitados'] },
+      { title: '💰 Comercial', items: ['POS', 'Remisiones ilimitadas', 'Facturación', 'Cotizaciones (5.000/mes)', 'Clientes (8.000)'] },
+      { title: '🏭 Operaciones', items: ['Órdenes de Trabajo ilimitadas', 'Litografía, Escaneos y Terminados ilimitados'] },
+      { title: '📦 Logística', items: ['Inventario', 'Proveedores ilimitados', 'Productos ilimitados', 'Compras', 'Traslados', 'Desperdicios'] },
+      { title: '⚙️ Gestión', items: ['6 sedes', '10 usuarios'] },
+      { title: '🛠 Preferencias', items: ['Mi perfil', 'Notificaciones', 'Usuarios'] },
     ],
     alcance: ['6 sedes', '10 usuarios', '8.000 clientes', '5.000 cotizaciones / mes'],
   },
@@ -58,9 +48,12 @@ const PLAN_DETAILS: Record<PlanTier, PlanDetails> = {
     forWho: 'Para empresas con operación completa.',
     incluye: [
       { title: 'Incluye todo +', items: [] },
-      { title: '⚙️ Gestión', items: ['Permisos', 'Empresa', 'Plan'] },
+      { title: '⚙️ Gestión', items: ['Permisos', 'Empresa', 'Plan', 'Usuarios ilimitados', 'Sedes ilimitadas'] },
       { title: '🛠 Preferencias', items: ['Personalizar menú', 'Configuración', 'Ayuda'] },
-      { title: '📊 Centro de Control', items: ['KPIs por sede'] },
+      { title: '📊 Centro de Control', items: ['KPIs por sede', 'Reportes avanzados'] },
+      { title: '💰 Comercial', items: ['Todo ilimitado'] },
+      { title: '🏭 Operaciones', items: ['Todo ilimitado'] },
+      { title: '📦 Logística', items: ['Todo ilimitado'] },
     ],
     alcance: ['Sedes ilimitadas', 'Usuarios ilimitados', 'Clientes ilimitados', 'Cotizaciones ilimitadas'],
   },
@@ -227,7 +220,7 @@ export default function PlanPage() {
   }, [])
 
   const sortedPlans = useMemo(() => {
-    const order: PlanTier[] = ["BASIC", "MEDIO", "INTERMEDIO", "FULL"]
+    const order: PlanTier[] = ["BASIC", "INTERMEDIO", "FULL"]
     return [...all].sort((a, b) => order.indexOf(a.tier) - order.indexOf(b.tier))
   }, [all])
 

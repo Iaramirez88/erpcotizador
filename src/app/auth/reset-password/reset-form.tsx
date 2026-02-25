@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 export default function ResetForm({ token }: { token: string }) {
+  const { t } = useI18n()
   const router = useRouter()
 
   const [password, setPassword] = useState("")
@@ -25,13 +27,13 @@ export default function ResetForm({ token }: { token: string }) {
 
     if (!token) {
       setIsLoading(false)
-      setError("Falta el token. Solicita un nuevo enlace.")
+      setError(t('auth.reset.errors.missingToken'))
       return
     }
 
     if (password !== confirmPassword) {
       setIsLoading(false)
-      setError("Las contraseñas no coinciden")
+      setError(t('auth.reset.errors.passwordMismatch'))
       return
     }
 
@@ -45,15 +47,15 @@ export default function ResetForm({ token }: { token: string }) {
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data?.error || "No se pudo restablecer")
+        throw new Error(data?.error || t('auth.reset.errors.resetFailed'))
       }
 
-      setMessage("Contraseña actualizada. Ya puedes iniciar sesión.")
+      setMessage(t('auth.reset.success'))
       setTimeout(() => {
         router.push("/auth/login")
       }, 1000)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Ocurrió un error")
+      setError(err instanceof Error ? err.message : t('auth.common.genericError'))
     } finally {
       setIsLoading(false)
     }
@@ -62,9 +64,9 @@ export default function ResetForm({ token }: { token: string }) {
   return (
     <Card className="w-full max-w-md border-0 shadow-sm">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl text-center">Nueva contraseña</CardTitle>
+          <CardTitle className="text-2xl text-center">{t('auth.reset.title')}</CardTitle>
           <CardDescription className="text-center">
-            Crea una contraseña segura para tu cuenta
+            {t('auth.reset.description')}
           </CardDescription>
         </CardHeader>
         <form onSubmit={onSubmit}>
@@ -82,16 +84,16 @@ export default function ResetForm({ token }: { token: string }) {
 
             {!token && (
               <div className="bg-yellow-50 border border-yellow-200 text-yellow-900 px-4 py-3 rounded-md text-sm">
-                Este enlace no es válido. Solicita un nuevo restablecimiento.
+                {t('auth.reset.invalidLink')}
               </div>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="sr-only">Contraseña</Label>
+              <Label htmlFor="password" className="sr-only">{t('auth.fields.password')}</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="Nueva contraseña"
+                placeholder={t('auth.reset.placeholders.newPassword')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -101,11 +103,11 @@ export default function ResetForm({ token }: { token: string }) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword" className="sr-only">Confirmar contraseña</Label>
+              <Label htmlFor="confirmPassword" className="sr-only">{t('auth.fields.confirmPassword')}</Label>
               <Input
                 id="confirmPassword"
                 type="password"
-                placeholder="Confirmar contraseña"
+                placeholder={t('auth.reset.placeholders.confirmPassword')}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
@@ -117,11 +119,11 @@ export default function ResetForm({ token }: { token: string }) {
 
           <CardFooter className="flex flex-col gap-3">
             <Button type="submit" className="w-full" disabled={isLoading || !token}>
-              {isLoading ? "Guardando..." : "Guardar contraseña"}
+              {isLoading ? t('auth.reset.saving') : t('auth.reset.submit')}
             </Button>
             <div className="text-sm text-center text-gray-600">
               <Link href="/auth/forgot-password" className="text-blue-600 hover:underline font-medium">
-                Volver a solicitar enlace
+                {t('auth.reset.backToRequestLink')}
               </Link>
             </div>
           </CardFooter>

@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { useI18n } from '@/components/providers/i18n-provider'
 
 type CompraItem = {
   id?: string
@@ -69,8 +70,8 @@ function n(value: unknown, fallback = 0) {
   return Number.isFinite(num) ? num : fallback
 }
 
-function formatCOP(value: number) {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(
+function formatCOP(value: number, locale: string) {
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(
     n(value, 0)
   )
 }
@@ -98,10 +99,28 @@ function computeTotals(items: CompraItem[]) {
 }
 
 export default function ComprasPage() {
+  const { t, language } = useI18n()
+  const locale = language === 'en' ? 'en-US' : 'es-CO'
+  const naText = t('common.na')
+
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
   const [compras, setCompras] = useState<Compra[]>([])
+
+  function paymentMethodLabel(method: CompraPago['metodo'] | string): string {
+    if (method === 'TRANSFER') return t('purchases.payments.method.transfer')
+    if (method === 'CASH') return t('purchases.payments.method.cash')
+    if (method === 'CARD') return t('purchases.payments.method.card')
+    if (method === 'OTHER') return t('purchases.payments.method.other')
+    return String(method)
+  }
+
+  function paymentStatusLabel(summary: { pagado: number; saldo: number }): string {
+    if (summary.pagado <= 0) return t('purchases.payments.status.due')
+    if (summary.saldo > 0) return t('purchases.payments.status.partial')
+    return t('purchases.payments.status.paid')
+  }
 
   const [pagoOpen, setPagoOpen] = useState(false)
   const [pagoCompra, setPagoCompra] = useState<Compra | null>(null)
@@ -170,11 +189,11 @@ export default function ComprasPage() {
     try {
       const res = await fetch(`/api/compras/${compra.id}/pagos`)
       const json = await res.json().catch(() => null)
-      if (!res.ok || !json?.success) throw new Error(json?.error ?? 'No se pudieron cargar los pagos')
+      if (!res.ok || !json?.success) throw new Error(json?.error ?? t('purchases.payments.errors.loadFailed'))
       setPagos((json.data?.pagos ?? []) as CompraPago[])
       setPagoSummary({ pagado: n(json.data?.pagado, 0), saldo: n(json.data?.saldo, 0) })
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error')
+      alert(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setPagoLoading(false)
     }
@@ -184,7 +203,7 @@ export default function ComprasPage() {
     if (!pagoCompra) return
     const monto = n(pagoForm.monto, 0)
     if (!monto || monto <= 0) {
-      alert('Monto inválido')
+      alert(t('purchases.payments.errors.invalidAmount'))
       return
     }
     setPagoLoading(true)
@@ -218,13 +237,13 @@ export default function ComprasPage() {
             }
       )
       const json = await res.json().catch(() => null)
-      if (!res.ok || !json?.success) throw new Error(json?.error ?? 'No se pudo registrar el pago')
+      if (!res.ok || !json?.success) throw new Error(json?.error ?? t('purchases.payments.errors.registerFailed'))
       setPagos((json.data?.pagos ?? []) as CompraPago[])
       setPagoSummary({ pagado: n(json.data?.pagado, 0), saldo: n(json.data?.saldo, 0) })
       setPagoForm((prev) => ({ ...prev, monto: '', referencia: '', observaciones: '', soporteFile: null }))
       await load()
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error')
+      alert(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setPagoLoading(false)
     }
@@ -290,7 +309,7 @@ export default function ComprasPage() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => null)
-        throw new Error(err?.error ?? 'No se pudo crear la compra')
+        throw new Error(err?.error ?? t('purchases.errors.createFailed'))
       }
 
       setProveedorNombre('')
@@ -305,7 +324,7 @@ export default function ComprasPage() {
       setItems([{ descripcion: '', cantidad: 1, precioUnitario: 0, descuento: 0, iva: 0 }])
       await load()
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error')
+      alert(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setSaving(false)
     }
@@ -320,25 +339,25 @@ export default function ComprasPage() {
       })
       if (!res.ok) {
         const err = await res.json().catch(() => null)
-        throw new Error(err?.error ?? 'No se pudo actualizar')
+        throw new Error(err?.error ?? t('purchases.errors.updateFailed'))
       }
       await load()
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error')
+      alert(e instanceof Error ? e.message : t('common.unexpectedError'))
     }
   }
 
   async function deleteCompra(compra: Compra) {
-    if (!confirm('¿Eliminar esta compra?')) return
+    if (!confirm(t('purchases.confirm.deletePurchase'))) return
     try {
       const res = await fetch(`/api/compras/${compra.id}`, { method: 'DELETE' })
       if (!res.ok) {
         const err = await res.json().catch(() => null)
-        throw new Error(err?.error ?? 'No se pudo eliminar')
+        throw new Error(err?.error ?? t('purchases.errors.deleteFailed'))
       }
       await load()
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error')
+      alert(e instanceof Error ? e.message : t('common.unexpectedError'))
     }
   }
 
@@ -346,74 +365,74 @@ export default function ComprasPage() {
     <div className="p-8 space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Compras</h1>
-          <p className="text-muted-foreground mt-1">Registro de compras con ítems, IVA, descuentos y autorización.</p>
+          <h1 className="text-3xl font-bold">{t('purchases.title')}</h1>
+          <p className="text-muted-foreground mt-1">{t('purchases.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
-          <ImportDialog module="compras" title="Importar compras" />
+          <ImportDialog module="compras" title={t('purchases.actions.import')} />
           <Button variant="outline" onClick={exportExcel}>
-            Exportar Excel
+            {t('purchases.actions.exportExcel')}
           </Button>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Nueva compra</CardTitle>
-          <CardDescription>Mínimos: fecha, proveedor, quien recibe, totales, sede y detalle.</CardDescription>
+          <CardTitle>{t('purchases.new.title')}</CardTitle>
+          <CardDescription>{t('purchases.new.description')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-2">
-              <Label>Fecha de compra</Label>
+              <Label>{t('purchases.fields.purchaseDate')}</Label>
               <Input type="date" value={fechaCompra} onChange={(e) => setFechaCompra(e.target.value)} />
             </div>
             <div className="space-y-2 lg:col-span-2">
-              <Label>Proveedor (nombre)</Label>
-              <Input value={proveedorNombre} onChange={(e) => setProveedorNombre(e.target.value)} placeholder="Proveedor S.A.S" />
+              <Label>{t('purchases.fields.supplierName')}</Label>
+              <Input value={proveedorNombre} onChange={(e) => setProveedorNombre(e.target.value)} placeholder={t('purchases.placeholders.supplierName')} />
             </div>
             <div className="space-y-2">
-              <Label>Quién recibe</Label>
-              <Input value={recibidoPorNombre} onChange={(e) => setRecibidoPorNombre(e.target.value)} placeholder="Nombre" />
+              <Label>{t('purchases.fields.receivedBy')}</Label>
+              <Input value={recibidoPorNombre} onChange={(e) => setRecibidoPorNombre(e.target.value)} placeholder={t('purchases.placeholders.receivedBy')} />
             </div>
 
             <div className="space-y-2">
-              <Label>Teléfono proveedor</Label>
-              <Input value={proveedorTelefono} onChange={(e) => setProveedorTelefono(e.target.value)} placeholder="3001234567" />
+              <Label>{t('purchases.fields.supplierPhone')}</Label>
+              <Input value={proveedorTelefono} onChange={(e) => setProveedorTelefono(e.target.value)} placeholder={t('purchases.placeholders.supplierPhone')} />
             </div>
             <div className="space-y-2 lg:col-span-2">
-              <Label>Dirección proveedor</Label>
-              <Input value={proveedorDireccion} onChange={(e) => setProveedorDireccion(e.target.value)} placeholder="Calle 123 #45-67" />
+              <Label>{t('purchases.fields.supplierAddress')}</Label>
+              <Input value={proveedorDireccion} onChange={(e) => setProveedorDireccion(e.target.value)} placeholder={t('purchases.placeholders.supplierAddress')} />
             </div>
             <div className="space-y-2">
-              <Label>Sede</Label>
-              <Input value={sede} onChange={(e) => setSede(e.target.value)} placeholder="Principal" />
+              <Label>{t('purchases.fields.site')}</Label>
+              <Input value={sede} onChange={(e) => setSede(e.target.value)} placeholder={t('purchases.placeholders.site')} />
             </div>
 
             <div className="space-y-2">
-              <Label>Número factura</Label>
-              <Input value={numeroFactura} onChange={(e) => setNumeroFactura(e.target.value)} placeholder="FV-001" />
+              <Label>{t('purchases.fields.invoiceNumber')}</Label>
+              <Input value={numeroFactura} onChange={(e) => setNumeroFactura(e.target.value)} placeholder={t('purchases.placeholders.invoiceNumber')} />
             </div>
             <div className="space-y-2">
-              <Label>Número orden</Label>
-              <Input value={numeroOrden} onChange={(e) => setNumeroOrden(e.target.value)} placeholder="OC-001" />
+              <Label>{t('purchases.fields.orderNumber')}</Label>
+              <Input value={numeroOrden} onChange={(e) => setNumeroOrden(e.target.value)} placeholder={t('purchases.placeholders.orderNumber')} />
             </div>
             <div className="space-y-2">
-              <Label>Número pedido</Label>
-              <Input value={numeroPedido} onChange={(e) => setNumeroPedido(e.target.value)} placeholder="P-001" />
+              <Label>{t('purchases.fields.requestNumber')}</Label>
+              <Input value={numeroPedido} onChange={(e) => setNumeroPedido(e.target.value)} placeholder={t('purchases.placeholders.requestNumber')} />
             </div>
 
             <div className="space-y-2 lg:col-span-4">
-              <Label>Observaciones</Label>
-              <Textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Notas internas..." />
+              <Label>{t('purchases.fields.notes')}</Label>
+              <Textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder={t('purchases.placeholders.notes')} />
             </div>
           </div>
 
           <div className="mt-6">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold">Detalle</h3>
+              <h3 className="font-semibold">{t('purchases.items.title')}</h3>
               <Button type="button" variant="outline" onClick={addItem}>
-                Agregar ítem
+                {t('purchases.items.add')}
               </Button>
             </div>
 
@@ -421,12 +440,12 @@ export default function ComprasPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b">
-                    <th className="py-2 text-left">Descripción</th>
-                    <th className="py-2 text-left">Cantidad</th>
-                    <th className="py-2 text-left">Precio unit.</th>
-                    <th className="py-2 text-left">Descuento</th>
-                    <th className="py-2 text-left">IVA</th>
-                    <th className="py-2 text-left">Total línea</th>
+                    <th className="py-2 text-left">{t('purchases.items.columns.description')}</th>
+                    <th className="py-2 text-left">{t('purchases.items.columns.quantity')}</th>
+                    <th className="py-2 text-left">{t('purchases.items.columns.unitPrice')}</th>
+                    <th className="py-2 text-left">{t('purchases.items.columns.discount')}</th>
+                    <th className="py-2 text-left">{t('purchases.items.columns.vat')}</th>
+                    <th className="py-2 text-left">{t('purchases.items.columns.lineTotal')}</th>
                     <th className="py-2"></th>
                   </tr>
                 </thead>
@@ -437,7 +456,7 @@ export default function ComprasPage() {
                         <Input
                           value={it.descripcion}
                           onChange={(e) => updateItem(idx, { descripcion: e.target.value })}
-                          placeholder="Descripción"
+                          placeholder={t('purchases.items.placeholders.description')}
                         />
                       </td>
                       <td className="py-2 pr-2 w-[120px]">
@@ -464,7 +483,7 @@ export default function ComprasPage() {
                       <td className="py-2 pr-2 w-[160px]">
                         <Input type="number" value={it.iva} onChange={(e) => updateItem(idx, { iva: n(e.target.value, 0) })} />
                       </td>
-                      <td className="py-3 pr-2 whitespace-nowrap">{formatCOP(computeLineTotal(it))}</td>
+                      <td className="py-3 pr-2 whitespace-nowrap">{formatCOP(computeLineTotal(it), locale)}</td>
                       <td className="py-2 text-right">
                         <Button
                           type="button"
@@ -472,7 +491,7 @@ export default function ComprasPage() {
                           onClick={() => removeItem(idx)}
                           disabled={items.length <= 1}
                         >
-                          Quitar
+                          {t('common.remove')}
                         </Button>
                       </td>
                     </tr>
@@ -483,26 +502,26 @@ export default function ComprasPage() {
 
             <div className="mt-4 grid gap-2 text-sm md:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-lg border p-3">
-                <div className="text-muted-foreground">Subtotal sin IVA</div>
-                <div className="font-semibold">{formatCOP(totals.subtotalSinIva)}</div>
+                <div className="text-muted-foreground">{t('purchases.totals.subtotalWithoutVat')}</div>
+                <div className="font-semibold">{formatCOP(totals.subtotalSinIva, locale)}</div>
               </div>
               <div className="rounded-lg border p-3">
-                <div className="text-muted-foreground">IVA</div>
-                <div className="font-semibold">{formatCOP(totals.iva)}</div>
+                <div className="text-muted-foreground">{t('purchases.totals.vat')}</div>
+                <div className="font-semibold">{formatCOP(totals.iva, locale)}</div>
               </div>
               <div className="rounded-lg border p-3">
-                <div className="text-muted-foreground">Subtotal con IVA</div>
-                <div className="font-semibold">{formatCOP(totals.subtotalConIva)}</div>
+                <div className="text-muted-foreground">{t('purchases.totals.subtotalWithVat')}</div>
+                <div className="font-semibold">{formatCOP(totals.subtotalConIva, locale)}</div>
               </div>
               <div className="rounded-lg border p-3">
-                <div className="text-muted-foreground">Total</div>
-                <div className="font-semibold">{formatCOP(totals.total)}</div>
+                <div className="text-muted-foreground">{t('purchases.totals.total')}</div>
+                <div className="font-semibold">{formatCOP(totals.total, locale)}</div>
               </div>
             </div>
 
             <div className="mt-4 flex justify-end">
               <Button onClick={createCompra} disabled={saving || !proveedorNombre.trim()}>
-                {saving ? 'Guardando...' : 'Crear compra'}
+                {saving ? t('common.saving') : t('purchases.actions.create')}
               </Button>
             </div>
           </div>
@@ -513,11 +532,11 @@ export default function ComprasPage() {
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <CardTitle>Compras registradas</CardTitle>
-              <CardDescription>Busca por proveedor, factura, pedido, orden u observaciones.</CardDescription>
+              <CardTitle>{t('purchases.list.title')}</CardTitle>
+              <CardDescription>{t('purchases.list.description')}</CardDescription>
             </div>
             <div className="w-full max-w-md">
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar..." />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('purchases.list.searchPlaceholder')} />
             </div>
           </div>
         </CardHeader>
@@ -526,59 +545,59 @@ export default function ComprasPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b">
-                  <th className="py-2 text-left">Fecha</th>
-                  <th className="py-2 text-left">Proveedor</th>
-                  <th className="py-2 text-left">Factura</th>
-                  <th className="py-2 text-left">Total</th>
-                  <th className="py-2 text-left">Pagado</th>
-                  <th className="py-2 text-left">Saldo</th>
-                  <th className="py-2 text-left">Autorizado</th>
-                  <th className="py-2 text-right">Acciones</th>
+                  <th className="py-2 text-left">{t('purchases.list.columns.date')}</th>
+                  <th className="py-2 text-left">{t('purchases.list.columns.supplier')}</th>
+                  <th className="py-2 text-left">{t('purchases.list.columns.invoice')}</th>
+                  <th className="py-2 text-left">{t('purchases.list.columns.total')}</th>
+                  <th className="py-2 text-left">{t('purchases.list.columns.paid')}</th>
+                  <th className="py-2 text-left">{t('purchases.list.columns.balance')}</th>
+                  <th className="py-2 text-left">{t('purchases.list.columns.authorized')}</th>
+                  <th className="py-2 text-right">{t('purchases.list.columns.actions')}</th>
                 </tr>
               </thead>
               <tbody>
                 {compras.map((c) => (
                   <tr key={c.id} className="border-b">
-                    <td className="py-2 whitespace-nowrap">{new Date(c.fechaCompra).toLocaleDateString('es-CO')}</td>
+                    <td className="py-2 whitespace-nowrap">{new Date(c.fechaCompra).toLocaleDateString(locale)}</td>
                     <td className="py-2">{c.proveedorNombre}</td>
-                    <td className="py-2">{c.numeroFactura ?? '—'}</td>
-                    <td className="py-2 whitespace-nowrap">{formatCOP(c.total)}</td>
-                    <td className="py-2 whitespace-nowrap">{formatCOP(n(c.pagado, 0))}</td>
-                    <td className="py-2 whitespace-nowrap">{formatCOP(n(c.saldo, n(c.total, 0) - n(c.pagado, 0)))}</td>
-                    <td className="py-2">{c.autorizado ? 'Sí' : 'No'}</td>
+                    <td className="py-2">{c.numeroFactura ?? naText}</td>
+                    <td className="py-2 whitespace-nowrap">{formatCOP(c.total, locale)}</td>
+                    <td className="py-2 whitespace-nowrap">{formatCOP(n(c.pagado, 0), locale)}</td>
+                    <td className="py-2 whitespace-nowrap">{formatCOP(n(c.saldo, n(c.total, 0) - n(c.pagado, 0)), locale)}</td>
+                    <td className="py-2">{c.autorizado ? t('common.yes') : t('common.no')}</td>
                     <td className="py-2 text-right space-x-2">
                       <Button variant="outline" onClick={() => openPagos(c)}>
-                        Pagos
+                        {t('purchases.actions.payments')}
                       </Button>
                       <Dialog>
                         <DialogTrigger asChild>
-                          <Button variant="outline">Ver</Button>
+                          <Button variant="outline">{t('purchases.actions.view')}</Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-3xl">
                           <DialogHeader>
-                            <DialogTitle>Compra</DialogTitle>
+                            <DialogTitle>{t('purchases.view.title')}</DialogTitle>
                             <DialogDescription>
-                              {c.proveedorNombre} — {formatCOP(c.total)}
+                              {t('purchases.view.description', { supplier: c.proveedorNombre, total: formatCOP(c.total, locale) })}
                             </DialogDescription>
                           </DialogHeader>
 
                           <div className="grid gap-3 text-sm md:grid-cols-2">
                             <div>
-                              <div className="text-muted-foreground">Fecha</div>
-                              <div>{new Date(c.fechaCompra).toLocaleDateString('es-CO')}</div>
+                              <div className="text-muted-foreground">{t('purchases.view.fields.date')}</div>
+                              <div>{new Date(c.fechaCompra).toLocaleDateString(locale)}</div>
                             </div>
                             <div>
-                              <div className="text-muted-foreground">Sede</div>
-                              <div>{c.sede ?? '—'}</div>
+                              <div className="text-muted-foreground">{t('purchases.view.fields.site')}</div>
+                              <div>{c.sede ?? naText}</div>
                             </div>
                             <div>
-                              <div className="text-muted-foreground">Quién recibe</div>
-                              <div>{c.recibidoPorNombre ?? '—'}</div>
+                              <div className="text-muted-foreground">{t('purchases.view.fields.receivedBy')}</div>
+                              <div>{c.recibidoPorNombre ?? naText}</div>
                             </div>
                             <div>
-                              <div className="text-muted-foreground">Factura / Orden / Pedido</div>
+                              <div className="text-muted-foreground">{t('purchases.view.fields.docs')}</div>
                               <div>
-                                {(c.numeroFactura ?? '—') + ' / ' + (c.numeroOrden ?? '—') + ' / ' + (c.numeroPedido ?? '—')}
+                                {(c.numeroFactura ?? naText) + ' / ' + (c.numeroOrden ?? naText) + ' / ' + (c.numeroPedido ?? naText)}
                               </div>
                             </div>
                           </div>
@@ -587,12 +606,12 @@ export default function ComprasPage() {
                             <table className="w-full text-sm">
                               <thead>
                                 <tr className="border-b">
-                                  <th className="py-2 text-left">Descripción</th>
-                                  <th className="py-2 text-left">Cant.</th>
-                                  <th className="py-2 text-left">P.Unit</th>
-                                  <th className="py-2 text-left">Desc</th>
-                                  <th className="py-2 text-left">IVA</th>
-                                  <th className="py-2 text-left">Total</th>
+                                  <th className="py-2 text-left">{t('purchases.view.items.columns.description')}</th>
+                                  <th className="py-2 text-left">{t('purchases.view.items.columns.qty')}</th>
+                                  <th className="py-2 text-left">{t('purchases.view.items.columns.unitPrice')}</th>
+                                  <th className="py-2 text-left">{t('purchases.view.items.columns.discount')}</th>
+                                  <th className="py-2 text-left">{t('purchases.view.items.columns.vat')}</th>
+                                  <th className="py-2 text-left">{t('purchases.view.items.columns.total')}</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -600,10 +619,10 @@ export default function ComprasPage() {
                                   <tr key={it.id} className="border-b">
                                     <td className="py-2">{it.descripcion}</td>
                                     <td className="py-2">{it.cantidad}</td>
-                                    <td className="py-2 whitespace-nowrap">{formatCOP(it.precioUnitario)}</td>
-                                    <td className="py-2 whitespace-nowrap">{formatCOP(it.descuento)}</td>
-                                    <td className="py-2 whitespace-nowrap">{formatCOP(it.iva)}</td>
-                                    <td className="py-2 whitespace-nowrap">{formatCOP(it.total)}</td>
+                                    <td className="py-2 whitespace-nowrap">{formatCOP(it.precioUnitario, locale)}</td>
+                                    <td className="py-2 whitespace-nowrap">{formatCOP(it.descuento, locale)}</td>
+                                    <td className="py-2 whitespace-nowrap">{formatCOP(it.iva, locale)}</td>
+                                    <td className="py-2 whitespace-nowrap">{formatCOP(it.total, locale)}</td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -612,26 +631,26 @@ export default function ComprasPage() {
 
                           <div className="mt-4 grid gap-2 text-sm md:grid-cols-2 lg:grid-cols-4">
                             <div className="rounded-lg border p-3">
-                              <div className="text-muted-foreground">Subtotal sin IVA</div>
-                              <div className="font-semibold">{formatCOP(c.subtotalSinIva)}</div>
+                              <div className="text-muted-foreground">{t('purchases.totals.subtotalWithoutVat')}</div>
+                              <div className="font-semibold">{formatCOP(c.subtotalSinIva, locale)}</div>
                             </div>
                             <div className="rounded-lg border p-3">
-                              <div className="text-muted-foreground">IVA</div>
-                              <div className="font-semibold">{formatCOP(c.iva)}</div>
+                              <div className="text-muted-foreground">{t('purchases.totals.vat')}</div>
+                              <div className="font-semibold">{formatCOP(c.iva, locale)}</div>
                             </div>
                             <div className="rounded-lg border p-3">
-                              <div className="text-muted-foreground">Subtotal con IVA</div>
-                              <div className="font-semibold">{formatCOP(c.subtotalConIva)}</div>
+                              <div className="text-muted-foreground">{t('purchases.totals.subtotalWithVat')}</div>
+                              <div className="font-semibold">{formatCOP(c.subtotalConIva, locale)}</div>
                             </div>
                             <div className="rounded-lg border p-3">
-                              <div className="text-muted-foreground">Total</div>
-                              <div className="font-semibold">{formatCOP(c.total)}</div>
+                              <div className="text-muted-foreground">{t('purchases.totals.total')}</div>
+                              <div className="font-semibold">{formatCOP(c.total, locale)}</div>
                             </div>
                           </div>
 
                           {c.observaciones && (
                             <div className="mt-4 text-sm">
-                              <div className="text-muted-foreground">Observaciones</div>
+                              <div className="text-muted-foreground">{t('purchases.view.fields.notes')}</div>
                               <div className="whitespace-pre-wrap">{c.observaciones}</div>
                             </div>
                           )}
@@ -639,10 +658,10 @@ export default function ComprasPage() {
                       </Dialog>
 
                       <Button variant={c.autorizado ? 'outline' : 'default'} onClick={() => toggleAutorizar(c)}>
-                        {c.autorizado ? 'Quitar autorización' : 'Autorizar'}
+                        {c.autorizado ? t('purchases.actions.removeAuthorization') : t('purchases.actions.authorize')}
                       </Button>
                       <Button variant="outline" onClick={() => deleteCompra(c)}>
-                        Eliminar
+                        {t('common.delete')}
                       </Button>
                     </td>
                   </tr>
@@ -651,14 +670,14 @@ export default function ComprasPage() {
                 {!loading && compras.length === 0 && (
                   <tr>
                     <td className="py-6 text-center text-muted-foreground" colSpan={8}>
-                      Sin resultados
+                      {t('common.noResults')}
                     </td>
                   </tr>
                 )}
                 {loading && (
                   <tr>
                     <td className="py-6 text-center text-muted-foreground" colSpan={8}>
-                      Cargando...
+                      {t('common.loading')}
                     </td>
                   </tr>
                 )}
@@ -671,32 +690,37 @@ export default function ComprasPage() {
       <Dialog open={pagoOpen} onOpenChange={setPagoOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Pagos / Abonos</DialogTitle>
+            <DialogTitle>{t('purchases.payments.title')}</DialogTitle>
             <DialogDescription>
-              {pagoCompra ? `${pagoCompra.proveedorNombre} — Total ${formatCOP(pagoCompra.total)}` : '—'}
+              {pagoCompra
+                ? t('purchases.payments.description', {
+                    supplier: pagoCompra.proveedorNombre,
+                    total: formatCOP(pagoCompra.total, locale),
+                  })
+                : naText}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-2 text-sm md:grid-cols-3">
             <div className="rounded-lg border p-3">
-              <div className="text-muted-foreground">Pagado</div>
-              <div className="font-semibold">{formatCOP(pagoSummary.pagado)}</div>
+              <div className="text-muted-foreground">{t('purchases.payments.summary.paid')}</div>
+              <div className="font-semibold">{formatCOP(pagoSummary.pagado, locale)}</div>
             </div>
             <div className="rounded-lg border p-3">
-              <div className="text-muted-foreground">Saldo</div>
-              <div className="font-semibold">{formatCOP(pagoSummary.saldo)}</div>
+              <div className="text-muted-foreground">{t('purchases.payments.summary.balance')}</div>
+              <div className="font-semibold">{formatCOP(pagoSummary.saldo, locale)}</div>
             </div>
             <div className="rounded-lg border p-3">
-              <div className="text-muted-foreground">Estado</div>
+              <div className="text-muted-foreground">{t('purchases.payments.summary.status')}</div>
               <div className="font-semibold">
-                {pagoSummary.pagado <= 0 ? 'Debe' : pagoSummary.saldo > 0 ? 'Parcial' : 'Pagado'}
+                {paymentStatusLabel(pagoSummary)}
               </div>
             </div>
           </div>
 
           <div className="mt-2 grid gap-3 md:grid-cols-2">
             <div className="space-y-2">
-              <Label>Fecha</Label>
+              <Label>{t('purchases.payments.fields.date')}</Label>
               <Input
                 type="date"
                 value={pagoForm.fecha}
@@ -705,7 +729,7 @@ export default function ComprasPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Monto</Label>
+              <Label>{t('purchases.payments.fields.amount')}</Label>
               <Input
                 type="number"
                 value={pagoForm.monto}
@@ -714,21 +738,21 @@ export default function ComprasPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Método</Label>
+              <Label>{t('purchases.payments.fields.method')}</Label>
               <select
                 value={pagoForm.metodo}
                 onChange={(e) => setPagoForm((p) => ({ ...p, metodo: e.target.value as CompraPago['metodo'] }))}
                 disabled={pagoLoading}
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
               >
-                <option value="TRANSFER">Transferencia</option>
-                <option value="CASH">Efectivo</option>
-                <option value="CARD">Tarjeta</option>
-                <option value="OTHER">Otro</option>
+                <option value="TRANSFER">{t('purchases.payments.method.transfer')}</option>
+                <option value="CASH">{t('purchases.payments.method.cash')}</option>
+                <option value="CARD">{t('purchases.payments.method.card')}</option>
+                <option value="OTHER">{t('purchases.payments.method.other')}</option>
               </select>
             </div>
             <div className="space-y-2">
-              <Label>Referencia</Label>
+              <Label>{t('purchases.payments.fields.reference')}</Label>
               <Input
                 value={pagoForm.referencia}
                 onChange={(e) => setPagoForm((p) => ({ ...p, referencia: e.target.value }))}
@@ -736,7 +760,7 @@ export default function ComprasPage() {
               />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label>Observaciones</Label>
+              <Label>{t('purchases.payments.fields.notes')}</Label>
               <Textarea
                 value={pagoForm.observaciones}
                 onChange={(e) => setPagoForm((p) => ({ ...p, observaciones: e.target.value }))}
@@ -746,7 +770,7 @@ export default function ComprasPage() {
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <Label>Soporte (opcional)</Label>
+              <Label>{t('purchases.payments.fields.supportOptional')}</Label>
               <Input
                 type="file"
                 accept="application/pdf,image/*"
@@ -759,7 +783,7 @@ export default function ComprasPage() {
               {pagoForm.soporteFile ? (
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground truncate">
-                    Adjuntado: {pagoForm.soporteFile.name}
+                    {t('purchases.payments.support.attached')}: {pagoForm.soporteFile.name}
                   </p>
                   <Button
                     type="button"
@@ -768,18 +792,18 @@ export default function ComprasPage() {
                     disabled={pagoLoading}
                     onClick={() => setPagoForm((p) => ({ ...p, soporteFile: null }))}
                   >
-                    Quitar
+                    {t('common.remove')}
                   </Button>
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground">PDF o imagen del recibo/soporte.</p>
+                <p className="text-xs text-muted-foreground">{t('purchases.payments.support.hint')}</p>
               )}
             </div>
           </div>
 
           <div className="mt-2 flex justify-end">
             <Button onClick={registrarPago} disabled={pagoLoading || !pagoCompra}>
-              {pagoLoading ? 'Guardando...' : 'Registrar pago'}
+              {pagoLoading ? t('common.saving') : t('purchases.payments.actions.recordPayment')}
             </Button>
           </div>
 
@@ -787,20 +811,20 @@ export default function ComprasPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b">
-                  <th className="py-2 text-left">Fecha</th>
-                  <th className="py-2 text-left">Método</th>
-                  <th className="py-2 text-left">Referencia</th>
-                  <th className="py-2 text-left">Soporte</th>
-                  <th className="py-2 text-left">Monto</th>
-                  <th className="py-2 text-left">Usuario</th>
+                  <th className="py-2 text-left">{t('purchases.payments.table.columns.date')}</th>
+                  <th className="py-2 text-left">{t('purchases.payments.table.columns.method')}</th>
+                  <th className="py-2 text-left">{t('purchases.payments.table.columns.reference')}</th>
+                  <th className="py-2 text-left">{t('purchases.payments.table.columns.support')}</th>
+                  <th className="py-2 text-left">{t('purchases.payments.table.columns.amount')}</th>
+                  <th className="py-2 text-left">{t('purchases.payments.table.columns.user')}</th>
                 </tr>
               </thead>
               <tbody>
                 {pagos.map((p) => (
                   <tr key={p.id} className="border-b">
-                    <td className="py-2 whitespace-nowrap">{new Date(p.fecha).toLocaleDateString('es-CO')}</td>
-                    <td className="py-2">{p.metodo}</td>
-                    <td className="py-2">{p.referencia ?? '—'}</td>
+                    <td className="py-2 whitespace-nowrap">{new Date(p.fecha).toLocaleDateString(locale)}</td>
+                    <td className="py-2">{paymentMethodLabel(p.metodo)}</td>
+                    <td className="py-2">{p.referencia ?? naText}</td>
                     <td className="py-2">
                       {p.soporteUrl ? (
                         <a
@@ -808,29 +832,29 @@ export default function ComprasPage() {
                           target="_blank"
                           rel="noreferrer"
                           className="text-blue-600 hover:underline"
-                          title={p.soporteOriginalName ?? 'Abrir soporte'}
+                          title={p.soporteOriginalName ?? t('purchases.payments.support.openTitle')}
                         >
-                          Ver
+                          {t('purchases.actions.view')}
                         </a>
                       ) : (
-                        '—'
+                        naText
                       )}
                     </td>
-                    <td className="py-2 whitespace-nowrap">{formatCOP(p.monto)}</td>
-                    <td className="py-2">{p.user?.name || p.user?.email || '—'}</td>
+                    <td className="py-2 whitespace-nowrap">{formatCOP(p.monto, locale)}</td>
+                    <td className="py-2">{p.user?.name || p.user?.email || naText}</td>
                   </tr>
                 ))}
                 {!pagoLoading && pagos.length === 0 && (
                   <tr>
                     <td className="py-6 text-center text-muted-foreground" colSpan={5}>
-                      Sin pagos registrados
+                      {t('purchases.payments.table.empty')}
                     </td>
                   </tr>
                 )}
                 {pagoLoading && (
                   <tr>
                     <td className="py-6 text-center text-muted-foreground" colSpan={5}>
-                      Cargando...
+                      {t('common.loading')}
                     </td>
                   </tr>
                 )}

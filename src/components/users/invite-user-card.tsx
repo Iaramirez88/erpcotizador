@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { useI18n } from '@/components/providers/i18n-provider'
 import {
   Dialog,
   DialogContent,
@@ -15,6 +16,7 @@ import {
 } from '@/components/ui/dialog'
 
 export function InviteUserCard() {
+  const { t } = useI18n()
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
@@ -50,7 +52,7 @@ export function InviteUserCard() {
   async function sendInvite() {
     const normalized = email.trim().toLowerCase()
     if (!normalized) {
-      setStatus('Ingresa un email.')
+      setStatus(t('rbac.invite.errors.emailRequired'))
       return
     }
 
@@ -68,11 +70,11 @@ export function InviteUserCard() {
         | null
 
       if (!res.ok || !json?.success) {
-        const err = (json?.error ?? 'No se pudo enviar la invitación.').trim()
+        const err = (json?.error ?? t('rbac.invite.errors.sendFailed')).trim()
         // Ayuda contextual para el caso más común en producción.
         if (res.status === 409 && /otra\s+entidad/i.test(err)) {
           setStatus(
-            `${err}. Si esa persona ya tiene cuenta en otra entidad, debe iniciar sesión allá y usar “Mi perfil → Darme de baja del espacio de trabajo”, luego intenta invitar de nuevo.`
+            t('rbac.invite.errors.conflictHint', { error: err })
           )
         } else {
           setStatus(err)
@@ -80,15 +82,15 @@ export function InviteUserCard() {
         return
       }
 
-      const debug = typeof json.debugCode === 'string' ? ` (Código dev: ${json.debugCode})` : ''
-      const msg = (json.message ?? 'Invitación enviada.') + debug
+      const debug = typeof json.debugCode === 'string' ? t('rbac.invite.debugCode', { code: json.debugCode }) : ''
+      const msg = (json.message ?? t('rbac.invite.successSent')) + debug
       setStatus(msg)
       setSuccessMessage(msg)
       setSuccessOpen(true)
       setEmail('')
       setSedeId('')
     } catch {
-      setStatus('No se pudo enviar la invitación. Verifica tu conexión e intenta de nuevo.')
+      setStatus(t('rbac.invite.errors.network'))
     } finally {
       setBusy(false)
     }
@@ -99,12 +101,12 @@ export function InviteUserCard() {
       <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Invitación enviada</DialogTitle>
-            <DialogDescription>{successMessage || 'Se envió la invitación correctamente.'}</DialogDescription>
+            <DialogTitle>{t('rbac.invite.dialog.title')}</DialogTitle>
+            <DialogDescription>{successMessage || t('rbac.invite.dialog.descriptionFallback')}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" onClick={() => setSuccessOpen(false)}>
-              Entendido
+              {t('rbac.invite.dialog.ok')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -112,22 +114,22 @@ export function InviteUserCard() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Invitar por correo</CardTitle>
+          <CardTitle>{t('rbac.invite.cardTitle')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
         <div className="space-y-2">
-          <Label htmlFor="invite-email">Email</Label>
+          <Label htmlFor="invite-email">{t('rbac.invite.emailLabel')}</Label>
           <div className="flex gap-2">
             <Input
               id="invite-email"
               type="email"
               value={email}
-              placeholder="usuario@correo.com"
+              placeholder={t('rbac.invite.emailPlaceholder')}
               disabled={busy}
               onChange={(e) => setEmail(e.target.value)}
             />
             <Button type="button" disabled={busy} onClick={() => void sendInvite()}>
-              {busy ? 'Enviando…' : 'Enviar código'}
+              {busy ? t('rbac.invite.sending') : t('rbac.invite.sendCode')}
             </Button>
           </div>
           {status ? <p className="text-xs text-muted-foreground">{status}</p> : null}
@@ -135,7 +137,7 @@ export function InviteUserCard() {
 
         {sedes.length ? (
           <div className="space-y-2">
-            <Label htmlFor="invite-sede">Sede (opcional)</Label>
+            <Label htmlFor="invite-sede">{t('rbac.invite.sedeLabel')}</Label>
             <select
               id="invite-sede"
               value={sedeId}
@@ -143,7 +145,7 @@ export function InviteUserCard() {
               disabled={busy}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <option value="">Sin sede (usar Principal)</option>
+              <option value="">{t('rbac.invite.noSedeOption')}</option>
               {sedes.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.nombre}{s.codigo ? ` (${s.codigo})` : ''}
@@ -151,12 +153,12 @@ export function InviteUserCard() {
               ))}
             </select>
             <p className="text-xs text-muted-foreground">
-              Si no seleccionas sede, el usuario quedará en la sede Principal.
+              {t('rbac.invite.sedeHint')}
             </p>
           </div>
         ) : null}
         <p className="text-xs text-muted-foreground">
-          Se enviará un código para registrarse en esta entidad (si aplica).
+          {t('rbac.invite.footerHint')}
         </p>
         </CardContent>
       </Card>

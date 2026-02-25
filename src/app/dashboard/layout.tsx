@@ -11,6 +11,8 @@ import Header from "@/components/dashboard/header"
 import { TourProvider } from "@/components/tour/tour-provider"
 import PlanModuleGate from "@/components/dashboard/plan-module-gate"
 import PlanPaywallModal from "@/components/dashboard/plan-paywall-modal"
+import PlanLimitFetchInterceptor from "@/components/dashboard/plan-limit-fetch-interceptor"
+import PlanLimitModal from "@/components/dashboard/plan-limit-modal"
 import RouteLoadingIndicator from "@/components/dashboard/route-loading-indicator"
 import RouteLoadingStartListener from "@/components/dashboard/route-loading-start-listener"
 
@@ -37,6 +39,8 @@ export default async function DashboardLayout({
     <TourProvider>
       <PlanModuleGate />
       <PlanPaywallModal />
+      <PlanLimitFetchInterceptor />
+      <PlanLimitModal />
       <RouteLoadingStartListener />
       <div className="flex h-screen bg-gray-50">
         {/* Sidebar */}

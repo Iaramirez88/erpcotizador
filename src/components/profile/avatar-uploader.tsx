@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useI18n } from '@/components/providers/i18n-provider'
 
 type Props = {
   userName?: string | null
@@ -12,6 +13,7 @@ type Props = {
 }
 
 export function AvatarUploader({ userName, imageUrl }: Props) {
+  const { t } = useI18n()
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
@@ -28,19 +30,19 @@ export function AvatarUploader({ userName, imageUrl }: Props) {
   async function upload(file: File) {
     const maxBytes = 700 * 1024
     if (file.size > maxBytes) {
-      setStatus('La imagen es muy grande (máx 700KB).')
+      setStatus(t('profile.avatar.errors.tooLarge'))
       return
     }
 
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-      setStatus('Formato no soportado. Usa PNG/JPG/WebP.')
+      setStatus(t('profile.avatar.errors.unsupportedFormat'))
       return
     }
 
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => resolve(String(reader.result ?? ''))
-      reader.onerror = () => reject(new Error('No se pudo leer el archivo'))
+      reader.onerror = () => reject(new Error(t('profile.avatar.errors.readFailed')))
       reader.readAsDataURL(file)
     })
 
@@ -55,11 +57,11 @@ export function AvatarUploader({ userName, imageUrl }: Props) {
 
       const json = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null
       if (!res.ok || !json?.success) {
-        setStatus(json?.error ?? 'No se pudo actualizar la foto.')
+        setStatus(json?.error ?? t('profile.avatar.errors.updateFailed'))
         return
       }
 
-      setStatus('Foto actualizada.')
+      setStatus(t('profile.avatar.status.updated'))
       router.refresh()
     } finally {
       setBusy(false)
@@ -73,10 +75,10 @@ export function AvatarUploader({ userName, imageUrl }: Props) {
       const res = await fetch('/api/me/avatar', { method: 'DELETE' })
       const json = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null
       if (!res.ok || !json?.success) {
-        setStatus(json?.error ?? 'No se pudo quitar la foto.')
+        setStatus(json?.error ?? t('profile.avatar.errors.removeFailed'))
         return
       }
-      setStatus('Foto eliminada.')
+      setStatus(t('profile.avatar.status.removed'))
       router.refresh()
     } finally {
       setBusy(false)
@@ -88,7 +90,7 @@ export function AvatarUploader({ userName, imageUrl }: Props) {
       <div className="flex items-center gap-4">
         <div className="relative h-16 w-16 rounded-full overflow-hidden bg-slate-900 border border-slate-800">
           {imageUrl ? (
-            <img src={imageUrl} alt="Avatar" className="h-full w-full object-cover" />
+            <img src={imageUrl} alt={t('profile.avatar.alt')} className="h-full w-full object-cover" />
           ) : (
             <div className="h-full w-full grid place-items-center text-slate-100 font-semibold">
               {initials}
@@ -97,7 +99,7 @@ export function AvatarUploader({ userName, imageUrl }: Props) {
         </div>
 
         <div className="flex-1">
-          <Label>Foto de perfil</Label>
+          <Label>{t('profile.avatar.label')}</Label>
           <div className="mt-2 flex items-center gap-2">
             <Input
               type="file"
@@ -111,7 +113,7 @@ export function AvatarUploader({ userName, imageUrl }: Props) {
               }}
             />
             <Button type="button" variant="outline" disabled={busy || !imageUrl} onClick={() => void remove()}>
-              Quitar
+              {t('common.remove')}
             </Button>
           </div>
           {status ? <p className="text-xs text-muted-foreground mt-1">{status}</p> : null}
@@ -119,7 +121,7 @@ export function AvatarUploader({ userName, imageUrl }: Props) {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Recomendado: 512×512 (PNG/JPG/WebP). Máx 700KB.
+        {t('profile.avatar.recommended')}
       </p>
     </div>
   )

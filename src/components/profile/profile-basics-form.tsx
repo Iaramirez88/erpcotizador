@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useI18n } from '@/components/providers/i18n-provider'
 
 type Props = {
   initialName?: string | null
 }
 
 export function ProfileBasicsForm({ initialName }: Props) {
+  const { t } = useI18n()
   const router = useRouter()
   const [name, setName] = useState(initialName ?? '')
   const [saving, setSaving] = useState(false)
@@ -27,10 +29,10 @@ export function ProfileBasicsForm({ initialName }: Props) {
       })
       const json = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null
       if (!res.ok || !json?.success) {
-        setStatus(json?.error ?? 'No se pudo guardar.')
+        setStatus(json?.error ?? t('profile.basics.errors.saveFailed'))
         return
       }
-      setStatus('Cambios guardados.')
+      setStatus(t('profile.basics.status.saved'))
       router.refresh()
     } finally {
       setSaving(false)
@@ -40,13 +42,17 @@ export function ProfileBasicsForm({ initialName }: Props) {
   return (
     <div className="space-y-3">
       <div className="space-y-2">
-        <Label>Nombre</Label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tu nombre" />
+        <Label>{t('profile.basics.nameLabel')}</Label>
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t('profile.basics.namePlaceholder')}
+        />
       </div>
 
       <div className="flex items-center gap-2">
         <Button type="button" onClick={() => void save()} disabled={saving}>
-          {saving ? 'Guardando…' : 'Guardar'}
+          {saving ? t('common.saving') : t('common.save')}
         </Button>
         {status ? <span className="text-xs text-muted-foreground">{status}</span> : null}
       </div>

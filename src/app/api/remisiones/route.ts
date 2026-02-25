@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
+import { checkPlanLimit } from '@/lib/plan-limits'
 import { InventoryMovementType, InventoryMovementSourceType, ModuleKey } from '@prisma/client'
 
 export const runtime = 'nodejs'
@@ -100,6 +101,11 @@ export async function POST(request: Request) {
     if (!access.ok) return access.response
 
     const empresaId = access.empresaId
+
+    const limit = await checkPlanLimit(empresaId, 'REMISIONES_PER_MONTH')
+    if (!limit.ok) {
+      return NextResponse.json(limit, { status: 402 })
+    }
 
     const body = (await request.json().catch(() => null)) as Partial<PostBody> | null
     const warehouseId = typeof body?.warehouseId === 'string' && body.warehouseId.trim() ? body.warehouseId.trim() : null

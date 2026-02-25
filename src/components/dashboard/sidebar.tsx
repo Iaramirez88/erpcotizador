@@ -6,13 +6,14 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { Lock, Building2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
+import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useUiStore } from "@/lib/ui-store"
 import { NavSettingsDialog, type NavSettingsItem } from "@/components/dashboard/nav-settings-dialog"
-import { Building2 } from "lucide-react"
 import Image from "next/image"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 interface SidebarProps {
   user: {
@@ -35,6 +36,13 @@ function moduleForHref(href: string): string | null {
       return 'DASHBOARD'
     case '/dashboard/reportes':
       return 'REPORTES'
+    case '/dashboard/contabilidad':
+    case '/dashboard/contabilidad/plan-de-cuentas':
+    case '/dashboard/contabilidad/centros-de-costo':
+    case '/dashboard/contabilidad/reglas':
+    case '/dashboard/contabilidad/asientos':
+    case '/dashboard/contabilidad/tesoreria':
+      return 'CONTABILIDAD'
     case '/dashboard/cotizador':
       return 'COTIZADOR'
     case '/dashboard/cotizaciones':
@@ -77,9 +85,10 @@ function moduleForHref(href: string): string | null {
   }
 }
 
-const moduleNavigation: NavItem[] = [
+function buildModuleNavigation(t: (key: string) => string): NavItem[] {
+  return [
   {
-    name: "Dashboard",
+    name: t('nav.dashboard'),
     href: "/dashboard",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -88,7 +97,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Reportes",
+    name: t('nav.reports'),
     href: "/dashboard/reportes",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -96,10 +105,19 @@ const moduleNavigation: NavItem[] = [
       </svg>
     ),
   },
+  {
+    name: t('nav.accounting'),
+    href: "/dashboard/contabilidad",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 14h6m-6 4h6M7 4h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z" />
+      </svg>
+    ),
+  },
 
   // Comercial
   {
-    name: "Cotizador",
+    name: t('nav.quote'),
     href: "/dashboard/cotizador",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -108,7 +126,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Cotizaciones",
+    name: t('nav.quotes'),
     href: "/dashboard/cotizaciones",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -117,7 +135,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Remisiones",
+    name: t('nav.deliveries'),
     href: "/dashboard/remisiones",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -131,7 +149,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Facturación",
+    name: t('nav.billing'),
     href: "/dashboard/pos",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -140,7 +158,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Clientes",
+    name: t('nav.clients'),
     href: "/dashboard/clientes",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -151,7 +169,7 @@ const moduleNavigation: NavItem[] = [
 
   // Operaciones
   {
-    name: "Órdenes de Trabajo",
+    name: t('nav.orders'),
     href: "/dashboard/ordenes",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -160,7 +178,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Litografía",
+    name: t('nav.printshop'),
     href: "/dashboard/litografia",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -169,7 +187,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Escaneos",
+    name: t('nav.scans'),
     href: "/dashboard/escaneos",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -178,7 +196,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Terminados",
+    name: t('nav.finishes'),
     href: "/dashboard/terminados",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -187,7 +205,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Productos",
+    name: t('nav.products'),
     href: "/dashboard/materiales",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -198,7 +216,7 @@ const moduleNavigation: NavItem[] = [
 
   // Logística
   {
-    name: "Inventario",
+    name: t('nav.inventory'),
     href: "/dashboard/inventario",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -212,7 +230,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Traslados",
+    name: t('nav.transfers'),
     href: "/dashboard/inventario/traslados",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -222,7 +240,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Compras",
+    name: t('nav.purchases'),
     href: "/dashboard/compras",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -231,7 +249,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Proveedores",
+    name: t('nav.suppliers'),
     href: "/dashboard/proveedores",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -240,7 +258,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Desperdicios",
+    name: t('nav.waste'),
     href: "/dashboard/configuracion/desperdicios",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -251,12 +269,12 @@ const moduleNavigation: NavItem[] = [
 
   // Gestión
   {
-    name: "Sedes",
+    name: t('nav.branches'),
     href: "/dashboard/bodegas",
     icon: <Building2 className="h-5 w-5" />,
   },
   {
-    name: "Usuarios",
+    name: t('nav.users'),
     href: "/dashboard/configuracion/usuarios",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -265,7 +283,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Permisos",
+    name: t('nav.permissions'),
     href: "/dashboard/configuracion/permisos",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -274,7 +292,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Empresa",
+    name: t('nav.company'),
     href: "/dashboard/configuracion/empresa",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -283,7 +301,7 @@ const moduleNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Plan",
+    name: t('nav.plan'),
     href: "/dashboard/configuracion/plan",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -323,11 +341,13 @@ const moduleNavigation: NavItem[] = [
       </svg>
     ),
   },
-]
+  ]
+}
 
-const preferenceNavigation: NavItem[] = [
+function buildPreferenceNavigation(t: (key: string) => string): NavItem[] {
+  return [
   {
-    name: "Mi perfil",
+    name: t('header.profile'),
     href: "/dashboard/perfil",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -336,7 +356,7 @@ const preferenceNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Notificaciones",
+    name: t('header.notifications'),
     href: "/dashboard/notificaciones",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -345,7 +365,7 @@ const preferenceNavigation: NavItem[] = [
     ),
   },
   {
-    name: "Ayuda",
+    name: t('header.sections.help'),
     href: "/dashboard/ayuda",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -353,7 +373,8 @@ const preferenceNavigation: NavItem[] = [
       </svg>
     ),
   },
-]
+  ]
+}
 
 type UiPrefsResponse = {
   success: boolean
@@ -371,6 +392,11 @@ type EmpresaBranding = {
 export default function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname()
 
+  const { t } = useI18n()
+
+  const moduleNavigation = useMemo(() => buildModuleNavigation(t), [t])
+  const preferenceNavigation = useMemo(() => buildPreferenceNavigation(t), [t])
+
   const [canManageBilling, setCanManageBilling] = useState(() => user.role === 'ADMIN')
 
   const mobileNavOpen = useUiStore((s) => s.mobileNavOpen)
@@ -383,6 +409,8 @@ export default function Sidebar({ user }: SidebarProps) {
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
   const [enabledModules, setEnabledModules] = useState<Set<string> | null>(null)
   const [empresa, setEmpresa] = useState<EmpresaBranding | null>(null)
+  const [planTier, setPlanTier] = useState<string | null>(null)
+  const [isPersonal, setIsPersonal] = useState<boolean>(false)
   const [openSectionTitle, setOpenSectionTitle] = useState<string | null>(null)
 
   useEffect(() => {
@@ -411,45 +439,43 @@ export default function Sidebar({ user }: SidebarProps) {
         if (!cancelled && json?.success) {
           setNavPrefs(json.data?.nav ?? {})
         }
-      } catch {
-        // ignorar
-      }
-
+      } catch {}
       try {
         const res = await fetch('/api/modules/enabled', { cache: 'no-store' })
         const json = (await res.json().catch(() => null)) as
-          | { ok?: boolean; enabled?: string[] }
+          | { ok?: boolean; enabled?: string[]; planTier?: string }
           | null
-
         if (!cancelled && json?.ok && Array.isArray(json.enabled)) {
           setEnabledModules(new Set(json.enabled))
+          setPlanTier(json.planTier ?? null)
         }
-      } catch {
-        // ignorar
-      }
-
+      } catch {}
       try {
         const res = await fetch('/api/configuracion/empresa', { cache: 'no-store' })
         const json = (await res.json().catch(() => null)) as
           | { ok?: boolean; data?: { nombre?: string; logo?: string | null; nit?: string } }
           | null
-
         if (!cancelled && json?.ok && json.data?.nombre) {
           setEmpresa({
             nombre: json.data.nombre,
             logo: json.data.logo ?? null,
             nit: json.data.nit ?? '',
           })
+          setIsPersonal((json.data.nit ?? '').startsWith('PERS-'))
         }
-      } catch {
-        // ignorar
-      }
+      } catch {}
     }
     void load()
     return () => {
       cancelled = true
     }
   }, [])
+
+  const upgradePlanLabel = useMemo(() => {
+    if (planTier === 'BASIC') return 'Intermedio'
+    if (planTier === 'INTERMEDIO') return 'Full'
+    return 'superior'
+  }, [planTier])
 
   useEffect(() => {
     let cancelled = false
@@ -495,9 +521,9 @@ export default function Sidebar({ user }: SidebarProps) {
     return (a + b).toUpperCase()
   }, [empresa?.nombre])
 
+  // Para persona individual, mostrar todos los módulos (candado si no está habilitado por plan)
   const visibleNavigation = useMemo(() => {
     const base = !navPrefs ? moduleNavigation : moduleNavigation.filter((it) => navPrefs[it.href] !== false)
-
     const withAdminGate = base.filter((it) => {
       const isSuperAdminRoute =
         it.href === '/dashboard/configuracion/super-admin/modulos-por-plan' ||
@@ -506,24 +532,28 @@ export default function Sidebar({ user }: SidebarProps) {
       if (!isSuperAdminRoute) return true
       return user?.role === 'ADMIN'
     })
-
     const withBillingGate = withAdminGate.filter((it) => {
       if (it.href !== '/dashboard/configuracion/plan') return true
       return canManageBilling
     })
-
-    if (!enabledModules) return withBillingGate
-
-    return withBillingGate.filter((it) => {
-      const moduleKey = moduleForHref(it.href)
-      if (!moduleKey) return true
-      return enabledModules.has(moduleKey)
-    })
+    return withBillingGate
   }, [navPrefs, enabledModules, user?.role, canManageBilling])
 
   const visibleHrefs = useMemo(() => {
     return new Set(visibleNavigation.map((it) => it.href))
   }, [visibleNavigation])
+
+  // Determinar módulos bloqueados para mostrar candado
+  const blockedModules = useMemo(() => {
+    if (!enabledModules) return new Set<string>()
+    const blocked = new Set<string>()
+    for (const it of moduleNavigation) {
+      const moduleKey = moduleForHref(it.href)
+      if (!moduleKey) continue
+      if (!enabledModules.has(moduleKey)) blocked.add(it.href)
+    }
+    return blocked
+  }, [enabledModules])
 
   const navSettingsItems: NavSettingsItem[] = useMemo(() => {
     const base = moduleNavigation
@@ -555,7 +585,7 @@ export default function Sidebar({ user }: SidebarProps) {
     return [
       {
         title: 'Centro de Control',
-        items: [get('/dashboard'), get('/dashboard/reportes')].filter(Boolean) as NavItem[],
+        items: [get('/dashboard'), get('/dashboard/reportes'), get('/dashboard/contabilidad')].filter(Boolean) as NavItem[],
       },
       {
         title: 'Comercial',
@@ -708,24 +738,40 @@ export default function Sidebar({ user }: SidebarProps) {
                 <div key={section.title} className={cn("space-y-1", "")}> 
                   {visibleItems.map((item) => {
                     const isActive = isNavActive(item.href)
+                    const isBlocked = isPersonal && blockedModules.has(item.href)
                     return (
-                      <Link
-                        key={item.name}
-                        href={item.href}
-                        onClick={() => {
-                          beginRouteLoadingIfNeeded(item.href)
-                          setMobileNavOpen(false)
-                        }}
-                        className={cn(
-                          "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
-                          isActive ? "bg-slate-800/60 text-white" : "text-slate-200 hover:bg-slate-800/40"
+                      <div key={item.name} className="relative group">
+                        <Link
+                          href={item.href}
+                          onClick={e => {
+                            if (isBlocked) e.preventDefault()
+                            else {
+                              beginRouteLoadingIfNeeded(item.href)
+                              setMobileNavOpen(false)
+                            }
+                          }}
+                          className={cn(
+                            "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
+                            isActive ? "bg-slate-800/60 text-white" : "text-slate-200 hover:bg-slate-800/40",
+                            isBlocked ? "opacity-60 cursor-not-allowed" : ""
+                          )}
+                          title={item.name}
+                        >
+                          <div className={cn("flex items-center", "justify-center w-full")}> 
+                            {item.icon}
+                            {isBlocked && (
+                              <Lock className="ml-2 w-4 h-4 text-slate-400" />
+                            )}
+                          </div>
+                        </Link>
+                        {isBlocked && (
+                          <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 z-50 hidden group-hover:block">
+                            <span className="bg-slate-900 text-slate-100 text-xs rounded px-2 py-1 shadow-lg whitespace-nowrap">
+                              Actualiza a plan {upgradePlanLabel}
+                            </span>
+                          </div>
                         )}
-                        title={item.name}
-                      >
-                        <div className={cn("flex items-center", "justify-center w-full")}>
-                          {item.icon}
-                        </div>
-                      </Link>
+                      </div>
                     )
                   })}
                 </div>
@@ -773,27 +819,43 @@ export default function Sidebar({ user }: SidebarProps) {
                   <div className="space-y-1 pt-1">
                     {visibleItems.map((item) => {
                       const isActive = isNavActive(item.href)
+                      const isBlocked = isPersonal && blockedModules.has(item.href)
                       return (
-                        <Link
-                          key={item.name}
-                          href={item.href}
-                          onClick={() => {
-                            beginRouteLoadingIfNeeded(item.href)
-                            setMobileNavOpen(false)
-                          }}
-                          className={cn(
-                            "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
-                            isActive ? "bg-slate-800/60 text-white" : "text-slate-200 hover:bg-slate-800/40"
+                        <div key={item.name} className="relative group">
+                          <Link
+                            href={item.href}
+                            onClick={e => {
+                              if (isBlocked) e.preventDefault()
+                              else {
+                                beginRouteLoadingIfNeeded(item.href)
+                                setMobileNavOpen(false)
+                              }
+                            }}
+                            className={cn(
+                              "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
+                              isActive ? "bg-slate-800/60 text-white" : "text-slate-200 hover:bg-slate-800/40",
+                              isBlocked ? "opacity-60 cursor-not-allowed" : ""
+                            )}
+                          >
+                            <div className="flex items-center space-x-3">
+                              {item.icon}
+                              <span className="text-sm font-medium">{item.name}</span>
+                              {isBlocked && (
+                                <Lock className="ml-2 w-4 h-4 text-slate-400" />
+                              )}
+                            </div>
+                            {item.badge ? (
+                              <span className="px-2 py-1 text-xs font-medium bg-slate-800 text-slate-200 rounded">{item.badge}</span>
+                            ) : null}
+                          </Link>
+                          {isBlocked && (
+                            <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 z-50 hidden group-hover:block">
+                              <span className="bg-slate-900 text-slate-100 text-xs rounded px-2 py-1 shadow-lg whitespace-nowrap">
+                                Actualiza a plan {upgradePlanLabel}
+                              </span>
+                            </div>
                           )}
-                        >
-                          <div className="flex items-center space-x-3">
-                            {item.icon}
-                            <span className="text-sm font-medium">{item.name}</span>
-                          </div>
-                          {item.badge ? (
-                            <span className="px-2 py-1 text-xs font-medium bg-slate-800 text-slate-200 rounded">{item.badge}</span>
-                          ) : null}
-                        </Link>
+                        </div>
                       )
                     })}
                   </div>
@@ -843,7 +905,7 @@ export default function Sidebar({ user }: SidebarProps) {
                     "w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-slate-200 hover:bg-slate-800/40"
                   )}
                 >
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Preferencias</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{t('sidebar.preferences')}</span>
                   <svg
                     className={cn(
                       "h-4 w-4 transition-transform text-slate-400",
@@ -911,7 +973,7 @@ export default function Sidebar({ user }: SidebarProps) {
                                     d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
                                   />
                                 </svg>
-                                <span className="font-medium">Personalizar menú</span>
+                                <span className="font-medium">{t('header.customizeMenu')}</span>
                               </div>
                             </button>
                           )}

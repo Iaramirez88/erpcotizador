@@ -14,6 +14,7 @@ import { useUiStore } from "@/lib/ui-store"
 import { NavSettingsDialog } from "@/components/dashboard/nav-settings-dialog"
 import { useTour } from "@/components/tour/tour-provider"
 import NotificationsBell from "@/components/dashboard/notifications-bell"
+import { useI18n } from "@/components/providers/i18n-provider"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +33,7 @@ interface HeaderProps {
 }
 
 export default function Header({ user }: HeaderProps) {
+  const { t, language, setLanguage } = useI18n()
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const [planName, setPlanName] = useState<string>("")
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
@@ -106,30 +108,32 @@ export default function Header({ user }: HeaderProps) {
 
   const navItems = useMemo(() => {
     const base = [
-      { name: 'Dashboard', href: '/dashboard' },
-      { name: 'Reportes', href: '/dashboard/reportes' },
-      { name: 'Cotizador', href: '/dashboard/cotizador' },
-      { name: 'Cotizaciones', href: '/dashboard/cotizaciones' },
-      { name: 'Facturación', href: '/dashboard/pos' },
-      { name: 'Remisiones', href: '/dashboard/remisiones' },
-      { name: 'Clientes', href: '/dashboard/clientes' },
-      { name: 'Órdenes de Trabajo', href: '/dashboard/ordenes' },
-      { name: 'Litografía', href: '/dashboard/litografia' },
-      { name: 'Escaneos', href: '/dashboard/escaneos' },
-      { name: 'Terminados', href: '/dashboard/terminados' },
-      { name: 'Inventario', href: '/dashboard/inventario' },
-      { name: 'Traslados', href: '/dashboard/inventario/traslados' },
-      { name: 'Compras', href: '/dashboard/compras' },
-      { name: 'Proveedores', href: '/dashboard/proveedores' },
-      { name: 'Desperdicios', href: '/dashboard/configuracion/desperdicios' },
-      { name: 'Sedes', href: '/dashboard/bodegas' },
-      { name: 'Usuarios', href: '/dashboard/configuracion/usuarios' },
-      { name: 'Permisos', href: '/dashboard/configuracion/permisos' },
-      { name: 'Empresa', href: '/dashboard/configuracion/empresa' },
-      ...(canManageBilling ? [{ name: 'Plan', href: '/dashboard/configuracion/plan' }] : []),
+      { name: t('nav.dashboard'), href: '/dashboard' },
+      { name: t('nav.reports'), href: '/dashboard/reportes' },
+      { name: t('nav.accounting'), href: '/dashboard/contabilidad' },
+      { name: t('nav.quote'), href: '/dashboard/cotizador' },
+      { name: t('nav.quotes'), href: '/dashboard/cotizaciones' },
+      { name: t('nav.billing'), href: '/dashboard/pos' },
+      { name: t('nav.deliveries'), href: '/dashboard/remisiones' },
+      { name: t('nav.clients'), href: '/dashboard/clientes' },
+      { name: t('nav.orders'), href: '/dashboard/ordenes' },
+      { name: t('nav.printshop'), href: '/dashboard/litografia' },
+      { name: t('nav.scans'), href: '/dashboard/escaneos' },
+      { name: t('nav.products'), href: '/dashboard/materiales' },
+      { name: t('nav.finishes'), href: '/dashboard/terminados' },
+      { name: t('nav.inventory'), href: '/dashboard/inventario' },
+      { name: t('nav.transfers'), href: '/dashboard/inventario/traslados' },
+      { name: t('nav.purchases'), href: '/dashboard/compras' },
+      { name: t('nav.suppliers'), href: '/dashboard/proveedores' },
+      { name: t('nav.waste'), href: '/dashboard/configuracion/desperdicios' },
+      { name: t('nav.branches'), href: '/dashboard/bodegas' },
+      { name: t('nav.users'), href: '/dashboard/configuracion/usuarios' },
+      { name: t('nav.permissions'), href: '/dashboard/configuracion/permisos' },
+      { name: t('nav.company'), href: '/dashboard/configuracion/empresa' },
+      ...(canManageBilling ? [{ name: t('nav.plan'), href: '/dashboard/configuracion/plan' }] : []),
     ]
     return base
-  }, [canManageBilling])
+  }, [canManageBilling, t])
 
   async function saveNav(next: Record<string, boolean>) {
     setNavPrefs(next)
@@ -150,7 +154,7 @@ export default function Header({ user }: HeaderProps) {
             size="icon"
             className="md:hidden"
             onClick={toggleMobileNav}
-            aria-label="Abrir menú"
+            aria-label={t('header.openMenu')}
             type="button"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -158,7 +162,7 @@ export default function Header({ user }: HeaderProps) {
             </svg>
           </Button>
 
-          <h2 className="text-base sm:text-lg font-semibold text-gray-900">Panel de Control</h2>
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900">{t('header.controlPanel')}</h2>
         </div>
 
         {/* Actions */}
@@ -169,7 +173,7 @@ export default function Header({ user }: HeaderProps) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" type="button" className="relative">
-                Más
+                {t('common.more')}
                 {unreadCount > 0 ? (
                   <span className="ml-2 inline-flex items-center rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-semibold text-white">
                     {unreadCount > 99 ? '99+' : unreadCount}
@@ -178,13 +182,13 @@ export default function Header({ user }: HeaderProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Accesos</DropdownMenuLabel>
+              <DropdownMenuLabel>{t('header.sections.access')}</DropdownMenuLabel>
               <DropdownMenuItem asChild>
-                <Link href="/dashboard/perfil">Mi perfil</Link>
+                <Link href="/dashboard/perfil">{t('header.profile')}</Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/dashboard/notificaciones" className="flex items-center justify-between gap-2">
-                  <span>Notificaciones</span>
+                  <span>{t('header.notifications')}</span>
                   {unreadCount > 0 ? (
                     <span className="inline-flex items-center rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-semibold text-white">
                       {unreadCount > 99 ? '99+' : unreadCount}
@@ -205,13 +209,13 @@ export default function Header({ user }: HeaderProps) {
                         open()
                       }}
                     >
-                      Personalizar menú
+                      {t('header.customizeMenu')}
                     </DropdownMenuItem>
                   )}
                 />
               ) : null}
               <DropdownMenuSeparator />
-              <DropdownMenuLabel>Ayuda</DropdownMenuLabel>
+              <DropdownMenuLabel>{t('header.sections.help')}</DropdownMenuLabel>
               <DropdownMenuItem
                 disabled={!hasCurrentTour}
                 onSelect={(e) => {
@@ -219,7 +223,7 @@ export default function Header({ user }: HeaderProps) {
                   startCurrentTour()
                 }}
               >
-                Ver tutorial de esta pantalla
+                {t('header.tour.view')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 disabled={!hasCurrentTour}
@@ -229,7 +233,26 @@ export default function Header({ user }: HeaderProps) {
                   startCurrentTour()
                 }}
               >
-                Reiniciar tutorial de esta pantalla
+                {t('header.tour.restart')}
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>{t('common.language')}</DropdownMenuLabel>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault()
+                  setLanguage('es')
+                }}
+              >
+                {t('common.spanish')}{language === 'es' ? ' ✓' : ''}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault()
+                  setLanguage('en')
+                }}
+              >
+                {t('common.english')}{language === 'en' ? ' ✓' : ''}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -258,7 +281,7 @@ export default function Header({ user }: HeaderProps) {
               size="sm"
               onClick={() => signOut({ callbackUrl: "/auth/login" })}
             >
-              Cerrar sesión
+              {t('header.signOut')}
             </Button>
           </div>
         </div>

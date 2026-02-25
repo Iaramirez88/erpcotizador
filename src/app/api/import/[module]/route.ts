@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import { requireApiAccess } from '@/lib/api-rbac'
-import { ModuleKey } from '@prisma/client'
+import { ClienteSegmento, ModuleKey, TipoMaterial } from '@prisma/client'
 
 export const runtime = 'nodejs'
 
@@ -179,6 +179,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       direccion: ['direccion'],
       ciudad: ['ciudad'],
       departamento: ['departamento'],
+      segmento: ['segmento'],
     } as const
 
     const data = rows
@@ -191,6 +192,17 @@ export async function POST(req: NextRequest, context: RouteContext) {
           errors.push({ row: idx, error: 'Faltan campos requeridos: nombre, documento' })
           return null
         }
+
+        let segmento: ClienteSegmento | null = null
+        const segmentoRaw = asString(mapped.segmento).trim().toUpperCase()
+        if (segmentoRaw) {
+          if (Object.values(ClienteSegmento).includes(segmentoRaw as ClienteSegmento)) {
+            segmento = segmentoRaw as ClienteSegmento
+          } else {
+            errors.push({ row: idx, error: `Segmento inválido: ${segmentoRaw}` })
+            return null
+          }
+        }
         return {
           nombre,
           tipoDocumento,
@@ -201,6 +213,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
           direccion: asString(mapped.direccion).trim() || null,
           ciudad: asString(mapped.ciudad).trim() || null,
           departamento: asString(mapped.departamento).trim() || null,
+          segmento,
           empresaId,
           sedeId,
         }
@@ -272,6 +285,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
   if (moduleParam === 'materiales') {
     const aliases = {
+      externalId: ['externalid', 'external_id', 'codigoexterno', 'codigo_externo', 'codigo', 'cod', 'idexterno', 'id_externo'],
       nombre: ['nombre', 'material'],
       tipo: ['tipo', 'tipo_material'],
       tipoProducto: ['tipoproducto', 'tipo_producto', 'tipo_de_producto', 'modalidad', 'clase', 'producto_tipo'],
@@ -297,15 +311,26 @@ export async function POST(req: NextRequest, context: RouteContext) {
       .map((r, i) => ({ idx: i + 2, mapped: mapRow(r, aliases) }))
       .map(({ idx, mapped }) => {
         const nombre = asString(mapped.nombre).trim()
-        const tipo = asString(mapped.tipo || 'OTRO').trim().toUpperCase()
+        const tipoRaw = asString(mapped.tipo).trim().toUpperCase()
+        const tipo = !tipoRaw
+          ? TipoMaterial.OTRO
+          : Object.values(TipoMaterial).includes(tipoRaw as TipoMaterial)
+            ? (tipoRaw as TipoMaterial)
+            : null
         if (!nombre) {
           errors.push({ row: idx, error: 'Falta campo requerido: nombre' })
+          return null
+        }
+
+        if (tipo === null) {
+          errors.push({ row: idx, error: `Tipo de material inválido: ${tipoRaw}` })
           return null
         }
 
         const unidadMedida = resolveUnidadMedida(mapped.unidadMedida, mapped.tipoProducto)
 
         return {
+          externalId: asString(mapped.externalId).trim() || null,
           nombre,
           tipo,
           categoria: asString(mapped.categoria).trim() || null,
@@ -335,6 +360,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     const result = await prisma.material.createMany({
       data: data as never,
+      skipDuplicates: true,
     })
 
     return NextResponse.json({ success: true, data: { module: moduleParam, created: result.count, totalRows: rows.length, errors, warnings } })

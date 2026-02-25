@@ -9,6 +9,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { Prisma } from "@prisma/client"
 import { requireApiAccess } from "@/lib/api-rbac"
+import { checkPlanLimit } from "@/lib/plan-limits"
 import { ModuleKey } from "@prisma/client"
 
 export const runtime = "nodejs"
@@ -62,6 +63,11 @@ export async function POST(_request: Request, context: RouteContext) {
 
   if (accessScan.empresaId !== accessOrdenes.empresaId) {
     return NextResponse.json({ success: false, error: 'Acceso inválido para la empresa actual' }, { status: 403 })
+  }
+
+  const limit = await checkPlanLimit(accessScan.empresaId, 'ORDENES_PER_MONTH')
+  if (!limit.ok) {
+    return NextResponse.json(limit, { status: 402 })
   }
 
   const userId = accessScan.userId

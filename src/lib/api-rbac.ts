@@ -4,7 +4,6 @@ import { prisma } from '@/lib/prisma'
 import { getActiveSedeForUser, requireSedeAccess } from '@/lib/rbac'
 import type { Session } from 'next-auth'
 import { AccessLevel, ModuleKey } from '@prisma/client'
-import { isModuleEnabledForEmpresa } from '@/lib/plan-modules'
 import { resolveUserIdFromSession } from '@/lib/session-user'
 
 export type ApiAccessOk = {
@@ -42,55 +41,17 @@ export async function requireApiAccess(
   const empresaId = sede.empresaId
   const empresa = await prisma.empresa.findUnique({
     where: { id: empresaId },
-    select: { id: true, nit: true, planValidUntil: true, planTier: true },
+    select: {
+      id: true,
+      nit: true,
+      registrationCodeHash: true,
+      planValidUntil: true,
+      planTier: true,
+      trialTier: true,
+      trialStartedAt: true,
+      trialValidUntil: true,
+    },
   })
-
-  // Super admin (global) bypass: puede operar sin restricciones de plan.
-  if (session.user.role !== 'ADMIN') {
-    const enabled = await isModuleEnabledForEmpresa({ empresaId, module: moduleKey })
-    if (!enabled) {
-      return {
-        ok: false,
-        response: NextResponse.json(
-          {
-            error: 'Este módulo no está habilitado para tu plan. Ve a Configuración → Plan o contacta al administrador.',
-            code: 'MODULE_NOT_ENABLED',
-            module: moduleKey,
-            planTier: empresa?.planTier ?? null,
-          },
-          { status: 402 }
-        ),
-      }
-    }
-  }
-
-  // Regla: Espacio personal (PERS-*) requiere plan vigente para operar.
-  // Permitimos CONFIG para que el usuario pueda activar su plan.
-  // Nota (temporal): mientras no esté implementado el flujo de pagos, esta regla queda
-  // detrás de una bandera para evitar bloquear a usuarios recién registrados.
-  const enforcePersonalPlan = process.env.ENFORCE_PERSONAL_PLAN === 'true'
-  if (
-    enforcePersonalPlan &&
-    process.env.NODE_ENV === 'production' &&
-    empresa?.nit?.startsWith('PERS-') &&
-    moduleKey !== ModuleKey.CONFIG
-  ) {
-    const now = new Date()
-    const validUntil = empresa.planValidUntil
-    const isActive = Boolean(validUntil && validUntil > now)
-    if (!isActive) {
-      return {
-        ok: false,
-        response: NextResponse.json(
-          {
-            error: 'Se requiere una suscripción activa para usar tu espacio personal. Ve a Configuración → Plan.',
-            code: 'PLAN_REQUIRED',
-          },
-          { status: 402 }
-        ),
-      }
-    }
-  }
 
   try {
     await requireSedeAccess({ userId, sedeId: sede.id, module: moduleKey, minLevel })

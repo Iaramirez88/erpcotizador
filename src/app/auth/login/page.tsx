@@ -16,8 +16,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Eye, EyeOff } from "lucide-react"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 export default function LoginPage() {
+  const { t } = useI18n()
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -48,9 +50,9 @@ export default function LoginPage() {
       if (result?.error) {
         if (result.error === 'EMAIL_NOT_VERIFIED') {
           setNeedsVerification(true)
-          setError('Tu cuenta aún no está verificada. Ingresa el código que te enviamos.')
+          setError(t('auth.login.errors.emailNotVerified'))
         } else {
-          setError("Email o contraseña incorrectos")
+          setError(t('auth.login.errors.invalidCredentials'))
         }
         return
       }
@@ -59,7 +61,7 @@ export default function LoginPage() {
       router.push("/dashboard")
       router.refresh()
     } catch {
-      setError("Ocurrió un error. Intenta nuevamente.")
+      setError(t('auth.login.errors.generic'))
     } finally {
       setIsLoading(false)
     }
@@ -71,9 +73,9 @@ export default function LoginPage() {
           <div className="flex justify-center mb-2">
             <div className="text-3xl font-semibold tracking-tight">Ordex</div>
           </div>
-          <CardTitle className="text-2xl text-center">Iniciar sesión</CardTitle>
+          <CardTitle className="text-2xl text-center">{t('auth.login.title')}</CardTitle>
           <CardDescription className="text-center">
-            Ingresa tus credenciales para acceder al sistema
+            {t('auth.login.description')}
           </CardDescription>
         </CardHeader>
         
@@ -88,7 +90,7 @@ export default function LoginPage() {
                       href={`/auth/verify?email=${encodeURIComponent(formData.email)}`}
                       className="text-blue-600 hover:underline"
                     >
-                      Verificar mi cuenta
+                      {t('auth.login.verifyAccount')}
                     </Link>
                   </div>
                 )}
@@ -96,11 +98,11 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="sr-only">Email</Label>
+              <Label htmlFor="email" className="sr-only">{t('auth.fields.email')}</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="tu@email.com"
+                placeholder={t('auth.placeholders.email')}
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 required
@@ -109,7 +111,7 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="sr-only">Contraseña</Label>
+              <Label htmlFor="password" className="sr-only">{t('auth.fields.password')}</Label>
               <div className="relative">
                 <Input
                   id="password"
@@ -125,7 +127,7 @@ export default function LoginPage() {
                   onClick={() => setShowPassword((v) => !v)}
                   disabled={isLoading}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  aria-label={showPassword ? t('auth.password.hide') : t('auth.password.show')}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -137,7 +139,7 @@ export default function LoginPage() {
                 href="/auth/forgot-password" 
                 className="text-blue-600 hover:underline"
               >
-                ¿Olvidaste tu contraseña?
+                {t('auth.login.forgotPassword')}
               </Link>
             </div>
 
@@ -149,7 +151,7 @@ export default function LoginPage() {
                 onChange={(e) => setRememberMe(e.target.checked)}
                 disabled={isLoading}
               />
-              Recordarme
+              {t('auth.login.rememberMe')}
             </label>
           </CardContent>
 
@@ -159,13 +161,13 @@ export default function LoginPage() {
               className="w-full" 
               disabled={isLoading}
             >
-              {isLoading ? "Iniciando sesión..." : "Iniciar sesión"}
+              {isLoading ? t('auth.login.signingIn') : t('auth.login.submit')}
             </Button>
 
             <div className="text-sm text-center text-gray-600">
-              ¿No tienes cuenta?{" "}
+              {t('auth.login.noAccount')}{" "}
               <Link href="/auth/register" className="text-blue-600 hover:underline font-medium">
-                Regístrate aquí
+                {t('auth.login.registerHere')}
               </Link>
             </div>
           </CardFooter>

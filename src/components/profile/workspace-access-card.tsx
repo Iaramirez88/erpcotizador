@@ -5,8 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import { useI18n } from '@/components/providers/i18n-provider'
 
 export function WorkspaceAccessCard() {
+  const { t } = useI18n()
   const [companyCode, setCompanyCode] = useState('')
   const [workspaceCode, setWorkspaceCode] = useState('')
   const [busy, setBusy] = useState(false)
@@ -27,15 +29,15 @@ export function WorkspaceAccessCard() {
 
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
       if (!res.ok || !json.ok) {
-        setStatus(json.error || 'No se pudo validar el código')
+        setStatus(json.error || t('profile.access.errors.invalidCompanyCode'))
         return
       }
 
       setCompanyCode('')
-      setStatus('Listo. Tu espacio de trabajo fue actualizado.')
+      setStatus(t('profile.access.status.workspaceUpdated'))
       window.location.assign('/dashboard')
     } catch {
-      setStatus('No se pudo completar la solicitud. Verifica tu conexión e intenta de nuevo.')
+      setStatus(t('common.errors.requestFailedTryAgain'))
     } finally {
       setBusy(false)
     }
@@ -56,14 +58,14 @@ export function WorkspaceAccessCard() {
 
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
       if (!res.ok || !json.ok) {
-        setStatus(json.error || 'No se pudo enviar la solicitud')
+        setStatus(json.error || t('profile.access.errors.requestFailed'))
         return
       }
 
       setWorkspaceCode('')
-      setStatus('Solicitud enviada. Un administrador debe aprobarte o compartirte el código.')
+      setStatus(t('profile.access.status.requestSent'))
     } catch {
-      setStatus('No se pudo completar la solicitud. Verifica tu conexión e intenta de nuevo.')
+      setStatus(t('common.errors.requestFailedTryAgain'))
     } finally {
       setBusy(false)
     }
@@ -72,47 +74,47 @@ export function WorkspaceAccessCard() {
   return (
     <Card>
       <CardHeader className="py-3">
-        <CardTitle className="text-base">Acceso a otro espacio</CardTitle>
+        <CardTitle className="text-base">{t('profile.access.otherWorkspaceTitle')}</CardTitle>
       </CardHeader>
       <CardContent className="pt-0 space-y-4 text-sm">
         <div className="space-y-2">
-          <Label htmlFor="company-code">Tengo el código de empresa</Label>
+          <Label htmlFor="company-code">{t('profile.access.companyCodeLabel')}</Label>
           <div className="flex gap-2 flex-wrap">
             <Input
               id="company-code"
               value={companyCode}
               onChange={(e) => setCompanyCode(e.target.value)}
-              placeholder="EMP-..."
+              placeholder={t('profile.access.companyCodePlaceholder')}
               autoComplete="one-time-code"
               disabled={busy}
               className="max-w-sm"
             />
             <Button type="button" variant="outline" onClick={() => void claimByCode()} disabled={busy || !companyCode.trim()}>
-              {busy ? 'Procesando…' : 'Unirme'}
+              {busy ? t('common.processing') : t('profile.access.join')}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Si te compartieron un código global del espacio de trabajo, puedes usarlo aquí para cambiar tu empresa activa.
+            {t('profile.access.companyCodeHelp')}
           </p>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="workspace-code">Solicitar acceso con código de espacio</Label>
+          <Label htmlFor="workspace-code">{t('profile.access.workspaceCodeLabel')}</Label>
           <div className="flex gap-2 flex-wrap">
             <Input
               id="workspace-code"
               value={workspaceCode}
               onChange={(e) => setWorkspaceCode(e.target.value)}
-              placeholder="WS-XXXXXXXX"
+              placeholder={t('profile.access.workspaceCodePlaceholder')}
               disabled={busy}
               className="max-w-sm font-mono"
             />
             <Button type="button" onClick={() => void requestAccess()} disabled={busy || !workspaceCode.trim()}>
-              {busy ? 'Enviando…' : 'Solicitar'}
+              {busy ? t('common.sending') : t('profile.access.requestAccess')}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Esto notifica a los administradores del espacio para que te inviten o te compartan el código.
+            {t('profile.access.workspaceCodeHelp')}
           </p>
         </div>
 

@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useI18n } from '@/components/providers/i18n-provider'
 import {
   Dialog,
   DialogContent,
@@ -49,16 +50,20 @@ type PutResponse =
     }
   | { ok?: false; error?: string }
 
-function fmtDate(value: string | null | undefined): string {
-  if (!value) return '—'
+function fmtDate(value: string | null | undefined, locale: string, naText: string): string {
+  if (!value) return naText
   try {
-    return new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+    return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
   } catch {
     return String(value)
   }
 }
 
 export default function SuperAdminUsersClient() {
+  const { t, language } = useI18n()
+  const locale = language === 'en' ? 'en-US' : 'es-CO'
+  const naText = t('common.na')
+
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -97,7 +102,7 @@ export default function SuperAdminUsersClient() {
         const json = (await res.json().catch(() => ({}))) as GetResponse
 
         if (!res.ok || !('ok' in json) || !json.ok) {
-          setError(('error' in json && json.error) || 'No se pudo cargar')
+          setError(('error' in json && json.error) || t('superAdmin.users.errors.loadFailed'))
           setItems([])
           setTotal(0)
           return
@@ -108,7 +113,7 @@ export default function SuperAdminUsersClient() {
           setTotal(json.total)
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Error inesperado')
+        setError(e instanceof Error ? e.message : t('common.unexpectedError'))
         setItems([])
         setTotal(0)
       } finally {
@@ -141,7 +146,7 @@ export default function SuperAdminUsersClient() {
 
       const json = (await res.json().catch(() => ({}))) as PutResponse
       if (!res.ok || !('ok' in json) || !json.ok) {
-        alert(('error' in json && json.error) || 'No se pudo guardar')
+        alert(('error' in json && json.error) || t('superAdmin.users.errors.saveFailed'))
         return
       }
 
@@ -149,20 +154,20 @@ export default function SuperAdminUsersClient() {
       setEditOpen(false)
       setEditing(null)
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error inesperado')
+      alert(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setSaving(false)
     }
   }
 
   async function deleteUser(row: Row) {
-    if (!confirm(`¿Eliminar el usuario ${row.email}?`)) return
+    if (!confirm(t('superAdmin.users.confirm.delete', { email: row.email }))) return
     setDeletingId(row.id)
     try {
       const res = await fetch(`/api/super-admin/users/${row.id}`, { method: 'DELETE' })
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
       if (!res.ok || !json.ok) {
-        alert(json.error || 'No se pudo eliminar')
+        alert(json.error || t('superAdmin.users.errors.deleteFailed'))
         return
       }
 
@@ -170,7 +175,7 @@ export default function SuperAdminUsersClient() {
       setItems((prev) => prev.filter((it) => it.id !== row.id))
       setTotal((t) => Math.max(0, t - 1))
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error inesperado')
+      alert(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setDeletingId(null)
     }
@@ -180,79 +185,79 @@ export default function SuperAdminUsersClient() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Super Admin · Usuarios</h1>
-          <p className="text-sm text-gray-600">Listado global de usuarios (con empresa y plan).</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('superAdmin.users.title')}</h1>
+          <p className="text-sm text-gray-600">{t('superAdmin.users.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button asChild variant="outline">
-            <Link href="/dashboard/configuracion/super-admin/empresas">Empresas</Link>
+            <Link href="/dashboard/configuracion/super-admin/empresas">{t('superAdmin.nav.companies')}</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href="/dashboard/configuracion/super-admin/modulos-por-plan">Módulos por plan</Link>
+            <Link href="/dashboard/configuracion/super-admin/modulos-por-plan">{t('superAdmin.nav.modulesByPlan')}</Link>
           </Button>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Listado</CardTitle>
-          <CardDescription>Paginado de 10 en 10</CardDescription>
+          <CardTitle>{t('superAdmin.users.list.title')}</CardTitle>
+          <CardDescription>{t('superAdmin.users.list.subtitle')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-2 flex-wrap mb-4">
             <div className="min-w-[240px] flex-1">
-              <Input placeholder="Buscar por nombre o email..." value={search} onChange={(e) => {
+              <Input placeholder={t('superAdmin.users.searchPlaceholder')} value={search} onChange={(e) => {
                 setPage(1)
                 setSearch(e.target.value)
               }} />
             </div>
             <Button variant="outline" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-              Anterior
+              {t('common.previous')}
             </Button>
             <div className="text-sm text-muted-foreground">
-              Página {page} / {totalPages}
+              {t('superAdmin.pagination.pageOf', { page: String(page), totalPages: String(totalPages) })}
             </div>
             <Button variant="outline" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
-              Siguiente
+              {t('common.next')}
             </Button>
           </div>
 
           {loading ? (
-            <div className="text-sm text-muted-foreground py-6">Cargando…</div>
+            <div className="text-sm text-muted-foreground py-6">{t('common.loading')}</div>
           ) : error ? (
             <div className="text-sm text-red-600 py-6">{error}</div>
           ) : items.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-6">Sin usuarios</div>
+            <div className="text-sm text-muted-foreground py-6">{t('superAdmin.users.empty')}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b">
-                    <th className="py-2 text-left">Usuario</th>
-                    <th className="py-2 text-left">Email</th>
-                    <th className="py-2 text-left">Empresa</th>
-                    <th className="py-2 text-left">Plan</th>
-                    <th className="py-2 text-left">Rol</th>
-                    <th className="py-2 text-left">Creado</th>
-                    <th className="py-2 text-right">Acciones</th>
+                    <th className="py-2 text-left">{t('superAdmin.users.columns.user')}</th>
+                    <th className="py-2 text-left">{t('common.email')}</th>
+                    <th className="py-2 text-left">{t('superAdmin.users.columns.company')}</th>
+                    <th className="py-2 text-left">{t('superAdmin.users.columns.plan')}</th>
+                    <th className="py-2 text-left">{t('superAdmin.users.columns.role')}</th>
+                    <th className="py-2 text-left">{t('superAdmin.users.columns.createdAt')}</th>
+                    <th className="py-2 text-right">{t('superAdmin.users.columns.actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((u) => (
                     <tr key={u.id} className="border-b">
                       <td className="py-2">
-                        <div className="font-medium">{u.name || '—'}</div>
+                        <div className="font-medium">{u.name || naText}</div>
                         <div className="text-xs text-muted-foreground">{u.id}</div>
                       </td>
                       <td className="py-2">{u.email}</td>
-                      <td className="py-2">{u.empresa?.nombre || '—'}</td>
-                      <td className="py-2">{u.empresa?.planTier || '—'}</td>
+                      <td className="py-2">{u.empresa?.nombre || naText}</td>
+                      <td className="py-2">{u.empresa?.planTier || naText}</td>
                       <td className="py-2">{u.role}</td>
-                      <td className="py-2">{fmtDate(u.createdAt)}</td>
+                      <td className="py-2">{fmtDate(u.createdAt, locale, naText)}</td>
                       <td className="py-2">
                         <div className="flex justify-end gap-2">
                           <Button variant="outline" size="sm" onClick={() => openEdit(u)}>
-                            Editar
+                            {t('common.edit')}
                           </Button>
                           <Button
                             variant="outline"
@@ -261,7 +266,7 @@ export default function SuperAdminUsersClient() {
                             disabled={deletingId === u.id}
                             onClick={() => void deleteUser(u)}
                           >
-                            {deletingId === u.id ? 'Eliminando…' : 'Eliminar'}
+                            {deletingId === u.id ? t('superAdmin.users.deleting') : t('common.delete')}
                           </Button>
                         </div>
                       </td>
@@ -280,18 +285,18 @@ export default function SuperAdminUsersClient() {
       }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Editar usuario</DialogTitle>
-            <DialogDescription>Actualiza nombre y rol.</DialogDescription>
+            <DialogTitle>{t('superAdmin.users.edit.title')}</DialogTitle>
+            <DialogDescription>{t('superAdmin.users.edit.description')}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-1">
-              <Label>Nombre</Label>
+              <Label>{t('superAdmin.users.fields.name')}</Label>
               <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
             </div>
 
             <div className="space-y-1">
-              <Label>Rol</Label>
+              <Label>{t('superAdmin.users.fields.role')}</Label>
               <select
                 value={editRole}
                 onChange={(e) => setEditRole(e.target.value as UserRole)}
@@ -306,19 +311,19 @@ export default function SuperAdminUsersClient() {
             </div>
 
             <div className="rounded border p-3 text-sm">
-              <div className="text-muted-foreground">Empresa</div>
-              <div className="font-medium">{editing?.empresa?.nombre || '—'}</div>
-              <div className="text-muted-foreground mt-2">Plan</div>
-              <div className="font-medium">{editing?.empresa?.planTier || '—'}</div>
+              <div className="text-muted-foreground">{t('superAdmin.users.fields.company')}</div>
+              <div className="font-medium">{editing?.empresa?.nombre || naText}</div>
+              <div className="text-muted-foreground mt-2">{t('superAdmin.users.fields.plan')}</div>
+              <div className="font-medium">{editing?.empresa?.planTier || naText}</div>
             </div>
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
             <Button onClick={() => void saveEdit()} disabled={saving}>
-              {saving ? 'Guardando…' : 'Guardar'}
+              {saving ? t('common.saving') : t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>

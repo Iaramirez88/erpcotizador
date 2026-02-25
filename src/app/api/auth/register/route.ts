@@ -15,6 +15,7 @@ import { sendEmail } from "@/lib/email"
 import { ensureDefaultSedeForEmpresa } from "@/lib/rbac"
 import { isSuperAdminEmail } from "@/lib/super-admin"
 import { generateWorkspaceCode } from "@/lib/workspace-code"
+import { checkPlanLimit } from "@/lib/plan-limits"
 import { Prisma } from "@prisma/client"
 
 function parseEmpresaIdFromEmpCode(code: string): string | null {
@@ -117,6 +118,11 @@ export async function POST(request: Request) {
 
     if (!empresa?.id) {
       return NextResponse.json({ error: 'Entidad no encontrada' }, { status: 400 })
+    }
+
+    const userLimit = await checkPlanLimit(empresa.id, 'USUARIOS_MAX')
+    if (!userLimit.ok) {
+      return NextResponse.json(userLimit, { status: 402 })
     }
 
     if (resolvedEmpresaId && empresa?.registrationCodeHash) {

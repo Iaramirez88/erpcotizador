@@ -26,6 +26,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatCurrency, formatUnidadMedidaLabel } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useI18n } from '@/components/providers/i18n-provider'
 import { Download, Search } from 'lucide-react'
 
 type DianDirection = 'OUTBOUND' | 'INBOUND'
@@ -33,58 +34,68 @@ type DianType = 'INVOICE' | 'CREDIT_NOTE' | 'DEBIT_NOTE' | 'ELECTRONIC_INSTRUMEN
 type DianStatus = 'GENERATED' | 'TRANSMITTED' | 'EXPEDITED' | 'DELIVERED' | 'RECEIVED' | 'ERROR'
 type DianAction = 'transmitir' | 'expedir' | 'entregar' | 'recepcionar'
 
-const DIAN_STEPS: Array<{ key: DianStatus; title: string; description: string }> = [
-  {
-    key: 'GENERATED',
-    title: 'Generación',
-    description: 'Construcción del documento electrónico con su información fiscal y comercial.',
-  },
-  {
-    key: 'TRANSMITTED',
-    title: 'Transmisión',
-    description: 'Envío para validación/registro ante el proveedor tecnológico y DIAN (según integración).',
-  },
-  {
-    key: 'EXPEDITED',
-    title: 'Expedición',
-    description: 'Emisión del documento válido y asignación de identificadores/estado de expedición.',
-  },
-  {
-    key: 'DELIVERED',
-    title: 'Entrega',
-    description: 'Entrega al adquirente por los canales configurados (email/portal/otros).',
-  },
-  {
-    key: 'RECEIVED',
-    title: 'Recepción',
-    description: 'Recepción y registro de facturas/documentos recibidos (acuse/validación/estado).',
-  },
-]
+type TFunction = (key: string, vars?: Record<string, string | number>) => string
 
-const DIAN_DOC_TYPES: Array<{ value: DianType; label: string }> = [
-  { value: 'INVOICE', label: 'Factura electrónica' },
-  { value: 'CREDIT_NOTE', label: 'Nota crédito' },
-  { value: 'DEBIT_NOTE', label: 'Nota débito' },
-  { value: 'ELECTRONIC_INSTRUMENT', label: 'Instrumento electrónico' },
-]
+function getDianSteps(t: TFunction): Array<{ key: DianStatus; title: string; description: string }> {
+  return [
+    {
+      key: 'GENERATED',
+      title: t('pos.dian.steps.generated.title'),
+      description: t('pos.dian.steps.generated.description'),
+    },
+    {
+      key: 'TRANSMITTED',
+      title: t('pos.dian.steps.transmitted.title'),
+      description: t('pos.dian.steps.transmitted.description'),
+    },
+    {
+      key: 'EXPEDITED',
+      title: t('pos.dian.steps.expedited.title'),
+      description: t('pos.dian.steps.expedited.description'),
+    },
+    {
+      key: 'DELIVERED',
+      title: t('pos.dian.steps.delivered.title'),
+      description: t('pos.dian.steps.delivered.description'),
+    },
+    {
+      key: 'RECEIVED',
+      title: t('pos.dian.steps.received.title'),
+      description: t('pos.dian.steps.received.description'),
+    },
+  ]
+}
 
-function dianDirectionLabel(value: DianDirection | string): string {
-  if (value === 'OUTBOUND') return 'Emisión'
-  if (value === 'INBOUND') return 'Recepción'
+type DianDocTypeOption = { value: DianType; label: string }
+function getDianDocTypes(t: TFunction): DianDocTypeOption[] {
+  return [
+    { value: 'INVOICE', label: t('pos.dian.docTypes.invoice') },
+    { value: 'CREDIT_NOTE', label: t('pos.dian.docTypes.creditNote') },
+    { value: 'DEBIT_NOTE', label: t('pos.dian.docTypes.debitNote') },
+    { value: 'ELECTRONIC_INSTRUMENT', label: t('pos.dian.docTypes.electronicInstrument') },
+  ]
+}
+
+function dianDirectionLabel(t: TFunction, value: DianDirection | string): string {
+  if (value === 'OUTBOUND') return t('pos.dian.direction.outbound')
+  if (value === 'INBOUND') return t('pos.dian.direction.inbound')
   return String(value)
 }
 
-function dianTypeLabel(value: DianType | string): string {
-  return DIAN_DOC_TYPES.find((t) => t.value === value)?.label ?? String(value)
+function dianTypeLabel(docTypes: DianDocTypeOption[], value: DianType | string): string {
+  return docTypes.find((t) => t.value === value)?.label ?? String(value)
 }
 
 type DianNumeracionTipoDocumento = 'FACTURA_VENTA' | 'NOTA_CREDITO' | 'NOTA_DEBITO'
 
-const DIAN_NUM_TIPO_DOC_OPTIONS: Array<{ value: DianNumeracionTipoDocumento; label: string }> = [
-  { value: 'FACTURA_VENTA', label: 'Factura Electrónica de Venta' },
-  { value: 'NOTA_CREDITO', label: 'Nota crédito' },
-  { value: 'NOTA_DEBITO', label: 'Nota débito' },
-]
+type DianNumeracionTipoDocumentoOption = { value: DianNumeracionTipoDocumento; label: string }
+function getDianNumeracionTipoDocOptions(t: TFunction): DianNumeracionTipoDocumentoOption[] {
+  return [
+    { value: 'FACTURA_VENTA', label: t('pos.dian.numerationDocType.facturaVenta') },
+    { value: 'NOTA_CREDITO', label: t('pos.dian.numerationDocType.notaCredito') },
+    { value: 'NOTA_DEBITO', label: t('pos.dian.numerationDocType.notaDebito') },
+  ]
+}
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -256,6 +267,13 @@ type ClientePickerItem = {
 }
 
 export default function PosPage() {
+  const { t, language } = useI18n()
+  const locale = language === 'en' ? 'en-US' : 'es-CO'
+
+  const dianSteps = useMemo(() => getDianSteps(t), [t])
+  const dianDocTypes = useMemo(() => getDianDocTypes(t), [t])
+  const dianNumTipoDocOptions = useMemo(() => getDianNumeracionTipoDocOptions(t), [t])
+
   const [activeTab, setActiveTab] = useState<'interna' | 'dian'>('interna')
   const [tabPending, setTabPending] = useState(false)
   const tabTimerRef = useRef<number | null>(null)
@@ -449,30 +467,30 @@ export default function PosPage() {
       if (resInvoices.ok && jsonInvoices.success && Array.isArray(jsonInvoices.data)) {
         setInvoices(jsonInvoices.data)
       } else if (!resInvoices.ok) {
-        setError(jsonInvoices.error || 'No se pudieron cargar facturas')
+        setError(jsonInvoices.error || t('pos.errors.loadInvoices'))
       }
 
       if (resReturns.ok && jsonReturns.success && Array.isArray(jsonReturns.data)) {
         setReturns(jsonReturns.data)
       } else if (!resReturns.ok) {
-        setError((prev) => prev || jsonReturns.error || 'No se pudieron cargar devoluciones')
+        setError((prev) => prev || jsonReturns.error || t('pos.errors.loadReturns'))
       }
 
       if (resBodegas.ok && jsonBodegas.success && Array.isArray(jsonBodegas.data)) {
         setBodegas(jsonBodegas.data)
       } else if (!resBodegas.ok) {
-        setError((prev) => prev || jsonBodegas.error || 'No se pudieron cargar sedes')
+        setError((prev) => prev || jsonBodegas.error || t('pos.errors.loadWarehouses'))
       }
 
       if (resMaterials.ok && jsonMaterials.success && Array.isArray(jsonMaterials.data)) {
         setMaterials(jsonMaterials.data)
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error inesperado')
+      setError(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setIsLoading(false)
     }
-  }, [materialSearch])
+  }, [materialSearch, t])
 
   const exportExcel = useCallback(() => {
     window.location.href = '/api/pos/export'
@@ -496,13 +514,13 @@ export default function PosPage() {
       const res = await fetch(`/api/bodegas/${warehouseId}/stock`)
       const json = (await res.json().catch(() => ({}))) as ApiListResponse<StockRow[]>
       if (!res.ok || !json.success || !Array.isArray(json.data)) {
-        setStockError(json.error || 'No se pudo cargar el stock de sede')
+        setStockError(json.error || t('pos.errors.loadWarehouseStock'))
         setStockRows([])
         return
       }
       setStockRows(json.data)
     } catch (e) {
-      setStockError(e instanceof Error ? e.message : 'Error inesperado')
+      setStockError(e instanceof Error ? e.message : t('common.unexpectedError'))
       setStockRows([])
     } finally {
       setStockLoading(false)
@@ -519,18 +537,18 @@ export default function PosPage() {
       const res = await fetch(`/api/dian/documentos?${qs.toString()}`)
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: unknown; error?: string }
       if (!res.ok || !json.ok || !Array.isArray(json.data)) {
-        setDianError(json.error || 'No se pudieron cargar los documentos DIAN')
+        setDianError(json.error || t('pos.dian.errors.loadDocuments'))
         setDianDocs([])
         return
       }
       setDianDocs(json.data as DianDocListItem[])
     } catch (e) {
-      setDianError(e instanceof Error ? e.message : 'Error inesperado')
+      setDianError(e instanceof Error ? e.message : t('common.unexpectedError'))
       setDianDocs([])
     } finally {
       setDianLoading(false)
     }
-  }, [dianFilterDirection])
+  }, [dianFilterDirection, t])
 
   const loadClientesPicker = useCallback(async () => {
     setClientePickerLoading(true)
@@ -539,7 +557,7 @@ export default function PosPage() {
       const res = await fetch(`/api/clientes?search=${encodeURIComponent(clientePickerSearch)}`)
       const json = (await res.json().catch(() => ({}))) as { success?: boolean; data?: unknown; error?: string }
       if (!res.ok || !json.success || !Array.isArray(json.data)) {
-        setClientePickerError(json.error || 'No se pudieron cargar los clientes')
+        setClientePickerError(json.error || t('pos.errors.loadClients'))
         setClientePickerItems([])
         return
       }
@@ -552,12 +570,12 @@ export default function PosPage() {
       }))
       setClientePickerItems(items)
     } catch (e) {
-      setClientePickerError(e instanceof Error ? e.message : 'Error inesperado')
+      setClientePickerError(e instanceof Error ? e.message : t('common.unexpectedError'))
       setClientePickerItems([])
     } finally {
       setClientePickerLoading(false)
     }
-  }, [clientePickerSearch])
+  }, [clientePickerSearch, t])
 
   const loadProductosPicker = useCallback(async () => {
     setProductoPickerLoading(true)
@@ -566,18 +584,18 @@ export default function PosPage() {
       const res = await fetch(`/api/materiales?search=${encodeURIComponent(productoPickerSearch)}`)
       const json = (await res.json().catch(() => ({}))) as ApiListResponse<Material[]>
       if (!res.ok || !json.success || !Array.isArray(json.data)) {
-        setProductoPickerError(json.error || 'No se pudieron cargar los productos/servicios')
+        setProductoPickerError(json.error || t('pos.errors.loadProducts'))
         setProductoPickerItems([])
         return
       }
       setProductoPickerItems(json.data)
     } catch (e) {
-      setProductoPickerError(e instanceof Error ? e.message : 'Error inesperado')
+      setProductoPickerError(e instanceof Error ? e.message : t('common.unexpectedError'))
       setProductoPickerItems([])
     } finally {
       setProductoPickerLoading(false)
     }
-  }, [productoPickerSearch])
+  }, [productoPickerSearch, t])
 
   useEffect(() => {
     if (!clientePickerOpen) return
@@ -659,18 +677,18 @@ export default function PosPage() {
       const res = await fetch(`/api/dian/documentos/${id}`)
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: unknown; error?: string }
       if (!res.ok || !json.ok || !json.data) {
-        setDianDetailError(json.error || 'No se pudo cargar el detalle del documento')
+        setDianDetailError(json.error || t('pos.dian.errors.loadDocumentDetail'))
         setDianDetail(null)
         return
       }
       setDianDetail(json.data as DianDocDetail)
     } catch (e) {
-      setDianDetailError(e instanceof Error ? e.message : 'Error inesperado')
+      setDianDetailError(e instanceof Error ? e.message : t('common.unexpectedError'))
       setDianDetail(null)
     } finally {
       setDianDetailLoading(false)
     }
-  }, [])
+  }, [t])
 
   const loadDianSettings = useCallback(async () => {
     setDianSettingsLoading(true)
@@ -678,16 +696,16 @@ export default function PosPage() {
       const res = await fetch('/api/dian/config', { cache: 'no-store' })
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: unknown; error?: string }
       if (!res.ok || !json.ok) {
-        setDianError(json.error || 'No se pudo cargar la configuración DIAN')
+        setDianError(json.error || t('pos.dian.errors.loadSettings'))
         return
       }
       setDianSettings((json.data && typeof json.data === 'object' ? (json.data as DianSettings) : {}) as DianSettings)
     } catch (e) {
-      setDianError(e instanceof Error ? e.message : 'Error inesperado')
+      setDianError(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setDianSettingsLoading(false)
     }
-  }, [])
+  }, [t])
 
   const saveDianSettings = useCallback(async (next: DianSettings) => {
     setDianSettingsSaving(true)
@@ -699,18 +717,18 @@ export default function PosPage() {
       })
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: unknown; error?: string }
       if (!res.ok || !json.ok) {
-        setDianError(json.error || 'No se pudo guardar la configuración DIAN')
+        setDianError(json.error || t('pos.dian.errors.saveSettings'))
         return false
       }
       setDianSettings((json.data && typeof json.data === 'object' ? (json.data as DianSettings) : {}) as DianSettings)
       return true
     } catch (e) {
-      setDianError(e instanceof Error ? e.message : 'Error inesperado')
+      setDianError(e instanceof Error ? e.message : t('common.unexpectedError'))
       return false
     } finally {
       setDianSettingsSaving(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (activeTab !== 'dian') return
@@ -732,7 +750,7 @@ export default function PosPage() {
 
       const numero = (args.numero || '').trim()
       if (!numero) {
-        setDianError('El número es requerido')
+        setDianError(t('pos.dian.validation.numberRequired'))
         return false
       }
 
@@ -752,7 +770,7 @@ export default function PosPage() {
 
         const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: unknown; error?: string }
         if (!res.ok || !json.ok || !json.data) {
-          setDianError(json.error || 'No se pudo crear el documento DIAN')
+          setDianError(json.error || t('pos.dian.errors.createDocument'))
           return false
         }
 
@@ -764,7 +782,7 @@ export default function PosPage() {
         }
         return true
       } catch (e) {
-        setDianError(e instanceof Error ? e.message : 'Error inesperado')
+        setDianError(e instanceof Error ? e.message : t('common.unexpectedError'))
         return false
       } finally {
         setDianCreating(false)
@@ -775,7 +793,7 @@ export default function PosPage() {
 
   function validateDianNumeroAgainstSettings(args: { tipoDoc: DianNumeracionTipoDocumento; numero: string }): string | null {
     const numero = (args.numero || '').trim()
-    if (!numero) return 'El número es requerido'
+    if (!numero) return t('pos.dian.validation.numberRequired')
 
     const numeracion = (Array.isArray(dianSettings.numeracion) ? dianSettings.numeracion : []).filter(
       (r) => Boolean(r.activo) && (r.tipoDocumento ?? 'FACTURA_VENTA') === args.tipoDoc
@@ -792,7 +810,7 @@ export default function PosPage() {
     })
 
     if (!matched) {
-      return 'El número no coincide con ningún rango activo autorizado (prefijo + consecutivo).'
+      return t('pos.dian.validation.numberNoActiveRangeMatch')
     }
 
     const pref = String(matched.prefijo ?? '').trim()
@@ -804,23 +822,23 @@ export default function PosPage() {
     const actual = n(matched.actual, NaN)
 
     if (!Number.isFinite(consecutive)) {
-      return 'No se pudo leer el consecutivo del número (se espera prefijo + consecutivo numérico).'
+      return t('pos.dian.validation.numberConsecutiveParseError')
     }
     if (!Number.isFinite(desde) || !Number.isFinite(hasta) || desde <= 0 || hasta <= 0 || desde > hasta) {
-      return 'El rango autorizado está mal configurado (desde/hasta).'
+      return t('pos.dian.validation.rangeBadConfigured')
     }
     if (consecutive < desde || consecutive > hasta) {
-      return `El consecutivo ${consecutive} está fuera del rango autorizado (${desde}–${hasta}).`
+      return t('pos.dian.validation.consecutiveOutOfRange', { consecutive, desde, hasta })
     }
     if (Number.isFinite(actual) && consecutive < actual) {
-      return `El consecutivo ${consecutive} es menor al actual configurado (${actual}).`
+      return t('pos.dian.validation.consecutiveLessThanCurrent', { consecutive, actual })
     }
 
     const fv = String(matched.fechaVencimiento ?? '').trim()
     if (fv) {
       const exp = new Date(`${fv}T00:00:00`)
       if (!Number.isNaN(exp.getTime()) && exp < new Date(today.toDateString())) {
-        return 'El rango está vencido. Ajusta la fecha de vencimiento o desactívalo.'
+        return t('pos.dian.validation.rangeExpired')
       }
     }
 
@@ -898,18 +916,18 @@ export default function PosPage() {
       if (nextSettings) {
         const saved = await saveDianSettings(nextSettings)
         if (!saved) {
-          setDianError((prev) => prev || 'Se creó el documento, pero no se pudo guardar el consecutivo actualizado en la configuración DIAN.')
+            setDianError((prev) => prev || t('pos.dian.errors.consecutivePersistFailed'))
         }
       }
     },
-    [saveDianSettings]
+      [saveDianSettings, t]
   )
 
   const loadPosInvoiceIntoDian = useCallback(
     async (invoiceId: string) => {
       const id = String(invoiceId || '').trim()
       if (!id) {
-        setDianError('Selecciona una factura interna')
+        setDianError(t('pos.dian.posInvoice.selectInternalInvoice'))
         return
       }
 
@@ -919,7 +937,7 @@ export default function PosPage() {
         const res = await fetch(`/api/pos/facturas/${encodeURIComponent(id)}`)
         const json = (await res.json().catch(() => ({}))) as ApiListResponse<InvoiceDetail>
         if (!res.ok || !json.success || !json.data) {
-          setDianError(json.error || 'No se pudo cargar la factura interna')
+          setDianError(json.error || t('pos.dian.posInvoice.loadFailed'))
           setDianCreatePosInvoice(null)
           return
         }
@@ -947,20 +965,20 @@ export default function PosPage() {
           if (suggested) setDianCreateNumero(suggested)
         }
       } catch (e) {
-        setDianError(e instanceof Error ? e.message : 'Error inesperado')
+        setDianError(e instanceof Error ? e.message : t('common.unexpectedError'))
         setDianCreatePosInvoice(null)
       } finally {
         setDianCreatePosInvoiceLoading(false)
       }
     },
-    [dianCreateNumero, suggestDianNumeroFromSettings]
+    [dianCreateNumero, suggestDianNumeroFromSettings, t]
   )
 
   const createDianDocFromPosInvoice = useCallback(
     async (args: { posInvoiceId: string; subType: string }) => {
       const posInvoiceId = String(args.posInvoiceId || '').trim()
       if (!posInvoiceId) {
-        setDianError('Selecciona una factura interna')
+        setDianError(t('pos.dian.posInvoice.selectInternalInvoice'))
         return
       }
 
@@ -970,15 +988,15 @@ export default function PosPage() {
 
       const inv = dianCreatePosInvoice
       if (!inv || inv.id !== posInvoiceId) {
-        setDianError('No se pudo cargar la factura interna seleccionada')
+        setDianError(t('pos.dian.posInvoice.selectedLoadFailed'))
         return
       }
       if (String(inv.status || '') === 'DRAFT') {
-        setDianError('La factura interna está en borrador. Finalízala antes de emitir electrónicamente.')
+        setDianError(t('pos.dian.posInvoice.isDraftFinalizeFirst'))
         return
       }
       if (!String(inv.clienteNombre || '').trim() || !String(inv.clienteDocumento || '').trim()) {
-        setDianError('La factura interna no tiene cliente (nombre/documento) completo.')
+        setDianError(t('pos.dian.posInvoice.clientIncomplete'))
         return
       }
 
@@ -1021,7 +1039,7 @@ export default function PosPage() {
 
         const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: unknown; error?: string }
         if (!res.ok || !json.ok || !json.data) {
-          setDianError(json.error || 'No se pudo crear/conciliar el documento DIAN')
+          setDianError(json.error || t('pos.dian.errors.createOrReconcileDocument'))
           return
         }
 
@@ -1036,7 +1054,7 @@ export default function PosPage() {
           await bumpAndPersistDianActual({ tipoDoc: 'FACTURA_VENTA', numero })
         }
       } catch (e) {
-        setDianError(e instanceof Error ? e.message : 'Error inesperado')
+        setDianError(e instanceof Error ? e.message : t('common.unexpectedError'))
       } finally {
         setDianCreating(false)
       }
@@ -1089,7 +1107,7 @@ export default function PosPage() {
       }
 
       if (normalizedDianCreateItems.length === 0) {
-        setDianError('Agrega al menos un ítem con cantidad > 0')
+        setDianError(t('pos.dian.validation.itemsRequired'))
         return
       }
 
@@ -1124,22 +1142,22 @@ export default function PosPage() {
       .filter(Boolean)
 
     if (numeros.length === 0) {
-      setDianError('Ingresa al menos un número para el lote')
+      setDianError(t('pos.dian.create.batch.numbersRequired'))
       return
     }
 
     const buyerNombre = dianCreateBuyer.nombre.trim()
     const buyerDocumento = dianCreateBuyer.documento.trim()
     if (!buyerNombre) {
-      setDianError('El nombre del adquirente/comprador es requerido')
+      setDianError(t('pos.dian.create.buyerNameRequired'))
       return
     }
     if (!buyerDocumento) {
-      setDianError('El documento del adquirente/comprador es requerido')
+      setDianError(t('pos.dian.create.buyerDocumentRequired'))
       return
     }
     if (normalizedDianCreateItems.length === 0) {
-      setDianError('Agrega al menos un ítem con cantidad > 0')
+      setDianError(t('pos.dian.create.itemsRequired'))
       return
     }
 
@@ -1171,17 +1189,17 @@ export default function PosPage() {
         })
         const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: unknown; error?: string }
         if (!res.ok || !json.ok) {
-          setDianError(json.error || `No se pudo crear el documento ${numero}`)
+          setDianError(json.error || t('pos.dian.errors.createDocumentNumber', { numero }))
           break
         }
       }
       await loadDianDocs()
     } catch (e) {
-      setDianError(e instanceof Error ? e.message : 'Error inesperado')
+      setDianError(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setDianCreating(false)
     }
-  }, [dianCreateBuyer, dianCreating, dianLotesNumeros, loadDianDocs, normalizedDianCreateItems])
+  }, [dianCreateBuyer, dianCreating, dianLotesNumeros, loadDianDocs, normalizedDianCreateItems, t])
 
   const updateDianNumeracionItem = useCallback((idx: number, patch: Partial<NonNullable<DianSettings['numeracion']>[number]>) => {
     setDianSettings((prev) => {
@@ -1227,22 +1245,24 @@ export default function PosPage() {
       const fechaVencimiento = String(r.fechaVencimiento ?? '').trim()
       const activo = Boolean(r.activo)
 
-      if (!prefijo) messages.push(`Rango #${idx + 1}: prefijo es requerido.`)
-      if (!Number.isFinite(desde) || desde <= 0) messages.push(`Rango #${idx + 1}: "Desde" debe ser un número > 0.`)
-      if (!Number.isFinite(hasta) || hasta <= 0) messages.push(`Rango #${idx + 1}: "Hasta" debe ser un número > 0.`)
-      if (Number.isFinite(desde) && Number.isFinite(hasta) && desde > hasta) messages.push(`Rango #${idx + 1}: "Desde" no puede ser mayor que "Hasta".`)
-      if (!Number.isFinite(actual) || actual <= 0) messages.push(`Rango #${idx + 1}: "Actual" debe ser un número > 0.`)
-      if (Number.isFinite(desde) && Number.isFinite(hasta) && Number.isFinite(actual) && (actual < desde || actual > hasta)) {
-        messages.push(`Rango #${idx + 1}: "Actual" debe estar entre "Desde" y "Hasta".`)
+      if (!prefijo) messages.push(t('pos.dian.numerationValidation.prefixRequired', { idx: idx + 1 }))
+      if (!Number.isFinite(desde) || desde <= 0) messages.push(t('pos.dian.numerationValidation.fromGtZero', { idx: idx + 1 }))
+      if (!Number.isFinite(hasta) || hasta <= 0) messages.push(t('pos.dian.numerationValidation.toGtZero', { idx: idx + 1 }))
+      if (Number.isFinite(desde) && Number.isFinite(hasta) && desde > hasta) {
+        messages.push(t('pos.dian.numerationValidation.fromNotGreaterThanTo', { idx: idx + 1 }))
       }
-      if (!nroAutorizacion) messages.push(`Rango #${idx + 1}: "Nro. Autorización" es requerido.`)
-      if (!fechaVencimiento) messages.push(`Rango #${idx + 1}: "Fecha vencimiento" es requerida.`)
+      if (!Number.isFinite(actual) || actual <= 0) messages.push(t('pos.dian.numerationValidation.currentGtZero', { idx: idx + 1 }))
+      if (Number.isFinite(desde) && Number.isFinite(hasta) && Number.isFinite(actual) && (actual < desde || actual > hasta)) {
+        messages.push(t('pos.dian.numerationValidation.currentWithinBounds', { idx: idx + 1 }))
+      }
+      if (!nroAutorizacion) messages.push(t('pos.dian.numerationValidation.authorizationRequired', { idx: idx + 1 }))
+      if (!fechaVencimiento) messages.push(t('pos.dian.numerationValidation.expirationRequired', { idx: idx + 1 }))
       if (fechaVencimiento) {
         const exp = new Date(`${fechaVencimiento}T00:00:00`)
         if (Number.isNaN(exp.getTime())) {
-          messages.push(`Rango #${idx + 1}: "Fecha vencimiento" no es válida.`)
+          messages.push(t('pos.dian.numerationValidation.expirationInvalid', { idx: idx + 1 }))
         } else if (activo && exp < todayStart) {
-          messages.push(`Rango #${idx + 1}: está vencido y sigue activo.`)
+          messages.push(t('pos.dian.numerationValidation.expiredButActive', { idx: idx + 1 }))
         }
       }
 
@@ -1259,22 +1279,22 @@ export default function PosPage() {
         if (a.prefijo !== b.prefijo) continue
         const overlap = a.desde <= b.hasta && b.desde <= a.hasta
         if (overlap) {
-          messages.push(`Rangos #${a.idx + 1} y #${b.idx + 1}: se traslapan (mismo tipo y prefijo).`)
+          messages.push(t('pos.dian.numerationValidation.overlap', { a: a.idx + 1, b: b.idx + 1 }))
         }
       }
     }
 
     const ok = messages.length === 0
     return { ok, messages }
-  }, [])
+  }, [t])
 
   const onValidateNumeracion = useCallback(() => {
     const items = Array.isArray(dianSettings.numeracion) ? dianSettings.numeracion : []
     const result = validateDianNumeracion(items)
     setDianNumeracionValidation(result)
-    if (!result.ok) setDianError('Hay errores en los rangos de numeración.')
+    if (!result.ok) setDianError(t('pos.dian.numerationValidation.hasErrors'))
     else setDianError(null)
-  }, [dianSettings.numeracion, validateDianNumeracion])
+  }, [dianSettings.numeracion, t, validateDianNumeracion])
 
   const onSaveDianSettings = useCallback(async () => {
     const items = Array.isArray(dianSettings.numeracion) ? dianSettings.numeracion : []
@@ -1282,18 +1302,18 @@ export default function PosPage() {
       const result = validateDianNumeracion(items)
       setDianNumeracionValidation(result)
       if (!result.ok) {
-        setDianError('Corrige los rangos de numeración antes de guardar.')
+        setDianError(t('pos.dian.numerationValidation.fixBeforeSave'))
         return
       }
     }
     await saveDianSettings(dianSettings)
-  }, [dianSettings, saveDianSettings, validateDianNumeracion])
+  }, [dianSettings, saveDianSettings, t, validateDianNumeracion])
 
   const runDianAction = useCallback(
     async (action: DianAction) => {
       if (!dianSelectedId || dianActionSubmitting) return
       if (action === 'transmitir' && dianDetail?.direction === 'INBOUND') {
-        setDianDetailError('Transmisión solo aplica a documentos OUTBOUND')
+        setDianDetailError(t('pos.dian.actions.transmit.outboundOnly'))
         return
       }
 
@@ -1303,26 +1323,26 @@ export default function PosPage() {
         const res = await fetch(`/api/dian/documentos/${dianSelectedId}/${action}`, { method: 'POST' })
         const json = (await res.json().catch(() => ({}))) as { ok?: boolean; data?: unknown; error?: string }
         if (!res.ok || !json.ok) {
-          setDianDetailError(json.error || 'No se pudo ejecutar la acción DIAN')
+          setDianDetailError(json.error || t('pos.dian.errors.actionFailed'))
           return
         }
         await loadDianDocs()
         await loadDianDetail(dianSelectedId)
       } catch (e) {
-        setDianDetailError(e instanceof Error ? e.message : 'Error inesperado')
+        setDianDetailError(e instanceof Error ? e.message : t('common.unexpectedError'))
       } finally {
         setDianActionSubmitting(null)
       }
     },
-    [dianActionSubmitting, dianDetail?.direction, dianSelectedId, loadDianDetail, loadDianDocs]
+    [dianActionSubmitting, dianDetail?.direction, dianSelectedId, loadDianDetail, loadDianDocs, t]
   )
 
   const dianBitacora = useMemo(() => {
     if (!dianDetail?.events?.length) return ''
     return dianDetail.events
-      .map((ev) => `${new Date(ev.createdAt).toLocaleString('es-CO')} [${ev.type}] ${ev.message}`)
+      .map((ev) => `${new Date(ev.createdAt).toLocaleString(locale)} [${ev.type}] ${ev.message}`)
       .join('\n')
-  }, [dianDetail?.events])
+  }, [dianDetail?.events, locale])
 
   useEffect(() => {
     void loadStock(selectedWarehouseForStock)
@@ -1371,7 +1391,7 @@ export default function PosPage() {
       const res = await fetch(`/api/pos/facturas/${invoiceId}`)
       const json = (await res.json().catch(() => ({}))) as ApiListResponse<InvoiceDetail>
       if (!res.ok || !json.success || !json.data) {
-        setError(json.error || 'No se pudo cargar la factura para prellenar la devolución')
+        setError(json.error || t('pos.errors.loadInvoiceForReturnPrefill'))
         return
       }
 
@@ -1381,7 +1401,7 @@ export default function PosPage() {
 
       const nextItems: DraftItem[] = (inv.items || []).map((it) => ({
         materialId: it.material?.id ?? '',
-        descripcion: it.descripcion ?? it.material?.nombre ?? 'Ítem',
+        descripcion: it.descripcion ?? it.material?.nombre ?? t('pos.itemFallback'),
         quantity: String(Math.max(0, n(it.quantity, 0)) || 1),
         unitPrice: String(Math.max(0, n(it.unitPrice, 0))),
       }))
@@ -1393,7 +1413,7 @@ export default function PosPage() {
         items: nextItems.length ? nextItems : p.items,
       }))
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error inesperado')
+      setError(e instanceof Error ? e.message : t('common.unexpectedError'))
     }
   }
 
@@ -1493,12 +1513,12 @@ export default function PosPage() {
 
     try {
       if (!form.clienteNombre.trim()) {
-        setError('clienteNombre es requerido')
+        setError(t('pos.errors.clientNameRequired'))
         return
       }
 
       if (computed.lines.length === 0) {
-        setError('Agrega al menos un ítem con cantidad > 0')
+        setError(t('pos.errors.itemsRequired'))
         return
       }
 
@@ -1526,19 +1546,19 @@ export default function PosPage() {
       const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string }
       if (!res.ok || !json.success) {
         if (!createAsDraft && json.error === 'Stock insuficiente') {
-          setError('Stock insuficiente. Marca "Guardar como borrador" para registrarla sin descontar inventario.')
+          setError(t('pos.errors.stockInsufficientDraftHint'))
           setCreateAsDraft(true)
           return
         }
 
-        setError(json.error || 'No se pudo crear la factura')
+        setError(json.error || t('pos.errors.createInvoiceFailed'))
         return
       }
 
       setCreateOpen(false)
       await loadAll()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error inesperado')
+      setError(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setIsSubmitting(false)
     }
@@ -1554,19 +1574,19 @@ export default function PosPage() {
       const res = await fetch(`/api/pos/facturas/${invoiceId}`)
       const json = (await res.json().catch(() => ({}))) as ApiListResponse<InvoiceDetail>
       if (!res.ok || !json.success || !json.data) {
-        setDetailError(json.error || 'No se pudo cargar el detalle')
+        setDetailError(json.error || t('pos.errors.loadInvoiceDetailFailed'))
         return
       }
       setDetail(json.data)
     } catch (e) {
-      setDetailError(e instanceof Error ? e.message : 'Error inesperado')
+      setDetailError(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setDetailLoading(false)
     }
   }
 
   async function anular(invoiceId: string) {
-    const ok = window.confirm('¿Anular esta factura? Si estaba pagada, se revertirá inventario.')
+    const ok = window.confirm(t('pos.confirm.voidInvoice'))
     if (!ok) return
 
     setError(null)
@@ -1574,12 +1594,12 @@ export default function PosPage() {
       const res = await fetch(`/api/pos/facturas/${invoiceId}/anular`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
       const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string }
       if (!res.ok || !json.success) {
-        setError(json.error || 'No se pudo anular')
+        setError(json.error || t('pos.errors.voidInvoiceFailed'))
         return
       }
       await loadAll()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error inesperado')
+      setError(e instanceof Error ? e.message : t('common.unexpectedError'))
     }
   }
 
@@ -1592,7 +1612,7 @@ export default function PosPage() {
   ): Promise<boolean> {
     const shouldConfirm = opts?.confirm ?? true
     if (shouldConfirm) {
-      const ok = window.confirm(opts?.confirmMessage || '¿Finalizar esta factura? Se descontará inventario y quedará como pagada.')
+      const ok = window.confirm(opts?.confirmMessage || t('pos.confirm.finalizeInvoice'))
       if (!ok) return false
     }
 
@@ -1621,11 +1641,12 @@ export default function PosPage() {
         }
       }
       if (!res.ok || !json.success) {
+        const na = t('common.na')
         const d = json.details
         const extra = d
-          ? ` | Material: ${d.materialNombre || d.materialId || '—'} | Requiere: ${d.required ?? '—'} | Bodega: ${d.warehouseNombre || '—'} | Disp. bodega: ${d.warehouseAvailable ?? '—'} | Disp. global: ${d.globalAvailable ?? '—'}`
+          ? ` | ${t('pos.finalize.details.material')}: ${d.materialNombre || d.materialId || na} | ${t('pos.finalize.details.required')}: ${d.required ?? na} | ${t('pos.finalize.details.warehouse')}: ${d.warehouseNombre || na} | ${t('pos.finalize.details.warehouseAvailable')}: ${d.warehouseAvailable ?? na} | ${t('pos.finalize.details.globalAvailable')}: ${d.globalAvailable ?? na}`
           : ''
-        const msg = (json.error || 'No se pudo finalizar la factura') + extra
+        const msg = (json.error || t('pos.errors.finalizeInvoiceFailed')) + extra
         setError(msg)
         setDetailError(msg)
         return false
@@ -1637,7 +1658,7 @@ export default function PosPage() {
       }
       return true
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Error inesperado'
+      const msg = e instanceof Error ? e.message : t('common.unexpectedError')
       setError(msg)
       setDetailError(msg)
       return false
@@ -1653,7 +1674,7 @@ export default function PosPage() {
 
     try {
       if (computedReturn.lines.length === 0) {
-        setError('Agrega al menos un ítem de devolución con cantidad > 0')
+        setError(t('pos.errors.returnItemsRequired'))
         return
       }
 
@@ -1678,14 +1699,14 @@ export default function PosPage() {
 
       const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string }
       if (!res.ok || !json.success) {
-        setError(json.error || 'No se pudo crear la devolución')
+        setError(json.error || t('pos.errors.createReturnFailed'))
         return
       }
 
       setReturnOpen(false)
       await loadAll()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error inesperado')
+      setError(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setReturnSubmitting(false)
     }
@@ -1701,12 +1722,12 @@ export default function PosPage() {
       const res = await fetch(`/api/pos/devoluciones/${returnId}`)
       const json = (await res.json().catch(() => ({}))) as ApiListResponse<ReturnDetail>
       if (!res.ok || !json.success || !json.data) {
-        setReturnDetailError(json.error || 'No se pudo cargar el detalle')
+        setReturnDetailError(json.error || t('pos.errors.loadReturnDetailFailed'))
         return
       }
       setReturnDetail(json.data)
     } catch (e) {
-      setReturnDetailError(e instanceof Error ? e.message : 'Error inesperado')
+      setReturnDetailError(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setReturnDetailLoading(false)
     }
@@ -1716,29 +1737,29 @@ export default function PosPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Facturación</h1>
-          <p className="text-muted-foreground">Facturación interna.</p>
+          <h1 className="text-3xl font-bold tracking-tight">{t('pos.title')}</h1>
+          <p className="text-muted-foreground">{t('pos.subtitle')}</p>
         </div>
         {activeTab === 'interna' ? (
           <div className="flex gap-2">
             <Button onClick={() => void loadAll()} variant="secondary" disabled={isLoading}>
-              Refrescar
+              {t('pos.actions.refresh')}
             </Button>
             <Button variant="outline" onClick={exportExcel} disabled={isLoading}>
               <Download className="w-4 h-4 mr-2" />
-              Exportar Excel
+              {t('pos.actions.exportExcel')}
             </Button>
             <Button onClick={openReturn} variant="outline" disabled={isLoading}>
-              Nueva devolución
+              {t('pos.actions.newReturn')}
             </Button>
             <Button onClick={openCreate} disabled={isLoading}>
-              Nueva factura
+              {t('pos.actions.newInvoice')}
             </Button>
           </div>
         ) : (
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => void loadDianDocs()} disabled={dianLoading}>
-              Refrescar DIAN
+              {t('pos.dian.actions.refresh')}
             </Button>
           </div>
         )}
@@ -1759,64 +1780,64 @@ export default function PosPage() {
         className="w-full"
       >
         <TabsList>
-          <TabsTrigger value="interna">Interna</TabsTrigger>
-          <TabsTrigger value="dian">DIAN</TabsTrigger>
+          <TabsTrigger value="interna">{t('pos.tabs.internal')}</TabsTrigger>
+          <TabsTrigger value="dian">{t('pos.tabs.dian')}</TabsTrigger>
         </TabsList>
 
         {tabPending ? (
-          <div className="mt-2 text-sm text-muted-foreground">Cargando…</div>
+          <div className="mt-2 text-sm text-muted-foreground">{t('common.loading')}</div>
         ) : null}
 
         <TabsContent value="interna" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Facturas recientes</CardTitle>
-              <CardDescription>Últimas facturas generadas.</CardDescription>
+              <CardTitle>{t('pos.invoices.recent.title')}</CardTitle>
+              <CardDescription>{t('pos.invoices.recent.description')}</CardDescription>
             </CardHeader>
             <CardContent>
               {isLoading ? (
-                <div className="text-sm text-gray-600">Cargando…</div>
+                <div className="text-sm text-gray-600">{t('common.loading')}</div>
               ) : invoices.length === 0 ? (
-                <div className="text-sm text-gray-600">Aún no hay facturas.</div>
+                <div className="text-sm text-gray-600">{t('pos.invoices.recent.empty')}</div>
               ) : (
                 <div className="overflow-auto">
                   <table className="min-w-full text-sm">
                     <thead>
                       <tr className="text-left text-gray-600 border-b">
-                        <th className="py-2 pr-4">Fecha</th>
-                        <th className="py-2 pr-4">Número</th>
-                        <th className="py-2 pr-4">Cliente</th>
-                        <th className="py-2 pr-4">Sede</th>
-                        <th className="py-2 pr-4">Estado</th>
-                        <th className="py-2 pr-4">Total</th>
-                        <th className="py-2 pr-2">Acciones</th>
+                        <th className="py-2 pr-4">{t('pos.invoices.columns.date')}</th>
+                        <th className="py-2 pr-4">{t('pos.invoices.columns.number')}</th>
+                        <th className="py-2 pr-4">{t('pos.invoices.columns.client')}</th>
+                        <th className="py-2 pr-4">{t('pos.invoices.columns.warehouse')}</th>
+                        <th className="py-2 pr-4">{t('pos.invoices.columns.status')}</th>
+                        <th className="py-2 pr-4">{t('pos.invoices.columns.total')}</th>
+                        <th className="py-2 pr-2">{t('pos.invoices.columns.actions')}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {invoices.map((inv) => (
                         <tr key={inv.id} className="border-b last:border-b-0">
-                          <td className="py-2 pr-4 text-gray-700">{new Date(inv.createdAt).toLocaleString('es-CO')}</td>
+                          <td className="py-2 pr-4 text-gray-700">{new Date(inv.createdAt).toLocaleString(locale)}</td>
                           <td className="py-2 pr-4">
                             <button className="text-blue-700 hover:underline" onClick={() => void openDetail(inv.id)}>
                               {inv.numero}
                             </button>
                           </td>
                           <td className="py-2 pr-4 text-gray-900">{inv.clienteNombre}</td>
-                          <td className="py-2 pr-4 text-gray-700">{inv.warehouse?.nombre || '—'}</td>
+                          <td className="py-2 pr-4 text-gray-700">{inv.warehouse?.nombre || t('common.na')}</td>
                           <td className="py-2 pr-4 text-gray-700">{inv.status}</td>
                           <td className="py-2 pr-4 font-medium">{formatCurrency(n(inv.total, 0))}</td>
                           <td className="py-2 pr-2">
                             <div className="flex gap-2">
                               <Button type="button" size="sm" variant="outline" onClick={() => void openDetail(inv.id)}>
-                                Ver
+                                {t('pos.actions.view')}
                               </Button>
                               {inv.status === 'DRAFT' ? (
                                 <Button type="button" size="sm" onClick={() => void finalizar(inv.id)} disabled={finalizeSubmitting}>
-                                  {finalizeSubmitting ? 'Finalizando…' : 'Finalizar'}
+                                  {finalizeSubmitting ? t('pos.actions.finalizing') : t('pos.actions.finalize')}
                                 </Button>
                               ) : null}
                               <Button type="button" size="sm" variant="destructive" onClick={() => void anular(inv.id)}>
-                                Anular
+                                {t('pos.actions.void')}
                               </Button>
                             </div>
                           </td>
@@ -1831,42 +1852,42 @@ export default function PosPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Devoluciones recientes</CardTitle>
-              <CardDescription>Últimas devoluciones registradas.</CardDescription>
+              <CardTitle>{t('pos.returns.recent.title')}</CardTitle>
+              <CardDescription>{t('pos.returns.recent.description')}</CardDescription>
             </CardHeader>
             <CardContent>
               {isLoading ? (
-                <div className="text-sm text-gray-600">Cargando…</div>
+                <div className="text-sm text-gray-600">{t('common.loading')}</div>
               ) : returns.length === 0 ? (
-                <div className="text-sm text-gray-600">Aún no hay devoluciones.</div>
+                <div className="text-sm text-gray-600">{t('pos.returns.recent.empty')}</div>
               ) : (
                 <div className="overflow-auto">
                   <table className="min-w-full text-sm">
                     <thead>
                       <tr className="text-left text-gray-600 border-b">
-                        <th className="py-2 pr-4">Fecha</th>
-                        <th className="py-2 pr-4">Número</th>
-                        <th className="py-2 pr-4">Factura</th>
-                        <th className="py-2 pr-4">Sede</th>
-                        <th className="py-2 pr-4">Total</th>
-                        <th className="py-2 pr-2">Acciones</th>
+                        <th className="py-2 pr-4">{t('pos.returns.columns.date')}</th>
+                        <th className="py-2 pr-4">{t('pos.returns.columns.number')}</th>
+                        <th className="py-2 pr-4">{t('pos.returns.columns.invoice')}</th>
+                        <th className="py-2 pr-4">{t('pos.returns.columns.warehouse')}</th>
+                        <th className="py-2 pr-4">{t('pos.returns.columns.total')}</th>
+                        <th className="py-2 pr-2">{t('pos.returns.columns.actions')}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {returns.map((r) => (
                         <tr key={r.id} className="border-b last:border-b-0">
-                          <td className="py-2 pr-4 text-gray-700">{new Date(r.createdAt).toLocaleString('es-CO')}</td>
+                          <td className="py-2 pr-4 text-gray-700">{new Date(r.createdAt).toLocaleString(locale)}</td>
                           <td className="py-2 pr-4">
                             <button className="text-blue-700 hover:underline" onClick={() => void openReturnDetail(r.id)}>
                               {r.numero}
                             </button>
                           </td>
-                          <td className="py-2 pr-4 text-gray-700">{r.invoice?.numero || '—'}</td>
-                          <td className="py-2 pr-4 text-gray-700">{r.warehouse?.nombre || '—'}</td>
+                          <td className="py-2 pr-4 text-gray-700">{r.invoice?.numero || t('common.na')}</td>
+                          <td className="py-2 pr-4 text-gray-700">{r.warehouse?.nombre || t('common.na')}</td>
                           <td className="py-2 pr-4 font-medium">{formatCurrency(n(r.total, 0))}</td>
                           <td className="py-2 pr-2">
                             <Button type="button" size="sm" variant="outline" onClick={() => void openReturnDetail(r.id)}>
-                              Ver
+                              {t('pos.actions.view')}
                             </Button>
                           </td>
                         </tr>
@@ -1880,29 +1901,29 @@ export default function PosPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Stock por sede</CardTitle>
-              <CardDescription>Vista rápida del inventario en la sede seleccionada.</CardDescription>
+              <CardTitle>{t('pos.stock.title')}</CardTitle>
+              <CardDescription>{t('pos.stock.description')}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-col sm:flex-row gap-2 sm:items-center mb-3">
                 <div className="sm:w-80">
-                  <Label>Sede</Label>
+                  <Label>{t('pos.labels.warehouse')}</Label>
                   <select
                     className="w-full h-10 rounded-md border px-3 text-sm"
                     value={selectedWarehouseForStock}
                     onChange={(e) => setSelectedWarehouseForStock(e.target.value)}
                   >
-                    <option value="">(Selecciona)</option>
+                    <option value="">{t('pos.placeholders.select')}</option>
                     {bodegas.map((b) => (
                       <option key={b.id} value={b.id}>
-                        {b.nombre}{b.isDefault ? ' (Pred.)' : ''}
+                        {b.nombre}{b.isDefault ? ` ${t('pos.labels.defaultShort')}` : ''}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="sm:pt-6">
                   <Button type="button" variant="secondary" onClick={() => void loadStock(selectedWarehouseForStock)} disabled={stockLoading}>
-                    Refrescar stock
+                    {t('pos.stock.actions.refresh')}
                   </Button>
                 </div>
               </div>
@@ -1910,29 +1931,29 @@ export default function PosPage() {
               {stockError ? <div className="text-sm text-red-600 mb-2">{stockError}</div> : null}
 
               {stockLoading ? (
-                <div className="text-sm text-gray-600">Cargando…</div>
+                <div className="text-sm text-gray-600">{t('common.loading')}</div>
               ) : !selectedWarehouseForStock ? (
-                <div className="text-sm text-gray-600">Selecciona una sede.</div>
+                <div className="text-sm text-gray-600">{t('pos.stock.selectWarehouse')}</div>
               ) : stockRows.length === 0 ? (
-                <div className="text-sm text-gray-600">No hay stock registrado en esta sede.</div>
+                <div className="text-sm text-gray-600">{t('pos.stock.empty')}</div>
               ) : (
                 <div className="overflow-auto">
                   <table className="min-w-full text-sm">
                     <thead>
                       <tr className="text-left text-gray-600 border-b">
-                        <th className="py-2 pr-4">Material</th>
-                        <th className="py-2 pr-4">Cantidad</th>
-                        <th className="py-2 pr-4">Unidad</th>
-                        <th className="py-2 pr-4">Actualizado</th>
+                        <th className="py-2 pr-4">{t('pos.stock.columns.material')}</th>
+                        <th className="py-2 pr-4">{t('pos.stock.columns.quantity')}</th>
+                        <th className="py-2 pr-4">{t('pos.stock.columns.unit')}</th>
+                        <th className="py-2 pr-4">{t('pos.stock.columns.updatedAt')}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {stockRows.map((row) => (
                         <tr key={row.id} className="border-b last:border-b-0">
                           <td className="py-2 pr-4 text-gray-900">{row.material.nombre}</td>
-                          <td className="py-2 pr-4 text-gray-700">{n(row.quantity, 0).toLocaleString('es-CO')}</td>
+                          <td className="py-2 pr-4 text-gray-700">{n(row.quantity, 0).toLocaleString(locale)}</td>
                           <td className="py-2 pr-4 text-gray-700">{formatUnidadMedidaLabel(row.material.unidadMedida)}</td>
-                          <td className="py-2 pr-4 text-gray-700">{new Date(row.updatedAt).toLocaleString('es-CO')}</td>
+                          <td className="py-2 pr-4 text-gray-700">{new Date(row.updatedAt).toLocaleString(locale)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1948,7 +1969,7 @@ export default function PosPage() {
             <CardHeader>
               <CardTitle>DIAN</CardTitle>
               <CardDescription>
-                Gestión de documentos electrónicos: creación, histórico, configuración y plantillas (base). La transmisión/expedición/entrega/recepción se mantiene desde el histórico.
+                {t('pos.dian.description')}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1956,42 +1977,42 @@ export default function PosPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                 <div>
-                  <Label>Sección</Label>
+                  <Label>{t('pos.dian.labels.section')}</Label>
                   <select
                     className="w-full h-10 rounded-md border px-3 text-sm"
                     value={dianMainTab}
                     onChange={(e) => setDianMainTab(e.target.value as typeof dianMainTab)}
                   >
-                    <option value="crear">Crear</option>
-                    <option value="historico">Histórico</option>
-                    <option value="configuracion">Configuración</option>
-                    <option value="plantillas">Plantillas</option>
+                    <option value="crear">{t('pos.dian.sections.create')}</option>
+                    <option value="historico">{t('pos.dian.sections.historic')}</option>
+                    <option value="configuracion">{t('pos.dian.sections.configuration')}</option>
+                    <option value="plantillas">{t('pos.dian.sections.templates')}</option>
                   </select>
                 </div>
 
                 {dianMainTab === 'crear' ? (
                   <div>
-                    <Label>Tipo</Label>
+                    <Label>{t('pos.dian.labels.type')}</Label>
                     <select
                       className="w-full h-10 rounded-md border px-3 text-sm"
                       value={dianCrearTab}
                       onChange={(e) => setDianCrearTab(e.target.value as typeof dianCrearTab)}
                     >
-                      <option value="factura_venta">Factura de venta</option>
-                      <option value="factura_aui">AUI</option>
-                      <option value="factura_exportacion">Exportación</option>
-                      <option value="factura_mandato">Mandato</option>
-                      <option value="factura_contingencia">Contingencia</option>
-                      <option value="factura_lotes">Por lotes</option>
-                      <option value="nota_debito">Notas débito</option>
-                      <option value="nota_credito">Notas crédito</option>
+                      <option value="factura_venta">{t('pos.dian.create.types.salesInvoice')}</option>
+                      <option value="factura_aui">{t('pos.dian.create.types.aui')}</option>
+                      <option value="factura_exportacion">{t('pos.dian.create.types.export')}</option>
+                      <option value="factura_mandato">{t('pos.dian.create.types.mandate')}</option>
+                      <option value="factura_contingencia">{t('pos.dian.create.types.contingency')}</option>
+                      <option value="factura_lotes">{t('pos.dian.create.types.batch')}</option>
+                      <option value="nota_debito">{t('pos.dian.create.types.debitNotes')}</option>
+                      <option value="nota_credito">{t('pos.dian.create.types.creditNotes')}</option>
                     </select>
                   </div>
                 ) : null}
 
                 {dianMainTab === 'historico' ? (
                   <div>
-                    <Label>Vista</Label>
+                    <Label>{t('pos.dian.labels.view')}</Label>
                     <select
                       className="w-full h-10 rounded-md border px-3 text-sm"
                       value={dianHistoricoTab}
@@ -2000,36 +2021,36 @@ export default function PosPage() {
                         setDianHistoricoTab(next)
                       }}
                     >
-                      <option value="enviados">Enviados (Emisión)</option>
-                      <option value="recibidos">Recibidos (Recepción)</option>
+                      <option value="enviados">{t('pos.dian.historic.view.sent')}</option>
+                      <option value="recibidos">{t('pos.dian.historic.view.received')}</option>
                     </select>
                   </div>
                 ) : null}
 
                 {dianMainTab === 'configuracion' ? (
                   <div>
-                    <Label>Configuración</Label>
+                    <Label>{t('pos.dian.labels.configuration')}</Label>
                     <select
                       className="w-full h-10 rounded-md border px-3 text-sm"
                       value={dianConfigTab}
                       onChange={(e) => setDianConfigTab(e.target.value as typeof dianConfigTab)}
                     >
-                      <option value="rangos">Rangos de numeración</option>
-                      <option value="comprador">Adquirente/Comprador</option>
-                      <option value="productos">Producto/Servicio</option>
+                      <option value="rangos">{t('pos.dian.configuration.tabs.ranges')}</option>
+                      <option value="comprador">{t('pos.dian.configuration.tabs.buyer')}</option>
+                      <option value="productos">{t('pos.dian.configuration.tabs.products')}</option>
                     </select>
                   </div>
                 ) : null}
 
                 {dianMainTab === 'plantillas' ? (
                   <div>
-                    <Label>Plantilla</Label>
+                    <Label>{t('pos.dian.labels.template')}</Label>
                     <select
                       className="w-full h-10 rounded-md border px-3 text-sm"
                       value={dianPlantillaTab}
                       onChange={(e) => setDianPlantillaTab(e.target.value as typeof dianPlantillaTab)}
                     >
-                      <option value="factura_venta">Factura de venta</option>
+                      <option value="factura_venta">{t('pos.dian.templates.salesInvoice')}</option>
                     </select>
                   </div>
                 ) : null}
@@ -2040,15 +2061,13 @@ export default function PosPage() {
                   {dianCrearTab !== 'factura_lotes' && dianCrearTab !== 'nota_debito' && dianCrearTab !== 'nota_credito' ? (
                     <Card>
                       <CardHeader>
-                        <CardTitle className="text-base">Crear/conciliar desde factura interna</CardTitle>
-                        <CardDescription>
-                          Selecciona una factura interna (finalizada) para cargar datos y emitir electrónicamente al cliente y a DIAN.
-                        </CardDescription>
+                        <CardTitle className="text-base">{t('pos.dian.create.fromInternalInvoice.title')}</CardTitle>
+                        <CardDescription>{t('pos.dian.create.fromInternalInvoice.description')}</CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-3">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                           <div className="md:col-span-2">
-                            <Label>Factura interna</Label>
+                            <Label>{t('pos.dian.create.fromInternalInvoice.internalInvoice')}</Label>
                             <select
                               className="w-full h-10 rounded-md border px-3 text-sm"
                               value={dianCreatePosInvoiceId}
@@ -2058,7 +2077,7 @@ export default function PosPage() {
                               }}
                               disabled={dianCreatePosInvoiceLoading || dianCreating}
                             >
-                              <option value="">(Selecciona)</option>
+                              <option value="">{t('pos.placeholders.select')}</option>
                               {invoices
                                 .filter((x) => String(x.status || '') !== 'DRAFT')
                                 .map((inv) => (
@@ -2076,14 +2095,14 @@ export default function PosPage() {
                               onClick={() => void loadPosInvoiceIntoDian(dianCreatePosInvoiceId)}
                               disabled={!dianCreatePosInvoiceId || dianCreatePosInvoiceLoading || dianCreating}
                             >
-                              {dianCreatePosInvoiceLoading ? 'Cargando…' : 'Cargar datos'}
+                              {dianCreatePosInvoiceLoading ? t('common.loading') : t('pos.dian.create.fromInternalInvoice.loadData')}
                             </Button>
                             <Button
                               type="button"
                               onClick={() => void createDianDocFromPosInvoice({ posInvoiceId: dianCreatePosInvoiceId, subType: String(dianCrearTab) })}
                               disabled={!dianCreatePosInvoiceId || dianCreatePosInvoiceLoading || dianCreating}
                             >
-                              {dianCreating ? 'Creando…' : 'Crear/conciliar'}
+                              {dianCreating ? t('pos.dian.create.creating') : t('pos.dian.create.fromInternalInvoice.createReconcile')}
                             </Button>
                           </div>
                         </div>
@@ -2092,15 +2111,15 @@ export default function PosPage() {
                           <div className="rounded-md border p-3 text-sm">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                               <div>
-                                <div className="text-xs text-muted-foreground">Número interno</div>
+                                <div className="text-xs text-muted-foreground">{t('pos.dian.create.fromInternalInvoice.summary.internalNumber')}</div>
                                 <div className="font-medium">{dianCreatePosInvoice.numero}</div>
                               </div>
                               <div>
-                                <div className="text-xs text-muted-foreground">Cliente</div>
+                                <div className="text-xs text-muted-foreground">{t('pos.dian.create.fromInternalInvoice.summary.client')}</div>
                                 <div className="font-medium">{dianCreatePosInvoice.clienteNombre}</div>
                               </div>
                               <div>
-                                <div className="text-xs text-muted-foreground">Total</div>
+                                <div className="text-xs text-muted-foreground">{t('pos.dian.create.fromInternalInvoice.summary.total')}</div>
                                 <div className="font-medium">{formatCurrency(n(dianCreatePosInvoice.total, 0))}</div>
                               </div>
                             </div>
@@ -2112,13 +2131,13 @@ export default function PosPage() {
 
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Datos del comprador</CardTitle>
-                      <CardDescription>Campos base para la creación manual.</CardDescription>
+                      <CardTitle className="text-base">{t('pos.dian.create.buyer.title')}</CardTitle>
+                      <CardDescription>{t('pos.dian.create.buyer.description')}</CardDescription>
                     </CardHeader>
                     <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       <div>
                         <div className="flex items-center justify-between">
-                          <Label>Nombre / Razón social</Label>
+                          <Label>{t('pos.dian.create.buyer.name')}</Label>
                           <Button
                             type="button"
                             size="icon"
@@ -2127,7 +2146,7 @@ export default function PosPage() {
                               setClientePickerTarget('dian')
                               setClientePickerOpen(true)
                             }}
-                            title="Buscar cliente"
+                            title={t('pos.clientPicker.openTitle')}
                           >
                             <Search className="h-4 w-4" />
                           </Button>
@@ -2135,11 +2154,11 @@ export default function PosPage() {
                         <Input value={dianCreateBuyer.nombre} onChange={(e) => setDianCreateBuyer((p) => ({ ...p, nombre: e.target.value }))} />
                       </div>
                       <div>
-                        <Label>Documento (NIT/CC)</Label>
+                        <Label>{t('pos.dian.create.buyer.document')}</Label>
                         <Input value={dianCreateBuyer.documento} onChange={(e) => setDianCreateBuyer((p) => ({ ...p, documento: e.target.value }))} />
                       </div>
                       <div>
-                        <Label>Email (opcional)</Label>
+                        <Label>{t('pos.dian.create.buyer.emailOptional')}</Label>
                         <Input value={dianCreateBuyer.email} onChange={(e) => setDianCreateBuyer((p) => ({ ...p, email: e.target.value }))} />
                       </div>
                     </CardContent>
@@ -2147,18 +2166,18 @@ export default function PosPage() {
 
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Ítems</CardTitle>
-                      <CardDescription>Descripción, cantidad, valor unitario e IVA.</CardDescription>
+                      <CardTitle className="text-base">{t('pos.dian.create.items.title')}</CardTitle>
+                      <CardDescription>{t('pos.dian.create.items.description')}</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div className="overflow-auto">
                         <table className="min-w-full text-sm">
                           <thead>
                             <tr className="text-left text-gray-600 border-b">
-                              <th className="py-2 pr-3">Descripción</th>
-                              <th className="py-2 pr-3">Cant.</th>
-                              <th className="py-2 pr-3">Valor unit.</th>
-                              <th className="py-2 pr-3">IVA %</th>
+                              <th className="py-2 pr-3">{t('pos.dian.create.items.columns.description')}</th>
+                              <th className="py-2 pr-3">{t('pos.dian.create.items.columns.quantity')}</th>
+                              <th className="py-2 pr-3">{t('pos.dian.create.items.columns.unitValue')}</th>
+                              <th className="py-2 pr-3">{t('pos.dian.create.items.columns.vatPercent')}</th>
                               <th className="py-2 pr-2"></th>
                             </tr>
                           </thead>
@@ -2173,7 +2192,7 @@ export default function PosPage() {
                                         onChange={(e) =>
                                           setDianCreateItems((prev) => prev.map((x, i) => (i === idx ? { ...x, descripcion: e.target.value } : x)))
                                         }
-                                        placeholder="Producto/servicio"
+                                        placeholder={t('pos.dian.create.items.placeholders.productOrService')}
                                       />
                                     </div>
                                     <Button
@@ -2184,7 +2203,7 @@ export default function PosPage() {
                                         setProductoPickerTarget({ kind: 'dian', idx })
                                         setProductoPickerOpen(true)
                                       }}
-                                      title="Buscar producto/servicio"
+                                      title={t('pos.productPicker.openTitle')}
                                     >
                                       <Search className="h-4 w-4" />
                                     </Button>
@@ -2229,7 +2248,7 @@ export default function PosPage() {
                                       })
                                     }
                                   >
-                                    Quitar
+                                    {t('common.remove')}
                                   </Button>
                                 </td>
                               </tr>
@@ -2246,7 +2265,7 @@ export default function PosPage() {
                             setDianCreateItems((prev) => [...prev, { descripcion: '', quantity: '1', unitPrice: '', ivaPct: '0' }])
                           }
                         >
-                          + Agregar ítem
+                          {t('pos.dian.create.items.addItem')}
                         </Button>
                       </div>
                     </CardContent>
@@ -2255,12 +2274,12 @@ export default function PosPage() {
                   {dianCrearTab === 'factura_lotes' ? (
                     <div className="rounded-md border p-3 space-y-3">
                       <div>
-                        <Label>Números (uno por línea)</Label>
+                        <Label>{t('pos.dian.create.batch.numbersLabel')}</Label>
                         <Textarea value={dianLotesNumeros} onChange={(e) => setDianLotesNumeros(e.target.value)} className="mt-2 h-28" />
                       </div>
                       <div className="flex items-center gap-2">
                         <Button type="button" onClick={() => void createDianDocsLotes()} disabled={dianCreating}>
-                          {dianCreating ? 'Creando…' : 'Crear lote'}
+                          {dianCreating ? t('pos.dian.create.creating') : t('pos.dian.create.batch.createBatch')}
                         </Button>
                       </div>
                     </div>
@@ -2268,11 +2287,16 @@ export default function PosPage() {
                     <div className="rounded-md border p-3 space-y-3">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div>
-                          <Label>Número</Label>
-                          <Input value={dianCreateNumero} onChange={(e) => setDianCreateNumero(e.target.value)} placeholder="Ej: FE-123" disabled={dianCreating} />
+                          <Label>{t('pos.dian.create.manual.number')}</Label>
+                          <Input
+                            value={dianCreateNumero}
+                            onChange={(e) => setDianCreateNumero(e.target.value)}
+                            placeholder={t('pos.dian.create.manual.numberPlaceholder')}
+                            disabled={dianCreating}
+                          />
                         </div>
                         <div className="md:col-span-2 text-xs text-muted-foreground flex items-end">
-                          Campos reglamentarios mínimos (comprador + ítems) para iniciar la creación manual.
+                          {t('pos.dian.create.manual.helper')}
                         </div>
                       </div>
 
@@ -2298,7 +2322,7 @@ export default function PosPage() {
                           }}
                           disabled={dianCreating}
                         >
-                          {dianCreating ? 'Creando…' : 'Crear documento'}
+                          {dianCreating ? t('pos.dian.create.creating') : t('pos.dian.create.createDocument')}
                         </Button>
                       </div>
                     </div>
@@ -2310,32 +2334,32 @@ export default function PosPage() {
                 <div className="space-y-4">
                   <TooltipProvider delayDuration={200}>
                     <div className="rounded-md border p-3 space-y-3">
-                      <div className="text-sm font-medium">Documentos</div>
+                      <div className="text-sm font-medium">{t('pos.dian.historic.title')}</div>
 
                       {dianLoading ? (
-                        <div className="text-sm text-gray-600">Cargando…</div>
+                        <div className="text-sm text-gray-600">{t('common.loading')}</div>
                       ) : dianDocs.length === 0 ? (
-                        <div className="text-sm text-gray-600">Aún no hay documentos.</div>
+                        <div className="text-sm text-gray-600">{t('pos.dian.historic.empty')}</div>
                       ) : (
                         <div className="overflow-auto">
                           <table className="min-w-full text-sm">
                             <thead>
                               <tr className="text-left text-gray-600 border-b">
-                                <th className="py-2 pr-4">Fecha</th>
-                                <th className="py-2 pr-4">Dirección</th>
-                                <th className="py-2 pr-4">Tipo</th>
-                                <th className="py-2 pr-4">Número</th>
-                                <th className="py-2 pr-4">Estado</th>
-                                <th className="py-2 pr-2">Acciones</th>
+                                <th className="py-2 pr-4">{t('pos.dian.historic.columns.date')}</th>
+                                <th className="py-2 pr-4">{t('pos.dian.historic.columns.direction')}</th>
+                                <th className="py-2 pr-4">{t('pos.dian.historic.columns.type')}</th>
+                                <th className="py-2 pr-4">{t('pos.dian.historic.columns.number')}</th>
+                                <th className="py-2 pr-4">{t('pos.dian.historic.columns.status')}</th>
+                                <th className="py-2 pr-2">{t('pos.dian.historic.columns.actions')}</th>
                               </tr>
                             </thead>
                             <tbody>
                               {dianDocs.map((doc) => (
                                 <tr key={doc.id} className="border-b last:border-b-0">
-                                  <td className="py-2 pr-4 text-gray-700">{new Date(doc.createdAt).toLocaleString('es-CO')}</td>
-                                  <td className="py-2 pr-4 text-gray-700">{dianDirectionLabel(doc.direction)}</td>
-                                  <td className="py-2 pr-4 text-gray-900">{dianTypeLabel(doc.type)}</td>
-                                  <td className="py-2 pr-4 text-gray-700">{doc.numero || '—'}</td>
+                                  <td className="py-2 pr-4 text-gray-700">{new Date(doc.createdAt).toLocaleString(locale)}</td>
+                                  <td className="py-2 pr-4 text-gray-700">{dianDirectionLabel(t, doc.direction)}</td>
+                                  <td className="py-2 pr-4 text-gray-900">{dianTypeLabel(dianDocTypes, doc.type)}</td>
+                                  <td className="py-2 pr-4 text-gray-700">{doc.numero || t('common.na')}</td>
                                   <td className="py-2 pr-4 text-gray-700">{doc.status}</td>
                                   <td className="py-2 pr-2">
                                     <Button
@@ -2347,7 +2371,7 @@ export default function PosPage() {
                                         void loadDianDetail(doc.id)
                                       }}
                                     >
-                                      Ver
+                                      {t('pos.actions.view')}
                                     </Button>
                                   </td>
                                 </tr>
@@ -2362,8 +2386,8 @@ export default function PosPage() {
                       <div className="rounded-md border p-3 space-y-3">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <div className="text-sm font-medium">Documento seleccionado</div>
-                            <div className="text-xs text-muted-foreground">ID: {dianSelectedId}</div>
+                            <div className="text-sm font-medium">{t('pos.dian.detail.selectedTitle')}</div>
+                            <div className="text-xs text-muted-foreground">{t('pos.dian.detail.idLabel')}: {dianSelectedId}</div>
                           </div>
                           <Button
                             type="button"
@@ -2372,7 +2396,7 @@ export default function PosPage() {
                             onClick={() => void loadDianDetail(dianSelectedId)}
                             disabled={dianDetailLoading}
                           >
-                            {dianDetailLoading ? 'Cargando…' : 'Refrescar'}
+                              {dianDetailLoading ? t('common.loading') : t('pos.dian.detail.refresh')}
                           </Button>
                         </div>
 
@@ -2382,31 +2406,31 @@ export default function PosPage() {
                           <>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                               <div className="rounded-md border p-3">
-                                <div className="text-xs text-muted-foreground">Dirección</div>
+                                <div className="text-xs text-muted-foreground">{t('pos.dian.detail.labels.direction')}</div>
                                 <div className="text-sm font-medium">{dianDetail.direction}</div>
                               </div>
                               <div className="rounded-md border p-3">
-                                <div className="text-xs text-muted-foreground">Tipo</div>
-                                <div className="text-sm font-medium">{dianTypeLabel(dianDetail.type)}</div>
+                                <div className="text-xs text-muted-foreground">{t('pos.dian.detail.labels.type')}</div>
+                                <div className="text-sm font-medium">{dianTypeLabel(dianDocTypes, dianDetail.type)}</div>
                               </div>
                               <div className="rounded-md border p-3">
-                                <div className="text-xs text-muted-foreground">Estado</div>
+                                <div className="text-xs text-muted-foreground">{t('pos.dian.detail.labels.status')}</div>
                                 <div className="text-sm font-medium">{dianDetail.status}</div>
                               </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                               <div>
-                                <Label>UUID</Label>
-                                <Input value={dianDetail.uuid || ''} readOnly placeholder="(Vacío)" />
+                                <Label>{t('pos.dian.detail.fields.uuid')}</Label>
+                                <Input value={dianDetail.uuid || ''} readOnly placeholder={t('pos.dian.detail.emptyValue')} />
                               </div>
                               <div>
-                                <Label>CUFE</Label>
-                                <Input value={dianDetail.cufe || ''} readOnly placeholder="(Vacío)" />
+                                <Label>{t('pos.dian.detail.fields.cufe')}</Label>
+                                <Input value={dianDetail.cufe || ''} readOnly placeholder={t('pos.dian.detail.emptyValue')} />
                               </div>
                               <div>
-                                <Label>ProviderRef</Label>
-                                <Input value={dianDetail.providerRef || ''} readOnly placeholder="(Vacío)" />
+                                <Label>{t('pos.dian.detail.fields.providerRef')}</Label>
+                                <Input value={dianDetail.providerRef || ''} readOnly placeholder={t('pos.dian.detail.emptyValue')} />
                               </div>
                             </div>
 
@@ -2422,20 +2446,22 @@ export default function PosPage() {
                                     Boolean(dianDetail.transmittedAt)
                                   }
                                 >
-                                  {dianActionSubmitting === 'transmitir' ? 'Transmitiendo…' : 'Transmitir'}
+                                  {dianActionSubmitting === 'transmitir'
+                                    ? t('pos.dian.actions.transmit.transmitting')
+                                    : t('pos.dian.actions.transmit.transmit')}
                                 </Button>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <button
                                       type="button"
                                       className="inline-flex h-8 w-8 items-center justify-center rounded-md border text-[11px] text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                                      aria-label="Ayuda: transmitir"
+                                      aria-label={t('pos.dian.actions.transmit.helpAriaLabel')}
                                     >
                                       ?
                                     </button>
                                   </TooltipTrigger>
                                   <TooltipContent className="max-w-xs">
-                                    Envía el documento para validación/registro ante el proveedor tecnológico y DIAN (según integración). Solo aplica a OUTBOUND.
+                                    {t('pos.dian.actions.transmit.helpText')}
                                   </TooltipContent>
                                 </Tooltip>
                               </div>
@@ -2447,20 +2473,22 @@ export default function PosPage() {
                                   onClick={() => void runDianAction('expedir')}
                                   disabled={dianActionSubmitting !== null || Boolean(dianDetail.expeditedAt)}
                                 >
-                                  {dianActionSubmitting === 'expedir' ? 'Expidiendo…' : 'Expedir'}
+                                  {dianActionSubmitting === 'expedir'
+                                    ? t('pos.dian.actions.issue.issuing')
+                                    : t('pos.dian.actions.issue.issue')}
                                 </Button>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <button
                                       type="button"
                                       className="inline-flex h-8 w-8 items-center justify-center rounded-md border text-[11px] text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                                      aria-label="Ayuda: expedir"
+                                      aria-label={t('pos.dian.actions.issue.helpAriaLabel')}
                                     >
                                       ?
                                     </button>
                                   </TooltipTrigger>
                                   <TooltipContent className="max-w-xs">
-                                    Marca la expedición: el documento queda emitido/válido en el flujo (estado de expedición y referencias asociadas).
+                                    {t('pos.dian.actions.issue.helpText')}
                                   </TooltipContent>
                                 </Tooltip>
                               </div>
@@ -2472,20 +2500,22 @@ export default function PosPage() {
                                   onClick={() => void runDianAction('entregar')}
                                   disabled={dianActionSubmitting !== null || Boolean(dianDetail.deliveredAt)}
                                 >
-                                  {dianActionSubmitting === 'entregar' ? 'Entregando…' : 'Entregar'}
+                                  {dianActionSubmitting === 'entregar'
+                                    ? t('pos.dian.actions.deliver.delivering')
+                                    : t('pos.dian.actions.deliver.deliver')}
                                 </Button>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <button
                                       type="button"
                                       className="inline-flex h-8 w-8 items-center justify-center rounded-md border text-[11px] text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                                      aria-label="Ayuda: entregar"
+                                      aria-label={t('pos.dian.actions.deliver.helpAriaLabel')}
                                     >
                                       ?
                                     </button>
                                   </TooltipTrigger>
                                   <TooltipContent className="max-w-xs">
-                                    Registra la entrega al adquirente por los canales configurados (email/portal/otros).
+                                    {t('pos.dian.actions.deliver.helpText')}
                                   </TooltipContent>
                                 </Tooltip>
                               </div>
@@ -2497,29 +2527,35 @@ export default function PosPage() {
                                   onClick={() => void runDianAction('recepcionar')}
                                   disabled={dianActionSubmitting !== null || Boolean(dianDetail.receivedAt)}
                                 >
-                                  {dianActionSubmitting === 'recepcionar' ? 'Recepcionando…' : 'Recepcionar'}
+                                  {dianActionSubmitting === 'recepcionar'
+                                    ? t('pos.dian.actions.receive.receiving')
+                                    : t('pos.dian.actions.receive.receive')}
                                 </Button>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <button
                                       type="button"
                                       className="inline-flex h-8 w-8 items-center justify-center rounded-md border text-[11px] text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                                      aria-label="Ayuda: recepcionar"
+                                      aria-label={t('pos.dian.actions.receive.helpAriaLabel')}
                                     >
                                       ?
                                     </button>
                                   </TooltipTrigger>
                                   <TooltipContent className="max-w-xs">
-                                    Registra la recepción/acuse y deja trazabilidad del estado (documentos INBOUND o validaciones posteriores).
+                                    {t('pos.dian.actions.receive.helpText')}
                                   </TooltipContent>
                                 </Tooltip>
                               </div>
                             </div>
 
-                            {dianDetail.lastError ? <div className="text-sm text-red-600">Último error: {dianDetail.lastError}</div> : null}
+                            {dianDetail.lastError ? (
+                              <div className="text-sm text-red-600">
+                                {t('pos.dian.detail.lastErrorPrefix')} {dianDetail.lastError}
+                              </div>
+                            ) : null}
 
                             <div className="space-y-2">
-                              {DIAN_STEPS.map((s) => {
+                              {dianSteps.map((s) => {
                                 const isCompleted =
                                   s.key === 'GENERATED'
                                     ? true
@@ -2538,7 +2574,7 @@ export default function PosPage() {
                                       <div className="text-xs text-muted-foreground">{s.description}</div>
                                     </div>
                                     <span className="shrink-0 inline-flex items-center rounded-md border px-2 py-0.5 text-xs">
-                                      {isCompleted ? 'Completado' : 'Pendiente'}
+                                      {isCompleted ? t('pos.dian.steps.completed') : t('pos.dian.steps.pending')}
                                     </span>
                                   </div>
                                 )
@@ -2546,12 +2582,17 @@ export default function PosPage() {
                             </div>
 
                             <div>
-                              <Label>Bitácora (eventos persistidos)</Label>
-                              <Textarea value={dianBitacora} readOnly className="mt-2 h-48 font-mono text-xs" placeholder="Sin eventos aún…" />
+                              <Label>{t('pos.dian.detail.log.title')}</Label>
+                              <Textarea
+                                value={dianBitacora}
+                                readOnly
+                                className="mt-2 h-48 font-mono text-xs"
+                                placeholder={t('pos.dian.detail.log.empty')}
+                              />
                             </div>
                           </>
                         ) : (
-                          <div className="text-sm text-gray-600">Selecciona un documento para ver el detalle.</div>
+                          <div className="text-sm text-gray-600">{t('pos.dian.detail.selectToView')}</div>
                         )}
                       </div>
                     ) : null}
@@ -2563,27 +2604,27 @@ export default function PosPage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="text-sm text-muted-foreground">
-                      {dianSettingsLoading ? 'Cargando configuración…' : 'Configura rangos, comprador y productos/servicios.'}
+                      {dianSettingsLoading ? t('pos.dian.configuration.loading') : t('pos.dian.configuration.hint')}
                     </div>
                     <Button
                       type="button"
                       onClick={() => void onSaveDianSettings()}
                       disabled={dianSettingsLoading || dianSettingsSaving}
                     >
-                      {dianSettingsSaving ? 'Guardando…' : 'Guardar configuración'}
+                      {dianSettingsSaving ? t('common.saving') : t('pos.dian.configuration.save')}
                     </Button>
                   </div>
 
                   {dianConfigTab === 'rangos' ? (
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="text-sm font-medium">Rangos de numeración autorizada</div>
+                        <div className="text-sm font-medium">{t('pos.dian.numeration.title')}</div>
                         <div className="flex gap-2">
                           <Button type="button" variant="outline" onClick={onValidateNumeracion} disabled={dianSettingsLoading}>
-                            Validar
+                            {t('pos.dian.numeration.validate')}
                           </Button>
                           <Button type="button" variant="outline" onClick={addDianNumeracionItem}>
-                            + Agregar rango
+                            {t('pos.dian.numeration.addRange')}
                           </Button>
                         </div>
                       </div>
@@ -2591,18 +2632,18 @@ export default function PosPage() {
                       {dianNumeracionValidation ? (
                         dianNumeracionValidation.ok ? (
                           <div className="text-sm text-green-700 rounded-md border border-green-200 bg-green-50 px-3 py-2">
-                            Rangos válidos.
+                            {t('pos.dian.numeration.valid')}
                           </div>
                         ) : (
                           <div className="text-sm text-red-700 rounded-md border border-red-200 bg-red-50 px-3 py-2 space-y-1">
-                            <div className="font-medium">Errores de validación</div>
+                            <div className="font-medium">{t('pos.dian.numeration.validationErrorsTitle')}</div>
                             <ul className="list-disc pl-5">
                               {dianNumeracionValidation.messages.slice(0, 12).map((m, i) => (
                                 <li key={i}>{m}</li>
                               ))}
                             </ul>
                             {dianNumeracionValidation.messages.length > 12 ? (
-                              <div className="text-xs">…y {dianNumeracionValidation.messages.length - 12} más</div>
+                              <div className="text-xs">{t('pos.dian.numeration.moreErrors', { count: dianNumeracionValidation.messages.length - 12 })}</div>
                             ) : null}
                           </div>
                         )
@@ -2612,14 +2653,14 @@ export default function PosPage() {
                         <table className="min-w-full text-sm">
                           <thead>
                             <tr className="text-left text-gray-600 border-b">
-                              <th className="py-2 pr-3">Tipo de documento</th>
-                              <th className="py-2 pr-3">Prefijo</th>
-                              <th className="py-2 pr-3">Desde</th>
-                              <th className="py-2 pr-3">Hasta</th>
-                              <th className="py-2 pr-3">Nro. autorización</th>
-                              <th className="py-2 pr-3">Vence</th>
-                              <th className="py-2 pr-3">Actual</th>
-                              <th className="py-2 pr-3">Activo</th>
+                              <th className="py-2 pr-3">{t('pos.dian.numeration.columns.docType')}</th>
+                              <th className="py-2 pr-3">{t('pos.dian.numeration.columns.prefix')}</th>
+                              <th className="py-2 pr-3">{t('pos.dian.numeration.columns.from')}</th>
+                              <th className="py-2 pr-3">{t('pos.dian.numeration.columns.to')}</th>
+                              <th className="py-2 pr-3">{t('pos.dian.numeration.columns.authorizationNumber')}</th>
+                              <th className="py-2 pr-3">{t('pos.dian.numeration.columns.expires')}</th>
+                              <th className="py-2 pr-3">{t('pos.dian.numeration.columns.current')}</th>
+                              <th className="py-2 pr-3">{t('pos.dian.numeration.columns.active')}</th>
                               <th className="py-2 pr-2"></th>
                             </tr>
                           </thead>
@@ -2632,7 +2673,7 @@ export default function PosPage() {
                                     value={String(r.tipoDocumento ?? 'FACTURA_VENTA')}
                                     onChange={(e) => updateDianNumeracionItem(idx, { tipoDocumento: e.target.value as DianNumeracionTipoDocumento })}
                                   >
-                                    {DIAN_NUM_TIPO_DOC_OPTIONS.map((o) => (
+                                    {dianNumTipoDocOptions.map((o) => (
                                       <option key={o.value} value={o.value}>
                                         {o.label}
                                       </option>
@@ -2653,7 +2694,7 @@ export default function PosPage() {
                                     value={String(r.nroAutorizacion ?? '')}
                                     onChange={(e) => updateDianNumeracionItem(idx, { nroAutorizacion: e.target.value })}
                                     className="w-48"
-                                    placeholder="Ej: 18764070977251"
+                                    placeholder={t('pos.dian.numeration.authorizationPlaceholder')}
                                   />
                                 </td>
                                 <td className="py-2 pr-3">
@@ -2676,7 +2717,7 @@ export default function PosPage() {
                                 </td>
                                 <td className="py-2 pr-2">
                                   <Button type="button" size="sm" variant="outline" onClick={() => removeDianNumeracionItem(idx)}>
-                                    Quitar
+                                    {t('common.remove')}
                                   </Button>
                                 </td>
                               </tr>
@@ -2699,12 +2740,12 @@ export default function PosPage() {
                           }}
                         >
                           <Search className="h-4 w-4 mr-2" />
-                          Buscar adquirente
+                          {t('pos.dian.configuration.buyer.search')}
                         </Button>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div>
-                          <Label>Nombre / Razón social</Label>
+                          <Label>{t('pos.dian.configuration.buyer.name')}</Label>
                           <Input
                             value={String(dianSettings.compradorDefault?.nombre ?? '')}
                             onChange={(e) =>
@@ -2716,7 +2757,7 @@ export default function PosPage() {
                           />
                         </div>
                         <div>
-                          <Label>Documento (NIT/CC)</Label>
+                          <Label>{t('pos.dian.configuration.buyer.document')}</Label>
                           <Input
                             value={String(dianSettings.compradorDefault?.documento ?? '')}
                             onChange={(e) =>
@@ -2728,7 +2769,7 @@ export default function PosPage() {
                           />
                         </div>
                         <div>
-                          <Label>Email</Label>
+                          <Label>{t('pos.dian.configuration.buyer.email')}</Label>
                           <Input
                             value={String(dianSettings.compradorDefault?.email ?? '')}
                             onChange={(e) =>
@@ -2756,7 +2797,7 @@ export default function PosPage() {
                             }}
                           >
                             <Search className="h-4 w-4 mr-2" />
-                            Buscar producto/servicio
+                            {t('pos.dian.configuration.products.search')}
                           </Button>
                           <Button
                             type="button"
@@ -2771,7 +2812,7 @@ export default function PosPage() {
                               }))
                             }
                           >
-                            + Agregar manual
+                            {t('pos.dian.configuration.products.addManual')}
                           </Button>
                         </div>
                       </div>
@@ -2780,10 +2821,10 @@ export default function PosPage() {
                         <table className="min-w-full text-sm">
                           <thead>
                             <tr className="text-left text-gray-600 border-b">
-                              <th className="py-2 pr-3">Código</th>
-                              <th className="py-2 pr-3">Descripción</th>
-                              <th className="py-2 pr-3">Valor unit.</th>
-                              <th className="py-2 pr-3">IVA %</th>
+                              <th className="py-2 pr-3">{t('pos.dian.configuration.products.columns.code')}</th>
+                              <th className="py-2 pr-3">{t('pos.dian.configuration.products.columns.description')}</th>
+                              <th className="py-2 pr-3">{t('pos.dian.configuration.products.columns.unitValue')}</th>
+                              <th className="py-2 pr-3">{t('pos.dian.configuration.products.columns.vatPercent')}</th>
                               <th className="py-2 pr-2"></th>
                             </tr>
                           </thead>
@@ -2854,7 +2895,7 @@ export default function PosPage() {
                                       })
                                     }
                                   >
-                                    Quitar
+                                    {t('common.remove')}
                                   </Button>
                                 </td>
                               </tr>
@@ -2870,21 +2911,21 @@ export default function PosPage() {
               {dianMainTab === 'plantillas' ? (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="text-sm text-muted-foreground">Plantilla base para Factura de venta.</div>
+                    <div className="text-sm text-muted-foreground">{t('pos.dian.templates.hint')}</div>
                     <Button
                       type="button"
                       onClick={() => void saveDianSettings(dianSettings)}
                       disabled={dianSettingsLoading || dianSettingsSaving}
                     >
-                      {dianSettingsSaving ? 'Guardando…' : 'Guardar plantilla'}
+                      {dianSettingsSaving ? t('common.saving') : t('pos.dian.templates.save')}
                     </Button>
                   </div>
 
                   {dianSettingsLoading ? (
-                    <div className="text-sm text-muted-foreground">Cargando…</div>
+                    <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
                   ) : (
                     <div>
-                      <Label>Plantilla</Label>
+                      <Label>{t('pos.dian.templates.templateLabel')}</Label>
                       <Textarea
                         value={String(dianSettings.templates?.facturaVenta ?? '')}
                         onChange={(e) =>
@@ -2894,7 +2935,7 @@ export default function PosPage() {
                           }))
                         }
                         className="mt-2 h-64 font-mono text-xs"
-                        placeholder="Escribe aquí la plantilla de factura de venta…"
+                        placeholder={t('pos.dian.templates.templatePlaceholder')}
                       />
                     </div>
                   )}
@@ -2917,8 +2958,8 @@ export default function PosPage() {
       >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Seleccionar cliente</DialogTitle>
-            <DialogDescription>Busca y selecciona un cliente existente.</DialogDescription>
+            <DialogTitle>{t('pos.clientPicker.title')}</DialogTitle>
+            <DialogDescription>{t('pos.clientPicker.description')}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
@@ -2926,10 +2967,10 @@ export default function PosPage() {
               <Input
                 value={clientePickerSearch}
                 onChange={(e) => setClientePickerSearch(e.target.value)}
-                placeholder="Buscar por nombre o documento…"
+                placeholder={t('pos.clientPicker.searchPlaceholder')}
               />
               <Button type="button" variant="outline" onClick={() => void loadClientesPicker()} disabled={clientePickerLoading}>
-                {clientePickerLoading ? 'Buscando…' : 'Buscar'}
+                {clientePickerLoading ? t('pos.clientPicker.searching') : t('pos.clientPicker.search')}
               </Button>
             </div>
 
@@ -2939,9 +2980,9 @@ export default function PosPage() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="text-left text-gray-600 border-b">
-                    <th className="py-2 px-3">Cliente</th>
-                    <th className="py-2 px-3">Documento</th>
-                    <th className="py-2 px-3">Email</th>
+                    <th className="py-2 px-3">{t('pos.clientPicker.columns.client')}</th>
+                    <th className="py-2 px-3">{t('pos.clientPicker.columns.document')}</th>
+                    <th className="py-2 px-3">{t('pos.clientPicker.columns.email')}</th>
                     <th className="py-2 px-3"></th>
                   </tr>
                 </thead>
@@ -2949,24 +2990,24 @@ export default function PosPage() {
                   {clientePickerLoading ? (
                     <tr>
                       <td className="py-3 px-3 text-sm text-muted-foreground" colSpan={4}>
-                        Cargando…
+                        {t('common.loading')}
                       </td>
                     </tr>
                   ) : clientePickerItems.length === 0 ? (
                     <tr>
                       <td className="py-3 px-3 text-sm text-muted-foreground" colSpan={4}>
-                        Sin resultados.
+                        {t('pos.clientPicker.empty')}
                       </td>
                     </tr>
                   ) : (
                     clientePickerItems.map((c) => (
                       <tr key={c.id} className="border-b last:border-b-0">
                         <td className="py-2 px-3 text-gray-900">{c.nombre}</td>
-                        <td className="py-2 px-3 text-gray-700">{c.documento || '—'}</td>
-                        <td className="py-2 px-3 text-gray-700">{c.email || '—'}</td>
+                        <td className="py-2 px-3 text-gray-700">{c.documento || t('common.na')}</td>
+                        <td className="py-2 px-3 text-gray-700">{c.email || t('common.na')}</td>
                         <td className="py-2 px-3 text-right">
                           <Button type="button" size="sm" onClick={() => onPickCliente(c)}>
-                            Seleccionar
+                            {t('common.select')}
                           </Button>
                         </td>
                       </tr>
@@ -2992,15 +3033,19 @@ export default function PosPage() {
       >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Seleccionar producto/servicio</DialogTitle>
-            <DialogDescription>Busca y selecciona un material existente.</DialogDescription>
+            <DialogTitle>{t('pos.productPicker.title')}</DialogTitle>
+            <DialogDescription>{t('pos.productPicker.description')}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
             <div className="flex gap-2">
-              <Input value={productoPickerSearch} onChange={(e) => setProductoPickerSearch(e.target.value)} placeholder="Buscar…" />
+              <Input
+                value={productoPickerSearch}
+                onChange={(e) => setProductoPickerSearch(e.target.value)}
+                placeholder={t('pos.productPicker.searchPlaceholder')}
+              />
               <Button type="button" variant="outline" onClick={() => void loadProductosPicker()} disabled={productoPickerLoading}>
-                {productoPickerLoading ? 'Buscando…' : 'Buscar'}
+                {productoPickerLoading ? t('pos.productPicker.searching') : t('pos.productPicker.search')}
               </Button>
             </div>
 
@@ -3010,9 +3055,9 @@ export default function PosPage() {
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="text-left text-gray-600 border-b">
-                    <th className="py-2 px-3">Nombre</th>
-                    <th className="py-2 px-3">Unidad</th>
-                    <th className="py-2 px-3">Precio sugerido</th>
+                    <th className="py-2 px-3">{t('pos.productPicker.columns.name')}</th>
+                    <th className="py-2 px-3">{t('pos.productPicker.columns.unit')}</th>
+                    <th className="py-2 px-3">{t('pos.productPicker.columns.suggestedPrice')}</th>
                     <th className="py-2 px-3"></th>
                   </tr>
                 </thead>
@@ -3020,13 +3065,13 @@ export default function PosPage() {
                   {productoPickerLoading ? (
                     <tr>
                       <td className="py-3 px-3 text-sm text-muted-foreground" colSpan={4}>
-                        Cargando…
+                        {t('common.loading')}
                       </td>
                     </tr>
                   ) : productoPickerItems.length === 0 ? (
                     <tr>
                       <td className="py-3 px-3 text-sm text-muted-foreground" colSpan={4}>
-                        Sin resultados.
+                        {t('pos.productPicker.empty')}
                       </td>
                     </tr>
                   ) : (
@@ -3037,7 +3082,7 @@ export default function PosPage() {
                         <td className="py-2 px-3 text-gray-700">{formatCurrency(priceSuggestion(m))}</td>
                         <td className="py-2 px-3 text-right">
                           <Button type="button" size="sm" onClick={() => onPickProducto(m)}>
-                            Seleccionar
+                            {t('common.select')}
                           </Button>
                         </td>
                       </tr>
@@ -3053,22 +3098,20 @@ export default function PosPage() {
       <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Nueva devolución</DialogTitle>
-            <DialogDescription>
-              Registra una devolución y devuelve inventario. Puedes asociarla a una factura existente (opcional).
-            </DialogDescription>
+            <DialogTitle>{t('pos.returnDialog.title')}</DialogTitle>
+            <DialogDescription>{t('pos.returnDialog.description')}</DialogDescription>
           </DialogHeader>
 
           <form onSubmit={(e) => void submitReturn(e)} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-2">
-                <Label>Factura (opcional)</Label>
+                <Label>{t('pos.returnDialog.invoiceOptional')}</Label>
                 <select
                   className="w-full h-10 rounded-md border px-3 text-sm"
                   value={returnForm.invoiceId}
                   onChange={(e) => void onReturnInvoiceChange(e.target.value)}
                 >
-                  <option value="">(Sin asociar)</option>
+                  <option value="">{t('pos.placeholders.unlinked')}</option>
                   {invoices.map((inv) => (
                     <option key={inv.id} value={inv.id}>
                       {inv.numero} — {inv.clienteNombre}
@@ -3077,36 +3120,36 @@ export default function PosPage() {
                 </select>
               </div>
               <div>
-                <Label>Sede</Label>
+                <Label>{t('pos.labels.warehouse')}</Label>
                 <select
                   className="w-full h-10 rounded-md border px-3 text-sm"
                   value={returnForm.warehouseId}
                   onChange={(e) => setReturnForm((p) => ({ ...p, warehouseId: e.target.value }))}
                 >
-                  <option value="">(Auto)</option>
+                  <option value="">{t('pos.placeholders.auto')}</option>
                   {bodegas.map((b) => (
                     <option key={b.id} value={b.id}>
-                      {b.nombre}{b.isDefault ? ' (Pred.)' : ''}
+                      {b.nombre}{b.isDefault ? ` ${t('pos.labels.defaultShort')}` : ''}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <Label>IVA %</Label>
+                <Label>{t('pos.labels.vatPercent')}</Label>
                 <Input value={returnForm.ivaPct} onChange={(e) => setReturnForm((p) => ({ ...p, ivaPct: e.target.value }))} />
               </div>
               <div className="sm:col-span-2">
-                <Label>Motivo (opcional)</Label>
+                <Label>{t('pos.returnDialog.reasonOptional')}</Label>
                 <Input value={returnForm.motivo} onChange={(e) => setReturnForm((p) => ({ ...p, motivo: e.target.value }))} />
               </div>
             </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-medium">Ítems devueltos</div>
+                <div className="text-sm font-medium">{t('pos.returnDialog.itemsReturned')}</div>
                 <Button type="button" size="sm" variant="outline" onClick={addReturnItem}>
-                  + Agregar ítem
+                  {t('pos.items.addItem')}
                 </Button>
               </div>
 
@@ -3114,11 +3157,11 @@ export default function PosPage() {
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="text-left text-gray-600 border-b">
-                      <th className="py-2 pr-3">Material</th>
-                      <th className="py-2 pr-3">Descripción</th>
-                      <th className="py-2 pr-3">Cant.</th>
-                      <th className="py-2 pr-3">Precio</th>
-                      <th className="py-2 pr-3">Total</th>
+                      <th className="py-2 pr-3">{t('pos.items.columns.material')}</th>
+                      <th className="py-2 pr-3">{t('pos.items.columns.description')}</th>
+                      <th className="py-2 pr-3">{t('pos.items.columns.quantity')}</th>
+                      <th className="py-2 pr-3">{t('pos.items.columns.price')}</th>
+                      <th className="py-2 pr-3">{t('pos.items.columns.total')}</th>
                       <th className="py-2 pr-2"></th>
                     </tr>
                   </thead>
@@ -3135,7 +3178,7 @@ export default function PosPage() {
                               value={it.materialId}
                               onChange={(e) => updateReturnItem(idx, { materialId: e.target.value })}
                             >
-                              <option value="">(Manual)</option>
+                              <option value="">{t('pos.placeholders.manual')}</option>
                               {materials.map((m) => (
                                 <option key={m.id} value={m.id}>
                                   {m.nombre}
@@ -3155,7 +3198,7 @@ export default function PosPage() {
                           <td className="py-2 pr-3 font-medium">{formatCurrency(lineTotal)}</td>
                           <td className="py-2 pr-2">
                             <Button type="button" size="sm" variant="outline" onClick={() => removeReturnItem(idx)}>
-                              Quitar
+                              {t('common.remove')}
                             </Button>
                           </td>
                         </tr>
@@ -3168,20 +3211,20 @@ export default function PosPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
               <div className="sm:col-span-2">
-                <Label>Nota interna (opcional)</Label>
+                <Label>{t('pos.returnDialog.internalNoteOptional')}</Label>
                 <Textarea value={returnForm.motivo} onChange={(e) => setReturnForm((p) => ({ ...p, motivo: e.target.value }))} />
               </div>
               <div className="rounded-md border p-3">
                 <div className="flex justify-between text-sm">
-                  <span>Subtotal</span>
+                  <span>{t('pos.summary.subtotal')}</span>
                   <span className="font-medium">{formatCurrency(computedReturn.subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span>IVA</span>
+                  <span>{t('pos.summary.vat')}</span>
                   <span className="font-medium">{formatCurrency(computedReturn.iva)}</span>
                 </div>
                 <div className="flex justify-between text-sm mt-2">
-                  <span>Total</span>
+                  <span>{t('pos.summary.total')}</span>
                   <span className="font-semibold">{formatCurrency(computedReturn.total)}</span>
                 </div>
               </div>
@@ -3189,10 +3232,10 @@ export default function PosPage() {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setReturnOpen(false)} disabled={returnSubmitting}>
-                Cancelar
+                {t('common.cancel')}
               </Button>
               <Button type="submit" disabled={returnSubmitting}>
-                {returnSubmitting ? 'Creando…' : 'Crear devolución'}
+                {returnSubmitting ? t('pos.actions.creating') : t('pos.returnDialog.create')}
               </Button>
             </DialogFooter>
           </form>
@@ -3202,17 +3245,15 @@ export default function PosPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Nueva factura</DialogTitle>
-            <DialogDescription>
-              Por defecto se crea como pagada (y descuenta inventario). Si no hay stock, guárdala como borrador.
-            </DialogDescription>
+            <DialogTitle>{t('pos.createDialog.title')}</DialogTitle>
+            <DialogDescription>{t('pos.createDialog.description')}</DialogDescription>
           </DialogHeader>
 
           <form onSubmit={(e) => void submitInvoice(e)} className="space-y-4">
             <div className="flex items-center justify-between rounded-md border p-3">
               <div>
-                <div className="text-sm font-medium">Guardar como borrador</div>
-                <div className="text-xs text-muted-foreground">No descuenta inventario; úsalo si aún no hay stock.</div>
+                <div className="text-sm font-medium">{t('pos.createDialog.saveAsDraft.title')}</div>
+                <div className="text-xs text-muted-foreground">{t('pos.createDialog.saveAsDraft.description')}</div>
               </div>
               <label className="inline-flex items-center gap-2 text-sm">
                 <input
@@ -3226,7 +3267,7 @@ export default function PosPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="sm:col-span-2">
                 <div className="flex items-center justify-between">
-                  <Label>Cliente</Label>
+                  <Label>{t('pos.labels.client')}</Label>
                   <Button
                     type="button"
                     size="icon"
@@ -3235,7 +3276,7 @@ export default function PosPage() {
                       setClientePickerTarget('interna')
                       setClientePickerOpen(true)
                     }}
-                    title="Buscar cliente"
+                    title={t('pos.clientPicker.openTitle')}
                   >
                     <Search className="h-4 w-4" />
                   </Button>
@@ -3243,40 +3284,40 @@ export default function PosPage() {
                 <Input value={form.clienteNombre} onChange={(e) => setForm((p) => ({ ...p, clienteNombre: e.target.value }))} />
               </div>
               <div>
-                <Label>Documento (opcional)</Label>
+                <Label>{t('pos.labels.documentOptional')}</Label>
                 <Input value={form.clienteDocumento} onChange={(e) => setForm((p) => ({ ...p, clienteDocumento: e.target.value }))} />
               </div>
 
               <div>
-                <Label>Sede</Label>
+                <Label>{t('pos.labels.warehouse')}</Label>
                 <select
                   className="w-full h-10 rounded-md border px-3 text-sm"
                   value={form.warehouseId}
                   onChange={(e) => setForm((p) => ({ ...p, warehouseId: e.target.value }))}
                 >
-                  <option value="">(Auto)</option>
+                  <option value="">{t('pos.placeholders.auto')}</option>
                   {bodegas.map((b) => (
                     <option key={b.id} value={b.id}>
-                      {b.nombre}{b.isDefault ? ' (Pred.)' : ''}
+                      {b.nombre}{b.isDefault ? ` ${t('pos.labels.defaultShort')}` : ''}
                     </option>
                   ))}
                 </select>
               </div>
               <div>
-                <Label>IVA %</Label>
+                <Label>{t('pos.labels.vatPercent')}</Label>
                 <Input value={form.ivaPct} onChange={(e) => setForm((p) => ({ ...p, ivaPct: e.target.value }))} />
               </div>
               <div className="sm:col-span-1">
-                <Label>Buscar material</Label>
-                <Input value={materialSearch} onChange={(e) => setMaterialSearch(e.target.value)} placeholder="Filtrar…" />
+                <Label>{t('pos.createDialog.searchMaterial')}</Label>
+                <Input value={materialSearch} onChange={(e) => setMaterialSearch(e.target.value)} placeholder={t('pos.createDialog.searchPlaceholder')} />
               </div>
             </div>
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-medium">Ítems</div>
+                <div className="text-sm font-medium">{t('pos.items.title')}</div>
                 <Button type="button" size="sm" variant="outline" onClick={addItem}>
-                  + Agregar ítem
+                  {t('pos.items.addItem')}
                 </Button>
               </div>
 
@@ -3284,11 +3325,11 @@ export default function PosPage() {
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="text-left text-gray-600 border-b">
-                      <th className="py-2 pr-3">Material</th>
-                      <th className="py-2 pr-3">Descripción</th>
-                      <th className="py-2 pr-3">Cant.</th>
-                      <th className="py-2 pr-3">Precio</th>
-                      <th className="py-2 pr-3">Total</th>
+                      <th className="py-2 pr-3">{t('pos.items.columns.material')}</th>
+                      <th className="py-2 pr-3">{t('pos.items.columns.description')}</th>
+                      <th className="py-2 pr-3">{t('pos.items.columns.quantity')}</th>
+                      <th className="py-2 pr-3">{t('pos.items.columns.price')}</th>
+                      <th className="py-2 pr-3">{t('pos.items.columns.total')}</th>
                       <th className="py-2 pr-2"></th>
                     </tr>
                   </thead>
@@ -3307,7 +3348,7 @@ export default function PosPage() {
                                 value={it.materialId}
                                 onChange={(e) => updateItem(idx, { materialId: e.target.value })}
                               >
-                                <option value="">(Manual)</option>
+                                <option value="">{t('pos.placeholders.manual')}</option>
                                 {materials.map((m) => (
                                   <option key={m.id} value={m.id}>
                                     {m.nombre}
@@ -3322,7 +3363,7 @@ export default function PosPage() {
                                   setProductoPickerTarget({ kind: 'interna', idx })
                                   setProductoPickerOpen(true)
                                 }}
-                                title="Buscar producto/servicio"
+                                title={t('pos.productPicker.openTitle')}
                               >
                                 <Search className="h-4 w-4" />
                               </Button>
@@ -3332,7 +3373,7 @@ export default function PosPage() {
                             <Input
                               value={it.descripcion}
                               onChange={(e) => updateItem(idx, { descripcion: e.target.value })}
-                              placeholder="Descripción"
+                              placeholder={t('pos.items.placeholders.description')}
                             />
                           </td>
                           <td className="py-2 pr-3">
@@ -3352,7 +3393,7 @@ export default function PosPage() {
                           <td className="py-2 pr-3 font-medium">{formatCurrency(lineTotal)}</td>
                           <td className="py-2 pr-2">
                             <Button type="button" size="sm" variant="outline" onClick={() => removeItem(idx)}>
-                              Quitar
+                              {t('common.remove')}
                             </Button>
                           </td>
                         </tr>
@@ -3365,20 +3406,20 @@ export default function PosPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
               <div className="sm:col-span-2">
-                <Label>Nota (opcional)</Label>
+                <Label>{t('pos.createDialog.noteOptional')}</Label>
                 <Textarea value={form.note} onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))} />
               </div>
               <div className="rounded-md border p-3">
                 <div className="flex justify-between text-sm">
-                  <span>Subtotal</span>
+                  <span>{t('pos.summary.subtotal')}</span>
                   <span className="font-medium">{formatCurrency(computed.subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span>IVA</span>
+                  <span>{t('pos.summary.vat')}</span>
                   <span className="font-medium">{formatCurrency(computed.iva)}</span>
                 </div>
                 <div className="flex justify-between text-sm mt-2">
-                  <span>Total</span>
+                  <span>{t('pos.summary.total')}</span>
                   <span className="font-semibold">{formatCurrency(computed.total)}</span>
                 </div>
               </div>
@@ -3386,10 +3427,10 @@ export default function PosPage() {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={isSubmitting}>
-                Cancelar
+                {t('common.cancel')}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? 'Creando…' : 'Crear factura'}
+                {isSubmitting ? t('pos.actions.creating') : t('pos.createDialog.create')}
               </Button>
             </DialogFooter>
           </form>
@@ -3399,52 +3440,58 @@ export default function PosPage() {
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Detalle de factura</DialogTitle>
-            <DialogDescription>Información y líneas de la factura seleccionada.</DialogDescription>
+            <DialogTitle>{t('pos.invoiceDetailDialog.title')}</DialogTitle>
+            <DialogDescription>{t('pos.invoiceDetailDialog.description')}</DialogDescription>
           </DialogHeader>
 
           {detailLoading ? (
-            <div className="text-sm text-gray-600">Cargando…</div>
+            <div className="text-sm text-gray-600">{t('common.loading')}</div>
           ) : detailError ? (
             <div className="text-sm text-red-600">{detailError}</div>
           ) : !detail ? (
-            <div className="text-sm text-gray-600">Sin datos.</div>
+            <div className="text-sm text-gray-600">{t('pos.invoiceDetailDialog.empty')}</div>
           ) : (
             <div className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="rounded-md border p-3">
-                  <div className="text-xs text-gray-500">Número</div>
+                  <div className="text-xs text-gray-500">{t('pos.invoiceDetailDialog.labels.number')}</div>
                   <div className="font-medium">{detail.numero}</div>
                 </div>
                 <div className="rounded-md border p-3">
-                  <div className="text-xs text-gray-500">Cliente</div>
+                  <div className="text-xs text-gray-500">{t('pos.invoiceDetailDialog.labels.client')}</div>
                   <div className="font-medium">{detail.clienteNombre}</div>
-                  <div className="text-xs text-gray-500">{detail.clienteDocumento || '—'}</div>
+                  <div className="text-xs text-gray-500">{detail.clienteDocumento || t('common.na')}</div>
                 </div>
                 <div className="rounded-md border p-3">
-                  <div className="text-xs text-gray-500">Sede</div>
-                  <div className="font-medium">{detail.warehouse?.nombre || '—'}</div>
-                  <div className="text-xs text-gray-500">Estado: {detail.status}</div>
+                  <div className="text-xs text-gray-500">{t('pos.invoiceDetailDialog.labels.warehouse')}</div>
+                  <div className="font-medium">{detail.warehouse?.nombre || t('common.na')}</div>
+                  <div className="text-xs text-gray-500">
+                    {t('pos.invoiceDetailDialog.labels.status')}: {detail.status}
+                  </div>
                 </div>
               </div>
 
-              {detail.note ? <div className="text-sm text-gray-700">Nota: {detail.note}</div> : null}
+              {detail.note ? (
+                <div className="text-sm text-gray-700">
+                  {t('pos.invoiceDetailDialog.labels.note')}: {detail.note}
+                </div>
+              ) : null}
 
               <div className="overflow-auto">
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="text-left text-gray-600 border-b">
-                      <th className="py-2 pr-4">Descripción</th>
-                      <th className="py-2 pr-4">Cant.</th>
-                      <th className="py-2 pr-4">Precio</th>
-                      <th className="py-2 pr-4">Total</th>
+                      <th className="py-2 pr-4">{t('pos.items.columns.description')}</th>
+                      <th className="py-2 pr-4">{t('pos.items.columns.quantity')}</th>
+                      <th className="py-2 pr-4">{t('pos.items.columns.price')}</th>
+                      <th className="py-2 pr-4">{t('pos.items.columns.total')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {detail.items.map((it) => (
                       <tr key={it.id} className="border-b last:border-b-0">
                         <td className="py-2 pr-4 text-gray-900">{it.descripcion}</td>
-                        <td className="py-2 pr-4 text-gray-700">{n(it.quantity, 0).toLocaleString('es-CO')}</td>
+                        <td className="py-2 pr-4 text-gray-700">{n(it.quantity, 0).toLocaleString(locale)}</td>
                         <td className="py-2 pr-4 text-gray-700">{formatCurrency(n(it.unitPrice, 0))}</td>
                         <td className="py-2 pr-4 font-medium">{formatCurrency(n(it.total, 0))}</td>
                       </tr>
@@ -3455,13 +3502,13 @@ export default function PosPage() {
 
               <div className="flex justify-end gap-6 text-sm">
                 <div>
-                  <span className="text-gray-500">Subtotal:</span> <span className="font-medium">{formatCurrency(detail.subtotal)}</span>
+                  <span className="text-gray-500">{t('pos.summary.subtotal')}:</span> <span className="font-medium">{formatCurrency(detail.subtotal)}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500">IVA:</span> <span className="font-medium">{formatCurrency(detail.iva)}</span>
+                  <span className="text-gray-500">{t('pos.summary.vat')}:</span> <span className="font-medium">{formatCurrency(detail.iva)}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500">Total:</span> <span className="font-semibold">{formatCurrency(detail.total)}</span>
+                  <span className="text-gray-500">{t('pos.summary.total')}:</span> <span className="font-semibold">{formatCurrency(detail.total)}</span>
                 </div>
               </div>
             </div>
@@ -3470,11 +3517,11 @@ export default function PosPage() {
           <DialogFooter>
             {detail && detail.status === 'DRAFT' ? (
               <Button type="button" onClick={() => void finalizar(detail.id)} disabled={finalizeSubmitting || detailLoading}>
-                {finalizeSubmitting ? 'Finalizando…' : 'Finalizar'}
+                {finalizeSubmitting ? t('pos.actions.finalizing') : t('pos.actions.finalize')}
               </Button>
             ) : null}
             <Button type="button" variant="outline" onClick={() => setDetailOpen(false)}>
-              Cerrar
+              {t('common.close')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3483,51 +3530,55 @@ export default function PosPage() {
       <Dialog open={returnDetailOpen} onOpenChange={setReturnDetailOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Detalle de devolución</DialogTitle>
-            <DialogDescription>Información y líneas de la devolución seleccionada.</DialogDescription>
+            <DialogTitle>{t('pos.returnDetailDialog.title')}</DialogTitle>
+            <DialogDescription>{t('pos.returnDetailDialog.description')}</DialogDescription>
           </DialogHeader>
 
           {returnDetailLoading ? (
-            <div className="text-sm text-gray-600">Cargando…</div>
+            <div className="text-sm text-gray-600">{t('common.loading')}</div>
           ) : returnDetailError ? (
             <div className="text-sm text-red-600">{returnDetailError}</div>
           ) : !returnDetail ? (
-            <div className="text-sm text-gray-600">Sin datos.</div>
+            <div className="text-sm text-gray-600">{t('pos.returnDetailDialog.empty')}</div>
           ) : (
             <div className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="rounded-md border p-3">
-                  <div className="text-xs text-gray-500">Número</div>
+                  <div className="text-xs text-gray-500">{t('pos.returnDetailDialog.labels.number')}</div>
                   <div className="font-medium">{returnDetail.numero}</div>
                 </div>
                 <div className="rounded-md border p-3">
-                  <div className="text-xs text-gray-500">Factura</div>
-                  <div className="font-medium">{returnDetail.invoice?.numero || '—'}</div>
-                  <div className="text-xs text-gray-500">{new Date(returnDetail.createdAt).toLocaleString('es-CO')}</div>
+                  <div className="text-xs text-gray-500">{t('pos.returnDetailDialog.labels.invoice')}</div>
+                  <div className="font-medium">{returnDetail.invoice?.numero || t('common.na')}</div>
+                  <div className="text-xs text-gray-500">{new Date(returnDetail.createdAt).toLocaleString(locale)}</div>
                 </div>
                 <div className="rounded-md border p-3">
-                  <div className="text-xs text-gray-500">Sede</div>
-                  <div className="font-medium">{returnDetail.warehouse?.nombre || '—'}</div>
+                  <div className="text-xs text-gray-500">{t('pos.returnDetailDialog.labels.warehouse')}</div>
+                  <div className="font-medium">{returnDetail.warehouse?.nombre || t('common.na')}</div>
                 </div>
               </div>
 
-              {returnDetail.motivo ? <div className="text-sm text-gray-700">Motivo: {returnDetail.motivo}</div> : null}
+              {returnDetail.motivo ? (
+                <div className="text-sm text-gray-700">
+                  {t('pos.returnDetailDialog.labels.reason')}: {returnDetail.motivo}
+                </div>
+              ) : null}
 
               <div className="overflow-auto">
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="text-left text-gray-600 border-b">
-                      <th className="py-2 pr-4">Descripción</th>
-                      <th className="py-2 pr-4">Cant.</th>
-                      <th className="py-2 pr-4">Precio</th>
-                      <th className="py-2 pr-4">Total</th>
+                      <th className="py-2 pr-4">{t('pos.items.columns.description')}</th>
+                      <th className="py-2 pr-4">{t('pos.items.columns.quantity')}</th>
+                      <th className="py-2 pr-4">{t('pos.items.columns.price')}</th>
+                      <th className="py-2 pr-4">{t('pos.items.columns.total')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {returnDetail.items.map((it) => (
                       <tr key={it.id} className="border-b last:border-b-0">
                         <td className="py-2 pr-4 text-gray-900">{it.descripcion}</td>
-                        <td className="py-2 pr-4 text-gray-700">{n(it.quantity, 0).toLocaleString('es-CO')}</td>
+                        <td className="py-2 pr-4 text-gray-700">{n(it.quantity, 0).toLocaleString(locale)}</td>
                         <td className="py-2 pr-4 text-gray-700">{formatCurrency(n(it.unitPrice, 0))}</td>
                         <td className="py-2 pr-4 font-medium">{formatCurrency(n(it.total, 0))}</td>
                       </tr>
@@ -3538,13 +3589,13 @@ export default function PosPage() {
 
               <div className="flex justify-end gap-6 text-sm">
                 <div>
-                  <span className="text-gray-500">Subtotal:</span> <span className="font-medium">{formatCurrency(returnDetail.subtotal)}</span>
+                  <span className="text-gray-500">{t('pos.summary.subtotal')}:</span> <span className="font-medium">{formatCurrency(returnDetail.subtotal)}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500">IVA:</span> <span className="font-medium">{formatCurrency(returnDetail.iva)}</span>
+                  <span className="text-gray-500">{t('pos.summary.vat')}:</span> <span className="font-medium">{formatCurrency(returnDetail.iva)}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500">Total:</span> <span className="font-semibold">{formatCurrency(returnDetail.total)}</span>
+                  <span className="text-gray-500">{t('pos.summary.total')}:</span> <span className="font-semibold">{formatCurrency(returnDetail.total)}</span>
                 </div>
               </div>
             </div>
@@ -3552,7 +3603,7 @@ export default function PosPage() {
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setReturnDetailOpen(false)}>
-              Cerrar
+              {t('common.close')}
             </Button>
           </DialogFooter>
         </DialogContent>

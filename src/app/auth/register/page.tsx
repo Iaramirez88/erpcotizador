@@ -7,12 +7,15 @@
 
 import { Suspense } from "react"
 import { RegisterPageClient } from "./register-page-client"
+import { tServer } from "@/lib/i18n/server"
 
-export default function RegisterPage() {
+export default async function RegisterPage() {
+  const loadingText = await tServer('common.loading')
+
   return (
     <Suspense
       fallback={
-        <div className="w-full max-w-md text-sm text-muted-foreground">Cargando...</div>
+        <div className="w-full max-w-md text-sm text-muted-foreground">{loadingText}</div>
       }
     >
       <RegisterPageClient />

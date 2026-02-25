@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireApiAccess } from '@/lib/api-rbac';
+import { checkPlanLimit } from '@/lib/plan-limits';
 import { ModuleKey } from '@prisma/client';
 
 export async function GET(request: NextRequest) {
@@ -88,6 +89,11 @@ export async function POST(request: NextRequest) {
   try {
     const access = await requireApiAccess(ModuleKey.ORDENES, 'WRITE');
     if (!access.ok) return access.response;
+
+    const limit = await checkPlanLimit(access.empresaId, 'ORDENES_PER_MONTH');
+    if (!limit.ok) {
+      return NextResponse.json(limit, { status: 402 });
+    }
 
     const { cotizacionId } = await request.json();
 

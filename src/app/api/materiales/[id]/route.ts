@@ -8,7 +8,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
-import { ModuleKey } from "@prisma/client"
+import { InventoryMovementSourceType, InventoryMovementType, ModuleKey } from "@prisma/client"
 
 function normalizeUnidadMedida(value: unknown): 'm2' | 'ml' | 'unidad' {
   const u = String(value ?? '').trim().toLowerCase()
@@ -81,6 +81,9 @@ export async function PUT(
     const { id } = await context.params
     const body = await request.json()
 
+    const externalIdNorm = typeof body.externalId === 'string' ? body.externalId.trim() : ''
+    const externalIdValue = externalIdNorm ? externalIdNorm : null
+
     const imagenUrlNorm = typeof body.imagenUrl === 'string' ? body.imagenUrl.trim() : null
 
     const unidad = normalizeUnidadMedida(body.unidadMedida)
@@ -109,12 +112,51 @@ export async function PUT(
       )
     }
 
+    if (materialExistente.empresaId !== access.empresaId) {
+      return NextResponse.json(
+        { error: "Material no encontrado" },
+        { status: 404 }
+      )
+    }
+
+    if (externalIdValue) {
+      const dup = await prisma.material.findFirst({
+        where: {
+          empresaId: access.empresaId,
+          externalId: externalIdValue,
+          NOT: { id },
+        },
+        select: { id: true },
+      })
+
+      if (dup?.id) {
+        return NextResponse.json(
+          { error: 'Ya existe un producto con ese código/ID externo en tu empresa.' },
+          { status: 409 }
+        )
+      }
+    }
+
     const quantityDiscounts = Array.isArray(body.quantityDiscounts) ? body.quantityDiscounts : null
 
     const nextPrecioCompra = body.precioCompra ? parseFloat(body.precioCompra) : null
     const precioCompraChanged = (materialExistente.precioCompra ?? null) !== (nextPrecioCompra ?? null)
 
+    const nextStockRaw = body.stockActual === null || body.stockActual === undefined || body.stockActual === ''
+      ? 0
+      : typeof body.stockActual === 'number'
+        ? body.stockActual
+        : Number(body.stockActual)
+    const nextStock = Number.isFinite(nextStockRaw) ? Math.max(0, nextStockRaw) : 0
+
     const material = await prisma.$transaction(async (tx) => {
+      const beforeStock = await tx.material.findUnique({
+        where: { id },
+        select: { stockActual: true },
+      })
+
+      const stockBeforeGlobal = beforeStock?.stockActual ?? materialExistente.stockActual
+
       if (quantityDiscounts) {
         await tx.materialQuantityDiscount.deleteMany({ where: { materialId: id } })
       }
@@ -122,6 +164,7 @@ export async function PUT(
       const updated = await tx.material.update({
         where: { id },
         data: {
+          externalId: externalIdValue,
           nombre: body.nombre,
           tipo: body.tipo,
           categoria: body.categoria,
@@ -134,7 +177,7 @@ export async function PUT(
           precioMetro: precioMetroN,
           precioUnidad: precioUnidadN,
           precioCompra: nextPrecioCompra,
-          stockActual: body.stockActual ? parseFloat(body.stockActual) : 0,
+          stockActual: nextStock,
           stockMinimo: body.stockMinimo ? parseFloat(body.stockMinimo) : 0,
           unidadMedida: unidad,
           proveedor: body.proveedor,
@@ -145,6 +188,25 @@ export async function PUT(
           quantityDiscounts: { orderBy: { minQty: 'asc' } }
         }
       })
+
+      if (nextStock !== stockBeforeGlobal) {
+        await tx.inventoryMovement.create({
+          data: {
+            empresaId: access.empresaId,
+            sedeId: access.sedeId,
+            warehouseId: null,
+            materialId: id,
+            type: InventoryMovementType.ADJUST,
+            quantity: nextStock - stockBeforeGlobal,
+            stockBefore: stockBeforeGlobal,
+            stockAfter: nextStock,
+            note: 'Ajuste manual desde Productos',
+            sourceType: InventoryMovementSourceType.MANUAL,
+            sourceId: id,
+            createdById: access.userId,
+          },
+        })
+      }
 
       if (precioCompraChanged) {
         const sede = await tx.sede.findUnique({ where: { id: access.sedeId }, select: { empresaId: true } })
@@ -211,11 +273,18 @@ export async function PUT(
     })
 
   } catch (error) {
+    // Prisma: constraint unique (empresaId, externalId)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const code = (error as any)?.code
+    if (code === 'P2002') {
+      return NextResponse.json(
+        { error: 'Ya existe un producto con ese código/ID externo en tu empresa.' },
+        { status: 409 }
+      )
+    }
+
     console.error("Error al actualizar material:", error)
-    return NextResponse.json(
-      { error: "Error al actualizar material" },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: "Error al actualizar material" }, { status: 500 })
   }
 }
 

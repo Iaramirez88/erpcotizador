@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { ensureDefaultSedeForEmpresa, requireEmpresaIdForUser } from '@/lib/rbac'
 import { randomDigits, sha256Hex } from '@/lib/auth-tokens'
 import { sendEmail } from '@/lib/email'
+import { checkPlanLimit } from '@/lib/plan-limits'
 
 export const runtime = 'nodejs'
 
@@ -75,6 +76,19 @@ export async function POST(request: Request) {
 
   // Si ya existe el usuario, solo informamos por correo.
   if (existingUser?.id) {
+    const alreadyMember = await prisma.sedeMembership.findFirst({
+      where: { userId: existingUser.id, sede: { empresaId: empresa.id } },
+      select: { id: true },
+    })
+
+    // Si el usuario aún no pertenece a esta empresa, validar límite antes de moverlo o asignarle sede.
+    if (!alreadyMember && existingUser.empresaId !== empresa.id) {
+      const limit = await checkPlanLimit(empresa.id, 'USUARIOS_MAX')
+      if (!limit.ok) {
+        return NextResponse.json(limit, { status: 402 })
+      }
+    }
+
     if (existingUser.empresaId && existingUser.empresaId !== empresa.id) {
       // Permitimos mover desde el espacio personal (PERS-<userId>) hacia esta empresa.
       const currentEmpresa = await prisma.empresa.findUnique({
@@ -116,6 +130,12 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true, message: 'Usuario ya existe. Correo enviado.' })
+  }
+
+  // Nuevo usuario (no existe todavía): validar límite de usuarios antes de crear la invitación.
+  const limit = await checkPlanLimit(empresa.id, 'USUARIOS_MAX')
+  if (!limit.ok) {
+    return NextResponse.json(limit, { status: 402 })
   }
 
   // Crear invitación con código de 6 dígitos

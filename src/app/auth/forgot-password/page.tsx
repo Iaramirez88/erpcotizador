@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 export default function ForgotPasswordPage() {
+  const { t } = useI18n()
   const [email, setEmail] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -31,7 +33,7 @@ export default function ForgotPasswordPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data?.error || "No se pudo procesar la solicitud")
+        throw new Error(data?.error || t('auth.forgot.errors.requestFailed'))
       }
 
       if (typeof data?.debugResetUrl === "string") {
@@ -41,10 +43,10 @@ export default function ForgotPasswordPage() {
       setMessage(
         typeof data?.message === "string"
           ? data.message
-          : "Si tu cuenta existe, enviaremos un correo con instrucciones."
+          : t('auth.forgot.defaultMessage')
       )
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Ocurrió un error")
+      setError(err instanceof Error ? err.message : t('auth.common.genericError'))
     } finally {
       setIsLoading(false)
     }
@@ -53,9 +55,9 @@ export default function ForgotPasswordPage() {
   return (
     <Card className="w-full max-w-md border-0 shadow-sm">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl text-center">Restablecer contraseña</CardTitle>
+          <CardTitle className="text-2xl text-center">{t('auth.forgot.title')}</CardTitle>
           <CardDescription className="text-center">
-            Te enviaremos un enlace para crear una nueva contraseña
+            {t('auth.forgot.description')}
           </CardDescription>
         </CardHeader>
         <form onSubmit={onSubmit}>
@@ -72,7 +74,7 @@ export default function ForgotPasswordPage() {
             )}
             {debugResetUrl && (
               <div className="bg-yellow-50 border border-yellow-200 text-yellow-900 px-4 py-3 rounded-md text-sm break-all">
-                <div className="font-semibold">Link (modo dev)</div>
+                <div className="font-semibold">{t('auth.forgot.devLink')}</div>
                 <a className="text-blue-700 underline" href={debugResetUrl}>
                   {debugResetUrl}
                 </a>
@@ -80,11 +82,11 @@ export default function ForgotPasswordPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="sr-only">Email</Label>
+              <Label htmlFor="email" className="sr-only">{t('auth.fields.email')}</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="tu@email.com"
+                placeholder={t('auth.placeholders.email')}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -95,11 +97,11 @@ export default function ForgotPasswordPage() {
 
           <CardFooter className="flex flex-col gap-3">
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Enviando..." : "Enviar enlace"}
+              {isLoading ? t('auth.forgot.sending') : t('auth.forgot.submit')}
             </Button>
             <div className="text-sm text-center text-gray-600">
               <Link href="/auth/login" className="text-blue-600 hover:underline font-medium">
-                Volver al login
+                {t('auth.common.backToLogin')}
               </Link>
             </div>
           </CardFooter>

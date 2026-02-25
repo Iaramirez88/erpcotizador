@@ -4,19 +4,30 @@ import { prisma } from '@/lib/prisma'
 import { ensureDefaultSedeForEmpresa, requireEmpresaIdForUser } from '@/lib/rbac'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { InviteUserCard } from '@/components/users/invite-user-card'
+import { getServerLanguage } from '@/lib/i18n/server'
+import { translate } from '@/lib/i18n/messages'
 
 export const runtime = 'nodejs'
 
-function fmtDate(value: Date | null | undefined): string {
-  if (!value) return '—'
+function fmtDate(value: Date | null | undefined, locale: string, naText: string): string {
+  if (!value) return naText
   try {
-    return new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(value)
+    return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(value)
   } catch {
     return String(value)
   }
 }
 
+function userRoleKey(role: string) {
+  return `rbac.userRole.${role}`
+}
+
 export default async function UsuariosPage() {
+  const language = await getServerLanguage()
+  const t = (key: string, vars?: Record<string, string | number>) => translate(language, key, vars)
+  const locale = language === 'en' ? 'en-US' : 'es-CO'
+  const naText = t('common.na')
+
   const session = await auth()
   if (!session) redirect('/auth/login')
 
@@ -59,26 +70,26 @@ export default async function UsuariosPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Usuarios</h1>
-        <p className="text-sm text-muted-foreground">Usuarios registrados y última sesión.</p>
+        <h1 className="text-2xl font-bold">{t('rbac.users.title')}</h1>
+        <p className="text-sm text-muted-foreground">{t('rbac.users.subtitle')}</p>
       </div>
 
       <InviteUserCard />
 
       <Card>
         <CardHeader>
-          <CardTitle>Listado ({users.length})</CardTitle>
+          <CardTitle>{t('rbac.users.listTitle', { count: users.length })}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b">
-                  <th className="py-2 text-left">Usuario</th>
-                  <th className="py-2 text-left">Email</th>
-                  <th className="py-2 text-left">Rol</th>
-                  <th className="py-2 text-left">Creado</th>
-                  <th className="py-2 text-left">Última sesión</th>
+                  <th className="py-2 text-left">{t('rbac.users.table.user')}</th>
+                  <th className="py-2 text-left">{t('rbac.users.table.email')}</th>
+                  <th className="py-2 text-left">{t('rbac.users.table.role')}</th>
+                  <th className="py-2 text-left">{t('rbac.users.table.created')}</th>
+                  <th className="py-2 text-left">{t('rbac.users.table.lastLogin')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -96,21 +107,21 @@ export default async function UsuariosPage() {
                           )}
                         </div>
                         <div>
-                          <div className="font-medium">{u.name ?? '—'}</div>
+                          <div className="font-medium">{u.name ?? naText}</div>
                           <div className="text-xs text-muted-foreground">{u.id}</div>
                         </div>
                       </div>
                     </td>
                     <td className="py-2">{u.email}</td>
-                    <td className="py-2">{u.role}</td>
-                    <td className="py-2">{fmtDate(u.createdAt)}</td>
-                    <td className="py-2">{fmtDate(u.lastLoginAt)}</td>
+                    <td className="py-2">{t(userRoleKey(u.role))}</td>
+                    <td className="py-2">{fmtDate(u.createdAt, locale, naText)}</td>
+                    <td className="py-2">{fmtDate(u.lastLoginAt, locale, naText)}</td>
                   </tr>
                 ))}
                 {users.length === 0 ? (
                   <tr>
                     <td className="py-6 text-center text-muted-foreground" colSpan={5}>
-                      Sin usuarios
+                      {t('rbac.users.empty')}
                     </td>
                   </tr>
                 ) : null}

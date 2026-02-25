@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
+import { checkPlanLimit } from "@/lib/plan-limits"
 import { AccessLevel, ModuleKey } from "@prisma/client"
 import { requireSedeAccess } from "@/lib/rbac"
 
@@ -76,6 +77,16 @@ function parseActivityRange(searchParams: URLSearchParams): { gte?: Date; lt?: D
   return out
 }
 
+function parseNumberParam(searchParams: URLSearchParams, key: string): number | null {
+  const raw = searchParams.get(key)
+  if (raw == null) return null
+  const s = String(raw).trim()
+  if (!s) return null
+  const cleaned = s.replace(/\$/g, '').replace(/\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')
+  const n = Number(cleaned)
+  return Number.isFinite(n) ? n : null
+}
+
 // GET - Listar todos los clientes
 export async function GET(request: Request) {
   try {
@@ -89,8 +100,12 @@ export async function GET(request: Request) {
     const search = searchParams.get('search')
     const segmento = searchParams.get('segmento')
     const sedeId = searchParams.get('sedeId')
+    const tipoDocumento = searchParams.get('tipoDocumento')
+    const ciudad = searchParams.get('ciudad')
     const createdAtRange = parseCreatedAtRange(searchParams)
     const activityRange = parseActivityRange(searchParams)
+    const invoiceTotalMin = parseNumberParam(searchParams, 'invoiceTotalMin')
+    const invoiceTotalMax = parseNumberParam(searchParams, 'invoiceTotalMax')
 
     if (sedeId) {
       const sede = await prisma.sede.findUnique({ where: { id: sedeId }, select: { id: true, empresaId: true } })
@@ -112,6 +127,15 @@ export async function GET(request: Request) {
       empresaId,
       ...(sedeId ? { sedeId } : {}),
       ...(createdAtRange ? { createdAt: createdAtRange } : {}),
+      ...(tipoDocumento ? { tipoDocumento: String(tipoDocumento).trim() } : {}),
+      ...(ciudad
+        ? {
+            ciudad: {
+              contains: String(ciudad).trim(),
+              mode: 'insensitive' as const,
+            },
+          }
+        : {}),
       ...(search
         ? {
             OR: [
@@ -268,6 +292,13 @@ export async function GET(request: Request) {
         const s = String(segmento).trim().toUpperCase()
         return c.segmento === s
       })
+      .filter((c) => {
+        if (invoiceTotalMin == null && invoiceTotalMax == null) return true
+        const total = typeof c.invoiceTotal === 'number' ? c.invoiceTotal : 0
+        if (invoiceTotalMin != null && total < invoiceTotalMin) return false
+        if (invoiceTotalMax != null && total > invoiceTotalMax) return false
+        return true
+      })
 
     return NextResponse.json({
       success: true,
@@ -288,6 +319,12 @@ export async function POST(request: Request) {
   try {
     const access = await requireApiAccess(ModuleKey.CLIENTES, 'WRITE')
     if (!access.ok) return access.response
+
+    const empresaId = access.empresaId
+    const limit = await checkPlanLimit(empresaId, 'CLIENTES_MAX')
+    if (!limit.ok) {
+      return NextResponse.json(limit, { status: 402 })
+    }
 
     // Obtener datos del body
     const body = await request.json()
@@ -325,8 +362,6 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
-
-    const empresaId = access.empresaId
 
     // Crear cliente
     const cliente = await prisma.cliente.create({

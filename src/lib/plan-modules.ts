@@ -15,11 +15,12 @@ export const ALL_MODULE_KEYS: ModuleKey[] = [
   'ORDENES',
   'ESCANEOS',
   'REPORTES',
+  'CONTABILIDAD',
   'NOTIFICACIONES',
   'CONFIG',
 ]
 
-export const ALL_PLAN_TIERS: PlanTier[] = ['BASIC', 'MEDIO', 'INTERMEDIO', 'FULL']
+export const ALL_PLAN_TIERS: PlanTier[] = ['BASIC', 'INTERMEDIO', 'FULL']
 
 export async function ensurePlanModuleDefaults(): Promise<void> {
   try {
@@ -40,14 +41,20 @@ export async function ensurePlanModuleDefaults(): Promise<void> {
   }
 }
 
+// Excepción: en BASIC, Litografía, Escaneos y Terminados siempre habilitados
 export async function isModuleEnabledForPlan(args: { planTier: PlanTier; module: ModuleKey }): Promise<boolean> {
+  if (
+    args.planTier === 'BASIC' &&
+    (args.module === 'COTIZADOR' || args.module === 'ESCANEOS' || args.module === 'MATERIALES')
+  ) {
+    // NOTA: 'COTIZADOR' se usa para Litografía, 'ESCANEOS' y 'MATERIALES' para Terminados
+    return true
+  }
   try {
     const setting = await prisma.planModuleSetting.findUnique({
       where: { planTier_module: { planTier: args.planTier, module: args.module } },
       select: { enabled: true },
     })
-
-    // Si aún no existe configuración, por defecto permitimos.
     return setting?.enabled ?? true
   } catch {
     return true

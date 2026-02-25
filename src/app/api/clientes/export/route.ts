@@ -66,6 +66,16 @@ function parseActivityRange(searchParams: URLSearchParams): { gte?: Date; lt?: D
   return out
 }
 
+function parseNumberParam(searchParams: URLSearchParams, key: string): number | null {
+  const raw = searchParams.get(key)
+  if (raw == null) return null
+  const s = String(raw).trim()
+  if (!s) return null
+  const cleaned = s.replace(/\$/g, '').replace(/\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')
+  const n = Number(cleaned)
+  return Number.isFinite(n) ? n : null
+}
+
 export async function GET(request: Request) {
   try {
     const access = await requireApiAccess(ModuleKey.CLIENTES, 'READ')
@@ -77,8 +87,12 @@ export async function GET(request: Request) {
     const search = searchParams.get('search')
     const segmento = searchParams.get('segmento')
     const sedeId = searchParams.get('sedeId')
+    const tipoDocumento = searchParams.get('tipoDocumento')
+    const ciudad = searchParams.get('ciudad')
     const createdAtRange = parseCreatedAtRange(searchParams)
     const activityRange = parseActivityRange(searchParams)
+    const invoiceTotalMin = parseNumberParam(searchParams, 'invoiceTotalMin')
+    const invoiceTotalMax = parseNumberParam(searchParams, 'invoiceTotalMax')
 
     if (sedeId) {
       const sede = await prisma.sede.findUnique({ where: { id: sedeId }, select: { id: true, empresaId: true } })
@@ -100,6 +114,15 @@ export async function GET(request: Request) {
       empresaId,
       ...(sedeId ? { sedeId } : {}),
       ...(createdAtRange ? { createdAt: createdAtRange } : {}),
+      ...(tipoDocumento ? { tipoDocumento: String(tipoDocumento).trim() } : {}),
+      ...(ciudad
+        ? {
+            ciudad: {
+              contains: String(ciudad).trim(),
+              mode: 'insensitive' as const,
+            },
+          }
+        : {}),
       ...(search
         ? {
             OR: [
@@ -229,6 +252,13 @@ export async function GET(request: Request) {
         if (!segmento) return true
         const s = String(segmento).trim().toUpperCase()
         return c.segmento === s
+      })
+      .filter((c) => {
+        if (invoiceTotalMin == null && invoiceTotalMax == null) return true
+        const total = typeof c.invoiceTotal === 'number' ? c.invoiceTotal : 0
+        if (invoiceTotalMin != null && total < invoiceTotalMin) return false
+        if (invoiceTotalMax != null && total > invoiceTotalMax) return false
+        return true
       })
 
     const rows = enhanced.map((c) => ({

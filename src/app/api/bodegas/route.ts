@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
-import { ModuleKey } from '@prisma/client'
+import { AccessLevel, ModuleKey } from '@prisma/client'
+import { requireSedeAccess } from '@/lib/rbac'
 
 export const runtime = 'nodejs'
 
@@ -32,19 +33,50 @@ async function ensureDefaultWarehouse(args: { empresaId: string; sedeId: string 
     .catch(() => null)
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const access = await requireApiAccess('INVENTARIO' as ModuleKey, 'READ')
     if (!access.ok) return access.response
 
     const empresaId = access.empresaId
 
-    await ensureDefaultWarehouse({ empresaId, sedeId: access.sedeId })
+    const { searchParams } = new URL(request.url)
+    const sedeIdParam = String(searchParams.get('sedeId') || '').trim()
+
+    let sedeId = access.sedeId
+    if (sedeIdParam) {
+      const sede = await prisma.sede.findFirst({
+        where: { id: sedeIdParam, empresaId },
+        select: { id: true },
+      })
+
+      if (!sede?.id) {
+        return NextResponse.json({ error: 'Sede no encontrada' }, { status: 404 })
+      }
+
+      try {
+        await requireSedeAccess({
+          userId: access.userId,
+          sedeId: sede.id,
+          module: 'INVENTARIO' as ModuleKey,
+          minLevel: AccessLevel.READ,
+        })
+      } catch (error) {
+        if (error instanceof Error && error.message === 'FORBIDDEN') {
+          return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
+        }
+        throw error
+      }
+
+      sedeId = sede.id
+    }
+
+    await ensureDefaultWarehouse({ empresaId, sedeId })
 
     const bodegas = await prisma.inventoryWarehouse.findMany({
       where: {
         empresaId,
-        OR: [{ sedeId: access.sedeId }, { sedeId: null }],
+        OR: [{ sedeId }, { sedeId: null }],
       },
       orderBy: [{ isDefault: 'desc' }, { nombre: 'asc' }],
       select: {

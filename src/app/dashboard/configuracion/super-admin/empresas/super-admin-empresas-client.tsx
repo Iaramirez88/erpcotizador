@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { useI18n } from '@/components/providers/i18n-provider'
 import {
   Select,
   SelectContent,
@@ -99,19 +100,19 @@ type DetailResponse =
   | { ok: true; empresa: DetailEmpresa }
   | { ok?: false; error?: string }
 
-function fmtDate(value: string | null | undefined): string {
-  if (!value) return '—'
+function fmtDate(value: string | null | undefined, locale: string, naText: string): string {
+  if (!value) return naText
   try {
-    return new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+    return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
   } catch {
     return String(value)
   }
 }
 
-function moneyCOP(value: number | null | undefined): string {
+function moneyCOP(value: number | null | undefined, locale: string): string {
   const n = typeof value === 'number' ? value : 0
   try {
-    return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
+    return new Intl.NumberFormat(locale, { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
   } catch {
     return String(n)
   }
@@ -124,12 +125,14 @@ const PLAN_OPTIONS: { value: PlanTier; label: string }[] = [
   { value: 'FULL', label: 'FULL' },
 ]
 
-const BILLING_OPTIONS: { value: BillingCycle; label: string }[] = [
-  { value: 'MONTHLY', label: 'Mensual' },
-  { value: 'YEARLY', label: 'Anual' },
-]
-
 export default function SuperAdminEmpresasClient() {
+  const { t, language } = useI18n()
+  const locale = language === 'en' ? 'en-US' : 'es-CO'
+  const naText = t('common.na')
+
+  const billingCycleLabel = (cycle: BillingCycle) => t(`superAdmin.companies.billing.${cycle}`)
+  const invoiceStatusLabel = (status: InvoiceStatus) => t(`superAdmin.companies.invoiceStatus.${status}`)
+
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [items, setItems] = useState<ListRow[]>([])
@@ -188,13 +191,13 @@ export default function SuperAdminEmpresasClient() {
       const json = (await res.json().catch(() => ({}))) as ListResponse
       if (!res.ok || !('ok' in json) || !json.ok) {
         setItems([])
-        setError(('error' in json && json.error) || 'No se pudo cargar')
+        setError(('error' in json && json.error) || t('superAdmin.companies.errors.loadFailed'))
         return
       }
       setItems(json.items)
     } catch (e) {
       setItems([])
-      setError(e instanceof Error ? e.message : 'Error inesperado')
+      setError(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setLoading(false)
     }
@@ -218,7 +221,7 @@ export default function SuperAdminEmpresasClient() {
       const res = await fetch(`/api/super-admin/empresas/${encodeURIComponent(id)}`, { cache: 'no-store' })
       const json = (await res.json().catch(() => ({}))) as DetailResponse
       if (!res.ok || !('ok' in json) || !json.ok) {
-        setDetailError(('error' in json && json.error) || 'No se pudo cargar')
+        setDetailError(('error' in json && json.error) || t('superAdmin.companies.errors.loadFailed'))
         return
       }
       setDetail(json.empresa)
@@ -238,7 +241,7 @@ export default function SuperAdminEmpresasClient() {
         isPaidTouched: false,
       })
     } catch (e) {
-      setDetailError(e instanceof Error ? e.message : 'Error inesperado')
+      setDetailError(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setDetailLoading(false)
     }
@@ -267,7 +270,7 @@ export default function SuperAdminEmpresasClient() {
       })
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; empresaId?: string }
       if (!res.ok || !json.ok) {
-        setCreateError(json.error || 'No se pudo crear la empresa')
+        setCreateError(json.error || t('superAdmin.companies.errors.createFailed'))
         return
       }
       setCreateOpen(false)
@@ -289,7 +292,7 @@ export default function SuperAdminEmpresasClient() {
         await openDetail(json.empresaId)
       }
     } catch (e) {
-      setCreateError(e instanceof Error ? e.message : 'Error inesperado')
+      setCreateError(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setCreateLoading(false)
     }
@@ -321,14 +324,14 @@ export default function SuperAdminEmpresasClient() {
       })
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string }
       if (!res.ok || !json.ok) {
-        setEditError(json.error || 'No se pudo guardar')
+        setEditError(json.error || t('superAdmin.companies.errors.saveFailed'))
         return
       }
       setEditMode(false)
       await load()
       await openDetail(detail.id)
     } catch (e) {
-      setEditError(e instanceof Error ? e.message : 'Error inesperado')
+      setEditError(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setEditLoading(false)
     }
@@ -344,7 +347,7 @@ export default function SuperAdminEmpresasClient() {
       })
       const json = (await res.json().catch(() => ({}))) as { ok?: boolean; code?: string; error?: string }
       if (!res.ok || !json.ok || !json.code) {
-        setError(json.error || 'No se pudo generar el código')
+        setError(json.error || t('superAdmin.companies.errors.generateCodeFailed'))
         return
       }
       setGeneratedCode((prev) => ({ ...prev, [empresaId]: json.code! }))
@@ -358,37 +361,42 @@ export default function SuperAdminEmpresasClient() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Super Admin · Empresas</h1>
-          <p className="text-sm text-gray-600">Plan, vigencia, pagos y ID de empresa (EMP-...) por empresa.</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('superAdmin.companies.title')}</h1>
+          <p className="text-sm text-gray-600">{t('superAdmin.companies.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Button onClick={() => setCreateOpen(true)}>Crear empresa</Button>
+          <Button onClick={() => setCreateOpen(true)}>{t('superAdmin.companies.actions.create')}</Button>
           <Button asChild variant="outline">
-            <Link href="/dashboard/configuracion/super-admin/modulos-por-plan">Módulos por plan</Link>
+            <Link href="/dashboard/configuracion/super-admin/modulos-por-plan">{t('superAdmin.nav.modulesByPlan')}</Link>
           </Button>
           <Button asChild variant="outline">
-            <Link href="/dashboard/configuracion/super-admin/usuarios">Usuarios</Link>
+            <Link href="/dashboard/configuracion/super-admin/usuarios">{t('superAdmin.nav.users')}</Link>
           </Button>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Buscar</CardTitle>
-          <CardDescription>Filtra por nombre, NIT o ID.</CardDescription>
+          <CardTitle>{t('superAdmin.companies.search.title')}</CardTitle>
+          <CardDescription>{t('superAdmin.companies.search.subtitle')}</CardDescription>
         </CardHeader>
         <CardContent className="flex gap-2 flex-wrap">
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="SGDigital / WS-... / 900... / cuid..." className="max-w-md" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('superAdmin.companies.search.placeholder')}
+            className="max-w-md"
+          />
           <Button variant="outline" onClick={() => void load()} disabled={loading}>
-            {loading ? 'Buscando…' : 'Buscar'}
+            {loading ? t('superAdmin.companies.search.searching') : t('superAdmin.companies.search.action')}
           </Button>
         </CardContent>
       </Card>
 
       {error ? <div className="text-sm text-red-600">{error}</div> : null}
-      {loading ? <div className="text-sm text-gray-600">Cargando…</div> : null}
+      {loading ? <div className="text-sm text-gray-600">{t('common.loading')}</div> : null}
 
-      {!loading && !filtered.length ? <div className="text-sm text-gray-600">Sin resultados.</div> : null}
+      {!loading && !filtered.length ? <div className="text-sm text-gray-600">{t('common.noResults')}</div> : null}
 
       {!loading && filtered.length ? (
         <div className="grid gap-3">
@@ -397,23 +405,23 @@ export default function SuperAdminEmpresasClient() {
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">{e.nombre}</CardTitle>
                 <CardDescription>
-                  Código: <span className="font-mono">{e.workspaceCode}</span> · NIT: {e.nit} · ID: <span className="font-mono">{e.id}</span>
+                  {t('superAdmin.companies.labels.code')}: <span className="font-mono">{e.workspaceCode}</span> · {t('superAdmin.companies.labels.nit')}: {e.nit} · {t('superAdmin.companies.labels.id')}: <span className="font-mono">{e.id}</span>
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div>
-                  Plan: <b>{e.planTier}</b> · {e.billingCycle} · Vigente hasta: <b>{fmtDate(e.planValidUntil)}</b>
+                  {t('superAdmin.companies.labels.plan')}: <b>{e.planTier}</b> · {billingCycleLabel(e.billingCycle)} · {t('superAdmin.companies.labels.validUntil')}: <b>{fmtDate(e.planValidUntil, locale, naText)}</b>
                 </div>
                 <div>
-                  Creada: <b>{fmtDate(e.createdAt)}</b> · Última actualización: <b>{fmtDate(e.updatedAt)}</b>
+                  {t('superAdmin.companies.labels.createdAt')}: <b>{fmtDate(e.createdAt, locale, naText)}</b> · {t('superAdmin.companies.labels.updatedAt')}: <b>{fmtDate(e.updatedAt, locale, naText)}</b>
                 </div>
                 <div>
-                  Último pago: <b>{fmtDate(e.lastPaid?.paidAt ?? null)}</b> · Monto: <b>{moneyCOP(e.lastPaid?.amountCOP ?? null)}</b>
+                  {t('superAdmin.companies.labels.lastPayment')}: <b>{fmtDate(e.lastPaid?.paidAt ?? null, locale, naText)}</b> · {t('superAdmin.companies.labels.amount')}: <b>{moneyCOP(e.lastPaid?.amountCOP ?? null, locale)}</b>
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap pt-2">
                   <Button variant="outline" size="sm" onClick={() => void openDetail(e.id)}>
-                    Ver detalle
+                    {t('superAdmin.companies.actions.viewDetail')}
                   </Button>
                   <Button
                     variant="outline"
@@ -421,11 +429,11 @@ export default function SuperAdminEmpresasClient() {
                     onClick={() => void generateCode(e.id)}
                     disabled={generatingForId === e.id}
                   >
-                    {generatingForId === e.id ? 'Generando…' : 'Generar ID'}
+                    {generatingForId === e.id ? t('superAdmin.companies.actions.generating') : t('superAdmin.companies.actions.generateId')}
                   </Button>
                   {generatedCode[e.id] ? (
                     <div className="text-xs">
-                      <span className="text-muted-foreground">ID de empresa: </span>
+                      <span className="text-muted-foreground">{t('superAdmin.companies.labels.companyId')}: </span>
                       <span className="font-mono">{generatedCode[e.id]}</span>
                     </div>
                   ) : null}
@@ -439,11 +447,11 @@ export default function SuperAdminEmpresasClient() {
       <Dialog open={detailOpen} onOpenChange={(v) => (!detailLoading ? setDetailOpen(v) : null)}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Detalle de empresa</DialogTitle>
-            <DialogDescription>Historial básico: creación, plan y facturación reciente.</DialogDescription>
+            <DialogTitle>{t('superAdmin.companies.detail.title')}</DialogTitle>
+            <DialogDescription>{t('superAdmin.companies.detail.subtitle')}</DialogDescription>
           </DialogHeader>
 
-          {detailLoading ? <div className="text-sm text-gray-600">Cargando…</div> : null}
+          {detailLoading ? <div className="text-sm text-gray-600">{t('common.loading')}</div> : null}
           {detailError ? <div className="text-sm text-red-600">{detailError}</div> : null}
 
           {editError ? <div className="text-sm text-red-600">{editError}</div> : null}
@@ -453,90 +461,90 @@ export default function SuperAdminEmpresasClient() {
               {!editMode ? (
                 <>
                   <div>
-                    <b>{detail.nombre}</b> · NIT: {detail.nit}
+                    <b>{detail.nombre}</b> · {t('superAdmin.companies.labels.nit')}: {detail.nit}
                   </div>
                   <div>
-                    Código: <span className="font-mono">{detail.workspaceCode}</span> · ID: <span className="font-mono">{detail.id}</span>
+                    {t('superAdmin.companies.labels.code')}: <span className="font-mono">{detail.workspaceCode}</span> · {t('superAdmin.companies.labels.id')}: <span className="font-mono">{detail.id}</span>
                   </div>
                   <div>
-                    Propietario (email): <b>{detail.planOwnerEmail || '—'}</b>
+                    {t('superAdmin.companies.labels.ownerEmail')}: <b>{detail.planOwnerEmail || naText}</b>
                   </div>
                   <div>
-                    Dirección: <b>{detail.direccion || '—'}</b> · Teléfono: <b>{detail.telefono || '—'}</b> · WhatsApp: <b>{detail.whatsapp || '—'}</b>
+                    {t('superAdmin.companies.fields.address')}: <b>{detail.direccion || naText}</b> · {t('superAdmin.companies.fields.phone')}: <b>{detail.telefono || naText}</b> · {t('superAdmin.companies.fields.whatsapp')}: <b>{detail.whatsapp || naText}</b>
                   </div>
                   <div>
-                    Email empresa: <b>{detail.email || '—'}</b>
+                    {t('superAdmin.companies.fields.companyEmail')}: <b>{detail.email || naText}</b>
                   </div>
                   <div>
-                    Creada: <b>{fmtDate(detail.createdAt)}</b> · Actualizada: <b>{fmtDate(detail.updatedAt)}</b>
+                    {t('superAdmin.companies.labels.createdAt')}: <b>{fmtDate(detail.createdAt, locale, naText)}</b> · {t('superAdmin.companies.labels.updatedAt')}: <b>{fmtDate(detail.updatedAt, locale, naText)}</b>
                   </div>
                   <div>
-                    Plan: <b>{detail.planTier}</b> · {detail.billingCycle} · Vigencia: <b>{fmtDate(detail.planValidUntil)}</b>
+                    {t('superAdmin.companies.labels.plan')}: <b>{detail.planTier}</b> · {billingCycleLabel(detail.billingCycle)} · {t('superAdmin.companies.labels.validUntil')}: <b>{fmtDate(detail.planValidUntil, locale, naText)}</b>
                   </div>
                   <div>
-                    Stripe: {detail.stripeSubscriptionStatus || '—'} · Periodo fin: {fmtDate(detail.stripeCurrentPeriodEnd)}
+                    {t('superAdmin.companies.labels.stripe')}: {detail.stripeSubscriptionStatus || naText} · {t('superAdmin.companies.labels.periodEnd')}: {fmtDate(detail.stripeCurrentPeriodEnd, locale, naText)}
                   </div>
 
                   <div>
-                    <div className="font-medium">Últimas facturas</div>
+                    <div className="font-medium">{t('superAdmin.companies.invoices.title')}</div>
                     {detail.billingInvoices.length ? (
                       <div className="space-y-1">
                         {detail.billingInvoices.map((inv) => (
                           <div key={inv.id} className="border rounded-md p-2">
                             <div>
-                              {inv.status} · {moneyCOP(inv.amountCOP)} · Pagada: <b>{fmtDate(inv.paidAt)}</b>
+                              {invoiceStatusLabel(inv.status)} · {moneyCOP(inv.amountCOP, locale)} · {t('superAdmin.companies.invoices.paidAt')}: <b>{fmtDate(inv.paidAt, locale, naText)}</b>
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              Ref: {inv.externalReference} · Creada: {fmtDate(inv.createdAt)}
+                              {t('superAdmin.companies.invoices.reference')}: {inv.externalReference} · {t('superAdmin.companies.labels.createdAt')}: {fmtDate(inv.createdAt, locale, naText)}
                             </div>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <div className="text-muted-foreground">Sin facturas registradas.</div>
+                      <div className="text-muted-foreground">{t('superAdmin.companies.invoices.empty')}</div>
                     )}
                   </div>
                 </>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label>Nombre</Label>
+                    <Label>{t('superAdmin.companies.fields.name')}</Label>
                     <Input value={editForm.nombre} onChange={(e) => setEditForm((p) => ({ ...p, nombre: e.target.value }))} />
                   </div>
                   <div className="space-y-1">
-                    <Label>NIT</Label>
+                    <Label>{t('superAdmin.companies.fields.nit')}</Label>
                     <Input value={editForm.nit} onChange={(e) => setEditForm((p) => ({ ...p, nit: e.target.value }))} />
                   </div>
                   <div className="space-y-1">
-                    <Label>Dirección</Label>
+                    <Label>{t('superAdmin.companies.fields.address')}</Label>
                     <Input value={editForm.direccion} onChange={(e) => setEditForm((p) => ({ ...p, direccion: e.target.value }))} />
                   </div>
                   <div className="space-y-1">
-                    <Label>Teléfono</Label>
+                    <Label>{t('superAdmin.companies.fields.phone')}</Label>
                     <Input value={editForm.telefono} onChange={(e) => setEditForm((p) => ({ ...p, telefono: e.target.value }))} />
                   </div>
                   <div className="space-y-1">
-                    <Label>WhatsApp</Label>
+                    <Label>{t('superAdmin.companies.fields.whatsapp')}</Label>
                     <Input value={editForm.whatsapp} onChange={(e) => setEditForm((p) => ({ ...p, whatsapp: e.target.value }))} />
                   </div>
                   <div className="space-y-1">
-                    <Label>Email empresa</Label>
+                    <Label>{t('superAdmin.companies.fields.companyEmail')}</Label>
                     <Input value={editForm.companyEmail} onChange={(e) => setEditForm((p) => ({ ...p, companyEmail: e.target.value }))} />
                   </div>
                   <div className="space-y-1">
-                    <Label>Logo (URL)</Label>
+                    <Label>{t('superAdmin.companies.fields.logoUrl')}</Label>
                     <Input value={editForm.logo} onChange={(e) => setEditForm((p) => ({ ...p, logo: e.target.value }))} />
                   </div>
                   <div className="space-y-1">
-                    <Label>Owner email</Label>
-                    <Input value={editForm.planOwnerEmail} onChange={(e) => setEditForm((p) => ({ ...p, planOwnerEmail: e.target.value }))} placeholder="owner@empresa.com" />
+                    <Label>{t('superAdmin.companies.fields.ownerEmail')}</Label>
+                    <Input value={editForm.planOwnerEmail} onChange={(e) => setEditForm((p) => ({ ...p, planOwnerEmail: e.target.value }))} placeholder={t('superAdmin.companies.placeholders.ownerEmail')} />
                   </div>
 
                   <div className="space-y-1">
-                    <Label>Plan</Label>
+                    <Label>{t('superAdmin.companies.fields.plan')}</Label>
                     <Select value={editForm.planTier} onValueChange={(v) => setEditForm((p) => ({ ...p, planTier: v as PlanTier }))}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecciona plan" />
+                        <SelectValue placeholder={t('superAdmin.companies.placeholders.selectPlan')} />
                       </SelectTrigger>
                       <SelectContent>
                         {PLAN_OPTIONS.map((o) => (
@@ -549,17 +557,14 @@ export default function SuperAdminEmpresasClient() {
                   </div>
 
                   <div className="space-y-1">
-                    <Label>Ciclo</Label>
+                    <Label>{t('superAdmin.companies.fields.billingCycle')}</Label>
                     <Select value={editForm.billingCycle} onValueChange={(v) => setEditForm((p) => ({ ...p, billingCycle: v as BillingCycle }))}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecciona ciclo" />
+                        <SelectValue placeholder={t('superAdmin.companies.placeholders.selectBillingCycle')} />
                       </SelectTrigger>
                       <SelectContent>
-                        {BILLING_OPTIONS.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>
-                            {o.label}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="MONTHLY">{billingCycleLabel('MONTHLY')}</SelectItem>
+                        <SelectItem value="YEARLY">{billingCycleLabel('YEARLY')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -573,8 +578,8 @@ export default function SuperAdminEmpresasClient() {
                       disabled={editLoading}
                     />
                     <div>
-                      <div className="font-medium">Ya pagó</div>
-                      <div className="text-xs text-muted-foreground">Si lo activas, la vigencia se recalcula desde hoy (según ciclo).</div>
+                      <div className="font-medium">{t('superAdmin.companies.fields.isPaid')}</div>
+                      <div className="text-xs text-muted-foreground">{t('superAdmin.companies.fields.isPaidHelp')}</div>
                     </div>
                   </div>
                 </div>
@@ -586,10 +591,10 @@ export default function SuperAdminEmpresasClient() {
             {!editMode ? (
               <>
                 <Button variant="outline" onClick={() => setDetailOpen(false)} disabled={detailLoading}>
-                  Cerrar
+                  {t('common.close')}
                 </Button>
                 <Button onClick={() => setEditMode(true)} disabled={detailLoading || !detail}>
-                  Editar
+                  {t('common.edit')}
                 </Button>
               </>
             ) : (
@@ -602,10 +607,10 @@ export default function SuperAdminEmpresasClient() {
                   }}
                   disabled={editLoading}
                 >
-                  Cancelar
+                  {t('common.cancel')}
                 </Button>
                 <Button onClick={() => void saveEmpresaEdits()} disabled={editLoading}>
-                  {editLoading ? 'Guardando…' : 'Guardar'}
+                  {editLoading ? t('common.saving') : t('common.save')}
                 </Button>
               </>
             )}
@@ -616,51 +621,51 @@ export default function SuperAdminEmpresasClient() {
       <Dialog open={createOpen} onOpenChange={(v) => (!createLoading ? setCreateOpen(v) : null)}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Crear empresa</DialogTitle>
-            <DialogDescription>Registro administrable desde SuperAdmin.</DialogDescription>
+            <DialogTitle>{t('superAdmin.companies.create.title')}</DialogTitle>
+            <DialogDescription>{t('superAdmin.companies.create.subtitle')}</DialogDescription>
           </DialogHeader>
 
           {createError ? <div className="text-sm text-red-600">{createError}</div> : null}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label>Nombre</Label>
+              <Label>{t('superAdmin.companies.fields.name')}</Label>
               <Input value={createForm.nombre} onChange={(e) => setCreateForm((p) => ({ ...p, nombre: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label>NIT</Label>
+              <Label>{t('superAdmin.companies.fields.nit')}</Label>
               <Input value={createForm.nit} onChange={(e) => setCreateForm((p) => ({ ...p, nit: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label>Dirección</Label>
+              <Label>{t('superAdmin.companies.fields.address')}</Label>
               <Input value={createForm.direccion} onChange={(e) => setCreateForm((p) => ({ ...p, direccion: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label>Teléfono</Label>
+              <Label>{t('superAdmin.companies.fields.phone')}</Label>
               <Input value={createForm.telefono} onChange={(e) => setCreateForm((p) => ({ ...p, telefono: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label>WhatsApp</Label>
+              <Label>{t('superAdmin.companies.fields.whatsapp')}</Label>
               <Input value={createForm.whatsapp} onChange={(e) => setCreateForm((p) => ({ ...p, whatsapp: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label>Email empresa</Label>
+              <Label>{t('superAdmin.companies.fields.companyEmail')}</Label>
               <Input value={createForm.companyEmail} onChange={(e) => setCreateForm((p) => ({ ...p, companyEmail: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label>Logo (URL)</Label>
+              <Label>{t('superAdmin.companies.fields.logoUrl')}</Label>
               <Input value={createForm.logo} onChange={(e) => setCreateForm((p) => ({ ...p, logo: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label>Owner email</Label>
-              <Input value={createForm.planOwnerEmail} onChange={(e) => setCreateForm((p) => ({ ...p, planOwnerEmail: e.target.value }))} placeholder="owner@empresa.com" />
+              <Label>{t('superAdmin.companies.fields.ownerEmail')}</Label>
+              <Input value={createForm.planOwnerEmail} onChange={(e) => setCreateForm((p) => ({ ...p, planOwnerEmail: e.target.value }))} placeholder={t('superAdmin.companies.placeholders.ownerEmail')} />
             </div>
 
             <div className="space-y-1">
-              <Label>Plan inicial</Label>
+              <Label>{t('superAdmin.companies.fields.initialPlan')}</Label>
               <Select value={createForm.planTier} onValueChange={(v) => setCreateForm((p) => ({ ...p, planTier: v as PlanTier }))}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecciona plan" />
+                  <SelectValue placeholder={t('superAdmin.companies.placeholders.selectPlan')} />
                 </SelectTrigger>
                 <SelectContent>
                   {PLAN_OPTIONS.map((o) => (
@@ -673,17 +678,14 @@ export default function SuperAdminEmpresasClient() {
             </div>
 
             <div className="space-y-1">
-              <Label>Ciclo</Label>
+              <Label>{t('superAdmin.companies.fields.billingCycle')}</Label>
               <Select value={createForm.billingCycle} onValueChange={(v) => setCreateForm((p) => ({ ...p, billingCycle: v as BillingCycle }))}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecciona ciclo" />
+                  <SelectValue placeholder={t('superAdmin.companies.placeholders.selectBillingCycle')} />
                 </SelectTrigger>
                 <SelectContent>
-                  {BILLING_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="MONTHLY">{billingCycleLabel('MONTHLY')}</SelectItem>
+                  <SelectItem value="YEARLY">{billingCycleLabel('YEARLY')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -691,18 +693,18 @@ export default function SuperAdminEmpresasClient() {
             <div className="flex items-center gap-3 sm:col-span-2 pt-2">
               <Switch checked={createForm.isPaid} onCheckedChange={(checked) => setCreateForm((p) => ({ ...p, isPaid: Boolean(checked) }))} disabled={createLoading} />
               <div>
-                <div className="font-medium">Ya pagó</div>
-                <div className="text-xs text-muted-foreground">Si está activo, se setea la vigencia (mensual/anual) desde hoy.</div>
+                <div className="font-medium">{t('superAdmin.companies.fields.isPaid')}</div>
+                <div className="text-xs text-muted-foreground">{t('superAdmin.companies.create.isPaidHelp')}</div>
               </div>
             </div>
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={createLoading}>
-              Cancelar
+              {t('common.cancel')}
             </Button>
             <Button onClick={() => void createEmpresa()} disabled={createLoading}>
-              {createLoading ? 'Creando…' : 'Crear'}
+              {createLoading ? t('superAdmin.companies.create.creating') : t('superAdmin.companies.actions.create')}
             </Button>
           </DialogFooter>
         </DialogContent>

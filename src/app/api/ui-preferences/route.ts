@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
 
+type UiLanguage = 'es' | 'en'
+
 type NavPrefs = Record<string, boolean>
 
 type ReportPrefs = {
@@ -32,7 +34,8 @@ function defaultPrefs() {
     charts: { ventasMensuales: true, documentosPorTipo: true, comprasPorProveedor: true },
   }
   const tutorial: TutorialPrefs = { seen: {} }
-  return { nav, report, tutorial }
+  const language: UiLanguage = 'es'
+  return { nav, report, tutorial, language }
 }
 
 async function resolveUserIdFromSession(session: { user?: { id?: string; email?: string | null } }) {
@@ -57,7 +60,10 @@ export async function GET() {
   const userId = await resolveUserIdFromSession(session)
   if (!userId) return NextResponse.json({ success: false, error: 'Sesión inválida' }, { status: 401 })
 
-  const pref = await prisma.uiPreference.findUnique({ where: { userId }, select: { nav: true, report: true, tutorial: true } })
+  const pref = await prisma.uiPreference.findUnique({
+    where: { userId },
+    select: { nav: true, report: true, tutorial: true, language: true },
+  })
   const defaults = defaultPrefs()
 
   return NextResponse.json({
@@ -66,6 +72,7 @@ export async function GET() {
       nav: (pref?.nav as unknown) ?? defaults.nav,
       report: (pref?.report as unknown) ?? defaults.report,
       tutorial: (pref?.tutorial as unknown) ?? defaults.tutorial,
+      language: (pref?.language as UiLanguage | null) ?? defaults.language,
     },
   })
 }
@@ -88,6 +95,9 @@ export async function PUT(req: NextRequest) {
   const report = isPlainObject(body.report) ? (body.report as ReportPrefs) : undefined
   const tutorial = isPlainObject(body.tutorial) ? (body.tutorial as TutorialPrefs) : undefined
 
+  const languageRaw = typeof body.language === 'string' ? body.language.trim().toLowerCase() : ''
+  const language: UiLanguage | undefined = languageRaw === 'es' || languageRaw === 'en' ? (languageRaw as UiLanguage) : undefined
+
   const updated = await prisma.uiPreference.upsert({
     where: { userId },
     create: {
@@ -95,14 +105,19 @@ export async function PUT(req: NextRequest) {
       nav: (nav ?? defaults.nav) as never,
       report: (report ?? defaults.report) as never,
       tutorial: (tutorial ?? defaults.tutorial) as never,
+      language: language ?? defaults.language,
     },
     update: {
       nav: (nav ?? undefined) as never,
       report: (report ?? undefined) as never,
       tutorial: (tutorial ?? undefined) as never,
+      language: language ?? undefined,
     },
-    select: { nav: true, report: true, tutorial: true },
+    select: { nav: true, report: true, tutorial: true, language: true },
   })
 
-  return NextResponse.json({ success: true, data: { nav: updated.nav, report: updated.report, tutorial: updated.tutorial } })
+  return NextResponse.json({
+    success: true,
+    data: { nav: updated.nav, report: updated.report, tutorial: updated.tutorial, language: updated.language as UiLanguage },
+  })
 }

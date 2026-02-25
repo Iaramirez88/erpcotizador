@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import type { NotificationType } from '@prisma/client'
+import { getServerLanguage } from '@/lib/i18n/server'
+import { translate } from '@/lib/i18n/messages'
 
 export const runtime = 'nodejs'
 
@@ -21,6 +23,10 @@ function badgeColor(type: NotificationType) {
 }
 
 export default async function NotificacionesPage() {
+  const language = await getServerLanguage()
+  const t = (key: string, vars?: Record<string, string>) => translate(language, key, vars)
+  const locale = language === 'en' ? 'en-US' : 'es-CO'
+
   const session = await auth()
   if (!session) redirect('/auth/login')
 
@@ -32,8 +38,8 @@ export default async function NotificacionesPage() {
       data: {
         userId,
         type: 'INFO',
-        title: 'Notificación de prueba',
-        body: 'Aquí verás avisos del sistema: compras, órdenes, cotizaciones y alertas.',
+        title: t('notifications.seed.title'),
+        body: t('notifications.seed.body'),
       },
     })
   }
@@ -68,14 +74,16 @@ export default async function NotificacionesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Notificaciones</h1>
+          <h1 className="text-2xl font-bold">{t('notifications.title')}</h1>
           <p className="text-sm text-muted-foreground">
-            {unreadCount > 0 ? `${unreadCount} sin leer` : 'Todo al día'}
+            {unreadCount > 0
+              ? t('notifications.unreadCount', { count: String(unreadCount) })
+              : t('notifications.allCaughtUp')}
           </p>
         </div>
         <form action={markAllRead}>
           <Button type="submit" variant="outline" disabled={unreadCount === 0}>
-            Marcar todo como leído
+            {t('notifications.actions.markAllRead')}
           </Button>
         </form>
       </div>
@@ -87,11 +95,11 @@ export default async function NotificacionesPage() {
               <div>
                 <CardTitle className="text-base">{n.title}</CardTitle>
                 <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <span className={`text-xs px-2 py-1 rounded ${badgeColor(n.type)}`}>{n.type}</span>
+                  <span className={`text-xs px-2 py-1 rounded ${badgeColor(n.type)}`}>{t(`notifications.type.${n.type}`)}</span>
                   <span className="text-xs text-muted-foreground">
-                    {new Date(n.createdAt).toLocaleString('es-CO')}
+                    {new Date(n.createdAt).toLocaleString(locale)}
                   </span>
-                  {!n.readAt && <span className="text-xs font-medium">Sin leer</span>}
+                  {!n.readAt && <span className="text-xs font-medium">{t('notifications.unreadBadge')}</span>}
                 </div>
               </div>
             </CardHeader>

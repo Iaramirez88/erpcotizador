@@ -8,23 +8,25 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { prisma } from "@/lib/prisma"
+import { getServerLanguage } from "@/lib/i18n/server"
+import { translate } from "@/lib/i18n/messages"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import Link from "next/link"
 
-function fmtDate(date: Date | null | undefined) {
-  if (!date) return "—"
+function fmtDate(date: Date | null | undefined, locale: string, naText: string) {
+  if (!date) return naText
   try {
-    return new Intl.DateTimeFormat("es-CO", { dateStyle: "medium", timeStyle: "short" }).format(new Date(date))
+    return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(date))
   } catch {
     return String(date)
   }
 }
 
-function fmtCOP(value: number | null | undefined) {
+function fmtCOP(value: number | null | undefined, locale: string) {
   const numberValue = typeof value === "number" && Number.isFinite(value) ? value : 0
-  return new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP" }).format(numberValue)
+  return new Intl.NumberFormat(locale, { style: "currency", currency: "COP" }).format(numberValue)
 }
 
 type SearchParams = {
@@ -84,6 +86,11 @@ export default async function DashboardPage({
 }: {
   searchParams?: Promise<SearchParams>
 }) {
+  const language = await getServerLanguage()
+  const t = (key: string, vars?: Record<string, string | number>) => translate(language, key, vars)
+  const locale = language === 'en' ? 'en-US' : 'es-CO'
+  const naText = t('common.na')
+
   // Verificar sesión
   const session = await auth()
   
@@ -503,23 +510,27 @@ export default async function DashboardPage({
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold tracking-tight">
-          ¡Bienvenido de nuevo, {session.user.name ?? session.user.email ?? ""}!
+          {session.user.name || session.user.email
+            ? t('dashboard.header.welcomeBack', { name: session.user.name ?? session.user.email ?? '' })
+            : t('dashboard.header.welcomeBackGeneric')}
         </h1>
         <p className="text-muted-foreground">
-          Actividad por sede y fechas{activeSedeLabel ? ` · Sede: ${activeSedeLabel.nombre}` : ""}
+          {activeSedeLabel
+            ? t('dashboard.header.activityWithSede', { sede: activeSedeLabel.nombre })
+            : t('dashboard.header.activity')}
         </p>
       </div>
 
       {/* Filtros */}
       <Card>
         <CardHeader className="py-3">
-          <CardTitle className="text-base">Filtros de actividad</CardTitle>
-          <CardDescription>Selecciona sede y rango de fechas.</CardDescription>
+          <CardTitle className="text-base">{t('dashboard.filters.title')}</CardTitle>
+          <CardDescription>{t('dashboard.filters.description')}</CardDescription>
         </CardHeader>
         <CardContent className="pt-0">
           <form method="get" className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
             <div className="space-y-1">
-              <Label>Sede</Label>
+              <Label>{t('dashboard.filters.warehouse')}</Label>
               <select
                 name="sedeId"
                 defaultValue={sedeId ?? ""}
@@ -532,36 +543,36 @@ export default async function DashboardPage({
                     </option>
                   ))
                 ) : (
-                  <option value="">Sin sedes</option>
+                  <option value="">{t('dashboard.filters.noWarehouses')}</option>
                 )}
               </select>
             </div>
 
             <div className="space-y-1">
-              <Label>Ver</Label>
+              <Label>{t('dashboard.filters.scopeLabel')}</Label>
               <select
                 name="scope"
                 defaultValue={scope}
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               >
-                <option value="me">Mi actividad</option>
-                {canSeeSedeActivity ? <option value="sede">Actividad de la sede</option> : null}
+                <option value="me">{t('dashboard.filters.scope.me')}</option>
+                {canSeeSedeActivity ? <option value="sede">{t('dashboard.filters.scope.sede')}</option> : null}
               </select>
             </div>
 
             <div className="space-y-1">
-              <Label>Desde</Label>
+              <Label>{t('dashboard.filters.from')}</Label>
               <Input name="from" type="date" defaultValue={rawFrom} />
             </div>
 
             <div className="space-y-1">
-              <Label>Hasta</Label>
+              <Label>{t('dashboard.filters.to')}</Label>
               <Input name="to" type="date" defaultValue={rawTo} />
             </div>
 
             <div>
               <button className="h-10 w-full rounded-md bg-slate-900 text-slate-50 text-sm font-medium hover:bg-slate-800">
-                Aplicar
+                {t('dashboard.filters.apply')}
               </button>
             </div>
           </form>
@@ -572,20 +583,22 @@ export default async function DashboardPage({
       <div>
         <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
           <div>
-            <h2 className="text-xl font-semibold">Resumen general</h2>
+            <h2 className="text-xl font-semibold">{t('dashboard.summary.title')}</h2>
             <p className="text-sm text-muted-foreground">
-              Totales del periodo (según filtros) · Vista: {showSedeActivity ? "sede" : "mi actividad"}
+              {t('dashboard.summary.line', {
+                view: showSedeActivity ? t('dashboard.summary.view.sede') : t('dashboard.summary.view.me'),
+              })}
             </p>
           </div>
           <div className="flex gap-3 text-sm">
             <Link href="/dashboard/reportes" className="text-sky-600 hover:underline">
-              Ver reportes
+              {t('dashboard.summary.links.reports')}
             </Link>
             <Link href="/dashboard/pos" className="text-sky-600 hover:underline">
-              Ir a POS
+              {t('dashboard.summary.links.pos')}
             </Link>
             <Link href="/dashboard/compras" className="text-sky-600 hover:underline">
-              Ir a compras
+              {t('dashboard.summary.links.purchases')}
             </Link>
           </div>
         </div>
@@ -593,43 +606,46 @@ export default async function DashboardPage({
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Ventas POS (netas)</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('dashboard.cards.posNetSales.title')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{fmtCOP(posVentasNetas)}</div>
+              <div className="text-2xl font-bold">{fmtCOP(posVentasNetas, locale)}</div>
               <p className="text-xs text-muted-foreground">
-                Brutas: {fmtCOP(resumen.posVentasBrutas)} · Devoluciones: {fmtCOP(resumen.posDevoluciones)}
+                {t('dashboard.cards.posNetSales.subtitle', {
+                  gross: fmtCOP(resumen.posVentasBrutas, locale),
+                  returns: fmtCOP(resumen.posDevoluciones, locale),
+                })}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Cobros POS</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('dashboard.cards.posCollections.title')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{fmtCOP(resumen.posCobros)}</div>
-              <p className="text-xs text-muted-foreground">Sumatoria por fecha de pago</p>
+              <div className="text-2xl font-bold">{fmtCOP(resumen.posCobros, locale)}</div>
+              <p className="text-xs text-muted-foreground">{t('dashboard.cards.posCollections.subtitle')}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Cotizaciones aprobadas</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('dashboard.cards.approvedQuotes.title')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{fmtCOP(resumen.cotizacionesAprobadasTotal)}</div>
-              <p className="text-xs text-muted-foreground">Sumatoria de totales</p>
+              <div className="text-2xl font-bold">{fmtCOP(resumen.cotizacionesAprobadasTotal, locale)}</div>
+              <p className="text-xs text-muted-foreground">{t('dashboard.cards.approvedQuotes.subtitle')}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Órdenes (total)</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('dashboard.cards.ordersTotal.title')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{fmtCOP(resumen.ordenesTotal)}</div>
-              <p className="text-xs text-muted-foreground">Sumatoria de totales</p>
+              <div className="text-2xl font-bold">{fmtCOP(resumen.ordenesTotal, locale)}</div>
+              <p className="text-xs text-muted-foreground">{t('dashboard.cards.ordersTotal.subtitle')}</p>
             </CardContent>
           </Card>
         </div>
@@ -637,31 +653,31 @@ export default async function DashboardPage({
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Compras</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('dashboard.cards.purchasesTotal.title')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{fmtCOP(resumen.comprasTotal)}</div>
-              <p className="text-xs text-muted-foreground">Sumatoria de totales (por fecha compra)</p>
+              <div className="text-2xl font-bold">{fmtCOP(resumen.comprasTotal, locale)}</div>
+              <p className="text-xs text-muted-foreground">{t('dashboard.cards.purchasesTotal.subtitle')}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pagos a proveedores</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('dashboard.cards.supplierPayments.title')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{fmtCOP(resumen.pagosProveedoresEnRango)}</div>
-              <p className="text-xs text-muted-foreground">Sumatoria por fecha de pago</p>
+              <div className="text-2xl font-bold">{fmtCOP(resumen.pagosProveedoresEnRango, locale)}</div>
+              <p className="text-xs text-muted-foreground">{t('dashboard.cards.supplierPayments.subtitle')}</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Saldo proveedores</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('dashboard.cards.supplierBalance.title')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{fmtCOP(saldoProveedores)}</div>
-              <p className="text-xs text-muted-foreground">Compras del periodo menos pagos acumulados</p>
+              <div className="text-2xl font-bold">{fmtCOP(saldoProveedores, locale)}</div>
+              <p className="text-xs text-muted-foreground">{t('dashboard.cards.supplierBalance.subtitle')}</p>
             </CardContent>
           </Card>
         </div>
@@ -672,11 +688,11 @@ export default async function DashboardPage({
       <div>
         <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
           <div>
-            <h2 className="text-xl font-semibold">Mi actividad</h2>
-            <p className="text-sm text-muted-foreground">Registros asociados a tu usuario (filtro actual).</p>
+            <h2 className="text-xl font-semibold">{t('dashboard.me.title')}</h2>
+            <p className="text-sm text-muted-foreground">{t('dashboard.me.description')}</p>
           </div>
           <Link href="/dashboard/perfil" className="text-sm text-sky-600 hover:underline">
-            Ver mi perfil
+            {t('dashboard.me.viewProfile')}
           </Link>
         </div>
 
@@ -684,7 +700,7 @@ export default async function DashboardPage({
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Cotizaciones</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('dashboard.me.stats.totalQuotes')}</CardTitle>
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
@@ -702,13 +718,13 @@ export default async function DashboardPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalCotizaciones}</div>
-            <p className="text-xs text-muted-foreground">Cotizaciones creadas</p>
+            <p className="text-xs text-muted-foreground">{t('dashboard.me.stats.totalQuotesHint')}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('dashboard.me.stats.pending')}</CardTitle>
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
@@ -724,13 +740,13 @@ export default async function DashboardPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{cotizacionesPendientes}</div>
-            <p className="text-xs text-muted-foreground">Esperando respuesta</p>
+            <p className="text-xs text-muted-foreground">{t('dashboard.me.stats.pendingHint')}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Aprobadas</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('dashboard.me.stats.approved')}</CardTitle>
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
@@ -747,13 +763,13 @@ export default async function DashboardPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{cotizacionesAprobadas}</div>
-            <p className="text-xs text-muted-foreground">Cotizaciones aprobadas</p>
+            <p className="text-xs text-muted-foreground">{t('dashboard.me.stats.approvedHint')}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Órdenes</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('dashboard.me.stats.orders')}</CardTitle>
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
@@ -772,7 +788,7 @@ export default async function DashboardPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalOrdenes}</div>
-            <p className="text-xs text-muted-foreground">Órdenes creadas</p>
+            <p className="text-xs text-muted-foreground">{t('dashboard.me.stats.ordersHint')}</p>
           </CardContent>
         </Card>
       </div>
@@ -780,39 +796,39 @@ export default async function DashboardPage({
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Compras</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('dashboard.me.stats.purchases')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{comprasCount}</div>
-            <p className="text-xs text-muted-foreground">Registros (filtro)</p>
+            <p className="text-xs text-muted-foreground">{t('dashboard.me.stats.filteredRecords')}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Escaneos</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('dashboard.me.stats.scans')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{escaneosCount}</div>
-            <p className="text-xs text-muted-foreground">Registros (filtro)</p>
+            <p className="text-xs text-muted-foreground">{t('dashboard.me.stats.filteredRecords')}</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Notificaciones</CardTitle>
+            <CardTitle className="text-sm font-medium">{t('dashboard.me.stats.notifications')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{notificacionesCount}</div>
-            <p className="text-xs text-muted-foreground">Registros (filtro)</p>
+            <p className="text-xs text-muted-foreground">{t('dashboard.me.stats.filteredRecords')}</p>
           </CardContent>
         </Card>
 
         <Link href="/dashboard/notificaciones">
           <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
             <CardHeader>
-              <CardTitle>Ver notificaciones</CardTitle>
-              <CardDescription>Centro de alertas y avisos</CardDescription>
+              <CardTitle>{t('dashboard.notifications.center.title')}</CardTitle>
+              <CardDescription>{t('dashboard.notifications.center.description')}</CardDescription>
             </CardHeader>
           </Card>
         </Link>
@@ -821,7 +837,7 @@ export default async function DashboardPage({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
         <Card>
           <CardHeader className="py-3">
-            <CardTitle className="text-base">Cotizaciones (recientes)</CardTitle>
+            <CardTitle className="text-base">{t('dashboard.recent.quotes.title')}</CardTitle>
           </CardHeader>
           <CardContent className="pt-0 space-y-2">
             {recentCotizaciones.length ? (
@@ -829,22 +845,22 @@ export default async function DashboardPage({
                 <div key={c.id} className="flex items-center justify-between gap-3 border rounded-lg px-3 py-2">
                   <div className="min-w-0">
                     <div className="font-medium truncate">{c.numero} · {c.cliente.nombre}</div>
-                    <div className="text-xs text-muted-foreground">{fmtDate(c.createdAt)} · {String(c.estado)}</div>
+                    <div className="text-xs text-muted-foreground">{fmtDate(c.createdAt, locale, naText)} · {String(c.estado)}</div>
                   </div>
                   <div className="text-sm font-semibold whitespace-nowrap">
-                    {new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP" }).format(c.total)}
+                    {fmtCOP(c.total, locale)}
                   </div>
                 </div>
               ))
             ) : (
-              <div className="text-muted-foreground">Sin cotizaciones en este filtro.</div>
+              <div className="text-muted-foreground">{t('dashboard.recent.quotes.empty')}</div>
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="py-3">
-            <CardTitle className="text-base">Órdenes (recientes)</CardTitle>
+            <CardTitle className="text-base">{t('dashboard.recent.orders.title')}</CardTitle>
           </CardHeader>
           <CardContent className="pt-0 space-y-2">
             {recentOrdenes.length ? (
@@ -852,22 +868,22 @@ export default async function DashboardPage({
                 <div key={o.id} className="flex items-center justify-between gap-3 border rounded-lg px-3 py-2">
                   <div className="min-w-0">
                     <div className="font-medium truncate">{o.numero} · {o.cliente.nombre}</div>
-                    <div className="text-xs text-muted-foreground">{fmtDate(o.createdAt)} · {String(o.estado)}</div>
+                    <div className="text-xs text-muted-foreground">{fmtDate(o.createdAt, locale, naText)} · {String(o.estado)}</div>
                   </div>
                   <div className="text-sm font-semibold whitespace-nowrap">
-                    {new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP" }).format(o.total)}
+                    {fmtCOP(o.total, locale)}
                   </div>
                 </div>
               ))
             ) : (
-              <div className="text-muted-foreground">Sin órdenes en este filtro.</div>
+              <div className="text-muted-foreground">{t('dashboard.recent.orders.empty')}</div>
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="py-3">
-            <CardTitle className="text-base">Compras (recientes)</CardTitle>
+            <CardTitle className="text-base">{t('dashboard.recent.purchases.title')}</CardTitle>
           </CardHeader>
           <CardContent className="pt-0 space-y-2">
             {recentCompras.length ? (
@@ -875,40 +891,40 @@ export default async function DashboardPage({
                 <div key={co.id} className="flex items-center justify-between gap-3 border rounded-lg px-3 py-2">
                   <div className="min-w-0">
                     <div className="font-medium truncate">
-                      {co.proveedorNombre}{co.numeroFactura ? ` · Factura ${co.numeroFactura}` : ""}
+                      {co.proveedorNombre}{co.numeroFactura ? ` · ${t('dashboard.recent.invoicePrefix', { number: co.numeroFactura })}` : ""}
                     </div>
-                    <div className="text-xs text-muted-foreground">{fmtDate(co.fechaCompra)} · {String(co.estado)}</div>
+                    <div className="text-xs text-muted-foreground">{fmtDate(co.fechaCompra, locale, naText)} · {String(co.estado)}</div>
                   </div>
                   <div className="text-sm font-semibold whitespace-nowrap">
-                    {new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP" }).format(co.total)}
+                    {fmtCOP(co.total, locale)}
                   </div>
                 </div>
               ))
             ) : (
-              <div className="text-muted-foreground">Sin compras en este filtro.</div>
+              <div className="text-muted-foreground">{t('dashboard.recent.purchases.empty')}</div>
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="py-3">
-            <CardTitle className="text-base">Escaneos (recientes)</CardTitle>
+            <CardTitle className="text-base">{t('dashboard.recent.scans.title')}</CardTitle>
           </CardHeader>
           <CardContent className="pt-0 space-y-2">
             {recentScans.length ? (
               recentScans.map((s) => (
                 <div key={s.id} className="border rounded-lg px-3 py-2">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium truncate">{s.originalFileName ?? `Escaneo ${s.id.slice(0, 8)}`}</div>
+                    <div className="font-medium truncate">{s.originalFileName ?? t('dashboard.recent.scanFallback', { id: s.id.slice(0, 8) })}</div>
                     <span className="text-xs rounded-md border px-2 py-0.5">{String(s.tipo)}</span>
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    {fmtDate(s.createdAt)} · {String(s.status)}{s.approved ? " · Aprobado" : ""}
+                    {fmtDate(s.createdAt, locale, naText)} · {String(s.status)}{s.approved ? ` · ${t('dashboard.recent.scanApproved')}` : ""}
                   </div>
                 </div>
               ))
             ) : (
-              <div className="text-muted-foreground">Sin escaneos en este filtro.</div>
+              <div className="text-muted-foreground">{t('dashboard.recent.scans.empty')}</div>
             )}
           </CardContent>
         </Card>
@@ -916,7 +932,7 @@ export default async function DashboardPage({
 
         <Card className="mt-4">
         <CardHeader className="py-3">
-          <CardTitle className="text-base">Notificaciones (según sede)</CardTitle>
+          <CardTitle className="text-base">{t('dashboard.notifications.byWarehouse.title')}</CardTitle>
         </CardHeader>
         <CardContent className="pt-0 space-y-2">
           {recentNotifications.length ? (
@@ -927,11 +943,11 @@ export default async function DashboardPage({
                   <span className="text-xs rounded-md border px-2 py-0.5">{String(n.type)}</span>
                 </div>
                 {n.body ? <div className="text-sm text-muted-foreground mt-1">{n.body}</div> : null}
-                <div className="text-xs text-muted-foreground mt-1">{fmtDate(n.createdAt)} · {n.readAt ? "Leída" : "No leída"}</div>
+                <div className="text-xs text-muted-foreground mt-1">{fmtDate(n.createdAt, locale, naText)} · {n.readAt ? t('dashboard.notifications.read') : t('dashboard.notifications.unread')}</div>
               </div>
             ))
           ) : (
-            <div className="text-muted-foreground">Sin notificaciones en este filtro.</div>
+            <div className="text-muted-foreground">{t('dashboard.notifications.empty')}</div>
           )}
         </CardContent>
       </Card>
@@ -944,9 +960,9 @@ export default async function DashboardPage({
         <div className="pt-2">
           <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
             <div>
-              <h2 className="text-xl font-semibold">Actividad de la sede</h2>
+              <h2 className="text-xl font-semibold">{t('dashboard.sede.title')}</h2>
               <p className="text-sm text-muted-foreground">
-                Registros de la sede seleccionada (para roles ADMIN/MANAGER).
+                {t('dashboard.sede.description')}
               </p>
             </div>
           </div>
@@ -954,41 +970,41 @@ export default async function DashboardPage({
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Cotizaciones</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('dashboard.labels.quotes')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{sedeTotalCotizaciones}</div>
-                <p className="text-xs text-muted-foreground">Total (filtro)</p>
+                <p className="text-xs text-muted-foreground">{t('dashboard.sede.cards.totalFilter')}</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('dashboard.me.stats.pending')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{sedeCotizacionesPendientes}</div>
-                <p className="text-xs text-muted-foreground">Estado ENVIADA</p>
+                <p className="text-xs text-muted-foreground">{t('dashboard.sede.cards.stateIs', { state: 'ENVIADA' })}</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Aprobadas</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('dashboard.me.stats.approved')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{sedeCotizacionesAprobadas}</div>
-                <p className="text-xs text-muted-foreground">Estado APROBADA</p>
+                <p className="text-xs text-muted-foreground">{t('dashboard.sede.cards.stateIs', { state: 'APROBADA' })}</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Órdenes</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('dashboard.me.stats.orders')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{sedeTotalOrdenes}</div>
-                <p className="text-xs text-muted-foreground">Total (filtro)</p>
+                <p className="text-xs text-muted-foreground">{t('dashboard.sede.cards.totalFilter')}</p>
               </CardContent>
             </Card>
           </div>
@@ -996,31 +1012,31 @@ export default async function DashboardPage({
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mt-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Compras</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('dashboard.me.stats.purchases')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{sedeComprasCount}</div>
-                <p className="text-xs text-muted-foreground">Total (filtro)</p>
+                <p className="text-xs text-muted-foreground">{t('dashboard.sede.cards.totalFilter')}</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Escaneos</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('dashboard.me.stats.scans')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{sedeEscaneosCount}</div>
-                <p className="text-xs text-muted-foreground">Total (filtro)</p>
+                <p className="text-xs text-muted-foreground">{t('dashboard.sede.cards.totalFilter')}</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Notificaciones</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('dashboard.me.stats.notifications')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{sedeNotificacionesCount}</div>
-                <p className="text-xs text-muted-foreground">Total (filtro)</p>
+                <p className="text-xs text-muted-foreground">{t('dashboard.sede.cards.totalFilter')}</p>
               </CardContent>
             </Card>
           </div>
@@ -1028,7 +1044,7 @@ export default async function DashboardPage({
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
             <Card>
               <CardHeader className="py-3">
-                <CardTitle className="text-base">Cotizaciones de sede (recientes)</CardTitle>
+                <CardTitle className="text-base">{t('dashboard.sede.recent.quotes.title')}</CardTitle>
               </CardHeader>
               <CardContent className="pt-0 space-y-2">
                 {sedeRecentCotizaciones.length ? (
@@ -1036,22 +1052,22 @@ export default async function DashboardPage({
                     <div key={c.id} className="flex items-center justify-between gap-3 border rounded-lg px-3 py-2">
                       <div className="min-w-0">
                         <div className="font-medium truncate">{c.numero} · {c.cliente.nombre}</div>
-                        <div className="text-xs text-muted-foreground">{fmtDate(c.createdAt)} · {String(c.estado)}</div>
+                        <div className="text-xs text-muted-foreground">{fmtDate(c.createdAt, locale, naText)} · {String(c.estado)}</div>
                       </div>
                       <div className="text-sm font-semibold whitespace-nowrap">
-                        {new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP" }).format(c.total)}
+                        {fmtCOP(c.total, locale)}
                       </div>
                     </div>
                   ))
                 ) : (
-                  <div className="text-muted-foreground">Sin cotizaciones en este filtro.</div>
+                  <div className="text-muted-foreground">{t('dashboard.recent.quotes.empty')}</div>
                 )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="py-3">
-                <CardTitle className="text-base">Órdenes de sede (recientes)</CardTitle>
+                <CardTitle className="text-base">{t('dashboard.sede.recent.orders.title')}</CardTitle>
               </CardHeader>
               <CardContent className="pt-0 space-y-2">
                 {sedeRecentOrdenes.length ? (
@@ -1059,22 +1075,22 @@ export default async function DashboardPage({
                     <div key={o.id} className="flex items-center justify-between gap-3 border rounded-lg px-3 py-2">
                       <div className="min-w-0">
                         <div className="font-medium truncate">{o.numero} · {o.cliente.nombre}</div>
-                        <div className="text-xs text-muted-foreground">{fmtDate(o.createdAt)} · {String(o.estado)}</div>
+                        <div className="text-xs text-muted-foreground">{fmtDate(o.createdAt, locale, naText)} · {String(o.estado)}</div>
                       </div>
                       <div className="text-sm font-semibold whitespace-nowrap">
-                        {new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP" }).format(o.total)}
+                        {fmtCOP(o.total, locale)}
                       </div>
                     </div>
                   ))
                 ) : (
-                  <div className="text-muted-foreground">Sin órdenes en este filtro.</div>
+                  <div className="text-muted-foreground">{t('dashboard.recent.orders.empty')}</div>
                 )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="py-3">
-                <CardTitle className="text-base">Compras de sede (recientes)</CardTitle>
+                <CardTitle className="text-base">{t('dashboard.sede.recent.purchases.title')}</CardTitle>
               </CardHeader>
               <CardContent className="pt-0 space-y-2">
                 {sedeRecentCompras.length ? (
@@ -1082,40 +1098,40 @@ export default async function DashboardPage({
                     <div key={co.id} className="flex items-center justify-between gap-3 border rounded-lg px-3 py-2">
                       <div className="min-w-0">
                         <div className="font-medium truncate">
-                          {co.proveedorNombre}{co.numeroFactura ? ` · Factura ${co.numeroFactura}` : ""}
+                          {co.proveedorNombre}{co.numeroFactura ? ` · ${t('dashboard.recent.invoicePrefix', { number: co.numeroFactura })}` : ""}
                         </div>
-                        <div className="text-xs text-muted-foreground">{fmtDate(co.fechaCompra)} · {String(co.estado)}</div>
+                        <div className="text-xs text-muted-foreground">{fmtDate(co.fechaCompra, locale, naText)} · {String(co.estado)}</div>
                       </div>
                       <div className="text-sm font-semibold whitespace-nowrap">
-                        {new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP" }).format(co.total)}
+                        {fmtCOP(co.total, locale)}
                       </div>
                     </div>
                   ))
                 ) : (
-                  <div className="text-muted-foreground">Sin compras en este filtro.</div>
+                  <div className="text-muted-foreground">{t('dashboard.recent.purchases.empty')}</div>
                 )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="py-3">
-                <CardTitle className="text-base">Escaneos de sede (recientes)</CardTitle>
+                <CardTitle className="text-base">{t('dashboard.sede.recent.scans.title')}</CardTitle>
               </CardHeader>
               <CardContent className="pt-0 space-y-2">
                 {sedeRecentScans.length ? (
                   sedeRecentScans.map((s) => (
                     <div key={s.id} className="border rounded-lg px-3 py-2">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="font-medium truncate">{s.originalFileName ?? `Escaneo ${s.id.slice(0, 8)}`}</div>
+                        <div className="font-medium truncate">{s.originalFileName ?? t('dashboard.recent.scanFallback', { id: s.id.slice(0, 8) })}</div>
                         <span className="text-xs rounded-md border px-2 py-0.5">{String(s.tipo)}</span>
                       </div>
                       <div className="text-xs text-muted-foreground mt-1">
-                        {fmtDate(s.createdAt)} · {String(s.status)}{s.approved ? " · Aprobado" : ""}
+                        {fmtDate(s.createdAt, locale, naText)} · {String(s.status)}{s.approved ? ` · ${t('dashboard.recent.scanApproved')}` : ""}
                       </div>
                     </div>
                   ))
                 ) : (
-                  <div className="text-muted-foreground">Sin escaneos en este filtro.</div>
+                  <div className="text-muted-foreground">{t('dashboard.recent.scans.empty')}</div>
                 )}
               </CardContent>
             </Card>
@@ -1123,7 +1139,7 @@ export default async function DashboardPage({
 
           <Card className="mt-4">
             <CardHeader className="py-3">
-              <CardTitle className="text-base">Notificaciones de sede (según filtro)</CardTitle>
+              <CardTitle className="text-base">{t('dashboard.sede.recent.notifications.title')}</CardTitle>
             </CardHeader>
             <CardContent className="pt-0 space-y-2">
               {sedeRecentNotifications.length ? (
@@ -1134,11 +1150,11 @@ export default async function DashboardPage({
                       <span className="text-xs rounded-md border px-2 py-0.5">{String(n.type)}</span>
                     </div>
                     {n.body ? <div className="text-sm text-muted-foreground mt-1">{n.body}</div> : null}
-                    <div className="text-xs text-muted-foreground mt-1">{fmtDate(n.createdAt)} · {n.readAt ? "Leída" : "No leída"}</div>
+                    <div className="text-xs text-muted-foreground mt-1">{fmtDate(n.createdAt, locale, naText)} · {n.readAt ? t('dashboard.notifications.read') : t('dashboard.notifications.unread')}</div>
                   </div>
                 ))
               ) : (
-                <div className="text-muted-foreground">Sin notificaciones en este filtro.</div>
+                <div className="text-muted-foreground">{t('dashboard.notifications.empty')}</div>
               )}
             </CardContent>
           </Card>

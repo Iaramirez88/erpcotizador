@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireApiAccess } from "@/lib/api-rbac"
+import { checkPlanLimit } from "@/lib/plan-limits"
 import { ModuleKey } from "@prisma/client"
 
 export const runtime = "nodejs"
@@ -53,6 +54,12 @@ export async function POST(request: NextRequest) {
     const access = await requireApiAccess(ModuleKey.PROVEEDORES, 'WRITE')
     if (!access.ok) return access.response
 
+    const empresaId = access.empresaId
+    const limit = await checkPlanLimit(empresaId, 'PROVEEDORES_MAX')
+    if (!limit.ok) {
+      return NextResponse.json(limit, { status: 402 })
+    }
+
     const body = await request.json().catch(() => ({}))
     const {
       nombre,
@@ -70,8 +77,6 @@ export async function POST(request: NextRequest) {
     if (!nombre || !String(nombre).trim()) {
       return NextResponse.json({ error: "El nombre del proveedor es requerido" }, { status: 400 })
     }
-
-    const empresaId = access.empresaId
 
     const proveedor = await prisma.proveedor.create({
       data: {

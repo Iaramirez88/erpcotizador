@@ -30,10 +30,16 @@ import {
 } from '@/components/ui/dialog';
 import CotizacionPDF, { type CotizacionPdfData } from '@/lib/pdf-template';
 import type { CotizacionTemplateSettings } from '@/lib/cotizacion-template';
+import { useI18n } from '@/components/providers/i18n-provider';
+
+function PdfPreviewLoading() {
+  const { t } = useI18n();
+  return <div className="flex h-96 items-center justify-center">{t('quotes.preview.loading')}</div>;
+}
 
 const PDFViewer = dynamic(
   () => import('@react-pdf/renderer').then((mod) => mod.PDFViewer),
-  { ssr: false, loading: () => <div className="flex h-96 items-center justify-center">Cargando vista previa...</div> }
+  { ssr: false, loading: () => <PdfPreviewLoading /> }
 );
 
 interface Cotizacion {
@@ -67,6 +73,9 @@ interface Cotizacion {
 }
 
 export default function CotizacionesPage() {
+  const { t, language } = useI18n();
+  const locale = language === 'en' ? 'en-US' : 'es-MX';
+
   const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
@@ -172,20 +181,20 @@ export default function CotizacionesPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Cotizacion-${numero}.pdf`;
+      a.download = `${t('quotes.pdf.filenamePrefix')}-${numero}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error) {
       console.error('Error descargando PDF:', error);
-      alert('Error al descargar el PDF');
+      alert(t('quotes.errors.downloadPdf'));
     }
   };
 
   const enviarPorEmail = async (cotizacion: Cotizacion) => {
     const confirmar = window.confirm(
-      `¿Enviar cotización ${cotizacion.numero} a ${cotizacion.cliente.email}?`
+      t('quotes.confirm.sendEmail', { numero: cotizacion.numero, email: cotizacion.cliente.email })
     );
     
     if (!confirmar) return;
@@ -202,15 +211,15 @@ export default function CotizacionesPage() {
       });
 
       if (res.ok) {
-        alert('Cotización enviada correctamente');
+        alert(t('quotes.success.emailSent'));
         cargarCotizaciones();
       } else {
         const error = await res.json();
-        alert(`Error: ${error.error}`);
+        alert(t('common.errorWithDetails', { details: error.error }));
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error al enviar el email');
+      alert(t('quotes.errors.sendEmail'));
     } finally {
       setEnviando(null);
     }
@@ -227,7 +236,11 @@ export default function CotizacionesPage() {
 
       const json = await res.json().catch(() => ({ success: false }));
       if (!res.ok || !json?.success) {
-        alert(`No se pudo generar link de WhatsApp: ${json?.error ?? 'Error'}`);
+        alert(
+          t('quotes.errors.whatsappLink', {
+            details: json?.error ?? t('common.error'),
+          })
+        );
         return;
       }
 
@@ -238,7 +251,7 @@ export default function CotizacionesPage() {
       cargarCotizaciones();
     } catch (error) {
       console.error('Error:', error);
-      alert('Error al preparar el WhatsApp');
+      alert(t('quotes.errors.whatsappPrepare'));
     } finally {
       setCompartiendo(null);
     }
@@ -246,7 +259,7 @@ export default function CotizacionesPage() {
 
   const eliminarCotizacion = async (id: string, numero: string) => {
     const confirmar = window.confirm(
-      `¿Eliminar la cotización ${numero}? Esta acción no se puede deshacer.`
+      t('quotes.confirm.delete', { numero })
     );
     
     if (!confirmar) return;
@@ -257,15 +270,15 @@ export default function CotizacionesPage() {
       });
 
       if (res.ok) {
-        alert('Cotización eliminada');
+        alert(t('quotes.success.deleted'));
         cargarCotizaciones();
       } else {
         const error = await res.json();
-        alert(`Error: ${error.error}`);
+        alert(t('common.errorWithDetails', { details: error.error }));
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error al eliminar');
+      alert(t('quotes.errors.delete'));
     }
   };
 
@@ -277,9 +290,9 @@ export default function CotizacionesPage() {
       setPreviewCotizacion(null);
 
       const res = await fetch(`/api/cotizaciones/${cotizacion.id}`, { cache: 'no-store' });
-      if (!res.ok) throw new Error('No se pudo cargar la cotización');
+      if (!res.ok) throw new Error(t('quotes.errors.loadQuote'));
       const data = await res.json();
-      if (!data?.success || !data?.data) throw new Error(data?.error ?? 'No se pudo cargar la cotización');
+      if (!data?.success || !data?.data) throw new Error(data?.error ?? t('quotes.errors.loadQuote'));
       setPreviewCotizacion(data.data as CotizacionPdfData & { id: string; estado?: string });
 
       const templateRes = await fetch('/api/cotizacion-template', { cache: 'no-store' });
@@ -294,7 +307,7 @@ export default function CotizacionesPage() {
       }
     } catch (error) {
       console.error('Error al cargar datos para preview:', error);
-      alert('Error al cargar el preview');
+      alert(t('quotes.errors.loadPreview'));
       setPreviewCotizacion(null);
       setPreviewTemplate(null);
       setPreviewNumero(null);
@@ -303,9 +316,7 @@ export default function CotizacionesPage() {
   };
 
   const crearOrden = async (cotizacionId: string, numero: string) => {
-    const confirmar = window.confirm(
-      `¿Crear orden de trabajo desde la cotización ${numero}?`
-    );
+    const confirmar = window.confirm(t('quotes.confirm.createOrder', { numero }));
     
     if (!confirmar) return;
 
@@ -319,21 +330,21 @@ export default function CotizacionesPage() {
       const response = await res.json();
 
       if (response.success) {
-        alert(`Orden ${response.data.numero} creada exitosamente`);
+        alert(t('quotes.success.orderCreated', { numero: response.data.numero }));
         cargarCotizaciones(); // Recargar para actualizar estados
         // Opcional: redirigir a la página de órdenes
         // window.location.href = '/dashboard/ordenes';
       } else {
-        alert(`Error: ${response.error}`);
+        alert(t('common.errorWithDetails', { details: response.error }));
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error al crear orden de trabajo');
+      alert(t('quotes.errors.createOrder'));
     }
   };
 
   const aprobarCotizacion = async (cotizacionId: string, numero: string) => {
-    const confirmar = window.confirm(`¿Aprobar la cotización ${numero} para facturar?`);
+    const confirmar = window.confirm(t('quotes.confirm.approve', { numero }));
     if (!confirmar) return;
 
     setAprobando(cotizacionId);
@@ -341,20 +352,20 @@ export default function CotizacionesPage() {
       const res = await fetch(`/api/cotizaciones/${cotizacionId}/aprobar`, { method: 'POST' });
       const json = await res.json().catch(() => ({ success: false }));
       if (!res.ok || !json?.success) {
-        alert(`Error: ${json?.error ?? 'No se pudo aprobar'}`);
+        alert(t('common.errorWithDetails', { details: json?.error ?? t('quotes.errors.approveFallback') }));
         return;
       }
       cargarCotizaciones();
     } catch (error) {
       console.error('Error:', error);
-      alert('Error al aprobar la cotización');
+      alert(t('quotes.errors.approve'));
     } finally {
       setAprobando(null);
     }
   };
 
   const facturarCotizacion = async (cotizacionId: string, numero: string) => {
-    const confirmar = window.confirm(`¿Crear factura desde la cotización ${numero}?`);
+    const confirmar = window.confirm(t('quotes.confirm.createInvoice', { numero }));
     if (!confirmar) return;
 
     setFacturando(cotizacionId);
@@ -362,16 +373,16 @@ export default function CotizacionesPage() {
       const res = await fetch(`/api/cotizaciones/${cotizacionId}/facturar`, { method: 'POST' });
       const json = await res.json().catch(() => ({ ok: false }));
       if (!res.ok || !json?.ok || !json?.data) {
-        alert(`Error: ${json?.error ?? 'No se pudo crear la factura'}`);
+        alert(t('common.errorWithDetails', { details: json?.error ?? t('quotes.errors.createInvoiceFallback') }));
         return;
       }
 
       const inv = json.data as { id: string; numero: string; alreadyExisted?: boolean };
       const msg = inv.alreadyExisted
-        ? `Ya existía una factura para esta cotización: ${inv.numero}`
-        : `Factura creada: ${inv.numero}`;
+        ? t('quotes.invoice.alreadyExists', { numero: inv.numero })
+        : t('quotes.invoice.created', { numero: inv.numero });
 
-      const go = window.confirm(`${msg}.\n\n¿Ir al historial de facturas?`);
+      const go = window.confirm(`${msg}.\n\n${t('quotes.invoice.goToHistory')}`);
       if (go) {
         window.location.href = '/dashboard/pos';
         return;
@@ -381,21 +392,21 @@ export default function CotizacionesPage() {
       cargarCotizaciones();
     } catch (error) {
       console.error('Error:', error);
-      alert('Error al crear factura');
+      alert(t('quotes.errors.createInvoice'));
     } finally {
       setFacturando(null);
     }
   };
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('es-MX', {
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: 'MXN',
     }).format(value);
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('es-MX', {
+    return new Date(dateString).toLocaleDateString(locale, {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -411,7 +422,7 @@ export default function CotizacionesPage() {
     const resumenItems = (cotizacion.items || [])
       .slice(0, 4)
       .map((it) => {
-        const name = it.descripcion?.trim() || it.material?.nombre?.trim() || 'Ítem';
+        const name = it.descripcion?.trim() || it.material?.nombre?.trim() || t('quotes.whatsapp.itemFallback');
         const qty = typeof it.cantidad === 'number' && !Number.isNaN(it.cantidad) ? it.cantidad : null;
         const unit = it.unidad?.trim();
         const qtyLabel = qty !== null ? `${qty}${unit ? ` ${unit}` : ''}` : null;
@@ -423,18 +434,20 @@ export default function CotizacionesPage() {
 
     return [
       '*SGDigital Softwares*',
-      `*Cotización ${cotizacion.numero}*`,
+      t('quotes.whatsapp.title', { numero: cotizacion.numero }),
       '',
-      `*Cliente:* ${cotizacion.cliente?.nombre ?? '-'}`,
-      `*Total:* ${formatCurrency(cotizacion.total)}`,
-      `*Fecha:* ${createdAt.toLocaleDateString('es-MX')}`,
-      `*Vigencia:* hasta ${validUntil.toLocaleDateString('es-MX')}`,
+      t('quotes.whatsapp.client', { name: cotizacion.cliente?.nombre ?? '-' }),
+      t('quotes.whatsapp.total', { total: formatCurrency(cotizacion.total) }),
+      t('quotes.whatsapp.date', { date: createdAt.toLocaleDateString(locale) }),
+      t('quotes.whatsapp.validUntil', { date: validUntil.toLocaleDateString(locale) }),
       '',
-      resumenItems ? '*Resumen:*\n' + resumenItems + (hayMasItems ? '\n• …' : '') : '',
+      resumenItems
+        ? t('quotes.whatsapp.summaryHeader') + '\n' + resumenItems + (hayMasItems ? '\n• …' : '')
+        : '',
       '',
-      `*PDF:* ${pdfUrl}`,
+      t('quotes.whatsapp.pdf', { url: pdfUrl }),
       '',
-      'Si deseas, puedo ayudarte a confirmar cantidades y tiempos de entrega.',
+      t('quotes.whatsapp.closing'),
     ]
       .filter(Boolean)
       .join('\n');
@@ -465,28 +478,47 @@ export default function CotizacionesPage() {
     }
   };
 
+  const getEstadoLabel = (estado: string) => {
+    switch (estado) {
+      case 'BORRADOR':
+        return t('quotes.status.draft');
+      case 'ENVIADA':
+        return t('quotes.status.sent');
+      case 'APROBADA':
+        return t('quotes.status.approved');
+      case 'RECHAZADA':
+        return t('quotes.status.rejected');
+      case 'VENCIDA':
+        return t('quotes.status.expired');
+      case 'CONVERTIDA':
+        return t('quotes.status.converted');
+      default:
+        return estado;
+    }
+  };
+
   return (
     <div className="p-3 sm:p-4 lg:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Cotizaciones</h1>
-          <p className="text-muted-foreground mt-0.5">Gestiona tus cotizaciones</p>
+          <h1 className="text-2xl sm:text-3xl font-bold">{t('quotes.page.title')}</h1>
+          <p className="text-muted-foreground mt-0.5">{t('quotes.page.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/dashboard/cotizaciones/plantilla">
             <Button variant="outline">
               <ClipboardCheck className="w-4 h-4 mr-2" />
-              Editar plantilla
+              {t('quotes.actions.editTemplate')}
             </Button>
           </Link>
           <Button variant="outline" onClick={exportExcel}>
             <Download className="w-4 h-4 mr-2" />
-            Exportar Excel
+            {t('quotes.actions.exportExcel')}
           </Button>
           <Link href="/dashboard/cotizador">
             <Button>
               <Plus className="w-4 h-4 mr-2" />
-              Nueva Cotización
+              {t('quotes.actions.newQuote')}
             </Button>
           </Link>
         </div>
@@ -499,7 +531,7 @@ export default function CotizacionesPage() {
             <div className="relative md:col-span-2">
               <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
               <Input
-                placeholder="Buscar por número, cliente..."
+                placeholder={t('quotes.filters.searchPlaceholder')}
                 className="pl-10"
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
@@ -510,13 +542,13 @@ export default function CotizacionesPage() {
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              title="Desde"
+              title={t('quotes.filters.from')}
             />
             <Input
               type="date"
               value={to}
               onChange={(e) => setTo(e.target.value)}
-              title="Hasta"
+              title={t('quotes.filters.to')}
             />
 
             <select
@@ -524,12 +556,12 @@ export default function CotizacionesPage() {
               value={filtroEstado}
               onChange={(e) => setFiltroEstado(e.target.value)}
             >
-              <option value="">Todos los estados</option>
-              <option value="BORRADOR">Borrador</option>
-              <option value="ENVIADA">Enviada</option>
-              <option value="APROBADA">Aprobada</option>
-              <option value="RECHAZADA">Rechazada</option>
-              <option value="VENCIDA">Vencida</option>
+              <option value="">{t('quotes.filters.allStatuses')}</option>
+              <option value="BORRADOR">{getEstadoLabel('BORRADOR')}</option>
+              <option value="ENVIADA">{getEstadoLabel('ENVIADA')}</option>
+              <option value="APROBADA">{getEstadoLabel('APROBADA')}</option>
+              <option value="RECHAZADA">{getEstadoLabel('RECHAZADA')}</option>
+              <option value="VENCIDA">{getEstadoLabel('VENCIDA')}</option>
             </select>
 
             <select
@@ -537,7 +569,7 @@ export default function CotizacionesPage() {
               value={filtroSede}
               onChange={(e) => setFiltroSede(e.target.value)}
             >
-              <option value="">Todas las sedes</option>
+              <option value="">{t('quotes.filters.allBranches')}</option>
               {sedes.map((sede) => (
                 <option key={sede.id} value={sede.id}>
                   {sede.codigo ? `${sede.codigo} - ` : ''}{sede.nombre}
@@ -551,7 +583,7 @@ export default function CotizacionesPage() {
               className="md:col-span-1"
             >
               <Filter className="w-4 h-4 mr-2" />
-              Aplicar Filtros
+              {t('quotes.filters.apply')}
             </Button>
           </div>
         </CardContent>
@@ -566,9 +598,9 @@ export default function CotizacionesPage() {
         <Card>
           <CardContent className="text-center py-12">
             <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500 mb-4">No hay cotizaciones</p>
+            <p className="text-gray-500 mb-4">{t('quotes.empty.title')}</p>
             <Link href="/dashboard/cotizador">
-              <Button>Crear primera cotización</Button>
+              <Button>{t('quotes.empty.createFirst')}</Button>
             </Link>
           </CardContent>
         </Card>
@@ -587,25 +619,25 @@ export default function CotizacionesPage() {
                         )}`}
                       >
                         {getEstadoIcon(cot.estado)}
-                        {cot.estado}
+                        {getEstadoLabel(cot.estado)}
                       </span>
                     </div>
                     
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm text-muted-foreground mb-2">
                       <div>
-                        <span className="font-medium">Cliente:</span>
+                        <span className="font-medium">{t('quotes.fields.client')}</span>
                         <p className="text-gray-900">{cot.cliente.nombre}</p>
                       </div>
                       <div>
-                        <span className="font-medium">Fecha:</span>
+                        <span className="font-medium">{t('quotes.fields.date')}</span>
                         <p className="text-gray-900">{formatDate(cot.createdAt)}</p>
                       </div>
                       <div>
-                        <span className="font-medium">Items:</span>
+                        <span className="font-medium">{t('quotes.fields.items')}</span>
                         <p className="text-gray-900">{cot.items.length}</p>
                       </div>
                       <div>
-                        <span className="font-medium">Total:</span>
+                        <span className="font-medium">{t('quotes.fields.total')}</span>
                         <p className="text-gray-900 text-lg font-semibold">
                           {formatCurrency(cot.total)}
                         </p>
@@ -620,7 +652,7 @@ export default function CotizacionesPage() {
                       size="sm"
                       variant="outline"
                       onClick={() => abrirPreview(cot)}
-                      title="Vista previa"
+                      title={t('quotes.actions.preview')}
                     >
                       <Eye className="w-4 h-4" />
                     </Button>
@@ -628,7 +660,7 @@ export default function CotizacionesPage() {
                     {/* Editar (solo borrador) */}
                     {cot.estado === 'BORRADOR' && !cot.orden && (
                       <Link href={`/dashboard/cotizador?id=${cot.id}`}>
-                        <Button size="sm" variant="outline" title="Editar cotización">
+                        <Button size="sm" variant="outline" title={t('quotes.actions.edit')}>
                           <Pencil className="w-4 h-4" />
                         </Button>
                       </Link>
@@ -641,7 +673,7 @@ export default function CotizacionesPage() {
                         variant="outline"
                         onClick={() => aprobarCotizacion(cot.id, cot.numero)}
                         disabled={aprobando === cot.id}
-                        title="Aprobar para facturar"
+                        title={t('quotes.actions.approve')}
                       >
                         {aprobando === cot.id ? (
                           <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
@@ -658,7 +690,7 @@ export default function CotizacionesPage() {
                         variant="outline"
                         onClick={() => facturarCotizacion(cot.id, cot.numero)}
                         disabled={facturando === cot.id}
-                        title="Crear factura"
+                        title={t('quotes.actions.createInvoice')}
                       >
                         {facturando === cot.id ? (
                           <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -674,10 +706,10 @@ export default function CotizacionesPage() {
                         size="sm"
                         variant="default"
                         onClick={() => crearOrden(cot.id, cot.numero)}
-                        title="Crear orden de trabajo"
+                        title={t('quotes.actions.createOrder')}
                       >
                         <ClipboardCheck className="w-4 h-4 mr-1" />
-                        <span className="hidden sm:inline">Crear Orden</span>
+                        <span className="hidden sm:inline">{t('quotes.actions.createOrderShort')}</span>
                       </Button>
                     )}
 
@@ -685,7 +717,7 @@ export default function CotizacionesPage() {
                       size="sm"
                       variant="outline"
                       onClick={() => descargarPDF(cot.id, cot.numero)}
-                      title="Descargar PDF"
+                      title={t('quotes.actions.downloadPdf')}
                     >
                       <Download className="w-4 h-4" />
                     </Button>
@@ -695,7 +727,7 @@ export default function CotizacionesPage() {
                       variant="outline"
                       onClick={() => enviarPorEmail(cot)}
                       disabled={enviando === cot.id}
-                      title="Enviar por email"
+                      title={t('quotes.actions.sendEmail')}
                       className="relative"
                     >
                       {enviando === cot.id ? (
@@ -716,7 +748,7 @@ export default function CotizacionesPage() {
                       variant="outline"
                       onClick={() => compartirPorWhatsApp(cot)}
                       disabled={compartiendo === cot.id}
-                      title="Compartir por WhatsApp"
+                      title={t('quotes.actions.shareWhatsapp')}
                       className="relative"
                     >
                       {compartiendo === cot.id ? (
@@ -736,7 +768,7 @@ export default function CotizacionesPage() {
                       size="sm"
                       variant="outline"
                       onClick={() => eliminarCotizacion(cot.id, cot.numero)}
-                      title="Eliminar"
+                      title={t('quotes.actions.delete')}
                     >
                       <Trash2 className="w-4 h-4 text-red-600" />
                     </Button>
@@ -749,7 +781,9 @@ export default function CotizacionesPage() {
           {/* Paginación */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pt-2">
             <div className="text-sm text-muted-foreground">
-              {total > 0 ? `Total: ${total} • Página ${page} de ${totalPages}` : `Página ${page} de ${totalPages}`}
+              {total > 0
+                ? t('quotes.pagination.withTotal', { total, page, totalPages })
+                : t('quotes.pagination.noTotal', { page, totalPages })}
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -758,7 +792,7 @@ export default function CotizacionesPage() {
                 disabled={loading || page <= 1}
                 onClick={() => cargarCotizaciones({ page: Math.max(1, page - 1) })}
               >
-                Anterior
+                {t('quotes.pagination.previous')}
               </Button>
               <Button
                 variant="outline"
@@ -766,7 +800,7 @@ export default function CotizacionesPage() {
                 disabled={loading || page >= totalPages}
                 onClick={() => cargarCotizaciones({ page: Math.min(totalPages, page + 1) })}
               >
-                Siguiente
+                {t('quotes.pagination.next')}
               </Button>
             </div>
           </div>
@@ -787,7 +821,9 @@ export default function CotizacionesPage() {
         <DialogContent className="max-w-4xl max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>
-              Vista previa - {previewCotizacion?.numero ?? previewNumero ?? ''}
+              {t('quotes.preview.title', {
+                numero: previewCotizacion?.numero ?? previewNumero ?? '',
+              })}
             </DialogTitle>
           </DialogHeader>
           
@@ -800,7 +836,9 @@ export default function CotizacionesPage() {
                 />
               </PDFViewer>
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Cargando vista previa…</div>
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                {t('quotes.preview.loading')}
+              </div>
             )}
           </div>
         </DialogContent>

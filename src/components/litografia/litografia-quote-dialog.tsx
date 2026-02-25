@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { SearchableNativeSelect } from "@/components/ui/searchable-native-select"
 import { formatCurrency } from "@/lib/utils"
 import { computeLitografia } from "@/lib/litografia"
+import { useI18n } from "@/components/providers/i18n-provider"
 
 type PapelTipo = "bond" | "propalcote" | "periodico" | "otro"
 
@@ -196,6 +197,8 @@ export function LitografiaQuoteDialog(props: {
   edit?: { itemId: string; meta: LitografiaMeta } | null
   onUpdateItem?: (payload: AddLitografiaItemPayload & { itemId: string }) => void
 }) {
+  const { t, language } = useI18n()
+
   const [meLoaded, setMeLoaded] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
 
@@ -792,13 +795,13 @@ export function LitografiaQuoteDialog(props: {
         const sizesEnv = asApiEnvelope((await sizesRes.json().catch(() => null)) as unknown)
         if (sizesRes.ok && sizesEnv.ok === true) setSizes(Array.isArray(sizesEnv.data) ? (sizesEnv.data as PrintSize[]) : [])
       } catch (e) {
-        setConfigError(e instanceof Error ? e.message : "No se pudieron cargar tarifas")
+        setConfigError(e instanceof Error ? e.message : t('printshopQuote.errors.loadConfigFailed'))
         setMeLoaded(true)
       }
     }
 
     if (props.open) void load()
-  }, [props.open])
+  }, [props.open, language])
 
   useEffect(() => {
     if (!props.open) return
@@ -825,13 +828,14 @@ export function LitografiaQuoteDialog(props: {
 
         const res = await fetch(url.toString(), { cache: "no-store", signal: controller.signal })
         const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
-        if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, "No se pudo consultar tarifa"))
+        if (!res.ok || env.ok !== true)
+          throw new Error(getApiErrorMessage(env, t('printshopQuote.errors.rateQueryFailed')))
         const data = (env.data as FlyerRate | null) ?? null
         setTarifa(data)
       } catch (e) {
         if (e instanceof Error && e.name === "AbortError") return
         setTarifa(null)
-        setTarifaError(e instanceof Error ? e.message : "No se pudo consultar tarifa")
+        setTarifaError(e instanceof Error ? e.message : t('printshopQuote.errors.rateQueryFailed'))
       } finally {
         setTarifaLoading(false)
       }
@@ -839,7 +843,7 @@ export function LitografiaQuoteDialog(props: {
 
     void run()
     return () => controller.abort()
-  }, [props.open, meLoaded, isAdmin, cantidad, formatoKey, primaryPaperId, selectedFinishIds])
+  }, [props.open, meLoaded, isAdmin, language, cantidad, formatoKey, primaryPaperId, selectedFinishIds])
 
   useEffect(() => {
     setCostoPlanchaPorColor(String(planchaCostConfigured || 0))
@@ -1179,43 +1183,57 @@ export function LitografiaQuoteDialog(props: {
   }, [tarifaLoading, validation.hasMissing, isAdmin, calc, tarifa, fallbackCalc])
 
   const defaultDescripcion = useMemo(() => {
-    const base = (titulo || (isAdmin ? "Litografía" : "Litografía")).trim() || (isAdmin ? "Litografía" : "Litografía")
+    const defaultTitle = t('printshopQuote.defaultTitle')
+    const base = (titulo || defaultTitle).trim() || defaultTitle
 
     if (!isAdmin) {
-      const presetLabel = selectedPreset ? `${selectedPreset.nombre} (${selectedPreset.widthCm}×${selectedPreset.heightCm} cm)` : (formatoKey || "Tamaño")
-      const tintasLabel = tintas === 4 ? "Policromía (4)" : `${tintas} tinta${tintas === 1 ? "" : "s"}`
+      const presetLabel = selectedPreset
+        ? `${selectedPreset.nombre} (${selectedPreset.widthCm}×${selectedPreset.heightCm} cm)`
+        : (formatoKey || t('printshopQuote.sizeFallback'))
+      const tintasLabel =
+        tintas === 4
+          ? t('printshopQuote.inks.fullColor')
+          : tintas === 1
+            ? t('printshopQuote.inks.single', { n: tintas })
+            : t('printshopQuote.inks.plural', { n: tintas })
       const qty = Math.trunc(parseFloat(cantidad) || 0)
       const parts = [base, presetLabel, tintasLabel]
-      if (primaryPaper) parts.push(`Papel ${primaryPaper.nombre}${primaryPaper.gramaje ? ` ${primaryPaper.gramaje}g` : ""}`)
-      if (selectedFinishes.length) parts.push(`Acabados ${selectedFinishes.map((f) => f.nombre).join(", ")}`)
-      if (selectedPlastificado) parts.push(`Plastificado ${selectedPlastificado.nombre}`)
-      if (selectedTroquelado) parts.push(`Troquelado ${selectedTroquelado.nombre}`)
-      if (selectedCorte) parts.push(`Corte ${selectedCorte.nombre}`)
-      if (selectedSpecialFinishNames.length) parts.push(`Acabados especiales ${selectedSpecialFinishNames.join(", ")}`)
+      if (primaryPaper) parts.push(`${t('printshopQuote.desc.paper')} ${primaryPaper.nombre}${primaryPaper.gramaje ? ` ${primaryPaper.gramaje}g` : ""}`)
+      if (selectedFinishes.length) parts.push(`${t('printshopQuote.desc.finishes')} ${selectedFinishes.map((f) => f.nombre).join(", ")}`)
+      if (selectedPlastificado) parts.push(`${t('printshopQuote.desc.lamination')} ${selectedPlastificado.nombre}`)
+      if (selectedTroquelado) parts.push(`${t('printshopQuote.desc.dieCut')} ${selectedTroquelado.nombre}`)
+      if (selectedCorte) parts.push(`${t('printshopQuote.desc.cut')} ${selectedCorte.nombre}`)
+      if (selectedSpecialFinishNames.length) parts.push(`${t('printshopQuote.desc.specialFinishes')} ${selectedSpecialFinishNames.join(", ")}`)
       if (selectedTransporteKey) {
         const opt = transporteOptions.find((o) => o.value === selectedTransporteKey)
-        parts.push(`Transporte ${opt?.label ?? ""}`.trim())
+        parts.push(`${t('printshopQuote.desc.transport')} ${opt?.label ?? ""}`.trim())
       }
-      if (qty > 0) parts.push(`Tiraje ${qty}`)
-      if (tarifa) parts.push(`Rango ${tarifa.tirajeMin}-${tarifa.tirajeMax}`)
+      if (qty > 0) parts.push(t('printshopQuote.desc.run', { qty }))
+      if (tarifa) parts.push(t('printshopQuote.desc.range', { min: tarifa.tirajeMin, max: tarifa.tirajeMax }))
       return parts.join(" • ")
     }
 
     if (!calc) return base
 
-    const parts = [`${base}`, `${calc.k} colores`, `Tiraje ${Math.round(calc.qty)}`]
+    const parts = [
+      `${base}`,
+      t('printshopQuote.desc.colors', { n: calc.k }),
+      t('printshopQuote.desc.run', { qty: Math.round(calc.qty) }),
+    ]
 
     if (calc.papelModo === "pliego") {
-      const formatoLabel = selectedPreset ? `${selectedPreset.nombre} (${selectedPreset.widthCm}×${selectedPreset.heightCm} cm)` : "Formato"
+      const formatoLabel = selectedPreset
+        ? `${selectedPreset.nombre} (${selectedPreset.widthCm}×${selectedPreset.heightCm} cm)`
+        : t('printshopQuote.formatFallback')
       const pl = calc.pliegosNecesarios ?? 0
       const pzas = calc.piezasPorPliego ?? 0
-      parts.push(`Papel ${papelTipo}`)
+      parts.push(`${t('printshopQuote.desc.paper')} ${papelTipo}`)
       parts.push(`${formatoLabel}`)
-      if (pl > 0 && pzas > 0) parts.push(`Pliegos ${pl} (${pzas} pzas/pliego)`)
+      if (pl > 0 && pzas > 0) parts.push(t('printshopQuote.desc.sheetsSummary', { pl, pzas }))
     }
 
     return parts.join(" • ")
-  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, tarifa, calc, papelTipo, primaryPaper, selectedFinishes, selectedSpecialFinishNames, selectedTransporteKey, selectedPlastificado, selectedTroquelado, selectedCorte])
+  }, [language, titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, tarifa, calc, papelTipo, primaryPaper, selectedFinishes, selectedSpecialFinishNames, selectedTransporteKey, selectedPlastificado, selectedTroquelado, selectedCorte])
 
   const buildDescripcion = () => {
     const notas = descripcion.trim()
@@ -1226,8 +1244,8 @@ export function LitografiaQuoteDialog(props: {
     if (!notas && extra.length === 0) return defaultDescripcion
 
     const lines = [defaultDescripcion]
-    if (notas) lines.push("", "Notas:", notas)
-    if (extra.length) lines.push("", "Campos:", ...extra.map((f) => `- ${f.label}: ${f.value}`))
+    if (notas) lines.push("", t('printshopQuote.notes.label'), notas)
+    if (extra.length) lines.push("", t('printshopQuote.customFields.sectionLabel'), ...extra.map((f) => `- ${f.label}: ${f.value}`))
     return lines.join("\n")
   }
 
@@ -1252,12 +1270,12 @@ export function LitografiaQuoteDialog(props: {
       setTarifaError(null)
       const qty = Math.trunc(parseFloat(cantidad) || 0)
       if (qty <= 0) {
-        setTarifaError("Cantidad inválida")
+        setTarifaError(t('printshopQuote.errors.invalidQuantity'))
         return
       }
 
       if (validation.hasMissing) {
-        setTarifaError("Completa los campos obligatorios para generar la cotización")
+        setTarifaError(t('printshopQuote.errors.completeRequired'))
         return
       }
 
@@ -1266,7 +1284,7 @@ export function LitografiaQuoteDialog(props: {
       const computed = !tarifa ? (isAdmin ? calc : fallbackCalc) : null
 
       if (!tarifa && !computed) {
-        setTarifaError("No hay tarifa ni cálculo estimado disponible")
+        setTarifaError(t('printshopQuote.errors.noRateOrEstimate'))
         return
       }
 
@@ -1314,11 +1332,11 @@ export function LitografiaQuoteDialog(props: {
         <div className="flex flex-col max-h-[90vh]">
           <div className="p-6 pb-3">
             <DialogHeader>
-              <DialogTitle>Cotización Litografía</DialogTitle>
+              <DialogTitle>{t('printshopQuote.dialog.title')}</DialogTitle>
               <DialogDescription>
                 {isAdmin
-                  ? "Calcula y agrega el resultado como ítem a la cotización actual."
-                  : "Selecciona formato, tintas y tiraje. El precio se toma del tarifario por rango."}
+                  ? t('printshopQuote.dialog.descriptionAdmin')
+                  : t('printshopQuote.dialog.descriptionUser')}
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -1327,33 +1345,33 @@ export function LitografiaQuoteDialog(props: {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Parámetros</CardTitle>
+                  <CardTitle>{t('printshopQuote.sections.parameters')}</CardTitle>
                   <CardDescription>
-                    {isAdmin ? "Ajusta valores para el cálculo." : "Usuario estándar: no edita costos."}
+                    {isAdmin ? t('printshopQuote.sections.parametersDescAdmin') : t('printshopQuote.sections.parametersDescUser')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="sm:col-span-2">
-                    <Label>Nombre/Referencia</Label>
+                    <Label>{t('printshopQuote.fields.nameRef')}</Label>
                     <Input
                       className={INPUT_COMPACT}
                       value={titulo}
                       onChange={(e) => setTitulo(e.target.value)}
-                      placeholder="Ej: Flyers A5"
+                      placeholder={t('printshopQuote.placeholders.nameRef')}
                     />
                   </div>
 
                   {isAdmin ? (
                     <div className="sm:col-span-2">
-                      <Label>Tarifario (por rango)</Label>
-                      <p className="mt-1 text-xs text-muted-foreground">Fuente de precio fija. El cálculo aprox. está deshabilitado.</p>
+                      <Label>{t('printshopQuote.fields.rateTable')}</Label>
+                      <p className="mt-1 text-xs text-muted-foreground">{t('printshopQuote.rateTable.help')}</p>
                     </div>
                   ) : null}
 
                   {
                     <>
                       <div >
-                    <Label>Utilidad / Margen <small>(%) (opcional)</small></Label>
+                    <Label>{t('printshopQuote.fields.margin')} <small>{t('printshopQuote.fields.optionalPctHint')}</small></Label>
                     <Input
                       className={INPUT_COMPACT}
                       type="number"
@@ -1364,10 +1382,10 @@ export function LitografiaQuoteDialog(props: {
                       onChange={(e) => setMargenPct(e.target.value)}
                       placeholder="0"
                     />
-                    <p className="mt-1 text-xs text-muted-foreground">Se aplica al total del ítem de litografía. 0 = sin utilidad adicional.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{t('printshopQuote.margin.help')}</p>
                   </div>
                       <div>
-                        <Label className={requiredLabelClass(validation.missingCantidad)}>Cantidad (tiraje)</Label>
+                        <Label className={requiredLabelClass(validation.missingCantidad)}>{t('printshopQuote.fields.runQty')}</Label>
                         <Input
                           className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingCantidad)}`}
                           type="number"
@@ -1378,7 +1396,7 @@ export function LitografiaQuoteDialog(props: {
                       </div>
 
                       <div className="sm:col-span-2">
-                        <Label className={requiredLabelClass(validation.missingFormato)}>Tamaño de impresión</Label>
+                        <Label className={requiredLabelClass(validation.missingFormato)}>{t('printshopQuote.fields.printSize')}</Label>
                         <select
                           className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
                           value={formatoKey}
@@ -1386,7 +1404,7 @@ export function LitografiaQuoteDialog(props: {
                           disabled={!sizeOptions.length}
                         >
                           <option value="" disabled>
-                            {sizeOptions.length ? "Selecciona un tamaño" : "Sin tamaños configurados"}
+                            {sizeOptions.length ? t('printshopQuote.select.size') : t('printshopQuote.select.noSizesConfigured')}
                           </option>
                           {sizeOptions.map((p) => (
                             <option key={p.key} value={p.key}>
@@ -1396,13 +1414,13 @@ export function LitografiaQuoteDialog(props: {
                         </select>
                         {!sizeOptions.length ? (
                           <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                            Crea tamaños en Configuración &gt; Tamaños de impresión para poder cotizar.
+                            {t('printshopQuote.help.createSizes')}
                           </p>
                         ) : null}
                       </div>
 
                       <div>
-                        <Label className={requiredLabelClass(validation.missingPlancha)}>Planchas (costo)</Label>
+                        <Label className={requiredLabelClass(validation.missingPlancha)}>{t('printshopQuote.fields.platesCost')}</Label>
                         <div className="mt-2 space-y-2">
                           {selectedPlanchaProfileIds.map((id, idx) => (
                             <div key={`${idx}-${id}`} className="flex items-center gap-2">
@@ -1412,7 +1430,7 @@ export function LitografiaQuoteDialog(props: {
                                 onChange={(e) => updatePlanchaRow(idx, e.target.value)}
                                 disabled={!activePlanchaProfiles.length}
                               >
-                                <option value="">Sin planchas</option>
+                                <option value="">{t('printshopQuote.select.nonePlates')}</option>
                                 {activePlanchaProfiles.map((p) => (
                                   <option key={p.id} value={p.id}>
                                     {p.nombre}
@@ -1427,29 +1445,29 @@ export function LitografiaQuoteDialog(props: {
                                   className="text-red-600"
                                   onClick={() => removePlanchaRow(idx)}
                                 >
-                                  Quitar
+                                  {t('common.remove')}
                                 </Button>
                               ) : null}
                             </div>
                           ))}
                         </div>
                         <div className="mt-2 flex items-center justify-between gap-2">
-                          <span className="text-[10px] leading-tight text-muted-foreground">Puedes agregar más de un perfil de planchas.</span>
+                          <span className="text-[10px] leading-tight text-muted-foreground">{t('printshopQuote.help.multiplePlateProfiles')}</span>
                           <Button type="button" variant="outline" size="sm" onClick={addPlanchaRow}>
-                            Agregar otro
+                            {t('common.addAnother')}
                           </Button>
                         </div>
                         <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
                           {primaryPlanchaProfile ? (
-                            <>Total planchas: {formatCurrency(planchaCostConfigured)}</>
+                            <>{t('printshopQuote.summary.totalPlates', { total: formatCurrency(planchaCostConfigured) })}</>
                           ) : (
-                            <>Selecciona planchas.</>
+                            <>{t('printshopQuote.help.selectPlates')}</>
                           )}
                         </p>
                       </div>
 
                       <div>
-                        <Label className={requiredLabelClass(validation.missingTinta)}>Tinta (costo)</Label>
+                        <Label className={requiredLabelClass(validation.missingTinta)}>{t('printshopQuote.fields.inkCost')}</Label>
                         <div className="mt-2 space-y-2">
                           {selectedTintaProfileIds.map((id, idx) => (
                             <div key={`${idx}-${id}`} className="flex items-center gap-2">
@@ -1459,7 +1477,7 @@ export function LitografiaQuoteDialog(props: {
                                 onChange={(e) => updateTintaRow(idx, e.target.value)}
                                 disabled={!activeTintaProfiles.length}
                               >
-                                <option value="">Sin tintas</option>
+                                <option value="">{t('printshopQuote.select.noneInks')}</option>
                                 {activeTintaProfiles.map((p) => (
                                   <option key={p.id} value={p.id}>
                                     {p.nombre}
@@ -1474,29 +1492,29 @@ export function LitografiaQuoteDialog(props: {
                                   className="text-red-600"
                                   onClick={() => removeTintaRow(idx)}
                                 >
-                                  Quitar
+                                  {t('common.remove')}
                                 </Button>
                               ) : null}
                             </div>
                           ))}
                         </div>
                         <div className="mt-2 flex items-center justify-between gap-2">
-                          <span className="text-[10px] leading-tight text-muted-foreground">Puedes agregar más de un perfil de tintas.</span>
+                          <span className="text-[10px] leading-tight text-muted-foreground">{t('printshopQuote.help.multipleInkProfiles')}</span>
                           <Button type="button" variant="outline" size="sm" onClick={addTintaRow}>
-                            Agregar otro
+                            {t('common.addAnother')}
                           </Button>
                         </div>
                         <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
                           {primaryTintaProfile ? (
-                            <>Total tintas: {formatCurrency(tintaCostConfigured)}</>
+                            <>{t('printshopQuote.summary.totalInks', { total: formatCurrency(tintaCostConfigured) })}</>
                           ) : (
-                            <>Selecciona tintas.</>
+                            <>{t('printshopQuote.help.selectInks')}</>
                           )}
                         </p>
                       </div>
 
                         <div className="sm:col-span-2">
-                          <Label className={requiredLabelClass(validation.missingPaper)}>Papel</Label>
+                          <Label className={requiredLabelClass(validation.missingPaper)}>{t('printshopQuote.fields.paper')}</Label>
                           <div className="mt-2 space-y-2">
                             {paperRows.map((row, idx) => (
                               <div key={`${idx}-${row.paperId}`} className="flex items-center gap-2">
@@ -1506,7 +1524,7 @@ export function LitografiaQuoteDialog(props: {
                                   onChange={(e) => updatePaperRow(idx, e.target.value)}
                                   disabled={!activePapers.length}
                                 >
-                                  <option value="">Sin papel</option>
+                                  <option value="">{t('printshopQuote.select.nonePaper')}</option>
                                   {activePapers.map((p) => (
                                     <option key={p.id} value={p.id}>
                                       {p.nombre}{p.gramaje ? ` • ${p.gramaje}g` : ""} • {formatCurrency(p.costoPliego)}/pliego
@@ -1515,7 +1533,7 @@ export function LitografiaQuoteDialog(props: {
                                 </select>
                                 {idx === 0 ? (
                                   <div className="min-w-[120px] text-[10px] leading-tight text-muted-foreground">
-                                    Tiraje: {String(cantidad || "0")}
+                                    {t('printshopQuote.paper.runLabel', { qty: String(cantidad || "0") })}
                                   </div>
                                 ) : (
                                   <>
@@ -1527,7 +1545,7 @@ export function LitografiaQuoteDialog(props: {
                                         step="1"
                                         value={row.qty}
                                         onChange={(e) => updatePaperQty(idx, e.target.value)}
-                                        placeholder="Cantidad"
+                                        placeholder={t('printshopQuote.paper.qtyPlaceholder')}
                                       />
                                     </div>
                                     <div className="w-28">
@@ -1554,7 +1572,7 @@ export function LitografiaQuoteDialog(props: {
                                     className="text-red-600"
                                     onClick={() => removePaperRow(idx)}
                                   >
-                                    Quitar
+                                    {t('common.remove')}
                                   </Button>
                                 ) : null}
                               </div>
@@ -1562,22 +1580,22 @@ export function LitografiaQuoteDialog(props: {
                           </div>
                           <div className="mt-2 flex items-center justify-between gap-2">
                             <span className="text-[10px] leading-tight text-muted-foreground">
-                              El primer papel usa el tiraje y tamaño principal. Los adicionales permiten cantidad y tamaño.
+                              {t('printshopQuote.help.paperRows')}
                             </span>
                             <Button type="button" variant="outline" size="sm" onClick={addPaperRow}>
-                              Agregar otro
+                              {t('common.addAnother')}
                             </Button>
                           </div>
                           <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
                             {primaryPaper ? (
-                              <>Pliego (principal): {primaryPaper.pliegoWidthCm}×{primaryPaper.pliegoHeightCm} cm</>
+                              <>{t('printshopQuote.paper.primarySheet', { w: primaryPaper.pliegoWidthCm, h: primaryPaper.pliegoHeightCm })}</>
                             ) : (
-                              <>Selecciona un papel.</>
+                              <>{t('printshopQuote.help.selectPaper')}</>
                             )}
                           </p>
 
                           <div className="mt-2">
-                            <Label>Sobrante mínimo (unid.)</Label>
+                            <Label>{t('printshopQuote.fields.minExtraUnits')}</Label>
                             <Input
                               className={INPUT_COMPACT}
                               type="number"
@@ -1588,13 +1606,13 @@ export function LitografiaQuoteDialog(props: {
                               placeholder="100"
                             />
                             <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                              Se usa como mínimo de unidades extra (además del % de desperdicio).
+                              {t('printshopQuote.help.minExtraUnits')}
                             </p>
                           </div>
                         </div>
 
                         <div className="sm:col-span-2">
-                          <Label>Acabados</Label>
+                          <Label>{t('printshopQuote.fields.finishes')}</Label>
                           <div className="mt-2 space-y-2">
                             {selectedFinishIds.map((id, idx) => (
                               <div key={`${idx}-${id}`} className="flex items-center gap-2">
@@ -1603,7 +1621,7 @@ export function LitografiaQuoteDialog(props: {
                                   value={id}
                                   onChange={(e) => updateFinishRow(idx, e.target.value)}
                                 >
-                                  <option value="">Sin acabado</option>
+                                  <option value="">{t('printshopQuote.select.noneFinish')}</option>
                                   {activeFinishes.map((f) => (
                                     <option key={f.id} value={f.id}>
                                       {f.nombre}
@@ -1618,34 +1636,34 @@ export function LitografiaQuoteDialog(props: {
                                     className="text-red-600"
                                     onClick={() => removeFinishRow(idx)}
                                   >
-                                    Quitar
+                                    {t('common.remove')}
                                   </Button>
                                 ) : null}
                               </div>
                             ))}
                           </div>
                           <div className="mt-2 flex items-center justify-between gap-2">
-                            <span className="text-[10px] leading-tight text-muted-foreground">Puedes agregar más de un acabado.</span>
+                            <span className="text-[10px] leading-tight text-muted-foreground">{t('printshopQuote.help.multipleFinishes')}</span>
                             <Button type="button" variant="outline" size="sm" onClick={addFinishRow}>
-                              Agregar otro
+                              {t('common.addAnother')}
                             </Button>
                           </div>
                           <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
                             {finishIdsNormalized.length
-                              ? <>Seleccionados: {selectedFinishes.map((f) => f.nombre).join(", ")}</>
-                              : <>Ej: troquel.</>}
+                              ? <>{t('printshopQuote.selectedList', { list: selectedFinishes.map((f) => f.nombre).join(", ") })}</>
+                              : <>{t('printshopQuote.examples.finish')}</>}
                           </p>
                         </div>
 
                         <div>
-                          <Label>Plastificado</Label>
+                          <Label>{t('printshopQuote.fields.lamination')}</Label>
                           <select
                             className={SELECT_COMPACT}
                             value={selectedPlastificadoId}
                             onChange={(e) => setSelectedPlastificadoId(e.target.value)}
                             disabled={!activePlastificados.length}
                           >
-                            <option value="">Sin plastificado</option>
+                            <option value="">{t('printshopQuote.select.noneLamination')}</option>
                             {activePlastificados.map((f) => (
                               <option key={f.id} value={f.id}>
                                 {f.nombre}
@@ -1654,20 +1672,20 @@ export function LitografiaQuoteDialog(props: {
                           </select>
                           {!activePlastificados.length ? (
                             <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                              Configura opciones en Configuración &gt; Litografía &gt; Acabados &gt; Plastificado.
+                              {t('printshopQuote.help.configureLamination')}
                             </p>
                           ) : null}
                         </div>
 
                         <div>
-                          <Label>Troquel / Troquelado</Label>
+                          <Label>{t('printshopQuote.fields.dieCut')}</Label>
                           <select
                             className={SELECT_COMPACT}
                             value={selectedTroqueladoId}
                             onChange={(e) => setSelectedTroqueladoId(e.target.value)}
                             disabled={!activeTroquelados.length}
                           >
-                            <option value="">Sin troquelado</option>
+                            <option value="">{t('printshopQuote.select.noneDieCut')}</option>
                             {activeTroquelados.map((f) => (
                               <option key={f.id} value={f.id}>
                                 {f.nombre}
@@ -1676,20 +1694,20 @@ export function LitografiaQuoteDialog(props: {
                           </select>
                           {!activeTroquelados.length ? (
                             <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                              Configura opciones en Configuración &gt; Litografía &gt; Acabados &gt; Troquelado.
+                              {t('printshopQuote.help.configureDieCut')}
                             </p>
                           ) : null}
                         </div>
 
                         <div>
-                          <Label>Corte</Label>
+                          <Label>{t('printshopQuote.fields.cut')}</Label>
                           <select
                             className={SELECT_COMPACT}
                             value={selectedCorteId}
                             onChange={(e) => setSelectedCorteId(e.target.value)}
                             disabled={!activeCortes.length}
                           >
-                            <option value="">Sin corte</option>
+                            <option value="">{t('printshopQuote.select.noneCut')}</option>
                             {activeCortes.map((f) => (
                               <option key={f.id} value={f.id}>
                                 {f.nombre}
@@ -1698,13 +1716,13 @@ export function LitografiaQuoteDialog(props: {
                           </select>
                           {!activeCortes.length ? (
                             <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                              Configura opciones en Configuración &gt; Litografía &gt; Acabados &gt; Corte.
+                              {t('printshopQuote.help.configureCut')}
                             </p>
                           ) : null}
                         </div>
 
                         <div className="sm:col-span-2">
-                          <Label>Acabados especiales</Label>
+                          <Label>{t('printshopQuote.fields.specialFinishes')}</Label>
                           <div className="mt-2 space-y-2">
                             {specialFinishRows.map((row, idx) => {
                               const finishId = String(row.finishId || "").trim()
@@ -1717,7 +1735,7 @@ export function LitografiaQuoteDialog(props: {
                                     value={finishId}
                                     onChange={(e) => updateSpecialFinishRow(idx, e.target.value)}
                                   >
-                                    <option value="">Seleccionar…</option>
+                                    <option value="">{t('common.select')}</option>
                                     {activeSpecialFinishes.map((f) => (
                                       <option key={f.id} value={f.id}>
                                         {f.nombre}
@@ -1726,7 +1744,7 @@ export function LitografiaQuoteDialog(props: {
                                   </select>
 
                                   <span className="text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
-                                    {selected ? `${formatCurrency(selected.valor || 0)} c/u` : ""}
+                                    {selected ? `${formatCurrency(selected.valor || 0)} ${t('quoteBuilder.items.each')}` : ""}
                                   </span>
 
                                   <Input
@@ -1736,7 +1754,7 @@ export function LitografiaQuoteDialog(props: {
                                     step="1"
                                     value={row.qty ?? "1"}
                                     onChange={(e) => updateSpecialFinishQty(idx, e.target.value)}
-                                    placeholder="Cant."
+                                    placeholder={t('printshopQuote.placeholders.qtyShort')}
                                   />
 
                                   <Button
@@ -1746,52 +1764,52 @@ export function LitografiaQuoteDialog(props: {
                                     className="text-red-600"
                                     onClick={() => removeSpecialFinishRow(idx)}
                                   >
-                                    Quitar
+                                    {t('common.remove')}
                                   </Button>
                                 </div>
                               )
                             })}
                           </div>
                             <div className="mt-2 flex items-center justify-between gap-2">
-                            <span className="text-[10px] leading-tight text-muted-foreground">Puedes agregar más de un acabado especial.</span>
+                            <span className="text-[10px] leading-tight text-muted-foreground">{t('printshopQuote.help.multipleSpecialFinishes')}</span>
                             <Button type="button" variant="outline" size="sm" onClick={addSpecialFinishRow}>
-                              Agregar Otro
+                              {t('printshopQuote.actions.addAnotherSpecialFinish')}
                             </Button>
                           </div>
                           <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
                             {selectedSpecialFinishNames.length
-                              ? <>Seleccionados: {selectedSpecialFinishNames.join(", ")}</>
-                              : <>Ej: troquel, hot stamping.</>}
+                              ? <>{t('printshopQuote.selectedList', { list: selectedSpecialFinishNames.join(", ") })}</>
+                              : <>{t('printshopQuote.examples.specialFinishes')}</>}
                           </p>
 
                           <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                            Total acabados especiales: {formatCurrency(specialFinishesCost)}
+                            {t('printshopQuote.summary.totalSpecialFinishes', { total: formatCurrency(specialFinishesCost) })}
                           </p>
                         </div>
 
                       <div className="sm:col-span-2">
-                        <Label>Transporte</Label>
+                        <Label>{t('printshopQuote.fields.transport')}</Label>
                         <SearchableNativeSelect
                           value={selectedTransporteKey}
                           onChange={(v) => setSelectedTransporteKey(v)}
                           disabled={transporteOptionsLoading}
                           searchClassName={INPUT_COMPACT}
                           selectClassName={SELECT_COMPACT}
-                          includeAllOption={{ value: "", label: "Sin transporte" }}
+                          includeAllOption={{ value: "", label: t('printshopQuote.select.noneTransport') }}
                           options={transporteOptions.map((o) => ({ value: o.value, label: `${o.label} • ${formatCurrency(o.total)}` }))}
-                          searchPlaceholder="Buscar transporte…"
-                          emptyText={transporteOptions.length ? "Sin resultados" : "Sin transportes configurados"}
+                          searchPlaceholder={t('printshopQuote.placeholders.searchTransport')}
+                          emptyText={transporteOptions.length ? t('common.noResults') : t('printshopQuote.select.noTransportConfigured')}
                         />
-                        <p className="mt-1 text-[10px] leading-tight text-muted-foreground">Opcional. Se suma como valor fijo al total.</p>
+                        <p className="mt-1 text-[10px] leading-tight text-muted-foreground">{t('printshopQuote.help.transportOptional')}</p>
                       </div>
 
                       <div className="sm:col-span-2">
-                        <Label>Descripción</Label>
+                        <Label>{t('printshopQuote.fields.notes')}</Label>
                         <Textarea
                           className="mt-2 min-h-[72px] text-sm"
                           value={descripcion}
                           onChange={(e) => setDescripcion(e.target.value)}
-                          placeholder="Notas/observaciones (opcional)…"
+                          placeholder={t('printshopQuote.placeholders.notes')}
                           rows={3}
                         />
                       </div>
@@ -1808,27 +1826,27 @@ export function LitografiaQuoteDialog(props: {
               <div className="space-y-4">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Resultado</CardTitle>
+                    <CardTitle>{t('printshopQuote.sections.result')}</CardTitle>
                     <CardDescription>
                       {tarifa
-                        ? "Precio desde tarifario."
+                        ? t('printshopQuote.result.fromRateTable')
                         : fallbackCalc
-                          ? "Sin tarifa exacta. Se usa cálculo estimado."
+                          ? t('printshopQuote.result.estimated')
                           : isAdmin && calc
-                            ? "Sin tarifa exacta. Se usa cálculo (admin)."
-                          : "Precio desde tarifario."}
+                            ? t('printshopQuote.result.adminCalc')
+                          : t('printshopQuote.result.fromRateTable')}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <>
-                      {tarifaLoading ? <p className="text-sm text-muted-foreground">Consultando tarifa…</p> : null}
+                      {tarifaLoading ? <p className="text-sm text-muted-foreground">{t('printshopQuote.result.loadingRate')}</p> : null}
                       {null}
 
                       {tarifa ? (
                         <>
                           <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground space-y-1">
                             <div className="flex justify-between">
-                              <span>Rango aplicable</span>
+                              <span>{t('printshopQuote.result.applicableRange')}</span>
                               <span className="font-medium">
                                 {tarifa.tirajeMin}–{tarifa.tirajeMax}
                               </span>
@@ -1840,9 +1858,17 @@ export function LitografiaQuoteDialog(props: {
                             const usedGenericFinish = wantsFinish && tarifa.finishOptionId == null
                             const usedGenericPaper = Boolean(primaryPaperId) && tarifa.paperRateId == null
                             if (!usedGenericFinish && !usedGenericPaper) return null
+
+                            const genericDetails = [
+                              usedGenericPaper ? t('printshopQuote.rate.generic.noSpecificPaper') : null,
+                              usedGenericFinish ? t('printshopQuote.rate.generic.noSpecificFinish') : null,
+                            ]
+                              .filter(Boolean)
+                              .join(', ')
+
                             return (
                               <p className="text-xs text-amber-700">
-                                Usando tarifa genérica ({usedGenericPaper ? "sin papel específico" : null}{usedGenericPaper && usedGenericFinish ? ", " : null}{usedGenericFinish ? "sin acabado específico" : null}). Para que troquel/papel cambien el precio, configura una tarifa exacta.
+                                {t('printshopQuote.rate.generic.notice', { details: genericDetails })}
                               </p>
                             )
                           })()}
@@ -1857,16 +1883,16 @@ export function LitografiaQuoteDialog(props: {
                               const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
                               return (
                                 <>
-                                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Base (tarifario)</span><span className="font-medium">{formatCurrency(base)}</span></div>
-                                  <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Transporte</span><span className="font-medium">{formatCurrency(transporte)}</span></div>
-                                  {addFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Acabados</span><span className="font-medium">{formatCurrency(addFinishesCost)}</span></div> : null}
-                                  {specialFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Acabados especiales</span><span className="font-medium">{formatCurrency(specialFinishesCost)}</span></div> : null}
-                                  {plastificadoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Plastificado</span><span className="font-medium">{formatCurrency(plastificadoCost)}</span></div> : null}
-                                  {troqueladoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Troquelado</span><span className="font-medium">{formatCurrency(troqueladoCost)}</span></div> : null}
-                                  {corteCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Corte</span><span className="font-medium">{formatCurrency(corteCost)}</span></div> : null}
-                                  {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Campos extra</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
-                                  <div className="flex justify-between mt-2"><span className="font-medium">Total</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
-                                  <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Unitario</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>
+                                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t('printshopQuote.breakdown.baseRateTable')}</span><span className="font-medium">{formatCurrency(base)}</span></div>
+                                  <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.transport')}</span><span className="font-medium">{formatCurrency(transporte)}</span></div>
+                                  {addFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.finishes')}</span><span className="font-medium">{formatCurrency(addFinishesCost)}</span></div> : null}
+                                  {specialFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.specialFinishes')}</span><span className="font-medium">{formatCurrency(specialFinishesCost)}</span></div> : null}
+                                  {plastificadoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.lamination')}</span><span className="font-medium">{formatCurrency(plastificadoCost)}</span></div> : null}
+                                  {troqueladoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.dieCut')}</span><span className="font-medium">{formatCurrency(troqueladoCost)}</span></div> : null}
+                                  {corteCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.cut')}</span><span className="font-medium">{formatCurrency(corteCost)}</span></div> : null}
+                                  {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.extraFields')}</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
+                                  <div className="flex justify-between mt-2"><span className="font-medium">{t('printshopQuote.breakdown.total')}</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
+                                  <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.unit')}</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>
                                 </>
                               )
                             })()}
@@ -1876,11 +1902,11 @@ export function LitografiaQuoteDialog(props: {
                         <>
                           <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground space-y-1">
                             <div className="flex justify-between">
-                              <span>Modo</span>
-                              <span className="font-medium">Estimado</span>
+                              <span>{t('printshopQuote.estimate.mode')}</span>
+                              <span className="font-medium">{t('printshopQuote.estimate.value')}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Pliegos</span>
+                              <span>{t('printshopQuote.estimate.sheets')}</span>
                               <span className="font-medium">{fallbackCalc.pliegosNecesarios ?? "—"}</span>
                             </div>
                           </div>
@@ -1893,15 +1919,15 @@ export function LitografiaQuoteDialog(props: {
                               const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
                               return (
                                 <>
-                                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Base (estimado)</span><span className="font-medium">{formatCurrency(baseValue)}</span></div>
-                                  {selectedFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Acabados</span><span className="font-medium">{formatCurrency(selectedFinishesCost)}</span></div> : null}
-                                  {specialFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Acabados especiales</span><span className="font-medium">{formatCurrency(specialFinishesCost)}</span></div> : null}
-                                  {plastificadoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Plastificado</span><span className="font-medium">{formatCurrency(plastificadoCost)}</span></div> : null}
-                                  {troqueladoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Troquelado</span><span className="font-medium">{formatCurrency(troqueladoCost)}</span></div> : null}
-                                  {corteCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Corte</span><span className="font-medium">{formatCurrency(corteCost)}</span></div> : null}
-                                  {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Campos extra</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
-                                  <div className="flex justify-between mt-2"><span className="font-medium">Total</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
-                                  <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">Unitario</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>
+                                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t('printshopQuote.breakdown.baseEstimated')}</span><span className="font-medium">{formatCurrency(baseValue)}</span></div>
+                                  {selectedFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.finishes')}</span><span className="font-medium">{formatCurrency(selectedFinishesCost)}</span></div> : null}
+                                  {specialFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.specialFinishes')}</span><span className="font-medium">{formatCurrency(specialFinishesCost)}</span></div> : null}
+                                  {plastificadoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.lamination')}</span><span className="font-medium">{formatCurrency(plastificadoCost)}</span></div> : null}
+                                  {troqueladoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.dieCut')}</span><span className="font-medium">{formatCurrency(troqueladoCost)}</span></div> : null}
+                                  {corteCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.cut')}</span><span className="font-medium">{formatCurrency(corteCost)}</span></div> : null}
+                                  {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.extraFields')}</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
+                                  <div className="flex justify-between mt-2"><span className="font-medium">{t('printshopQuote.breakdown.total')}</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
+                                  <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.unit')}</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>
                                 </>
                               )
                             })()}
@@ -1912,52 +1938,52 @@ export function LitografiaQuoteDialog(props: {
                           {calc.papelModo === "pliego" ? (
                             <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground space-y-1">
                               <div className="flex justify-between">
-                                <span>Tiraje con desperdicio</span>
+                                <span>{t('printshopQuote.admin.wasteRun')}</span>
                                 <span className="font-medium">{Math.ceil(calc.qtyConDesperdicio)}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span>Piezas por pliego</span>
+                                <span>{t('printshopQuote.admin.piecesPerSheet')}</span>
                                 <span className="font-medium">{calc.piezasPorPliego ?? "—"}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span>Pliegos requeridos</span>
+                                <span>{t('printshopQuote.admin.sheetsRequired')}</span>
                                 <span className="font-medium">{calc.pliegosNecesarios ?? "—"}</span>
                               </div>
                             </div>
                           ) : null}
 
                           <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Plancha</span>
+                            <span className="text-muted-foreground">{t('printshopQuote.admin.plate')}</span>
                             <span className="font-medium">{formatCurrency(calc.plancha)}</span>
                           </div>
                           <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Tinta</span>
+                            <span className="text-muted-foreground">{t('printshopQuote.admin.ink')}</span>
                             <span className="font-medium">{formatCurrency(calc.tinta)}</span>
                           </div>
                           <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Papel</span>
+                            <span className="text-muted-foreground">{t('printshopQuote.desc.paper')}</span>
                             <span className="font-medium">{formatCurrency(calc.papel)}</span>
                           </div>
                           <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Corte</span>
+                            <span className="text-muted-foreground">{t('printshopQuote.desc.cut')}</span>
                             <span className="font-medium">{formatCurrency(calc.corte)}</span>
                           </div>
                           <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Acabados</span>
+                            <span className="text-muted-foreground">{t('printshopQuote.desc.finishes')}</span>
                             <span className="font-medium">{formatCurrency(calc.acabados)}</span>
                           </div>
                           <div className="flex justify-between text-sm">
-                            <span className="text-muted-foreground">Transporte</span>
+                            <span className="text-muted-foreground">{t('printshopQuote.desc.transport')}</span>
                             <span className="font-medium">{formatCurrency(calc.transporte)}</span>
                           </div>
 
                           <div className="border-t pt-3">
                             <div className="flex justify-between">
-                              <span className="font-medium">Costo producción</span>
+                              <span className="font-medium">{t('printshopQuote.admin.productionCost')}</span>
                               <span className="font-bold">{formatCurrency(calc.costoProduccion)}</span>
                             </div>
                             <div className="flex justify-between text-sm mt-1">
-                              <span className="text-muted-foreground">Costo unitario</span>
+                              <span className="text-muted-foreground">{t('printshopQuote.admin.unitCost')}</span>
                               <span className="font-medium">{formatCurrency(calc.costoUnitario)}</span>
                             </div>
                           </div>
@@ -1970,11 +1996,11 @@ export function LitografiaQuoteDialog(props: {
                               return (
                                 <>
                                   <div className="flex justify-between">
-                                    <span className="font-medium">Precio venta</span>
+                                    <span className="font-medium">{t('printshopQuote.admin.salePrice')}</span>
                                     <span className="font-bold text-blue-700">{formatCurrency(total)}</span>
                                   </div>
                                   <div className="flex justify-between text-sm mt-1">
-                                    <span className="text-muted-foreground">Precio unitario</span>
+                                    <span className="text-muted-foreground">{t('printshopQuote.admin.saleUnitPrice')}</span>
                                     <span className="font-medium">{formatCurrency(total / qty)}</span>
                                   </div>
                                 </>
@@ -1991,36 +2017,36 @@ export function LitografiaQuoteDialog(props: {
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div>
-                        <CardTitle>Campos personalizados</CardTitle>
-                        <CardDescription>Se anexan a la descripción del ítem. Si el valor es numérico, se suma al total.</CardDescription>
+                        <CardTitle>{t('printshopQuote.customFields.title')}</CardTitle>
+                        <CardDescription>{t('printshopQuote.customFields.description')}</CardDescription>
                       </div>
                       <Button type="button" variant="outline" size="sm" onClick={addCustomField}>
-                        Agregar campo
+                        {t('printshopQuote.customFields.addField')}
                       </Button>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {customFields.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No hay campos extra.</p>
+                      <p className="text-sm text-muted-foreground">{t('printshopQuote.customFields.empty')}</p>
                     ) : (
                       customFields.map((f) => (
                         <div key={f.id} className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
                           <div className="md:col-span-2">
-                            <Label className="text-xs">Etiqueta</Label>
+                            <Label className="text-xs">{t('printshopQuote.customFields.label')}</Label>
                             <Input
                               className={INPUT_COMPACT}
                               value={f.label}
                               onChange={(e) => updateCustomField(f.id, { label: e.target.value })}
-                              placeholder="Ej: Tamaño"
+                              placeholder={t('printshopQuote.customFields.labelPlaceholder')}
                             />
                           </div>
                           <div className="md:col-span-2">
-                            <Label className="text-xs">Valor</Label>
+                            <Label className="text-xs">{t('printshopQuote.customFields.value')}</Label>
                             <Input
                               className={INPUT_COMPACT}
                               value={f.value}
                               onChange={(e) => updateCustomField(f.id, { value: e.target.value })}
-                              placeholder="Ej: A5"
+                              placeholder={t('printshopQuote.customFields.valuePlaceholder')}
                             />
                           </div>
                           <div className="md:col-span-1">
@@ -2030,7 +2056,7 @@ export function LitografiaQuoteDialog(props: {
                               className="text-red-600"
                               onClick={() => removeCustomField(f.id)}
                             >
-                              Quitar
+                              {t('common.remove')}
                             </Button>
                           </div>
                         </div>
@@ -2038,7 +2064,7 @@ export function LitografiaQuoteDialog(props: {
                     )}
 
                     <div className="pt-2">
-                      <Label className="text-xs">Preview descripción</Label>
+                      <Label className="text-xs">{t('printshopQuote.customFields.preview')}</Label>
                       <pre className="mt-1 whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-xs leading-relaxed">
                         {buildDescripcion()}
                       </pre>
@@ -2052,14 +2078,14 @@ export function LitografiaQuoteDialog(props: {
           <div className="border-t bg-background p-4">
             <DialogFooter className="gap-2">
               <Button type="button" variant="outline" onClick={() => props.onOpenChange(false)}>
-                Cerrar
+                {t('common.close')}
               </Button>
               <Button
                 type="button"
                 onClick={handleAddToCotizacion}
                 disabled={!canAdd}
               >
-                {props.edit?.itemId ? "Actualizar item" : "Agregar a cotización"}
+                {props.edit?.itemId ? t('printshopQuote.actions.updateItem') : t('printshopQuote.actions.addToQuote')}
               </Button>
             </DialogFooter>
           </div>
