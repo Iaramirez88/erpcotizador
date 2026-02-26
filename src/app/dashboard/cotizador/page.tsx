@@ -88,6 +88,9 @@ function asRecord(value: unknown): Record<string, unknown> {
 export default function CotizadorPage() {
   const { t, language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-MX'
+
+  // La facturación electrónica aún no está habilitada: se muestran opciones, pero quedan deshabilitadas.
+  const electronicBillingEnabled = false
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat(locale, {
       style: 'currency',
@@ -382,7 +385,7 @@ export default function CotizadorPage() {
     }
   }
 
-  const aprobarParaFacturar = async () => {
+  const aprobarParaEnviar = async () => {
     if (!previewCotizacion?.id) return
     if (approvingForBilling) return
 
@@ -396,7 +399,7 @@ export default function CotizadorPage() {
       }
 
       setPreviewCotizacion((prev) => (prev ? { ...prev, estado: 'APROBADA' } : prev))
-      alert(t('quoteBuilder.success.approvedReadyToInvoice'))
+      alert(t('quoteBuilder.success.approvedReadyToSend'))
     } catch (error) {
       console.error('Error al aprobar:', error)
       alert(t('quotes.errors.approve'))
@@ -992,16 +995,17 @@ export default function CotizadorPage() {
                     type="button"
                     variant="secondary"
                     disabled={approvingForBilling}
-                    onClick={() => void aprobarParaFacturar()}
+                    onClick={() => void aprobarParaEnviar()}
                   >
-                    {approvingForBilling ? t('quoteBuilder.preview.approving') : t('quotes.actions.approve')}
+                    {approvingForBilling ? t('quoteBuilder.preview.approving') : t('quotes.actions.approveToSend')}
                   </Button>
                 ) : null}
 
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={String(previewCotizacion?.estado) !== 'APROBADA' || creatingInvoiceFromCotizacion}
+                  title={!electronicBillingEnabled ? t('quoteBuilder.preview.billingDisabled') : undefined}
+                  disabled={!electronicBillingEnabled || String(previewCotizacion?.estado) !== 'APROBADA' || creatingInvoiceFromCotizacion}
                   onClick={() => void crearFacturaDesdeCotizacion()}
                 >
                   {creatingInvoiceFromCotizacion
@@ -1012,7 +1016,8 @@ export default function CotizadorPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={!createdInvoice?.id || remittingElectronic}
+                  title={!electronicBillingEnabled ? t('quoteBuilder.preview.billingDisabled') : undefined}
+                  disabled={!electronicBillingEnabled || !createdInvoice?.id || remittingElectronic}
                   onClick={() => void remitirAFacturaElectronica()}
                 >
                   {remittingElectronic ? t('quoteBuilder.preview.remitting') : t('quoteBuilder.preview.remitElectronic')}

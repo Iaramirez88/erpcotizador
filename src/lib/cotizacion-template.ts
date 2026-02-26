@@ -108,6 +108,10 @@ export type CotizacionTemplateSettings = {
       side: BlockSide
       widthPct: BlockWidthPct
     }
+    observaciones: {
+      side: BlockSide
+      widthPct: BlockWidthPct
+    }
   }
   toggles: {
     showVendedor: boolean
@@ -197,6 +201,10 @@ export const DEFAULT_COTIZACION_TEMPLATE: CotizacionTemplateSettings = {
       side: 'left',
       widthPct: 100,
     },
+    observaciones: {
+      side: 'left',
+      widthPct: 100,
+    },
   },
   toggles: {
     showVendedor: true,
@@ -243,6 +251,7 @@ function asBlockWidthPct(value: unknown, fallback: BlockWidthPct): BlockWidthPct
   return fallback
 }
 
+
 function readSideSpacing(input: unknown, fallback: PageSideSpacing, min: number, max: number): PageSideSpacing {
   if (!isPlainObject(input)) return fallback
   return {
@@ -267,6 +276,9 @@ export function mergeCotizacionTemplateSettings(input: unknown): CotizacionTempl
   const blocks = isPlainObject(input.blocks) ? input.blocks : {}
   const vendedorBlock = isPlainObject(blocks.vendedor) ? blocks.vendedor : {}
   const clienteBlock = isPlainObject(blocks.cliente) ? blocks.cliente : {}
+  const observacionesBlock = isPlainObject((blocks as Record<string, unknown>).observaciones)
+    ? ((blocks as Record<string, unknown>).observaciones as Record<string, unknown>)
+    : {}
   const toggles = isPlainObject(input.toggles) ? input.toggles : {}
   const currency = isPlainObject(input.currency) ? input.currency : {}
 
@@ -393,6 +405,10 @@ export function mergeCotizacionTemplateSettings(input: unknown): CotizacionTempl
       cliente: {
         side: asBlockSide(clienteBlock.side, defaults.blocks.cliente.side),
         widthPct: asBlockWidthPct(clienteBlock.widthPct, defaults.blocks.cliente.widthPct),
+      },
+      observaciones: {
+        side: asBlockSide(observacionesBlock.side, defaults.blocks.observaciones.side),
+        widthPct: asBlockWidthPct(observacionesBlock.widthPct, defaults.blocks.observaciones.widthPct),
       },
     },
     toggles: {

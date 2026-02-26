@@ -909,6 +909,7 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
           <View style={styles.grandTotal}>
             <Text>TOTAL:</Text>
             <Text>{formatCurrency(cotizacion.total, locale, currency)}</Text>
+          </View>
         </View>
 
         {(garantiaTexto || paymentMethodsTexto || boldUrlTexto) ? (
@@ -936,15 +937,13 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
         ) : null}
 
         {t.toggles.showObservaciones && observacionesTexto ? (
-          <View style={styles.observaciones} wrap>
+          <View style={[styles.observaciones, blockStyle(t.blocks.observaciones.side, t.blocks.observaciones.widthPct)]} wrap>
             <Text style={{ fontWeight: 'bold', marginBottom: 5 }} minPresenceAhead={60}>
               Observaciones:
             </Text>
             <Text>{observacionesTexto}</Text>
           </View>
         ) : null}
-
-          </View>
         </View>
 
         <View style={styles.footer} fixed>

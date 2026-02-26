@@ -24,7 +24,16 @@ const CURRENCY_PRESETS: Array<{ label: string; locale: string; currency: string 
   { label: 'MXN (Pesos mexicanos)', locale: 'es-MX', currency: 'MXN' },
 ]
 
-type TemplateResponse = { success: boolean; data?: { settings?: unknown; defaultSettings?: unknown } }
+type TemplateResponse = {
+  success: boolean
+  data?: { settings?: unknown; defaultSettings?: unknown; meta?: { scope?: string; canEdit?: boolean } }
+}
+
+type TemplateVersionListResponse = { success: boolean; data?: { versions?: Array<{ id: string; createdAt: string }> } }
+type TemplateVersionGetResponse = {
+  success: boolean
+  data?: { id: string; createdAt: string; settings?: unknown; defaultSettings?: unknown }
+}
 
 type SectionCardProps = {
   title: string
@@ -58,7 +67,13 @@ export default function PlantillaCotizacionPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [settings, setSettings] = useState<CotizacionTemplateSettings>(DEFAULT_COTIZACION_TEMPLATE)
+  const [templateMeta, setTemplateMeta] = useState<{ scope?: string; canEdit?: boolean }>({})
   const [defaultSettings, setDefaultSettings] = useState<CotizacionTemplateSettings>(DEFAULT_COTIZACION_TEMPLATE)
+
+  const [versions, setVersions] = useState<Array<{ id: string; createdAt: string }>>([])
+  const [versionsLoading, setVersionsLoading] = useState(false)
+  const [versionsError, setVersionsError] = useState<string | null>(null)
+  const [loadingVersionId, setLoadingVersionId] = useState<string | null>(null)
 
   const previewUrlRef = useRef<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -85,6 +100,7 @@ export default function PlantillaCotizacionPage() {
         const nextDefault = mergeCotizacionTemplateSettings(json?.data?.defaultSettings ?? DEFAULT_COTIZACION_TEMPLATE)
         if (!cancelled) setSettings(next)
         if (!cancelled) setDefaultSettings(nextDefault)
+        if (!cancelled) setTemplateMeta(json?.data?.meta ?? {})
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -94,6 +110,40 @@ export default function PlantillaCotizacionPage() {
       cancelled = true
     }
   }, [])
+
+  async function refreshVersions() {
+    setVersionsLoading(true)
+    setVersionsError(null)
+    try {
+      const res = await fetch('/api/templates/cotizacion/versions?limit=12')
+      const json: TemplateVersionListResponse = await res.json().catch(() => ({ success: false }))
+      const list = json?.data?.versions
+      setVersions(Array.isArray(list) ? list : [])
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error'
+      setVersionsError(msg)
+    } finally {
+      setVersionsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void refreshVersions()
+  }, [])
+
+  async function loadVersion(versionId: string) {
+    setLoadingVersionId(versionId)
+    try {
+      const res = await fetch(`/api/templates/cotizacion/versions/${encodeURIComponent(versionId)}`)
+      const json: TemplateVersionGetResponse = await res.json().catch(() => ({ success: false }))
+      if (!json?.success) throw new Error('No se pudo cargar la versión')
+
+      const next = mergeCotizacionTemplateSettings(json?.data?.settings ?? DEFAULT_COTIZACION_TEMPLATE)
+      setSettings(next)
+    } finally {
+      setLoadingVersionId(null)
+    }
+  }
 
   const mockCotizacion = useMemo<CotizacionPdfData>(() => {
     const now = new Date()
@@ -197,6 +247,7 @@ export default function PlantillaCotizacionPage() {
       showObservaciones ? 'ob1' : 'ob0',
       `vb:${settings.blocks.vendedor.side}:${String(settings.blocks.vendedor.widthPct)}:${String(settings.blocks.vendedor.telefonoOverride ?? '')}:${String(settings.blocks.vendedor.cargoOverride ?? '')}`,
       `cb:${settings.blocks.cliente.side}:${String(settings.blocks.cliente.widthPct)}`,
+      `ob:${settings.blocks.observaciones.side}:${String(settings.blocks.observaciones.widthPct)}`,
     ].join('|')
   }, [
     headerRightLinesJoined,
@@ -237,6 +288,8 @@ export default function PlantillaCotizacionPage() {
     settings.blocks.vendedor.cargoOverride,
     settings.blocks.cliente.side,
     settings.blocks.cliente.widthPct,
+    settings.blocks.observaciones.side,
+    settings.blocks.observaciones.widthPct,
   ])
 
   useEffect(() => {
@@ -298,11 +351,20 @@ export default function PlantillaCotizacionPage() {
   async function save() {
     setSaving(true)
     try {
-      await fetch('/api/templates/cotizacion', {
+      const res = await fetch('/api/templates/cotizacion', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ settings }),
       })
+      const json = (await res.json().catch(() => null)) as TemplateResponse | null
+      if (!res.ok) {
+        const msg = (json as any)?.error || `HTTP ${res.status}`
+        throw new Error(msg)
+      }
+      await refreshVersions()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error'
+      alert(msg)
     } finally {
       setSaving(false)
     }
@@ -317,9 +379,17 @@ export default function PlantillaCotizacionPage() {
         body: JSON.stringify({ defaultSettings: settings }),
       })
       const json = (await res.json().catch(() => null)) as TemplateResponse | null
+      if (!res.ok) {
+        const msg = (json as any)?.error || `HTTP ${res.status}`
+        throw new Error(msg)
+      }
       if (json?.success) {
         setDefaultSettings(mergeCotizacionTemplateSettings(json?.data?.defaultSettings ?? settings))
       }
+      await refreshVersions()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error'
+      alert(msg)
     } finally {
       setSaving(false)
     }
@@ -480,6 +550,9 @@ export default function PlantillaCotizacionPage() {
   return (
     <div className="p-3 sm:p-4 lg:p-6 space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
+                  {templateMeta.scope === 'empresa' && templateMeta.canEdit === false ? (
+                    <p className="text-xs text-muted-foreground mt-1">Plantilla predeterminada por empresa (solo lectura).</p>
+                  ) : null}
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Plantilla de Cotización (PDF)</h1>
           <p className="text-muted-foreground mt-0.5">Personaliza colores, fuentes, tamaños, fondo y marca de agua.</p>
@@ -494,10 +567,15 @@ export default function PlantillaCotizacionPage() {
           <Button type="button" variant="outline" onClick={() => setSettings(defaultSettings)}>
             Usar predeterminada
           </Button>
-          <Button type="button" variant="outline" onClick={() => void saveAsDefault()} disabled={saving}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void saveAsDefault()}
+            disabled={saving || (templateMeta.scope === 'empresa' && templateMeta.canEdit === false)}
+          >
             Guardar como predeterminada
           </Button>
-          <Button type="button" onClick={save} disabled={saving}>
+          <Button type="button" onClick={save} disabled={saving || (templateMeta.scope === 'empresa' && templateMeta.canEdit === false)}>
             {saving ? 'Guardando…' : 'Guardar'}
           </Button>
         </div>
@@ -505,6 +583,45 @@ export default function PlantillaCotizacionPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="space-y-4">
+          <SectionCard title="Historial de plantillas" defaultOpen contentClassName="pt-0 space-y-2">
+            <div className="text-xs text-muted-foreground">
+              Versiones guardadas al presionar “Guardar” o “Guardar como predeterminada”.
+            </div>
+
+            {versionsLoading ? <div className="text-sm text-muted-foreground">Cargando…</div> : null}
+            {versionsError ? <div className="text-sm text-destructive">{versionsError}</div> : null}
+
+            {!versionsLoading && versions.length === 0 ? (
+              <div className="text-sm text-muted-foreground">Aún no hay versiones guardadas.</div>
+            ) : null}
+
+            <div className="space-y-2">
+              {versions.map((v) => {
+                const label = (() => {
+                  const d = new Date(v.createdAt)
+                  if (Number.isNaN(d.getTime())) return v.createdAt
+                  return new Intl.DateTimeFormat('es-CO', { dateStyle: 'short', timeStyle: 'short' }).format(d)
+                })()
+
+                const isLoadingThis = loadingVersionId === v.id
+                return (
+                  <div key={v.id} className="flex items-center justify-between gap-2">
+                    <div className="text-sm">{label}</div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void loadVersion(v.id)}
+                      disabled={Boolean(loadingVersionId)}
+                    >
+                      {isLoadingThis ? 'Cargando…' : 'Cargar'}
+                    </Button>
+                  </div>
+                )
+              })}
+            </div>
+          </SectionCard>
+
           <SectionCard title="Hoja" defaultOpen contentClassName="pt-0 grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="space-y-2">
                 <Label>Tamaño</Label>
@@ -1585,7 +1702,7 @@ export default function PlantillaCotizacionPage() {
               ))}
           </SectionCard>
 
-          <SectionCard title="Bloques (Vendedor / Cliente)" contentClassName="pt-0 space-y-4">
+          <SectionCard title="Bloques (Vendedor / Cliente / Observaciones)" contentClassName="pt-0 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label>Vendedor: lado</Label>
@@ -1704,29 +1821,76 @@ export default function PlantillaCotizacionPage() {
                   <option value={100}>100%</option>
                 </select>
               </div>
+
+              <div className="space-y-2">
+                <Label>Observaciones: lado</Label>
+                <select
+                  className="px-3 py-2 border rounded-md w-full"
+                  value={settings.blocks.observaciones.side}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      blocks: {
+                        ...s.blocks,
+                        observaciones: { ...s.blocks.observaciones, side: e.target.value as 'left' | 'right' },
+                      },
+                    }))
+                  }
+                >
+                  <option value="left">Izquierdo</option>
+                  <option value="right">Derecho</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Observaciones: ancho</Label>
+                <select
+                  className="px-3 py-2 border rounded-md w-full"
+                  value={settings.blocks.observaciones.widthPct}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      blocks: {
+                        ...s.blocks,
+                        observaciones: {
+                          ...s.blocks.observaciones,
+                          widthPct: Number(e.target.value) as 25 | 50 | 75 | 100,
+                        },
+                      },
+                    }))
+                  }
+                >
+                  <option value={25}>25%</option>
+                  <option value={50}>50%</option>
+                  <option value={75}>75%</option>
+                  <option value={100}>100%</option>
+                </select>
+              </div>
             </div>
           </SectionCard>
         </div>
 
-        <SectionCard title="Vista previa" defaultOpen contentClassName="pt-0">
-          <div className="w-full h-[760px] border rounded-md overflow-hidden" key={pdfViewerKey}>
-            {previewLoading ? (
-              <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground">Generando vista previa…</div>
-            ) : null}
-            {!previewLoading && previewError ? (
-              <div className="w-full h-full flex items-center justify-center text-sm text-red-600">{previewError}</div>
-            ) : null}
-            {!previewLoading && !previewError && !previewUrl ? (
-              <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground">Sin vista previa.</div>
-            ) : null}
-            {!previewLoading && !previewError && previewUrl ? (
-              <iframe title="Vista previa PDF" src={previewUrl} className="w-full h-full" />
-            ) : null}
-          </div>
-          <p className="text-xs text-gray-500 mt-2">
-            La vista previa es una cotización de ejemplo. Al descargar/enviar un PDF real se aplicarán estos ajustes.
-          </p>
-        </SectionCard>
+        <div className="lg:sticky lg:top-4 self-start">
+          <SectionCard title="Vista previa" defaultOpen contentClassName="pt-0">
+            <div className="w-full h-[760px] border rounded-md overflow-hidden" key={pdfViewerKey}>
+              {previewLoading ? (
+                <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground">Generando vista previa…</div>
+              ) : null}
+              {!previewLoading && previewError ? (
+                <div className="w-full h-full flex items-center justify-center text-sm text-red-600">{previewError}</div>
+              ) : null}
+              {!previewLoading && !previewError && !previewUrl ? (
+                <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground">Sin vista previa.</div>
+              ) : null}
+              {!previewLoading && !previewError && previewUrl ? (
+                <iframe title="Vista previa PDF" src={previewUrl} className="w-full h-full" />
+              ) : null}
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              La vista previa es una cotización de ejemplo. Al descargar/enviar un PDF real se aplicarán estos ajustes.
+            </p>
+          </SectionCard>
+        </div>
       </div>
     </div>
   )

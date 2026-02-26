@@ -5,6 +5,7 @@ import { ModuleKey } from '@prisma/client';
 import { Resend } from 'resend';
 import CotizacionPDF from '@/lib/pdf-template';
 import { getReactPdfRenderer, pdfToBuffer } from '@/lib/react-pdf-node';
+import { requireEmpresaIdForUser } from '@/lib/rbac';
 
 export const runtime = 'nodejs';
 
@@ -69,10 +70,17 @@ export async function POST(
     }
 
     const userId = access.userId;
+    const empresaId = await requireEmpresaIdForUser(userId)
+    const empresaTemplate = await prisma.empresaCotizacionTemplate.findUnique({
+      where: { empresaId },
+      select: { settings: true },
+    })
     const userTemplate = await prisma.cotizacionTemplate.findUnique({
       where: { userId },
       select: { settings: true },
-    });
+    })
+
+    const effectiveTemplateSettings = empresaTemplate?.settings ?? userTemplate?.settings
 
     // Generar PDF
     const renderer = await getReactPdfRenderer()
@@ -147,7 +155,7 @@ export async function POST(
         iva: cotizacion.iva,
         total: cotizacion.total,
       },
-      template: userTemplate?.settings,
+      template: effectiveTemplateSettings,
     });
     const pdfBuffer = await pdfToBuffer(pdfDoc)
 

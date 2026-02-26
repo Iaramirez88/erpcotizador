@@ -42,7 +42,22 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasTrialTier = runtimeModelHasField(prismaClient, 'Empresa', 'trialTier')
   const hasWorkspaceCode = runtimeModelHasField(prismaClient, 'Empresa', 'workspaceCode')
   const hasPlanOwnerUserId = runtimeModelHasField(prismaClient, 'Empresa', 'planOwnerUserId')
-  if (!hasTrialTier || !hasWorkspaceCode || !hasPlanOwnerUserId) prismaClient = undefined
+
+  const hasEmpresaTemplateDelegate = typeof (prismaClient as any)?.empresaCotizacionTemplate?.findUnique === 'function'
+  const hasEmpresaTemplateVersionDelegate =
+    typeof (prismaClient as any)?.empresaCotizacionTemplateVersion?.findMany === 'function'
+  const hasCotizacionTemplateVersionDelegate = typeof (prismaClient as any)?.cotizacionTemplateVersion?.findMany === 'function'
+
+  if (
+    !hasTrialTier ||
+    !hasWorkspaceCode ||
+    !hasPlanOwnerUserId ||
+    !hasEmpresaTemplateDelegate ||
+    !hasEmpresaTemplateVersionDelegate ||
+    !hasCotizacionTemplateVersionDelegate
+  ) {
+    prismaClient = undefined
+  }
 }
 
 export const prisma =

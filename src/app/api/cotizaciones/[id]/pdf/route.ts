@@ -7,6 +7,7 @@ import type { Prisma } from '@prisma/client';
 import { ModuleKey } from '@prisma/client';
 import { createElement } from 'react';
 import { getReactPdfRenderer, pdfToBuffer } from '@/lib/react-pdf-node';
+import { requireEmpresaIdForUser } from '@/lib/rbac';
 export const runtime = 'nodejs';
 
 type CotizacionPayload = Prisma.CotizacionGetPayload<{
@@ -154,10 +155,17 @@ export async function GET(
     }
 
     const userId = access.userId;
+    const empresaId = await requireEmpresaIdForUser(userId)
+    const empresaTemplate = await prisma.empresaCotizacionTemplate.findUnique({
+      where: { empresaId },
+      select: { settings: true },
+    })
     const userTemplate = await prisma.cotizacionTemplate.findUnique({
       where: { userId },
       select: { settings: true },
-    });
+    })
+
+    const effectiveTemplateSettings = empresaTemplate?.settings ?? userTemplate?.settings
 
     const cotizacionPdfData = {
         numero: sanitizeText(cotizacion.numero, 'COTIZACIÓN'),
@@ -278,7 +286,7 @@ export async function GET(
       | { kind: 'template'; stage: string; template: unknown; data?: typeof cotizacionPdfData }
       | { kind: 'minimal'; stage: string }
     > = [
-      { kind: 'template', stage: 'custom-template', template: normalizeTemplateUrls(userTemplate?.settings, origin) },
+      { kind: 'template', stage: 'custom-template', template: normalizeTemplateUrls(effectiveTemplateSettings, origin) },
       { kind: 'template', stage: 'default-template', template: undefined },
       {
         kind: 'template',

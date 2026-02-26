@@ -5,6 +5,7 @@ import CotizacionPDF from '@/lib/pdf-template'
 import { verifyCotizacionShareToken } from '@/lib/share-token'
 import { createElement } from 'react'
 import { getReactPdfRenderer, pdfToBuffer } from '@/lib/react-pdf-node'
+import { requireEmpresaIdForUser } from '@/lib/rbac'
 
 export const runtime = 'nodejs'
 
@@ -132,7 +133,7 @@ export async function GET(request: NextRequest) {
       where: { id: verified.cotizacionId },
       include: {
         cliente: true,
-        vendedor: { select: { id: true, name: true, email: true, role: true, telefono: true, cargo: true, sedeDefault: { select: { nombre: true } } } },
+        vendedor: { select: { id: true, empresaId: true, name: true, email: true, role: true, telefono: true, cargo: true, sedeDefault: { select: { nombre: true } } } },
         items: { include: { material: true } },
       },
     })
@@ -141,10 +142,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Cotización no encontrada' }, { status: 404 })
     }
 
+    const vendedorEmpresaId = cotizacion.vendedor.empresaId ?? (await requireEmpresaIdForUser(cotizacion.vendedor.id))
+    const empresaTemplate = await prisma.empresaCotizacionTemplate.findUnique({
+      where: { empresaId: vendedorEmpresaId },
+      select: { settings: true },
+    })
     const template = await prisma.cotizacionTemplate.findUnique({
       where: { userId: cotizacion.vendedor.id },
       select: { settings: true },
     })
+
+    const effectiveTemplateSettings = empresaTemplate?.settings ?? template?.settings
 
     const origin = new URL(request.url).origin
 
@@ -257,7 +265,7 @@ export async function GET(request: NextRequest) {
 
     let arrayBuffer: ArrayBuffer
     try {
-      arrayBuffer = await renderPdfWithTemplate(normalizeTemplateUrls(template?.settings, origin))
+      arrayBuffer = await renderPdfWithTemplate(normalizeTemplateUrls(effectiveTemplateSettings, origin))
     } catch (e1) {
       console.warn('PDF público: falló template personalizado, reintentando con default.', e1)
       try {

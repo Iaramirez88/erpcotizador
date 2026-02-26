@@ -76,6 +76,9 @@ export default function CotizacionesPage() {
   const { t, language } = useI18n();
   const locale = language === 'en' ? 'en-US' : 'es-MX';
 
+  // La facturación electrónica aún no está habilitada: se muestran opciones, pero quedan deshabilitadas.
+  const electronicBillingEnabled = false;
+
   const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
@@ -365,6 +368,10 @@ export default function CotizacionesPage() {
   };
 
   const facturarCotizacion = async (cotizacionId: string, numero: string) => {
+    if (!electronicBillingEnabled) {
+      alert(t('quoteBuilder.preview.billingDisabled'));
+      return;
+    }
     const confirmar = window.confirm(t('quotes.confirm.createInvoice', { numero }));
     if (!confirmar) return;
 
@@ -673,7 +680,7 @@ export default function CotizacionesPage() {
                         variant="outline"
                         onClick={() => aprobarCotizacion(cot.id, cot.numero)}
                         disabled={aprobando === cot.id}
-                        title={t('quotes.actions.approve')}
+                        title={t('quotes.actions.approveToSend')}
                       >
                         {aprobando === cot.id ? (
                           <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
@@ -689,8 +696,8 @@ export default function CotizacionesPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => facturarCotizacion(cot.id, cot.numero)}
-                        disabled={facturando === cot.id}
-                        title={t('quotes.actions.createInvoice')}
+                        title={!electronicBillingEnabled ? t('quoteBuilder.preview.billingDisabled') : t('quotes.actions.createInvoice')}
+                        disabled={!electronicBillingEnabled || facturando === cot.id}
                       >
                         {facturando === cot.id ? (
                           <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />

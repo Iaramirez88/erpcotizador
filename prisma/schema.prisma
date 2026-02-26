@@ -37,6 +37,12 @@ model User {
 
   // Plantilla PDF de cotización (configurable por usuario)
   cotizacionTemplate CotizacionTemplate?
+
+  // Historial de versiones de plantilla (por usuario)
+  cotizacionTemplateVersions CotizacionTemplateVersion[]
+
+  // Versiones de plantilla por empresa creadas por este usuario
+  empresaCotizacionTemplateVersionsCreated EmpresaCotizacionTemplateVersion[] @relation("EmpresaCotizacionTemplateVersionCreatedBy")
   
   // Plantilla PDF de remisión (configurable por usuario)
   remisionTemplate RemisionTemplate?
@@ -163,6 +169,51 @@ model CotizacionTemplate {
   updatedAt DateTime @updatedAt
 
   @@map("cotizacion_templates")
+}
+
+model CotizacionTemplateVersion {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  settings Json @default("{}")
+  defaultSettings Json @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("cotizacion_template_versions")
+}
+
+model EmpresaCotizacionTemplate {
+  id       String @id @default(cuid())
+  empresaId String @unique
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  settings Json @default("{}")
+  defaultSettings Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("empresa_cotizacion_templates")
+}
+
+model EmpresaCotizacionTemplateVersion {
+  id        String @id @default(cuid())
+  empresaId  String
+  empresa    Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  createdByUserId String?
+  createdByUser   User?   @relation("EmpresaCotizacionTemplateVersionCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  settings Json @default("{}")
+  defaultSettings Json @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([empresaId, createdAt])
+  @@map("empresa_cotizacion_template_versions")
 }
 
 model RemisionTemplate {
@@ -463,6 +514,10 @@ model Empresa {
   dianDocuments DianElectronicDocument[]
 
   usuarios       User[]
+
+  // Plantilla PDF de cotización compartida por empresa
+  cotizacionTemplate EmpresaCotizacionTemplate?
+  cotizacionTemplateVersions EmpresaCotizacionTemplateVersion[]
   globalAccesses UserGlobalAccess[]
   clientes       Cliente[]
   materiales     Material[]
