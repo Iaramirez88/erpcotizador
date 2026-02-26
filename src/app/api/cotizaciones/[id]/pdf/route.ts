@@ -1,11 +1,30 @@
-import React from 'react';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { Document, Page, Text, pdf } from '@react-pdf/renderer';
+import { Document, Page, Text } from '@react-pdf/primitives';
 import CotizacionPDF from '@/lib/pdf-template';
 import { requireApiAccess } from '@/lib/api-rbac';
+import type { Prisma } from '@prisma/client';
 import { ModuleKey } from '@prisma/client';
+import { createElement } from 'react';
+import { getReactPdfRenderer, pdfToBuffer } from '@/lib/react-pdf-node';
 export const runtime = 'nodejs';
+
+type CotizacionPayload = Prisma.CotizacionGetPayload<{
+  include: {
+    cliente: true
+    vendedor: {
+      select: {
+        name: true
+        email: true
+        role: true
+        telefono: true
+        cargo: true
+        sedeDefault: { select: { nombre: true } }
+      }
+    }
+    items: { include: { material: true } }
+  }
+}>;
 
 function normalizePublicUrl(value: unknown, origin: string): string | null {
   if (typeof value !== 'string') return null
@@ -26,6 +45,10 @@ function sanitizeText(value: unknown, fallback = ''): string {
   // Remove control chars that can break PDF layout engines; keep \t, \n, \r.
   const cleaned = raw.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, '')
   return cleaned || fallback
+}
+
+function bufferToArrayBuffer(buffer: Buffer): ArrayBuffer {
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer
 }
 
 type ItemRecord = Record<string, unknown> & { material?: unknown; imagenUrl?: unknown }
@@ -104,7 +127,7 @@ export async function GET(
 
     const origin = new URL(request.url).origin
 
-    const cotizacion = await prisma.cotizacion.findUnique({
+    const cotizacion = (await prisma.cotizacion.findUnique({
       where: { id },
       include: {
         cliente: true,
@@ -112,6 +135,10 @@ export async function GET(
           select: {
             name: true,
             email: true,
+            role: true,
+            telefono: true,
+            cargo: true,
+            sedeDefault: { select: { nombre: true } },
           },
         },
         items: {
@@ -120,7 +147,7 @@ export async function GET(
           },
         },
       },
-    });
+    })) as CotizacionPayload | null;
 
     if (!cotizacion) {
       return NextResponse.json({ error: 'Cotización no encontrada' }, { status: 404 });
@@ -151,6 +178,10 @@ export async function GET(
         vendedor: {
           name: sanitizeText(cotizacion.vendedor?.name, '') || null,
           email: sanitizeText(cotizacion.vendedor?.email, '') || null,
+          role: sanitizeText(cotizacion.vendedor?.role, '') || null,
+          telefono: sanitizeText(cotizacion.vendedor?.telefono, '') || null,
+          cargo: sanitizeText(cotizacion.vendedor?.cargo, '') || null,
+          sedeNombre: sanitizeText(cotizacion.vendedor?.sedeDefault?.nombre, '') || null,
         },
         items: cotizacion.items.map((item) => {
           const unidadRaw = sanitizeText(item.unidad, 'unidad').trim()
@@ -199,38 +230,48 @@ export async function GET(
       }
 
     async function renderPdfWithTemplate(templateSettings: unknown, dataOverride?: typeof cotizacionPdfData) {
+      const renderer = await getReactPdfRenderer()
       const pdfDoc = CotizacionPDF({
+        pdf: {
+          Document: renderer.Document,
+          Page: renderer.Page,
+          Text: renderer.Text,
+          View: renderer.View,
+          Image: renderer.Image,
+          StyleSheet: renderer.StyleSheet,
+        },
         cotizacion: dataOverride ?? cotizacionPdfData,
         template: templateSettings,
       })
 
-      const stream = await pdf(pdfDoc).toBuffer()
-      return new Response(stream as unknown as BodyInit).arrayBuffer()
+      const buffer = await pdfToBuffer(pdfDoc)
+      return bufferToArrayBuffer(buffer)
     }
 
     async function renderMinimalPdf() {
-      const minimalDoc = React.createElement(
+      const minimalDoc = createElement(
         Document,
         null,
-        React.createElement(
+        createElement(
           Page,
           { size: 'A4', style: { padding: 40, fontSize: 12, fontFamily: 'Helvetica' } },
-          React.createElement(
+          createElement(
             Text,
             { style: { fontSize: 16, fontWeight: 'bold', marginBottom: 8 } },
             'COTIZACIÓN'
           ),
-          React.createElement(Text, null, `Número: ${cotizacionPdfData.numero}`),
-          React.createElement(Text, null, `Cliente: ${cotizacionPdfData.cliente.nombre}`),
-          React.createElement(
+          createElement(Text, null, `Número: ${cotizacionPdfData.numero}`),
+          createElement(Text, null, `Cliente: ${cotizacionPdfData.cliente.nombre}`),
+          createElement(
             Text,
             { style: { marginTop: 10 } },
             'Nota: No se pudo renderizar el template completo.'
           )
         )
       )
-      const stream = await pdf(minimalDoc).toBuffer()
-      return new Response(stream as unknown as BodyInit).arrayBuffer()
+
+      const buffer = await pdfToBuffer(minimalDoc)
+      return bufferToArrayBuffer(buffer)
     }
 
     const attempts: Array<

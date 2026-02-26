@@ -12,6 +12,7 @@ import { LeaveWorkspaceCard } from '@/components/profile/leave-workspace-card'
 import { WorkspaceAccessCard } from '@/components/profile/workspace-access-card'
 import { getServerLanguage } from '@/lib/i18n/server'
 import { translate, type UiLanguage } from '@/lib/i18n/messages'
+import { resolveUserIdFromSession } from '@/lib/session-user'
 
 function fmtDate(date: Date | null | undefined, locale: string, naText: string) {
   if (!date) return naText
@@ -40,16 +41,11 @@ export default async function PerfilPage() {
   const session = await auth()
   if (!session?.user) redirect('/auth/login')
 
-  const sessionUserId = session.user.id
-  const sessionEmail = session.user.email
+  const userId = await resolveUserIdFromSession(session)
+  if (!userId) redirect('/auth/login')
 
-  const user = await prisma.user.findFirst({
-    where: {
-      OR: [
-        ...(sessionUserId ? [{ id: sessionUserId }] : []),
-        ...(sessionEmail ? [{ email: sessionEmail }] : []),
-      ],
-    },
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
     select: {
       id: true,
       name: true,
@@ -57,6 +53,9 @@ export default async function PerfilPage() {
       emailVerified: true,
       role: true,
       image: true,
+      telefono: true,
+      cargo: true,
+      sedeDefaultId: true,
       createdAt: true,
       updatedAt: true,
       empresa: { select: { id: true, nombre: true, planTier: true, billingCycle: true, planValidUntil: true } },
@@ -150,7 +149,13 @@ export default async function PerfilPage() {
                   <CardTitle className="text-sm">{t('profile.section.edit')}</CardTitle>
                 </CardHeader>
                 <CardContent className="pt-0">
-                  <ProfileBasicsForm initialName={user.name} />
+                  <ProfileBasicsForm
+                    initialName={user.name}
+                    initialTelefono={user.telefono}
+                    initialCargo={user.cargo}
+                    initialSedeDefaultId={user.sedeDefaultId}
+                    sedes={user.sedeMemberships.map((m) => m.sede)}
+                  />
                 </CardContent>
               </Card>
 

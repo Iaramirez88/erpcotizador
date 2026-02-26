@@ -17,7 +17,7 @@ function shouldIgnoreAnchor(anchor: HTMLAnchorElement) {
 }
 
 export default function RouteLoadingStartListener() {
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ''
   const setRouteLoading = useUiStore((s) => s.setRouteLoading)
 
   useEffect(() => {

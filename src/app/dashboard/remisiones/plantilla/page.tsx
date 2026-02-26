@@ -18,6 +18,7 @@ import { useToast } from '@/hooks/use-toast'
 import {
   RemisionTemplateSettings,
   DEFAULT_REMISION_TEMPLATE,
+  mergeRemisionTemplateSettings,
   RemisionPageSize,
   RemisionOrientation,
   RemisionFontFamily,
@@ -32,7 +33,7 @@ const PDFViewer = dynamic(
 )
 
 // Importación del componente PDF
-import { RemisionPDF } from '@/lib/remision-pdf-template'
+import { RemisionPDF } from '@/lib/remision-pdf-template.client'
 
 // Datos de ejemplo para el preview
 const EJEMPLO_REMISION = {
@@ -100,7 +101,7 @@ export default function PlantillaRemisionesPage() {
       const res = await fetch('/api/remisiones/template')
       if (!res.ok) throw new Error('Error al cargar plantilla')
       const data = await res.json()
-      setSettings(data.settings)
+      setSettings(mergeRemisionTemplateSettings(data.settings ?? DEFAULT_REMISION_TEMPLATE))
       if (data.settings.header?.logo) {
         setLogoBase64(data.settings.header.logo)
       }
@@ -149,7 +150,7 @@ export default function PlantillaRemisionesPage() {
       if (!res.ok) throw new Error('Error al resetear')
 
       const data = await res.json()
-      setSettings(data.settings)
+      setSettings(mergeRemisionTemplateSettings(data.settings ?? DEFAULT_REMISION_TEMPLATE))
       setLogoBase64('')
 
       toast({
@@ -294,31 +295,220 @@ export default function PlantillaRemisionesPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-2">
-                      <Label>Margen Horizontal</Label>
-                      <Input
-                        type="number"
-                        value={settings.page.marginHorizontal}
-                        onChange={(e) =>
-                          setSettings((prev) => ({
-                            ...prev,
-                            page: { ...prev.page, marginHorizontal: Number(e.target.value) },
-                          }))
-                        }
-                      />
+                    <div className="col-span-2 space-y-2">
+                      <Label>Margen (por lado)</Label>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Arriba</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={120}
+                            value={settings.page.marginSides?.top ?? settings.page.marginVertical ?? settings.page.padding}
+                            onChange={(e) =>
+                              setSettings((prev) => {
+                                const base =
+                                  prev.page.marginSides ??
+                                  ({
+                                    top: prev.page.marginVertical ?? prev.page.padding,
+                                    right: prev.page.marginHorizontal ?? prev.page.padding,
+                                    bottom: prev.page.marginVertical ?? prev.page.padding,
+                                    left: prev.page.marginHorizontal ?? prev.page.padding,
+                                  } as const)
+                                const next = { ...base, top: Number(e.target.value) }
+                                const avgH = Math.round((next.left + next.right) / 2)
+                                const avgV = Math.round((next.top + next.bottom) / 2)
+                                const avgAll = Math.round((next.top + next.right + next.bottom + next.left) / 4)
+                                return {
+                                  ...prev,
+                                  page: {
+                                    ...prev.page,
+                                    padding: avgAll,
+                                    marginHorizontal: avgH,
+                                    marginVertical: avgV,
+                                    marginSides: next,
+                                  },
+                                }
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Derecha</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={120}
+                            value={settings.page.marginSides?.right ?? settings.page.marginHorizontal ?? settings.page.padding}
+                            onChange={(e) =>
+                              setSettings((prev) => {
+                                const base =
+                                  prev.page.marginSides ??
+                                  ({
+                                    top: prev.page.marginVertical ?? prev.page.padding,
+                                    right: prev.page.marginHorizontal ?? prev.page.padding,
+                                    bottom: prev.page.marginVertical ?? prev.page.padding,
+                                    left: prev.page.marginHorizontal ?? prev.page.padding,
+                                  } as const)
+                                const next = { ...base, right: Number(e.target.value) }
+                                const avgH = Math.round((next.left + next.right) / 2)
+                                const avgV = Math.round((next.top + next.bottom) / 2)
+                                const avgAll = Math.round((next.top + next.right + next.bottom + next.left) / 4)
+                                return {
+                                  ...prev,
+                                  page: {
+                                    ...prev.page,
+                                    padding: avgAll,
+                                    marginHorizontal: avgH,
+                                    marginVertical: avgV,
+                                    marginSides: next,
+                                  },
+                                }
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Abajo</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={120}
+                            value={settings.page.marginSides?.bottom ?? settings.page.marginVertical ?? settings.page.padding}
+                            onChange={(e) =>
+                              setSettings((prev) => {
+                                const base =
+                                  prev.page.marginSides ??
+                                  ({
+                                    top: prev.page.marginVertical ?? prev.page.padding,
+                                    right: prev.page.marginHorizontal ?? prev.page.padding,
+                                    bottom: prev.page.marginVertical ?? prev.page.padding,
+                                    left: prev.page.marginHorizontal ?? prev.page.padding,
+                                  } as const)
+                                const next = { ...base, bottom: Number(e.target.value) }
+                                const avgH = Math.round((next.left + next.right) / 2)
+                                const avgV = Math.round((next.top + next.bottom) / 2)
+                                const avgAll = Math.round((next.top + next.right + next.bottom + next.left) / 4)
+                                return {
+                                  ...prev,
+                                  page: {
+                                    ...prev.page,
+                                    padding: avgAll,
+                                    marginHorizontal: avgH,
+                                    marginVertical: avgV,
+                                    marginSides: next,
+                                  },
+                                }
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Izquierda</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={120}
+                            value={settings.page.marginSides?.left ?? settings.page.marginHorizontal ?? settings.page.padding}
+                            onChange={(e) =>
+                              setSettings((prev) => {
+                                const base =
+                                  prev.page.marginSides ??
+                                  ({
+                                    top: prev.page.marginVertical ?? prev.page.padding,
+                                    right: prev.page.marginHorizontal ?? prev.page.padding,
+                                    bottom: prev.page.marginVertical ?? prev.page.padding,
+                                    left: prev.page.marginHorizontal ?? prev.page.padding,
+                                  } as const)
+                                const next = { ...base, left: Number(e.target.value) }
+                                const avgH = Math.round((next.left + next.right) / 2)
+                                const avgV = Math.round((next.top + next.bottom) / 2)
+                                const avgAll = Math.round((next.top + next.right + next.bottom + next.left) / 4)
+                                return {
+                                  ...prev,
+                                  page: {
+                                    ...prev.page,
+                                    padding: avgAll,
+                                    marginHorizontal: avgH,
+                                    marginVertical: avgV,
+                                    marginSides: next,
+                                  },
+                                }
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Margen Vertical</Label>
-                      <Input
-                        type="number"
-                        value={settings.page.marginVertical}
-                        onChange={(e) =>
-                          setSettings((prev) => ({
-                            ...prev,
-                            page: { ...prev.page, marginVertical: Number(e.target.value) },
-                          }))
-                        }
-                      />
+
+                    <div className="col-span-2 space-y-2">
+                      <Label>Padding (por lado)</Label>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Arriba</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={120}
+                            value={settings.page.paddingSides?.top ?? 0}
+                            onChange={(e) =>
+                              setSettings((prev) => {
+                                const base = prev.page.paddingSides ?? ({ top: 0, right: 0, bottom: 0, left: 0 } as const)
+                                const next = { ...base, top: Number(e.target.value) }
+                                return { ...prev, page: { ...prev.page, paddingSides: next } }
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Derecha</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={120}
+                            value={settings.page.paddingSides?.right ?? 0}
+                            onChange={(e) =>
+                              setSettings((prev) => {
+                                const base = prev.page.paddingSides ?? ({ top: 0, right: 0, bottom: 0, left: 0 } as const)
+                                const next = { ...base, right: Number(e.target.value) }
+                                return { ...prev, page: { ...prev.page, paddingSides: next } }
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Abajo</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={120}
+                            value={settings.page.paddingSides?.bottom ?? 0}
+                            onChange={(e) =>
+                              setSettings((prev) => {
+                                const base = prev.page.paddingSides ?? ({ top: 0, right: 0, bottom: 0, left: 0 } as const)
+                                const next = { ...base, bottom: Number(e.target.value) }
+                                return { ...prev, page: { ...prev.page, paddingSides: next } }
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Izquierda</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={120}
+                            value={settings.page.paddingSides?.left ?? 0}
+                            onChange={(e) =>
+                              setSettings((prev) => {
+                                const base = prev.page.paddingSides ?? ({ top: 0, right: 0, bottom: 0, left: 0 } as const)
+                                const next = { ...base, left: Number(e.target.value) }
+                                return { ...prev, page: { ...prev.page, paddingSides: next } }
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </CardContent>

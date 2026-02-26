@@ -1,14 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import dynamic from 'next/dynamic'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import CotizacionPDF from '@/lib/pdf-template'
+import type { CotizacionPdfData } from '@/lib/pdf-template'
 import {
   CotizacionFontFamily,
   CotizacionOrientation,
@@ -18,11 +17,6 @@ import {
   mergeCotizacionTemplateSettings,
 } from '@/lib/cotizacion-template'
 
-const PDFViewer = dynamic(async () => {
-  const mod = await import('@react-pdf/renderer')
-  return mod.PDFViewer
-}, { ssr: false })
-
 const CURRENCY_PRESETS: Array<{ label: string; locale: string; currency: string }> = [
   { label: 'COP (Pesos colombianos)', locale: 'es-CO', currency: 'COP' },
   { label: 'USD (Dólares)', locale: 'en-US', currency: 'USD' },
@@ -30,7 +24,7 @@ const CURRENCY_PRESETS: Array<{ label: string; locale: string; currency: string 
   { label: 'MXN (Pesos mexicanos)', locale: 'es-MX', currency: 'MXN' },
 ]
 
-type TemplateResponse = { success: boolean; data?: { settings?: unknown } }
+type TemplateResponse = { success: boolean; data?: { settings?: unknown; defaultSettings?: unknown } }
 
 type SectionCardProps = {
   title: string
@@ -64,6 +58,12 @@ export default function PlantillaCotizacionPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [settings, setSettings] = useState<CotizacionTemplateSettings>(DEFAULT_COTIZACION_TEMPLATE)
+  const [defaultSettings, setDefaultSettings] = useState<CotizacionTemplateSettings>(DEFAULT_COTIZACION_TEMPLATE)
+
+  const previewUrlRef = useRef<string | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
 
   const [mockObservaciones, setMockObservaciones] = useState<string>(
     'Observación de ejemplo: tiempos de entrega sujetos a confirmación.'
@@ -82,7 +82,9 @@ export default function PlantillaCotizacionPage() {
         const res = await fetch('/api/templates/cotizacion')
         const json: TemplateResponse = await res.json().catch(() => ({ success: false }))
         const next = mergeCotizacionTemplateSettings(json?.data?.settings ?? DEFAULT_COTIZACION_TEMPLATE)
+        const nextDefault = mergeCotizacionTemplateSettings(json?.data?.defaultSettings ?? DEFAULT_COTIZACION_TEMPLATE)
         if (!cancelled) setSettings(next)
+        if (!cancelled) setDefaultSettings(nextDefault)
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -93,7 +95,7 @@ export default function PlantillaCotizacionPage() {
     }
   }, [])
 
-  const mockCotizacion = useMemo<Parameters<typeof CotizacionPDF>[0]['cotizacion']>(() => {
+  const mockCotizacion = useMemo<CotizacionPdfData>(() => {
     const now = new Date()
     return {
       numero: 'COT-2026-0001',
@@ -173,6 +175,10 @@ export default function PlantillaCotizacionPage() {
     return [
       settings.page.backgroundImageUrl ? 'bg1' : 'bg0',
       String(settings.page.backgroundImageOpacity ?? 1),
+      `m:${String(settings.page.marginSides?.top ?? settings.page.padding)}:${String(settings.page.marginSides?.right ?? settings.page.padding)}:${String(settings.page.marginSides?.bottom ?? settings.page.padding)}:${String(settings.page.marginSides?.left ?? settings.page.padding)}`,
+      `p:${String(settings.page.paddingSides?.top ?? 0)}:${String(settings.page.paddingSides?.right ?? 0)}:${String(settings.page.paddingSides?.bottom ?? 0)}:${String(settings.page.paddingSides?.left ?? 0)}`,
+      `sa:${String(settings.page.safeAreaSides?.top ?? 0)}:${String(settings.page.safeAreaSides?.right ?? 0)}:${String(settings.page.safeAreaSides?.bottom ?? 0)}:${String(settings.page.safeAreaSides?.left ?? 0)}`,
+      `ih:${String(settings.page.useInfoAreaHeightPct ?? false)}:${String(settings.page.infoAreaHeightPct ?? 0.75)}`,
       watermarkEnabled ? 'wm1' : 'wm0',
       settings.watermark.mode,
       settings.watermark.useLogo ? 'wml1' : 'wml0',
@@ -189,6 +195,8 @@ export default function PlantillaCotizacionPage() {
       showClienteEmpresa ? 'cemp1' : 'cemp0',
       showEstado ? 'es1' : 'es0',
       showObservaciones ? 'ob1' : 'ob0',
+      `vb:${settings.blocks.vendedor.side}:${String(settings.blocks.vendedor.widthPct)}:${String(settings.blocks.vendedor.telefonoOverride ?? '')}:${String(settings.blocks.vendedor.cargoOverride ?? '')}`,
+      `cb:${settings.blocks.cliente.side}:${String(settings.blocks.cliente.widthPct)}`,
     ].join('|')
   }, [
     headerRightLinesJoined,
@@ -202,14 +210,90 @@ export default function PlantillaCotizacionPage() {
     showVendedor,
     settings.header.right.logoUrl,
     settings.header.right.showLogo,
+    settings.page.padding,
+    settings.page.marginSides?.top,
+    settings.page.marginSides?.right,
+    settings.page.marginSides?.bottom,
+    settings.page.marginSides?.left,
+    settings.page.paddingSides?.top,
+    settings.page.paddingSides?.right,
+    settings.page.paddingSides?.bottom,
+    settings.page.paddingSides?.left,
+    settings.page.safeAreaSides?.top,
+    settings.page.safeAreaSides?.right,
+    settings.page.safeAreaSides?.bottom,
+    settings.page.safeAreaSides?.left,
     settings.page.backgroundImageOpacity,
     settings.page.backgroundImageUrl,
     settings.watermark.imageUrl,
+    settings.page.infoAreaHeightPct,
     settings.watermark.mode,
     settings.watermark.scale,
     settings.watermark.useLogo,
     watermarkEnabled,
+    settings.blocks.vendedor.side,
+    settings.blocks.vendedor.widthPct,
+    settings.blocks.vendedor.telefonoOverride,
+    settings.blocks.vendedor.cargoOverride,
+    settings.blocks.cliente.side,
+    settings.blocks.cliente.widthPct,
   ])
+
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current)
+        previewUrlRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    const ctrl = new AbortController()
+    const timer = setTimeout(async () => {
+      setPreviewLoading(true)
+      setPreviewError(null)
+      try {
+        const res = await fetch('/api/templates/cotizacion/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ settings, cotizacion: mockCotizacion }),
+          signal: ctrl.signal,
+        })
+
+        if (!res.ok) {
+          const contentType = res.headers.get('content-type') ?? ''
+          if (contentType.includes('application/json')) {
+            const json = (await res.json().catch(() => null)) as null | { error?: string; details?: string }
+            const msg = json?.error || json?.details
+            throw new Error(msg || `HTTP ${res.status}`)
+          }
+          const msg = await res.text().catch(() => '')
+          throw new Error(msg || `HTTP ${res.status}`)
+        }
+
+        const blob = await res.blob()
+        const nextUrl = URL.createObjectURL(blob)
+
+        if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+        previewUrlRef.current = nextUrl
+        setPreviewUrl(nextUrl)
+      } catch (err) {
+        if (ctrl.signal.aborted) return
+        setPreviewUrl(null)
+        const message = err instanceof Error ? err.message : null
+        setPreviewError(message ? `No se pudo generar la vista previa. (${message})` : 'No se pudo generar la vista previa.')
+      } finally {
+        if (!ctrl.signal.aborted) setPreviewLoading(false)
+      }
+    }, 250)
+
+    return () => {
+      ctrl.abort()
+      clearTimeout(timer)
+    }
+  }, [settings, mockCotizacion, pdfViewerKey])
 
   async function save() {
     setSaving(true)
@@ -219,6 +303,23 @@ export default function PlantillaCotizacionPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ settings }),
       })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveAsDefault() {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/templates/cotizacion', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultSettings: settings }),
+      })
+      const json = (await res.json().catch(() => null)) as TemplateResponse | null
+      if (json?.success) {
+        setDefaultSettings(mergeCotizacionTemplateSettings(json?.data?.defaultSettings ?? settings))
+      }
     } finally {
       setSaving(false)
     }
@@ -268,6 +369,54 @@ export default function PlantillaCotizacionPage() {
     })
   }
 
+  async function blobToDataUrl(blob: Blob) {
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result ?? ''))
+      reader.onerror = () => reject(new Error('No se pudo leer el blob'))
+      reader.readAsDataURL(blob)
+    })
+  }
+
+  async function fileToPdfSafeBackgroundDataUrl(file: File) {
+    if (file.type === 'image/svg+xml') {
+      const text = await file.text()
+      return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`
+    }
+
+    // react-pdf es más confiable con JPEG/PNG. Para evitar fallos (p.ej. WEBP)
+    // y reducir el tamaño del POST al preview, re-encodamos a JPEG y limitamos dimensiones.
+    const maxDim = 1600
+    const quality = 0.82
+
+    // createImageBitmap suele soportar más formatos y es rápido.
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height))
+    const targetW = Math.max(1, Math.round(bitmap.width * scale))
+    const targetH = Math.max(1, Math.round(bitmap.height * scale))
+
+    const canvas = document.createElement('canvas')
+    canvas.width = targetW
+    canvas.height = targetH
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('No se pudo inicializar canvas')
+
+    // Fondo blanco por si la imagen tiene transparencia (JPEG no la soporta)
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, targetW, targetH)
+    ctx.drawImage(bitmap, 0, 0, targetW, targetH)
+
+    const outBlob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('No se pudo convertir la imagen'))),
+        'image/jpeg',
+        quality
+      )
+    })
+
+    return await blobToDataUrl(outBlob)
+  }
+
   async function onHeaderRightLogoFileChange(file: File | null) {
     if (!file) return
     const maxBytes = 2 * 1024 * 1024
@@ -304,7 +453,14 @@ export default function PlantillaCotizacionPage() {
       alert('La imagen de fondo es muy grande. Intenta con una imagen más liviana (≤ 4MB).')
       return
     }
-    const dataUrl = await fileToDataUrl(file)
+
+    let dataUrl = ''
+    try {
+      dataUrl = await fileToPdfSafeBackgroundDataUrl(file)
+    } catch {
+      // Fallback: usar el Data URL original si falla la conversión.
+      dataUrl = await fileToDataUrl(file)
+    }
     setSettings((s) => ({
       ...s,
       page: { ...s.page, backgroundImageUrl: dataUrl },
@@ -334,6 +490,12 @@ export default function PlantillaCotizacionPage() {
           </Button>
           <Button type="button" variant="outline" onClick={() => setSettings(DEFAULT_COTIZACION_TEMPLATE)}>
             Restablecer
+          </Button>
+          <Button type="button" variant="outline" onClick={() => setSettings(defaultSettings)}>
+            Usar predeterminada
+          </Button>
+          <Button type="button" variant="outline" onClick={() => void saveAsDefault()} disabled={saving}>
+            Guardar como predeterminada
           </Button>
           <Button type="button" onClick={save} disabled={saving}>
             {saving ? 'Guardando…' : 'Guardar'}
@@ -377,15 +539,156 @@ export default function PlantillaCotizacionPage() {
                   <option value="landscape">Horizontal</option>
                 </select>
               </div>
-              <div className="space-y-2">
-                <Label>Margen/Padding</Label>
-                <Input
-                  type="number"
-                  min={12}
-                  max={80}
-                  value={settings.page.padding}
-                  onChange={(e) => setSettings((s) => ({ ...s, page: { ...s.page, padding: Number(e.target.value) } }))}
-                />
+              <div className="md:col-span-3 space-y-2">
+                <Label>Margen (por lado)</Label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Arriba</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={120}
+                      value={settings.page.marginSides?.top ?? settings.page.padding}
+                      onChange={(e) =>
+                        setSettings((s) => {
+                          const current =
+                            s.page.marginSides ??
+                            ({ top: s.page.padding, right: s.page.padding, bottom: s.page.padding, left: s.page.padding } as const)
+                          const next = { ...current, top: Number(e.target.value) }
+                          const avg = Math.round((next.top + next.right + next.bottom + next.left) / 4)
+                          return { ...s, page: { ...s.page, padding: avg, marginSides: next } }
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Derecha</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={120}
+                      value={settings.page.marginSides?.right ?? settings.page.padding}
+                      onChange={(e) =>
+                        setSettings((s) => {
+                          const current =
+                            s.page.marginSides ??
+                            ({ top: s.page.padding, right: s.page.padding, bottom: s.page.padding, left: s.page.padding } as const)
+                          const next = { ...current, right: Number(e.target.value) }
+                          const avg = Math.round((next.top + next.right + next.bottom + next.left) / 4)
+                          return { ...s, page: { ...s.page, padding: avg, marginSides: next } }
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Abajo</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={120}
+                      value={settings.page.marginSides?.bottom ?? settings.page.padding}
+                      onChange={(e) =>
+                        setSettings((s) => {
+                          const current =
+                            s.page.marginSides ??
+                            ({ top: s.page.padding, right: s.page.padding, bottom: s.page.padding, left: s.page.padding } as const)
+                          const next = { ...current, bottom: Number(e.target.value) }
+                          const avg = Math.round((next.top + next.right + next.bottom + next.left) / 4)
+                          return { ...s, page: { ...s.page, padding: avg, marginSides: next } }
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Izquierda</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={120}
+                      value={settings.page.marginSides?.left ?? settings.page.padding}
+                      onChange={(e) =>
+                        setSettings((s) => {
+                          const current =
+                            s.page.marginSides ??
+                            ({ top: s.page.padding, right: s.page.padding, bottom: s.page.padding, left: s.page.padding } as const)
+                          const next = { ...current, left: Number(e.target.value) }
+                          const avg = Math.round((next.top + next.right + next.bottom + next.left) / 4)
+                          return { ...s, page: { ...s.page, padding: avg, marginSides: next } }
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="md:col-span-3 space-y-2">
+                <Label>Padding (por lado)</Label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Arriba</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={120}
+                      value={settings.page.paddingSides?.top ?? 0}
+                      onChange={(e) =>
+                        setSettings((s) => {
+                          const current = s.page.paddingSides ?? ({ top: 0, right: 0, bottom: 0, left: 0 } as const)
+                          const next = { ...current, top: Number(e.target.value) }
+                          return { ...s, page: { ...s.page, paddingSides: next } }
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Derecha</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={120}
+                      value={settings.page.paddingSides?.right ?? 0}
+                      onChange={(e) =>
+                        setSettings((s) => {
+                          const current = s.page.paddingSides ?? ({ top: 0, right: 0, bottom: 0, left: 0 } as const)
+                          const next = { ...current, right: Number(e.target.value) }
+                          return { ...s, page: { ...s.page, paddingSides: next } }
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Abajo</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={120}
+                      value={settings.page.paddingSides?.bottom ?? 0}
+                      onChange={(e) =>
+                        setSettings((s) => {
+                          const current = s.page.paddingSides ?? ({ top: 0, right: 0, bottom: 0, left: 0 } as const)
+                          const next = { ...current, bottom: Number(e.target.value) }
+                          return { ...s, page: { ...s.page, paddingSides: next } }
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Izquierda</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={120}
+                      value={settings.page.paddingSides?.left ?? 0}
+                      onChange={(e) =>
+                        setSettings((s) => {
+                          const current = s.page.paddingSides ?? ({ top: 0, right: 0, bottom: 0, left: 0 } as const)
+                          const next = { ...current, left: Number(e.target.value) }
+                          return { ...s, page: { ...s.page, paddingSides: next } }
+                        })
+                      }
+                    />
+                  </div>
+                </div>
               </div>
               <div className="md:col-span-3 space-y-2">
                 <Label>Imagen de fondo (opcional)</Label>
@@ -439,6 +742,119 @@ export default function PlantillaCotizacionPage() {
                         Quitar fondo
                       </Button>
                     </div>
+
+                <div className="md:col-span-3 space-y-2">
+                  <Label>Área segura del membrete (por lado)</Label>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={settings.page.useInfoAreaHeightPct ?? false}
+                        onChange={(e) =>
+                          setSettings((s) => ({
+                            ...s,
+                            page: { ...s.page, useInfoAreaHeightPct: e.target.checked },
+                          }))
+                        }
+                      />
+                      Forzar área de información por altura (75% por defecto)
+                    </label>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">% información</Label>
+                        <Input
+                          type="number"
+                          min={50}
+                          max={95}
+                          step={1}
+                          value={Math.round((settings.page.infoAreaHeightPct ?? 0.75) * 100)}
+                          onChange={(e) => {
+                            const pct = Number(e.target.value)
+                            setSettings((s) => ({
+                              ...s,
+                              page: { ...s.page, infoAreaHeightPct: pct / 100 },
+                            }))
+                          }}
+                        />
+                      </div>
+                      <div className="md:col-span-3 text-xs text-gray-500">
+                        Reserva automáticamente el espacio superior/inferior para que el contenido quede dentro del % definido.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Arriba</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={250}
+                        value={settings.page.safeAreaSides?.top ?? 0}
+                        onChange={(e) =>
+                          setSettings((s) => {
+                            const current = s.page.safeAreaSides ?? ({ top: 0, right: 0, bottom: 0, left: 0 } as const)
+                            const next = { ...current, top: Number(e.target.value) }
+                            return { ...s, page: { ...s.page, safeAreaSides: next } }
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Derecha</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={250}
+                        value={settings.page.safeAreaSides?.right ?? 0}
+                        onChange={(e) =>
+                          setSettings((s) => {
+                            const current = s.page.safeAreaSides ?? ({ top: 0, right: 0, bottom: 0, left: 0 } as const)
+                            const next = { ...current, right: Number(e.target.value) }
+                            return { ...s, page: { ...s.page, safeAreaSides: next } }
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Abajo</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={250}
+                        value={settings.page.safeAreaSides?.bottom ?? 0}
+                        onChange={(e) =>
+                          setSettings((s) => {
+                            const current = s.page.safeAreaSides ?? ({ top: 0, right: 0, bottom: 0, left: 0 } as const)
+                            const next = { ...current, bottom: Number(e.target.value) }
+                            return { ...s, page: { ...s.page, safeAreaSides: next } }
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Izquierda</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={250}
+                        value={settings.page.safeAreaSides?.left ?? 0}
+                        onChange={(e) =>
+                          setSettings((s) => {
+                            const current = s.page.safeAreaSides ?? ({ top: 0, right: 0, bottom: 0, left: 0 } as const)
+                            const next = { ...current, left: Number(e.target.value) }
+                            return { ...s, page: { ...s.page, safeAreaSides: next } }
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Úsalo para reservar el espacio del membrete (fondo). El contenido se empuja y, si no cabe, pasa a la siguiente hoja.
+                  </p>
+                </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
@@ -881,6 +1297,44 @@ export default function PlantillaCotizacionPage() {
                   rows={3}
                 />
               </div>
+
+              <div className="space-y-2">
+                <Label>Espacio inferior del footer (px)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={200}
+                  value={settings.footer.bottomOffset ?? 0}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      footer: { ...s.footer, bottomOffset: Number(e.target.value || 0) },
+                    }))
+                  }
+                />
+                <p className="text-xs text-gray-500">
+                  Aumenta este valor si el texto del footer se monta sobre el fondo.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Espacio reservado para el footer (px)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={260}
+                  value={(settings.footer as any).reserveHeight ?? 60}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      footer: { ...s.footer, reserveHeight: Number(e.target.value || 0) },
+                    }))
+                  }
+                />
+                <p className="text-xs text-gray-500">
+                  Este espacio evita que el contenido (p. ej. Observaciones) quede debajo del footer en páginas largas.
+                </p>
+              </div>
           </SectionCard>
 
           <SectionCard title="Contenido (vista previa)" contentClassName="pt-0 grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1130,17 +1584,148 @@ export default function PlantillaCotizacionPage() {
                 </label>
               ))}
           </SectionCard>
+
+          <SectionCard title="Bloques (Vendedor / Cliente)" contentClassName="pt-0 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Vendedor: lado</Label>
+                <select
+                  className="px-3 py-2 border rounded-md w-full"
+                  value={settings.blocks.vendedor.side}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      blocks: {
+                        ...s.blocks,
+                        vendedor: { ...s.blocks.vendedor, side: e.target.value as 'left' | 'right' },
+                      },
+                    }))
+                  }
+                >
+                  <option value="left">Izquierdo</option>
+                  <option value="right">Derecho</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Vendedor: ancho</Label>
+                <select
+                  className="px-3 py-2 border rounded-md w-full"
+                  value={settings.blocks.vendedor.widthPct}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      blocks: {
+                        ...s.blocks,
+                        vendedor: { ...s.blocks.vendedor, widthPct: Number(e.target.value) as 25 | 50 | 75 | 100 },
+                      },
+                    }))
+                  }
+                >
+                  <option value={25}>25%</option>
+                  <option value={50}>50%</option>
+                  <option value={75}>75%</option>
+                  <option value={100}>100%</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Vendedor: teléfono (override)</Label>
+                <Input
+                  value={settings.blocks.vendedor.telefonoOverride ?? ''}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      blocks: {
+                        ...s.blocks,
+                        vendedor: { ...s.blocks.vendedor, telefonoOverride: e.target.value },
+                      },
+                    }))
+                  }
+                  placeholder="Ej: 300 000 0000"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Vendedor: cargo (override)</Label>
+                <Input
+                  value={settings.blocks.vendedor.cargoOverride ?? ''}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      blocks: {
+                        ...s.blocks,
+                        vendedor: { ...s.blocks.vendedor, cargoOverride: e.target.value },
+                      },
+                    }))
+                  }
+                  placeholder="Ej: Asesor comercial"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Cliente: lado</Label>
+                <select
+                  className="px-3 py-2 border rounded-md w-full"
+                  value={settings.blocks.cliente.side}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      blocks: {
+                        ...s.blocks,
+                        cliente: { ...s.blocks.cliente, side: e.target.value as 'left' | 'right' },
+                      },
+                    }))
+                  }
+                >
+                  <option value="left">Izquierdo</option>
+                  <option value="right">Derecho</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Cliente: ancho</Label>
+                <select
+                  className="px-3 py-2 border rounded-md w-full"
+                  value={settings.blocks.cliente.widthPct}
+                  onChange={(e) =>
+                    setSettings((s) => ({
+                      ...s,
+                      blocks: {
+                        ...s.blocks,
+                        cliente: { ...s.blocks.cliente, widthPct: Number(e.target.value) as 25 | 50 | 75 | 100 },
+                      },
+                    }))
+                  }
+                >
+                  <option value={25}>25%</option>
+                  <option value={50}>50%</option>
+                  <option value={75}>75%</option>
+                  <option value={100}>100%</option>
+                </select>
+              </div>
+            </div>
+          </SectionCard>
         </div>
 
         <SectionCard title="Vista previa" defaultOpen contentClassName="pt-0">
-            <div className="w-full h-[760px] border rounded-md overflow-hidden">
-              <PDFViewer width="100%" height="100%" key={pdfViewerKey}>
-                <CotizacionPDF cotizacion={mockCotizacion} template={settings} />
-              </PDFViewer>
-            </div>
-            <p className="text-xs text-gray-500 mt-2">
-              La vista previa es una cotización de ejemplo. Al descargar/enviar un PDF real se aplicarán estos ajustes.
-            </p>
+          <div className="w-full h-[760px] border rounded-md overflow-hidden" key={pdfViewerKey}>
+            {previewLoading ? (
+              <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground">Generando vista previa…</div>
+            ) : null}
+            {!previewLoading && previewError ? (
+              <div className="w-full h-full flex items-center justify-center text-sm text-red-600">{previewError}</div>
+            ) : null}
+            {!previewLoading && !previewError && !previewUrl ? (
+              <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground">Sin vista previa.</div>
+            ) : null}
+            {!previewLoading && !previewError && previewUrl ? (
+              <iframe title="Vista previa PDF" src={previewUrl} className="w-full h-full" />
+            ) : null}
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            La vista previa es una cotización de ejemplo. Al descargar/enviar un PDF real se aplicarán estos ajustes.
+          </p>
         </SectionCard>
       </div>
     </div>

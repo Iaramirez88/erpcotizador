@@ -116,7 +116,7 @@ type LastInvoice = {
 
 export default function PlanPage() {
   const searchParams = useSearchParams()
-  const blockedModule = searchParams.get('blockedModule')
+  const blockedModule = searchParams?.get('blockedModule') ?? null
 
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
 

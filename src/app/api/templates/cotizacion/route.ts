@@ -27,10 +27,17 @@ export async function GET() {
   const userId = await resolveUserIdFromSession(session)
   if (!userId) return NextResponse.json({ success: false, error: 'Sesión inválida' }, { status: 401 })
 
-  const record = await prisma.cotizacionTemplate.findUnique({ where: { userId }, select: { settings: true } })
-  const settings = mergeCotizacionTemplateSettings(record?.settings ?? DEFAULT_COTIZACION_TEMPLATE)
+  const record = await prisma.cotizacionTemplate.findUnique({
+    where: { userId },
+    select: { settings: true, defaultSettings: true },
+  })
 
-  return NextResponse.json({ success: true, data: { settings } })
+  const settings = mergeCotizacionTemplateSettings(record?.settings ?? DEFAULT_COTIZACION_TEMPLATE)
+  const rawDefaultSettings = record?.defaultSettings
+  const hasUserDefault = isPlainObject(rawDefaultSettings) && Object.keys(rawDefaultSettings).length > 0
+  const defaultSettings = mergeCotizacionTemplateSettings(hasUserDefault ? rawDefaultSettings : DEFAULT_COTIZACION_TEMPLATE)
+
+  return NextResponse.json({ success: true, data: { settings, defaultSettings } })
 }
 
 export async function PUT(req: NextRequest) {
@@ -45,20 +52,25 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Body inválido' }, { status: 400 })
   }
 
-  const incoming = isPlainObject(body.settings) ? body.settings : body
-  const settings = mergeCotizacionTemplateSettings(incoming)
+  const incomingSettings = isPlainObject(body.settings) ? body.settings : (body.settings === undefined ? undefined : body)
+  const incomingDefault = isPlainObject(body.defaultSettings) ? body.defaultSettings : undefined
+
+  const settings = incomingSettings === undefined ? undefined : mergeCotizacionTemplateSettings(incomingSettings)
+  const defaultSettings = incomingDefault === undefined ? undefined : mergeCotizacionTemplateSettings(incomingDefault)
 
   const updated = await prisma.cotizacionTemplate.upsert({
     where: { userId },
     create: {
       userId,
-      settings,
+      settings: settings ?? DEFAULT_COTIZACION_TEMPLATE,
+      defaultSettings: defaultSettings ?? DEFAULT_COTIZACION_TEMPLATE,
     },
     update: {
-      settings,
+      ...(settings !== undefined ? { settings } : {}),
+      ...(defaultSettings !== undefined ? { defaultSettings } : {}),
     },
-    select: { settings: true },
+    select: { settings: true, defaultSettings: true },
   })
 
-  return NextResponse.json({ success: true, data: { settings: updated.settings } })
+  return NextResponse.json({ success: true, data: { settings: updated.settings, defaultSettings: updated.defaultSettings } })
 }

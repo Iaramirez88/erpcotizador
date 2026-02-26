@@ -36,7 +36,7 @@ function moduleForPath(pathname: string): string | null {
 }
 
 export default function PlanModuleGate() {
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ''
   const router = useRouter()
   const [enabledModules, setEnabledModules] = useState<Set<string> | null>(null)
 

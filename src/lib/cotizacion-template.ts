@@ -2,11 +2,44 @@ export type CotizacionPageSize = 'A4' | 'LETTER' | 'LEGAL'
 export type CotizacionOrientation = 'portrait' | 'landscape'
 export type CotizacionFontFamily = 'Helvetica' | 'Times-Roman' | 'Courier'
 
+export type PageSideSpacing = {
+  top: number
+  right: number
+  bottom: number
+  left: number
+}
+
+export type BlockSide = 'left' | 'right'
+export type BlockWidthPct = 25 | 50 | 75 | 100
+
 export type CotizacionTemplateSettings = {
   page: {
     size: CotizacionPageSize
     orientation: CotizacionOrientation
     padding: number
+    /**
+     * Si está habilitado, se reserva automáticamente espacio superior/inferior
+     * para que el área de información ocupe `infoAreaHeightPct` del alto de la página.
+     */
+    useInfoAreaHeightPct?: boolean
+    /**
+     * Por defecto 0.75 => el 25% restante se reparte entre header/footer.
+     */
+    infoAreaHeightPct?: number
+    /**
+     * Espaciado externo (margen) por lado para el contenido.
+     * Si existe, se prioriza sobre `padding`.
+     */
+    marginSides?: PageSideSpacing
+    /**
+     * Espaciado interno (padding) por lado para el contenido.
+     */
+    paddingSides?: PageSideSpacing
+    /**
+     * Área segura adicional por lado para evitar que el contenido pise el membrete/fondo.
+     * Se suma al margen/padding al calcular el layout.
+     */
+    safeAreaSides?: PageSideSpacing
     backgroundImageUrl?: string
     backgroundImageOpacity: number
   }
@@ -61,6 +94,20 @@ export type CotizacionTemplateSettings = {
     text: string
     leftText: string
     rightText: string
+    bottomOffset: number
+    reserveHeight: number
+  }
+  blocks: {
+    vendedor: {
+      side: BlockSide
+      widthPct: BlockWidthPct
+      telefonoOverride?: string
+      cargoOverride?: string
+    }
+    cliente: {
+      side: BlockSide
+      widthPct: BlockWidthPct
+    }
   }
   toggles: {
     showVendedor: boolean
@@ -77,7 +124,17 @@ export type CotizacionTemplateSettings = {
 }
 
 export const DEFAULT_COTIZACION_TEMPLATE: CotizacionTemplateSettings = {
-  page: { size: 'A4', orientation: 'portrait', padding: 40, backgroundImageOpacity: 1 },
+  page: {
+    size: 'A4',
+    orientation: 'portrait',
+    padding: 40,
+    useInfoAreaHeightPct: true,
+    infoAreaHeightPct: 0.75,
+    marginSides: { top: 40, right: 40, bottom: 40, left: 40 },
+    paddingSides: { top: 0, right: 0, bottom: 0, left: 0 },
+    safeAreaSides: { top: 0, right: 0, bottom: 0, left: 0 },
+    backgroundImageOpacity: 1,
+  },
   colors: {
     primary: '#2563eb',
     pageBackground: '#ffffff',
@@ -126,6 +183,20 @@ export const DEFAULT_COTIZACION_TEMPLATE: CotizacionTemplateSettings = {
     text: 'Gracias por confiar en nosotros. Esta cotización está sujeta a cambios según especificaciones finales.',
     leftText: 'Gracias por confiar en nosotros. Esta cotización está sujeta a cambios según especificaciones finales.',
     rightText: '',
+    bottomOffset: 0,
+    reserveHeight: 60,
+  },
+  blocks: {
+    vendedor: {
+      side: 'right',
+      widthPct: 100,
+      telefonoOverride: '',
+      cargoOverride: '',
+    },
+    cliente: {
+      side: 'left',
+      widthPct: 100,
+    },
   },
   toggles: {
     showVendedor: true,
@@ -161,6 +232,27 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
 }
 
+function asBlockSide(value: unknown, fallback: BlockSide): BlockSide {
+  const v = typeof value === 'string' ? value : ''
+  return v === 'left' || v === 'right' ? v : fallback
+}
+
+function asBlockWidthPct(value: unknown, fallback: BlockWidthPct): BlockWidthPct {
+  const n = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  if (n === 25 || n === 50 || n === 75 || n === 100) return n
+  return fallback
+}
+
+function readSideSpacing(input: unknown, fallback: PageSideSpacing, min: number, max: number): PageSideSpacing {
+  if (!isPlainObject(input)) return fallback
+  return {
+    top: clamp(asNumber(input.top, fallback.top), min, max),
+    right: clamp(asNumber(input.right, fallback.right), min, max),
+    bottom: clamp(asNumber(input.bottom, fallback.bottom), min, max),
+    left: clamp(asNumber(input.left, fallback.left), min, max),
+  }
+}
+
 export function mergeCotizacionTemplateSettings(input: unknown): CotizacionTemplateSettings {
   const defaults = DEFAULT_COTIZACION_TEMPLATE
   if (!isPlainObject(input)) return defaults
@@ -172,6 +264,9 @@ export function mergeCotizacionTemplateSettings(input: unknown): CotizacionTempl
   const headerRight = isPlainObject(header.right) ? header.right : {}
   const watermark = isPlainObject(input.watermark) ? input.watermark : {}
   const footer = isPlainObject(input.footer) ? input.footer : {}
+  const blocks = isPlainObject(input.blocks) ? input.blocks : {}
+  const vendedorBlock = isPlainObject(blocks.vendedor) ? blocks.vendedor : {}
+  const clienteBlock = isPlainObject(blocks.cliente) ? blocks.cliente : {}
   const toggles = isPlainObject(input.toggles) ? input.toggles : {}
   const currency = isPlainObject(input.currency) ? input.currency : {}
 
@@ -184,6 +279,34 @@ export function mergeCotizacionTemplateSettings(input: unknown): CotizacionTempl
       size: ['A4', 'LETTER', 'LEGAL'].includes(size) ? size : defaults.page.size,
       orientation: ['portrait', 'landscape'].includes(orientation) ? orientation : defaults.page.orientation,
       padding: clamp(asNumber(page.padding, defaults.page.padding), 12, 80),
+      useInfoAreaHeightPct: asBoolean(
+        (page as Record<string, unknown>).useInfoAreaHeightPct,
+        defaults.page.useInfoAreaHeightPct ?? false
+      ),
+      infoAreaHeightPct: clamp(
+        asNumber((page as Record<string, unknown>).infoAreaHeightPct, defaults.page.infoAreaHeightPct ?? 0.75),
+        0.5,
+        0.95
+      ),
+      marginSides: readSideSpacing(
+        page.marginSides,
+        // Compatibilidad: usar el padding legacy como margen uniforme
+        {
+          top: clamp(asNumber(page.padding, defaults.page.padding), 12, 120),
+          right: clamp(asNumber(page.padding, defaults.page.padding), 12, 120),
+          bottom: clamp(asNumber(page.padding, defaults.page.padding), 12, 120),
+          left: clamp(asNumber(page.padding, defaults.page.padding), 12, 120),
+        },
+        0,
+        120
+      ),
+      paddingSides: readSideSpacing(page.paddingSides, defaults.page.paddingSides ?? { top: 0, right: 0, bottom: 0, left: 0 }, 0, 120),
+      safeAreaSides: readSideSpacing(
+        (page as Record<string, unknown>).safeAreaSides,
+        defaults.page.safeAreaSides ?? { top: 0, right: 0, bottom: 0, left: 0 },
+        0,
+        250
+      ),
       backgroundImageUrl:
         typeof page.backgroundImageUrl === 'string' && page.backgroundImageUrl.trim()
           ? page.backgroundImageUrl.trim()
@@ -251,6 +374,26 @@ export function mergeCotizacionTemplateSettings(input: unknown): CotizacionTempl
         return defaults.footer.leftText
       })(),
       rightText: asString(footer.rightText, defaults.footer.rightText),
+      bottomOffset: clamp(asNumber((footer as Record<string, unknown>).bottomOffset, defaults.footer.bottomOffset), 0, 200),
+      reserveHeight: clamp(asNumber((footer as Record<string, unknown>).reserveHeight, defaults.footer.reserveHeight), 0, 260),
+    },
+    blocks: {
+      vendedor: {
+        side: asBlockSide(vendedorBlock.side, defaults.blocks.vendedor.side),
+        widthPct: asBlockWidthPct(vendedorBlock.widthPct, defaults.blocks.vendedor.widthPct),
+        telefonoOverride:
+          typeof vendedorBlock.telefonoOverride === 'string'
+            ? vendedorBlock.telefonoOverride
+            : defaults.blocks.vendedor.telefonoOverride,
+        cargoOverride:
+          typeof vendedorBlock.cargoOverride === 'string'
+            ? vendedorBlock.cargoOverride
+            : defaults.blocks.vendedor.cargoOverride,
+      },
+      cliente: {
+        side: asBlockSide(clienteBlock.side, defaults.blocks.cliente.side),
+        widthPct: asBlockWidthPct(clienteBlock.widthPct, defaults.blocks.cliente.widthPct),
+      },
     },
     toggles: {
       showVendedor: asBoolean(toggles.showVendedor, defaults.toggles.showVendedor),

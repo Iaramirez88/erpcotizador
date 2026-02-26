@@ -8,8 +8,8 @@ import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { ModuleKey } from '@prisma/client'
 import { Resend } from 'resend'
-import { pdf } from '@react-pdf/renderer'
-import { RemisionPDF } from '@/lib/remision-pdf-template'
+import { RemisionPDFCore } from '@/lib/remision-pdf-template'
+import { getReactPdfRenderer, pdfToBuffer } from '@/lib/react-pdf-node'
 
 export const runtime = 'nodejs'
 
@@ -101,7 +101,16 @@ export async function POST(
     })
 
     // Generar PDF
-    const pdfDoc = RemisionPDF({
+    const renderer = await getReactPdfRenderer()
+    const pdfDoc = RemisionPDFCore({
+      pdf: {
+        Document: renderer.Document,
+        Page: renderer.Page,
+        Text: renderer.Text,
+        View: renderer.View,
+        Image: renderer.Image,
+        StyleSheet: renderer.StyleSheet,
+      },
       remision: {
         numero: remision.numero,
         createdAt: remision.createdAt,
@@ -131,8 +140,7 @@ export async function POST(
       template: userTemplate?.settings,
     })
 
-    const pdfBlob = await pdf(pdfDoc).toBlob()
-    const pdfBuffer = await pdfBlob.arrayBuffer()
+    const pdfBuffer = await pdfToBuffer(pdfDoc)
 
     // Plantilla de email
     const htmlEmail = `
@@ -213,7 +221,7 @@ export async function POST(
       attachments: [
         {
           filename: `Remision-${remision.numero}.pdf`,
-          content: Buffer.from(pdfBuffer),
+          content: pdfBuffer,
         },
       ],
     })

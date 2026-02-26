@@ -390,7 +390,7 @@ type EmpresaBranding = {
 }
 
 export default function Sidebar({ user }: SidebarProps) {
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ''
 
   const { t } = useI18n()
 

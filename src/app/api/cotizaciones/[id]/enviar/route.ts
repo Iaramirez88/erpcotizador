@@ -3,8 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { requireApiAccess } from '@/lib/api-rbac';
 import { ModuleKey } from '@prisma/client';
 import { Resend } from 'resend';
-import { pdf } from '@react-pdf/renderer';
 import CotizacionPDF from '@/lib/pdf-template';
+import { getReactPdfRenderer, pdfToBuffer } from '@/lib/react-pdf-node';
 
 export const runtime = 'nodejs';
 
@@ -75,7 +75,16 @@ export async function POST(
     });
 
     // Generar PDF
+    const renderer = await getReactPdfRenderer()
     const pdfDoc = CotizacionPDF({ 
+      pdf: {
+        Document: renderer.Document,
+        Page: renderer.Page,
+        Text: renderer.Text,
+        View: renderer.View,
+        Image: renderer.Image,
+        StyleSheet: renderer.StyleSheet,
+      },
       cotizacion: {
         numero: cotizacion.numero,
         createdAt: cotizacion.createdAt,
@@ -140,8 +149,7 @@ export async function POST(
       },
       template: userTemplate?.settings,
     });
-    const pdfBlob = await pdf(pdfDoc).toBlob();
-    const pdfBuffer = await pdfBlob.arrayBuffer();
+    const pdfBuffer = await pdfToBuffer(pdfDoc)
 
     // Preparar destinatarios
     const to = destinatarios;
@@ -245,7 +253,7 @@ export async function POST(
       attachments: [
         {
           filename: `Cotizacion-${cotizacion.numero}.pdf`,
-          content: Buffer.from(pdfBuffer),
+          content: pdfBuffer,
         },
       ],
     });

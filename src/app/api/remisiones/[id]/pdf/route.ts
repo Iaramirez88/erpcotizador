@@ -7,10 +7,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { ModuleKey } from '@prisma/client'
-import { pdf } from '@react-pdf/renderer'
-import { RemisionPDF } from '@/lib/remision-pdf-template'
+import { RemisionPDFCore } from '@/lib/remision-pdf-template'
+import { getReactPdfRenderer, pdfToBuffer } from '@/lib/react-pdf-node'
 
 export const runtime = 'nodejs'
+
+function bufferToArrayBuffer(buffer: Buffer): ArrayBuffer {
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer
+}
 
 export async function GET(
   request: NextRequest,
@@ -77,7 +81,16 @@ export async function GET(
       },
     })
 
-    const pdfDoc = RemisionPDF({
+    const renderer = await getReactPdfRenderer()
+    const pdfDoc = RemisionPDFCore({
+      pdf: {
+        Document: renderer.Document,
+        Page: renderer.Page,
+        Text: renderer.Text,
+        View: renderer.View,
+        Image: renderer.Image,
+        StyleSheet: renderer.StyleSheet,
+      },
       remision: {
         numero: remision.numero,
         createdAt: remision.createdAt,
@@ -107,8 +120,8 @@ export async function GET(
       template: userTemplate?.settings,
     })
 
-    const pdfBlob = await pdf(pdfDoc).toBlob()
-    const arrayBuffer = await pdfBlob.arrayBuffer()
+    const buffer = await pdfToBuffer(pdfDoc)
+    const arrayBuffer = bufferToArrayBuffer(buffer)
 
     const { searchParams } = new URL(request.url)
     const wantsDownload = searchParams.get('download') === '1'

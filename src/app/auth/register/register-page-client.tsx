@@ -70,9 +70,9 @@ export function RegisterPageClient() {
     async function load() {
       if (cancelled) return
 
-      const empresaIdFromUrl = (searchParams.get("empresaId") ?? "").trim()
-      const sedeIdFromUrl = (searchParams.get("sedeId") ?? "").trim()
-      const emailFromUrl = (searchParams.get("email") ?? "").trim().toLowerCase()
+      const empresaIdFromUrl = (searchParams?.get('empresaId') ?? '').trim()
+      const sedeIdFromUrl = (searchParams?.get('sedeId') ?? '').trim()
+      const emailFromUrl = (searchParams?.get('email') ?? '').trim().toLowerCase()
 
       if (empresaIdFromUrl) {
         setEmpresaIdInput(empresaIdFromUrl)

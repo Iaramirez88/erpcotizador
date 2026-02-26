@@ -24,6 +24,12 @@ model User {
   empresaId     String?
   empresa       Empresa?  @relation(fields: [empresaId], references: [id])
 
+  // Datos de perfil (para PDFs / cotización)
+  telefono      String?
+  cargo         String?
+  sedeDefaultId String?
+  sedeDefault   Sede?     @relation("UserSedeDefault", fields: [sedeDefaultId], references: [id], onDelete: SetNull)
+
   lastLoginAt   DateTime?
 
   // Preferencias de UI (menú, reportes)
@@ -151,6 +157,7 @@ model CotizacionTemplate {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   settings Json @default("{}")
+  defaultSettings Json @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1164,6 +1171,7 @@ model Sede {
   empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
   memberships   SedeMembership[]
+  defaultUsers  User[] @relation("UserSedeDefault")
   teams         Team[]
   moduleAccess  UserModuleAccess[]
   notifications Notification[]

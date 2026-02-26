@@ -180,9 +180,10 @@ export async function POST(request: Request) {
     const empresaFinal = empresa
 
     // Asegurar sede/membresía inicial (para RBAC por sede)
-    await ensureDefaultSedeForEmpresa(empresaFinal.id, user.id)
+    const defaultSede = await ensureDefaultSedeForEmpresa(empresaFinal.id, user.id)
 
     // Si llega sedeId (por invitación), asociar también a esa sede (si pertenece a la entidad)
+    let preferredSedeId: string | null = defaultSede?.id ?? null
     if (requestedSedeId) {
       const sede = await prisma.sede.findUnique({ where: { id: requestedSedeId }, select: { id: true, empresaId: true } })
       if (sede?.id && sede.empresaId === empresaFinal.id) {
@@ -195,7 +196,32 @@ export async function POST(request: Request) {
             data: { sedeId: sede.id, userId: user.id, role: 'READER' },
           })
         }
+
+        preferredSedeId = sede.id
       }
+    }
+
+    // Guardar sede por defecto en el perfil (para PDFs y cotización)
+    if (preferredSedeId) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { sedeDefaultId: preferredSedeId },
+        select: { id: true },
+      })
+    }
+
+    // Notificar al usuario si le faltan datos clave para cotizar.
+    if (!user.telefono || !user.cargo || !preferredSedeId) {
+      await prisma.notification.create({
+        data: {
+          userId: user.id,
+          type: 'WARNING',
+          title: 'Completa tu perfil para empezar a cotizar',
+          body: 'Te recomendamos completar Teléfono, Cargo y Sede por defecto en “Mi perfil” para que tus cotizaciones salgan completas.',
+          sedeId: preferredSedeId,
+          empresaId: empresaFinal.id,
+        },
+      })
     }
 
     // Generar y guardar código de verificación

@@ -6,7 +6,7 @@
 import 'dotenv/config'
 import fs from 'fs/promises'
 import path from 'path'
-import { pdf } from '@react-pdf/renderer'
+import { Document, Image, Page, StyleSheet, Text, View, pdf } from '@react-pdf/renderer'
 import { prisma } from '../src/lib/prisma'
 import { getActiveSedeForUser } from '../src/lib/rbac'
 import CotizacionPDF from '../src/lib/pdf-template'
@@ -144,6 +144,7 @@ async function main() {
   }
 
   const pdfDoc = CotizacionPDF({
+    pdf: { Document, Page, Text, View, Image, StyleSheet },
     cotizacion: {
       numero: cotizacionFull.numero,
       createdAt: cotizacionFull.createdAt,

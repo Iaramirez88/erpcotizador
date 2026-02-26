@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { ModuleKey, AccessLevel, SedeRole } from '@prisma/client'
 import { getServerLanguage } from '@/lib/i18n/server'
 import { translate } from '@/lib/i18n/messages'
+import { UserPermissionsModal } from '@/components/rbac/user-permissions-modal'
 
 export const runtime = 'nodejs'
 
@@ -132,40 +133,6 @@ export default async function PermisosPage() {
     })
   }
 
-  async function setModuleAccess(formData: FormData) {
-    'use server'
-    const session2 = await auth()
-    if (!session2) return
-
-    const sedeId = String(formData.get('sedeId') || '')
-    const email = String(formData.get('email') || '').trim().toLowerCase()
-    const moduleKey = String(formData.get('module') || '') as ModuleKey
-    const level = String(formData.get('level') || '') as AccessLevel
-
-    if (!sedeId || !email) return
-    if (!MODULES.includes(moduleKey)) return
-    if (!ACCESS.includes(level)) return
-
-    const empresaId2 = await requireEmpresaIdForUser(session2.user.id)
-    const sede = await prisma.sede.findUnique({ where: { id: sedeId }, select: { id: true, empresaId: true } })
-    if (!sede || sede.empresaId !== empresaId2) return
-
-    const admin = await prisma.sedeMembership.findUnique({
-      where: { sedeId_userId: { sedeId, userId: session2.user.id } },
-      select: { role: true },
-    })
-    if (session2.user.role !== 'ADMIN' && admin?.role !== 'ADMIN' && admin?.role !== 'MANAGER') return
-
-    const user = await prisma.user.findUnique({ where: { email } })
-    if (!user) return
-
-    await prisma.userModuleAccess.upsert({
-      where: { sedeId_userId_module: { sedeId, userId: user.id, module: moduleKey } },
-      create: { sedeId, userId: user.id, module: moduleKey, level },
-      update: { level },
-    })
-  }
-
   async function setGlobalAccess(formData: FormData) {
     'use server'
     const session2 = await auth()
@@ -197,6 +164,16 @@ export default async function PermisosPage() {
 
     if (level === 'NONE') {
       await prisma.userGlobalAccess.delete({ where: { userId: user.id } }).catch(() => null)
+
+      await prisma.notification.create({
+        data: {
+          userId: user.id,
+          type: 'INFO',
+          title: 'Permisos actualizados',
+          body: 'Tu acceso global fue desactivado.',
+          empresaId: empresaId2,
+        },
+      })
       return
     }
 
@@ -204,6 +181,16 @@ export default async function PermisosPage() {
       where: { userId: user.id },
       create: { userId: user.id, empresaId: empresaId2, level },
       update: { level },
+    })
+
+    await prisma.notification.create({
+      data: {
+        userId: user.id,
+        type: 'INFO',
+        title: 'Permisos actualizados',
+        body: `Tu acceso global fue actualizado a ${level}.`,
+        empresaId: empresaId2,
+      },
     })
   }
 
@@ -218,7 +205,7 @@ export default async function PermisosPage() {
     ? await prisma.sedeMembership.findMany({
         where: { sedeId: activeSedeId },
         orderBy: { createdAt: 'asc' },
-        select: { id: true, role: true, user: { select: { email: true, name: true } } },
+        select: { id: true, role: true, user: { select: { id: true, email: true, name: true } } },
       })
     : []
 
@@ -226,9 +213,15 @@ export default async function PermisosPage() {
     ? await prisma.userModuleAccess.findMany({
         where: { sedeId: activeSedeId },
         orderBy: [{ userId: 'asc' }, { module: 'asc' }],
-        select: { id: true, module: true, level: true, user: { select: { email: true, name: true } } },
+        select: { id: true, userId: true, module: true, level: true, user: { select: { email: true, name: true } } },
       })
     : []
+
+  const accessByUserId: Record<string, Partial<Record<ModuleKey, AccessLevel>>> = {}
+  for (const p of permisos) {
+    if (!accessByUserId[p.userId]) accessByUserId[p.userId] = {}
+    accessByUserId[p.userId][p.module] = p.level
+  }
 
   const globalAccess = await prisma.userGlobalAccess.findMany({
     where: { empresaId },
@@ -242,6 +235,55 @@ export default async function PermisosPage() {
         <h1 className="text-2xl font-bold">{t('rbac.permissions.title')}</h1>
         <p className="text-sm text-muted-foreground">{t('rbac.permissions.subtitle')}</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('rbac.membersAndPermissions.title', { sede: activeSede?.nombre ?? naText })}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form action={addMember} className="grid gap-2 max-w-lg">
+            <input type="hidden" name="sedeId" value={activeSedeId ?? ''} />
+            <input name="email" placeholder={t('rbac.common.emailPlaceholder')} className="border rounded px-3 py-2" />
+            <select name="role" className="border rounded px-3 py-2">
+              {SEDE_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {sedeRoleLabel(r)}
+                </option>
+              ))}
+            </select>
+            <Button type="submit" variant="outline">{t('rbac.members.addOrUpdate')}</Button>
+          </form>
+
+          <div className="grid gap-2">
+            {members.map((m) => (
+              <div key={m.id} className="flex items-center justify-between border rounded px-3 py-2">
+                <div>
+                  <div className="font-medium">{m.user.name ?? m.user.email}</div>
+                  <div className="text-xs text-muted-foreground">{m.user.email}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="text-sm text-muted-foreground">{sedeRoleLabel(m.role)}</div>
+                  {activeSedeId && activeSede?.nombre ? (
+                    <UserPermissionsModal
+                      sedeId={activeSedeId}
+                      sedeNombre={activeSede.nombre}
+                      user={{ id: m.user.id, email: m.user.email, name: m.user.name ?? null }}
+                      initialSedeRole={m.role}
+                      modules={MODULES}
+                      initial={accessByUserId[m.user.id] ?? {}}
+                    />
+                  ) : null}
+                </div>
+              </div>
+            ))}
+            {members.length === 0 && <div className="text-sm text-muted-foreground">{t('rbac.members.empty')}</div>}
+          </div>
+
+          <div className="text-xs text-muted-foreground">
+            {t('rbac.members.note', { sede: activeSede?.nombre ?? naText })}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -298,79 +340,6 @@ export default async function PermisosPage() {
             />
             <Button type="submit">{t('rbac.sedes.create')}</Button>
           </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('rbac.members.title', { sede: activeSede?.nombre ?? naText })}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form action={addMember} className="grid gap-2 max-w-lg">
-            <input type="hidden" name="sedeId" value={activeSedeId ?? ''} />
-            <input name="email" placeholder={t('rbac.common.emailPlaceholder')} className="border rounded px-3 py-2" />
-            <select name="role" className="border rounded px-3 py-2">
-              {SEDE_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {sedeRoleLabel(r)}
-                </option>
-              ))}
-            </select>
-            <Button type="submit" variant="outline">{t('rbac.members.addOrUpdate')}</Button>
-          </form>
-
-          <div className="grid gap-2">
-            {members.map((m) => (
-              <div key={m.id} className="flex items-center justify-between border rounded px-3 py-2">
-                <div>
-                  <div className="font-medium">{m.user.name ?? m.user.email}</div>
-                  <div className="text-xs text-muted-foreground">{m.user.email}</div>
-                </div>
-                <div className="text-sm">{sedeRoleLabel(m.role)}</div>
-              </div>
-            ))}
-            {members.length === 0 && <div className="text-sm text-muted-foreground">{t('rbac.members.empty')}</div>}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('rbac.moduleAccess.title', { sede: activeSede?.nombre ?? naText })}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form action={setModuleAccess} className="grid gap-2 max-w-lg">
-            <input type="hidden" name="sedeId" value={activeSedeId ?? ''} />
-            <input name="email" placeholder={t('rbac.common.emailPlaceholder')} className="border rounded px-3 py-2" />
-            <select name="module" className="border rounded px-3 py-2">
-              {MODULES.map((m) => (
-                <option key={m} value={m}>
-                  {moduleLabel(m)}
-                </option>
-              ))}
-            </select>
-            <select name="level" className="border rounded px-3 py-2">
-              {ACCESS.map((l) => (
-                <option key={l} value={l}>
-                  {accessLabel(l)}
-                </option>
-              ))}
-            </select>
-            <Button type="submit" variant="outline">{t('rbac.moduleAccess.save')}</Button>
-          </form>
-
-          <div className="grid gap-2">
-            {permisos.map((p) => (
-              <div key={p.id} className="flex items-center justify-between border rounded px-3 py-2">
-                <div>
-                  <div className="font-medium">{p.user.name ?? p.user.email}</div>
-                  <div className="text-xs text-muted-foreground">{p.user.email}</div>
-                </div>
-                <div className="text-sm">{moduleLabel(p.module)}: {accessLabel(p.level)}</div>
-              </div>
-            ))}
-            {permisos.length === 0 && <div className="text-sm text-muted-foreground">{t('rbac.moduleAccess.empty')}</div>}
-          </div>
         </CardContent>
       </Card>
 

@@ -28,7 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import CotizacionPDF, { type CotizacionPdfData } from '@/lib/pdf-template';
+import CotizacionPDF, { type CotizacionPdfData } from '@/lib/pdf-template.client';
 import type { CotizacionTemplateSettings } from '@/lib/cotizacion-template';
 import { useI18n } from '@/components/providers/i18n-provider';
 

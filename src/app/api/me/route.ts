@@ -22,7 +22,20 @@ export async function GET() {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, name: true, email: true, role: true, image: true, empresaId: true, createdAt: true, updatedAt: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      image: true,
+      empresaId: true,
+      telefono: true,
+      cargo: true,
+      sedeDefaultId: true,
+      sedeDefault: { select: { id: true, nombre: true, codigo: true } },
+      createdAt: true,
+      updatedAt: true,
+    },
   })
 
   // Para UI: incluir acceso efectivo (por sede) a CONFIG
@@ -74,12 +87,49 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Nombre demasiado largo.' }, { status: 400 })
   }
 
+  const telefono = typeof body.telefono === 'string' ? body.telefono.trim() : undefined
+  if (telefono !== undefined && telefono.length > 40) {
+    return NextResponse.json({ success: false, error: 'Teléfono demasiado largo.' }, { status: 400 })
+  }
+
+  const cargo = typeof body.cargo === 'string' ? body.cargo.trim() : undefined
+  if (cargo !== undefined && cargo.length > 80) {
+    return NextResponse.json({ success: false, error: 'Cargo demasiado largo.' }, { status: 400 })
+  }
+
+  const sedeDefaultIdRaw = typeof body.sedeDefaultId === 'string' ? body.sedeDefaultId.trim() : undefined
+  const sedeDefaultId = sedeDefaultIdRaw === undefined ? undefined : (sedeDefaultIdRaw || null)
+
+  if (sedeDefaultId !== undefined && sedeDefaultId !== null) {
+    const membership = await prisma.sedeMembership.findUnique({
+      where: { sedeId_userId: { sedeId: sedeDefaultId, userId } },
+      select: { id: true },
+    })
+    if (!membership?.id) {
+      return NextResponse.json({ success: false, error: 'La sede seleccionada no está asignada a tu usuario.' }, { status: 400 })
+    }
+  }
+
   const updated = await prisma.user.update({
     where: { id: userId },
     data: {
       name: name === '' ? null : name,
+      telefono: telefono === undefined ? undefined : (telefono === '' ? null : telefono),
+      cargo: cargo === undefined ? undefined : (cargo === '' ? null : cargo),
+      sedeDefaultId,
     },
-    select: { id: true, name: true, email: true, role: true, image: true, updatedAt: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      image: true,
+      telefono: true,
+      cargo: true,
+      sedeDefaultId: true,
+      sedeDefault: { select: { id: true, nombre: true, codigo: true } },
+      updatedAt: true,
+    },
   })
 
   return NextResponse.json({ success: true, data: updated })

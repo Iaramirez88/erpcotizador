@@ -22,7 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { LitografiaQuoteDialog, type LitografiaMeta } from "@/components/litografia/litografia-quote-dialog"
-import CotizacionPDF, { type CotizacionPdfData } from "@/lib/pdf-template"
+import CotizacionPDF, { type CotizacionPdfData } from "@/lib/pdf-template.client"
 import type { CotizacionTemplateSettings } from "@/lib/cotizacion-template"
 import { useI18n } from "@/components/providers/i18n-provider"
 
@@ -97,7 +97,7 @@ export default function CotizadorPage() {
 
   const router = useRouter()
   const searchParams = useSearchParams()
-  const cotizacionIdParam = searchParams.get("id")
+  const cotizacionIdParam = searchParams?.get('id')
 
   const [previewCotizacion, setPreviewCotizacion] = useState<(CotizacionPdfData & { id: string; estado?: string }) | null>(null)
   const [previewTemplate, setPreviewTemplate] = useState<CotizacionTemplateSettings | null>(null)

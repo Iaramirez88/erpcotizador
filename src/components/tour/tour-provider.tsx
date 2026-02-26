@@ -63,7 +63,7 @@ async function saveTutorialPrefs(next: TutorialPrefs): Promise<void> {
 }
 
 export function TourProvider({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ''
   const currentTourId = useMemo(() => tourIdFromPath(pathname), [pathname])
 
   const [prefs, setPrefs] = useState<TutorialPrefs>({ seen: {} })

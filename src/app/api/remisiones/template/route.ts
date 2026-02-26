@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { DEFAULT_REMISION_TEMPLATE } from '@/lib/remision-template'
+import { DEFAULT_REMISION_TEMPLATE, mergeRemisionTemplateSettings } from '@/lib/remision-template'
 
 export async function GET() {
   try {
@@ -15,10 +15,10 @@ export async function GET() {
     })
 
     if (!template) {
-      return NextResponse.json({ settings: DEFAULT_REMISION_TEMPLATE })
+      return NextResponse.json({ settings: mergeRemisionTemplateSettings(DEFAULT_REMISION_TEMPLATE) })
     }
 
-    return NextResponse.json({ settings: template.settings })
+    return NextResponse.json({ settings: mergeRemisionTemplateSettings(template.settings) })
   } catch (error) {
     console.error('Error al cargar plantilla:', error)
     return NextResponse.json({ error: 'Error al cargar plantilla' }, { status: 500 })
@@ -33,19 +33,20 @@ export async function PUT(request: Request) {
     }
 
     const { settings } = await request.json()
+    const normalized = mergeRemisionTemplateSettings(settings)
 
     const template = await prisma.remisionTemplate.upsert({
       where: { userId: session.user.id },
       create: {
         userId: session.user.id,
-        settings,
+        settings: normalized,
       },
       update: {
-        settings,
+        settings: normalized,
       },
     })
 
-    return NextResponse.json({ success: true, settings: template.settings })
+    return NextResponse.json({ success: true, settings: mergeRemisionTemplateSettings(template.settings) })
   } catch (error) {
     console.error('Error al guardar plantilla:', error)
     return NextResponse.json({ error: 'Error al guardar plantilla' }, { status: 500 })
@@ -65,7 +66,7 @@ export async function DELETE() {
       // Si no existe, no pasa nada
     })
 
-    return NextResponse.json({ success: true, settings: DEFAULT_REMISION_TEMPLATE })
+    return NextResponse.json({ success: true, settings: mergeRemisionTemplateSettings(DEFAULT_REMISION_TEMPLATE) })
   } catch (error) {
     console.error('Error al resetear plantilla:', error)
     return NextResponse.json({ error: 'Error al resetear plantilla' }, { status: 500 })

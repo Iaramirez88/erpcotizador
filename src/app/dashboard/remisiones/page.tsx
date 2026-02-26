@@ -24,7 +24,7 @@ const PDFViewer = dynamic(
   { ssr: false, loading: () => <div className="flex h-96 items-center justify-center">Cargando vista previa...</div> }
 )
 
-import { RemisionPDF } from '@/lib/remision-pdf-template'
+import { RemisionPDF } from '@/lib/remision-pdf-template.client'
 import { Download } from 'lucide-react'
 
 type Warehouse = { id: string; nombre: string; codigo?: string | null; isDefault?: boolean }
