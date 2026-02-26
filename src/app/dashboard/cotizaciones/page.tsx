@@ -31,6 +31,7 @@ import {
 import CotizacionPDF, { type CotizacionPdfData } from '@/lib/pdf-template.client';
 import type { CotizacionTemplateSettings } from '@/lib/cotizacion-template';
 import { useI18n } from '@/components/providers/i18n-provider';
+import { buildWhatsAppWebUrl } from '@/lib/whatsapp-link';
 
 function PdfPreviewLoading() {
   const { t } = useI18n();
@@ -59,6 +60,7 @@ interface Cotizacion {
   cliente: {
     nombre: string;
     email: string;
+    telefono?: string | null;
   };
   items: {
     id: string;
@@ -103,6 +105,17 @@ export default function CotizacionesPage() {
     (CotizacionPdfData & { id: string; estado?: string }) | null
   >(null);
   const [previewTemplate, setPreviewTemplate] = useState<CotizacionTemplateSettings | null>(null);
+  const [auditEvents, setAuditEvents] = useState<
+    Array<{
+      id: string;
+      action: 'CREATED' | 'UPDATED' | 'APPROVED';
+      effect: 'NONE' | 'DEBIT' | 'CREDIT';
+      note: string | null;
+      createdAt: string;
+      performedBy: { id: string; name: string | null; email: string } | null;
+      requestedBy: { id: string; name: string | null; email: string } | null;
+    }>
+  >([]);
 
   useEffect(() => {
     cargarCotizaciones({ page: 1 });
@@ -250,7 +263,11 @@ export default function CotizacionesPage() {
       const url: string = json.data.url;
       const mensaje = buildWhatsAppMessage(cotizacion, url);
 
-      window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, '_blank');
+      const whatsappUrl = buildWhatsAppWebUrl({
+        phone: cotizacion.cliente?.telefono,
+        message: mensaje,
+      });
+      window.open(whatsappUrl, '_blank');
       cargarCotizaciones();
     } catch (error) {
       console.error('Error:', error);
@@ -291,12 +308,22 @@ export default function CotizacionesPage() {
       setPreviewOpen(true);
       setPreviewTemplate(null);
       setPreviewCotizacion(null);
+      setAuditEvents([]);
 
       const res = await fetch(`/api/cotizaciones/${cotizacion.id}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(t('quotes.errors.loadQuote'));
       const data = await res.json();
       if (!data?.success || !data?.data) throw new Error(data?.error ?? t('quotes.errors.loadQuote'));
       setPreviewCotizacion(data.data as CotizacionPdfData & { id: string; estado?: string });
+
+      const auditRes = await fetch(`/api/cotizaciones/${cotizacion.id}/audit`, { cache: 'no-store' });
+      if (auditRes.ok) {
+        const auditJson = await auditRes.json().catch(() => null);
+        const events = auditJson?.success ? auditJson?.data?.events : null;
+        setAuditEvents(Array.isArray(events) ? events : []);
+      } else {
+        setAuditEvents([]);
+      }
 
       const templateRes = await fetch('/api/cotizacion-template', { cache: 'no-store' });
       if (templateRes.ok) {
@@ -315,6 +342,7 @@ export default function CotizacionesPage() {
       setPreviewTemplate(null);
       setPreviewNumero(null);
       setPreviewOpen(false);
+      setAuditEvents([]);
     }
   };
 
@@ -664,13 +692,22 @@ export default function CotizacionesPage() {
                       <Eye className="w-4 h-4" />
                     </Button>
 
-                    {/* Editar (solo borrador) */}
-                    {cot.estado === 'BORRADOR' && !cot.orden && (
+                    {/* Editar (permitido también en aprobadas; se bloquea si ya tiene orden) */}
+                    {!cot.orden ? (
                       <Link href={`/dashboard/cotizador?id=${cot.id}`}>
                         <Button size="sm" variant="outline" title={t('quotes.actions.edit')}>
                           <Pencil className="w-4 h-4" />
                         </Button>
                       </Link>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        title="No se puede editar: tiene una orden asociada"
+                        disabled
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
                     )}
 
                     {/* Aprobar */}
@@ -823,6 +860,7 @@ export default function CotizacionesPage() {
           setPreviewNumero(null);
           setPreviewCotizacion(null);
           setPreviewTemplate(null);
+          setAuditEvents([]);
         }}
       >
         <DialogContent className="max-w-4xl max-h-[90vh]">
@@ -848,6 +886,59 @@ export default function CotizacionesPage() {
               </div>
             )}
           </div>
+
+          {previewCotizacion?.id ? (
+            <div className="mt-3 space-y-2 rounded border p-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="font-medium">Trazabilidad</div>
+                <div className="text-muted-foreground">
+                  Ediciones: {auditEvents.filter((e) => e.action === 'UPDATED').length}
+                </div>
+              </div>
+
+              {auditEvents.length ? (
+                <div className="max-h-40 overflow-auto">
+                  <div className="space-y-1">
+                    {auditEvents.map((e) => {
+                      const fecha = new Date(e.createdAt).toLocaleString(locale);
+                      const performed = e.performedBy?.name || e.performedBy?.email || '-';
+                      const requested = e.requestedBy?.name || e.requestedBy?.email || null;
+                      const who = requested && requested !== performed
+                        ? `Solicitó: ${requested} • Ejecutó: ${performed}`
+                        : `Por: ${performed}`;
+
+                      const effectLabel =
+                        e.effect === 'DEBIT'
+                          ? ' (Nota débito)'
+                          : e.effect === 'CREDIT'
+                            ? ' (Nota crédito)'
+                            : '';
+
+                      const actionLabel =
+                        e.action === 'CREATED'
+                          ? 'Creada'
+                          : e.action === 'APPROVED'
+                            ? 'Aprobada'
+                            : `Editada${effectLabel}`;
+
+                      return (
+                        <div key={e.id} className="flex flex-col gap-0.5 rounded px-2 py-1 hover:bg-muted/50">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="font-medium">{actionLabel}</div>
+                            <div className="text-muted-foreground">{fecha}</div>
+                          </div>
+                          <div className="text-muted-foreground">{who}</div>
+                          {e.note ? <div className="text-muted-foreground">{e.note}</div> : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-muted-foreground">Sin registros</div>
+              )}
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

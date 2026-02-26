@@ -16,6 +16,7 @@ type PapelTipo = "bond" | "propalcote" | "periodico" | "otro"
 const CUSTOM_DROPDOWN_KEYS = {
   transporte: "litografia_transporte",
   tirajeTiers: "litografia_tiraje_tiers",
+  editorialProducto: "litografia_editorial_producto",
 } as const
 
 // Plantillas para bootstrap (se copian a BD por empresa y luego son editables)
@@ -31,6 +32,24 @@ const TIRAJE_TIER_TEMPLATE_ITEMS = [
   { value: "1001_2000", label: "1001–2000", meta: { min: 1001, max: 2000 } },
   { value: "2001_5000", label: "2001–5000", meta: { min: 2001, max: 5000 } },
   { value: "5001_10000", label: "5001–10000", meta: { min: 5001, max: 10000 } },
+]
+
+const EDITORIAL_PRODUCTO_TEMPLATE_ITEMS = [
+  {
+    value: "revista",
+    label: "Revista",
+    meta: { kind: "REVISTA", totalPaginas: 32, paginasPortadaContraportada: 2, cartasPorPlancha: 2, paginasPorPliego: 4 },
+  },
+  {
+    value: "cartilla",
+    label: "Cartilla",
+    meta: { kind: "CARTILLA", totalPaginas: 16, paginasPortadaContraportada: 0, cartasPorPlancha: 2, paginasPorPliego: 4 },
+  },
+  {
+    value: "libro",
+    label: "Libro",
+    meta: { kind: "LIBRO", totalPaginas: 100, paginasPortadaContraportada: 0, cartasPorPlancha: 2, paginasPorPliego: 4 },
+  },
 ]
 
 const INPUT_COMPACT = "h-7 px-2 text-xs"
@@ -214,8 +233,37 @@ export function LitografiaCalculator() {
 
   const [dropdownEdits, setDropdownEdits] = useState<Record<string, { nombre?: string }>>({})
   const [itemSearch, setItemSearch] = useState<Record<string, string>>({})
-  const [newItemDraft, setNewItemDraft] = useState<Record<string, { label: string; costo?: string; min?: string; max?: string }>>({})
-  const [itemEdits, setItemEdits] = useState<Record<string, { label?: string; costo?: string; min?: string; max?: string; activo?: boolean }>>({})
+  const [newItemDraft, setNewItemDraft] = useState<
+    Record<
+      string,
+      {
+        label: string
+        costo?: string
+        min?: string
+        max?: string
+        totalPaginas?: string
+        paginasPortadaContraportada?: string
+        cartasPorPlancha?: string
+        paginasPorPliego?: string
+      }
+    >
+  >({})
+  const [itemEdits, setItemEdits] = useState<
+    Record<
+      string,
+      {
+        label?: string
+        costo?: string
+        min?: string
+        max?: string
+        totalPaginas?: string
+        paginasPortadaContraportada?: string
+        cartasPorPlancha?: string
+        paginasPorPliego?: string
+        activo?: boolean
+      }
+    >
+  >({})
 
   // Formularios independientes (usuarios escriben en ambos módulos)
   const [newPlanchaProfileNombre, setNewPlanchaProfileNombre] = useState("")
@@ -698,13 +746,28 @@ export function LitografiaCalculator() {
     }
   }
 
-  const createTemplateIfMissing = async (kind: 'transporte' | 'tirajeTiers') => {
-    const key = kind === 'transporte' ? CUSTOM_DROPDOWN_KEYS.transporte : CUSTOM_DROPDOWN_KEYS.tirajeTiers
+  const createTemplateIfMissing = async (kind: 'transporte' | 'tirajeTiers' | 'editorialProducto') => {
+    const key =
+      kind === 'transporte'
+        ? CUSTOM_DROPDOWN_KEYS.transporte
+        : kind === 'tirajeTiers'
+          ? CUSTOM_DROPDOWN_KEYS.tirajeTiers
+          : CUSTOM_DROPDOWN_KEYS.editorialProducto
     const exists = customDropdowns.some((d) => d.key === key)
     if (exists) return
 
-    const seedItems = kind === 'transporte' ? TRANSPORTE_TEMPLATE_ITEMS : TIRAJE_TIER_TEMPLATE_ITEMS
-    const nombre = kind === 'transporte' ? 'Litografía: Transporte' : 'Litografía: Rangos sugeridos (tiraje)'
+    const seedItems =
+      kind === 'transporte'
+        ? TRANSPORTE_TEMPLATE_ITEMS
+        : kind === 'tirajeTiers'
+          ? TIRAJE_TIER_TEMPLATE_ITEMS
+          : EDITORIAL_PRODUCTO_TEMPLATE_ITEMS
+    const nombre =
+      kind === 'transporte'
+        ? 'Litografía: Transporte'
+        : kind === 'tirajeTiers'
+          ? 'Litografía: Rangos sugeridos (tiraje)'
+          : 'Litografía: Editorial (libros/cartillas/revistas)'
     await createCustomDropdown({ nombre, key, descripcion: null, seedItems })
   }
 
@@ -1688,6 +1751,9 @@ export function LitografiaCalculator() {
                   <Button type="button" variant="outline" onClick={() => void createTemplateIfMissing('tirajeTiers')} disabled={!meLoaded || !canConfigWrite}>
                     Crear plantilla Rangos sugeridos
                   </Button>
+                  <Button type="button" variant="outline" onClick={() => void createTemplateIfMissing('editorialProducto')} disabled={!meLoaded || !canConfigWrite}>
+                    Crear plantilla Editorial
+                  </Button>
                 </div>
 
                 <div>
@@ -1718,7 +1784,20 @@ export function LitografiaCalculator() {
                       : items.filter((it) => it.label.toLowerCase().includes(itemQ) || it.value.toLowerCase().includes(itemQ))
 
                     const isTirajeTiers = d.key === CUSTOM_DROPDOWN_KEYS.tirajeTiers
-                    const newIt = newItemDraft[d.id] || (isTirajeTiers ? { label: "", min: "", max: "" } : { label: "", costo: "" })
+                    const isEditorial = d.key === CUSTOM_DROPDOWN_KEYS.editorialProducto
+                    const newIt =
+                      newItemDraft[d.id] ||
+                      (isTirajeTiers
+                        ? { label: "", min: "", max: "" }
+                        : isEditorial
+                          ? {
+                              label: "",
+                              totalPaginas: "32",
+                              paginasPortadaContraportada: "2",
+                              cartasPorPlancha: "2",
+                              paginasPorPliego: "4",
+                            }
+                          : { label: "", costo: "" })
 
                     return (
                       <div key={d.id} className="rounded-md border p-3 space-y-3">
@@ -1868,6 +1947,140 @@ export function LitografiaCalculator() {
                                 </Button>
                               </div>
                             </div>
+                          ) : isEditorial ? (
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
+                              <div className="md:col-span-2">
+                                <Label>Nombre</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  value={newIt.label}
+                                  onChange={(e) =>
+                                    setNewItemDraft((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || newIt), label: e.target.value },
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label>Páginas</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  type="number"
+                                  step="1"
+                                  min="1"
+                                  value={newIt.totalPaginas ?? ""}
+                                  onChange={(e) =>
+                                    setNewItemDraft((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || newIt), totalPaginas: e.target.value },
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label>Portada+contra</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  value={newIt.paginasPortadaContraportada ?? ""}
+                                  onChange={(e) =>
+                                    setNewItemDraft((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || newIt), paginasPortadaContraportada: e.target.value },
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label>Cartas/plancha</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  type="number"
+                                  step="1"
+                                  min="1"
+                                  value={newIt.cartasPorPlancha ?? ""}
+                                  onChange={(e) =>
+                                    setNewItemDraft((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || newIt), cartasPorPlancha: e.target.value },
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label>Páginas/pliego</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  type="number"
+                                  step="1"
+                                  min="1"
+                                  value={newIt.paginasPorPliego ?? ""}
+                                  onChange={(e) =>
+                                    setNewItemDraft((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || newIt), paginasPorPliego: e.target.value },
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div className="md:col-span-5">
+                                <Button
+                                  type="button"
+                                  onClick={() => {
+                                    const label = newIt.label.trim()
+                                    if (!label) return
+                                    const totalPaginas = Number.parseInt(String(newIt.totalPaginas ?? '').trim(), 10)
+                                    const paginasPortadaContraportada = Number.parseInt(String(newIt.paginasPortadaContraportada ?? '').trim(), 10)
+                                    const cartasPorPlancha = Number.parseInt(String(newIt.cartasPorPlancha ?? '').trim(), 10)
+                                    const paginasPorPliego = Number.parseInt(String(newIt.paginasPorPliego ?? '').trim(), 10)
+                                    if (!Number.isFinite(totalPaginas) || totalPaginas <= 0) {
+                                      setCustomDropdownsError('Páginas inválidas')
+                                      return
+                                    }
+                                    if (!Number.isFinite(paginasPortadaContraportada) || paginasPortadaContraportada < 0) {
+                                      setCustomDropdownsError('Portada+contra inválido')
+                                      return
+                                    }
+                                    if (!Number.isFinite(cartasPorPlancha) || cartasPorPlancha <= 0) {
+                                      setCustomDropdownsError('Cartas/plancha inválido')
+                                      return
+                                    }
+                                    if (!Number.isFinite(paginasPorPliego) || paginasPorPliego <= 0) {
+                                      setCustomDropdownsError('Páginas/pliego inválido')
+                                      return
+                                    }
+                                    void createCustomItem(d.id, {
+                                      label,
+                                      activo: true,
+                                      meta: {
+                                        kind: String(label).toUpperCase().includes('REVISTA') ? 'REVISTA' : undefined,
+                                        totalPaginas,
+                                        paginasPortadaContraportada,
+                                        cartasPorPlancha,
+                                        paginasPorPliego,
+                                      },
+                                    }).then(() => {
+                                      setNewItemDraft((prev) => ({
+                                        ...prev,
+                                        [d.id]: {
+                                          label: "",
+                                          totalPaginas: "32",
+                                          paginasPortadaContraportada: "2",
+                                          cartasPorPlancha: "2",
+                                          paginasPorPliego: "4",
+                                        },
+                                      }))
+                                    })
+                                  }}
+                                  disabled={!meLoaded || !canConfigWrite || !newIt.label.trim()}
+                                >
+                                  Agregar opción
+                                </Button>
+                              </div>
+                            </div>
                           ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
                               <div>
@@ -1936,12 +2149,20 @@ export function LitografiaCalculator() {
                               const draftCosto = edit.costo ?? getCostoFromMeta(it.meta)
                               const draftMin = edit.min ?? getNumberFieldFromMeta(it.meta, 'min')
                               const draftMax = edit.max ?? getNumberFieldFromMeta(it.meta, 'max')
+                              const draftTotalPaginas = edit.totalPaginas ?? String(metaNumber(it.meta, 'totalPaginas') ?? '')
+                              const draftPortadaContra = edit.paginasPortadaContraportada ?? String(metaNumber(it.meta, 'paginasPortadaContraportada') ?? '')
+                              const draftCartasPorPlancha = edit.cartasPorPlancha ?? String(metaNumber(it.meta, 'cartasPorPlancha') ?? '')
+                              const draftPaginasPorPliego = edit.paginasPorPliego ?? String(metaNumber(it.meta, 'paginasPorPliego') ?? '')
 
                               const isLabelDirty = edit.label !== undefined && draftLabel.trim() !== it.label
 
                               const parsedCosto = Number.parseFloat(String(draftCosto ?? '').trim())
                               const parsedMin = Number.parseInt(String(draftMin ?? '').trim(), 10)
                               const parsedMax = Number.parseInt(String(draftMax ?? '').trim(), 10)
+                              const parsedTotalPaginas = Number.parseInt(String(draftTotalPaginas ?? '').trim(), 10)
+                              const parsedPortadaContra = Number.parseInt(String(draftPortadaContra ?? '').trim(), 10)
+                              const parsedCartasPorPlancha = Number.parseInt(String(draftCartasPorPlancha ?? '').trim(), 10)
+                              const parsedPaginasPorPliego = Number.parseInt(String(draftPaginasPorPliego ?? '').trim(), 10)
 
                               const isCostoDirty =
                                 edit.costo !== undefined &&
@@ -1959,6 +2180,27 @@ export function LitografiaCalculator() {
                                 parsedMax > 0 &&
                                 String(parsedMax) !== String(getNumberFieldFromMeta(it.meta, 'max'))
 
+                              const isTotalPaginasDirty =
+                                edit.totalPaginas !== undefined &&
+                                Number.isFinite(parsedTotalPaginas) &&
+                                parsedTotalPaginas > 0 &&
+                                String(parsedTotalPaginas) !== String(metaNumber(it.meta, 'totalPaginas') ?? '')
+                              const isPortadaContraDirty =
+                                edit.paginasPortadaContraportada !== undefined &&
+                                Number.isFinite(parsedPortadaContra) &&
+                                parsedPortadaContra >= 0 &&
+                                String(parsedPortadaContra) !== String(metaNumber(it.meta, 'paginasPortadaContraportada') ?? '')
+                              const isCartasPorPlanchaDirty =
+                                edit.cartasPorPlancha !== undefined &&
+                                Number.isFinite(parsedCartasPorPlancha) &&
+                                parsedCartasPorPlancha > 0 &&
+                                String(parsedCartasPorPlancha) !== String(metaNumber(it.meta, 'cartasPorPlancha') ?? '')
+                              const isPaginasPorPliegoDirty =
+                                edit.paginasPorPliego !== undefined &&
+                                Number.isFinite(parsedPaginasPorPliego) &&
+                                parsedPaginasPorPliego > 0 &&
+                                String(parsedPaginasPorPliego) !== String(metaNumber(it.meta, 'paginasPorPliego') ?? '')
+
                               const canItemSave = isTirajeTiers
                                 ? (isLabelDirty || isMinDirty || isMaxDirty) &&
                                   draftLabel.trim() &&
@@ -1967,7 +2209,18 @@ export function LitografiaCalculator() {
                                   parsedMin > 0 &&
                                   parsedMax > 0 &&
                                   parsedMin <= parsedMax
-                                : (isLabelDirty || isCostoDirty) && draftLabel.trim() && Number.isFinite(parsedCosto) && parsedCosto >= 0
+                                : isEditorial
+                                  ? (isLabelDirty || isTotalPaginasDirty || isPortadaContraDirty || isCartasPorPlanchaDirty || isPaginasPorPliegoDirty) &&
+                                    draftLabel.trim() &&
+                                    Number.isFinite(parsedTotalPaginas) &&
+                                    parsedTotalPaginas > 0 &&
+                                    Number.isFinite(parsedPortadaContra) &&
+                                    parsedPortadaContra >= 0 &&
+                                    Number.isFinite(parsedCartasPorPlancha) &&
+                                    parsedCartasPorPlancha > 0 &&
+                                    Number.isFinite(parsedPaginasPorPliego) &&
+                                    parsedPaginasPorPliego > 0
+                                  : (isLabelDirty || isCostoDirty) && draftLabel.trim() && Number.isFinite(parsedCosto) && parsedCosto >= 0
 
                               return (
                                 <div key={it.id} className="rounded-md border p-3 space-y-2">
@@ -1977,6 +2230,10 @@ export function LitografiaCalculator() {
                                       {isTirajeTiers ? (
                                         <p className="text-xs text-muted-foreground truncate">
                                           Rango: {getNumberFieldFromMeta(it.meta, 'min') || "?"} - {getNumberFieldFromMeta(it.meta, 'max') || "?"}
+                                        </p>
+                                      ) : isEditorial ? (
+                                        <p className="text-xs text-muted-foreground truncate">
+                                          Páginas: {String(metaNumber(it.meta, 'totalPaginas') ?? '?')} • Cartas/plancha: {String(metaNumber(it.meta, 'cartasPorPlancha') ?? '?')} • Páginas/pliego: {String(metaNumber(it.meta, 'paginasPorPliego') ?? '?')}
                                         </p>
                                       ) : (
                                         <p className="text-xs text-muted-foreground truncate">Costo/valor: {formatCurrency(Number.parseFloat(getCostoFromMeta(it.meta)) || 0)}</p>
@@ -2059,6 +2316,107 @@ export function LitografiaCalculator() {
                                         </Button>
                                         {(isLabelDirty || isMinDirty || isMaxDirty) && !canItemSave ? (
                                           <p className="text-xs text-muted-foreground">Revisa nombre/rango.</p>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  ) : isEditorial ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
+                                      <div className="md:col-span-2">
+                                        <Label>Nombre</Label>
+                                        <Input
+                                          className={INPUT_COMPACT}
+                                          value={draftLabel}
+                                          onChange={(e) => setItemEdits((prev) => ({ ...prev, [it.id]: { ...prev[it.id], label: e.target.value } }))}
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label>Páginas</Label>
+                                        <Input
+                                          className={INPUT_COMPACT}
+                                          type="number"
+                                          step="1"
+                                          min="1"
+                                          value={draftTotalPaginas}
+                                          onChange={(e) => setItemEdits((prev) => ({ ...prev, [it.id]: { ...prev[it.id], totalPaginas: e.target.value } }))}
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label>Portada+contra</Label>
+                                        <Input
+                                          className={INPUT_COMPACT}
+                                          type="number"
+                                          step="1"
+                                          min="0"
+                                          value={draftPortadaContra}
+                                          onChange={(e) => setItemEdits((prev) => ({ ...prev, [it.id]: { ...prev[it.id], paginasPortadaContraportada: e.target.value } }))}
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label>Cartas/plancha</Label>
+                                        <Input
+                                          className={INPUT_COMPACT}
+                                          type="number"
+                                          step="1"
+                                          min="1"
+                                          value={draftCartasPorPlancha}
+                                          onChange={(e) => setItemEdits((prev) => ({ ...prev, [it.id]: { ...prev[it.id], cartasPorPlancha: e.target.value } }))}
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label>Páginas/pliego</Label>
+                                        <Input
+                                          className={INPUT_COMPACT}
+                                          type="number"
+                                          step="1"
+                                          min="1"
+                                          value={draftPaginasPorPliego}
+                                          onChange={(e) => setItemEdits((prev) => ({ ...prev, [it.id]: { ...prev[it.id], paginasPorPliego: e.target.value } }))}
+                                        />
+                                      </div>
+                                      <div className="md:col-span-5 flex items-center gap-2">
+                                        <Button
+                                          type="button"
+                                          onClick={() => {
+                                            const patch: { label?: string; meta?: unknown } = {}
+                                            if (isLabelDirty) patch.label = draftLabel.trim()
+                                            if (isTotalPaginasDirty || isPortadaContraDirty || isCartasPorPlanchaDirty || isPaginasPorPliegoDirty) {
+                                              const totalPaginas = Number.parseInt(String(draftTotalPaginas ?? '').trim(), 10)
+                                              const paginasPortadaContraportada = Number.parseInt(String(draftPortadaContra ?? '').trim(), 10)
+                                              const cartasPorPlancha = Number.parseInt(String(draftCartasPorPlancha ?? '').trim(), 10)
+                                              const paginasPorPliego = Number.parseInt(String(draftPaginasPorPliego ?? '').trim(), 10)
+                                              if (!Number.isFinite(totalPaginas) || totalPaginas <= 0) {
+                                                setCustomDropdownsError('Páginas inválidas')
+                                                return
+                                              }
+                                              if (!Number.isFinite(paginasPortadaContraportada) || paginasPortadaContraportada < 0) {
+                                                setCustomDropdownsError('Portada+contra inválido')
+                                                return
+                                              }
+                                              if (!Number.isFinite(cartasPorPlancha) || cartasPorPlancha <= 0) {
+                                                setCustomDropdownsError('Cartas/plancha inválido')
+                                                return
+                                              }
+                                              if (!Number.isFinite(paginasPorPliego) || paginasPorPliego <= 0) {
+                                                setCustomDropdownsError('Páginas/pliego inválido')
+                                                return
+                                              }
+                                              const baseMeta = it.meta && typeof it.meta === 'object' ? (it.meta as Record<string, unknown>) : {}
+                                              patch.meta = { ...baseMeta, totalPaginas, paginasPortadaContraportada, cartasPorPlancha, paginasPorPliego }
+                                            }
+                                            void patchCustomItem(it.id, patch).then(() => {
+                                              setItemEdits((prev) => {
+                                                const next = { ...prev }
+                                                delete next[it.id]
+                                                return next
+                                              })
+                                            })
+                                          }}
+                                          disabled={!meLoaded || !canConfigWrite || !canItemSave}
+                                        >
+                                          Guardar opción
+                                        </Button>
+                                        {(isLabelDirty || isTotalPaginasDirty || isPortadaContraDirty || isCartasPorPlanchaDirty || isPaginasPorPliegoDirty) && !canItemSave ? (
+                                          <p className="text-xs text-muted-foreground">Revisa nombre/datos.</p>
                                         ) : null}
                                       </div>
                                     </div>

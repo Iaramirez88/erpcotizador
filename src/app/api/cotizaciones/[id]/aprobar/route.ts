@@ -25,13 +25,48 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
       return NextResponse.json({ success: false, error: 'Cotización no encontrada' }, { status: 404 })
     }
 
-    const updated = await prisma.cotizacion.update({
-      where: { id },
-      data: {
-        estado: EstadoCotizacion.APROBADA,
-        sedeId: cotizacion.sedeId ?? access.sedeId,
-      },
-      select: { id: true, estado: true },
+    const updated = await prisma.$transaction(async (tx) => {
+      const before = await tx.cotizacion.findUnique({
+        where: { id },
+        select: { id: true, estado: true, total: true, subtotal: true, iva: true, descuento: true },
+      })
+
+      const upd = await tx.cotizacion.update({
+        where: { id },
+        data: {
+          estado: EstadoCotizacion.APROBADA,
+          sedeId: cotizacion.sedeId ?? access.sedeId,
+        },
+        select: { id: true, estado: true, total: true, subtotal: true, iva: true, descuento: true },
+      })
+
+      await tx.cotizacionAuditEvent.create({
+        data: {
+          cotizacionId: upd.id,
+          action: 'APPROVED',
+          effect: 'NONE',
+          performedById: access.userId,
+          requestedById: access.userId,
+          before: before
+            ? {
+                estado: before.estado,
+                total: before.total,
+                subtotal: before.subtotal,
+                iva: before.iva,
+                descuento: before.descuento,
+              }
+            : undefined,
+          after: {
+            estado: upd.estado,
+            total: upd.total,
+            subtotal: upd.subtotal,
+            iva: upd.iva,
+            descuento: upd.descuento,
+          },
+        },
+      })
+
+      return { id: upd.id, estado: upd.estado }
     })
 
     return NextResponse.json({ success: true, data: updated })

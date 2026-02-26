@@ -25,6 +25,7 @@ import { LitografiaQuoteDialog, type LitografiaMeta } from "@/components/litogra
 import CotizacionPDF, { type CotizacionPdfData } from "@/lib/pdf-template.client"
 import type { CotizacionTemplateSettings } from "@/lib/cotizacion-template"
 import { useI18n } from "@/components/providers/i18n-provider"
+import { buildWhatsAppWebUrl } from "@/lib/whatsapp-link"
 
 function PdfPreviewLoading() {
   const { t } = useI18n()
@@ -104,6 +105,17 @@ export default function CotizadorPage() {
 
   const [previewCotizacion, setPreviewCotizacion] = useState<(CotizacionPdfData & { id: string; estado?: string }) | null>(null)
   const [previewTemplate, setPreviewTemplate] = useState<CotizacionTemplateSettings | null>(null)
+  const [auditEvents, setAuditEvents] = useState<
+    Array<{
+      id: string
+      action: 'CREATED' | 'UPDATED' | 'APPROVED'
+      effect: 'NONE' | 'DEBIT' | 'CREDIT'
+      note: string | null
+      createdAt: string
+      performedBy: { id: string; name: string | null; email: string } | null
+      requestedBy: { id: string; name: string | null; email: string } | null
+    }>
+  >([])
   const [sendingPreviewEmail, setSendingPreviewEmail] = useState(false)
   const [sharingPreviewWhatsapp, setSharingPreviewWhatsapp] = useState(false)
   const [approvingForBilling, setApprovingForBilling] = useState(false)
@@ -132,6 +144,7 @@ export default function CotizadorPage() {
   const [validezDias, setValidezDias] = useState("15")
   const [tiempoEntrega, setTiempoEntrega] = useState("")
   const [observaciones, setObservaciones] = useState("")
+  const [motivoAjuste, setMotivoAjuste] = useState("")
 
   // Items
   const [items, setItems] = useState<ItemCotizacion[]>([])
@@ -289,6 +302,7 @@ export default function CotizadorPage() {
               const cantidadRaw = it.cantidad
               const precioUnitarioRaw = it.precioUnitario
               const subtotalRaw = it.subtotal
+              const observacionesRaw = it.observaciones
 
               return {
                 id: String(it.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`),
@@ -308,7 +322,8 @@ export default function CotizadorPage() {
                 costoLaminado: 0,
                 costoTroquelado: 0,
                 costoInstalacion: it.costoInstalacion != null ? Number(it.costoInstalacion) : 0,
-                observaciones: "",
+                observaciones:
+                  typeof observacionesRaw === "string" ? String(observacionesRaw) : "",
               }
             })
           : []
@@ -368,6 +383,15 @@ export default function CotizadorPage() {
       const data = await res.json()
       if (!data?.success || !data?.data) throw new Error(data?.error ?? t('quotes.errors.loadQuote'))
       setPreviewCotizacion(data.data as CotizacionPdfData & { id: string; estado?: string })
+
+      const auditRes = await fetch(`/api/cotizaciones/${id}/audit`, { cache: 'no-store' })
+      if (auditRes.ok) {
+        const auditJson = await auditRes.json().catch(() => null)
+        const events = auditJson?.success ? auditJson?.data?.events : null
+        setAuditEvents(Array.isArray(events) ? events : [])
+      } else {
+        setAuditEvents([])
+      }
 
       const templateRes = await fetch('/api/cotizacion-template', { cache: "no-store" })
       if (templateRes.ok) {
@@ -519,7 +543,11 @@ export default function CotizadorPage() {
 
       const url: string = json.data.url
       const mensaje = buildWhatsAppMessage(previewCotizacion, url)
-      window.open(`https://wa.me/?text=${encodeURIComponent(mensaje)}`, '_blank')
+
+      const telefono = (previewCotizacion as unknown as { cliente?: { telefono?: string | null } })
+        ?.cliente?.telefono
+      const whatsappUrl = buildWhatsAppWebUrl({ phone: telefono, message: mensaje })
+      window.open(whatsappUrl, '_blank')
     } catch (error) {
       console.error('Error:', error)
       alert(t('quotes.errors.whatsappPrepare'))
@@ -832,6 +860,11 @@ export default function CotizadorPage() {
       return
     }
 
+    if (editingId && !motivoAjuste.trim()) {
+      alert('Por favor indica el motivo del ajuste para mantener la trazabilidad.')
+      return
+    }
+
     setIsLoading(true)
     try {
       const url = editingId ? `/api/cotizaciones/${editingId}` : '/api/cotizaciones'
@@ -868,7 +901,8 @@ export default function CotizadorPage() {
           total,
           validezDias,
           tiempoEntrega,
-          observaciones
+          observaciones,
+          ...(editingId ? { auditNote: motivoAjuste.trim() } : {}),
         }),
       })
 
@@ -890,6 +924,7 @@ export default function CotizadorPage() {
         // Limpiar / salir de edición
         router.push('/dashboard/cotizador')
         resetCotizador()
+        setMotivoAjuste("")
       } else {
         alert(t('common.errorWithDetails', { details: data.error || t('quoteBuilder.errors.saveFallback') }))
       }
@@ -920,6 +955,7 @@ export default function CotizadorPage() {
     setValidezDias("15")
     setTiempoEntrega("")
     setObservaciones("")
+    setMotivoAjuste("")
     setItems([])
     setShowItemForm(false)
     setEditingManualItemId(null)
@@ -948,6 +984,7 @@ export default function CotizadorPage() {
           if (!open) {
             setPreviewCotizacion(null)
             setCreatedInvoice(null)
+            setAuditEvents([])
           }
         }}
       >
@@ -1051,6 +1088,61 @@ export default function CotizadorPage() {
                   template={previewTemplate || undefined}
                 />
               </PDFViewer>
+            </div>
+          ) : null}
+
+          {previewCotizacion?.id ? (
+            <div className="space-y-2 rounded border p-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="font-medium">
+                  Trazabilidad
+                </div>
+                <div className="text-muted-foreground">
+                  Ediciones: {auditEvents.filter((e) => e.action === 'UPDATED').length}
+                </div>
+              </div>
+
+              {auditEvents.length ? (
+                <div className="max-h-40 overflow-auto">
+                  <div className="space-y-1">
+                    {auditEvents.map((e) => {
+                      const fecha = new Date(e.createdAt).toLocaleString(locale)
+                      const performed = e.performedBy?.name || e.performedBy?.email || '-'
+                      const requested = e.requestedBy?.name || e.requestedBy?.email || null
+                      const who = requested && requested !== performed
+                        ? `Solicitó: ${requested} • Ejecutó: ${performed}`
+                        : `Por: ${performed}`
+
+                      const effectLabel =
+                        e.effect === 'DEBIT'
+                          ? ' (Nota débito)'
+                          : e.effect === 'CREDIT'
+                            ? ' (Nota crédito)'
+                            : ''
+
+                      const actionLabel =
+                        e.action === 'CREATED'
+                          ? 'Creada'
+                          : e.action === 'APPROVED'
+                            ? 'Aprobada'
+                            : `Editada${effectLabel}`
+
+                      return (
+                        <div key={e.id} className="flex flex-col gap-0.5 rounded px-2 py-1 hover:bg-muted/50">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="font-medium">{actionLabel}</div>
+                            <div className="text-muted-foreground">{fecha}</div>
+                          </div>
+                          <div className="text-muted-foreground">{who}</div>
+                          {e.note ? <div className="text-muted-foreground">{e.note}</div> : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-muted-foreground">Sin registros</div>
+              )}
             </div>
           ) : null}
 
@@ -1418,6 +1510,26 @@ export default function CotizadorPage() {
               />
             </CardContent>
           </Card>
+
+          {/* Motivo del ajuste (solo edición) */}
+          {editingId ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Motivo del ajuste</CardTitle>
+                <CardDescription>
+                  Se guarda en la trazabilidad como nota débito/crédito.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  value={motivoAjuste}
+                  onChange={(e) => setMotivoAjuste(e.target.value)}
+                  placeholder="Ej: Ajuste por cambio de cantidades / corrección de precio / modificación de terminados"
+                  rows={3}
+                />
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
 
         {/* Resumen */}

@@ -23,6 +23,7 @@ type PapelTipo = "bond" | "propalcote" | "periodico" | "otro"
 
 const CUSTOM_DROPDOWN_KEYS = {
   transporte: "litografia_transporte",
+  editorialProducto: "litografia_editorial_producto",
 } as const
 
 const INPUT_COMPACT = "h-7 px-2 text-xs"
@@ -178,6 +179,13 @@ export type LitografiaMeta = {
   costoAcabados: string
   costoTransporte: string
   customFields: CustomField[]
+
+  // Editorial (libros/cartillas/revistas) - opcional
+  editorialProductoKey?: string
+  editorialTotalPaginas?: string
+  editorialPaginasPortadaContraportada?: string
+  editorialCartasPorPlancha?: string
+  editorialPaginasPorPliego?: string
 }
 
 type AddLitografiaItemPayload = {
@@ -242,6 +250,23 @@ export function LitografiaQuoteDialog(props: {
   const [selectedTransporteKey, setSelectedTransporteKey] = useState<string>("")
   const [transporteOptions, setTransporteOptions] = useState<Array<{ value: string; label: string; total: number }>>([])
   const [transporteOptionsLoading, setTransporteOptionsLoading] = useState(false)
+
+  const [selectedEditorialProductoKey, setSelectedEditorialProductoKey] = useState<string>("")
+  const [editorialOptions, setEditorialOptions] = useState<
+    Array<{
+      value: string
+      label: string
+      totalPaginas: number
+      paginasPortadaContraportada: number
+      cartasPorPlancha: number
+      paginasPorPliego: number
+    }>
+  >([])
+  const [editorialOptionsLoading, setEditorialOptionsLoading] = useState(false)
+  const [editorialTotalPaginas, setEditorialTotalPaginas] = useState("32")
+  const [editorialPaginasPortadaContraportada, setEditorialPaginasPortadaContraportada] = useState("2")
+  const [editorialCartasPorPlancha, setEditorialCartasPorPlancha] = useState("2")
+  const [editorialPaginasPorPliego, setEditorialPaginasPorPliego] = useState("4")
 
   const [costoCorte, setCostoCorte] = useState("0")
   const [costoAcabados, setCostoAcabados] = useState("0")
@@ -474,6 +499,12 @@ export function LitografiaQuoteDialog(props: {
       costoAcabados,
       costoTransporte,
       customFields,
+
+      editorialProductoKey: selectedEditorialProductoKey || undefined,
+      editorialTotalPaginas: selectedEditorialProductoKey ? editorialTotalPaginas : undefined,
+      editorialPaginasPortadaContraportada: selectedEditorialProductoKey ? editorialPaginasPortadaContraportada : undefined,
+      editorialCartasPorPlancha: selectedEditorialProductoKey ? editorialCartasPorPlancha : undefined,
+      editorialPaginasPorPliego: selectedEditorialProductoKey ? editorialPaginasPorPliego : undefined,
     }
   }
 
@@ -555,6 +586,12 @@ export function LitografiaQuoteDialog(props: {
     setCostoAcabados(meta.costoAcabados ?? "0")
     setCostoTransporte(meta.costoTransporte ?? "0")
     setCustomFields(Array.isArray(meta.customFields) ? meta.customFields : [])
+
+    setSelectedEditorialProductoKey(String(meta.editorialProductoKey || ""))
+    setEditorialTotalPaginas(String(meta.editorialTotalPaginas || "32"))
+    setEditorialPaginasPortadaContraportada(String(meta.editorialPaginasPortadaContraportada || "2"))
+    setEditorialCartasPorPlancha(String(meta.editorialCartasPorPlancha || "2"))
+    setEditorialPaginasPorPliego(String(meta.editorialPaginasPorPliego || "4"))
   }
 
   useEffect(() => {
@@ -731,6 +768,7 @@ export function LitografiaQuoteDialog(props: {
     if (!props.open) return
     const load = async () => {
       setTransporteOptionsLoading(true)
+      setEditorialOptionsLoading(true)
       try {
         const res = await fetch("/api/configuracion/dropdowns?includeItems=1", { cache: "no-store" })
         const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
@@ -749,10 +787,37 @@ export function LitografiaQuoteDialog(props: {
           .filter(Boolean) as Array<{ value: string; label: string; total: number }>
 
         setTransporteOptions(mapped.sort((a, b) => a.label.localeCompare(b.label)))
+
+        const editorial = dropdowns.find((d) => String(d.key || "") === CUSTOM_DROPDOWN_KEYS.editorialProducto) || null
+        const editorialItems = editorial && Array.isArray((editorial as any).items) ? ((editorial as any).items as any[]) : []
+        const mappedEditorial = editorialItems
+          .filter((it) => Boolean(it) && Boolean((it as any).activo))
+          .map((it) => {
+            const value = String((it as any).value || "").trim()
+            const label = String((it as any).label || value).trim() || value
+            const meta = (it as any).meta
+            const totalPaginas = Math.max(0, Math.trunc(metaNumber(meta, "totalPaginas") ?? 0))
+            const paginasPortadaContraportada = Math.max(0, Math.trunc(metaNumber(meta, "paginasPortadaContraportada") ?? 0))
+            const cartasPorPlancha = Math.max(1, Math.trunc(metaNumber(meta, "cartasPorPlancha") ?? 2))
+            const paginasPorPliego = Math.max(1, Math.trunc(metaNumber(meta, "paginasPorPliego") ?? 4))
+            return value ? { value, label, totalPaginas, paginasPortadaContraportada, cartasPorPlancha, paginasPorPliego } : null
+          })
+          .filter(Boolean) as Array<{
+            value: string
+            label: string
+            totalPaginas: number
+            paginasPortadaContraportada: number
+            cartasPorPlancha: number
+            paginasPorPliego: number
+          }>
+
+        setEditorialOptions(mappedEditorial.sort((a, b) => a.label.localeCompare(b.label)))
       } catch {
         setTransporteOptions([])
+        setEditorialOptions([])
       } finally {
         setTransporteOptionsLoading(false)
+        setEditorialOptionsLoading(false)
       }
     }
 
@@ -765,6 +830,38 @@ export function LitografiaQuoteDialog(props: {
     const next = opt ? String(opt.total) : "0"
     if (costoTransporte !== next) setCostoTransporte(next)
   }, [props.open, selectedTransporteKey, costoTransporte, transporteOptions])
+
+  useEffect(() => {
+    if (!props.open) return
+    if (!selectedEditorialProductoKey) return
+    const opt = editorialOptions.find((o) => o.value === selectedEditorialProductoKey) || null
+    if (!opt) return
+    setEditorialTotalPaginas(String(opt.totalPaginas || 32))
+    setEditorialPaginasPortadaContraportada(String(opt.paginasPortadaContraportada || 0))
+    setEditorialCartasPorPlancha(String(opt.cartasPorPlancha || 2))
+    setEditorialPaginasPorPliego(String(opt.paginasPorPliego || 4))
+  }, [props.open, selectedEditorialProductoKey, editorialOptions])
+
+  const editorialCalc = useMemo(() => {
+    if (!props.open) return null
+    if (!selectedEditorialProductoKey) return null
+
+    const qty = Math.max(0, Math.trunc(parseFloat(cantidad) || 0))
+    const totalPaginas = Math.max(0, Math.trunc(parseFloat(editorialTotalPaginas) || 0))
+    const cartasPorPlancha = Math.max(1, Math.trunc(parseFloat(editorialCartasPorPlancha) || 0))
+    const paginasPorPliego = Math.max(1, Math.trunc(parseFloat(editorialPaginasPorPliego) || 0))
+    const desperdicio = Math.max(0, parseFloat(desperdicioPct) || 0)
+    const sobrante = Math.max(0, Math.trunc(parseFloat(sobranteMinimo) || 0))
+
+    const planchas = totalPaginas > 0 ? Math.ceil(totalPaginas / cartasPorPlancha) : 0
+    const pliegosPorUnidad = totalPaginas > 0 ? Math.ceil(totalPaginas / paginasPorPliego) : 0
+    const pliegosBase = qty * pliegosPorUnidad
+    const pliegosConDesperdicio = Math.ceil(pliegosBase * (1 + desperdicio / 100))
+    const pliegosPorSobrante = sobrante * pliegosPorUnidad
+    const pliegosTotal = pliegosConDesperdicio + pliegosPorSobrante
+
+    return { planchas, pliegosPorUnidad, pliegosBase, pliegosConDesperdicio, pliegosTotal }
+  }, [props.open, selectedEditorialProductoKey, editorialOptions, cantidad, editorialTotalPaginas, editorialCartasPorPlancha, editorialPaginasPorPliego, desperdicioPct, sobranteMinimo])
 
   useEffect(() => {
     const load = async () => {
@@ -1394,6 +1491,80 @@ export function LitografiaQuoteDialog(props: {
                           onChange={(e) => setCantidad(e.target.value)}
                         />
                       </div>
+
+                      <div className="sm:col-span-2">
+                        <Label>Libros / Cartillas / Revistas</Label>
+                        <SearchableNativeSelect
+                          value={selectedEditorialProductoKey}
+                          onChange={(v) => setSelectedEditorialProductoKey(v)}
+                          disabled={editorialOptionsLoading}
+                          searchClassName={INPUT_COMPACT}
+                          selectClassName={SELECT_COMPACT}
+                          includeAllOption={{ value: "", label: "Ninguno" }}
+                          options={editorialOptions.map((o) => ({ value: o.value, label: o.label }))}
+                          searchPlaceholder="Buscar…"
+                          emptyText={editorialOptions.length ? t('common.noResults') : 'Sin dropdown editorial configurado'}
+                        />
+                        {!editorialOptions.length ? (
+                          <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                            Crea la plantilla en Configuración de Litografía → Dropdowns personalizados → “Crear plantilla Editorial”.
+                          </p>
+                        ) : null}
+                      </div>
+
+                      {selectedEditorialProductoKey ? (
+                        <>
+                          <div>
+                            <Label>Páginas totales</Label>
+                            <Input
+                              className={INPUT_COMPACT}
+                              type="number"
+                              step="1"
+                              min={1}
+                              value={editorialTotalPaginas}
+                              onChange={(e) => setEditorialTotalPaginas(e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <Label>Portada + contraportada (páginas)</Label>
+                            <Input
+                              className={INPUT_COMPACT}
+                              type="number"
+                              step="1"
+                              min={0}
+                              value={editorialPaginasPortadaContraportada}
+                              onChange={(e) => setEditorialPaginasPortadaContraportada(e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <Label>Cartas por plancha</Label>
+                            <Input
+                              className={INPUT_COMPACT}
+                              type="number"
+                              step="1"
+                              min={1}
+                              value={editorialCartasPorPlancha}
+                              onChange={(e) => setEditorialCartasPorPlancha(e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <Label>Páginas por pliego</Label>
+                            <Input
+                              className={INPUT_COMPACT}
+                              type="number"
+                              step="1"
+                              min={1}
+                              value={editorialPaginasPorPliego}
+                              onChange={(e) => setEditorialPaginasPorPliego(e.target.value)}
+                            />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <p className="text-xs text-muted-foreground">
+                              Planchas: <span className="font-medium">{editorialCalc?.planchas ?? 0}</span> • Pliegos por unidad: <span className="font-medium">{editorialCalc?.pliegosPorUnidad ?? 0}</span> • Pliegos tiraje: <span className="font-medium">{editorialCalc?.pliegosBase ?? 0}</span> • Pliegos total (con desperdicio/sobrante): <span className="font-medium">{editorialCalc?.pliegosTotal ?? 0}</span>
+                            </p>
+                          </div>
+                        </>
+                      ) : null}
 
                       <div className="sm:col-span-2">
                         <Label className={requiredLabelClass(validation.missingFormato)}>{t('printshopQuote.fields.printSize')}</Label>

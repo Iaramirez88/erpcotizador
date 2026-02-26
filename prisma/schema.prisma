@@ -57,6 +57,10 @@ model User {
   ordenes      OrdenTrabajo[] @relation("OrdenVendedor")
   ordenesAsignadas OrdenTrabajo[] @relation("OrdenAssignedTo")
 
+  // Auditoría de cotizaciones
+  cotizacionAuditEventsPerformed CotizacionAuditEvent[] @relation("CotizacionAuditPerformedBy")
+  cotizacionAuditEventsRequested CotizacionAuditEvent[] @relation("CotizacionAuditRequestedBy")
+
   // Escaneo de documentos (IA/OCR)
   documentScans     DocumentScan[]              @relation("ScanCreatedBy")
   approvedScans     DocumentScan[]              @relation("ScanApprovedBy")
@@ -1518,6 +1522,9 @@ model Cotizacion {
   lastEmailSentAt    DateTime?
   lastWhatsappSentAt DateTime?
 
+  // Trazabilidad de cambios (ediciones)
+  editCount Int @default(0)
+
   clienteId String
   cliente   Cliente @relation(fields: [clienteId], references: [id])
 
@@ -1547,6 +1554,9 @@ model Cotizacion {
   // Conversión a orden
   orden OrdenTrabajo? @relation("CotizacionOrden")
 
+  // Auditoría
+  auditEvents CotizacionAuditEvent[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1557,6 +1567,48 @@ model Cotizacion {
   @@index([assignedToUserId])
   @@unique([sedeId, numero], map: "uq_cotizaciones_sede_numero")
   @@map("cotizaciones")
+}
+
+enum CotizacionAuditAction {
+  CREATED
+  UPDATED
+  APPROVED
+}
+
+enum CotizacionAuditEffect {
+  NONE
+  DEBIT
+  CREDIT
+}
+
+model CotizacionAuditEvent {
+  id String @id @default(cuid())
+
+  cotizacionId String
+  cotizacion   Cotizacion @relation(fields: [cotizacionId], references: [id], onDelete: Cascade)
+
+  action CotizacionAuditAction
+  effect CotizacionAuditEffect @default(NONE)
+
+  // Nota libre (opcional) para justificar el cambio
+  note String? @db.Text
+
+  // Snapshot mínimo (para trazabilidad sin recalcular)
+  before Json?
+  after  Json?
+
+  performedById String
+  performedBy   User   @relation("CotizacionAuditPerformedBy", fields: [performedById], references: [id], onDelete: Restrict)
+
+  // Si alguien solicitó el cambio y otro lo ejecutó.
+  requestedById String?
+  requestedBy   User?  @relation("CotizacionAuditRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([cotizacionId, createdAt], map: "idx_cot_audit_cot_created")
+  @@index([action, createdAt], map: "idx_cot_audit_action_created")
+  @@map("cotizacion_audit_events")
 }
 
 model ItemCotizacion {
@@ -1592,6 +1644,9 @@ model ItemCotizacion {
   costoInstalacion Float @default(0)
   precioUnitario   Float
   subtotal         Float
+
+  // Nota del item (y también meta embebida del cotizador Litografía: "LITOGRAFIA_META:...")
+  observaciones String? @db.Text
 
   orden Int @default(0)
 

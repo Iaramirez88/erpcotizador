@@ -133,6 +133,7 @@ export async function GET(request: NextRequest) {
               select: {
                 nombre: true,
                 email: true,
+                telefono: true,
               },
             },
             items: {
@@ -195,6 +196,7 @@ export async function GET(request: NextRequest) {
           select: {
             nombre: true,
             email: true,
+            telefono: true,
           },
         },
         items: {
@@ -365,6 +367,8 @@ export async function POST(request: NextRequest) {
 
             return {
               descripcion: typeof it.descripcion === 'string' ? it.descripcion.trim() : '',
+              observaciones:
+                typeof it.observaciones === 'string' ? it.observaciones.trim() || null : null,
               material: it.materialId ? { connect: { id: String(it.materialId) } } : undefined,
               cantidad: toFloatOrNaN(it.cantidad),
               unidad: typeof it.unidad === 'string' && it.unidad.trim() ? it.unidad.trim() : 'unidad',
@@ -421,6 +425,22 @@ export async function POST(request: NextRequest) {
         }
       }
     })
+
+      // Auditoría: creación
+      await tx.cotizacionAuditEvent.create({
+        data: {
+          cotizacionId: cotizacion.id,
+          action: 'CREATED',
+          effect: 'NONE',
+          performedById: access.userId,
+          requestedById: access.userId,
+          after: {
+            estado: cotizacion.estado,
+            total: cotizacion.total,
+            itemsCount: cotizacion.items?.length ?? 0,
+          },
+        },
+      })
 
       return cotizacion
     })

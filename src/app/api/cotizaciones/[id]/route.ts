@@ -105,6 +105,7 @@ export async function PATCH(
     const garantia = typeof rec.garantia === 'string' ? rec.garantia : null
     const paymentMethods = rec.paymentMethods
     const boldCheckoutUrl = typeof rec.boldCheckoutUrl === 'string' ? rec.boldCheckoutUrl : null
+    const auditNote = typeof rec.auditNote === 'string' ? rec.auditNote.trim() : ''
 
     if (!clienteId || items.length === 0) {
       return NextResponse.json({ success: false, error: 'Cliente e items son requeridos' }, { status: 400 })
@@ -112,7 +113,17 @@ export async function PATCH(
 
     const existing = await prisma.cotizacion.findUnique({
       where: { id },
-      select: { id: true, sedeId: true, estado: true, orden: { select: { id: true } } },
+      select: {
+        id: true,
+        sedeId: true,
+        estado: true,
+        subtotal: true,
+        descuento: true,
+        iva: true,
+        total: true,
+        items: { select: { id: true } },
+        orden: { select: { id: true } },
+      },
     })
 
     if (!existing) {
@@ -125,10 +136,6 @@ export async function PATCH(
 
     if (existing.orden) {
       return NextResponse.json({ success: false, error: 'No se puede editar: tiene una orden asociada' }, { status: 400 })
-    }
-
-    if (String(existing.estado) !== 'BORRADOR') {
-      return NextResponse.json({ success: false, error: 'Solo se pueden editar cotizaciones en BORRADOR' }, { status: 400 })
     }
 
     // Recalcular totales en servidor (fuente de verdad)
@@ -205,6 +212,7 @@ export async function PATCH(
             ? paymentMethods.map((x: unknown) => String(x || '').trim()).filter(Boolean)
             : [],
           boldCheckoutUrl: boldCheckoutUrl ? String(boldCheckoutUrl).trim() || null : null,
+          editCount: { increment: 1 },
           items: {
             create: items.map((item: unknown) => {
               const it = asRecord(item)
@@ -213,6 +221,8 @@ export async function PATCH(
 
               return {
                 descripcion: typeof it.descripcion === 'string' ? it.descripcion.trim() : '',
+                observaciones:
+                  typeof it.observaciones === 'string' ? it.observaciones.trim() || null : null,
                 material: it.materialId ? { connect: { id: String(it.materialId) } } : undefined,
                 cantidad: toFloatOrNaN(it.cantidad),
                 unidad: typeof it.unidad === 'string' && it.unidad.trim() ? it.unidad.trim() : 'unidad',
@@ -253,6 +263,40 @@ export async function PATCH(
           cliente: true,
           items: { include: { material: true, terminados: { include: { terminado: true } } } },
           vendedor: { select: { name: true, email: true } },
+        },
+      })
+
+      const before = {
+        estado: existing.estado,
+        subtotal: existing.subtotal,
+        descuento: existing.descuento,
+        iva: existing.iva,
+        total: existing.total,
+        itemsCount: existing.items?.length ?? 0,
+      }
+      const after = {
+        estado: updated.estado,
+        subtotal: updated.subtotal,
+        descuento: updated.descuento,
+        iva: updated.iva,
+        total: updated.total,
+        itemsCount: updated.items?.length ?? 0,
+        editCount: updated.editCount,
+      }
+
+      const deltaTotal = (after.total ?? 0) - (before.total ?? 0)
+      const effect = deltaTotal > 0.000001 ? 'DEBIT' : deltaTotal < -0.000001 ? 'CREDIT' : 'NONE'
+
+      await tx.cotizacionAuditEvent.create({
+        data: {
+          cotizacionId: updated.id,
+          action: 'UPDATED',
+          effect,
+          note: auditNote || null,
+          performedById: access.userId,
+          requestedById: access.userId,
+          before,
+          after,
         },
       })
 
