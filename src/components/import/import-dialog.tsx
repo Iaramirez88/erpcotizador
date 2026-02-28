@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -66,7 +66,15 @@ function downloadCsvTemplate(module: ImportModule) {
   URL.revokeObjectURL(url)
 }
 
-export function ImportDialog({ module, title }: { module: ImportModule; title?: string }) {
+export function ImportDialog({
+  module,
+  title,
+  onSuccess,
+}: {
+  module: ImportModule
+  title?: string
+  onSuccess?: (result: ImportResult) => void | Promise<void>
+}) {
   const [open, setOpen] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
@@ -74,13 +82,52 @@ export function ImportDialog({ module, title }: { module: ImportModule; title?: 
   const [dryRun, setDryRun] = useState(false)
 
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const autoCloseTimerRef = useRef<number | null>(null)
 
   const headers = useMemo(() => TEMPLATE_HEADERS[module], [module])
+
+  const createdCount = typeof result?.created === 'number' ? result.created : null
+  const didCreateRows = !dryRun && createdCount !== null && createdCount > 0
+
+  const clearAutoCloseTimer = () => {
+    if (autoCloseTimerRef.current) {
+      window.clearTimeout(autoCloseTimerRef.current)
+      autoCloseTimerRef.current = null
+    }
+  }
+
+  const resetDialog = () => {
+    clearAutoCloseTimer()
+    setFile(null)
+    setResult(null)
+    setDryRun(false)
+    if (inputRef.current) inputRef.current.value = ''
+  }
+
+  useEffect(() => {
+    if (!open) {
+      clearAutoCloseTimer()
+      return
+    }
+
+    if (!didCreateRows) return
+
+    clearAutoCloseTimer()
+    autoCloseTimerRef.current = window.setTimeout(() => {
+      setOpen(false)
+      resetDialog()
+    }, 3000)
+
+    return () => {
+      clearAutoCloseTimer()
+    }
+  }, [didCreateRows, open])
 
   async function runImport() {
     if (!file) return
     setLoading(true)
     setResult(null)
+    clearAutoCloseTimer()
     try {
       const form = new FormData()
       form.append('file', file)
@@ -93,7 +140,11 @@ export function ImportDialog({ module, title }: { module: ImportModule; title?: 
         setResult(json?.data ?? null)
         return
       }
-      setResult(json.data as ImportResult)
+      const nextResult = json.data as ImportResult
+      setResult(nextResult)
+      if (!dryRun) {
+        await onSuccess?.(nextResult)
+      }
     } finally {
       setLoading(false)
     }
@@ -105,7 +156,13 @@ export function ImportDialog({ module, title }: { module: ImportModule; title?: 
         Importar (CSV/Excel)
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next)
+          if (!next) resetDialog()
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{title ?? `Importar ${module}`}</DialogTitle>
@@ -148,6 +205,11 @@ export function ImportDialog({ module, title }: { module: ImportModule; title?: 
 
             {result ? (
               <div className="rounded-md border p-3 space-y-2">
+                {didCreateRows ? (
+                  <div className="text-sm">
+                    <span className="font-medium">✓ Importación completada.</span> Se crearon {createdCount} fila(s). Cerrando en 3 segundos…
+                  </div>
+                ) : null}
                 <div className="text-sm">
                   <span className="font-medium">Filas detectadas:</span> {result.totalRows}
                   {typeof result.created === 'number' ? (
@@ -186,21 +248,25 @@ export function ImportDialog({ module, title }: { module: ImportModule; title?: 
           </div>
 
           <DialogFooter className="flex items-center justify-between">
-            <Button type="button" variant="outline" onClick={() => {
-              setFile(null)
-              setResult(null)
-              setDryRun(false)
-              if (inputRef.current) inputRef.current.value = ''
-            }} disabled={loading}>
-              Limpiar
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                resetDialog()
+              }}
+              disabled={loading}
+            >
+              {didCreateRows ? 'Importar más' : 'Limpiar'}
             </Button>
             <div className="flex items-center gap-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>
                 Cerrar
               </Button>
-              <Button type="button" onClick={() => void runImport()} disabled={!file || loading}>
-                {loading ? 'Importando…' : dryRun ? 'Validar' : 'Importar'}
-              </Button>
+              {!didCreateRows ? (
+                <Button type="button" onClick={() => void runImport()} disabled={!file || loading}>
+                  {loading ? 'Importando…' : dryRun ? 'Validar' : 'Importar'}
+                </Button>
+              ) : null}
             </div>
           </DialogFooter>
         </DialogContent>

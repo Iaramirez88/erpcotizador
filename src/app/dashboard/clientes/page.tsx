@@ -338,7 +338,13 @@ export default function ClientesPage() {
         </div>
         <div className="flex items-center gap-2">
           <span data-tour="clientes-import">
-            <ImportDialog module="clientes" title={t('customers.actions.import')} />
+            <ImportDialog
+              module="clientes"
+              title={t('customers.actions.import')}
+              onSuccess={async () => {
+                await fetchClientes()
+              }}
+            />
           </span>
           <Button variant="outline" onClick={() => setIsExportOpen(true)}>
             {t('customers.actions.exportExcel')}

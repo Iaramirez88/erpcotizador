@@ -38,9 +38,11 @@ export async function GET(request: NextRequest) {
 
     const pageParam = searchParams.get('page')
     const pageSizeParam = searchParams.get('pageSize')
-    const pageSize = pageSizeParam ? Math.min(200, Math.max(1, Number(pageSizeParam))) : null
+    const pageSizeRaw = (pageSizeParam || '').trim()
+    const wantsAll = pageSizeRaw === 'all'
+    const pageSize = pageSizeRaw && !wantsAll ? Math.min(200, Math.max(1, Number(pageSizeRaw))) : null
     const page = pageParam ? Math.max(1, Number(pageParam)) : 1
-    const usePagination = Boolean(pageSizeParam || pageParam)
+    const usePagination = !wantsAll && Boolean(pageSizeParam || pageParam)
 
     // Construir filtros
     // Nota: Cotizacion.sedeId es opcional por compatibilidad con registros antiguos.
@@ -173,6 +175,66 @@ export async function GET(request: NextRequest) {
           pageSize: take,
           total,
           totalPages,
+        },
+      })
+    }
+
+    if (wantsAll) {
+      const cotizaciones = await prisma.cotizacion.findMany({
+        where,
+        select: {
+          id: true,
+          numero: true,
+          createdAt: true,
+          estado: true,
+          subtotal: true,
+          iva: true,
+          total: true,
+          validezDias: true,
+          emailSentCount: true,
+          whatsappSentCount: true,
+          lastEmailSentAt: true,
+          lastWhatsappSentAt: true,
+          cliente: {
+            select: {
+              nombre: true,
+              email: true,
+              telefono: true,
+            },
+          },
+          items: {
+            select: {
+              id: true,
+              materialId: true,
+              descripcion: true,
+              cantidad: true,
+              unidad: true,
+              material: {
+                select: {
+                  nombre: true,
+                },
+              },
+            },
+          },
+          orden: {
+            select: {
+              id: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: cotizaciones,
+        meta: {
+          page: 1,
+          pageSize: 'all',
+          total: cotizaciones.length,
+          totalPages: 1,
         },
       })
     }

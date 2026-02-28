@@ -149,6 +149,35 @@ export async function PUT(
         : Number(body.stockActual)
     const nextStock = Number.isFinite(nextStockRaw) ? Math.max(0, nextStockRaw) : 0
 
+    const stockScopeRaw = typeof body.stockScope === 'string' ? body.stockScope.trim() : ''
+    const stockScope: 'warehouse' | 'allSedes' = stockScopeRaw === 'allSedes' ? 'allSedes' : 'warehouse'
+    const requestedWarehouseId = typeof body.warehouseId === 'string' ? body.warehouseId.trim() : ''
+
+    if (stockScope === 'warehouse' && !requestedWarehouseId) {
+      return NextResponse.json(
+        { error: 'Para registrar stock en una sede específica debes seleccionar una bodega, o elegir “Todas las sedes”.' },
+        { status: 400 }
+      )
+    }
+
+    const whValidated = nextStock > 0 && stockScope === 'warehouse'
+      ? await prisma.inventoryWarehouse.findFirst({
+          where: {
+            id: requestedWarehouseId,
+            empresaId: access.empresaId,
+            OR: [{ sedeId: access.sedeId }, { sedeId: null }],
+          },
+          select: { id: true },
+        })
+      : null
+
+    if (nextStock > 0 && stockScope === 'warehouse' && !whValidated?.id) {
+      return NextResponse.json(
+        { error: 'Bodega inválida o sin acceso para registrar stock.' },
+        { status: 400 }
+      )
+    }
+
     const material = await prisma.$transaction(async (tx) => {
       const beforeStock = await tx.material.findUnique({
         where: { id },
@@ -157,8 +186,135 @@ export async function PUT(
 
       const stockBeforeGlobal = beforeStock?.stockActual ?? materialExistente.stockActual
 
+      let globalAfter = stockBeforeGlobal
+
       if (quantityDiscounts) {
         await tx.materialQuantityDiscount.deleteMany({ where: { materialId: id } })
+      }
+
+      // Aplicar regla de stock por bodega o por todas las sedes.
+      if (stockScope === 'warehouse') {
+        const warehouseId = whValidated?.id ?? null
+        const current = warehouseId
+          ? await tx.inventoryStock.findUnique({
+              where: { warehouseId_materialId: { warehouseId, materialId: id } },
+              select: { quantity: true },
+            })
+          : null
+
+        const stockBeforeWarehouse = current?.quantity ?? 0
+        const delta = nextStock - stockBeforeWarehouse
+        globalAfter = stockBeforeGlobal + delta
+
+        if (globalAfter < 0) {
+          throw new Error('INVALID_GLOBAL_STOCK')
+        }
+
+        if (warehouseId) {
+          await tx.inventoryStock.upsert({
+            where: { warehouseId_materialId: { warehouseId, materialId: id } },
+            create: { warehouseId, materialId: id, quantity: nextStock },
+            update: { quantity: nextStock },
+            select: { id: true },
+          })
+        }
+
+        if (delta !== 0) {
+          await tx.inventoryMovement.create({
+            data: {
+              empresaId: access.empresaId,
+              sedeId: access.sedeId,
+              warehouseId,
+              materialId: id,
+              type: InventoryMovementType.ADJUST,
+              quantity: delta,
+              stockBefore: stockBeforeWarehouse,
+              stockAfter: nextStock,
+              note: 'Ajuste manual desde Productos',
+              sourceType: InventoryMovementSourceType.MANUAL,
+              sourceId: id,
+              createdById: access.userId,
+            },
+          })
+        }
+      } else {
+        const sedes = await tx.sede.findMany({
+          where: { empresaId: access.empresaId },
+          select: { id: true },
+        })
+
+        let sumBefore = 0
+        for (const s of sedes) {
+          let whId: string | null = null
+          const whDefault = await tx.inventoryWarehouse.findFirst({
+            where: { empresaId: access.empresaId, sedeId: s.id, isDefault: true },
+            select: { id: true },
+          })
+          if (whDefault?.id) whId = whDefault.id
+
+          if (!whId) {
+            const whAny = await tx.inventoryWarehouse.findFirst({
+              where: { empresaId: access.empresaId, sedeId: s.id },
+              orderBy: { createdAt: 'asc' },
+              select: { id: true },
+            })
+            if (whAny?.id) whId = whAny.id
+          }
+
+          if (!whId) {
+            const whCreated = await tx.inventoryWarehouse.create({
+              data: {
+                empresaId: access.empresaId,
+                sedeId: s.id,
+                nombre: 'Principal',
+                codigo: 'PRIN',
+                isDefault: true,
+              },
+              select: { id: true },
+            })
+            whId = whCreated.id
+          }
+
+          const current = await tx.inventoryStock.findUnique({
+            where: { warehouseId_materialId: { warehouseId: whId, materialId: id } },
+            select: { quantity: true },
+          })
+          sumBefore += current?.quantity ?? 0
+
+          await tx.inventoryStock.upsert({
+            where: { warehouseId_materialId: { warehouseId: whId, materialId: id } },
+            create: { warehouseId: whId, materialId: id, quantity: nextStock },
+            update: { quantity: nextStock },
+            select: { id: true },
+          })
+        }
+
+        const sumAfter = nextStock * sedes.length
+        const deltaTotal = sumAfter - sumBefore
+        globalAfter = stockBeforeGlobal + deltaTotal
+
+        if (globalAfter < 0) {
+          throw new Error('INVALID_GLOBAL_STOCK')
+        }
+
+        if (deltaTotal !== 0) {
+          await tx.inventoryMovement.create({
+            data: {
+              empresaId: access.empresaId,
+              sedeId: access.sedeId,
+              warehouseId: null,
+              materialId: id,
+              type: InventoryMovementType.ADJUST,
+              quantity: deltaTotal,
+              stockBefore: stockBeforeGlobal,
+              stockAfter: globalAfter,
+              note: 'Ajuste manual desde Productos (todas las sedes)',
+              sourceType: InventoryMovementSourceType.MANUAL,
+              sourceId: id,
+              createdById: access.userId,
+            },
+          })
+        }
       }
 
       const updated = await tx.material.update({
@@ -177,7 +333,7 @@ export async function PUT(
           precioMetro: precioMetroN,
           precioUnidad: precioUnidadN,
           precioCompra: nextPrecioCompra,
-          stockActual: nextStock,
+          stockActual: globalAfter,
           stockMinimo: body.stockMinimo ? parseFloat(body.stockMinimo) : 0,
           unidadMedida: unidad,
           proveedor: body.proveedor,
@@ -188,25 +344,6 @@ export async function PUT(
           quantityDiscounts: { orderBy: { minQty: 'asc' } }
         }
       })
-
-      if (nextStock !== stockBeforeGlobal) {
-        await tx.inventoryMovement.create({
-          data: {
-            empresaId: access.empresaId,
-            sedeId: access.sedeId,
-            warehouseId: null,
-            materialId: id,
-            type: InventoryMovementType.ADJUST,
-            quantity: nextStock - stockBeforeGlobal,
-            stockBefore: stockBeforeGlobal,
-            stockAfter: nextStock,
-            note: 'Ajuste manual desde Productos',
-            sourceType: InventoryMovementSourceType.MANUAL,
-            sourceId: id,
-            createdById: access.userId,
-          },
-        })
-      }
 
       if (precioCompraChanged) {
         const sede = await tx.sede.findUnique({ where: { id: access.sedeId }, select: { empresaId: true } })
@@ -273,6 +410,10 @@ export async function PUT(
     })
 
   } catch (error) {
+    if (error instanceof Error && error.message === 'INVALID_GLOBAL_STOCK') {
+      return NextResponse.json({ error: 'Stock global resultante inválido' }, { status: 400 })
+    }
+
     // Prisma: constraint unique (empresaId, externalId)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const code = (error as any)?.code

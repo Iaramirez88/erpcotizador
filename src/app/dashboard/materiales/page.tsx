@@ -116,7 +116,7 @@ export default function ProductosPage() {
   const [search, setSearch] = useState("")
   const [tipoFiltro, setTipoFiltro] = useState("")
   const [unidadFiltro, setUnidadFiltro] = useState("")
-  const [sortFiltro, setSortFiltro] = useState<'nameAsc' | 'mostSold' | 'stockDesc' | 'mostQuoted' | 'createdDesc' | 'createdAsc' | 'costDesc' | 'costAsc'>('nameAsc')
+  const [sortFiltro, setSortFiltro] = useState<'nameAsc' | 'mostSold' | 'stockDesc' | 'mostQuoted' | 'createdDesc' | 'createdAsc' | 'priceDesc' | 'priceAsc'>('nameAsc')
   const [sedeFiltro, setSedeFiltro] = useState("")
   const [bodegaFiltro, setBodegaFiltro] = useState("")
   const [categoriaFiltro, setCategoriaFiltro] = useState("")
@@ -171,6 +171,7 @@ export default function ProductosPage() {
     stockMinimo: "0",
     unidadMedida: "m2",
     warehouseId: "",
+    stockScope: 'warehouse' as 'warehouse' | 'allSedes',
     proveedor: "",
     observaciones: "",
     activo: true
@@ -286,13 +287,7 @@ export default function ProductosPage() {
     if (!exists) setBodegaFiltro("")
   }, [bodegaFiltro, bodegasFiltroList])
 
-  useEffect(() => {
-    if (!isModalOpen) return
-    if (editingMaterial) return
-    if (formData.warehouseId) return
-    if (!defaultBodegaId) return
-    setFormData((p) => ({ ...p, warehouseId: defaultBodegaId }))
-  }, [defaultBodegaId, editingMaterial, formData.warehouseId, isModalOpen])
+  // Regla: no asignar bodega automáticamente al abrir el modal.
 
   function setTipoProducto(next: 'METRAJE' | 'FISICO') {
     setFormData((prev) => {
@@ -603,7 +598,7 @@ export default function ProductosPage() {
       
       const method = editingMaterial ? 'PUT' : 'POST'
 
-      const { warehouseId, ...restForm } = formData
+      const { warehouseId, stockScope, ...restForm } = formData
 
       const response = await fetch(url, {
         method,
@@ -612,7 +607,8 @@ export default function ProductosPage() {
         },
         body: JSON.stringify({
           ...restForm,
-          ...(editingMaterial ? {} : { warehouseId: warehouseId || undefined }),
+          stockScope,
+          warehouseId: stockScope === 'warehouse' ? (warehouseId || undefined) : undefined,
           quantityDiscounts: quantityDiscounts
             .map((d) => ({
               minQty: parseFloat(d.minQty),
@@ -685,6 +681,7 @@ export default function ProductosPage() {
       stockMinimo: material.stockMinimo?.toString() || "0",
       unidadMedida: material.unidadMedida,
       warehouseId: material.stocks?.[0]?.warehouse?.id ?? "",
+      stockScope: 'warehouse',
       proveedor: material.proveedor ?? "",
       observaciones: material.observaciones ?? "",
       activo: material.activo,
@@ -712,6 +709,7 @@ export default function ProductosPage() {
       stockMinimo: material.stockMinimo.toString(),
       unidadMedida: material.unidadMedida,
       warehouseId: material.stocks?.[0]?.warehouse?.id ?? "",
+      stockScope: 'warehouse',
       proveedor: material.proveedor || "",
       observaciones: material.observaciones || "",
       activo: material.activo
@@ -776,6 +774,7 @@ export default function ProductosPage() {
       stockMinimo: "0",
       unidadMedida: "m2",
       warehouseId: "",
+      stockScope: 'warehouse',
       proveedor: "",
       observaciones: "",
       activo: true
@@ -852,7 +851,13 @@ export default function ProductosPage() {
         </div>
         <div className="flex items-center gap-2">
           <span data-tour="materiales-import">
-            <ImportDialog module="materiales" title="Importar productos" />
+            <ImportDialog
+              module="materiales"
+              title="Importar productos"
+              onSuccess={async () => {
+                await fetchMateriales()
+              }}
+            />
           </span>
           <Button variant="outline" onClick={() => setIsExportOpen(true)}>
             Exportar Excel
@@ -1075,8 +1080,8 @@ export default function ProductosPage() {
                 <option value="stockDesc">Mayor stock</option>
                 <option value="createdDesc">Más reciente</option>
                 <option value="createdAsc">Más antiguo</option>
-                <option value="costDesc">Mayor costo</option>
-                <option value="costAsc">Menor costo</option>
+                <option value="priceDesc">Mayor precio</option>
+                <option value="priceAsc">Menor precio</option>
               </select>
 
               <select
@@ -1740,15 +1745,29 @@ export default function ProductosPage() {
                 />
               </div>
 
-              {!editingMaterial ? (
+              <div>
+                <Label>Aplicar stock a</Label>
+                <select
+                  value={formData.stockScope}
+                  onChange={(e) => setFormData((p) => ({ ...p, stockScope: e.target.value as 'warehouse' | 'allSedes' }))}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                >
+                  <option value="warehouse">Esta bodega (solo una sede)</option>
+                  <option value="allSedes">Todas las sedes (duplica en bodega principal)</option>
+                </select>
+              </div>
+
+              {formData.stockScope === 'warehouse' ? (
                 <div>
                   <Label>Bodega / Sede</Label>
-                  {bodegas.length > 1 ? (
+                  {bodegas.length > 0 ? (
                     <select
                       value={formData.warehouseId}
                       onChange={(e) => setFormData({ ...formData, warehouseId: e.target.value })}
                       className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      required
                     >
+                      <option value="">Selecciona una bodega…</option>
                       {bodegas.map((b) => (
                         <option key={b.id} value={b.id}>
                           {b.nombre}{b.isDefault ? ' (Principal)' : ''}
@@ -1757,14 +1776,20 @@ export default function ProductosPage() {
                     </select>
                   ) : (
                     <div className="h-9 flex items-center rounded-md border border-input bg-muted/30 px-3 text-sm">
-                      {(bodegas[0]?.nombre || 'Principal').trim()}
+                      Sin bodegas
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground mt-1">
-                    Stock inicial quedará registrado en esta bodega.
+                    El stock quedará registrado en esta bodega.
                   </p>
                 </div>
-              ) : null}
+              ) : (
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Se asignará el mismo stock en la bodega principal de cada sede.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <Label htmlFor="stockMinimo">Stock Mínimo</Label>

@@ -66,7 +66,8 @@ export async function GET(request: Request) {
     const costoMax = searchParams.get('costoMax')
     const createdFrom = searchParams.get('createdFrom')
     const createdTo = searchParams.get('createdTo')
-    const sort = (searchParams.get('sort') || '').trim()
+    const sortRaw = (searchParams.get('sort') || '').trim()
+    const sort = sortRaw === 'costDesc' ? 'priceDesc' : sortRaw === 'costAsc' ? 'priceAsc' : sortRaw
     const warehouseId = (searchParams.get('warehouseId') || '').trim() || null
     const sedeIdParam = (searchParams.get('sedeId') || '').trim() || null
     const precioMin = searchParams.get('precioMin')
@@ -204,8 +205,8 @@ export async function GET(request: Request) {
       'stockDesc',
       'createdDesc',
       'createdAsc',
-      'costDesc',
-      'costAsc',
+      'priceDesc',
+      'priceAsc',
       'mostSold',
       'mostQuoted',
     ]).has(sort)
@@ -285,11 +286,21 @@ export async function GET(request: Request) {
           ? ({ createdAt: 'desc' } as const)
           : sortMode === 'createdAsc'
             ? ({ createdAt: 'asc' } as const)
-            : sortMode === 'costDesc'
-              ? ({ precioCompra: 'desc' } as const)
-              : sortMode === 'costAsc'
-                ? ({ precioCompra: 'asc' } as const)
-                : ({ nombre: 'asc' } as const)
+            : ({ nombre: 'asc' } as const)
+
+    const getPrecioForSort = (m: { unidadMedida?: string | null; precioM2?: unknown; precioMetro?: unknown; precioUnidad?: unknown }) => {
+      const unidad = String(m.unidadMedida ?? '').trim().toLowerCase()
+      const raw =
+        unidad === 'm2'
+          ? m.precioM2
+          : unidad === 'ml'
+            ? m.precioMetro
+            : unidad === 'unidad'
+              ? m.precioUnidad
+              : (m.precioM2 ?? m.precioMetro ?? m.precioUnidad)
+      const n = typeof raw === 'number' ? raw : Number(raw)
+      return Number.isFinite(n) ? n : null
+    }
 
     const stockMinN = parseNumberParam(stockMin)
     const stockMaxN = parseNumberParam(stockMax)
@@ -297,6 +308,8 @@ export async function GET(request: Request) {
     const needsInMemory =
       sortMode === 'mostSold' ||
       sortMode === 'mostQuoted' ||
+      sortMode === 'priceDesc' ||
+      sortMode === 'priceAsc' ||
       Number.isFinite(stockMinN) ||
       Number.isFinite(stockMaxN)
 
@@ -333,6 +346,16 @@ export async function GET(request: Request) {
                 if (bv !== av) return bv - av
                 return a.nombre.localeCompare(b.nombre)
               })
+            : (sortMode === 'priceDesc' || sortMode === 'priceAsc')
+              ? [...materiales].sort((a, b) => {
+                  const ap = getPrecioForSort(a)
+                  const bp = getPrecioForSort(b)
+                  if (ap === null && bp === null) return a.nombre.localeCompare(b.nombre)
+                  if (ap === null) return 1
+                  if (bp === null) return -1
+                  if (ap !== bp) return sortMode === 'priceAsc' ? ap - bp : bp - ap
+                  return a.nombre.localeCompare(b.nombre)
+                })
             : materiales
 
       const total = sorted.length
@@ -412,6 +435,16 @@ export async function GET(request: Request) {
               if (bv !== av) return bv - av
               return a.nombre.localeCompare(b.nombre)
             })
+          : (sortMode === 'priceDesc' || sortMode === 'priceAsc')
+            ? [...materiales].sort((a, b) => {
+                const ap = getPrecioForSort(a)
+                const bp = getPrecioForSort(b)
+                if (ap === null && bp === null) return a.nombre.localeCompare(b.nombre)
+                if (ap === null) return 1
+                if (bp === null) return -1
+                if (ap !== bp) return sortMode === 'priceAsc' ? ap - bp : bp - ap
+                return a.nombre.localeCompare(b.nombre)
+              })
           : materiales
 
     return NextResponse.json({
@@ -473,6 +506,7 @@ export async function POST(request: Request) {
       observaciones,
       activo,
       warehouseId: warehouseIdInput,
+      stockScope: stockScopeInput,
     } = body
 
     const externalIdNorm = typeof externalId === 'string' ? externalId.trim() : ''
@@ -508,6 +542,43 @@ export async function POST(request: Request) {
 
     const stockActualNRaw = typeof stockActual === 'number' ? stockActual : Number(stockActual)
     const stockActualN = Number.isFinite(stockActualNRaw) ? Math.max(0, stockActualNRaw) : 0
+
+    const stockScopeRaw = typeof stockScopeInput === 'string' ? stockScopeInput.trim() : ''
+    const stockScope: 'warehouse' | 'allSedes' = stockScopeRaw === 'allSedes' ? 'allSedes' : 'warehouse'
+
+    const requestedWarehouseId = typeof warehouseIdInput === 'string' ? warehouseIdInput.trim() : ''
+
+    const canUseRequestedWarehouse = async () => {
+      if (!requestedWarehouseId) return null
+      const sedeId = access.sedeId
+      return prisma.inventoryWarehouse.findFirst({
+        where: {
+          id: requestedWarehouseId,
+          empresaId,
+          OR: [{ sedeId }, { sedeId: null }],
+        },
+        select: { id: true },
+      })
+    }
+
+    // Regla: si el stock aplica a una bodega específica, debe venir explícita (no auto-asignamos).
+    if (stockActualN > 0 && stockScope === 'warehouse' && !requestedWarehouseId) {
+      return NextResponse.json(
+        { error: 'Para registrar stock en una sede específica debes seleccionar una bodega, o elegir “Todas las sedes”.' },
+        { status: 400 }
+      )
+    }
+
+    const whValidated = stockActualN > 0 && stockScope === 'warehouse'
+      ? await canUseRequestedWarehouse()
+      : null
+
+    if (stockActualN > 0 && stockScope === 'warehouse' && !whValidated?.id) {
+      return NextResponse.json(
+        { error: 'Bodega inválida o sin acceso para registrar stock.' },
+        { status: 400 }
+      )
+    }
 
     const precioM2N = unidad === 'm2' ? toPositiveNumberOrNull(precioM2) : null
     const precioMetroN = unidad === 'ml' ? toPositiveNumberOrNull(precioMetro) : null
@@ -552,7 +623,7 @@ export async function POST(request: Request) {
           precioMetro: precioMetroN,
           precioUnidad: precioUnidadN,
           precioCompra: precioCompra ? parseFloat(precioCompra) : null,
-          stockActual: stockActualN,
+          stockActual: 0,
           stockMinimo: stockMinimo ? parseFloat(stockMinimo) : 0,
           unidadMedida: unidad,
           proveedor,
@@ -572,65 +643,77 @@ export async function POST(request: Request) {
         },
       })
 
-      // Inicializar inventario por bodega.
-      // - Si el cliente envía warehouseId, usamos esa bodega (si pertenece a la sede/empresa).
-      // - Si no, usamos la bodega default de la sede (o la primera existente) o creamos “Principal”.
-      // Esto evita que el stock por bodega quede en 0 y luego falle al facturar.
-      let warehouseId: string | null = null
-      const sedeId = access.sedeId
+      if (stockActualN > 0) {
+        if (stockScope === 'warehouse') {
+          await tx.inventoryStock.upsert({
+            where: { warehouseId_materialId: { warehouseId: whValidated!.id, materialId: created.id } },
+            create: { warehouseId: whValidated!.id, materialId: created.id, quantity: stockActualN },
+            update: { quantity: stockActualN },
+            select: { id: true },
+          })
+        } else {
+          const sedes = await tx.sede.findMany({ where: { empresaId }, select: { id: true } })
+          for (const s of sedes) {
+            let whId: string | null = null
+            const whDefault = await tx.inventoryWarehouse.findFirst({
+              where: { empresaId, sedeId: s.id, isDefault: true },
+              select: { id: true },
+            })
+            if (whDefault?.id) whId = whDefault.id
 
-      const requestedWarehouseId = typeof warehouseIdInput === 'string' ? warehouseIdInput.trim() : ''
-      if (requestedWarehouseId) {
-        const whRequested = await tx.inventoryWarehouse.findFirst({
-          where: {
-            id: requestedWarehouseId,
-            empresaId,
-            OR: [{ sedeId }, { sedeId: null }],
-          },
-          select: { id: true },
-        })
-        if (whRequested?.id) warehouseId = whRequested.id
+            if (!whId) {
+              const whAny = await tx.inventoryWarehouse.findFirst({
+                where: { empresaId, sedeId: s.id },
+                orderBy: { createdAt: 'asc' },
+                select: { id: true },
+              })
+              if (whAny?.id) whId = whAny.id
+            }
+
+            if (!whId) {
+              const whCreated = await tx.inventoryWarehouse.create({
+                data: {
+                  empresaId,
+                  sedeId: s.id,
+                  nombre: 'Principal',
+                  codigo: 'PRIN',
+                  isDefault: true,
+                },
+                select: { id: true },
+              })
+              whId = whCreated.id
+            }
+
+            await tx.inventoryStock.upsert({
+              where: { warehouseId_materialId: { warehouseId: whId, materialId: created.id } },
+              create: { warehouseId: whId, materialId: created.id, quantity: stockActualN },
+              update: { quantity: stockActualN },
+              select: { id: true },
+            })
+          }
+        }
       }
 
-      const whDefault = await tx.inventoryWarehouse.findFirst({
-        where: { empresaId, sedeId, isDefault: true },
+      const agg = await tx.inventoryStock.aggregate({
+        where: { materialId: created.id },
+        _sum: { quantity: true },
+      })
+
+      const globalStock = Number(agg._sum.quantity ?? 0)
+      await tx.material.update({
+        where: { id: created.id },
+        data: { stockActual: Number.isFinite(globalStock) ? Math.max(0, globalStock) : 0 },
         select: { id: true },
       })
-      if (!warehouseId && whDefault?.id) warehouseId = whDefault.id
 
-      if (!warehouseId) {
-        const whAny = await tx.inventoryWarehouse.findFirst({
-          where: { empresaId, sedeId },
-          orderBy: { createdAt: 'asc' },
-          select: { id: true },
-        })
-        if (whAny?.id) warehouseId = whAny.id
-      }
+      const final = await tx.material.findUnique({
+        where: { id: created.id },
+        include: {
+          quantityDiscounts: { orderBy: { minQty: 'asc' } },
+        },
+      })
 
-      if (!warehouseId) {
-        const whCreated = await tx.inventoryWarehouse.create({
-          data: {
-            empresaId,
-            sedeId,
-            nombre: 'Principal',
-            codigo: 'PRIN',
-            isDefault: true,
-          },
-          select: { id: true },
-        })
-        warehouseId = whCreated.id
-      }
-
-      if (warehouseId) {
-        await tx.inventoryStock.upsert({
-          where: { warehouseId_materialId: { warehouseId, materialId: created.id } },
-          create: { warehouseId, materialId: created.id, quantity: stockActualN },
-          update: { quantity: stockActualN },
-          select: { id: true },
-        })
-      }
-
-      return created
+      return final!
     })
 
     return NextResponse.json(

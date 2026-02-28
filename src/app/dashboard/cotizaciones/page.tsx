@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -94,9 +94,14 @@ export default function CotizacionesPage() {
   const [aprobando, setAprobando] = useState<string | null>(null);
   const [facturando, setFacturando] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState<25 | 50 | 100 | 'all'>(25);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+
+  const pageCount = useMemo(() => {
+    if (pageSize === 'all') return 1;
+    return totalPages;
+  }, [pageSize, totalPages]);
 
   // Estado para el preview
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -137,9 +142,10 @@ export default function CotizacionesPage() {
     }
   };
 
-  const cargarCotizaciones = async (opts?: { page?: number }) => {
+  const cargarCotizaciones = async (opts?: { page?: number; pageSize?: 25 | 50 | 100 | 'all' }) => {
     try {
       setLoading(true);
+      const effectivePageSize = opts?.pageSize ?? pageSize;
       const params = new URLSearchParams();
       if (busqueda) params.append('search', busqueda);
       if (filtroEstado) params.append('estado', filtroEstado);
@@ -147,9 +153,13 @@ export default function CotizacionesPage() {
       if (from) params.append('from', from);
       if (to) params.append('to', to);
 
-      const pageToLoad = opts?.page ?? page;
-      params.append('page', String(pageToLoad));
-      params.append('pageSize', String(pageSize));
+      const pageToLoad = effectivePageSize === 'all' ? 1 : (opts?.page ?? page);
+      if (effectivePageSize !== 'all') {
+        params.append('page', String(pageToLoad));
+        params.append('pageSize', String(effectivePageSize));
+      } else {
+        params.append('pageSize', 'all');
+      }
 
       const res = await fetch(`/api/cotizaciones?${params}`);
       const response = await res.json();
@@ -158,11 +168,14 @@ export default function CotizacionesPage() {
       if (response.success && Array.isArray(response.data)) {
         setCotizaciones(response.data);
         const meta = response.meta as
-          | { page?: number; pageSize?: number; total?: number; totalPages?: number }
+          | { page?: number; pageSize?: number | 'all'; total?: number; totalPages?: number }
           | undefined;
-        setTotalPages(typeof meta?.totalPages === 'number' && meta.totalPages > 0 ? meta.totalPages : 1);
-        setTotal(typeof meta?.total === 'number' && meta.total >= 0 ? meta.total : response.data.length);
-        setPage(pageToLoad);
+        const nextTotalPages = typeof meta?.totalPages === 'number' && meta.totalPages > 0 ? meta.totalPages : 1;
+        const nextTotal = typeof meta?.total === 'number' && meta.total >= 0 ? meta.total : response.data.length;
+
+        setTotalPages(effectivePageSize === 'all' ? 1 : nextTotalPages);
+        setTotal(nextTotal);
+        setPage(effectivePageSize === 'all' ? 1 : pageToLoad);
       } else {
         console.error('La respuesta no tiene el formato esperado:', response);
         setCotizaciones([]);
@@ -825,15 +838,30 @@ export default function CotizacionesPage() {
           {/* Paginación */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pt-2">
             <div className="text-sm text-muted-foreground">
-              {total > 0
-                ? t('quotes.pagination.withTotal', { total, page, totalPages })
-                : t('quotes.pagination.noTotal', { page, totalPages })}
+              Mostrando <span className="font-medium text-foreground">{cotizaciones.length}</span> de{' '}
+              <span className="font-medium text-foreground">{total}</span>
             </div>
             <div className="flex items-center gap-2">
+              <select
+                value={String(pageSize)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  const next = v === 'all' ? 'all' : (Number(v) as 25 | 50 | 100);
+                  setPageSize(next);
+                  cargarCotizaciones({ page: 1, pageSize: next });
+                }}
+                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+              >
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="all">Todos</option>
+              </select>
+
               <Button
                 variant="outline"
                 size="sm"
-                disabled={loading || page <= 1}
+                disabled={loading || pageSize === 'all' || page <= 1}
                 onClick={() => cargarCotizaciones({ page: Math.max(1, page - 1) })}
               >
                 {t('quotes.pagination.previous')}
@@ -841,8 +869,8 @@ export default function CotizacionesPage() {
               <Button
                 variant="outline"
                 size="sm"
-                disabled={loading || page >= totalPages}
-                onClick={() => cargarCotizaciones({ page: Math.min(totalPages, page + 1) })}
+                disabled={loading || pageSize === 'all' || page >= pageCount}
+                onClick={() => cargarCotizaciones({ page: Math.min(pageCount, page + 1) })}
               >
                 {t('quotes.pagination.next')}
               </Button>

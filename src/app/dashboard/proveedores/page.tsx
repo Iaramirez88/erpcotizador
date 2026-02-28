@@ -119,7 +119,13 @@ export default function ProveedoresPage() {
           <p className="text-muted-foreground mt-1">{t('suppliers.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
-          <ImportDialog module="proveedores" title={t('suppliers.actions.import')} />
+          <ImportDialog
+            module="proveedores"
+            title={t('suppliers.actions.import')}
+            onSuccess={async () => {
+              await load()
+            }}
+          />
           <Button variant="outline" onClick={exportExcel}>
             {t('suppliers.actions.exportExcel')}
           </Button>
