@@ -74,6 +74,20 @@ export async function GET(request: Request) {
     const stockMin = searchParams.get('stockMin')
     const stockMax = searchParams.get('stockMax')
 
+    const pageRaw = searchParams.get('page')
+    const pageSizeRaw = (searchParams.get('pageSize') || '').trim()
+
+    const pageParsed = pageRaw ? Number(String(pageRaw).trim()) : 1
+    const page = Number.isFinite(pageParsed) && pageParsed > 0 ? Math.floor(pageParsed) : 1
+
+    const pageSizeParsed = pageSizeRaw && pageSizeRaw !== 'all' ? Number(pageSizeRaw) : null
+    const wantsPagination =
+      pageSizeRaw !== '' &&
+      pageSizeRaw !== 'all' &&
+      Number.isFinite(pageSizeParsed) &&
+      (pageSizeParsed as number) > 0
+    const take = wantsPagination ? Math.min(500, Math.floor(pageSizeParsed as number)) : null
+
     if (sedeIdParam) {
       const sedeTarget = await prisma.sede.findFirst({ where: { id: sedeIdParam, empresaId }, select: { id: true } })
       if (sedeTarget?.id) {
@@ -238,49 +252,142 @@ export async function GET(request: Request) {
       ? new Map(mostQuotedAgg.map((x) => [String(x.materialId), Number(x._count?.id ?? 0)]))
       : null
 
-    let materiales = await prisma.material.findMany({
-      where,
-      include: {
-        quantityDiscounts: {
-          orderBy: { minQty: 'asc' }
-        },
-        // “Anclaje” por bodega: traemos 1 stock, priorizando la bodega principal de la sede.
-        // Si el material solo tiene stocks globales (sedeId null), también lo consideramos.
-        stocks: {
-          ...(warehouseId
-            ? { where: { warehouseId }, take: 1, orderBy: [{ updatedAt: 'desc' }] }
-            : {
-                where: {
-                  warehouse: {
-                    OR: [{ sedeId }, { sedeId: null }],
-                  },
+    const include = {
+      quantityDiscounts: {
+        orderBy: { minQty: 'asc' as const },
+      },
+      // “Anclaje” por bodega: traemos 1 stock, priorizando la bodega principal de la sede.
+      // Si el material solo tiene stocks globales (sedeId null), también lo consideramos.
+      stocks: {
+        ...(warehouseId
+          ? { where: { warehouseId }, take: 1, orderBy: [{ updatedAt: 'desc' as const }] }
+          : {
+              where: {
+                warehouse: {
+                  OR: [{ sedeId }, { sedeId: null }],
                 },
-                take: 1,
-                orderBy: [{ warehouse: { isDefault: 'desc' } }, { updatedAt: 'desc' }],
-              }),
-          include: {
-            warehouse: {
-              select: { id: true, nombre: true, codigo: true, isDefault: true, sedeId: true },
-            },
+              },
+              take: 1,
+              orderBy: [{ warehouse: { isDefault: 'desc' as const } }, { updatedAt: 'desc' as const }],
+            }),
+        include: {
+          warehouse: {
+            select: { id: true, nombre: true, codigo: true, isDefault: true, sedeId: true },
           },
         },
       },
-      orderBy:
-        sortMode === 'stockDesc'
-          ? ({ stockActual: 'desc' } as const)
-          : sortMode === 'createdDesc'
-            ? ({ createdAt: 'desc' } as const)
-            : sortMode === 'createdAsc'
-              ? ({ createdAt: 'asc' } as const)
-              : sortMode === 'costDesc'
-                ? ({ precioCompra: 'desc' } as const)
-                : sortMode === 'costAsc'
-                  ? ({ precioCompra: 'asc' } as const)
-                  : ({ nombre: 'asc' } as const)
-    })
+    }
+
+    const orderBy =
+      sortMode === 'stockDesc'
+        ? ({ stockActual: 'desc' } as const)
+        : sortMode === 'createdDesc'
+          ? ({ createdAt: 'desc' } as const)
+          : sortMode === 'createdAsc'
+            ? ({ createdAt: 'asc' } as const)
+            : sortMode === 'costDesc'
+              ? ({ precioCompra: 'desc' } as const)
+              : sortMode === 'costAsc'
+                ? ({ precioCompra: 'asc' } as const)
+                : ({ nombre: 'asc' } as const)
 
     const stockMinN = parseNumberParam(stockMin)
     const stockMaxN = parseNumberParam(stockMax)
+
+    const needsInMemory =
+      sortMode === 'mostSold' ||
+      sortMode === 'mostQuoted' ||
+      Number.isFinite(stockMinN) ||
+      Number.isFinite(stockMaxN)
+
+    // Si piden paginación pero necesitamos procesar en memoria (filtros/sorts especiales),
+    // traemos todo y paginamos al final.
+    if (wantsPagination && take && needsInMemory) {
+      let materiales = await prisma.material.findMany({
+        where,
+        include,
+        orderBy,
+      })
+
+      if (Number.isFinite(stockMinN) || Number.isFinite(stockMaxN)) {
+        materiales = materiales.filter((m) => {
+          const stockForView = warehouseId ? (m.stocks?.[0]?.quantity ?? 0) : (m.stockActual ?? 0)
+          if (Number.isFinite(stockMinN) && stockForView < (stockMinN as number)) return false
+          if (Number.isFinite(stockMaxN) && stockForView > (stockMaxN as number)) return false
+          return true
+        })
+      }
+
+      const sorted =
+        sortMode === 'mostSold' && soldMap
+          ? [...materiales].sort((a, b) => {
+              const av = soldMap.get(a.id) ?? 0
+              const bv = soldMap.get(b.id) ?? 0
+              if (bv !== av) return bv - av
+              return a.nombre.localeCompare(b.nombre)
+            })
+          : sortMode === 'mostQuoted' && quotedMap
+            ? [...materiales].sort((a, b) => {
+                const av = quotedMap.get(a.id) ?? 0
+                const bv = quotedMap.get(b.id) ?? 0
+                if (bv !== av) return bv - av
+                return a.nombre.localeCompare(b.nombre)
+              })
+            : materiales
+
+      const total = sorted.length
+      const pageCount = Math.max(1, Math.ceil(total / take))
+      const safePage = Math.min(Math.max(1, page), pageCount)
+      const sliceFrom = (safePage - 1) * take
+      const sliceTo = sliceFrom + take
+      const data = sorted.slice(sliceFrom, sliceTo)
+
+      return NextResponse.json({
+        success: true,
+        data,
+        meta: {
+          total,
+          page: safePage,
+          pageSize: take,
+          pageCount,
+        },
+      })
+    }
+
+    // Paginación a nivel DB cuando es posible.
+    if (wantsPagination && take && !needsInMemory) {
+      const total = await prisma.material.count({ where })
+      const pageCount = Math.max(1, Math.ceil(total / take))
+      const safePage = Math.min(Math.max(1, page), pageCount)
+      const safeSkip = (safePage - 1) * take
+
+      const data = await prisma.material.findMany({
+        where,
+        include,
+        orderBy,
+        skip: safeSkip,
+        take,
+      })
+
+      return NextResponse.json({
+        success: true,
+        data,
+        meta: {
+          total,
+          page: safePage,
+          pageSize: take,
+          pageCount,
+        },
+      })
+    }
+
+    // Sin paginación (o pageSize=all).
+    let materiales = await prisma.material.findMany({
+      where,
+      include,
+      orderBy,
+    })
+
     if (Number.isFinite(stockMinN) || Number.isFinite(stockMaxN)) {
       materiales = materiales.filter((m) => {
         const stockForView = warehouseId ? (m.stocks?.[0]?.quantity ?? 0) : (m.stockActual ?? 0)
@@ -309,7 +416,17 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
-      data: sorted
+      data: sorted,
+      ...(pageSizeRaw
+        ? {
+            meta: {
+              total: sorted.length,
+              page: 1,
+              pageSize: pageSizeRaw === 'all' ? 'all' : null,
+              pageCount: 1,
+            },
+          }
+        : {}),
     })
 
   } catch (error) {

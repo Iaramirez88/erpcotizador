@@ -122,14 +122,19 @@ export default function ProductosPage() {
   const [categoriaFiltro, setCategoriaFiltro] = useState("")
   const [proveedorFiltro, setProveedorFiltro] = useState("")
   const [descuentoFiltro, setDescuentoFiltro] = useState<'all' | 'true' | 'false'>('all')
-  const [costoMinFiltro, setCostoMinFiltro] = useState("")
-  const [costoMaxFiltro, setCostoMaxFiltro] = useState("")
   const [precioMinFiltro, setPrecioMinFiltro] = useState("")
   const [precioMaxFiltro, setPrecioMaxFiltro] = useState("")
   const [stockMinFiltro, setStockMinFiltro] = useState("")
   const [stockMaxFiltro, setStockMaxFiltro] = useState("")
   const [createdFromFiltro, setCreatedFromFiltro] = useState("")
   const [createdToFiltro, setCreatedToFiltro] = useState("")
+
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState<25 | 50 | 100 | 'all'>(25)
+  const [totalRows, setTotalRows] = useState(0)
+
+  const [selectionScope, setSelectionScope] = useState<'none' | 'page' | 'all'>("none")
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [isExportOpen, setIsExportOpen] = useState(false)
   const [exportPeriodo, setExportPeriodo] = useState<'' | 'day' | 'week' | 'month' | 'quarter'>('')
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -312,9 +317,26 @@ export default function ProductosPage() {
   }
 
   useEffect(() => {
+    // Cuando cambian filtros, volvemos a página 1.
+    setPage(1)
+    setSelectionScope('none')
+    setSelectedIds(new Set())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, tipoFiltro, unidadFiltro, sortFiltro, sedeFiltro, bodegaFiltro, categoriaFiltro, proveedorFiltro, descuentoFiltro, precioMinFiltro, precioMaxFiltro, stockMinFiltro, stockMaxFiltro, createdFromFiltro, createdToFiltro])
+
+  useEffect(() => {
+    // Al paginar o cambiar el tamaño, limpiamos selección de página.
+    if (selectionScope !== 'all') {
+      setSelectionScope('none')
+      setSelectedIds(new Set())
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize])
+
+  useEffect(() => {
     fetchMateriales()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, tipoFiltro, unidadFiltro, sortFiltro, sedeFiltro, bodegaFiltro, categoriaFiltro, proveedorFiltro, descuentoFiltro, costoMinFiltro, costoMaxFiltro, precioMinFiltro, precioMaxFiltro, stockMinFiltro, stockMaxFiltro, createdFromFiltro, createdToFiltro])
+  }, [search, tipoFiltro, unidadFiltro, sortFiltro, sedeFiltro, bodegaFiltro, categoriaFiltro, proveedorFiltro, descuentoFiltro, precioMinFiltro, precioMaxFiltro, stockMinFiltro, stockMaxFiltro, createdFromFiltro, createdToFiltro, page, pageSize])
 
   const exportExcel = () => {
     const params = new URLSearchParams()
@@ -327,8 +349,6 @@ export default function ProductosPage() {
     if (categoriaFiltro) params.set('categoria', categoriaFiltro)
     if (proveedorFiltro) params.set('proveedor', proveedorFiltro)
     if (descuentoFiltro !== 'all') params.set('withDiscount', descuentoFiltro)
-    if (costoMinFiltro) params.set('costoMin', costoMinFiltro)
-    if (costoMaxFiltro) params.set('costoMax', costoMaxFiltro)
     if (precioMinFiltro) params.set('precioMin', precioMinFiltro)
     if (precioMaxFiltro) params.set('precioMax', precioMaxFiltro)
     if (stockMinFiltro) params.set('stockMin', stockMinFiltro)
@@ -445,25 +465,130 @@ export default function ProductosPage() {
       if (categoriaFiltro) url.searchParams.set('categoria', categoriaFiltro)
       if (proveedorFiltro) url.searchParams.set('proveedor', proveedorFiltro)
       if (descuentoFiltro !== 'all') url.searchParams.set('withDiscount', descuentoFiltro)
-      if (costoMinFiltro) url.searchParams.set('costoMin', costoMinFiltro)
-      if (costoMaxFiltro) url.searchParams.set('costoMax', costoMaxFiltro)
       if (precioMinFiltro) url.searchParams.set('precioMin', precioMinFiltro)
       if (precioMaxFiltro) url.searchParams.set('precioMax', precioMaxFiltro)
       if (stockMinFiltro) url.searchParams.set('stockMin', stockMinFiltro)
       if (stockMaxFiltro) url.searchParams.set('stockMax', stockMaxFiltro)
       if (createdFromFiltro) url.searchParams.set('createdFrom', createdFromFiltro)
       if (createdToFiltro) url.searchParams.set('createdTo', createdToFiltro)
+
+      if (pageSize !== 'all') {
+        url.searchParams.set('page', String(Math.max(1, page)))
+        url.searchParams.set('pageSize', String(pageSize))
+      } else {
+        url.searchParams.set('pageSize', 'all')
+      }
       
       const response = await fetch(url.toString())
       const data = await response.json()
       
       if (data.success) {
-        setMateriales(data.data)
+        const rows = Array.isArray(data.data) ? (data.data as Material[]) : []
+        setMateriales(rows)
+        const total = Number(data?.meta?.total)
+        setTotalRows(Number.isFinite(total) ? total : rows.length)
+
+        const serverPage = Number(data?.meta?.page)
+        if (pageSize !== 'all' && Number.isFinite(serverPage) && serverPage > 0 && serverPage !== page) {
+          setPage(Math.floor(serverPage))
+        }
       }
     } catch (error) {
       console.error('Error al cargar productos:', error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const pageCount = useMemo(() => {
+    if (pageSize === 'all') return 1
+    const size = Number(pageSize)
+    if (!Number.isFinite(size) || size <= 0) return 1
+    return Math.max(1, Math.ceil(totalRows / size))
+  }, [pageSize, totalRows])
+
+  const selectedCount = useMemo(() => {
+    if (selectionScope === 'all') return 0
+    if (selectionScope === 'page') return selectedIds.size
+    return 0
+  }, [selectionScope, selectedIds, totalRows])
+
+  const toggleSelectId = (id: string) => {
+    if (selectionScope === 'all') return
+    setSelectionScope('page')
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectPage = () => {
+    if (selectionScope === 'page' && selectedIds.size === materiales.length) {
+      setSelectionScope('none')
+      setSelectedIds(new Set())
+      return
+    }
+    setSelectionScope('page')
+    setSelectedIds(new Set(materiales.map((m) => m.id)))
+  }
+
+  const toggleSelectAllDb = () => {
+    if (selectionScope === 'all') {
+      setSelectionScope('none')
+      setSelectedIds(new Set())
+      return
+    }
+    setSelectionScope('all')
+    setSelectedIds(new Set())
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectionScope === 'none') return
+
+    const label =
+      selectionScope === 'all'
+        ? 'TODOS los productos de la base de datos (según tus permisos)'
+        : `${selectedIds.size} producto(s) seleccionados de esta página`
+
+    if (!confirm(`¿Estás seguro de eliminar ${label}?\n\nNota: los productos usados en cotizaciones no se eliminan.`)) {
+      return
+    }
+
+    try {
+      const payload =
+        selectionScope === 'all'
+          ? { scope: 'all' as const }
+          : { scope: 'ids' as const, ids: Array.from(selectedIds) }
+
+      const res = await fetch('/api/materiales/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      const json = (await res.json().catch(() => null)) as
+        | { success?: boolean; deleted?: number; skippedUsed?: number; error?: string }
+        | null
+
+      if (!res.ok || !json?.success) {
+        alert(json?.error || 'No se pudo eliminar por lote')
+        return
+      }
+
+      const deleted = Number(json.deleted ?? 0)
+      const skippedUsed = Number(json.skippedUsed ?? 0)
+      if (skippedUsed > 0) {
+        alert(`Eliminados: ${deleted}.\nNo eliminados (usados en cotizaciones): ${skippedUsed}.`)
+      }
+
+      setSelectionScope('none')
+      setSelectedIds(new Set())
+      await fetchMateriales()
+    } catch (error) {
+      console.error('Error:', error)
+      alert('Error al eliminar productos')
     }
   }
 
@@ -1006,23 +1131,6 @@ export default function ProductosPage() {
 
               <div className="flex items-center gap-2">
                 <Input
-                  placeholder="Costo min"
-                  value={costoMinFiltro}
-                  onChange={(e) => setCostoMinFiltro(e.target.value)}
-                  className="h-9 w-[110px]"
-                  inputMode="decimal"
-                />
-                <Input
-                  placeholder="Costo max"
-                  value={costoMaxFiltro}
-                  onChange={(e) => setCostoMaxFiltro(e.target.value)}
-                  className="h-9 w-[110px]"
-                  inputMode="decimal"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Input
                   placeholder="Precio min"
                   value={precioMinFiltro}
                   onChange={(e) => setPrecioMinFiltro(e.target.value)}
@@ -1089,8 +1197,89 @@ export default function ProductosPage() {
               </Button>
             </div>
           ) : (
-            <div className="divide-y">
-              {materiales.map((material) => {
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b">
+                <div className="text-sm text-muted-foreground">
+                  Mostrando <span className="font-medium text-foreground">{materiales.length}</span> de{' '}
+                  <span className="font-medium text-foreground">{totalRows}</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={String(pageSize)}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      const next = v === 'all' ? 'all' : (Number(v) as 25 | 50 | 100)
+                      setPageSize(next)
+                      setPage(1)
+                    }}
+                    className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  >
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="all">Todos</option>
+                  </select>
+
+                  {pageSize !== 'all' ? (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={page <= 1}
+                        className="h-8 px-3"
+                      >
+                        Anterior
+                      </Button>
+                      <div className="text-sm text-muted-foreground whitespace-nowrap">
+                        Página <span className="font-medium text-foreground">{page}</span> /{' '}
+                        <span className="font-medium text-foreground">{pageCount}</span>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                        disabled={page >= pageCount}
+                        className="h-8 px-3"
+                      >
+                        Siguiente
+                      </Button>
+                    </div>
+                  ) : null}
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={toggleSelectPage}
+                    className="h-8 px-3"
+                  >
+                    {selectionScope === 'page' && selectedIds.size === materiales.length
+                      ? 'Quitar selección (página)'
+                      : 'Seleccionar página'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={toggleSelectAllDb}
+                    className="h-8 px-3"
+                  >
+                    {selectionScope === 'all' ? 'Quitar selección (BD)' : 'Seleccionar todos (BD)'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleBulkDelete()}
+                    disabled={selectionScope === 'none' || (selectionScope === 'page' && selectedIds.size === 0)}
+                    className="h-8 px-3 text-red-600"
+                  >
+                    Eliminar seleccionados{selectedCount ? ` (${selectedCount})` : ''}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="divide-y">
+                {materiales.map((material) => {
                 const tipoLabel = TIPOS_MATERIAL.find((t) => t.value === material.tipo)?.label || material.tipo
                 const specs = [
                   material.ancho ? `Ancho ${material.ancho}cm` : null,
@@ -1100,11 +1289,22 @@ export default function ProductosPage() {
                 const wh = material.stocks?.[0]?.warehouse ?? null
                 const stockForView = bodegaFiltro ? (material.stocks?.[0]?.quantity ?? 0) : material.stockActual
 
+                const isChecked = selectionScope === 'all' ? true : selectedIds.has(material.id)
+                const isDisabled = selectionScope === 'all'
+
                 return (
                   <div key={material.id} className={`px-4 py-3 ${!material.activo ? "opacity-60" : ""}`}>
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            disabled={isDisabled}
+                            onChange={() => toggleSelectId(material.id)}
+                            className="h-4 w-4 rounded border border-input"
+                            aria-label={`Seleccionar ${material.nombre}`}
+                          />
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={material.imagenUrl || "/placeholder-product.svg"}
@@ -1173,6 +1373,7 @@ export default function ProductosPage() {
                   </div>
                 )
               })}
+              </div>
             </div>
           )}
         </CardContent>
