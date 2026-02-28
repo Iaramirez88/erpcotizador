@@ -27,6 +27,33 @@ function normalizeKey(key: string) {
     .replace(/[^a-z0-9_]/g, '')
 }
 
+function normalizeEnumKey(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^A-Z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
+function coerceTipoMaterial(value: unknown): TipoMaterial | null {
+  const raw = asString(value).trim()
+  if (!raw) return null
+  const normalized = normalizeEnumKey(raw)
+  const variants = new Set<string>([
+    normalized,
+    normalized.replace(/^ONEWAY$/, 'ONE_WAY'),
+    normalized.replace(/^ONE_WAY_VISION$/, 'ONE_WAY'),
+  ])
+  for (const v of variants) {
+    if (Object.values(TipoMaterial).includes(v as TipoMaterial)) return v as TipoMaterial
+  }
+  return null
+}
+
 function parseNumber(value: unknown, fallback = 0) {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   const s = asString(value).trim()
@@ -93,6 +120,14 @@ async function parseRows(file: File): Promise<{ rows: Record<string, unknown>[];
     const parsed = Papa.parse<Record<string, unknown>>(text, { header: true, skipEmptyLines: true })
     if (parsed.errors?.length) {
       warnings.push(...parsed.errors.slice(0, 10).map((e) => `${e.code}: ${e.message}`))
+
+      const hasFieldCountErrors = parsed.errors.some((e) => e.code === 'TooManyFields' || e.code === 'TooFewFields')
+      if (hasFieldCountErrors) {
+        warnings.push(
+          'El CSV parece tener comas dentro de campos sin comillas (p.ej. "1,50" o listas con comas). ' +
+            'Recomendado: subir el archivo como .xlsx, o encerrar esos campos entre comillas ("").'
+        )
+      }
     }
     const data = (parsed.data || []).filter((r) => r && Object.keys(r).length > 0)
     return { rows: data, warnings }
@@ -285,7 +320,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
   if (moduleParam === 'materiales') {
     const aliases = {
-      externalId: ['externalid', 'external_id', 'codigoexterno', 'codigo_externo', 'codigo', 'cod', 'idexterno', 'id_externo'],
+      externalId: ['externalid', 'external_id', 'codigoexterno', 'codigo_externo', 'codigo', 'cod', 'idexterno', 'id_externo', 'operadorid', 'operador_id'],
       nombre: ['nombre', 'material'],
       tipo: ['tipo', 'tipo_material'],
       tipoProducto: ['tipoproducto', 'tipo_producto', 'tipo_de_producto', 'modalidad', 'clase', 'producto_tipo'],
@@ -297,7 +332,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       color: ['color'],
       precioM2: ['preciom2', 'precio_m2'],
       precioMetro: ['preciometro', 'precio_metro', 'precio_ml'],
-      precioUnidad: ['preciounidad', 'precio_unidad'],
+      precioUnidad: ['preciounidad', 'precio_unidad', 'precioventaunidad', 'precio_venta_unidad', 'precioventa_unidad', 'precio_ventaunidad', 'precio_venta_unidad'],
       precioCompra: ['preciocompra', 'precio_compra'],
       stockActual: ['stockactual', 'stock_actual'],
       stockMinimo: ['stockminimo', 'stock_minimo'],
@@ -307,32 +342,57 @@ export async function POST(req: NextRequest, context: RouteContext) {
       activo: ['activo', 'estado'],
     } as const
 
+    const pushImportWarning = (() => {
+      let count = 0
+      const LIMIT = 10
+      return (msg: string) => {
+        if (count >= LIMIT) return
+        warnings.push(msg)
+        count += 1
+      }
+    })()
+
     const data = rows
-      .map((r, i) => ({ idx: i + 2, mapped: mapRow(r, aliases) }))
-      .map(({ idx, mapped }) => {
-        const nombre = asString(mapped.nombre).trim()
-        const tipoRaw = asString(mapped.tipo).trim().toUpperCase()
-        const tipo = !tipoRaw
-          ? TipoMaterial.OTRO
-          : Object.values(TipoMaterial).includes(tipoRaw as TipoMaterial)
-            ? (tipoRaw as TipoMaterial)
-            : null
+      .map((r, i) => ({ idx: i + 2, raw: r, mapped: mapRow(r, aliases) }))
+      .map(({ idx, raw, mapped }) => {
+        // Si PapaParse detecta más columnas que el header, lo pone en __parsed_extra.
+        // Eso suele indicar comas dentro de campos sin comillas, y los valores quedan corridos.
+        if (Array.isArray((raw as any).__parsed_extra) && (raw as any).__parsed_extra.length > 0) {
+          errors.push({ row: idx, error: 'CSV mal formado: hay comas sin comillas en algún campo. Sube .xlsx o encierra campos con comas entre comillas (")' })
+          return null
+        }
+
+        const externalIdRaw = asString(mapped.externalId).trim()
+        let nombreRaw = asString(mapped.nombre).trim()
+        const tipoFieldRaw = asString(mapped.tipo).trim()
+        const categoriaRaw = asString(mapped.categoria).trim()
+
+        // Heurística para CSVs legacy donde "Nombre" es un código y "Tipo" trae la descripción del producto.
+        // En esos casos movemos: externalId <- Nombre, nombre <- Tipo.
+        const nombreLooksLikeId = /^\d+$/.test(nombreRaw)
+        const tipoLooksLikeName = tipoFieldRaw.length >= 8 && /[A-Za-zÁÉÍÓÚÑáéíóúñ]/.test(tipoFieldRaw)
+        if (!externalIdRaw && nombreLooksLikeId && tipoLooksLikeName) {
+          pushImportWarning(`Fila ${idx}: Se interpretó "Nombre" como externalId y "Tipo" como nombre (plantilla CSV diferente).`)
+          nombreRaw = tipoFieldRaw
+        }
+
+        const nombre = nombreRaw
         if (!nombre) {
           errors.push({ row: idx, error: 'Falta campo requerido: nombre' })
           return null
         }
 
-        if (tipo === null) {
-          errors.push({ row: idx, error: `Tipo de material inválido: ${tipoRaw}` })
-          return null
+        const tipoResolved = coerceTipoMaterial(tipoFieldRaw) ?? coerceTipoMaterial(categoriaRaw) ?? TipoMaterial.OTRO
+        if (tipoResolved === TipoMaterial.OTRO && asString(mapped.tipo).trim()) {
+          pushImportWarning(`Fila ${idx}: Tipo de material no reconocido ("${asString(mapped.tipo).trim()}"). Se usó OTRO.`)
         }
 
         const unidadMedida = resolveUnidadMedida(mapped.unidadMedida, mapped.tipoProducto)
 
         return {
-          externalId: asString(mapped.externalId).trim() || null,
+          externalId: (externalIdRaw || (nombreLooksLikeId && tipoLooksLikeName ? asString(mapped.nombre).trim() : '') || null) as string | null,
           nombre,
-          tipo,
+          tipo: tipoResolved,
           categoria: asString(mapped.categoria).trim() || null,
           imagenUrl: asString(mapped.imagenUrl).trim() || null,
           ancho: mapped.ancho === undefined ? null : parseNumber(mapped.ancho, 0) || null,
