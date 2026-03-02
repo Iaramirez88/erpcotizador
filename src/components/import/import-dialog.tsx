@@ -24,6 +24,10 @@ type ImportResult = {
   errors?: Array<{ row: number; error: string }>
 }
 
+const MODULE_NOTES: Partial<Record<ImportModule, string>> = {
+  materiales: 'Para “Código/ID externo (Caja)” puedes usar una columna llamada externalId o ID.',
+}
+
 const TEMPLATE_HEADERS: Record<ImportModule, string[]> = {
   clientes: ['nombre', 'tipoDocumento', 'documento', 'email', 'telefono', 'celular', 'direccion', 'ciudad', 'departamento', 'segmento'],
   proveedores: ['nombre', 'nit', 'telefono', 'direccion', 'email', 'contacto', 'ciudad', 'departamento', 'observaciones', 'activo'],
@@ -85,6 +89,7 @@ export function ImportDialog({
   const autoCloseTimerRef = useRef<number | null>(null)
 
   const headers = useMemo(() => TEMPLATE_HEADERS[module], [module])
+  const note = MODULE_NOTES[module]
 
   const createdCount = typeof result?.created === 'number' ? result.created : null
   const didCreateRows = !dryRun && createdCount !== null && createdCount > 0
@@ -175,6 +180,7 @@ export function ImportDialog({
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm text-muted-foreground">
                 Columnas sugeridas: <span className="font-mono">{headers.join(', ')}</span>
+                {note ? <div className="mt-1 text-xs">Nota: {note}</div> : null}
               </div>
               <Button type="button" variant="outline" size="sm" onClick={() => downloadCsvTemplate(module)}>
                 Descargar plantilla CSV

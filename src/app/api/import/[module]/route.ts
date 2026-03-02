@@ -320,7 +320,30 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
   if (moduleParam === 'materiales') {
     const aliases = {
-      externalId: ['externalid', 'external_id', 'codigoexterno', 'codigo_externo', 'codigo', 'cod', 'idexterno', 'id_externo', 'operadorid', 'operador_id'],
+      externalId: [
+        // Campo: "Código/ID externo (Caja)"
+        'externalid',
+        'external_id',
+        // Headers típicos en plantillas
+        'id',
+        'codigo',
+        'cod',
+        'codigoexterno',
+        'codigo_externo',
+        'idexterno',
+        'id_externo',
+        // POS/Caja
+        'codigo_caja',
+        'id_caja',
+        'codigo_id_externo_caja',
+        'codigo_id_externo',
+        // Variante humana (se normaliza internamente)
+        'Código/ID externo (Caja)',
+        'Codigo/ID externo (Caja)',
+        // Compat
+        'operadorid',
+        'operador_id',
+      ],
       nombre: ['nombre', 'material'],
       tipo: ['tipo', 'tipo_material'],
       tipoProducto: ['tipoproducto', 'tipo_producto', 'tipo_de_producto', 'modalidad', 'clase', 'producto_tipo'],
