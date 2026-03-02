@@ -163,15 +163,20 @@ export type LitografiaMeta = {
   selectedTintaProfileId: string
   selectedPaperId: string
   selectedPlanchaProfileIds?: string[]
+  selectedPlanchaProfileQtys?: string[]
   selectedTintaProfileIds?: string[]
+  selectedTintaProfileQtys?: string[]
   selectedPaperIds?: string[]
   paperItems?: Array<{ paperId: string; qty: string; formatoKey?: string }>
   selectedFinishId: string
   selectedFinishIds?: string[]
   specialFinishItems?: Array<{ finishId: string; qty: string }>
   selectedPlastificadoId?: string
+  selectedPlastificadoQty?: string
   selectedTroqueladoId?: string
+  selectedTroqueladoQty?: string
   selectedCorteId?: string
+  selectedCorteQty?: string
   selectedPaperTipo: string
   selectedPaperGramaje: string
   selectedTransporteKey: string
@@ -235,14 +240,20 @@ export function LitografiaQuoteDialog(props: {
   const [sizes, setSizes] = useState<PrintSize[]>([])
   const [configError, setConfigError] = useState<string | null>(null)
   const [selectedPlanchaProfileIds, setSelectedPlanchaProfileIds] = useState<string[]>([""])
+  const [selectedPlanchaProfileQtys, setSelectedPlanchaProfileQtys] = useState<string[]>(["1"])
   const [selectedTintaProfileIds, setSelectedTintaProfileIds] = useState<string[]>([""])
-  const [paperRows, setPaperRows] = useState<PaperRow[]>([{ paperId: "", qty: "", formatoKey: "" }])
+  const [selectedTintaProfileQtys, setSelectedTintaProfileQtys] = useState<string[]>(["1"])
+  const [paperRows, setPaperRows] = useState<PaperRow[]>([{ paperId: "", qty: "1", formatoKey: "" }])
   const [selectedFinishIds, setSelectedFinishIds] = useState<string[]>([""])
   const [specialFinishRows, setSpecialFinishRows] = useState<SpecialFinishRow[]>([{ finishId: "", qty: "1" }])
 
   const [selectedPlastificadoId, setSelectedPlastificadoId] = useState<string>("")
   const [selectedTroqueladoId, setSelectedTroqueladoId] = useState<string>("")
   const [selectedCorteId, setSelectedCorteId] = useState<string>("")
+
+  const [selectedPlastificadoQty, setSelectedPlastificadoQty] = useState<string>("1")
+  const [selectedTroqueladoQty, setSelectedTroqueladoQty] = useState<string>("1")
+  const [selectedCorteQty, setSelectedCorteQty] = useState<string>("1")
 
   const [selectedPaperTipo, setSelectedPaperTipo] = useState<string>("")
   const [selectedPaperGramaje, setSelectedPaperGramaje] = useState<string>("")
@@ -303,11 +314,18 @@ export function LitografiaQuoteDialog(props: {
     return ids
   }, [selectedFinishIds])
 
-  const addPlanchaRow = () => setSelectedPlanchaProfileIds((prev) => [...prev, ""])
+  const addPlanchaRow = () => {
+    setSelectedPlanchaProfileIds((prev) => [...prev, ""])
+    setSelectedPlanchaProfileQtys((prev) => [...prev, "1"])
+  }
   const removePlanchaRow = (index: number) => {
     setSelectedPlanchaProfileIds((prev) => {
       const next = prev.filter((_, i) => i !== index)
       return next.length ? next : [""]
+    })
+    setSelectedPlanchaProfileQtys((prev) => {
+      const next = prev.filter((_, i) => i !== index)
+      return next.length ? next : ["1"]
     })
   }
   const updatePlanchaRow = (index: number, value: string) => {
@@ -320,11 +338,27 @@ export function LitografiaQuoteDialog(props: {
     })
   }
 
-  const addTintaRow = () => setSelectedTintaProfileIds((prev) => [...prev, ""])
+  const updatePlanchaQty = (index: number, qty: string) => {
+    setSelectedPlanchaProfileQtys((prev) => {
+      const next = [...prev]
+      next[index] = qty
+      if (!next.length) return ["1"]
+      return next
+    })
+  }
+
+  const addTintaRow = () => {
+    setSelectedTintaProfileIds((prev) => [...prev, ""])
+    setSelectedTintaProfileQtys((prev) => [...prev, "1"])
+  }
   const removeTintaRow = (index: number) => {
     setSelectedTintaProfileIds((prev) => {
       const next = prev.filter((_, i) => i !== index)
       return next.length ? next : [""]
+    })
+    setSelectedTintaProfileQtys((prev) => {
+      const next = prev.filter((_, i) => i !== index)
+      return next.length ? next : ["1"]
     })
   }
   const updateTintaRow = (index: number, value: string) => {
@@ -337,11 +371,20 @@ export function LitografiaQuoteDialog(props: {
     })
   }
 
-  const addPaperRow = () => setPaperRows((prev) => [...prev, { paperId: "", qty: "", formatoKey }])
+  const updateTintaQty = (index: number, qty: string) => {
+    setSelectedTintaProfileQtys((prev) => {
+      const next = [...prev]
+      next[index] = qty
+      if (!next.length) return ["1"]
+      return next
+    })
+  }
+
+  const addPaperRow = () => setPaperRows((prev) => [...prev, { paperId: "", qty: "1", formatoKey }])
   const removePaperRow = (index: number) => {
     setPaperRows((prev) => {
       const next = prev.filter((_, i) => i !== index)
-      return next.length ? next : [{ paperId: "", qty: "", formatoKey: "" }]
+      return next.length ? next : [{ paperId: "", qty: "1", formatoKey: "" }]
     })
   }
   const updatePaperRow = (index: number, paperId: string) => {
@@ -483,15 +526,20 @@ export function LitografiaQuoteDialog(props: {
       selectedTintaProfileId: primaryTintaProfileId,
       selectedPaperId: primaryPaperId,
       selectedPlanchaProfileIds,
+      selectedPlanchaProfileQtys,
       selectedTintaProfileIds,
+      selectedTintaProfileQtys,
       selectedPaperIds,
       paperItems,
       selectedFinishId: primaryFinishId,
       selectedFinishIds: finishIds,
       specialFinishItems,
       selectedPlastificadoId,
+      selectedPlastificadoQty,
       selectedTroqueladoId,
+      selectedTroqueladoQty,
       selectedCorteId,
+      selectedCorteQty,
       selectedPaperTipo,
       selectedPaperGramaje,
       selectedTransporteKey,
@@ -534,10 +582,25 @@ export function LitografiaQuoteDialog(props: {
     const tintaIds = Array.isArray(meta.selectedTintaProfileIds) ? meta.selectedTintaProfileIds : []
     const paperIds = Array.isArray(meta.selectedPaperIds) ? meta.selectedPaperIds : []
 
+    const planchaQtys = Array.isArray(meta.selectedPlanchaProfileQtys) ? meta.selectedPlanchaProfileQtys : []
+    const tintaQtys = Array.isArray(meta.selectedTintaProfileQtys) ? meta.selectedTintaProfileQtys : []
+
     const nextPlanchas = planchaIds.map((x) => String(x || "").trim()).filter(Boolean)
     const nextTintas = tintaIds.map((x) => String(x || "").trim()).filter(Boolean)
-    setSelectedPlanchaProfileIds(nextPlanchas.length ? nextPlanchas : (planchaLegacy ? [planchaLegacy] : [""]))
-    setSelectedTintaProfileIds(nextTintas.length ? nextTintas : (tintaLegacy ? [tintaLegacy] : [""]))
+
+    const nextPlanchasIds = nextPlanchas.length ? nextPlanchas : (planchaLegacy ? [planchaLegacy] : [""])
+    const nextTintasIds = nextTintas.length ? nextTintas : (tintaLegacy ? [tintaLegacy] : [""])
+
+    const normalizeQty = (value: unknown) => {
+      const raw = String(value ?? "1").trim()
+      const n = Math.trunc(parseFloat(raw) || 0)
+      return String(Math.max(1, Number.isFinite(n) ? n : 1))
+    }
+
+    setSelectedPlanchaProfileIds(nextPlanchasIds)
+    setSelectedTintaProfileIds(nextTintasIds)
+    setSelectedPlanchaProfileQtys(nextPlanchasIds.map((_, i) => normalizeQty(planchaQtys[i] ?? "1")))
+    setSelectedTintaProfileQtys(nextTintasIds.map((_, i) => normalizeQty(tintaQtys[i] ?? "1")))
 
     const paperItems = Array.isArray(meta.paperItems) ? meta.paperItems : []
     const rowsFromItems: PaperRow[] = []
@@ -557,7 +620,7 @@ export function LitografiaQuoteDialog(props: {
     const rowsFromLegacy: PaperRow[] = (paperIdsNormalized.length ? paperIdsNormalized : (paperLegacy ? [paperLegacy] : [""]))
       .map((id, idx) => ({ paperId: id, qty: idx === 0 ? "" : "", formatoKey: idx === 0 ? "" : formatoKey }))
     const finalRows = rowsFromItems.length ? rowsFromItems : rowsFromLegacy
-    setPaperRows(finalRows.length ? finalRows : [{ paperId: "", qty: "", formatoKey: "" }])
+    setPaperRows(finalRows.length ? finalRows : [{ paperId: "", qty: "1", formatoKey: "" }])
     const finishIdsRaw = Array.isArray(meta.selectedFinishIds) ? meta.selectedFinishIds : []
     const fromList = finishIdsRaw.map((x) => String(x || "").trim()).filter(Boolean)
     const fromLegacy = String(meta.selectedFinishId ?? "").trim()
@@ -582,6 +645,9 @@ export function LitografiaQuoteDialog(props: {
     setSelectedPlastificadoId(meta.selectedPlastificadoId ?? "")
     setSelectedTroqueladoId(meta.selectedTroqueladoId ?? "")
     setSelectedCorteId(meta.selectedCorteId ?? "")
+    setSelectedPlastificadoQty(String(meta.selectedPlastificadoQty ?? "1"))
+    setSelectedTroqueladoQty(String(meta.selectedTroqueladoQty ?? "1"))
+    setSelectedCorteQty(String(meta.selectedCorteQty ?? "1"))
     setCostoCorte(meta.costoCorte ?? "0")
     setCostoAcabados(meta.costoAcabados ?? "0")
     setCostoTransporte(meta.costoTransporte ?? "0")
@@ -663,6 +729,23 @@ export function LitografiaQuoteDialog(props: {
   const troqueladoCost = Number(selectedTroquelado?.valor) || 0
   const corteCost = Number(selectedCorte?.valor) || 0
 
+  const plastificadoQty = useMemo(() => {
+    const n = Math.trunc(parseFloat(String(selectedPlastificadoQty)) || 0)
+    return Math.max(1, Number.isFinite(n) ? n : 1)
+  }, [selectedPlastificadoQty])
+  const troqueladoQty = useMemo(() => {
+    const n = Math.trunc(parseFloat(String(selectedTroqueladoQty)) || 0)
+    return Math.max(1, Number.isFinite(n) ? n : 1)
+  }, [selectedTroqueladoQty])
+  const corteQty = useMemo(() => {
+    const n = Math.trunc(parseFloat(String(selectedCorteQty)) || 0)
+    return Math.max(1, Number.isFinite(n) ? n : 1)
+  }, [selectedCorteQty])
+
+  const plastificadoCostTotal = plastificadoCost * plastificadoQty
+  const troqueladoCostTotal = troqueladoCost * troqueladoQty
+  const corteCostTotal = corteCost * corteQty
+
   const selectedPlanchaProfiles = useMemo(() => {
     if (!planchaIdsNormalized.length) return [] as PrintProfile[]
     const byId = new Map(profiles.map((p) => [p.id, p] as const))
@@ -680,11 +763,33 @@ export function LitografiaQuoteDialog(props: {
   const primaryPaper = (primaryPaperId ? papers.find((p) => p.id === primaryPaperId) || null : null)
 
   const planchaCostConfigured = useMemo(() => {
-    return selectedPlanchaProfiles.reduce((acc, p) => acc + (Number(p.costoPlanchaPorColor) || 0), 0)
-  }, [selectedPlanchaProfiles])
+    const byId = new Map(profiles.map((p) => [p.id, p] as const))
+    let total = 0
+    for (let i = 0; i < selectedPlanchaProfileIds.length; i++) {
+      const id = String(selectedPlanchaProfileIds[i] || "").trim()
+      if (!id) continue
+      const profile = byId.get(id)
+      if (!profile) continue
+      const rawQty = String(selectedPlanchaProfileQtys[i] ?? "1")
+      const qty = Math.max(1, Math.trunc(parseFloat(rawQty) || 0) || 1)
+      total += (Number(profile.costoPlanchaPorColor) || 0) * qty
+    }
+    return total
+  }, [profiles, selectedPlanchaProfileIds, selectedPlanchaProfileQtys])
   const tintaCostConfigured = useMemo(() => {
-    return selectedTintaProfiles.reduce((acc, p) => acc + (Number(p.costoTintaPorColor) || 0), 0)
-  }, [selectedTintaProfiles])
+    const byId = new Map(profiles.map((p) => [p.id, p] as const))
+    let total = 0
+    for (let i = 0; i < selectedTintaProfileIds.length; i++) {
+      const id = String(selectedTintaProfileIds[i] || "").trim()
+      if (!id) continue
+      const profile = byId.get(id)
+      if (!profile) continue
+      const rawQty = String(selectedTintaProfileQtys[i] ?? "1")
+      const qty = Math.max(1, Math.trunc(parseFloat(rawQty) || 0) || 1)
+      total += (Number(profile.costoTintaPorColor) || 0) * qty
+    }
+    return total
+  }, [profiles, selectedTintaProfileIds, selectedTintaProfileQtys])
 
   const selectedFinishes = useMemo(() => {
     const byId = new Map(finishes.map((f) => [f.id, f] as const))
@@ -734,6 +839,7 @@ export function LitografiaQuoteDialog(props: {
     if (!props.open) return
     if (!primaryPlanchaProfileId && activePlanchaProfiles.length) {
       setSelectedPlanchaProfileIds([activePlanchaProfiles[0]!.id])
+      setSelectedPlanchaProfileQtys(["1"])
     }
   }, [props.open, activePlanchaProfiles, primaryPlanchaProfileId])
 
@@ -741,6 +847,7 @@ export function LitografiaQuoteDialog(props: {
     if (!props.open) return
     if (!primaryTintaProfileId && activeTintaProfiles.length) {
       setSelectedTintaProfileIds([activeTintaProfiles[0]!.id])
+      setSelectedTintaProfileQtys(["1"])
     }
   }, [props.open, activeTintaProfiles, primaryTintaProfileId])
 
@@ -760,7 +867,7 @@ export function LitografiaQuoteDialog(props: {
   useEffect(() => {
     if (!props.open) return
     if (!primaryPaperId && activePapers.length) {
-      setPaperRows([{ paperId: activePapers[0]!.id, qty: "", formatoKey: "" }])
+      setPaperRows([{ paperId: activePapers[0]!.id, qty: "1", formatoKey: "" }])
     }
   }, [props.open, activePapers, primaryPaperId])
 
@@ -848,20 +955,22 @@ export function LitografiaQuoteDialog(props: {
 
     const qty = Math.max(0, Math.trunc(parseFloat(cantidad) || 0))
     const totalPaginas = Math.max(0, Math.trunc(parseFloat(editorialTotalPaginas) || 0))
+    const paginasPortadaContraportada = Math.max(0, Math.trunc(parseFloat(editorialPaginasPortadaContraportada) || 0))
+    const totalPaginasConPortada = totalPaginas + paginasPortadaContraportada
     const cartasPorPlancha = Math.max(1, Math.trunc(parseFloat(editorialCartasPorPlancha) || 0))
     const paginasPorPliego = Math.max(1, Math.trunc(parseFloat(editorialPaginasPorPliego) || 0))
     const desperdicio = Math.max(0, parseFloat(desperdicioPct) || 0)
     const sobrante = Math.max(0, Math.trunc(parseFloat(sobranteMinimo) || 0))
 
-    const planchas = totalPaginas > 0 ? Math.ceil(totalPaginas / cartasPorPlancha) : 0
-    const pliegosPorUnidad = totalPaginas > 0 ? Math.ceil(totalPaginas / paginasPorPliego) : 0
+    const planchas = totalPaginasConPortada > 0 ? Math.ceil(totalPaginasConPortada / cartasPorPlancha) : 0
+    const pliegosPorUnidad = totalPaginasConPortada > 0 ? Math.ceil(totalPaginasConPortada / paginasPorPliego) : 0
     const pliegosBase = qty * pliegosPorUnidad
     const pliegosConDesperdicio = Math.ceil(pliegosBase * (1 + desperdicio / 100))
     const pliegosPorSobrante = sobrante * pliegosPorUnidad
     const pliegosTotal = pliegosConDesperdicio + pliegosPorSobrante
 
     return { planchas, pliegosPorUnidad, pliegosBase, pliegosConDesperdicio, pliegosTotal }
-  }, [props.open, selectedEditorialProductoKey, editorialOptions, cantidad, editorialTotalPaginas, editorialCartasPorPlancha, editorialPaginasPorPliego, desperdicioPct, sobranteMinimo])
+  }, [props.open, selectedEditorialProductoKey, editorialOptions, cantidad, editorialTotalPaginas, editorialPaginasPortadaContraportada, editorialCartasPorPlancha, editorialPaginasPorPliego, desperdicioPct, sobranteMinimo])
 
   useEffect(() => {
     const load = async () => {
@@ -976,15 +1085,21 @@ export function LitografiaQuoteDialog(props: {
     const desperdicio = parseFloat(desperdicioPct) || 0
     const sobrante = parseFloat(sobranteMinimo) || 0
 
-    const extraFinishCosts = plastificadoCost + troqueladoCost + corteCost
+    const editorialPliegosPorUnidad = Math.max(1, editorialCalc?.pliegosPorUnidad ?? 1)
+    const editorialPlanchas = Math.max(1, editorialCalc?.planchas ?? 1)
+    const qtyForCompute = selectedEditorialProductoKey ? qtyBase * editorialPliegosPorUnidad : qtyBase
+    const planchaCostForCompute = selectedEditorialProductoKey ? planchaCostConfigured * editorialPlanchas : planchaCostConfigured
+    const tintaCostForCompute = selectedEditorialProductoKey ? tintaCostConfigured * editorialPlanchas : tintaCostConfigured
+
+    const extraFinishCosts = plastificadoCostTotal + troqueladoCostTotal + corteCostTotal
 
     const base = computeLitografia({
-      cantidad: qtyBase,
+      cantidad: qtyForCompute,
       colores: 1,
       desperdicioPct: desperdicio,
       sobranteMinimo: sobrante,
-      costoPlanchaPorColor: planchaCostConfigured,
-      costoTintaPorColor: tintaCostConfigured,
+      costoPlanchaPorColor: planchaCostForCompute,
+      costoTintaPorColor: tintaCostForCompute,
       costoPapelUnidad: parseFloat(costoPapelUnidad) || 0,
       papelModo: papelPorPliego ? "pliego" : "unidad",
       papelTipo,
@@ -1004,12 +1119,12 @@ export function LitografiaQuoteDialog(props: {
       const presetByKey = new Map(sizeOptions.map((s) => [s.key, s] as const))
 
       const baseNoPaper = computeLitografia({
-        cantidad: qtyBase,
+        cantidad: qtyForCompute,
         colores: 1,
         desperdicioPct: desperdicio,
         sobranteMinimo: sobrante,
-        costoPlanchaPorColor: planchaCostConfigured,
-        costoTintaPorColor: tintaCostConfigured,
+        costoPlanchaPorColor: planchaCostForCompute,
+        costoTintaPorColor: tintaCostForCompute,
         costoPapelUnidad: 0,
         papelModo: "pliego",
         papelTipo,
@@ -1036,7 +1151,7 @@ export function LitografiaQuoteDialog(props: {
           ? selectedPreset
           : (presetByKey.get(String(row.formatoKey || "").trim()) || selectedPreset)
 
-        const rowQty = idx === 0 ? qtyBase : (parseFloat(String(row.qty || "0")) || 0)
+        const rowQty = idx === 0 ? qtyForCompute : (parseFloat(String(row.qty || "0")) || 0)
         if (rowQty <= 0) continue
 
         const r = computeLitografia({
@@ -1079,6 +1194,8 @@ export function LitografiaQuoteDialog(props: {
   }, [
     isAdmin,
     cantidad,
+    editorialCalc,
+    selectedEditorialProductoKey,
     desperdicioPct,
     sobranteMinimo,
     planchaCostConfigured,
@@ -1094,9 +1211,9 @@ export function LitografiaQuoteDialog(props: {
     costoAcabados,
     selectedFinishesCost,
     specialFinishesCost,
-    plastificadoCost,
-    troqueladoCost,
-    corteCost,
+    plastificadoCostTotal,
+    troqueladoCostTotal,
+    corteCostTotal,
     costoTransporte,
     paperRows,
     primaryPaper,
@@ -1112,18 +1229,24 @@ export function LitografiaQuoteDialog(props: {
     if (qty <= 0) return null
     if (!selectedPreset) return null
 
+    const editorialPliegosPorUnidad = Math.max(1, editorialCalc?.pliegosPorUnidad ?? 1)
+    const editorialPlanchas = Math.max(1, editorialCalc?.planchas ?? 1)
+    const qtyForCompute = selectedEditorialProductoKey ? qty * editorialPliegosPorUnidad : qty
+    const planchaCostForCompute = selectedEditorialProductoKey ? planchaCostConfigured * editorialPlanchas : planchaCostConfigured
+    const tintaCostForCompute = selectedEditorialProductoKey ? tintaCostConfigured * editorialPlanchas : tintaCostConfigured
+
     // Estimación cuando no hay tarifa exacta. Usa costos del perfil y papel seleccionado.
     const desperdicio = parseFloat(desperdicioPct) || 0
     if (!primaryPaper) return null
     const paper = primaryPaper
 
     const base = computeLitografia({
-      cantidad: qty,
+      cantidad: qtyForCompute,
       colores: 1,
       desperdicioPct: desperdicio,
       sobranteMinimo: parseFloat(sobranteMinimo) || 0,
-      costoPlanchaPorColor: planchaCostConfigured,
-      costoTintaPorColor: tintaCostConfigured,
+      costoPlanchaPorColor: planchaCostForCompute,
+      costoTintaPorColor: tintaCostForCompute,
       costoPapelUnidad: 0,
       papelModo: "pliego",
       papelTipo,
@@ -1144,12 +1267,12 @@ export function LitografiaQuoteDialog(props: {
       const presetByKey = new Map(sizeOptions.map((s) => [s.key, s] as const))
 
       const baseNoPaper = computeLitografia({
-        cantidad: qty,
+        cantidad: qtyForCompute,
         colores: 1,
         desperdicioPct: desperdicio,
         sobranteMinimo: parseFloat(sobranteMinimo) || 0,
-        costoPlanchaPorColor: planchaCostConfigured,
-        costoTintaPorColor: tintaCostConfigured,
+        costoPlanchaPorColor: planchaCostForCompute,
+        costoTintaPorColor: tintaCostForCompute,
         costoPapelUnidad: 0,
         papelModo: "pliego",
         papelTipo,
@@ -1176,7 +1299,7 @@ export function LitografiaQuoteDialog(props: {
           ? selectedPreset
           : (presetByKey.get(String(row.formatoKey || "").trim()) || selectedPreset)
 
-        const rowQty = idx === 0 ? qty : (parseFloat(String(row.qty || "0")) || 0)
+        const rowQty = idx === 0 ? qtyForCompute : (parseFloat(String(row.qty || "0")) || 0)
         if (rowQty <= 0) continue
 
         const r = computeLitografia({
@@ -1220,6 +1343,8 @@ export function LitografiaQuoteDialog(props: {
     isAdmin,
     props.open,
     cantidad,
+    editorialCalc,
+    selectedEditorialProductoKey,
     desperdicioPct,
     sobranteMinimo,
     planchaCostConfigured,
@@ -1387,9 +1512,9 @@ export function LitografiaQuoteDialog(props: {
 
       const addFinishesCost = tarifa ? 0 : (isAdmin && computed ? 0 : selectedFinishesCost)
       const addSpecialFinishesCost = isAdmin && computed ? 0 : specialFinishesCost
-      const addPlastificadoCost = isAdmin && computed ? 0 : plastificadoCost
-      const addTroqueladoCost = isAdmin && computed ? 0 : troqueladoCost
-      const addCorteCost = isAdmin && computed ? 0 : corteCost
+      const addPlastificadoCost = isAdmin && computed ? 0 : plastificadoCostTotal
+      const addTroqueladoCost = isAdmin && computed ? 0 : troqueladoCostTotal
+      const addCorteCost = isAdmin && computed ? 0 : corteCostTotal
 
       const meta = buildMeta()
       const baseValue = tarifa ? base : (computed?.precioVenta ?? 0)
@@ -1608,6 +1733,17 @@ export function LitografiaQuoteDialog(props: {
                                   </option>
                                 ))}
                               </select>
+
+                              <Input
+                                className={`${INPUT_COMPACT} w-24 shrink-0`}
+                                type="number"
+                                min={1}
+                                step="1"
+                                value={selectedPlanchaProfileQtys[idx] ?? "1"}
+                                onChange={(e) => updatePlanchaQty(idx, e.target.value)}
+                                placeholder={t('printshopQuote.placeholders.qtyShort')}
+                              />
+
                               {selectedPlanchaProfileIds.length > 1 ? (
                                 <Button
                                   type="button"
@@ -1655,6 +1791,17 @@ export function LitografiaQuoteDialog(props: {
                                   </option>
                                 ))}
                               </select>
+
+                              <Input
+                                className={`${INPUT_COMPACT} w-24 shrink-0`}
+                                type="number"
+                                min={1}
+                                step="1"
+                                value={selectedTintaProfileQtys[idx] ?? "1"}
+                                onChange={(e) => updateTintaQty(idx, e.target.value)}
+                                placeholder={t('printshopQuote.placeholders.qtyShort')}
+                              />
+
                               {selectedTintaProfileIds.length > 1 ? (
                                 <Button
                                   type="button"
@@ -1828,19 +1975,30 @@ export function LitografiaQuoteDialog(props: {
 
                         <div>
                           <Label>{t('printshopQuote.fields.lamination')}</Label>
-                          <select
-                            className={SELECT_COMPACT}
-                            value={selectedPlastificadoId}
-                            onChange={(e) => setSelectedPlastificadoId(e.target.value)}
-                            disabled={!activePlastificados.length}
-                          >
-                            <option value="">{t('printshopQuote.select.noneLamination')}</option>
-                            {activePlastificados.map((f) => (
-                              <option key={f.id} value={f.id}>
-                                {f.nombre}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="mt-2 flex items-center gap-2">
+                            <select
+                              className={`${SELECT_COMPACT} mt-0`}
+                              value={selectedPlastificadoId}
+                              onChange={(e) => setSelectedPlastificadoId(e.target.value)}
+                              disabled={!activePlastificados.length}
+                            >
+                              <option value="">{t('printshopQuote.select.noneLamination')}</option>
+                              {activePlastificados.map((f) => (
+                                <option key={f.id} value={f.id}>
+                                  {f.nombre}
+                                </option>
+                              ))}
+                            </select>
+                            <Input
+                              className={`${INPUT_COMPACT} w-24 shrink-0`}
+                              type="number"
+                              min={1}
+                              step="1"
+                              value={selectedPlastificadoQty}
+                              onChange={(e) => setSelectedPlastificadoQty(e.target.value)}
+                              placeholder={t('printshopQuote.placeholders.qtyShort')}
+                            />
+                          </div>
                           {!activePlastificados.length ? (
                             <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
                               {t('printshopQuote.help.configureLamination')}
@@ -1850,19 +2008,30 @@ export function LitografiaQuoteDialog(props: {
 
                         <div>
                           <Label>{t('printshopQuote.fields.dieCut')}</Label>
-                          <select
-                            className={SELECT_COMPACT}
-                            value={selectedTroqueladoId}
-                            onChange={(e) => setSelectedTroqueladoId(e.target.value)}
-                            disabled={!activeTroquelados.length}
-                          >
-                            <option value="">{t('printshopQuote.select.noneDieCut')}</option>
-                            {activeTroquelados.map((f) => (
-                              <option key={f.id} value={f.id}>
-                                {f.nombre}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="mt-2 flex items-center gap-2">
+                            <select
+                              className={`${SELECT_COMPACT} mt-0`}
+                              value={selectedTroqueladoId}
+                              onChange={(e) => setSelectedTroqueladoId(e.target.value)}
+                              disabled={!activeTroquelados.length}
+                            >
+                              <option value="">{t('printshopQuote.select.noneDieCut')}</option>
+                              {activeTroquelados.map((f) => (
+                                <option key={f.id} value={f.id}>
+                                  {f.nombre}
+                                </option>
+                              ))}
+                            </select>
+                            <Input
+                              className={`${INPUT_COMPACT} w-24 shrink-0`}
+                              type="number"
+                              min={1}
+                              step="1"
+                              value={selectedTroqueladoQty}
+                              onChange={(e) => setSelectedTroqueladoQty(e.target.value)}
+                              placeholder={t('printshopQuote.placeholders.qtyShort')}
+                            />
+                          </div>
                           {!activeTroquelados.length ? (
                             <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
                               {t('printshopQuote.help.configureDieCut')}
@@ -1872,19 +2041,30 @@ export function LitografiaQuoteDialog(props: {
 
                         <div>
                           <Label>{t('printshopQuote.fields.cut')}</Label>
-                          <select
-                            className={SELECT_COMPACT}
-                            value={selectedCorteId}
-                            onChange={(e) => setSelectedCorteId(e.target.value)}
-                            disabled={!activeCortes.length}
-                          >
-                            <option value="">{t('printshopQuote.select.noneCut')}</option>
-                            {activeCortes.map((f) => (
-                              <option key={f.id} value={f.id}>
-                                {f.nombre}
-                              </option>
-                            ))}
-                          </select>
+                          <div className="mt-2 flex items-center gap-2">
+                            <select
+                              className={`${SELECT_COMPACT} mt-0`}
+                              value={selectedCorteId}
+                              onChange={(e) => setSelectedCorteId(e.target.value)}
+                              disabled={!activeCortes.length}
+                            >
+                              <option value="">{t('printshopQuote.select.noneCut')}</option>
+                              {activeCortes.map((f) => (
+                                <option key={f.id} value={f.id}>
+                                  {f.nombre}
+                                </option>
+                              ))}
+                            </select>
+                            <Input
+                              className={`${INPUT_COMPACT} w-24 shrink-0`}
+                              type="number"
+                              min={1}
+                              step="1"
+                              value={selectedCorteQty}
+                              onChange={(e) => setSelectedCorteQty(e.target.value)}
+                              placeholder={t('printshopQuote.placeholders.qtyShort')}
+                            />
+                          </div>
                           {!activeCortes.length ? (
                             <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
                               {t('printshopQuote.help.configureCut')}
@@ -2050,7 +2230,7 @@ export function LitografiaQuoteDialog(props: {
                               const transporte = parseFloat(costoTransporte) || 0
                               const extras = customFieldsTotal
                               const addFinishesCost = 0
-                              const total = (base * margenMultiplier) + transporte + addFinishesCost + specialFinishesCost + plastificadoCost + troqueladoCost + corteCost + extras
+                              const total = (base * margenMultiplier) + transporte + addFinishesCost + specialFinishesCost + plastificadoCostTotal + troqueladoCostTotal + corteCostTotal + extras
                               const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
                               return (
                                 <>
@@ -2058,9 +2238,9 @@ export function LitografiaQuoteDialog(props: {
                                   <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.transport')}</span><span className="font-medium">{formatCurrency(transporte)}</span></div>
                                   {addFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.finishes')}</span><span className="font-medium">{formatCurrency(addFinishesCost)}</span></div> : null}
                                   {specialFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.specialFinishes')}</span><span className="font-medium">{formatCurrency(specialFinishesCost)}</span></div> : null}
-                                  {plastificadoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.lamination')}</span><span className="font-medium">{formatCurrency(plastificadoCost)}</span></div> : null}
-                                  {troqueladoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.dieCut')}</span><span className="font-medium">{formatCurrency(troqueladoCost)}</span></div> : null}
-                                  {corteCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.cut')}</span><span className="font-medium">{formatCurrency(corteCost)}</span></div> : null}
+                                  {plastificadoCostTotal ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.lamination')}{plastificadoQty > 1 ? ` (x${plastificadoQty})` : ""}</span><span className="font-medium">{formatCurrency(plastificadoCostTotal)}</span></div> : null}
+                                  {troqueladoCostTotal ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.dieCut')}{troqueladoQty > 1 ? ` (x${troqueladoQty})` : ""}</span><span className="font-medium">{formatCurrency(troqueladoCostTotal)}</span></div> : null}
+                                  {corteCostTotal ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.cut')}{corteQty > 1 ? ` (x${corteQty})` : ""}</span><span className="font-medium">{formatCurrency(corteCostTotal)}</span></div> : null}
                                   {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.extraFields')}</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
                                   <div className="flex justify-between mt-2"><span className="font-medium">{t('printshopQuote.breakdown.total')}</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
                                   <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.unit')}</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>
@@ -2086,16 +2266,23 @@ export function LitografiaQuoteDialog(props: {
                             {(() => {
                               const extras = customFieldsTotal
                               const baseValue = fallbackCalc.precioVenta || 0
-                              const total = (baseValue * margenMultiplier) + selectedFinishesCost + specialFinishesCost + plastificadoCost + troqueladoCost + corteCost + extras
+                              const total = (baseValue * margenMultiplier) + selectedFinishesCost + specialFinishesCost + plastificadoCostTotal + troqueladoCostTotal + corteCostTotal + extras
                               const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
                               return (
                                 <>
-                                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t('printshopQuote.breakdown.baseEstimated')}</span><span className="font-medium">{formatCurrency(baseValue)}</span></div>
+                                  <div className="space-y-1">
+                                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t('printshopQuote.admin.plate')}</span><span className="font-medium">{formatCurrency(fallbackCalc.plancha)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t('printshopQuote.admin.ink')}</span><span className="font-medium">{formatCurrency(fallbackCalc.tinta)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t('printshopQuote.desc.paper')}</span><span className="font-medium">{formatCurrency(fallbackCalc.papel)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t('printshopQuote.breakdown.transport')}</span><span className="font-medium">{formatCurrency(fallbackCalc.transporte)}</span></div>
+                                  </div>
+
+                                  <div className="flex justify-between text-sm mt-2"><span className="text-muted-foreground">{t('printshopQuote.breakdown.baseEstimated')}</span><span className="font-medium">{formatCurrency(baseValue)}</span></div>
                                   {selectedFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.finishes')}</span><span className="font-medium">{formatCurrency(selectedFinishesCost)}</span></div> : null}
                                   {specialFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.specialFinishes')}</span><span className="font-medium">{formatCurrency(specialFinishesCost)}</span></div> : null}
-                                  {plastificadoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.lamination')}</span><span className="font-medium">{formatCurrency(plastificadoCost)}</span></div> : null}
-                                  {troqueladoCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.dieCut')}</span><span className="font-medium">{formatCurrency(troqueladoCost)}</span></div> : null}
-                                  {corteCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.cut')}</span><span className="font-medium">{formatCurrency(corteCost)}</span></div> : null}
+                                  {plastificadoCostTotal ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.lamination')}{plastificadoQty > 1 ? ` (x${plastificadoQty})` : ""}</span><span className="font-medium">{formatCurrency(plastificadoCostTotal)}</span></div> : null}
+                                  {troqueladoCostTotal ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.dieCut')}{troqueladoQty > 1 ? ` (x${troqueladoQty})` : ""}</span><span className="font-medium">{formatCurrency(troqueladoCostTotal)}</span></div> : null}
+                                  {corteCostTotal ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.cut')}{corteQty > 1 ? ` (x${corteQty})` : ""}</span><span className="font-medium">{formatCurrency(corteCostTotal)}</span></div> : null}
                                   {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.extraFields')}</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
                                   <div className="flex justify-between mt-2"><span className="font-medium">{t('printshopQuote.breakdown.total')}</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
                                   <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.unit')}</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>
