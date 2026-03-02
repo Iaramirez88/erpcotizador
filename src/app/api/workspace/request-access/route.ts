@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
+import { escapeHtml, renderEmail, renderEmailCode } from '@/lib/email-template'
 
 export const runtime = 'nodejs'
 
@@ -65,16 +66,19 @@ export async function POST(req: Request) {
   const requesterEmail = (requester.email || '').trim().toLowerCase()
   const requesterName = (requester.name || '').trim()
 
-  const subject = `Solicitud de acceso · ${empresa.nombre}`
+  const subject = `Solicitud de acceso · ${empresa.nombre} · Ordex`
   const who = requesterName ? `${requesterName} (${requesterEmail})` : requesterEmail
-  const html = `
-    <div style="font-family: Arial, sans-serif; line-height: 1.5">
-      <h2>Solicitud de acceso</h2>
-      <p><b>${who}</b> solicitó acceso al espacio de trabajo <b>${empresa.nombre}</b>.</p>
-      <p>Si deseas permitir el ingreso, comparte el <b>código de empresa</b> o envía una invitación desde el panel (Configuración → Usuarios).</p>
-      <p style="color:#6b7280;font-size:12px">Código: ${empresa.workspaceCode || '—'} · ID: ${empresa.id}</p>
-    </div>
-  `
+
+  const html = renderEmail({
+    title: 'Solicitud de acceso',
+    preheader: `${who} solicitó acceso a ${empresa.nombre}.`,
+    intro: `${who} solicitó acceso al espacio de trabajo ${empresa.nombre}.`,
+    bodyHtml: `
+      <p style="margin:0 0 12px; color:#374151;">Si deseas permitir el ingreso, comparte el <b>código de empresa</b> o envía una invitación desde el panel (Configuración → Usuarios).</p>
+      ${empresa.workspaceCode ? renderEmailCode(empresa.workspaceCode, { size: 'md' }) : ''}
+      <p style="margin:0; color:#6B7280; font-size:12px;">Espacio: <b>${escapeHtml(empresa.nombre)}</b> · ID: ${escapeHtml(empresa.id)}</p>
+    `,
+  })
 
   for (const to of recipients) {
     const send = await sendEmail({ to, subject, html })

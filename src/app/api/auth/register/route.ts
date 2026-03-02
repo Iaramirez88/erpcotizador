@@ -16,6 +16,7 @@ import { ensureDefaultSedeForEmpresa } from "@/lib/rbac"
 import { isSuperAdminEmail } from "@/lib/super-admin"
 import { generateWorkspaceCode } from "@/lib/workspace-code"
 import { checkPlanLimit } from "@/lib/plan-limits"
+import { renderEmail, renderEmailCode } from "@/lib/email-template"
 import { Prisma } from "@prisma/client"
 
 function parseEmpresaIdFromEmpCode(code: string): string | null {
@@ -239,15 +240,19 @@ export async function POST(request: Request) {
     })
 
     // Enviar correo de verificación
-    const subject = `Código de verificación - ${empresaFinal.nombre}`
-    const html = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5">
-        <h2>Verifica tu cuenta (${empresaFinal.nombre})</h2>
-        <p>Tu código de verificación es:</p>
-        <p style="font-size: 24px; letter-spacing: 4px"><b>${code}</b></p>
-        <p>Este código expira en 10 minutos.</p>
-      </div>
-    `
+    const subject = `Código de verificación · ${empresaFinal.nombre} · Ordex`
+
+    const html = renderEmail({
+      title: `Verifica tu cuenta (${empresaFinal.nombre})`,
+      preheader: `Tu código de verificación es ${code}.`,
+      intro: `Tu cuenta en ${empresaFinal.nombre} está casi lista.`,
+      bodyHtml: `
+        <p style="margin:0 0 12px; color:#374151;">Tu código de verificación es:</p>
+        ${renderEmailCode(code, { size: 'lg' })}
+        <p style="margin:0; color:#6B7280; font-size:12px;">Este código expira en 10 minutos.</p>
+      `,
+      footerNote: `Si no creaste esta cuenta, ignora este correo.`,
+    })
 
     const send = await sendEmail({ to: normalizedEmail, subject, html })
     if (!send.ok) {

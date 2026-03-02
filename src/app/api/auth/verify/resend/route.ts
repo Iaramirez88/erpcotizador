@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { randomDigits, sha256Hex } from '@/lib/auth-tokens'
 import { sendEmail } from '@/lib/email'
+import { renderEmail, renderEmailCode } from '@/lib/email-template'
 
 export async function POST(request: Request) {
   try {
@@ -14,7 +15,10 @@ export async function POST(request: Request) {
 
     const normalizedEmail = email.trim().toLowerCase()
 
-    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } })
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true, emailVerified: true, empresa: { select: { nombre: true } } },
+    })
 
     // Respuesta genérica para evitar enumeración
     if (!user) {
@@ -39,15 +43,20 @@ export async function POST(request: Request) {
       },
     })
 
-    const subject = 'Código de verificación - SGDigital'
-    const html = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5">
-        <h2>Verifica tu cuenta</h2>
-        <p>Tu código de verificación es:</p>
-        <p style="font-size: 24px; letter-spacing: 4px"><b>${code}</b></p>
-        <p>Este código expira en 10 minutos.</p>
-      </div>
-    `
+    const empresaNombre = (user.empresa?.nombre ?? '').trim()
+    const subject = empresaNombre
+      ? `Código de verificación · ${empresaNombre} · Ordex`
+      : 'Código de verificación · Ordex'
+
+    const html = renderEmail({
+      title: 'Verifica tu cuenta',
+      preheader: `Tu código de verificación es ${code}.`,
+      intro: 'Aquí tienes un nuevo código de verificación:',
+      bodyHtml: `
+        ${renderEmailCode(code, { size: 'lg' })}
+        <p style="margin:0; color:#6B7280; font-size:12px;">Este código expira en 10 minutos.</p>
+      `,
+    })
 
     const send = await sendEmail({ to: normalizedEmail, subject, html })
 

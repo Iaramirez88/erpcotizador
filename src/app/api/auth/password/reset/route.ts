@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { randomToken, sha256Hex } from '@/lib/auth-tokens'
 import { sendEmail } from '@/lib/email'
+import { renderEmail, renderEmailLink } from '@/lib/email-template'
 
 type PasswordResetTokenDelegate = {
   deleteMany: (args: unknown) => unknown
@@ -31,7 +32,10 @@ export async function POST(request: Request) {
 
     const normalizedEmail = email.trim().toLowerCase()
 
-    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } })
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { id: true, empresa: { select: { nombre: true } } },
+    })
 
     // Respuesta genérica para evitar enumeración
     if (!user) {
@@ -80,16 +84,21 @@ export async function POST(request: Request) {
     const origin = new URL(request.url).origin
     const resetUrl = `${origin}/auth/reset-password?token=${encodeURIComponent(token)}`
 
-    const subject = 'Restablecer contraseña - SGDigital'
-    const html = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5">
-        <h2>Restablecimiento de contraseña</h2>
-        <p>Recibimos una solicitud para restablecer tu contraseña.</p>
-        <p><a href="${resetUrl}">Haz clic aquí para restablecerla</a></p>
-        <p>Si no fuiste tú, puedes ignorar este correo.</p>
-        <p>Este enlace expira en 1 hora.</p>
-      </div>
-    `
+    const empresaNombre = (user.empresa?.nombre ?? '').trim()
+    const subject = empresaNombre ? `Restablecer contraseña · ${empresaNombre} · Ordex` : 'Restablecer contraseña · Ordex'
+
+    const html = renderEmail({
+      title: 'Restablecimiento de contraseña',
+      preheader: 'Enlace para restablecer tu contraseña (expira en 1 hora).',
+      intro: 'Recibimos una solicitud para restablecer tu contraseña.',
+      bodyHtml: `
+        <p style="margin:0 0 12px; color:#374151;">Usa el botón para crear una nueva contraseña.</p>
+        <p style="margin:0 0 12px; color:#374151;">Si el botón no funciona, abre este enlace: ${renderEmailLink(resetUrl)}</p>
+        <p style="margin:0; color:#6B7280; font-size:12px;">Este enlace expira en 1 hora.</p>
+      `,
+      cta: { label: 'Restablecer contraseña', href: resetUrl },
+      footerNote: 'Si no fuiste tú, puedes ignorar este correo.',
+    })
 
     const send = await sendEmail({ to: normalizedEmail, subject, html })
 

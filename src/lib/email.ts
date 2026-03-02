@@ -22,7 +22,7 @@ export async function sendEmail(args: SendEmailArgs) {
     }
   }
 
-  const from = process.env.EMAIL_FROM || 'SGDigital <onboarding@resend.dev>'
+  const from = process.env.EMAIL_FROM || 'Ordex <onboarding@resend.dev>'
 
   const { data, error } = await resend.emails.send({
     from,

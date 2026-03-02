@@ -55,6 +55,7 @@ export function RegisterPageClient() {
   const [registerMode, setRegisterMode] = useState<'individual' | 'empresa'>('individual')
 
   const [empresaIdInput, setEmpresaIdInput] = useState("")
+  const [accessCode, setAccessCode] = useState("")
   const [invitedSedeId, setInvitedSedeId] = useState<string | null>(null)
   const [lockedEmail, setLockedEmail] = useState<string | null>(null)
 
@@ -73,10 +74,15 @@ export function RegisterPageClient() {
       const empresaIdFromUrl = (searchParams?.get('empresaId') ?? '').trim()
       const sedeIdFromUrl = (searchParams?.get('sedeId') ?? '').trim()
       const emailFromUrl = (searchParams?.get('email') ?? '').trim().toLowerCase()
+      const accessCodeFromUrl = (searchParams?.get('accessCode') ?? searchParams?.get('code') ?? '').trim()
 
       if (empresaIdFromUrl) {
         setEmpresaIdInput(empresaIdFromUrl)
         setRegisterMode('empresa')
+      }
+
+      if (accessCodeFromUrl) {
+        setAccessCode(accessCodeFromUrl)
       }
 
       if (emailFromUrl && emailFromUrl.includes("@")) {
@@ -149,6 +155,7 @@ export function RegisterPageClient() {
           email: formData.email,
           password: formData.password,
           empresaId: isEmpresa ? empresaIdInput.trim() : undefined,
+          accessCode: isEmpresa ? accessCode.trim() : undefined,
           sedeId: invitedSedeId || undefined,
         }),
       })
@@ -266,6 +273,16 @@ export function RegisterPageClient() {
                       required={registerMode === 'empresa'}
                     />
                     <p className="text-xs text-muted-foreground">{empresaHelperText}</p>
+
+                    <Label htmlFor="accessCode" className="sr-only">Código de acceso</Label>
+                    <Input
+                      id="accessCode"
+                      value={accessCode}
+                      onChange={(e) => setAccessCode(e.target.value)}
+                      placeholder={t('auth.register.placeholders.accessCode')}
+                      disabled={isLoading}
+                    />
+                    <p className="text-xs text-muted-foreground">{t('auth.register.accessCodeHelp')}</p>
                   </div>
                 ) : null}
               </TabsContent>

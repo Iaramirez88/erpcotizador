@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { ModuleKey } from '@prisma/client'
 import { sendEmail } from '@/lib/email'
+import { escapeHtml, renderEmail, renderEmailCode, renderEmailLink } from '@/lib/email-template'
 
 export const runtime = 'nodejs'
 
@@ -71,16 +72,20 @@ export async function POST(request: Request) {
     ? registerUrlObj.toString()
     : `/auth/register?empresaId=${encodeURIComponent(empresaId)}&email=${encodeURIComponent(email)}`
 
-  const subject = `Código de empresa - ${empresa.nombre}`
-  const html = `
-    <div style="font-family: Arial, sans-serif; line-height: 1.5">
-      <h2>Acceso a ${empresa.nombre}</h2>
-      <p>Usa este código para registrarte o unirte al espacio de trabajo:</p>
-      <p style="font-size: 18px; letter-spacing: 1px"><b>${codePlain}</b></p>
-      <p>Registro: <a href="${registerUrl}">${registerUrl}</a></p>
-      <p style="color:#6b7280;font-size:12px">Importante: por seguridad, el código puede rotar si se vuelve a generar.</p>
-    </div>
-  `
+  const subject = `Código de empresa · ${empresa.nombre} · Ordex`
+
+  const html = renderEmail({
+    title: `Acceso a ${empresa.nombre}`,
+    preheader: 'Código de empresa para registrarte o unirte al espacio de trabajo.',
+    intro: `Usa este código para registrarte o unirte a ${empresa.nombre}:`,
+    bodyHtml: `
+      ${renderEmailCode(codePlain, { size: 'md' })}
+      <p style="margin:0 0 12px; color:#374151;">Registro: ${renderEmailLink(registerUrl, 'Abrir registro')}</p>
+      <p style="margin:0; color:#6B7280; font-size:12px;">Importante: por seguridad, el código puede rotar si se vuelve a generar.</p>
+    `,
+    cta: { label: 'Crear cuenta', href: registerUrl },
+    footerNote: `Espacio: ${escapeHtml(empresa.nombre)}`,
+  })
 
   const send = await sendEmail({ to: email, subject, html })
   if (!send.ok) {

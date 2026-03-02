@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { ensureDefaultSedeForEmpresa, requireEmpresaIdForUser } from '@/lib/rbac'
 import { randomDigits, sha256Hex } from '@/lib/auth-tokens'
 import { sendEmail } from '@/lib/email'
+import { escapeHtml, renderEmail, renderEmailCode, renderEmailLink } from '@/lib/email-template'
 import { checkPlanLimit } from '@/lib/plan-limits'
 
 export const runtime = 'nodejs'
@@ -112,17 +113,20 @@ export async function POST(request: Request) {
       })
     }
 
-    const subject = `Acceso a ${empresa.nombre}`
+    const subject = `Acceso · ${empresa.nombre} · Ordex`
     const baseUrl = getBaseUrl(request)
     const loginUrl = baseUrl ? new URL('/auth/login', baseUrl).toString() : '/auth/login'
-    const html = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5">
-        <h2>Acceso a ${empresa.nombre}</h2>
-        <p>Este correo ya tiene una cuenta registrada.</p>
-        <p>Puedes iniciar sesión aquí:</p>
-        <p><a href="${loginUrl}">Iniciar sesión</a></p>
-      </div>
-    `
+
+    const html = renderEmail({
+      title: `Acceso a ${empresa.nombre}`,
+      preheader: `Ya tienes cuenta. Inicia sesión para acceder a ${empresa.nombre}.`,
+      intro: 'Este correo ya tiene una cuenta registrada.',
+      bodyHtml: `
+        <p style="margin:0 0 12px; color:#374151;">Puedes iniciar sesión para acceder a <b>${escapeHtml(empresa.nombre)}</b>.</p>
+        <p style="margin:0; color:#374151;">Si el botón no funciona, abre este enlace: ${renderEmailLink(loginUrl)}</p>
+      `,
+      cta: { label: 'Iniciar sesión', href: loginUrl },
+    })
 
     const send = await sendEmail({ to: email, subject, html })
     if (!send.ok) {
@@ -152,7 +156,7 @@ export async function POST(request: Request) {
     },
   })
 
-  const subject = `Código de acceso - ${empresa.nombre}`
+  const subject = `Invitación · ${empresa.nombre} · Ordex`
   const baseUrl = getBaseUrl(request)
   const registerUrlObj = baseUrl ? new URL('/auth/register', baseUrl) : new URL('http://localhost/auth/register')
   registerUrlObj.searchParams.set('empresaId', empresa.id)
@@ -163,15 +167,19 @@ export async function POST(request: Request) {
   const registerUrl = baseUrl
     ? registerUrlObj.toString()
     : `/auth/register?empresaId=${encodeURIComponent(empresa.id)}&email=${encodeURIComponent(email)}`
-  const html = `
-    <div style="font-family: Arial, sans-serif; line-height: 1.5">
-      <h2>Invitación a ${empresa.nombre}</h2>
-      <p>Usa este código para crear tu cuenta:</p>
-      <p style="font-size: 24px; letter-spacing: 4px"><b>${code}</b></p>
-      <p>Este código expira en 7 días.</p>
-      <p>Registro: <a href="${registerUrl}">${registerUrl}</a></p>
-    </div>
-  `
+
+  const html = renderEmail({
+    title: `Invitación a ${empresa.nombre}`,
+    preheader: `Tu código de acceso es ${code}.`,
+    intro: 'Usa este código para crear tu cuenta:',
+    bodyHtml: `
+      ${renderEmailCode(code, { size: 'lg' })}
+      <p style="margin:0 0 12px; color:#374151;">Abre el enlace de registro y pega este código en el campo <b>“Código de acceso”</b>.</p>
+      <p style="margin:0 0 12px; color:#374151;">Registro: ${renderEmailLink(registerUrl, 'Abrir registro')}</p>
+      <p style="margin:0; color:#6B7280; font-size:12px;">Este código expira en 7 días.</p>
+    `,
+    cta: { label: 'Crear cuenta', href: registerUrl },
+  })
 
   const send = await sendEmail({ to: email, subject, html })
   if (!send.ok) {

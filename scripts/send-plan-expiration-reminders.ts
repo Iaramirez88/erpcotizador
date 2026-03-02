@@ -13,6 +13,7 @@ import { prisma } from '../src/lib/prisma'
 import { sendEmail } from '../src/lib/email'
 import { sendWhatsApp } from '../src/lib/whatsapp'
 import { ensurePlanOwnerUserIdForEmpresa } from '../src/lib/plan-owner'
+import { escapeHtml, renderEmail } from '../src/lib/email-template'
 
 function dateOnlyUTC(d: Date): number {
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
@@ -71,15 +72,18 @@ async function main() {
     const toEmail = (e.email ?? ownerEmail ?? '').trim()
     const toPhone = e.telefono ? normalizePhone(e.telefono) : ''
 
-    const subject = `Tu plan en SGDigital vence en ${threshold} día(s)`
-    const html = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5">
-        <h2>Recordatorio de vencimiento</h2>
-        <p><b>${e.nombre}</b>: tu plan (${String(e.planTier)} · ${cycle === 'YEARLY' ? 'Anual' : 'Mensual'}) vence en <b>${threshold} día(s)</b>.</p>
-        <p>Vigencia hasta: <b>${new Intl.DateTimeFormat('es-CO', { dateStyle: 'full' }).format(validUntil)}</b></p>
-        <p>Para renovar, ingresa con el usuario administrador y ve a <b>Configuración → Plan</b>.</p>
-      </div>
-    `
+    const subject = `${e.nombre} · Ordex — Tu plan vence en ${threshold} día(s)`
+
+    const html = renderEmail({
+      title: 'Recordatorio de vencimiento',
+      preheader: `${e.nombre}: tu plan vence en ${threshold} día(s).`,
+      intro: `${e.nombre}: tu plan vence pronto.`,
+      bodyHtml: `
+        <p style="margin:0 0 12px; color:#374151;">Tu plan (<b>${escapeHtml(String(e.planTier))}</b> · ${cycle === 'YEARLY' ? 'Anual' : 'Mensual'}) vence en <b>${threshold} día(s)</b>.</p>
+        <p style="margin:0 0 12px; color:#374151;">Vigencia hasta: <b>${escapeHtml(new Intl.DateTimeFormat('es-CO', { dateStyle: 'full' }).format(validUntil))}</b></p>
+        <p style="margin:0; color:#374151;">Para renovar, ingresa con el usuario administrador y ve a <b>Configuración → Plan</b>.</p>
+      `,
+    })
 
     const message = `SGDigital: el plan de ${e.nombre} vence en ${threshold} día(s). Vigente hasta ${new Intl.DateTimeFormat('es-CO', { dateStyle: 'short' }).format(validUntil)}. Renueva en Configuración → Plan.`
 
