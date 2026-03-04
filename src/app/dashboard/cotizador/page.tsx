@@ -108,14 +108,24 @@ export default function CotizadorPage() {
   const [auditEvents, setAuditEvents] = useState<
     Array<{
       id: string
-      action: 'CREATED' | 'UPDATED' | 'APPROVED'
+      action:
+        | 'CREATED'
+        | 'UPDATED'
+        | 'APPROVED'
+        | 'SENT'
+        | 'SALE_REALIZED_SET'
+        | 'SALE_REALIZED_UNSET'
       effect: 'NONE' | 'DEBIT' | 'CREDIT'
       note: string | null
+      autoSummary?: string[]
+      before?: unknown
+      after?: unknown
       createdAt: string
       performedBy: { id: string; name: string | null; email: string } | null
       requestedBy: { id: string; name: string | null; email: string } | null
     }>
   >([])
+  const [traceOpen, setTraceOpen] = useState(false)
   const [sendingPreviewEmail, setSendingPreviewEmail] = useState(false)
   const [sharingPreviewWhatsapp, setSharingPreviewWhatsapp] = useState(false)
   const [approvingForBilling, setApprovingForBilling] = useState(false)
@@ -144,7 +154,6 @@ export default function CotizadorPage() {
   const [validezDias, setValidezDias] = useState("15")
   const [tiempoEntrega, setTiempoEntrega] = useState("")
   const [observaciones, setObservaciones] = useState("")
-  const [motivoAjuste, setMotivoAjuste] = useState("")
 
   // Items
   const [items, setItems] = useState<ItemCotizacion[]>([])
@@ -860,11 +869,6 @@ export default function CotizadorPage() {
       return
     }
 
-    if (editingId && !motivoAjuste.trim()) {
-      alert('Por favor indica el motivo del ajuste para mantener la trazabilidad.')
-      return
-    }
-
     setIsLoading(true)
     try {
       const url = editingId ? `/api/cotizaciones/${editingId}` : '/api/cotizaciones'
@@ -902,13 +906,21 @@ export default function CotizadorPage() {
           validezDias,
           tiempoEntrega,
           observaciones,
-          ...(editingId ? { auditNote: motivoAjuste.trim() } : {}),
         }),
       })
 
-      const data = await response.json()
+      const contentType = response.headers.get('content-type') ?? ''
+      const rawText = await response.text().catch(() => '')
+      const data: any = (() => {
+        if (!rawText) return null
+        try {
+          return JSON.parse(rawText)
+        } catch {
+          return null
+        }
+      })()
 
-      if (data.success) {
+      if (response.ok && data?.success) {
         const id = data?.data?.id as string | undefined
         const numero = data?.data?.numero
 
@@ -924,9 +936,20 @@ export default function CotizadorPage() {
         // Limpiar / salir de edición
         router.push('/dashboard/cotizador')
         resetCotizador()
-        setMotivoAjuste("")
       } else {
-        alert(t('common.errorWithDetails', { details: data.error || t('quoteBuilder.errors.saveFallback') }))
+        const apiError = typeof data?.error === 'string' ? data.error : null
+        const apiDetails = typeof data?.details === 'string' ? data.details : null
+        const msg = apiError || apiDetails || (rawText ? rawText.slice(0, 240) : null) || `HTTP ${response.status}`
+        console.error('Error guardando cotización:', {
+          url,
+          method,
+          status: response.status,
+          ok: response.ok,
+          contentType,
+          rawStart: rawText ? rawText.slice(0, 300) : null,
+          data,
+        })
+        alert(t('common.errorWithDetails', { details: msg }))
       }
     } catch (error) {
       console.error('Error:', error)
@@ -955,7 +978,6 @@ export default function CotizadorPage() {
     setValidezDias("15")
     setTiempoEntrega("")
     setObservaciones("")
-    setMotivoAjuste("")
     setItems([])
     setShowItemForm(false)
     setEditingManualItemId(null)
@@ -985,6 +1007,7 @@ export default function CotizadorPage() {
             setPreviewCotizacion(null)
             setCreatedInvoice(null)
             setAuditEvents([])
+            setTraceOpen(false)
           }
         }}
       >
@@ -1094,8 +1117,16 @@ export default function CotizadorPage() {
           {previewCotizacion?.id ? (
             <div className="space-y-2 rounded border p-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="font-medium">
-                  Trazabilidad
+                <div className="flex items-center gap-2">
+                  <div className="font-medium">Trazabilidad</div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setTraceOpen(true)}
+                    disabled={!auditEvents.length}
+                  >
+                    Ver trazabilidad
+                  </Button>
                 </div>
                 <div className="text-muted-foreground">
                   Ediciones: {auditEvents.filter((e) => e.action === 'UPDATED').length}
@@ -1134,7 +1165,13 @@ export default function CotizadorPage() {
                             <div className="text-muted-foreground">{fecha}</div>
                           </div>
                           <div className="text-muted-foreground">{who}</div>
-                          {e.note ? <div className="text-muted-foreground">{e.note}</div> : null}
+                          {Array.isArray(e.autoSummary) && e.autoSummary.length ? (
+                            <div className="text-muted-foreground">
+                              {e.autoSummary.slice(0, 2).map((line, idx) => (
+                                <div key={idx}>{line}</div>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       )
                     })}
@@ -1147,6 +1184,69 @@ export default function CotizadorPage() {
           ) : null}
 
           <DialogFooter />
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog para trazabilidad (automática) */}
+      <Dialog
+        open={traceOpen}
+        onOpenChange={(open) => {
+          setTraceOpen(open)
+        }}
+      >
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Trazabilidad de cambios</DialogTitle>
+          </DialogHeader>
+
+          {auditEvents.length ? (
+            <div className="space-y-2 text-sm">
+              {auditEvents.map((e) => {
+                const fecha = new Date(e.createdAt).toLocaleString(locale)
+                const performed = e.performedBy?.name || e.performedBy?.email || '-'
+                const requested = e.requestedBy?.name || e.requestedBy?.email || null
+                const who = requested && requested !== performed
+                  ? `Solicitó: ${requested} • Ejecutó: ${performed}`
+                  : `Por: ${performed}`
+
+                const effectLabel =
+                  e.effect === 'DEBIT'
+                    ? ' (Nota débito)'
+                    : e.effect === 'CREDIT'
+                      ? ' (Nota crédito)'
+                      : ''
+
+                const actionLabel =
+                  e.action === 'CREATED'
+                    ? 'Creada'
+                    : e.action === 'APPROVED'
+                      ? 'Aprobada'
+                      : `Editada${effectLabel}`
+
+                return (
+                  <div key={e.id} className="rounded border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-medium">{actionLabel}</div>
+                      <div className="text-muted-foreground">{fecha}</div>
+                    </div>
+                    <div className="text-muted-foreground">{who}</div>
+
+                    {Array.isArray(e.autoSummary) && e.autoSummary.length ? (
+                      <div className="mt-2 space-y-1">
+                        {e.autoSummary.map((line, idx) => (
+                          <div key={idx}>{line}</div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-muted-foreground">Sin detalle automático</div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="text-muted-foreground text-sm">Sin registros</div>
+          )}
         </DialogContent>
       </Dialog>
       {/* Header */}
@@ -1447,16 +1547,27 @@ export default function CotizadorPage() {
                 </p>
               ) : (
                 <div className="space-y-2">
-                  {items.map((item) => (
-                    <div key={item.id} className="p-4 border rounded-lg">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h4 className="font-medium">{item.descripcion}</h4>
-                          <p className="text-sm text-muted-foreground">
-                            {item.material?.nombre}
-                            {item.ancho && item.alto && ` • ${item.ancho} x ${item.alto} cm (${item.m2?.toFixed(2)} m²)`}
-                            {` • ${t('quoteBuilder.fields.quantityLabel')}: ${item.cantidad}`}
-                          </p>
+                  {items.map((item) => {
+                    const meta = typeof item.observaciones === "string" ? parseLitografiaMeta(item.observaciones) : null
+                    const tirajeRaw = meta
+                      ? String((meta.cantidadItems ?? meta.cantidad ?? "0"))
+                      : "0"
+                    const tiraje = Math.max(0, Math.trunc(parseFloat(tirajeRaw) || 0))
+                    const detailParts: string[] = []
+                    if (item.material?.nombre) detailParts.push(item.material.nombre)
+                    if (item.ancho && item.alto) {
+                      detailParts.push(`${item.ancho} x ${item.alto} cm (${item.m2?.toFixed(2)} m²)`)
+                    }
+                    if (tiraje > 0) detailParts.push(`Tiraje: ${tiraje}`)
+                    detailParts.push(`${t('quoteBuilder.fields.quantityLabel')}: ${item.cantidad}`)
+                    const details = detailParts.join(" • ")
+
+                    return (
+                      <div key={item.id} className="p-4 border rounded-lg">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-medium">{item.descripcion}</h4>
+                            <p className="text-sm text-muted-foreground">{details}</p>
                           {(item.laminado || item.troquelado || item.instalacion) && (
                             <div className="flex gap-2 mt-1">
                               {item.laminado && <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">{t('quoteBuilder.items.laminated')}</span>}
@@ -1464,33 +1575,30 @@ export default function CotizadorPage() {
                               {item.instalacion && <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded">{t('quoteBuilder.items.installation')}</span>}
                             </div>
                           )}
-                        </div>
-                        <div className="text-right space-y-1">
-                          <p className="text-sm text-muted-foreground">
-                            {formatCurrency(item.precioUnitario)} {t('quoteBuilder.items.each')}
-                          </p>
-                          <p className="font-bold text-blue-600">
-                            {formatCurrency(item.subtotal)}
-                          </p>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => editarItem(item)}
-                          >
-                            {t('common.edit')}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => eliminarItem(item.id)}
-                            className="text-red-600"
-                          >
-                            {t('common.delete')}
-                          </Button>
+                          </div>
+                          <div className="text-right space-y-1">
+                            <p className="text-sm text-muted-foreground">
+                              {formatCurrency(item.precioUnitario)} {t('quoteBuilder.items.each')}
+                            </p>
+                            <p className="font-bold text-blue-600">
+                              {formatCurrency(item.subtotal)}
+                            </p>
+                            <Button variant="ghost" size="sm" onClick={() => editarItem(item)}>
+                              {t('common.edit')}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => eliminarItem(item.id)}
+                              className="text-red-600"
+                            >
+                              {t('common.delete')}
+                            </Button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </CardContent>
@@ -1511,25 +1619,6 @@ export default function CotizadorPage() {
             </CardContent>
           </Card>
 
-          {/* Motivo del ajuste (solo edición) */}
-          {editingId ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Motivo del ajuste</CardTitle>
-                <CardDescription>
-                  Se guarda en la trazabilidad como nota débito/crédito.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Textarea
-                  value={motivoAjuste}
-                  onChange={(e) => setMotivoAjuste(e.target.value)}
-                  placeholder="Ej: Ajuste por cambio de cantidades / corrección de precio / modificación de terminados"
-                  rows={3}
-                />
-              </CardContent>
-            </Card>
-          ) : null}
         </div>
 
         {/* Resumen */}

@@ -10,6 +10,8 @@ import { requireApiAccess } from '@/lib/api-rbac'
 import { checkPlanLimit } from '@/lib/plan-limits'
 import { EstadoCotizacion, ModuleKey, Prisma } from '@prisma/client'
 
+export const runtime = 'nodejs'
+
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
 }
@@ -18,6 +20,71 @@ function toFloatOrNaN(value: unknown): number {
   if (typeof value === 'number') return value
   if (typeof value === 'string') return Number.parseFloat(value)
   return Number.NaN
+}
+
+function parseLitografiaMetaFromObservaciones(raw: unknown): { costoProduccion: number; precioVenta: number } | null {
+  if (typeof raw !== 'string') return null
+  const idx = raw.indexOf('LITOGRAFIA_META:')
+  if (idx < 0) return null
+  const json = raw.slice(idx + 'LITOGRAFIA_META:'.length).trim()
+  if (!json) return null
+  try {
+    const parsed = JSON.parse(json) as unknown
+    if (!parsed || typeof parsed !== 'object') return null
+    const rec = parsed as Record<string, unknown>
+    if (rec.version !== 1) return null
+    const costoProduccion = typeof rec.costoProduccion === 'number' ? rec.costoProduccion : Number(rec.costoProduccion)
+    const precioVenta = typeof rec.precioVenta === 'number' ? rec.precioVenta : Number(rec.precioVenta)
+    if (!Number.isFinite(costoProduccion) || !Number.isFinite(precioVenta)) return null
+    return { costoProduccion, precioVenta }
+  } catch {
+    return null
+  }
+}
+
+function computeGananciaFromItems(
+  items: Array<{
+    cantidad: number
+    subtotal: number
+    observaciones: string | null
+    costoMaterial: number
+    costoImpresion: number
+    costoAcabados: number
+    costoInstalacion: number
+  }>
+): { ganancia: number | null; margenPct: number | null } {
+  if (!Array.isArray(items) || items.length === 0) return { ganancia: null, margenPct: null }
+
+  let venta = 0
+  let costo = 0
+
+  for (const it of items) {
+    const meta = parseLitografiaMetaFromObservaciones(it.observaciones)
+    if (meta) {
+      venta += meta.precioVenta
+      costo += meta.costoProduccion
+      continue
+    }
+
+    const lineVenta = typeof it.subtotal === 'number' ? it.subtotal : Number(it.subtotal)
+    venta += Number.isFinite(lineVenta) ? lineVenta : 0
+
+    const qty = typeof it.cantidad === 'number' ? it.cantidad : Number(it.cantidad)
+    const q = Number.isFinite(qty) ? qty : 0
+
+    const cm = Number.isFinite(it.costoMaterial) ? it.costoMaterial : 0
+    const ci = Number.isFinite(it.costoImpresion) ? it.costoImpresion : 0
+    const ca = Number.isFinite(it.costoAcabados) ? it.costoAcabados : 0
+    const cins = Number.isFinite(it.costoInstalacion) ? it.costoInstalacion : 0
+
+    // Heurística/compatibilidad: material+impresión suelen estar por unidad; acabados/instalación suelen venir como total.
+    costo += (cm + ci) * q + ca + cins
+  }
+
+  if (venta <= 0) return { ganancia: null, margenPct: null }
+  const ganancia = venta - costo
+  const margenPct = (ganancia / venta) * 100
+  return { ganancia, margenPct }
 }
 
 // GET - Listar cotizaciones
@@ -127,6 +194,8 @@ export async function GET(request: NextRequest) {
             iva: true,
             total: true,
             validezDias: true,
+            postApprovalEditCount: true,
+            ventaRealizadaAt: true,
             emailSentCount: true,
             whatsappSentCount: true,
             lastEmailSentAt: true,
@@ -145,6 +214,12 @@ export async function GET(request: NextRequest) {
                 descripcion: true,
                 cantidad: true,
                 unidad: true,
+                subtotal: true,
+                observaciones: true,
+                costoMaterial: true,
+                costoImpresion: true,
+                costoAcabados: true,
+                costoInstalacion: true,
                 material: {
                   select: {
                     nombre: true,
@@ -166,10 +241,38 @@ export async function GET(request: NextRequest) {
         }),
       ])
 
+      const mapped = cotizaciones.map((cot) => {
+        const { ganancia, margenPct } = computeGananciaFromItems(
+          (cot.items ?? []).map((it) => ({
+            cantidad: it.cantidad,
+            subtotal: it.subtotal,
+            observaciones: it.observaciones,
+            costoMaterial: it.costoMaterial,
+            costoImpresion: it.costoImpresion,
+            costoAcabados: it.costoAcabados,
+            costoInstalacion: it.costoInstalacion,
+          }))
+        )
+
+        return {
+          ...cot,
+          ganancia,
+          margenPct,
+          items: (cot.items ?? []).map((it) => ({
+            id: it.id,
+            materialId: it.materialId,
+            descripcion: it.descripcion,
+            cantidad: it.cantidad,
+            unidad: it.unidad,
+            material: it.material,
+          })),
+        }
+      })
+
       const totalPages = take > 0 ? Math.max(1, Math.ceil(total / take)) : 1
       return NextResponse.json({
         success: true,
-        data: cotizaciones,
+        data: mapped,
         meta: {
           page,
           pageSize: take,
@@ -191,6 +294,8 @@ export async function GET(request: NextRequest) {
           iva: true,
           total: true,
           validezDias: true,
+          postApprovalEditCount: true,
+          ventaRealizadaAt: true,
           emailSentCount: true,
           whatsappSentCount: true,
           lastEmailSentAt: true,
@@ -209,6 +314,12 @@ export async function GET(request: NextRequest) {
               descripcion: true,
               cantidad: true,
               unidad: true,
+              subtotal: true,
+              observaciones: true,
+              costoMaterial: true,
+              costoImpresion: true,
+              costoAcabados: true,
+              costoInstalacion: true,
               material: {
                 select: {
                   nombre: true,
@@ -227,13 +338,41 @@ export async function GET(request: NextRequest) {
         },
       })
 
+      const mapped = cotizaciones.map((cot) => {
+        const { ganancia, margenPct } = computeGananciaFromItems(
+          (cot.items ?? []).map((it) => ({
+            cantidad: it.cantidad,
+            subtotal: it.subtotal,
+            observaciones: it.observaciones,
+            costoMaterial: it.costoMaterial,
+            costoImpresion: it.costoImpresion,
+            costoAcabados: it.costoAcabados,
+            costoInstalacion: it.costoInstalacion,
+          }))
+        )
+
+        return {
+          ...cot,
+          ganancia,
+          margenPct,
+          items: (cot.items ?? []).map((it) => ({
+            id: it.id,
+            materialId: it.materialId,
+            descripcion: it.descripcion,
+            cantidad: it.cantidad,
+            unidad: it.unidad,
+            material: it.material,
+          })),
+        }
+      })
+
       return NextResponse.json({
         success: true,
-        data: cotizaciones,
+        data: mapped,
         meta: {
           page: 1,
           pageSize: 'all',
-          total: cotizaciones.length,
+          total: mapped.length,
           totalPages: 1,
         },
       })
@@ -250,6 +389,8 @@ export async function GET(request: NextRequest) {
         iva: true,
         total: true,
         validezDias: true,
+        postApprovalEditCount: true,
+        ventaRealizadaAt: true,
         emailSentCount: true,
         whatsappSentCount: true,
         lastEmailSentAt: true,
@@ -268,6 +409,12 @@ export async function GET(request: NextRequest) {
             descripcion: true,
             cantidad: true,
             unidad: true,
+            subtotal: true,
+            observaciones: true,
+            costoMaterial: true,
+            costoImpresion: true,
+            costoAcabados: true,
+            costoInstalacion: true,
             material: {
               select: {
                 nombre: true,
@@ -287,11 +434,45 @@ export async function GET(request: NextRequest) {
       ...(limit ? { take: limit } : {}),
     })
 
-    return NextResponse.json({ success: true, data: cotizaciones })
+    const mapped = cotizaciones.map((cot) => {
+      const { ganancia, margenPct } = computeGananciaFromItems(
+        (cot.items ?? []).map((it) => ({
+          cantidad: it.cantidad,
+          subtotal: it.subtotal,
+          observaciones: it.observaciones,
+          costoMaterial: it.costoMaterial,
+          costoImpresion: it.costoImpresion,
+          costoAcabados: it.costoAcabados,
+          costoInstalacion: it.costoInstalacion,
+        }))
+      )
+
+      return {
+        ...cot,
+        ganancia,
+        margenPct,
+        items: (cot.items ?? []).map((it) => ({
+          id: it.id,
+          materialId: it.materialId,
+          descripcion: it.descripcion,
+          cantidad: it.cantidad,
+          unidad: it.unidad,
+          material: it.material,
+        })),
+      }
+    })
+
+    return NextResponse.json({ success: true, data: mapped })
   } catch (error) {
     console.error('Error al obtener cotizaciones:', error)
+    const details =
+      process.env.NODE_ENV !== 'production'
+        ? error instanceof Error
+          ? error.message
+          : String(error)
+        : undefined
     return NextResponse.json(
-      { success: false, error: 'Error al obtener cotizaciones' },
+      { success: false, error: 'Error al obtener cotizaciones', ...(details ? { details } : {}) },
       { status: 500 }
     )
   }
@@ -510,8 +691,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: result }, { status: 201 })
   } catch (error) {
     console.error('Error al crear cotización:', error)
+    const details =
+      process.env.NODE_ENV !== 'production'
+        ? error instanceof Error
+          ? error.message
+          : String(error)
+        : undefined
     return NextResponse.json(
-      { success: false, error: 'Error al crear cotización' },
+      { success: false, error: 'Error al crear cotización', ...(details ? { details } : {}) },
       { status: 500 }
     )
   }

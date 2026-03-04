@@ -29,12 +29,83 @@ export async function POST(
   const token = createCotizacionShareToken({ cotizacionId: id, ttlSeconds, secret })
 
   try {
-    await prisma.cotizacion.update({
+    const before = await prisma.cotizacion.findUnique({
       where: { id },
-      data: {
-        whatsappSentCount: { increment: 1 },
-        lastWhatsappSentAt: new Date()
-      }
+      select: {
+        id: true,
+        estado: true,
+        sedeId: true,
+        emailSentCount: true,
+        whatsappSentCount: true,
+        lastEmailSentAt: true,
+        lastWhatsappSentAt: true,
+      },
+    })
+
+    if (!before) {
+      return NextResponse.json(
+        { success: false, error: 'Cotización no encontrada' },
+        { status: 404 }
+      )
+    }
+
+    if (before.sedeId && before.sedeId !== access.sedeId) {
+      return NextResponse.json(
+        { success: false, error: 'Cotización no encontrada' },
+        { status: 404 }
+      )
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.cotizacion.update({
+        where: { id },
+        data: {
+          whatsappSentCount: { increment: 1 },
+          lastWhatsappSentAt: new Date(),
+        },
+        select: {
+          id: true,
+          estado: true,
+          emailSentCount: true,
+          whatsappSentCount: true,
+          lastEmailSentAt: true,
+          lastWhatsappSentAt: true,
+          subtotal: true,
+          iva: true,
+          total: true,
+          descuento: true,
+        },
+      })
+
+      await tx.cotizacionAuditEvent.create({
+        data: {
+          cotizacionId: updated.id,
+          action: 'SENT',
+          effect: 'NONE',
+          performedById: access.userId,
+          requestedById: access.userId,
+          before: {
+            estado: before.estado,
+            emailSentCount: before.emailSentCount,
+            whatsappSentCount: before.whatsappSentCount,
+            lastEmailSentAt: before.lastEmailSentAt,
+            lastWhatsappSentAt: before.lastWhatsappSentAt,
+          },
+          after: {
+            estado: updated.estado,
+            emailSentCount: updated.emailSentCount,
+            whatsappSentCount: updated.whatsappSentCount,
+            lastEmailSentAt: updated.lastEmailSentAt,
+            lastWhatsappSentAt: updated.lastWhatsappSentAt,
+            channel: 'whatsapp',
+            expSeconds: ttlSeconds,
+            subtotal: updated.subtotal,
+            iva: updated.iva,
+            total: updated.total,
+            descuento: updated.descuento,
+          },
+        },
+      })
     })
   } catch (e) {
     const code = (e as { code?: string } | null)?.code

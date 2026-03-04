@@ -79,9 +79,35 @@ export interface CotizacionPDFCoreProps extends CotizacionPDFProps {
 }
 
 function createStyles(t: CotizacionTemplateSettings, StyleSheet: ReactPdfComponents['StyleSheet']) {
-  const watermarkScale = Math.max(0.2, Math.min(1, Number(t.watermark.scale ?? 0.8)))
+  const toNum = (value: unknown, fallback = 0) => {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : fallback
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      if (!trimmed) return fallback
+      const n = Number.parseFloat(trimmed)
+      return Number.isFinite(n) ? n : fallback
+    }
+    return fallback
+  }
+
+  const normalizeSides = (
+    raw: unknown,
+    fallback: { top: number; right: number; bottom: number; left: number }
+  ) => {
+    const r = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {}
+    return {
+      top: toNum(r.top, fallback.top),
+      right: toNum(r.right, fallback.right),
+      bottom: toNum(r.bottom, fallback.bottom),
+      left: toNum(r.left, fallback.left),
+    }
+  }
+
+  const watermarkScale = Math.max(0.2, Math.min(1, toNum(t.watermark.scale, 0.8)))
   const watermarkOffsetPct = (1 - watermarkScale) * 50
-  const backgroundOpacity = Math.max(0, Math.min(1, Number(t.page.backgroundImageOpacity ?? 1)))
+  const backgroundOpacity = Math.max(0, Math.min(1, toNum(t.page.backgroundImageOpacity, 1)))
+  const watermarkOpacity = Math.max(0, Math.min(1, toNum(t.watermark.opacity, 0.12)))
+  const watermarkFontSize = Math.max(1, toNum(t.watermark.fontSize, 64))
 
   const getPageDimsPt = () => {
     const size = t.page.size
@@ -97,20 +123,20 @@ function createStyles(t: CotizacionTemplateSettings, StyleSheet: ReactPdfCompone
     return isLandscape ? { width: dims.h, height: dims.w } : { width: dims.w, height: dims.h }
   }
 
-  const legacyMargin = Number.isFinite(t.page.padding) ? t.page.padding : 40
-  const marginSides = t.page.marginSides ?? {
+  const legacyMargin = toNum(t.page.padding, 40)
+  const marginSides = normalizeSides(t.page.marginSides, {
     top: legacyMargin,
     right: legacyMargin,
     bottom: legacyMargin,
     left: legacyMargin,
-  }
-  const paddingSides = t.page.paddingSides ?? { top: 0, right: 0, bottom: 0, left: 0 }
-  const safeAreaSides = t.page.safeAreaSides ?? { top: 0, right: 0, bottom: 0, left: 0 }
+  })
+  const paddingSides = normalizeSides(t.page.paddingSides, { top: 0, right: 0, bottom: 0, left: 0 })
+  const safeAreaSides = normalizeSides(t.page.safeAreaSides, { top: 0, right: 0, bottom: 0, left: 0 })
 
   const pageDimsPt = getPageDimsPt()
 
-  const footerOffset = Math.max(0, Number(t.footer.bottomOffset ?? 0))
-  const userFooterReserveHeight = Math.max(0, Number(t.footer.reserveHeight ?? 60))
+  const footerOffset = Math.max(0, toNum(t.footer.bottomOffset, 0))
+  const userFooterReserveHeight = Math.max(0, toNum(t.footer.reserveHeight, 60))
 
   const footerFontSize = Math.max(t.typography.baseFontSize - 1, 8)
   const estimateWrappedLines = (text: string, charsPerLine: number) => {
@@ -140,7 +166,7 @@ function createStyles(t: CotizacionTemplateSettings, StyleSheet: ReactPdfCompone
   // "Área de información" por altura: por defecto 75% de la página.
   // El 25% restante se divide entre header (arriba) y footer+membrete (abajo).
   const useInfoAreaHeightPct = Boolean(t.page.useInfoAreaHeightPct)
-  const infoAreaHeightPct = Math.max(0.5, Math.min(0.95, Number(t.page.infoAreaHeightPct ?? 0.75)))
+  const infoAreaHeightPct = Math.max(0.5, Math.min(0.95, toNum(t.page.infoAreaHeightPct, 0.75)))
 
   const computedSafeArea = (() => {
     if (!useInfoAreaHeightPct) return safeAreaSides
@@ -157,27 +183,39 @@ function createStyles(t: CotizacionTemplateSettings, StyleSheet: ReactPdfCompone
 
     return {
       ...safeAreaSides,
-      top: Math.max(safeAreaSides.top ?? 0, band),
-      bottom: Math.max(safeAreaSides.bottom ?? 0, safeBottomMemberte),
+      top: Math.max(safeAreaSides.top, band),
+      bottom: Math.max(safeAreaSides.bottom, safeBottomMemberte),
     }
   })()
 
-  const pagePaddingTop = (marginSides.top ?? 0) + (computedSafeArea.top ?? 0) + (paddingSides.top ?? 0)
-  const pagePaddingRight = (marginSides.right ?? 0) + (computedSafeArea.right ?? 0) + (paddingSides.right ?? 0)
+  const pagePaddingTop = marginSides.top + (computedSafeArea.top ?? 0) + paddingSides.top
+  const pagePaddingRight = marginSides.right + (computedSafeArea.right ?? 0) + paddingSides.right
   const pagePaddingBottom =
-    (marginSides.bottom ?? 0) +
+    marginSides.bottom +
     (computedSafeArea.bottom ?? 0) +
-    (paddingSides.bottom ?? 0) +
+    paddingSides.bottom +
     footerReserveHeight +
     footerOffset
-  const pagePaddingLeft = (marginSides.left ?? 0) + (computedSafeArea.left ?? 0) + (paddingSides.left ?? 0)
+  const pagePaddingLeft = marginSides.left + (computedSafeArea.left ?? 0) + paddingSides.left
+
+  const safeTranslateX = Number.isFinite(pagePaddingLeft) ? -pagePaddingLeft : 0
+  const safeTranslateY = Number.isFinite(pagePaddingTop) ? -pagePaddingTop : 0
+  const rotateDegRaw = Number(t.watermark.rotateDeg)
+  const safeRotateDeg = Number.isFinite(rotateDegRaw) ? rotateDegRaw : 0
+
+  const pageBackgroundTransform =
+    safeTranslateX !== 0 || safeTranslateY !== 0
+      ? ([{ translateX: safeTranslateX }, { translateY: safeTranslateY }] as any)
+      : undefined
+  const watermarkRotateTransform =
+    safeRotateDeg !== 0 ? ([{ rotate: `${safeRotateDeg}deg` }] as any) : undefined
 
 
-  const footerLeftRight = (marginSides.left ?? 0) + (computedSafeArea.left ?? 0) + (paddingSides.left ?? 0)
-  const footerRightRight = (marginSides.right ?? 0) + (computedSafeArea.right ?? 0) + (paddingSides.right ?? 0)
+  const footerLeftRight = marginSides.left + (computedSafeArea.left ?? 0) + paddingSides.left
+  const footerRightRight = marginSides.right + (computedSafeArea.right ?? 0) + paddingSides.right
   const footerBottom = Math.max(
     10,
-    (marginSides.bottom ?? 0) + (computedSafeArea.bottom ?? 0) + (paddingSides.bottom ?? 0) + footerOffset
+    marginSides.bottom + (computedSafeArea.bottom ?? 0) + paddingSides.bottom + footerOffset
   )
 
   return StyleSheet.create({
@@ -209,7 +247,7 @@ function createStyles(t: CotizacionTemplateSettings, StyleSheet: ReactPdfCompone
       left: 0,
       width: pageDimsPt.width,
       height: pageDimsPt.height,
-      transform: [{ translateX: -pagePaddingLeft }, { translateY: -pagePaddingTop }] as any,
+      ...(pageBackgroundTransform ? { transform: pageBackgroundTransform } : {}),
       objectFit: 'cover',
       opacity: backgroundOpacity,
     },
@@ -426,25 +464,25 @@ function createStyles(t: CotizacionTemplateSettings, StyleSheet: ReactPdfCompone
     },
     watermarkText: {
       position: 'absolute',
-      top: '45%',
-      left: '10%',
-      right: '10%',
+      top: pageDimsPt.height * 0.45,
+      left: pageDimsPt.width * 0.1,
+      right: pageDimsPt.width * 0.1,
       textAlign: 'center',
-      opacity: t.watermark.opacity,
-      transform: [{ rotate: `${t.watermark.rotateDeg}deg` } as any],
+      opacity: watermarkOpacity,
+      ...(watermarkRotateTransform ? { transform: watermarkRotateTransform } : {}),
       color: t.watermark.color,
       fontWeight: 'bold',
-      fontSize: t.watermark.fontSize,
+      fontSize: watermarkFontSize,
     },
     watermarkImage: {
       position: 'absolute',
-      top: `${watermarkOffsetPct}%`,
-      left: `${watermarkOffsetPct}%`,
-      width: `${watermarkScale * 100}%`,
-      height: `${watermarkScale * 100}%`,
+      top: pageDimsPt.height * (watermarkOffsetPct / 100),
+      left: pageDimsPt.width * (watermarkOffsetPct / 100),
+      width: pageDimsPt.width * watermarkScale,
+      height: pageDimsPt.height * watermarkScale,
       objectFit: 'contain',
-      opacity: t.watermark.opacity,
-      transform: [{ rotate: `${t.watermark.rotateDeg}deg` } as any],
+      opacity: watermarkOpacity,
+      ...(watermarkRotateTransform ? { transform: watermarkRotateTransform } : {}),
     },
   })
 }
@@ -487,7 +525,7 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
     const width = `${Number.isFinite(w) ? w : 100}%`
     return {
       width,
-      ...(side === 'right' ? { marginLeft: 'auto' } : null),
+      ...(side === 'right' ? { marginLeft: 'auto' } : {}),
     } as const
   }
 

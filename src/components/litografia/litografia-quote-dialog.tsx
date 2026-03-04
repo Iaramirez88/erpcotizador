@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { SearchableNativeSelect } from "@/components/ui/searchable-native-select"
 import { formatCurrency } from "@/lib/utils"
 import { computeLitografia } from "@/lib/litografia"
@@ -28,6 +29,9 @@ const CUSTOM_DROPDOWN_KEYS = {
 
 const INPUT_COMPACT = "h-7 px-2 text-xs"
 const SELECT_COMPACT = "mt-2 h-8 w-full rounded-md border bg-background px-2 text-xs"
+const BOX_BLUR = "rounded-lg border-0 bg-card/70 backdrop-blur-sm supports-[backdrop-filter]:bg-card/60 shadow-sm"
+const BOX_BLUR_MUTED = "rounded-lg border-0 bg-muted/30 backdrop-blur-sm supports-[backdrop-filter]:bg-muted/20 shadow-sm"
+const HELP_TEXT = "mt-1 text-[10px] leading-tight text-muted-foreground"
 
 type PrintProfile = {
   id: string
@@ -63,6 +67,52 @@ type SpecialFinishRow = {
   qty: string
 }
 
+type EditorialPartState = {
+  formatoKey: string
+  paperId: string
+  tintas: 1 | 2 | 4
+  planchaProfileId: string
+  planchaProfileQty: string
+  tintaProfileId: string
+  tintaProfileQty: string
+  planchas: string
+  desperdicioPct: string
+  sobranteMinimo: string
+  finishId: string
+  specialFinishId: string
+  specialFinishQty: string
+  plastificadoId: string
+  plastificadoQty: string
+  troqueladoId: string
+  troqueladoQty: string
+  corteId: string
+  corteQty: string
+}
+
+function createDefaultEditorialPart(): EditorialPartState {
+  return {
+    formatoKey: "",
+    paperId: "",
+    tintas: 4,
+    planchaProfileId: "",
+    planchaProfileQty: "1",
+    tintaProfileId: "",
+    tintaProfileQty: "1",
+    planchas: "",
+    desperdicioPct: "0",
+    sobranteMinimo: "100",
+    finishId: "",
+    specialFinishId: "",
+    specialFinishQty: "1",
+    plastificadoId: "",
+    plastificadoQty: "1",
+    troqueladoId: "",
+    troqueladoQty: "1",
+    corteId: "",
+    corteQty: "1",
+  }
+}
+
 type PaperRow = {
   paperId: string
   qty: string
@@ -78,18 +128,6 @@ type PrintSize = {
   activo: boolean
 }
 
-type FlyerRate = {
-  id: string
-  formatoKey: string
-  tintas: 1 | 2 | 4
-  tirajeMin: number
-  tirajeMax: number
-  paperRateId: string | null
-  finishOptionId: string | null
-  precioTotal: number
-  activo: boolean
-}
-
 type ApiEnvelope = { ok?: unknown; data?: unknown; error?: unknown }
 
 function asApiEnvelope(value: unknown): ApiEnvelope {
@@ -100,12 +138,21 @@ function getApiErrorMessage(env: ApiEnvelope, fallback: string) {
   return typeof env.error === "string" ? env.error : fallback
 }
 
+const toPerColorCost = (totalCost: number, colors: number) => {
+  const k = Math.max(1, Math.trunc(Number(colors) || 1))
+  return (Number(totalCost) || 0) / k
+}
+
 function metaNumber(meta: unknown, key: string): number | null {
   if (!meta || typeof meta !== "object") return null
   const anyMeta = meta as Record<string, unknown>
   const raw = anyMeta[key]
   const num = typeof raw === "number" ? raw : Number(String(raw ?? "").trim())
   return Number.isFinite(num) ? num : null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object"
 }
 
 function getDefaultCostoPliego(tipo: PapelTipo) {
@@ -128,12 +175,10 @@ function parseCopNumber(value: string): number {
   if (/[a-zA-Z]/.test(trimmed)) return 0
   if (!/[0-9]/.test(trimmed)) return 0
 
-  const sign = trimmed.startsWith("-") ? -1 : 1
   const digits = trimmed.replace(/[^0-9]/g, "")
   if (!digits) return 0
   const n = Number(digits)
-  if (!Number.isFinite(n)) return 0
-  return sign * n
+  return Number.isFinite(n) ? n : 0
 }
 
 type CustomField = { id: string; label: string; value: string }
@@ -142,11 +187,11 @@ export type LitografiaMeta = {
   version: 1
   titulo: string
   descripcion: string
-  // Utilidad/margen opcional (porcentaje). Se aplica al total del ítem de litografía.
   margenPct?: string
   cantidad: string
+  cantidadItems?: string
+  numeroCaras?: string
   desperdicioPct: string
-  // Unidades extra mínimas (además del % de desperdicio)
   sobranteMinimo?: string
   pricingSource: "tarifario" | "calculo"
   formatoKey: string
@@ -185,12 +230,18 @@ export type LitografiaMeta = {
   costoTransporte: string
   customFields: CustomField[]
 
-  // Editorial (libros/cartillas/revistas) - opcional
+  quoteMode?: QuoteMode
+
   editorialProductoKey?: string
   editorialTotalPaginas?: string
   editorialPaginasPortadaContraportada?: string
   editorialCartasPorPlancha?: string
   editorialPaginasPorPliego?: string
+
+  editorialParts?: {
+    cover: EditorialPartState
+    inner: EditorialPartState
+  }
 }
 
 type AddLitografiaItemPayload = {
@@ -202,6 +253,8 @@ type AddLitografiaItemPayload = {
   subtotal: number
   meta?: LitografiaMeta
 }
+
+type QuoteMode = "normal" | "editorial"
 
 export function LitografiaQuoteDialog(props: {
   open: boolean
@@ -219,8 +272,8 @@ export function LitografiaQuoteDialog(props: {
   const [descripcion, setDescripcion] = useState("")
 
   const [cantidad, setCantidad] = useState("1000")
+  const [cantidadItems, setCantidadItems] = useState("")
   const [colores, setColores] = useState("1")
-  const [desperdicioPct, setDesperdicioPct] = useState("3")
   const [sobranteMinimo, setSobranteMinimo] = useState("100")
 
   const [costoPlanchaPorColor, setCostoPlanchaPorColor] = useState("25000")
@@ -263,6 +316,7 @@ export function LitografiaQuoteDialog(props: {
   const [transporteOptionsLoading, setTransporteOptionsLoading] = useState(false)
 
   const [selectedEditorialProductoKey, setSelectedEditorialProductoKey] = useState<string>("")
+  const [quoteMode, setQuoteMode] = useState<QuoteMode>("normal")
   const [editorialOptions, setEditorialOptions] = useState<
     Array<{
       value: string
@@ -279,18 +333,19 @@ export function LitografiaQuoteDialog(props: {
   const [editorialCartasPorPlancha, setEditorialCartasPorPlancha] = useState("2")
   const [editorialPaginasPorPliego, setEditorialPaginasPorPliego] = useState("4")
 
+  const [editorialCover, setEditorialCover] = useState<EditorialPartState>(() => createDefaultEditorialPart())
+  const [editorialInner, setEditorialInner] = useState<EditorialPartState>(() => createDefaultEditorialPart())
+
   const [costoCorte, setCostoCorte] = useState("0")
   const [costoAcabados, setCostoAcabados] = useState("0")
   const [costoTransporte, setCostoTransporte] = useState("0")
 
   // Utilidad/Margen opcional (en litografía la utilidad varía)
-  const [margenPct, setMargenPct] = useState<string>("")
+  const [margenPct, setMargenPct] = useState<string>("40")
 
   // En SGDigital se cotiza siempre en policromía (4).
   const tintas: 1 | 2 | 4 = 4
-  const [tarifa, setTarifa] = useState<FlyerRate | null>(null)
-  const [tarifaLoading, setTarifaLoading] = useState(false)
-  const [tarifaError, setTarifaError] = useState<string | null>(null)
+  const [pricingError, setPricingError] = useState<string | null>(null)
 
   const [attemptedSubmit, setAttemptedSubmit] = useState(false)
 
@@ -308,6 +363,85 @@ export function LitografiaQuoteDialog(props: {
   const primaryPlanchaProfileId = planchaIdsNormalized[0] ?? ""
   const primaryTintaProfileId = tintaIdsNormalized[0] ?? ""
   const primaryPaperId = String(paperRows[0]?.paperId ?? "").trim()
+
+  const editorialMode = quoteMode === "editorial"
+  const editorialEnabled = editorialMode && Boolean(String(selectedEditorialProductoKey || "").trim())
+
+  const prevQuoteModeRef = useRef<QuoteMode>(quoteMode)
+
+  useEffect(() => {
+    if (!props.open) {
+      prevQuoteModeRef.current = quoteMode
+      return
+    }
+
+    const prev = prevQuoteModeRef.current
+    if (prev !== quoteMode) {
+      // Al cambiar de modo, arrancar limpio para evitar herencia entre modos.
+      setTitulo("")
+      setDescripcion("")
+
+      setCantidad("1000")
+      setColores("1")
+      setSobranteMinimo("100")
+
+      setCostoPlanchaPorColor("25000")
+      setCostoTintaPorColor("15000")
+      setCostoPapelUnidad("80")
+
+      setMargenPct("40")
+
+      setConfigError(null)
+
+      setSelectedPlanchaProfileIds([""])
+      setSelectedPlanchaProfileQtys(["1"])
+      setSelectedTintaProfileIds([""])
+      setSelectedTintaProfileQtys(["1"])
+
+      setPaperRows([{ paperId: "", qty: "1", formatoKey: "" }])
+      setFormatoKey("")
+      setPapelPorPliego(true)
+      setPapelTipo("propalcote")
+      setCostoPliego(String(getDefaultCostoPliego("propalcote")))
+      setPliegoW("70")
+      setPliegoH("100")
+      setCostoPapelUnidad("80")
+      setSelectedPaperTipo("")
+      setSelectedPaperGramaje("")
+      setSobranteMinimo("100")
+
+      setSelectedFinishIds([""])
+      setSpecialFinishRows([{ finishId: "", qty: "1" }])
+      setSelectedPlastificadoId("")
+      setSelectedTroqueladoId("")
+      setSelectedCorteId("")
+      setSelectedPlastificadoQty("1")
+      setSelectedTroqueladoQty("1")
+      setSelectedCorteQty("1")
+      setSelectedTransporteKey("")
+      setCostoTransporte("0")
+      setCostoCorte("0")
+      setCostoAcabados("0")
+      setCustomFields([])
+      setPricingError(null)
+      setAttemptedSubmit(false)
+
+      setSelectedEditorialProductoKey("")
+      setEditorialTotalPaginas("32")
+      setEditorialPaginasPortadaContraportada("2")
+      setEditorialCartasPorPlancha("2")
+      setEditorialPaginasPorPliego("4")
+      setEditorialCover(createDefaultEditorialPart())
+      setEditorialInner(createDefaultEditorialPart())
+    }
+
+    prevQuoteModeRef.current = quoteMode
+  }, [props.open, quoteMode])
+
+  useEffect(() => {
+    if (!props.open) return
+    if (!editorialMode && selectedEditorialProductoKey) setSelectedEditorialProductoKey("")
+  }, [props.open, editorialMode, selectedEditorialProductoKey])
 
   const finishIdsNormalized = useMemo(() => {
     const ids = selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean)
@@ -476,7 +610,7 @@ export function LitografiaQuoteDialog(props: {
 
   const margenMultiplier = useMemo(() => {
     const n = parseFloat(String(margenPct))
-    const pct = Number.isFinite(n) ? Math.min(500, Math.max(0, n)) : 0
+    const pct = Number.isFinite(n) ? Math.min(500, Math.max(40, n)) : 40
     return 1 + pct / 100
   }, [margenPct])
 
@@ -509,9 +643,10 @@ export function LitografiaQuoteDialog(props: {
       descripcion,
       margenPct,
       cantidad,
-      desperdicioPct,
+      cantidadItems: String(cantidadItems || "").trim() || undefined,
+      desperdicioPct: "0",
       sobranteMinimo,
-      pricingSource: "tarifario",
+      pricingSource: "calculo",
       formatoKey,
       colores,
       costoPlanchaPorColor,
@@ -548,20 +683,32 @@ export function LitografiaQuoteDialog(props: {
       costoTransporte,
       customFields,
 
-      editorialProductoKey: selectedEditorialProductoKey || undefined,
-      editorialTotalPaginas: selectedEditorialProductoKey ? editorialTotalPaginas : undefined,
-      editorialPaginasPortadaContraportada: selectedEditorialProductoKey ? editorialPaginasPortadaContraportada : undefined,
-      editorialCartasPorPlancha: selectedEditorialProductoKey ? editorialCartasPorPlancha : undefined,
-      editorialPaginasPorPliego: selectedEditorialProductoKey ? editorialPaginasPorPliego : undefined,
+      editorialProductoKey: editorialEnabled ? selectedEditorialProductoKey : undefined,
+      editorialTotalPaginas: editorialEnabled ? editorialTotalPaginas : undefined,
+      editorialPaginasPortadaContraportada: editorialEnabled ? editorialPaginasPortadaContraportada : undefined,
+      editorialCartasPorPlancha: editorialEnabled ? editorialCartasPorPlancha : undefined,
+      editorialPaginasPorPliego: editorialEnabled ? editorialPaginasPorPliego : undefined,
+
+      editorialParts: editorialEnabled
+        ? {
+          cover: { ...editorialCover, desperdicioPct: "0" },
+          inner: { ...editorialInner, desperdicioPct: "0" },
+        }
+        : undefined,
     }
   }
 
   const applyMeta = (meta: LitografiaMeta) => {
     setTitulo(meta.titulo ?? "")
     setDescripcion(meta.descripcion ?? "")
-    setMargenPct(meta.margenPct ?? "")
+    {
+      const raw = String(meta.margenPct ?? "40")
+      const n = parseFloat(raw)
+      const pct = Number.isFinite(n) ? Math.min(500, Math.max(40, Math.trunc(n))) : 40
+      setMargenPct(String(pct))
+    }
     setCantidad(meta.cantidad ?? "")
-    setDesperdicioPct(meta.desperdicioPct ?? "")
+    setCantidadItems(meta.cantidadItems ?? "")
     setSobranteMinimo(meta.sobranteMinimo ?? "100")
     setFormatoKey(meta.formatoKey ?? "")
     setColores(meta.colores ?? "1")
@@ -653,11 +800,21 @@ export function LitografiaQuoteDialog(props: {
     setCostoTransporte(meta.costoTransporte ?? "0")
     setCustomFields(Array.isArray(meta.customFields) ? meta.customFields : [])
 
-    setSelectedEditorialProductoKey(String(meta.editorialProductoKey || ""))
+    {
+      const nextEditorialKey = String(meta.editorialProductoKey || "")
+      setQuoteMode(nextEditorialKey ? "editorial" : "normal")
+      setSelectedEditorialProductoKey(nextEditorialKey)
+    }
     setEditorialTotalPaginas(String(meta.editorialTotalPaginas || "32"))
     setEditorialPaginasPortadaContraportada(String(meta.editorialPaginasPortadaContraportada || "2"))
     setEditorialCartasPorPlancha(String(meta.editorialCartasPorPlancha || "2"))
     setEditorialPaginasPorPliego(String(meta.editorialPaginasPorPliego || "4"))
+
+    const parts = meta.editorialParts
+    if (parts?.cover) setEditorialCover({ ...createDefaultEditorialPart(), ...parts.cover })
+    else setEditorialCover(createDefaultEditorialPart())
+    if (parts?.inner) setEditorialInner({ ...createDefaultEditorialPart(), ...parts.inner })
+    else setEditorialInner(createDefaultEditorialPart())
   }
 
   useEffect(() => {
@@ -724,6 +881,11 @@ export function LitografiaQuoteDialog(props: {
     if (!selectedCorteId) return null
     return activeCortes.find((f) => f.id === selectedCorteId) || null
   }, [activeCortes, selectedCorteId])
+
+  const selectedTransporte = useMemo(() => {
+    if (!selectedTransporteKey) return null
+    return transporteOptions.find((o) => o.value === selectedTransporteKey) || null
+  }, [transporteOptions, selectedTransporteKey])
 
   const plastificadoCost = Number(selectedPlastificado?.valor) || 0
   const troqueladoCost = Number(selectedTroquelado?.valor) || 0
@@ -881,14 +1043,14 @@ export function LitografiaQuoteDialog(props: {
         const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
         const dropdowns = Array.isArray(env.data) ? (env.data as Array<{ key?: unknown; items?: unknown }>) : []
         const transporte = dropdowns.find((d) => String(d.key || "") === CUSTOM_DROPDOWN_KEYS.transporte) || null
-        const items = transporte && Array.isArray((transporte as any).items) ? ((transporte as any).items as any[]) : []
+        const items = transporte && Array.isArray(transporte.items) ? transporte.items : []
 
         const mapped = items
-          .filter((it) => Boolean(it) && Boolean((it as any).activo))
+          .filter((it) => isRecord(it) && Boolean(it.activo))
           .map((it) => {
-            const value = String((it as any).value || "").trim()
-            const label = String((it as any).label || value).trim() || value
-            const total = Math.max(0, metaNumber((it as any).meta, "total") ?? 0)
+            const value = String(it.value || "").trim()
+            const label = String(it.label || value).trim() || value
+            const total = Math.max(0, metaNumber(it.meta, "total") ?? 0)
             return value ? { value, label, total } : null
           })
           .filter(Boolean) as Array<{ value: string; label: string; total: number }>
@@ -896,13 +1058,13 @@ export function LitografiaQuoteDialog(props: {
         setTransporteOptions(mapped.sort((a, b) => a.label.localeCompare(b.label)))
 
         const editorial = dropdowns.find((d) => String(d.key || "") === CUSTOM_DROPDOWN_KEYS.editorialProducto) || null
-        const editorialItems = editorial && Array.isArray((editorial as any).items) ? ((editorial as any).items as any[]) : []
+        const editorialItems = editorial && Array.isArray(editorial.items) ? editorial.items : []
         const mappedEditorial = editorialItems
-          .filter((it) => Boolean(it) && Boolean((it as any).activo))
+          .filter((it) => isRecord(it) && Boolean(it.activo))
           .map((it) => {
-            const value = String((it as any).value || "").trim()
-            const label = String((it as any).label || value).trim() || value
-            const meta = (it as any).meta
+            const value = String(it.value || "").trim()
+            const label = String(it.label || value).trim() || value
+            const meta = it.meta
             const totalPaginas = Math.max(0, Math.trunc(metaNumber(meta, "totalPaginas") ?? 0))
             const paginasPortadaContraportada = Math.max(0, Math.trunc(metaNumber(meta, "paginasPortadaContraportada") ?? 0))
             const cartasPorPlancha = Math.max(1, Math.trunc(metaNumber(meta, "cartasPorPlancha") ?? 2))
@@ -949,33 +1111,129 @@ export function LitografiaQuoteDialog(props: {
     setEditorialPaginasPorPliego(String(opt.paginasPorPliego || 4))
   }, [props.open, selectedEditorialProductoKey, editorialOptions])
 
-  const editorialCalc = useMemo(() => {
+  const editorialSplitCalc = useMemo(() => {
     if (!props.open) return null
     if (!selectedEditorialProductoKey) return null
 
-    const qty = Math.max(0, Math.trunc(parseFloat(cantidad) || 0))
     const totalPaginas = Math.max(0, Math.trunc(parseFloat(editorialTotalPaginas) || 0))
-    const paginasPortadaContraportada = Math.max(0, Math.trunc(parseFloat(editorialPaginasPortadaContraportada) || 0))
-    const totalPaginasConPortada = totalPaginas + paginasPortadaContraportada
-    const cartasPorPlancha = Math.max(1, Math.trunc(parseFloat(editorialCartasPorPlancha) || 0))
+    const coverPaginas = Math.max(0, Math.trunc(parseFloat(editorialPaginasPortadaContraportada) || 0))
     const paginasPorPliego = Math.max(1, Math.trunc(parseFloat(editorialPaginasPorPliego) || 0))
-    const desperdicio = Math.max(0, parseFloat(desperdicioPct) || 0)
-    const sobrante = Math.max(0, Math.trunc(parseFloat(sobranteMinimo) || 0))
 
-    const planchas = totalPaginasConPortada > 0 ? Math.ceil(totalPaginasConPortada / cartasPorPlancha) : 0
-    const pliegosPorUnidad = totalPaginasConPortada > 0 ? Math.ceil(totalPaginasConPortada / paginasPorPliego) : 0
-    const pliegosBase = qty * pliegosPorUnidad
-    const pliegosConDesperdicio = Math.ceil(pliegosBase * (1 + desperdicio / 100))
-    const pliegosPorSobrante = sobrante * pliegosPorUnidad
-    const pliegosTotal = pliegosConDesperdicio + pliegosPorSobrante
+    // En Editorial NO aplicamos multiplicación automática por tiro+retiro.
+    // Si necesitas duplicar, usa el multiplicador “Cantidad” en Plancha/Tinta.
+    const innerPlanchas = totalPaginas > 0 ? 1 : 0
+    const coverPlanchas = coverPaginas > 0 ? 1 : 0
+    const innerPliegosPorUnidad = totalPaginas > 0 ? Math.ceil(totalPaginas / paginasPorPliego) : 0
+    const coverPliegosPorUnidad = coverPaginas > 0 ? Math.ceil(coverPaginas / paginasPorPliego) : 0
 
-    return { planchas, pliegosPorUnidad, pliegosBase, pliegosConDesperdicio, pliegosTotal }
-  }, [props.open, selectedEditorialProductoKey, editorialOptions, cantidad, editorialTotalPaginas, editorialPaginasPortadaContraportada, editorialCartasPorPlancha, editorialPaginasPorPliego, desperdicioPct, sobranteMinimo])
+    return {
+      innerPlanchas,
+      coverPlanchas,
+      innerPliegosPorUnidad,
+      coverPliegosPorUnidad,
+    }
+  }, [props.open, selectedEditorialProductoKey, editorialTotalPaginas, editorialPaginasPortadaContraportada, editorialPaginasPorPliego])
+
+  const computeEditorialSheetsPreview = useCallback((part: EditorialPartState, pliegosPorUnidad: number) => {
+    const runQty = Math.max(0, Math.trunc(parseFloat(cantidad) || 0))
+    if (runQty <= 0) return null
+    const paper = papers.find((p) => p.id === String(part.paperId || "").trim()) || null
+    if (!paper) return null
+    const preset = sizeOptions.find((s) => s.key === String(part.formatoKey || "").trim()) || null
+    if (!preset) return null
+
+    const sobranteDefault = parseFloat(sobranteMinimo) || 0
+    const sobranteLocal = parseFloat(String(part.sobranteMinimo))
+    const sobranteFinal = Number.isFinite(sobranteLocal) ? sobranteLocal : sobranteDefault
+
+    const qtyForCompute = runQty * Math.max(1, Math.trunc(Number(pliegosPorUnidad) || 0) || 1)
+    const r = computeLitografia({
+      cantidad: qtyForCompute,
+      colores: 1,
+      desperdicioPct: 0,
+      sobranteMinimo: sobranteFinal,
+      costoPlanchaPorColor: 0,
+      costoTintaPorColor: 0,
+      costoPapelUnidad: 0,
+      papelModo: "pliego",
+      papelTipo: "otro",
+      papelPliegoWidthCm: paper.pliegoWidthCm ?? 0,
+      papelPliegoHeightCm: paper.pliegoHeightCm ?? 0,
+      papelFormatoWidthCm: preset.widthCm ?? 0,
+      papelFormatoHeightCm: preset.heightCm ?? 0,
+      costoPliego: 1,
+      costoCorte: 0,
+      costoAcabados: 0,
+      costoTransporte: 0,
+      margenPct: 0,
+    })
+
+    return {
+      runQty,
+      pliegosPorUnidad: Math.max(1, Math.trunc(Number(pliegosPorUnidad) || 0) || 1),
+      qtyForCompute,
+      sobranteFinal,
+      piezasPorPliego: r.piezasPorPliego,
+      pliegosNecesarios: r.pliegosNecesarios,
+    }
+  }, [cantidad, papers, sizeOptions, sobranteMinimo])
+
+  const editorialCoverSheetsPreview = useMemo(() => {
+    if (!editorialEnabled) return null
+    const pliegos = editorialSplitCalc?.coverPliegosPorUnidad ?? 0
+    return computeEditorialSheetsPreview(editorialCover, pliegos)
+  }, [editorialEnabled, editorialSplitCalc?.coverPliegosPorUnidad, computeEditorialSheetsPreview, editorialCover])
+
+  const editorialInnerSheetsPreview = useMemo(() => {
+    if (!editorialEnabled) return null
+    const pliegos = editorialSplitCalc?.innerPliegosPorUnidad ?? 0
+    return computeEditorialSheetsPreview(editorialInner, pliegos)
+  }, [editorialEnabled, editorialSplitCalc?.innerPliegosPorUnidad, computeEditorialSheetsPreview, editorialInner])
+
+  useEffect(() => {
+    if (!props.open) return
+    if (!selectedEditorialProductoKey) return
+
+    const defaultPaperId = primaryPaperId || activePapers[0]?.id || ""
+    const defaultFormatoKey = formatoKey || sizeOptions[0]?.key || ""
+    const defaults = editorialSplitCalc
+
+    setEditorialCover((prev) => {
+      const next: EditorialPartState = { ...prev }
+      if (!String(next.paperId || "").trim()) next.paperId = defaultPaperId
+      if (!String(next.formatoKey || "").trim()) next.formatoKey = defaultFormatoKey
+      if (!String(next.sobranteMinimo || "").trim()) next.sobranteMinimo = sobranteMinimo
+      if (!String(next.planchas || "").trim() && defaults) next.planchas = String(defaults.coverPlanchas || 0)
+      next.desperdicioPct = "0"
+      return next
+    })
+
+    setEditorialInner((prev) => {
+      const next: EditorialPartState = { ...prev }
+      if (!String(next.paperId || "").trim()) next.paperId = defaultPaperId
+      if (!String(next.formatoKey || "").trim()) next.formatoKey = defaultFormatoKey
+      if (!String(next.sobranteMinimo || "").trim()) next.sobranteMinimo = sobranteMinimo
+      if (!String(next.planchas || "").trim() && defaults) next.planchas = String(defaults.innerPlanchas || 0)
+      next.desperdicioPct = "0"
+      return next
+    })
+  }, [props.open, selectedEditorialProductoKey, editorialSplitCalc, primaryPaperId, activePapers, sobranteMinimo, formatoKey, sizeOptions])
+
+  useEffect(() => {
+    if (!props.open) return
+    if (!editorialEnabled) return
+    const coverKey = String(editorialCover.formatoKey || "").trim()
+    const innerKey = String(editorialInner.formatoKey || "").trim()
+    const next = coverKey || innerKey
+    if (!next) return
+    if (coverKey !== next) setEditorialCover((prev) => ({ ...prev, formatoKey: next }))
+    if (innerKey !== next) setEditorialInner((prev) => ({ ...prev, formatoKey: next }))
+  }, [props.open, editorialEnabled, editorialCover.formatoKey, editorialInner.formatoKey])
 
   useEffect(() => {
     const load = async () => {
       setConfigError(null)
-      setTarifaError(null)
+      setPricingError(null)
       setAttemptedSubmit(false)
       try {
         const [meRes, r1, r2, r3] = await Promise.all([
@@ -1007,49 +1265,7 @@ export function LitografiaQuoteDialog(props: {
     }
 
     if (props.open) void load()
-  }, [props.open, language])
-
-  useEffect(() => {
-    if (!props.open) return
-    if (!meLoaded) return
-
-    const qty = Math.trunc(parseFloat(cantidad) || 0)
-    if (qty <= 0) {
-      setTarifa(null)
-      return
-    }
-
-    const controller = new AbortController()
-    const run = async () => {
-      setTarifaLoading(true)
-      setTarifaError(null)
-      try {
-        const url = new URL("/api/litografia/flyers-tarifas/match", window.location.origin)
-        url.searchParams.set("formatoKey", formatoKey)
-        url.searchParams.set("tintas", String(tintas))
-        url.searchParams.set("cantidad", String(qty))
-        if (primaryPaperId) url.searchParams.set("paperRateId", primaryPaperId)
-        const finishIds = selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean)
-        if (finishIds.length === 1) url.searchParams.set("finishOptionId", finishIds[0]!)
-
-        const res = await fetch(url.toString(), { cache: "no-store", signal: controller.signal })
-        const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
-        if (!res.ok || env.ok !== true)
-          throw new Error(getApiErrorMessage(env, t('printshopQuote.errors.rateQueryFailed')))
-        const data = (env.data as FlyerRate | null) ?? null
-        setTarifa(data)
-      } catch (e) {
-        if (e instanceof Error && e.name === "AbortError") return
-        setTarifa(null)
-        setTarifaError(e instanceof Error ? e.message : t('printshopQuote.errors.rateQueryFailed'))
-      } finally {
-        setTarifaLoading(false)
-      }
-    }
-
-    void run()
-    return () => controller.abort()
-  }, [props.open, meLoaded, isAdmin, language, cantidad, formatoKey, primaryPaperId, selectedFinishIds])
+  }, [props.open, language, t])
 
   useEffect(() => {
     setCostoPlanchaPorColor(String(planchaCostConfigured || 0))
@@ -1082,24 +1298,141 @@ export function LitografiaQuoteDialog(props: {
   const calc = useMemo(() => {
     if (!isAdmin) return null
     const qtyBase = parseFloat(cantidad) || 0
-    const desperdicio = parseFloat(desperdicioPct) || 0
     const sobrante = parseFloat(sobranteMinimo) || 0
 
-    const editorialPliegosPorUnidad = Math.max(1, editorialCalc?.pliegosPorUnidad ?? 1)
-    const editorialPlanchas = Math.max(1, editorialCalc?.planchas ?? 1)
-    const qtyForCompute = selectedEditorialProductoKey ? qtyBase * editorialPliegosPorUnidad : qtyBase
-    const planchaCostForCompute = selectedEditorialProductoKey ? planchaCostConfigured * editorialPlanchas : planchaCostConfigured
-    const tintaCostForCompute = selectedEditorialProductoKey ? tintaCostConfigured * editorialPlanchas : tintaCostConfigured
+    if (editorialEnabled) {
+      const defaults = editorialSplitCalc
+      if (!defaults) return null
 
-    const extraFinishCosts = plastificadoCostTotal + troqueladoCostTotal + corteCostTotal
+      const presetByKey = new Map(sizeOptions.map((s) => [s.key, s] as const))
+      const profileById = new Map(profiles.map((p) => [p.id, p] as const))
+
+      const transporte = parseFloat(costoTransporte) || 0
+
+      const inferPapelTipo = (paperTipoRaw: string | null | undefined): PapelTipo => {
+        const tt = String(paperTipoRaw || "").toLowerCase()
+        if (tt.includes("bond")) return "bond"
+        if (tt.includes("propal") || tt.includes("cote") || tt.includes("couche")) return "propalcote"
+        if (tt.includes("period")) return "periodico"
+        return "otro"
+      }
+
+      const computePart = (part: EditorialPartState, pliegosPorUnidad: number, planchasPorUnidad: number) => {
+        const runQty = Math.max(0, Math.trunc(qtyBase))
+        if (runQty <= 0) return null
+        const paper = papers.find((p) => p.id === String(part.paperId || "").trim()) || null
+        if (!paper) return null
+
+        const preset = presetByKey.get(String(part.formatoKey || "").trim()) || null
+        if (!preset) return null
+
+        const planchaProfile = part.planchaProfileId ? profileById.get(String(part.planchaProfileId || "").trim()) || null : null
+        const tintaProfile = part.tintaProfileId ? profileById.get(String(part.tintaProfileId || "").trim()) || null : null
+        const planchaProfileQty = Math.max(1, Math.trunc(parseFloat(String(part.planchaProfileQty || "1")) || 0) || 1)
+        const tintaProfileQty = Math.max(1, Math.trunc(parseFloat(String(part.tintaProfileQty || "1")) || 0) || 1)
+        const planchaCostPorColor = (Number(planchaProfile?.costoPlanchaPorColor) || 0) * planchaProfileQty
+        const tintaCostPorColor = (Number(tintaProfile?.costoTintaPorColor) || 0) * tintaProfileQty
+
+        const tintasLocal: 1 | 2 | 4 = 4
+        const planchasLocal = Math.max(0, Math.trunc(Number(planchasPorUnidad) || 0))
+        const sobranteLocal = parseFloat(String(part.sobranteMinimo))
+
+        const finish = part.finishId ? finishes.find((f) => f.id === part.finishId) || null : null
+        const finishesCost = finish && !finish.especial && getGrupo(finish) === "ACABADO" ? (Number(finish.valor) || 0) : 0
+
+        const special = part.specialFinishId ? finishes.find((f) => f.id === part.specialFinishId) || null : null
+        const specialQty = Math.max(0, Math.trunc(parseFloat(String(part.specialFinishQty)) || 0))
+        const specialCost = special && Boolean(special.especial) ? (Number(special.valor) || 0) * specialQty : 0
+
+        const plast = part.plastificadoId ? finishes.find((f) => f.id === part.plastificadoId) || null : null
+        const plastQty = Math.max(1, Math.trunc(parseFloat(String(part.plastificadoQty)) || 0) || 1)
+        const plastCost = plast && getGrupo(plast) === "PLASTIFICADO" ? (Number(plast.valor) || 0) * plastQty : 0
+
+        const troq = part.troqueladoId ? finishes.find((f) => f.id === part.troqueladoId) || null : null
+        const troqQty = Math.max(1, Math.trunc(parseFloat(String(part.troqueladoQty)) || 0) || 1)
+        const troqCost = troq && getGrupo(troq) === "TROQUELADO" ? (Number(troq.valor) || 0) * troqQty : 0
+
+        const corteOpt = part.corteId ? finishes.find((f) => f.id === part.corteId) || null : null
+        const corteQtyLocal = Math.max(1, Math.trunc(parseFloat(String(part.corteQty)) || 0) || 1)
+        const corteCostLocal = corteOpt && getGrupo(corteOpt) === "CORTE" ? (Number(corteOpt.valor) || 0) * corteQtyLocal : 0
+
+        const qtyForCompute = runQty * Math.max(1, pliegosPorUnidad)
+        return computeLitografia({
+          cantidad: qtyForCompute,
+          colores: tintasLocal,
+          desperdicioPct: 0,
+          sobranteMinimo: Number.isFinite(sobranteLocal) ? sobranteLocal : sobrante,
+          costoPlanchaPorColor: toPerColorCost(((planchaCostPorColor || 0) * planchasLocal), tintasLocal),
+          costoTintaPorColor: toPerColorCost(((tintaCostPorColor || 0) * planchasLocal), tintasLocal),
+          costoPapelUnidad: 0,
+          papelModo: "pliego",
+          papelTipo: inferPapelTipo(paper.tipo),
+          papelPliegoWidthCm: paper.pliegoWidthCm ?? 0,
+          papelPliegoHeightCm: paper.pliegoHeightCm ?? 0,
+          papelFormatoWidthCm: preset.widthCm ?? 0,
+          papelFormatoHeightCm: preset.heightCm ?? 0,
+          costoPliego: paper.costoPliego ?? 0,
+          costoCorte: corteCostLocal,
+          costoAcabados: finishesCost + specialCost + plastCost + troqCost,
+          costoTransporte: 0,
+          margenPct: 0,
+        })
+      }
+
+      const cover = defaults.coverPliegosPorUnidad > 0
+        ? computePart(editorialCover, defaults.coverPliegosPorUnidad, defaults.coverPlanchas)
+        : null
+      const inner = defaults.innerPliegosPorUnidad > 0
+        ? computePart(editorialInner, defaults.innerPliegosPorUnidad, defaults.innerPlanchas)
+        : null
+
+      if (!cover && !inner) return null
+
+      const plancha = (cover?.plancha ?? 0) + (inner?.plancha ?? 0)
+      const tinta = (cover?.tinta ?? 0) + (inner?.tinta ?? 0)
+      const papel = (cover?.papel ?? 0) + (inner?.papel ?? 0)
+      const corte = (cover?.corte ?? 0) + (inner?.corte ?? 0)
+      const acabados = (cover?.acabados ?? 0) + (inner?.acabados ?? 0)
+      const costoProduccion = plancha + tinta + papel + corte + acabados + transporte
+      const precioVenta = costoProduccion
+
+      const qty = Math.max(1, Math.trunc(qtyBase) || 1)
+      return {
+        qty,
+        k: 4,
+        waste: Math.max(cover?.waste ?? 0, inner?.waste ?? 0),
+        sobranteMinimo: Math.max(cover?.sobranteMinimo ?? 0, inner?.sobranteMinimo ?? 0),
+        papelModo: "pliego",
+        qtyConDesperdicio: (cover?.qtyConDesperdicio ?? 0) + (inner?.qtyConDesperdicio ?? 0),
+        piezasPorPliego: (cover?.piezasPorPliego ?? inner?.piezasPorPliego) || undefined,
+        pliegosNecesarios: ((cover?.pliegosNecesarios ?? 0) + (inner?.pliegosNecesarios ?? 0)) || undefined,
+        plancha,
+        tinta,
+        papel,
+        corte,
+        acabados,
+        transporte,
+        costoProduccion,
+        precioVenta,
+        costoUnitario: costoProduccion / qty,
+        precioUnitario: precioVenta / qty,
+      }
+    }
+
+    const qtyForCompute = qtyBase
+    const planchaCostForCompute = planchaCostConfigured
+    const tintaCostForCompute = tintaCostConfigured
+
+    const addAcabadosExtras = selectedFinishesCost + specialFinishesCost + plastificadoCostTotal + troqueladoCostTotal
+    const addCorteExtra = corteCostTotal
 
     const base = computeLitografia({
       cantidad: qtyForCompute,
-      colores: 1,
-      desperdicioPct: desperdicio,
+      colores: tintas,
+      desperdicioPct: 0,
       sobranteMinimo: sobrante,
-      costoPlanchaPorColor: planchaCostForCompute,
-      costoTintaPorColor: tintaCostForCompute,
+      costoPlanchaPorColor: toPerColorCost(planchaCostForCompute, tintas),
+      costoTintaPorColor: toPerColorCost(tintaCostForCompute, tintas),
       costoPapelUnidad: parseFloat(costoPapelUnidad) || 0,
       papelModo: papelPorPliego ? "pliego" : "unidad",
       papelTipo,
@@ -1109,10 +1442,28 @@ export function LitografiaQuoteDialog(props: {
       papelFormatoHeightCm: selectedPreset?.heightCm ?? 0,
       costoPliego: parseFloat(costoPliego) || 0,
       costoCorte: parseFloat(costoCorte) || 0,
-      costoAcabados: (parseFloat(costoAcabados) || 0) + selectedFinishesCost + specialFinishesCost + extraFinishCosts,
+      costoAcabados: parseFloat(costoAcabados) || 0,
       costoTransporte: parseFloat(costoTransporte) || 0,
       margenPct: 0,
     })
+
+    const withExtras = (() => {
+      const qty = Math.max(1, Math.trunc(base.qty) || 1)
+      const corte = (base.corte || 0) + addCorteExtra
+      const acabados = (base.acabados || 0) + addAcabadosExtras
+      const transporte = base.transporte || 0
+      const costoProduccion = (base.plancha || 0) + (base.tinta || 0) + (base.papel || 0) + corte + acabados + transporte
+      const precioVenta = costoProduccion
+      return {
+        ...base,
+        corte,
+        acabados,
+        costoProduccion,
+        precioVenta,
+        costoUnitario: costoProduccion / qty,
+        precioUnitario: precioVenta / qty,
+      }
+    })()
 
     if (papelPorPliego && selectedPreset) {
       const byPaperId = new Map(papers.map((p) => [p.id, p] as const))
@@ -1120,11 +1471,11 @@ export function LitografiaQuoteDialog(props: {
 
       const baseNoPaper = computeLitografia({
         cantidad: qtyForCompute,
-        colores: 1,
-        desperdicioPct: desperdicio,
+        colores: tintas,
+        desperdicioPct: 0,
         sobranteMinimo: sobrante,
-        costoPlanchaPorColor: planchaCostForCompute,
-        costoTintaPorColor: tintaCostForCompute,
+        costoPlanchaPorColor: toPerColorCost(planchaCostForCompute, tintas),
+        costoTintaPorColor: toPerColorCost(tintaCostForCompute, tintas),
         costoPapelUnidad: 0,
         papelModo: "pliego",
         papelTipo,
@@ -1134,7 +1485,7 @@ export function LitografiaQuoteDialog(props: {
         papelFormatoHeightCm: selectedPreset.heightCm ?? 0,
         costoPliego: 0,
         costoCorte: parseFloat(costoCorte) || 0,
-        costoAcabados: (parseFloat(costoAcabados) || 0) + selectedFinishesCost + specialFinishesCost + extraFinishCosts,
+        costoAcabados: parseFloat(costoAcabados) || 0,
         costoTransporte: parseFloat(costoTransporte) || 0,
         margenPct: 0,
       })
@@ -1156,8 +1507,8 @@ export function LitografiaQuoteDialog(props: {
 
         const r = computeLitografia({
           cantidad: rowQty,
-          colores: 1,
-          desperdicioPct: desperdicio,
+          colores: tintas,
+          desperdicioPct: 0,
           sobranteMinimo: sobrante,
           costoPlanchaPorColor: 0,
           costoTintaPorColor: 0,
@@ -1178,25 +1529,32 @@ export function LitografiaQuoteDialog(props: {
       }
 
       if (paperTotal > 0) {
-        const costoProduccion = baseNoPaper.plancha + baseNoPaper.tinta + paperTotal + baseNoPaper.corte + baseNoPaper.acabados + baseNoPaper.transporte
+        const qty = Math.max(1, Math.trunc(baseNoPaper.qty) || 1)
+        const corte = (baseNoPaper.corte || 0) + addCorteExtra
+        const acabados = (baseNoPaper.acabados || 0) + addAcabadosExtras
+        const transporte = baseNoPaper.transporte || 0
+        const costoProduccion = (baseNoPaper.plancha || 0) + (baseNoPaper.tinta || 0) + paperTotal + corte + acabados + transporte
         const precioVenta = costoProduccion
         return {
           ...baseNoPaper,
           papel: paperTotal,
+          corte,
+          acabados,
           costoProduccion,
           precioVenta,
-          costoUnitario: costoProduccion / baseNoPaper.qty,
-          precioUnitario: precioVenta / baseNoPaper.qty,
+          costoUnitario: costoProduccion / qty,
+          precioUnitario: precioVenta / qty,
         }
       }
     }
-    return base
+    return withExtras
   }, [
     isAdmin,
     cantidad,
-    editorialCalc,
-    selectedEditorialProductoKey,
-    desperdicioPct,
+    editorialEnabled,
+    editorialSplitCalc,
+    editorialCover,
+    editorialInner,
     sobranteMinimo,
     planchaCostConfigured,
     tintaCostConfigured,
@@ -1218,7 +1576,10 @@ export function LitografiaQuoteDialog(props: {
     paperRows,
     primaryPaper,
     papers,
+    profiles,
+    finishes,
     sizeOptions,
+    tintas,
   ])
 
   const fallbackCalc = useMemo(() => {
@@ -1227,26 +1588,142 @@ export function LitografiaQuoteDialog(props: {
 
     const qty = Math.trunc(parseFloat(cantidad) || 0)
     if (qty <= 0) return null
+
+    // Estimación (cuando el usuario no es admin). Usa costos del perfil y papel seleccionado.
+    if (editorialEnabled) {
+      const defaults = editorialSplitCalc
+      if (!defaults) return null
+
+      const presetByKey = new Map(sizeOptions.map((s) => [s.key, s] as const))
+      const profileById = new Map(profiles.map((p) => [p.id, p] as const))
+
+      const transporte = parseFloat(costoTransporte) || 0
+
+      const inferPapelTipo = (paperTipoRaw: string | null | undefined): PapelTipo => {
+        const tt = String(paperTipoRaw || "").toLowerCase()
+        if (tt.includes("bond")) return "bond"
+        if (tt.includes("propal") || tt.includes("cote") || tt.includes("couche")) return "propalcote"
+        if (tt.includes("period")) return "periodico"
+        return "otro"
+      }
+
+      const computePart = (part: EditorialPartState, pliegosPorUnidad: number, planchasPorUnidad: number) => {
+        const runQty = Math.max(0, Math.trunc(qty))
+        if (runQty <= 0) return null
+        const paper = papers.find((p) => p.id === String(part.paperId || "").trim()) || null
+        if (!paper) return null
+
+        const preset = presetByKey.get(String(part.formatoKey || "").trim()) || null
+        if (!preset) return null
+
+        const planchaProfile = part.planchaProfileId ? profileById.get(String(part.planchaProfileId || "").trim()) || null : null
+        const tintaProfile = part.tintaProfileId ? profileById.get(String(part.tintaProfileId || "").trim()) || null : null
+        const planchaProfileQty = Math.max(1, Math.trunc(parseFloat(String(part.planchaProfileQty || "1")) || 0) || 1)
+        const tintaProfileQty = Math.max(1, Math.trunc(parseFloat(String(part.tintaProfileQty || "1")) || 0) || 1)
+        const planchaCostPorColor = (Number(planchaProfile?.costoPlanchaPorColor) || 0) * planchaProfileQty
+        const tintaCostPorColor = (Number(tintaProfile?.costoTintaPorColor) || 0) * tintaProfileQty
+
+        const tintasLocal: 1 | 2 | 4 = 4
+        const planchasLocal = Math.max(0, Math.trunc(Number(planchasPorUnidad) || 0))
+        const sobranteLocal = parseFloat(String(part.sobranteMinimo))
+
+        const finish = part.finishId ? finishes.find((f) => f.id === part.finishId) || null : null
+        const finishesCost = finish && !finish.especial && getGrupo(finish) === "ACABADO" ? (Number(finish.valor) || 0) : 0
+
+        const special = part.specialFinishId ? finishes.find((f) => f.id === part.specialFinishId) || null : null
+        const specialQty = Math.max(0, Math.trunc(parseFloat(String(part.specialFinishQty)) || 0))
+        const specialCost = special && Boolean(special.especial) ? (Number(special.valor) || 0) * specialQty : 0
+
+        const plast = part.plastificadoId ? finishes.find((f) => f.id === part.plastificadoId) || null : null
+        const plastQty = Math.max(1, Math.trunc(parseFloat(String(part.plastificadoQty)) || 0) || 1)
+        const plastCost = plast && getGrupo(plast) === "PLASTIFICADO" ? (Number(plast.valor) || 0) * plastQty : 0
+
+        const troq = part.troqueladoId ? finishes.find((f) => f.id === part.troqueladoId) || null : null
+        const troqQty = Math.max(1, Math.trunc(parseFloat(String(part.troqueladoQty)) || 0) || 1)
+        const troqCost = troq && getGrupo(troq) === "TROQUELADO" ? (Number(troq.valor) || 0) * troqQty : 0
+
+        const corteOpt = part.corteId ? finishes.find((f) => f.id === part.corteId) || null : null
+        const corteQtyLocal = Math.max(1, Math.trunc(parseFloat(String(part.corteQty)) || 0) || 1)
+        const corteCostLocal = corteOpt && getGrupo(corteOpt) === "CORTE" ? (Number(corteOpt.valor) || 0) * corteQtyLocal : 0
+
+        const qtyForCompute = runQty * Math.max(1, pliegosPorUnidad)
+        return computeLitografia({
+          cantidad: qtyForCompute,
+          colores: tintasLocal,
+          desperdicioPct: 0,
+          sobranteMinimo: Number.isFinite(sobranteLocal) ? sobranteLocal : (parseFloat(sobranteMinimo) || 0),
+          costoPlanchaPorColor: toPerColorCost(((planchaCostPorColor || 0) * planchasLocal), tintasLocal),
+          costoTintaPorColor: toPerColorCost(((tintaCostPorColor || 0) * planchasLocal), tintasLocal),
+          costoPapelUnidad: 0,
+          papelModo: "pliego",
+          papelTipo: inferPapelTipo(paper.tipo),
+          papelPliegoWidthCm: paper.pliegoWidthCm ?? 0,
+          papelPliegoHeightCm: paper.pliegoHeightCm ?? 0,
+          papelFormatoWidthCm: preset.widthCm ?? 0,
+          papelFormatoHeightCm: preset.heightCm ?? 0,
+          costoPliego: paper.costoPliego ?? 0,
+          costoCorte: corteCostLocal,
+          costoAcabados: finishesCost + specialCost + plastCost + troqCost,
+          costoTransporte: 0,
+          margenPct: 0,
+        })
+      }
+
+      const cover = defaults.coverPliegosPorUnidad > 0
+        ? computePart(editorialCover, defaults.coverPliegosPorUnidad, defaults.coverPlanchas)
+        : null
+      const inner = defaults.innerPliegosPorUnidad > 0
+        ? computePart(editorialInner, defaults.innerPliegosPorUnidad, defaults.innerPlanchas)
+        : null
+
+      if (!cover && !inner) return null
+
+      const plancha = (cover?.plancha ?? 0) + (inner?.plancha ?? 0)
+      const tinta = (cover?.tinta ?? 0) + (inner?.tinta ?? 0)
+      const papel = (cover?.papel ?? 0) + (inner?.papel ?? 0)
+      const corte = (cover?.corte ?? 0) + (inner?.corte ?? 0)
+      const acabados = (cover?.acabados ?? 0) + (inner?.acabados ?? 0)
+      const costoProduccion = plancha + tinta + papel + corte + acabados + transporte
+      const precioVenta = costoProduccion
+
+      return {
+        qty,
+        k: 4,
+        waste: Math.max(cover?.waste ?? 0, inner?.waste ?? 0),
+        sobranteMinimo: Math.max(cover?.sobranteMinimo ?? 0, inner?.sobranteMinimo ?? 0),
+        papelModo: "pliego",
+        qtyConDesperdicio: (cover?.qtyConDesperdicio ?? 0) + (inner?.qtyConDesperdicio ?? 0),
+        piezasPorPliego: (cover?.piezasPorPliego ?? inner?.piezasPorPliego) || undefined,
+        pliegosNecesarios: ((cover?.pliegosNecesarios ?? 0) + (inner?.pliegosNecesarios ?? 0)) || undefined,
+        plancha,
+        tinta,
+        papel,
+        corte,
+        acabados,
+        transporte,
+        costoProduccion,
+        precioVenta,
+        costoUnitario: costoProduccion / qty,
+        precioUnitario: precioVenta / qty,
+      }
+    }
+
     if (!selectedPreset) return null
 
-    const editorialPliegosPorUnidad = Math.max(1, editorialCalc?.pliegosPorUnidad ?? 1)
-    const editorialPlanchas = Math.max(1, editorialCalc?.planchas ?? 1)
-    const qtyForCompute = selectedEditorialProductoKey ? qty * editorialPliegosPorUnidad : qty
-    const planchaCostForCompute = selectedEditorialProductoKey ? planchaCostConfigured * editorialPlanchas : planchaCostConfigured
-    const tintaCostForCompute = selectedEditorialProductoKey ? tintaCostConfigured * editorialPlanchas : tintaCostConfigured
+    const planchaCostForCompute = planchaCostConfigured
+    const tintaCostForCompute = tintaCostConfigured
 
-    // Estimación cuando no hay tarifa exacta. Usa costos del perfil y papel seleccionado.
-    const desperdicio = parseFloat(desperdicioPct) || 0
     if (!primaryPaper) return null
     const paper = primaryPaper
+    const qtyForCompute = qty
 
     const base = computeLitografia({
       cantidad: qtyForCompute,
-      colores: 1,
-      desperdicioPct: desperdicio,
+      colores: tintas,
+      desperdicioPct: 0,
       sobranteMinimo: parseFloat(sobranteMinimo) || 0,
-      costoPlanchaPorColor: planchaCostForCompute,
-      costoTintaPorColor: tintaCostForCompute,
+        costoPlanchaPorColor: toPerColorCost(planchaCostForCompute, tintas),
+        costoTintaPorColor: toPerColorCost(tintaCostForCompute, tintas),
       costoPapelUnidad: 0,
       papelModo: "pliego",
       papelTipo,
@@ -1258,7 +1735,7 @@ export function LitografiaQuoteDialog(props: {
       costoCorte: 0,
       costoAcabados: 0,
       costoTransporte: parseFloat(costoTransporte) || 0,
-      // Margen 0: se deja como estimación base (se puede ajustar en tarifario).
+      // Margen 0: se deja como estimación base.
       margenPct: 0,
     })
 
@@ -1268,11 +1745,11 @@ export function LitografiaQuoteDialog(props: {
 
       const baseNoPaper = computeLitografia({
         cantidad: qtyForCompute,
-        colores: 1,
-        desperdicioPct: desperdicio,
+        colores: tintas,
+        desperdicioPct: 0,
         sobranteMinimo: parseFloat(sobranteMinimo) || 0,
-        costoPlanchaPorColor: planchaCostForCompute,
-        costoTintaPorColor: tintaCostForCompute,
+        costoPlanchaPorColor: toPerColorCost(planchaCostForCompute, tintas),
+        costoTintaPorColor: toPerColorCost(tintaCostForCompute, tintas),
         costoPapelUnidad: 0,
         papelModo: "pliego",
         papelTipo,
@@ -1304,8 +1781,8 @@ export function LitografiaQuoteDialog(props: {
 
         const r = computeLitografia({
           cantidad: rowQty,
-          colores: 1,
-          desperdicioPct: desperdicio,
+          colores: tintas,
+          desperdicioPct: 0,
           sobranteMinimo: parseFloat(sobranteMinimo) || 0,
           costoPlanchaPorColor: 0,
           costoTintaPorColor: 0,
@@ -1343,9 +1820,10 @@ export function LitografiaQuoteDialog(props: {
     isAdmin,
     props.open,
     cantidad,
-    editorialCalc,
-    selectedEditorialProductoKey,
-    desperdicioPct,
+    editorialEnabled,
+    editorialSplitCalc,
+    editorialCover,
+    editorialInner,
     sobranteMinimo,
     planchaCostConfigured,
     tintaCostConfigured,
@@ -1355,17 +1833,42 @@ export function LitografiaQuoteDialog(props: {
     primaryPaper,
     paperRows,
     papers,
+    profiles,
+    finishes,
     sizeOptions,
+    tintas,
   ])
 
   const validation = useMemo(() => {
     const qty = Math.trunc(parseFloat(cantidad) || 0)
     const missingCantidad = qty <= 0
-    const missingFormato = !formatoKey || !selectedPreset
-    const missingPaper = !primaryPaperId && activePapers.length > 0
-    const missingPlancha = !primaryPlanchaProfileId && activePlanchaProfiles.length > 0
-    const missingTinta = !primaryTintaProfileId && activeTintaProfiles.length > 0
-    const missingPricing = !isAdmin && !tarifa && !fallbackCalc
+    const missingEditorialTemplate = Boolean(editorialMode && !String(selectedEditorialProductoKey || "").trim())
+    const coverRequired = Boolean(editorialEnabled && (editorialSplitCalc?.coverPliegosPorUnidad ?? 0) > 0)
+    const innerRequired = Boolean(editorialEnabled && (editorialSplitCalc?.innerPliegosPorUnidad ?? 0) > 0)
+
+    const presetByKey = new Map(sizeOptions.map((s) => [s.key, s] as const))
+    const coverPreset = coverRequired ? (presetByKey.get(String(editorialCover.formatoKey || "").trim()) || null) : null
+    const innerPreset = innerRequired ? (presetByKey.get(String(editorialInner.formatoKey || "").trim()) || null) : null
+    const missingEditorialFormato = (coverRequired && !coverPreset) || (innerRequired && !innerPreset)
+    const missingFormato = editorialMode
+      ? (editorialEnabled ? missingEditorialFormato : true)
+      : (!formatoKey || !selectedPreset)
+    const missingEditorialPaper =
+      (coverRequired && !String(editorialCover.paperId || "").trim()) ||
+      (innerRequired && !String(editorialInner.paperId || "").trim())
+
+    const missingPaper = missingEditorialTemplate
+      ? true
+      : editorialEnabled
+        ? missingEditorialPaper
+        : (!primaryPaperId && activePapers.length > 0)
+    const missingPlancha = editorialEnabled
+      ? (activePlanchaProfiles.length > 0 && ((coverRequired && !String(editorialCover.planchaProfileId || "").trim()) || (innerRequired && !String(editorialInner.planchaProfileId || "").trim())))
+      : (!primaryPlanchaProfileId && activePlanchaProfiles.length > 0)
+    const missingTinta = editorialEnabled
+      ? (activeTintaProfiles.length > 0 && ((coverRequired && !String(editorialCover.tintaProfileId || "").trim()) || (innerRequired && !String(editorialInner.tintaProfileId || "").trim())))
+      : (!primaryTintaProfileId && activeTintaProfiles.length > 0)
+    const missingPricing = !isAdmin && !fallbackCalc
 
     const hasMissing = missingCantidad || missingFormato || missingPaper || missingPlancha || missingTinta || missingPricing
     return {
@@ -1376,6 +1879,7 @@ export function LitografiaQuoteDialog(props: {
       missingPlancha,
       missingTinta,
       missingPricing,
+      missingEditorialTemplate,
       hasMissing,
     }
   }, [
@@ -1383,13 +1887,25 @@ export function LitografiaQuoteDialog(props: {
     cantidad,
     formatoKey,
     selectedPreset,
+    sizeOptions,
     primaryPaperId,
     activePapers.length,
+    selectedEditorialProductoKey,
+    editorialMode,
+    editorialEnabled,
+    editorialSplitCalc,
+    editorialCover.paperId,
+    editorialInner.paperId,
+    editorialCover.formatoKey,
+    editorialInner.formatoKey,
+    editorialCover.planchaProfileId,
+    editorialInner.planchaProfileId,
+    editorialCover.tintaProfileId,
+    editorialInner.tintaProfileId,
     primaryPlanchaProfileId,
     activePlanchaProfiles.length,
     primaryTintaProfileId,
     activeTintaProfiles.length,
-    tarifa,
     fallbackCalc,
   ])
 
@@ -1398,15 +1914,48 @@ export function LitografiaQuoteDialog(props: {
     attemptedSubmit && missing ? "border-red-500 focus-visible:ring-red-500" : ""
 
   const canAdd = useMemo(() => {
-    if (tarifaLoading) return false
     if (validation.hasMissing) return false
     if (isAdmin) return Boolean(calc)
-    return Boolean(tarifa || fallbackCalc)
-  }, [tarifaLoading, validation.hasMissing, isAdmin, calc, tarifa, fallbackCalc])
+    return Boolean(fallbackCalc)
+  }, [validation.hasMissing, isAdmin, calc, fallbackCalc])
+
+  const runQtyHelp = useMemo(() => {
+    const computed = isAdmin ? calc : fallbackCalc
+    if (!computed) return null
+
+    const runQty = Math.max(0, Math.trunc(parseFloat(cantidad) || 0))
+    const sobrante = Math.max(0, Math.trunc(parseFloat(sobranteMinimo) || 0))
+    const piezas = Math.max(0, Math.trunc(Number(computed.qtyConDesperdicio) || 0))
+
+    const formatoLabel = selectedPreset
+      ? `${selectedPreset.nombre} (${selectedPreset.widthCm}×${selectedPreset.heightCm} cm)`
+      : (formatoKey ? String(formatoKey) : "—")
+    const pliegoLabel = `${String(pliegoW || "—")}×${String(pliegoH || "—")} cm`
+
+    if (computed.papelModo !== "pliego") {
+      return {
+        line1: `Operación: piezas = tiraje (${runQty}) + sobrante (${sobrante}) = ${piezas}.`,
+        line2: null as string | null,
+      }
+    }
+
+    const pzasPorPliego = Math.max(0, Math.trunc(Number(computed.piezasPorPliego) || 0))
+    const pliegos = Math.max(0, Math.trunc(Number(computed.pliegosNecesarios) || 0))
+    const op = pzasPorPliego > 0
+      ? `pliegos = ⌈${piezas} / ${pzasPorPliego}⌉ = ${pliegos}.`
+      : `pliegos = ⌈${piezas} / pzasPorPliego⌉ = ${pliegos}.`
+
+    return {
+      line1: `Tamaño impresión: ${formatoLabel}. Pliego: ${pliegoLabel}.`,
+      line2: `Operación: piezas = tiraje (${runQty}) + sobrante (${sobrante}) = ${piezas}. pzas/pliego = ${pzasPorPliego || "—"}; ${op}`,
+    }
+  }, [isAdmin, calc, fallbackCalc, cantidad, sobranteMinimo, selectedPreset, formatoKey, pliegoW, pliegoH])
 
   const defaultDescripcion = useMemo(() => {
     const defaultTitle = t('printshopQuote.defaultTitle')
     const base = (titulo || defaultTitle).trim() || defaultTitle
+
+    const qtyShown = Math.trunc(parseFloat((String(cantidadItems || "").trim() || cantidad)) || 0)
 
     if (!isAdmin) {
       const presetLabel = selectedPreset
@@ -1418,20 +1967,23 @@ export function LitografiaQuoteDialog(props: {
           : tintas === 1
             ? t('printshopQuote.inks.single', { n: tintas })
             : t('printshopQuote.inks.plural', { n: tintas })
-      const qty = Math.trunc(parseFloat(cantidad) || 0)
       const parts = [base, presetLabel, tintasLabel]
-      if (primaryPaper) parts.push(`${t('printshopQuote.desc.paper')} ${primaryPaper.nombre}${primaryPaper.gramaje ? ` ${primaryPaper.gramaje}g` : ""}`)
-      if (selectedFinishes.length) parts.push(`${t('printshopQuote.desc.finishes')} ${selectedFinishes.map((f) => f.nombre).join(", ")}`)
-      if (selectedPlastificado) parts.push(`${t('printshopQuote.desc.lamination')} ${selectedPlastificado.nombre}`)
-      if (selectedTroquelado) parts.push(`${t('printshopQuote.desc.dieCut')} ${selectedTroquelado.nombre}`)
-      if (selectedCorte) parts.push(`${t('printshopQuote.desc.cut')} ${selectedCorte.nombre}`)
-      if (selectedSpecialFinishNames.length) parts.push(`${t('printshopQuote.desc.specialFinishes')} ${selectedSpecialFinishNames.join(", ")}`)
+      if (editorialEnabled) {
+        const opt = editorialOptions.find((o) => o.value === selectedEditorialProductoKey) || null
+        if (opt?.label) parts.push(opt.label)
+      } else {
+        if (primaryPaper) parts.push(`${t('printshopQuote.desc.paper')} ${primaryPaper.nombre}${primaryPaper.gramaje ? ` ${primaryPaper.gramaje}g` : ""}`)
+        if (selectedFinishes.length) parts.push(`${t('printshopQuote.desc.finishes')} ${selectedFinishes.map((f) => f.nombre).join(", ")}`)
+        if (selectedPlastificado) parts.push(`${t('printshopQuote.desc.lamination')} ${selectedPlastificado.nombre}`)
+        if (selectedTroquelado) parts.push(`${t('printshopQuote.desc.dieCut')} ${selectedTroquelado.nombre}`)
+        if (selectedCorte) parts.push(`${t('printshopQuote.desc.cut')} ${selectedCorte.nombre}`)
+        if (selectedSpecialFinishNames.length) parts.push(`${t('printshopQuote.desc.specialFinishes')} ${selectedSpecialFinishNames.join(", ")}`)
+      }
       if (selectedTransporteKey) {
         const opt = transporteOptions.find((o) => o.value === selectedTransporteKey)
         parts.push(`${t('printshopQuote.desc.transport')} ${opt?.label ?? ""}`.trim())
       }
-      if (qty > 0) parts.push(t('printshopQuote.desc.run', { qty }))
-      if (tarifa) parts.push(t('printshopQuote.desc.range', { min: tarifa.tirajeMin, max: tarifa.tirajeMax }))
+      if (qtyShown > 0) parts.push(t('printshopQuote.desc.run', { qty: qtyShown }))
       return parts.join(" • ")
     }
 
@@ -1440,10 +1992,10 @@ export function LitografiaQuoteDialog(props: {
     const parts = [
       `${base}`,
       t('printshopQuote.desc.colors', { n: calc.k }),
-      t('printshopQuote.desc.run', { qty: Math.round(calc.qty) }),
+      t('printshopQuote.desc.run', { qty: qtyShown > 0 ? qtyShown : Math.round(calc.qty) }),
     ]
 
-    if (calc.papelModo === "pliego") {
+    if (!editorialEnabled && calc.papelModo === "pliego") {
       const formatoLabel = selectedPreset
         ? `${selectedPreset.nombre} (${selectedPreset.widthCm}×${selectedPreset.heightCm} cm)`
         : t('printshopQuote.formatFallback')
@@ -1455,7 +2007,7 @@ export function LitografiaQuoteDialog(props: {
     }
 
     return parts.join(" • ")
-  }, [language, titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, tarifa, calc, papelTipo, primaryPaper, selectedFinishes, selectedSpecialFinishNames, selectedTransporteKey, selectedPlastificado, selectedTroquelado, selectedCorte])
+  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, cantidadItems, calc, papelTipo, primaryPaper, selectedFinishes, selectedSpecialFinishNames, selectedTransporteKey, selectedPlastificado, selectedTroquelado, selectedCorte, transporteOptions, t, editorialEnabled, editorialOptions, selectedEditorialProductoKey])
 
   const buildDescripcion = () => {
     const notas = descripcion.trim()
@@ -1489,51 +2041,57 @@ export function LitografiaQuoteDialog(props: {
   const handleAddToCotizacion = () => {
     {
       setAttemptedSubmit(true)
-      setTarifaError(null)
-      const qty = Math.trunc(parseFloat(cantidad) || 0)
-      if (qty <= 0) {
-        setTarifaError(t('printshopQuote.errors.invalidQuantity'))
+      setPricingError(null)
+      const runQty = Math.trunc(parseFloat(cantidad) || 0)
+      if (runQty <= 0) {
+        setPricingError(t('printshopQuote.errors.invalidQuantity'))
+        return
+      }
+
+      const quoteQtyRaw = String(cantidadItems || "").trim()
+      const quoteQty = quoteQtyRaw ? Math.trunc(parseFloat(quoteQtyRaw) || 0) : runQty
+      if (quoteQty <= 0) {
+        setPricingError(t('printshopQuote.errors.invalidQuantity'))
         return
       }
 
       if (validation.hasMissing) {
-        setTarifaError(t('printshopQuote.errors.completeRequired'))
+        setPricingError(t('printshopQuote.errors.completeRequired'))
         return
       }
 
-      const transporte = parseFloat(costoTransporte) || 0
-      const base = tarifa ? Number(tarifa.precioTotal) || 0 : 0
-      const computed = !tarifa ? (isAdmin ? calc : fallbackCalc) : null
+      const computed = isAdmin ? calc : fallbackCalc
 
-      if (!tarifa && !computed) {
-        setTarifaError(t('printshopQuote.errors.noRateOrEstimate'))
+      if (!computed) {
+        setPricingError(t('printshopQuote.errors.noRateOrEstimate'))
         return
       }
 
-      const addFinishesCost = tarifa ? 0 : (isAdmin && computed ? 0 : selectedFinishesCost)
-      const addSpecialFinishesCost = isAdmin && computed ? 0 : specialFinishesCost
-      const addPlastificadoCost = isAdmin && computed ? 0 : plastificadoCostTotal
-      const addTroqueladoCost = isAdmin && computed ? 0 : troqueladoCostTotal
-      const addCorteCost = isAdmin && computed ? 0 : corteCostTotal
+      const ignoreNormalExtras = editorialEnabled
+      const addFinishesCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : selectedFinishesCost)
+      const addSpecialFinishesCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : specialFinishesCost)
+      const addPlastificadoCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : plastificadoCostTotal)
+      const addTroqueladoCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : troqueladoCostTotal)
+      const addCorteCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : corteCostTotal)
 
       const meta = buildMeta()
-      const baseValue = tarifa ? base : (computed?.precioVenta ?? 0)
-      const shouldAddTransporte = Boolean(tarifa) || !computed
-      const subtotal =
+      const baseValue = computed.precioVenta ?? 0
+      const subtotalPerItem =
         (baseValue * margenMultiplier) +
-        (shouldAddTransporte ? transporte : 0) +
         addFinishesCost +
         addSpecialFinishesCost +
         addPlastificadoCost +
         addTroqueladoCost +
         addCorteCost +
         customFieldsTotal
+      const subtotal = subtotalPerItem
+      const precioUnitario = quoteQty > 0 ? subtotal / quoteQty : subtotal
       const payload: AddLitografiaItemPayload = {
         descripcion: buildDescripcion(),
-        cantidad: qty,
+        cantidad: quoteQty,
         unidad: "unidad",
-        desperdicioPct: tarifa ? 0 : (computed?.waste ?? 0),
-        precioUnitario: subtotal / qty,
+        desperdicioPct: computed.waste ?? 0,
+        precioUnitario,
         subtotal,
         meta,
       }
@@ -1564,8 +2122,18 @@ export function LitografiaQuoteDialog(props: {
           </div>
 
           <div className="flex-1 overflow-y-auto px-6 pb-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Card>
+            <Tabs
+              value={quoteMode}
+              onValueChange={(v) => setQuoteMode(v === "editorial" ? "editorial" : "normal")}
+              className="mb-4"
+            >
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="normal">Cotización personalizada</TabsTrigger>
+                <TabsTrigger value="editorial">Libros / Cartillas / Revistas</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)] gap-4">
+              <Card className={BOX_BLUR}>
                 <CardHeader>
                   <CardTitle>{t('printshopQuote.sections.parameters')}</CardTitle>
                   <CardDescription>
@@ -1574,123 +2142,782 @@ export function LitografiaQuoteDialog(props: {
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="sm:col-span-2">
-                    <Label>{t('printshopQuote.fields.nameRef')}</Label>
-                    <Input
-                      className={INPUT_COMPACT}
-                      value={titulo}
-                      onChange={(e) => setTitulo(e.target.value)}
-                      placeholder={t('printshopQuote.placeholders.nameRef')}
-                    />
-                  </div>
-
-                  {isAdmin ? (
-                    <div className="sm:col-span-2">
-                      <Label>{t('printshopQuote.fields.rateTable')}</Label>
-                      <p className="mt-1 text-xs text-muted-foreground">{t('printshopQuote.rateTable.help')}</p>
+                    <div className="mt-2">
+                      <Label>{t('printshopQuote.fields.nameRef')}</Label>
+                      <Input
+                        className={INPUT_COMPACT}
+                        value={titulo}
+                        onChange={(e) => setTitulo(e.target.value)}
+                        placeholder={t('printshopQuote.placeholders.nameRef')}
+                      />
+                      <p className={HELP_TEXT}>
+                        Identifica el ítem en la cotización.
+                      </p>
                     </div>
-                  ) : null}
+                  </div>
 
                   {
                     <>
-                      <div >
-                    <Label>{t('printshopQuote.fields.margin')} <small>{t('printshopQuote.fields.optionalPctHint')}</small></Label>
-                    <Input
-                      className={INPUT_COMPACT}
-                      type="number"
-                      min={0}
-                      max={500}
-                      step="1"
-                      value={margenPct}
-                      onChange={(e) => setMargenPct(e.target.value)}
-                      placeholder="0"
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">{t('printshopQuote.margin.help')}</p>
-                  </div>
-                      <div>
-                        <Label className={requiredLabelClass(validation.missingCantidad)}>{t('printshopQuote.fields.runQty')}</Label>
-                        <Input
-                          className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingCantidad)}`}
-                          type="number"
-                          step="1"
-                          value={cantidad}
-                          onChange={(e) => setCantidad(e.target.value)}
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2">
-                        <Label>Libros / Cartillas / Revistas</Label>
-                        <SearchableNativeSelect
-                          value={selectedEditorialProductoKey}
-                          onChange={(v) => setSelectedEditorialProductoKey(v)}
-                          disabled={editorialOptionsLoading}
-                          searchClassName={INPUT_COMPACT}
-                          selectClassName={SELECT_COMPACT}
-                          includeAllOption={{ value: "", label: "Ninguno" }}
-                          options={editorialOptions.map((o) => ({ value: o.value, label: o.label }))}
-                          searchPlaceholder="Buscar…"
-                          emptyText={editorialOptions.length ? t('common.noResults') : 'Sin dropdown editorial configurado'}
-                        />
-                        {!editorialOptions.length ? (
-                          <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                            Crea la plantilla en Configuración de Litografía → Dropdowns personalizados → “Crear plantilla Editorial”.
-                          </p>
-                        ) : null}
-                      </div>
-
-                      {selectedEditorialProductoKey ? (
-                        <>
-                          <div>
-                            <Label>Páginas totales</Label>
-                            <Input
-                              className={INPUT_COMPACT}
-                              type="number"
-                              step="1"
-                              min={1}
-                              value={editorialTotalPaginas}
-                              onChange={(e) => setEditorialTotalPaginas(e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <Label>Portada + contraportada (páginas)</Label>
-                            <Input
-                              className={INPUT_COMPACT}
-                              type="number"
-                              step="1"
-                              min={0}
-                              value={editorialPaginasPortadaContraportada}
-                              onChange={(e) => setEditorialPaginasPortadaContraportada(e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <Label>Cartas por plancha</Label>
-                            <Input
-                              className={INPUT_COMPACT}
-                              type="number"
-                              step="1"
-                              min={1}
-                              value={editorialCartasPorPlancha}
-                              onChange={(e) => setEditorialCartasPorPlancha(e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <Label>Páginas por pliego</Label>
-                            <Input
-                              className={INPUT_COMPACT}
-                              type="number"
-                              step="1"
-                              min={1}
-                              value={editorialPaginasPorPliego}
-                              onChange={(e) => setEditorialPaginasPorPliego(e.target.value)}
-                            />
-                          </div>
-                          <div className="sm:col-span-2">
-                            <p className="text-xs text-muted-foreground">
-                              Planchas: <span className="font-medium">{editorialCalc?.planchas ?? 0}</span> • Pliegos por unidad: <span className="font-medium">{editorialCalc?.pliegosPorUnidad ?? 0}</span> • Pliegos tiraje: <span className="font-medium">{editorialCalc?.pliegosBase ?? 0}</span> • Pliegos total (con desperdicio/sobrante): <span className="font-medium">{editorialCalc?.pliegosTotal ?? 0}</span>
+                      <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <Label className={requiredLabelClass(validation.missingCantidad)}>{t('printshopQuote.fields.runQty')}</Label>
+                          <Input
+                            className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingCantidad)}`}
+                            type="number"
+                            step="1"
+                            value={cantidad}
+                            onChange={(e) => setCantidad(e.target.value)}
+                          />
+                          {runQtyHelp?.line1 ? (
+                            <p className={HELP_TEXT}>
+                              {runQtyHelp.line1}
                             </p>
+                          ) : null}
+                          {runQtyHelp?.line2 ? (
+                            <p className={HELP_TEXT}>
+                              {runQtyHelp.line2}
+                            </p>
+                          ) : null}
+                          {!editorialEnabled ? (
+                            (isAdmin ? calc : fallbackCalc) && (isAdmin ? calc : fallbackCalc)!.papelModo === "pliego" ? (
+                              <p className={HELP_TEXT}>
+                                Papel requerido (pliegos) ≠ tiraje: {(isAdmin ? calc : fallbackCalc)!.pliegosNecesarios ?? "—"} pliegos ({(isAdmin ? calc : fallbackCalc)!.piezasPorPliego ?? "—"} pzas/pliego).
+                              </p>
+                            ) : (
+                              <p className={HELP_TEXT}>
+                                El papel requerido se calcula aparte según tamaño + papel (pliegos = ⌈(piezas + sobrante) / pzasPorPliego⌉).
+                              </p>
+                            )
+                          ) : (
+                            editorialCoverSheetsPreview || editorialInnerSheetsPreview ? (
+                              <>
+                                <p className={HELP_TEXT}>
+                                  Papel requerido (pliegos) no cambia el tiraje: se deduce por imposición.
+                                </p>
+                                {editorialInnerSheetsPreview ? (
+                                  <p className={HELP_TEXT}>
+                                    Internas: piezas = tiraje ({editorialInnerSheetsPreview.runQty}) × pliegos/unidad ({editorialInnerSheetsPreview.pliegosPorUnidad}) = {editorialInnerSheetsPreview.qtyForCompute}. Pliegos = ⌈(piezas + sobrante {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobranteFinal || 0))}) / {editorialInnerSheetsPreview.piezasPorPliego ?? "—"}⌉ = {editorialInnerSheetsPreview.pliegosNecesarios ?? "—"}.
+                                  </p>
+                                ) : null}
+                                {editorialCoverSheetsPreview ? (
+                                  <p className={HELP_TEXT}>
+                                    Portada: piezas = tiraje ({editorialCoverSheetsPreview.runQty}) × pliegos/unidad ({editorialCoverSheetsPreview.pliegosPorUnidad}) = {editorialCoverSheetsPreview.qtyForCompute}. Pliegos = ⌈(piezas + sobrante {Math.max(0, Math.trunc(editorialCoverSheetsPreview.sobranteFinal || 0))}) / {editorialCoverSheetsPreview.piezasPorPliego ?? "—"}⌉ = {editorialCoverSheetsPreview.pliegosNecesarios ?? "—"}.
+                                  </p>
+                                ) : null}
+                                <p className={HELP_TEXT}>
+                                  Total pliegos = portada {editorialCoverSheetsPreview?.pliegosNecesarios ?? 0} + internas {editorialInnerSheetsPreview?.pliegosNecesarios ?? 0}.
+                                </p>
+                              </>
+                            ) : null
+                          )}
+                        </div>
+
+                        <div>
+                          <Label>Cantidad a cotizar (unidades)</Label>
+                          <Input
+                            className={INPUT_COMPACT}
+                            type="number"
+                            step="1"
+                            value={cantidadItems}
+                            onChange={(e) => setCantidadItems(e.target.value)}
+                            placeholder="Opcional (ej. 1000)"
+                          />
+                          <p className={HELP_TEXT}>
+                            Opcional: define la cantidad que se mostrará en la cotización (columna Cant). Útil si el cálculo usa una cantidad distinta por imposición (ej. 500 impresiones → 1000 unidades finales).
+                          </p>
+                        </div>
+                      </div>
+
+                      {editorialMode ? (
+                        <div className="sm:col-span-2">
+                          <Label className={requiredLabelClass(validation.missingEditorialTemplate)}>Libros / Cartillas / Revistas</Label>
+                          <SearchableNativeSelect
+                            value={selectedEditorialProductoKey}
+                            onChange={(v) => setSelectedEditorialProductoKey(v)}
+                            disabled={editorialOptionsLoading}
+                            searchClassName={INPUT_COMPACT}
+                            selectClassName={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingEditorialTemplate)}`}
+                            includeAllOption={{ value: "", label: "Seleccionar…" }}
+                            options={editorialOptions.map((o) => ({ value: o.value, label: o.label }))}
+                            searchPlaceholder="Buscar…"
+                            emptyText={editorialOptions.length ? t('common.noResults') : 'Sin dropdown editorial configurado'}
+                          />
+                          {!editorialOptions.length ? (
+                            <p className={HELP_TEXT}>
+                              Crea la plantilla en Configuración de Litografía → Dropdowns personalizados → “Crear plantilla Editorial”.
+                            </p>
+                          ) : null}
+
+                          {editorialEnabled ? (
+                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="sm:col-span-2">
+                              <p className="text-xs text-muted-foreground">
+                                Estructura editorial. Abajo configuras costos por Portada e Internas.
+                              </p>
+                            </div>
+                            <div>
+                              <Label className={requiredLabelClass(validation.missingFormato)}>{t('printshopQuote.fields.printSize')} (global)</Label>
+                              <select
+                                className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
+                                value={editorialCover.formatoKey}
+                                onChange={(e) => {
+                                  const next = e.target.value
+                                  setEditorialCover((prev) => ({ ...prev, formatoKey: next }))
+                                  setEditorialInner((prev) => ({ ...prev, formatoKey: next }))
+                                }}
+                                disabled={!sizeOptions.length}
+                              >
+                                <option value="" disabled>
+                                  {sizeOptions.length ? t('printshopQuote.select.size') : t('printshopQuote.select.noSizesConfigured')}
+                                </option>
+                                {sizeOptions.map((p) => (
+                                  <option key={p.key} value={p.key}>
+                                    {p.nombre} ({p.widthCm}×{p.heightCm} cm)
+                                  </option>
+                                ))}
+                              </select>
+                              <p className={HELP_TEXT}>
+                                Determina cuántas piezas caben por pliego (imposición) y afecta los pliegos requeridos.
+                              </p>
+                            </div>
+                            <div>
+                              <Label>Páginas por pliego (según tamaño de impresión)</Label>
+                              <Input
+                                className={INPUT_COMPACT}
+                                type="number"
+                                step="1"
+                                min={1}
+                                value={editorialPaginasPorPliego}
+                                onChange={(e) => setEditorialPaginasPorPliego(e.target.value)}
+                              />
+                                <p className={HELP_TEXT}>
+                                Cuántas páginas caben en 1 pliego para ese tamaño (ej. medio pliego ≈ 2, cuarto ≈ 4).
+                              </p>
+                            </div>
+                            <div className="sm:col-span-2">
+                              <p className="text-xs text-muted-foreground">
+                                  Planchas (CMYK): portada <span className="font-medium">{(editorialSplitCalc?.coverPlanchas ?? 0) * 4}</span> • internas <span className="font-medium">{(editorialSplitCalc?.innerPlanchas ?? 0) * 4}</span> • total <span className="font-medium">{((editorialSplitCalc?.coverPlanchas ?? 0) + (editorialSplitCalc?.innerPlanchas ?? 0)) * 4}</span>
+                                {" "}• Pliegos por unidad: portada <span className="font-medium">{editorialSplitCalc?.coverPliegosPorUnidad ?? 0}</span> • internas <span className="font-medium">{editorialSplitCalc?.innerPliegosPorUnidad ?? 0}</span> • total <span className="font-medium">{(editorialSplitCalc?.coverPliegosPorUnidad ?? 0) + (editorialSplitCalc?.innerPliegosPorUnidad ?? 0)}</span>
+                              </p>
+                            </div>
+
+                            <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className={`${BOX_BLUR_MUTED} p-3`}>
+                                <p className="text-sm font-medium">Portada / Contraportada</p>
+                                  <p className={HELP_TEXT}>
+                                    {(() => {
+                                      const formato = sizeOptions.find((s) => s.key === String(editorialCover.formatoKey || "").trim())
+                                      const paper = papers.find((p) => p.id === String(editorialCover.paperId || "").trim())
+                                      const pliegos = editorialSplitCalc?.coverPliegosPorUnidad ?? 0
+                                      const caras = editorialSplitCalc?.coverPlanchas ?? 0
+                                      const formatoLabel = formato ? `${formato.nombre} (${formato.widthCm}×${formato.heightCm} cm)` : "—"
+                                      const paperLabel = paper ? `${paper.nombre}${paper.gramaje ? ` ${paper.gramaje}g` : ""}` : "—"
+                                      return `Tamaño: ${formatoLabel} • Papel: ${paperLabel} • Planchas CMYK: ${caras * 4} • Pliegos/unidad: ${pliegos}`
+                                    })()}
+                                  </p>
+                                <div className="mt-3 grid grid-cols-1 gap-3">
+                                  <div>
+                                    <Label>Portada + contraportada (páginas)</Label>
+                                    <Input
+                                      className={INPUT_COMPACT}
+                                      type="number"
+                                      step="1"
+                                      min={0}
+                                      value={editorialPaginasPortadaContraportada}
+                                      onChange={(e) => setEditorialPaginasPortadaContraportada(e.target.value)}
+                                    />
+                                    <p className={HELP_TEXT}>
+                                      Pliegos/unidad = ⌈páginas / páginasPorPliego⌉.
+                                    </p>
+                                    {editorialCoverSheetsPreview ? (
+                                      <p className={HELP_TEXT}>
+                                        Para {editorialCoverSheetsPreview.runQty} unidades: {editorialCoverSheetsPreview.qtyForCompute} piezas → {editorialCoverSheetsPreview.pliegosNecesarios ?? "—"} pliegos ({editorialCoverSheetsPreview.piezasPorPliego ?? "—"} pzas/pliego, sobrante {Math.max(0, Math.trunc(editorialCoverSheetsPreview.sobranteFinal || 0))}).
+                                      </p>
+                                    ) : null}
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label className={requiredLabelClass(validation.missingPlancha)}>{t('printshopQuote.fields.platesCost')}</Label>
+                                      <select
+                                        className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPlancha)}`}
+                                        value={editorialCover.planchaProfileId}
+                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, planchaProfileId: e.target.value }))}
+                                        disabled={!activePlanchaProfiles.length}
+                                      >
+                                        <option value="">{t('printshopQuote.select.nonePlates')}</option>
+                                        {activePlanchaProfiles.map((p) => (
+                                          <option key={p.id} value={p.id}>
+                                            {p.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <Label>Cantidad</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        min={1}
+                                        step="1"
+                                        value={editorialCover.planchaProfileQty}
+                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, planchaProfileQty: e.target.value }))}
+                                        placeholder={t('printshopQuote.placeholders.qtyShort')}
+                                      />
+                                      <p className={HELP_TEXT}>
+                                        Multiplica el costo del perfil de planchas (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.planchaProfileQty || "1")) || 0) || 1)}).
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label className={requiredLabelClass(validation.missingTinta)}>{t('printshopQuote.fields.inkCost')}</Label>
+                                      <select
+                                        className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingTinta)}`}
+                                        value={editorialCover.tintaProfileId}
+                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, tintaProfileId: e.target.value }))}
+                                        disabled={!activeTintaProfiles.length}
+                                      >
+                                        <option value="">{t('printshopQuote.select.noneInks')}</option>
+                                        {activeTintaProfiles.map((p) => (
+                                          <option key={p.id} value={p.id}>
+                                            {p.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <Label>Cantidad</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        min={1}
+                                        step="1"
+                                        value={editorialCover.tintaProfileQty}
+                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, tintaProfileQty: e.target.value }))}
+                                        placeholder={t('printshopQuote.placeholders.qtyShort')}
+                                      />
+                                      <p className={HELP_TEXT}>
+                                        Multiplica el costo del perfil de tinta (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.tintaProfileQty || "1")) || 0) || 1)}).
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <Label className={requiredLabelClass(validation.missingPaper)}>{t('printshopQuote.fields.paper')}</Label>
+                                    <select
+                                      className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPaper)}`}
+                                      value={editorialCover.paperId}
+                                      onChange={(e) => setEditorialCover((prev) => ({ ...prev, paperId: e.target.value }))}
+                                      disabled={!activePapers.length}
+                                    >
+                                      <option value="">Seleccionar…</option>
+                                      {activePapers.map((p) => (
+                                        <option key={p.id} value={p.id}>
+                                          {p.nombre}{p.gramaje ? ` ${p.gramaje}g` : ""}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <p className={HELP_TEXT}>
+                                      Define el costo de papel. Papel total ≈ pliegos/unidad × tiraje.
+                                    </p>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 gap-3">
+                                    <div>
+                                      <Label>Sobrante mínimo</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        step="1"
+                                        min={0}
+                                        value={editorialCover.sobranteMinimo}
+                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, sobranteMinimo: e.target.value }))}
+                                      />
+                                      <p className={HELP_TEXT}>
+                                        Unidades extra para cubrir desperdicio/merma.
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <Label>Acabado (opcional)</Label>
+                                    <select
+                                      className={SELECT_COMPACT}
+                                      value={editorialCover.finishId}
+                                      onChange={(e) => setEditorialCover((prev) => ({ ...prev, finishId: e.target.value }))}
+                                      disabled={!activeFinishes.length}
+                                    >
+                                      <option value="">Ninguno</option>
+                                      {activeFinishes.map((f) => (
+                                        <option key={f.id} value={f.id}>
+                                          {f.nombre}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <p className={HELP_TEXT}>
+                                      Se suma al total (valor fijo del acabado).
+                                    </p>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label>Acabado especial</Label>
+                                      <select
+                                        className={SELECT_COMPACT}
+                                        value={editorialCover.specialFinishId}
+                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, specialFinishId: e.target.value }))}
+                                        disabled={!activeSpecialFinishes.length}
+                                      >
+                                        <option value="">Ninguno</option>
+                                        {activeSpecialFinishes.map((f) => (
+                                          <option key={f.id} value={f.id}>
+                                            {f.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <p className={HELP_TEXT}>
+                                        Se suma como valor × cantidad.
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <Label>Cantidad</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        step="1"
+                                        min={1}
+                                        value={editorialCover.specialFinishQty}
+                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, specialFinishQty: e.target.value }))}
+                                      />
+                                      <p className={HELP_TEXT}>
+                                        Total = valor × cantidad (x{Math.max(0, Math.trunc(parseFloat(String(editorialCover.specialFinishQty || "0")) || 0))}).
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label>Plastificado</Label>
+                                      <select
+                                        className={SELECT_COMPACT}
+                                        value={editorialCover.plastificadoId}
+                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, plastificadoId: e.target.value }))}
+                                        disabled={!activePlastificados.length}
+                                      >
+                                        <option value="">Ninguno</option>
+                                        {activePlastificados.map((f) => (
+                                          <option key={f.id} value={f.id}>
+                                            {f.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <p className={HELP_TEXT}>
+                                        Se suma como valor × cantidad.
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <Label>Cantidad</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        step="1"
+                                        min={1}
+                                        value={editorialCover.plastificadoQty}
+                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, plastificadoQty: e.target.value }))}
+                                      />
+                                      <p className={HELP_TEXT}>
+                                        Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.plastificadoQty || "1")) || 0) || 1)}).
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label>Troquelado</Label>
+                                      <select
+                                        className={SELECT_COMPACT}
+                                        value={editorialCover.troqueladoId}
+                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, troqueladoId: e.target.value }))}
+                                        disabled={!activeTroquelados.length}
+                                      >
+                                        <option value="">Ninguno</option>
+                                        {activeTroquelados.map((f) => (
+                                          <option key={f.id} value={f.id}>
+                                            {f.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <p className={HELP_TEXT}>
+                                        Se suma como valor × cantidad.
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <Label>Cantidad</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        step="1"
+                                        min={1}
+                                        value={editorialCover.troqueladoQty}
+                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, troqueladoQty: e.target.value }))}
+                                      />
+                                      <p className={HELP_TEXT}>
+                                        Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.troqueladoQty || "1")) || 0) || 1)}).
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label>Corte</Label>
+                                      <select
+                                        className={SELECT_COMPACT}
+                                        value={editorialCover.corteId}
+                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, corteId: e.target.value }))}
+                                        disabled={!activeCortes.length}
+                                      >
+                                        <option value="">Ninguno</option>
+                                        {activeCortes.map((f) => (
+                                          <option key={f.id} value={f.id}>
+                                            {f.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <p className={HELP_TEXT}>
+                                        Se suma como valor × cantidad.
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <Label>Cantidad</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        step="1"
+                                        min={1}
+                                        value={editorialCover.corteQty}
+                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, corteQty: e.target.value }))}
+                                      />
+                                      <p className={HELP_TEXT}>
+                                        Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.corteQty || "1")) || 0) || 1)}).
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className={`${BOX_BLUR_MUTED} p-3`}>
+                                <p className="text-sm font-medium">Internas</p>
+                                <p className={HELP_TEXT}>
+                                  {(() => {
+                                    const formato = sizeOptions.find((s) => s.key === String(editorialInner.formatoKey || "").trim())
+                                    const paper = papers.find((p) => p.id === String(editorialInner.paperId || "").trim())
+                                    const pliegos = editorialSplitCalc?.innerPliegosPorUnidad ?? 0
+                                    const caras = editorialSplitCalc?.innerPlanchas ?? 0
+                                    const formatoLabel = formato ? `${formato.nombre} (${formato.widthCm}×${formato.heightCm} cm)` : "—"
+                                    const paperLabel = paper ? `${paper.nombre}${paper.gramaje ? ` ${paper.gramaje}g` : ""}` : "—"
+                                    return `Tamaño: ${formatoLabel} • Papel: ${paperLabel} • Planchas CMYK: ${caras * 4} • Pliegos/unidad: ${pliegos}`
+                                  })()}
+                                </p>
+                                <div className="mt-3 grid grid-cols-1 gap-3">
+                                  <div>
+                                    <Label>Páginas internas</Label>
+                                    <Input
+                                      className={INPUT_COMPACT}
+                                      type="number"
+                                      step="1"
+                                      min={1}
+                                      value={editorialTotalPaginas}
+                                      onChange={(e) => setEditorialTotalPaginas(e.target.value)}
+                                    />
+                                    <p className={HELP_TEXT}>
+                                      Solo internas (sin portada/contraportada). Pliegos/unidad = ⌈páginas / páginasPorPliego⌉.
+                                    </p>
+                                    {editorialInnerSheetsPreview ? (
+                                      <p className={HELP_TEXT}>
+                                        Para {editorialInnerSheetsPreview.runQty} unidades: {editorialInnerSheetsPreview.qtyForCompute} piezas → {editorialInnerSheetsPreview.pliegosNecesarios ?? "—"} pliegos ({editorialInnerSheetsPreview.piezasPorPliego ?? "—"} pzas/pliego, sobrante {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobranteFinal || 0))}).
+                                      </p>
+                                    ) : null}
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label className={requiredLabelClass(validation.missingPlancha)}>{t('printshopQuote.fields.platesCost')}</Label>
+                                      <select
+                                        className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPlancha)}`}
+                                        value={editorialInner.planchaProfileId}
+                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, planchaProfileId: e.target.value }))}
+                                        disabled={!activePlanchaProfiles.length}
+                                      >
+                                        <option value="">{t('printshopQuote.select.nonePlates')}</option>
+                                        {activePlanchaProfiles.map((p) => (
+                                          <option key={p.id} value={p.id}>
+                                            {p.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <Label>Cantidad</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        min={1}
+                                        step="1"
+                                        value={editorialInner.planchaProfileQty}
+                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, planchaProfileQty: e.target.value }))}
+                                        placeholder={t('printshopQuote.placeholders.qtyShort')}
+                                      />
+                                      <p className={HELP_TEXT}>
+                                        Multiplica el costo del perfil de planchas (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.planchaProfileQty || "1")) || 0) || 1)}).
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label className={requiredLabelClass(validation.missingTinta)}>{t('printshopQuote.fields.inkCost')}</Label>
+                                      <select
+                                        className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingTinta)}`}
+                                        value={editorialInner.tintaProfileId}
+                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, tintaProfileId: e.target.value }))}
+                                        disabled={!activeTintaProfiles.length}
+                                      >
+                                        <option value="">{t('printshopQuote.select.noneInks')}</option>
+                                        {activeTintaProfiles.map((p) => (
+                                          <option key={p.id} value={p.id}>
+                                            {p.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <Label>Cantidad</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        min={1}
+                                        step="1"
+                                        value={editorialInner.tintaProfileQty}
+                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, tintaProfileQty: e.target.value }))}
+                                        placeholder={t('printshopQuote.placeholders.qtyShort')}
+                                      />
+                                      <p className={HELP_TEXT}>
+                                        Multiplica el costo del perfil de tinta (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.tintaProfileQty || "1")) || 0) || 1)}).
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <Label className={requiredLabelClass(validation.missingPaper)}>{t('printshopQuote.fields.paper')}</Label>
+                                    <select
+                                      className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPaper)}`}
+                                      value={editorialInner.paperId}
+                                      onChange={(e) => setEditorialInner((prev) => ({ ...prev, paperId: e.target.value }))}
+                                      disabled={!activePapers.length}
+                                    >
+                                      <option value="">Seleccionar…</option>
+                                      {activePapers.map((p) => (
+                                        <option key={p.id} value={p.id}>
+                                          {p.nombre}{p.gramaje ? ` ${p.gramaje}g` : ""}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <p className={HELP_TEXT}>
+                                      Define el costo de papel. Papel total ≈ pliegos/unidad × tiraje.
+                                    </p>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 gap-3">
+                                    <div>
+                                      <Label>Sobrante mínimo</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        step="1"
+                                        min={0}
+                                        value={editorialInner.sobranteMinimo}
+                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, sobranteMinimo: e.target.value }))}
+                                      />
+                                      <p className={HELP_TEXT}>
+                                        Unidades extra para cubrir desperdicio/merma.
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <Label>Acabado (opcional)</Label>
+                                    <select
+                                      className={SELECT_COMPACT}
+                                      value={editorialInner.finishId}
+                                      onChange={(e) => setEditorialInner((prev) => ({ ...prev, finishId: e.target.value }))}
+                                      disabled={!activeFinishes.length}
+                                    >
+                                      <option value="">Ninguno</option>
+                                      {activeFinishes.map((f) => (
+                                        <option key={f.id} value={f.id}>
+                                          {f.nombre}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <p className={HELP_TEXT}>
+                                      Se suma al total (valor fijo del acabado).
+                                    </p>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label>Acabado especial</Label>
+                                      <select
+                                        className={SELECT_COMPACT}
+                                        value={editorialInner.specialFinishId}
+                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, specialFinishId: e.target.value }))}
+                                        disabled={!activeSpecialFinishes.length}
+                                      >
+                                        <option value="">Ninguno</option>
+                                        {activeSpecialFinishes.map((f) => (
+                                          <option key={f.id} value={f.id}>
+                                            {f.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <p className={HELP_TEXT}>
+                                        Se suma como valor × cantidad.
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <Label>Cantidad</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        step="1"
+                                        min={1}
+                                        value={editorialInner.specialFinishQty}
+                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, specialFinishQty: e.target.value }))}
+                                      />
+                                      <p className={HELP_TEXT}>
+                                        Total = valor × cantidad (x{Math.max(0, Math.trunc(parseFloat(String(editorialInner.specialFinishQty || "0")) || 0))}).
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label>Plastificado</Label>
+                                      <select
+                                        className={SELECT_COMPACT}
+                                        value={editorialInner.plastificadoId}
+                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, plastificadoId: e.target.value }))}
+                                        disabled={!activePlastificados.length}
+                                      >
+                                        <option value="">Ninguno</option>
+                                        {activePlastificados.map((f) => (
+                                          <option key={f.id} value={f.id}>
+                                            {f.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <p className={HELP_TEXT}>
+                                        Se suma como valor × cantidad.
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <Label>Cantidad</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        step="1"
+                                        min={1}
+                                        value={editorialInner.plastificadoQty}
+                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, plastificadoQty: e.target.value }))}
+                                      />
+                                      <p className={HELP_TEXT}>
+                                        Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.plastificadoQty || "1")) || 0) || 1)}).
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label>Troquelado</Label>
+                                      <select
+                                        className={SELECT_COMPACT}
+                                        value={editorialInner.troqueladoId}
+                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, troqueladoId: e.target.value }))}
+                                        disabled={!activeTroquelados.length}
+                                      >
+                                        <option value="">Ninguno</option>
+                                        {activeTroquelados.map((f) => (
+                                          <option key={f.id} value={f.id}>
+                                            {f.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <p className={HELP_TEXT}>
+                                        Se suma como valor × cantidad.
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <Label>Cantidad</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        step="1"
+                                        min={1}
+                                        value={editorialInner.troqueladoQty}
+                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, troqueladoQty: e.target.value }))}
+                                      />
+                                      <p className={HELP_TEXT}>
+                                        Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.troqueladoQty || "1")) || 0) || 1)}).
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                      <Label>Corte</Label>
+                                      <select
+                                        className={SELECT_COMPACT}
+                                        value={editorialInner.corteId}
+                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, corteId: e.target.value }))}
+                                        disabled={!activeCortes.length}
+                                      >
+                                        <option value="">Ninguno</option>
+                                        {activeCortes.map((f) => (
+                                          <option key={f.id} value={f.id}>
+                                            {f.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <p className={HELP_TEXT}>
+                                        Se suma como valor × cantidad.
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <Label>Cantidad</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        step="1"
+                                        min={1}
+                                        value={editorialInner.corteQty}
+                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, corteQty: e.target.value }))}
+                                      />
+                                      <p className={HELP_TEXT}>
+                                        Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.corteQty || "1")) || 0) || 1)}).
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </>
+                          ) : null}
+                        </div>
                       ) : null}
 
+                      {!editorialMode ? (
                       <div className="sm:col-span-2">
                         <Label className={requiredLabelClass(validation.missingFormato)}>{t('printshopQuote.fields.printSize')}</Label>
                         <select
@@ -1709,13 +2936,18 @@ export function LitografiaQuoteDialog(props: {
                           ))}
                         </select>
                         {!sizeOptions.length ? (
-                          <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                          <p className={HELP_TEXT}>
                             {t('printshopQuote.help.createSizes')}
                           </p>
                         ) : null}
+                        <p className={HELP_TEXT}>
+                          Define el tamaño del producto; afecta el cálculo de papel por pliego.
+                        </p>
                       </div>
+                      ) : null}
 
-                      <div>
+                      {!editorialMode ? (
+                      <div className="sm:col-span-2">
                         <Label className={requiredLabelClass(validation.missingPlancha)}>{t('printshopQuote.fields.platesCost')}</Label>
                         <div className="mt-2 space-y-2">
                           {selectedPlanchaProfileIds.map((id, idx) => (
@@ -1771,9 +3003,14 @@ export function LitografiaQuoteDialog(props: {
                             <>{t('printshopQuote.help.selectPlates')}</>
                           )}
                         </p>
+                        <p className={HELP_TEXT}>
+                          Si agregas varias filas, se suman. Cada “Cantidad” multiplica ese perfil.
+                        </p>
                       </div>
+                      ) : null}
 
-                      <div>
+                      {!editorialMode ? (
+                      <div className="sm:col-span-2">
                         <Label className={requiredLabelClass(validation.missingTinta)}>{t('printshopQuote.fields.inkCost')}</Label>
                         <div className="mt-2 space-y-2">
                           {selectedTintaProfileIds.map((id, idx) => (
@@ -1829,8 +3066,14 @@ export function LitografiaQuoteDialog(props: {
                             <>{t('printshopQuote.help.selectInks')}</>
                           )}
                         </p>
+                        <p className={HELP_TEXT}>
+                          Si agregas varias filas, se suman. Cada “Cantidad” multiplica ese perfil.
+                        </p>
                       </div>
+                      ) : null}
 
+                      {!editorialMode ? (
+                        <>
                         <div className="sm:col-span-2">
                           <Label className={requiredLabelClass(validation.missingPaper)}>{t('printshopQuote.fields.paper')}</Label>
                           <div className="mt-2 space-y-2">
@@ -1911,6 +3154,9 @@ export function LitografiaQuoteDialog(props: {
                               <>{t('printshopQuote.help.selectPaper')}</>
                             )}
                           </p>
+                          <p className={HELP_TEXT}>
+                            Fila principal: usa el tiraje. Filas adicionales: usan su propia cantidad y se suman.
+                          </p>
 
                           <div className="mt-2">
                             <Label>{t('printshopQuote.fields.minExtraUnits')}</Label>
@@ -1923,7 +3169,7 @@ export function LitografiaQuoteDialog(props: {
                               onChange={(e) => setSobranteMinimo(e.target.value)}
                               placeholder="100"
                             />
-                            <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                            <p className={HELP_TEXT}>
                               {t('printshopQuote.help.minExtraUnits')}
                             </p>
                           </div>
@@ -1971,9 +3217,12 @@ export function LitografiaQuoteDialog(props: {
                               ? <>{t('printshopQuote.selectedList', { list: selectedFinishes.map((f) => f.nombre).join(", ") })}</>
                               : <>{t('printshopQuote.examples.finish')}</>}
                           </p>
+                          <p className={HELP_TEXT}>
+                            Se suman al total. Si seleccionas varias filas, se acumulan.
+                          </p>
                         </div>
 
-                        <div>
+                        <div className="sm:col-span-2">
                           <Label>{t('printshopQuote.fields.lamination')}</Label>
                           <div className="mt-2 flex items-center gap-2">
                             <select
@@ -2000,13 +3249,20 @@ export function LitografiaQuoteDialog(props: {
                             />
                           </div>
                           {!activePlastificados.length ? (
-                            <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                            <p className={HELP_TEXT}>
                               {t('printshopQuote.help.configureLamination')}
                             </p>
                           ) : null}
+                          {selectedPlastificado ? (
+                            <p className={HELP_TEXT}>
+                              Total = {formatCurrency(plastificadoCost)} × {plastificadoQty} = {formatCurrency(plastificadoCostTotal)}.
+                            </p>
+                          ) : (
+                            <p className={HELP_TEXT}>Opcional. Si eliges uno, se multiplica por la cantidad.</p>
+                          )}
                         </div>
 
-                        <div>
+                        <div className="sm:col-span-2">
                           <Label>{t('printshopQuote.fields.dieCut')}</Label>
                           <div className="mt-2 flex items-center gap-2">
                             <select
@@ -2033,13 +3289,20 @@ export function LitografiaQuoteDialog(props: {
                             />
                           </div>
                           {!activeTroquelados.length ? (
-                            <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                            <p className={HELP_TEXT}>
                               {t('printshopQuote.help.configureDieCut')}
                             </p>
                           ) : null}
+                          {selectedTroquelado ? (
+                            <p className={HELP_TEXT}>
+                              Total = {formatCurrency(troqueladoCost)} × {troqueladoQty} = {formatCurrency(troqueladoCostTotal)}.
+                            </p>
+                          ) : (
+                            <p className={HELP_TEXT}>Opcional. Si eliges uno, se multiplica por la cantidad.</p>
+                          )}
                         </div>
 
-                        <div>
+                        <div className="sm:col-span-2">
                           <Label>{t('printshopQuote.fields.cut')}</Label>
                           <div className="mt-2 flex items-center gap-2">
                             <select
@@ -2066,14 +3329,24 @@ export function LitografiaQuoteDialog(props: {
                             />
                           </div>
                           {!activeCortes.length ? (
-                            <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                            <p className={HELP_TEXT}>
                               {t('printshopQuote.help.configureCut')}
                             </p>
                           ) : null}
+                          {selectedCorte ? (
+                            <p className={HELP_TEXT}>
+                              Total = {formatCurrency(corteCost)} × {corteQty} = {formatCurrency(corteCostTotal)}.
+                            </p>
+                          ) : (
+                            <p className={HELP_TEXT}>Opcional. Si eliges uno, se multiplica por la cantidad.</p>
+                          )}
                         </div>
 
                         <div className="sm:col-span-2">
                           <Label>{t('printshopQuote.fields.specialFinishes')}</Label>
+                          <p className={HELP_TEXT}>
+                            Cada fila: valor del acabado especial × cantidad. Se acumulan entre filas.
+                          </p>
                           <div className="mt-2 space-y-2">
                             {specialFinishRows.map((row, idx) => {
                               const finishId = String(row.finishId || "").trim()
@@ -2137,6 +3410,63 @@ export function LitografiaQuoteDialog(props: {
                             {t('printshopQuote.summary.totalSpecialFinishes', { total: formatCurrency(specialFinishesCost) })}
                           </p>
                         </div>
+                        </>
+
+                      ) : null}
+
+                      <div className="sm:col-span-2">
+                        <Label>
+                          {t('printshopQuote.fields.margin')} <small>{t('printshopQuote.fields.optionalPctHint')}</small>
+                        </Label>
+                        <Input
+                          className={INPUT_COMPACT}
+                          type="number"
+                          min={40}
+                          max={500}
+                          step="1"
+                          value={margenPct}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            if (v === "") {
+                              setMargenPct("")
+                              return
+                            }
+                            const n = parseFloat(v)
+                            if (!Number.isFinite(n)) {
+                              setMargenPct(v)
+                              return
+                            }
+
+                            // No clampa al teclear un solo dígito (para no romper 45, 400, etc.)
+                            if (String(v).trim().length >= 2 && n < 40) {
+                              setMargenPct("40")
+                              return
+                            }
+                            if (n > 500) {
+                              setMargenPct("500")
+                              return
+                            }
+                            setMargenPct(v)
+                          }}
+                          onBlur={() => {
+                            const n = parseFloat(String(margenPct))
+                            if (!Number.isFinite(n) || n < 40) {
+                              setMargenPct("40")
+                              return
+                            }
+                            if (n > 500) {
+                              setMargenPct("500")
+                              return
+                            }
+                            setMargenPct(String(Math.trunc(n)))
+                          }}
+                          placeholder="40"
+                        />
+                        <p className="mt-1 text-xs text-muted-foreground">{t('printshopQuote.margin.help')}</p>
+                        <p className={HELP_TEXT}>
+                          Precio final = precio base × (1 + %/100).
+                        </p>
+                      </div>
 
                       <div className="sm:col-span-2">
                         <Label>{t('printshopQuote.fields.transport')}</Label>
@@ -2151,7 +3481,12 @@ export function LitografiaQuoteDialog(props: {
                           searchPlaceholder={t('printshopQuote.placeholders.searchTransport')}
                           emptyText={transporteOptions.length ? t('common.noResults') : t('printshopQuote.select.noTransportConfigured')}
                         />
-                        <p className="mt-1 text-[10px] leading-tight text-muted-foreground">{t('printshopQuote.help.transportOptional')}</p>
+                        <p className={HELP_TEXT}>{t('printshopQuote.help.transportOptional')}</p>
+                        {selectedTransporte ? (
+                          <p className={HELP_TEXT}>
+                            Zona: {selectedTransporte.label} • Se suma {formatCurrency(selectedTransporte.total)} al total.
+                          </p>
+                        ) : null}
                       </div>
 
                       <div className="sm:col-span-2">
@@ -2163,11 +3498,65 @@ export function LitografiaQuoteDialog(props: {
                           placeholder={t('printshopQuote.placeholders.notes')}
                           rows={3}
                         />
+                        <p className={HELP_TEXT}>
+                          Notas internas para la descripción del ítem (no afectan costos).
+                        </p>
                       </div>
 
                       <div className="sm:col-span-2">
-                        {tarifaError ? <p className="text-sm text-red-600">{tarifaError}</p> : null}
-                        {!tarifaError && configError ? <p className="text-sm text-red-600">{configError}</p> : null}
+                        {pricingError ? <p className="text-sm text-red-600">{pricingError}</p> : null}
+                        {!pricingError && configError ? <p className="text-sm text-red-600">{configError}</p> : null}
+                      </div>
+
+                      <div className={`sm:col-span-2 ${BOX_BLUR_MUTED} p-3`}>
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium">{t('printshopQuote.customFields.title')}</p>
+                            <p className="text-xs text-muted-foreground">{t('printshopQuote.customFields.description')}</p>
+                          </div>
+                          <Button type="button" variant="outline" size="sm" onClick={addCustomField}>
+                            {t('printshopQuote.customFields.addField')}
+                          </Button>
+                        </div>
+
+                        <div className="mt-3 space-y-3">
+                          {customFields.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">{t('printshopQuote.customFields.empty')}</p>
+                          ) : (
+                            customFields.map((f) => (
+                              <div key={f.id} className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
+                                <div className="md:col-span-2">
+                                  <Label className="text-xs">{t('printshopQuote.customFields.label')}</Label>
+                                  <Input
+                                    className={INPUT_COMPACT}
+                                    value={f.label}
+                                    onChange={(e) => updateCustomField(f.id, { label: e.target.value })}
+                                    placeholder={t('printshopQuote.customFields.labelPlaceholder')}
+                                  />
+                                </div>
+                                <div className="md:col-span-2">
+                                  <Label className="text-xs">{t('printshopQuote.customFields.value')}</Label>
+                                  <Input
+                                    className={INPUT_COMPACT}
+                                    value={f.value}
+                                    onChange={(e) => updateCustomField(f.id, { value: e.target.value })}
+                                    placeholder={t('printshopQuote.customFields.valuePlaceholder')}
+                                  />
+                                </div>
+                                <div className="md:col-span-1">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="text-red-600"
+                                    onClick={() => removeCustomField(f.id)}
+                                  >
+                                    {t('common.remove')}
+                                  </Button>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       </div>
                     </>
                   }
@@ -2175,83 +3564,22 @@ export function LitografiaQuoteDialog(props: {
               </Card>
 
               <div className="space-y-4">
-                <Card>
+                <Card className={`${BOX_BLUR} lg:sticky lg:top-4 self-start`}>
                   <CardHeader>
                     <CardTitle>{t('printshopQuote.sections.result')}</CardTitle>
-                    <CardDescription>
-                      {tarifa
-                        ? t('printshopQuote.result.fromRateTable')
-                        : fallbackCalc
-                          ? t('printshopQuote.result.estimated')
-                          : isAdmin && calc
-                            ? t('printshopQuote.result.adminCalc')
-                          : t('printshopQuote.result.fromRateTable')}
+                    <CardDescription className="text-xs">
+                      {fallbackCalc
+                        ? t('printshopQuote.result.estimated')
+                        : isAdmin && calc
+                          ? t('printshopQuote.result.adminCalc')
+                          : t('printshopQuote.result.estimated')}
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-3">
+                  <CardContent className="space-y-3 text-xs">
                     <>
-                      {tarifaLoading ? <p className="text-sm text-muted-foreground">{t('printshopQuote.result.loadingRate')}</p> : null}
-                      {null}
-
-                      {tarifa ? (
+                      {fallbackCalc ? (
                         <>
-                          <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground space-y-1">
-                            <div className="flex justify-between">
-                              <span>{t('printshopQuote.result.applicableRange')}</span>
-                              <span className="font-medium">
-                                {tarifa.tirajeMin}–{tarifa.tirajeMax}
-                              </span>
-                            </div>
-                          </div>
-
-                          {(() => {
-                            const wantsFinish = finishIdsNormalized.length > 0
-                            const usedGenericFinish = wantsFinish && tarifa.finishOptionId == null
-                            const usedGenericPaper = Boolean(primaryPaperId) && tarifa.paperRateId == null
-                            if (!usedGenericFinish && !usedGenericPaper) return null
-
-                            const genericDetails = [
-                              usedGenericPaper ? t('printshopQuote.rate.generic.noSpecificPaper') : null,
-                              usedGenericFinish ? t('printshopQuote.rate.generic.noSpecificFinish') : null,
-                            ]
-                              .filter(Boolean)
-                              .join(', ')
-
-                            return (
-                              <p className="text-xs text-amber-700">
-                                {t('printshopQuote.rate.generic.notice', { details: genericDetails })}
-                              </p>
-                            )
-                          })()}
-
-                          <div className="border-t pt-3">
-                            {(() => {
-                              const base = tarifa.precioTotal || 0
-                              const transporte = parseFloat(costoTransporte) || 0
-                              const extras = customFieldsTotal
-                              const addFinishesCost = 0
-                              const total = (base * margenMultiplier) + transporte + addFinishesCost + specialFinishesCost + plastificadoCostTotal + troqueladoCostTotal + corteCostTotal + extras
-                              const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
-                              return (
-                                <>
-                                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t('printshopQuote.breakdown.baseRateTable')}</span><span className="font-medium">{formatCurrency(base)}</span></div>
-                                  <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.transport')}</span><span className="font-medium">{formatCurrency(transporte)}</span></div>
-                                  {addFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.finishes')}</span><span className="font-medium">{formatCurrency(addFinishesCost)}</span></div> : null}
-                                  {specialFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.specialFinishes')}</span><span className="font-medium">{formatCurrency(specialFinishesCost)}</span></div> : null}
-                                  {plastificadoCostTotal ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.lamination')}{plastificadoQty > 1 ? ` (x${plastificadoQty})` : ""}</span><span className="font-medium">{formatCurrency(plastificadoCostTotal)}</span></div> : null}
-                                  {troqueladoCostTotal ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.dieCut')}{troqueladoQty > 1 ? ` (x${troqueladoQty})` : ""}</span><span className="font-medium">{formatCurrency(troqueladoCostTotal)}</span></div> : null}
-                                  {corteCostTotal ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.cut')}{corteQty > 1 ? ` (x${corteQty})` : ""}</span><span className="font-medium">{formatCurrency(corteCostTotal)}</span></div> : null}
-                                  {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.extraFields')}</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
-                                  <div className="flex justify-between mt-2"><span className="font-medium">{t('printshopQuote.breakdown.total')}</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
-                                  <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.unit')}</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>
-                                </>
-                              )
-                            })()}
-                          </div>
-                        </>
-                      ) : fallbackCalc ? (
-                        <>
-                          <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground space-y-1">
+                          <div className={`${BOX_BLUR_MUTED} bg-muted/20 p-3 text-xs text-muted-foreground space-y-1`}>
                             <div className="flex justify-between">
                               <span>{t('printshopQuote.estimate.mode')}</span>
                               <span className="font-medium">{t('printshopQuote.estimate.value')}</span>
@@ -2266,26 +3594,30 @@ export function LitografiaQuoteDialog(props: {
                             {(() => {
                               const extras = customFieldsTotal
                               const baseValue = fallbackCalc.precioVenta || 0
-                              const total = (baseValue * margenMultiplier) + selectedFinishesCost + specialFinishesCost + plastificadoCostTotal + troqueladoCostTotal + corteCostTotal + extras
-                              const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
+                              const addFinishes = editorialEnabled ? 0 : selectedFinishesCost
+                              const addSpecial = editorialEnabled ? 0 : specialFinishesCost
+                              const addPlast = editorialEnabled ? 0 : plastificadoCostTotal
+                              const addTroq = editorialEnabled ? 0 : troqueladoCostTotal
+                              const addCorte = editorialEnabled ? 0 : corteCostTotal
+                              const total = (baseValue * margenMultiplier) + addFinishes + addSpecial + addPlast + addTroq + addCorte + extras
                               return (
                                 <>
                                   <div className="space-y-1">
-                                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t('printshopQuote.admin.plate')}</span><span className="font-medium">{formatCurrency(fallbackCalc.plancha)}</span></div>
-                                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t('printshopQuote.admin.ink')}</span><span className="font-medium">{formatCurrency(fallbackCalc.tinta)}</span></div>
-                                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t('printshopQuote.desc.paper')}</span><span className="font-medium">{formatCurrency(fallbackCalc.papel)}</span></div>
-                                    <div className="flex justify-between text-sm"><span className="text-muted-foreground">{t('printshopQuote.breakdown.transport')}</span><span className="font-medium">{formatCurrency(fallbackCalc.transporte)}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">{t('printshopQuote.admin.plate')}</span><span className="font-medium">{formatCurrency(fallbackCalc.plancha || 0)}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">{t('printshopQuote.admin.ink')}</span><span className="font-medium">{formatCurrency(fallbackCalc.tinta || 0)}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">{t('printshopQuote.desc.paper')}</span><span className="font-medium">{formatCurrency(fallbackCalc.papel || 0)}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">{t('printshopQuote.breakdown.transport')}</span><span className="font-medium">{formatCurrency(fallbackCalc.transporte || 0)}</span></div>
                                   </div>
 
-                                  <div className="flex justify-between text-sm mt-2"><span className="text-muted-foreground">{t('printshopQuote.breakdown.baseEstimated')}</span><span className="font-medium">{formatCurrency(baseValue)}</span></div>
-                                  {selectedFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.finishes')}</span><span className="font-medium">{formatCurrency(selectedFinishesCost)}</span></div> : null}
-                                  {specialFinishesCost ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.specialFinishes')}</span><span className="font-medium">{formatCurrency(specialFinishesCost)}</span></div> : null}
-                                  {plastificadoCostTotal ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.lamination')}{plastificadoQty > 1 ? ` (x${plastificadoQty})` : ""}</span><span className="font-medium">{formatCurrency(plastificadoCostTotal)}</span></div> : null}
-                                  {troqueladoCostTotal ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.dieCut')}{troqueladoQty > 1 ? ` (x${troqueladoQty})` : ""}</span><span className="font-medium">{formatCurrency(troqueladoCostTotal)}</span></div> : null}
-                                  {corteCostTotal ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.cut')}{corteQty > 1 ? ` (x${corteQty})` : ""}</span><span className="font-medium">{formatCurrency(corteCostTotal)}</span></div> : null}
-                                  {extras ? <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.extraFields')}</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
+                                  <div className="flex justify-between mt-2"><span className="text-muted-foreground">{t('printshopQuote.breakdown.baseEstimated')}</span><span className="font-medium">{formatCurrency(baseValue)}</span></div>
+                                  {addFinishes ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.finishes')}</span><span className="font-medium">{formatCurrency(addFinishes)}</span></div> : null}
+                                  {addSpecial ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.specialFinishes')}</span><span className="font-medium">{formatCurrency(addSpecial)}</span></div> : null}
+                                  {addPlast ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.lamination')}{plastificadoQty > 1 ? ` (x${plastificadoQty})` : ""}</span><span className="font-medium">{formatCurrency(addPlast)}</span></div> : null}
+                                  {addTroq ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.dieCut')}{troqueladoQty > 1 ? ` (x${troqueladoQty})` : ""}</span><span className="font-medium">{formatCurrency(addTroq)}</span></div> : null}
+                                  {addCorte ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.cut')}{corteQty > 1 ? ` (x${corteQty})` : ""}</span><span className="font-medium">{formatCurrency(addCorte)}</span></div> : null}
+                                  {extras ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.extraFields')}</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
                                   <div className="flex justify-between mt-2"><span className="font-medium">{t('printshopQuote.breakdown.total')}</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
-                                  <div className="flex justify-between text-sm mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.unit')}</span><span className="font-medium">{formatCurrency(total / qty)}</span></div>
+                                  <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.unit')}</span><span className="font-medium">{formatCurrency(total)}</span></div>
                                 </>
                               )
                             })()}
@@ -2293,8 +3625,9 @@ export function LitografiaQuoteDialog(props: {
                         </>
                       ) : isAdmin && calc ? (
                         <>
+                          <>
                           {calc.papelModo === "pliego" ? (
-                            <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground space-y-1">
+                            <div className={`${BOX_BLUR_MUTED} bg-muted/20 p-3 text-xs text-muted-foreground space-y-1`}>
                               <div className="flex justify-between">
                                 <span>{t('printshopQuote.admin.wasteRun')}</span>
                                 <span className="font-medium">{Math.ceil(calc.qtyConDesperdicio)}</span>
@@ -2310,37 +3643,37 @@ export function LitografiaQuoteDialog(props: {
                             </div>
                           ) : null}
 
-                          <div className="flex justify-between text-sm">
+                          <div className="flex justify-between">
                             <span className="text-muted-foreground">{t('printshopQuote.admin.plate')}</span>
-                            <span className="font-medium">{formatCurrency(calc.plancha)}</span>
+                            <span className="font-medium">{formatCurrency(calc.plancha || 0)}</span>
                           </div>
-                          <div className="flex justify-between text-sm">
+                          <div className="flex justify-between">
                             <span className="text-muted-foreground">{t('printshopQuote.admin.ink')}</span>
-                            <span className="font-medium">{formatCurrency(calc.tinta)}</span>
+                            <span className="font-medium">{formatCurrency(calc.tinta || 0)}</span>
                           </div>
-                          <div className="flex justify-between text-sm">
+                          <div className="flex justify-between">
                             <span className="text-muted-foreground">{t('printshopQuote.desc.paper')}</span>
-                            <span className="font-medium">{formatCurrency(calc.papel)}</span>
+                            <span className="font-medium">{formatCurrency(calc.papel || 0)}</span>
                           </div>
-                          <div className="flex justify-between text-sm">
+                          <div className="flex justify-between">
                             <span className="text-muted-foreground">{t('printshopQuote.desc.cut')}</span>
-                            <span className="font-medium">{formatCurrency(calc.corte)}</span>
+                            <span className="font-medium">{formatCurrency(calc.corte || 0)}</span>
                           </div>
-                          <div className="flex justify-between text-sm">
+                          <div className="flex justify-between">
                             <span className="text-muted-foreground">{t('printshopQuote.desc.finishes')}</span>
-                            <span className="font-medium">{formatCurrency(calc.acabados)}</span>
+                            <span className="font-medium">{formatCurrency(calc.acabados || 0)}</span>
                           </div>
-                          <div className="flex justify-between text-sm">
+                          <div className="flex justify-between">
                             <span className="text-muted-foreground">{t('printshopQuote.desc.transport')}</span>
-                            <span className="font-medium">{formatCurrency(calc.transporte)}</span>
+                            <span className="font-medium">{formatCurrency(calc.transporte || 0)}</span>
                           </div>
 
                           <div className="border-t pt-3">
                             <div className="flex justify-between">
                               <span className="font-medium">{t('printshopQuote.admin.productionCost')}</span>
-                              <span className="font-bold">{formatCurrency(calc.costoProduccion)}</span>
+                              <span className="font-bold">{formatCurrency(calc.costoProduccion || 0)}</span>
                             </div>
-                            <div className="flex justify-between text-sm mt-1">
+                            <div className="flex justify-between mt-1">
                               <span className="text-muted-foreground">{t('printshopQuote.admin.unitCost')}</span>
                               <span className="font-medium">{formatCurrency(calc.costoUnitario)}</span>
                             </div>
@@ -2350,83 +3683,31 @@ export function LitografiaQuoteDialog(props: {
                             {(() => {
                               const baseValue = calc.precioVenta || 0
                               const total = (baseValue * margenMultiplier) + customFieldsTotal
-                              const qty = Math.max(1, Math.trunc(parseFloat(cantidad) || 1))
                               return (
                                 <>
                                   <div className="flex justify-between">
                                     <span className="font-medium">{t('printshopQuote.admin.salePrice')}</span>
                                     <span className="font-bold text-blue-700">{formatCurrency(total)}</span>
                                   </div>
-                                  <div className="flex justify-between text-sm mt-1">
+                                  <div className="flex justify-between mt-1">
                                     <span className="text-muted-foreground">{t('printshopQuote.admin.saleUnitPrice')}</span>
-                                    <span className="font-medium">{formatCurrency(total / qty)}</span>
+                                    <span className="font-medium">{formatCurrency(total)}</span>
                                   </div>
                                 </>
                               )
                             })()}
                           </div>
+                          </>
                         </>
                       ) : null}
-                    </>
-                  </CardContent>
-                </Card>
 
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle>{t('printshopQuote.customFields.title')}</CardTitle>
-                        <CardDescription>{t('printshopQuote.customFields.description')}</CardDescription>
+                      <div className="border-t pt-3">
+                        <Label className="text-xs">{t('printshopQuote.customFields.preview')}</Label>
+                        <pre className={`mt-1 whitespace-pre-wrap ${BOX_BLUR_MUTED} bg-muted/30 p-3 text-xs leading-relaxed`}>
+                          {buildDescripcion()}
+                        </pre>
                       </div>
-                      <Button type="button" variant="outline" size="sm" onClick={addCustomField}>
-                        {t('printshopQuote.customFields.addField')}
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {customFields.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">{t('printshopQuote.customFields.empty')}</p>
-                    ) : (
-                      customFields.map((f) => (
-                        <div key={f.id} className="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
-                          <div className="md:col-span-2">
-                            <Label className="text-xs">{t('printshopQuote.customFields.label')}</Label>
-                            <Input
-                              className={INPUT_COMPACT}
-                              value={f.label}
-                              onChange={(e) => updateCustomField(f.id, { label: e.target.value })}
-                              placeholder={t('printshopQuote.customFields.labelPlaceholder')}
-                            />
-                          </div>
-                          <div className="md:col-span-2">
-                            <Label className="text-xs">{t('printshopQuote.customFields.value')}</Label>
-                            <Input
-                              className={INPUT_COMPACT}
-                              value={f.value}
-                              onChange={(e) => updateCustomField(f.id, { value: e.target.value })}
-                              placeholder={t('printshopQuote.customFields.valuePlaceholder')}
-                            />
-                          </div>
-                          <div className="md:col-span-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              className="text-red-600"
-                              onClick={() => removeCustomField(f.id)}
-                            >
-                              {t('common.remove')}
-                            </Button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-
-                    <div className="pt-2">
-                      <Label className="text-xs">{t('printshopQuote.customFields.preview')}</Label>
-                      <pre className="mt-1 whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-xs leading-relaxed">
-                        {buildDescripcion()}
-                      </pre>
-                    </div>
+                    </>
                   </CardContent>
                 </Card>
               </div>

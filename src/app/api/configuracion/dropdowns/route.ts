@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireApiAccess, type ApiAccessOk } from '@/lib/api-rbac'
 import { ModuleKey, Prisma } from '@prisma/client'
 
 export const runtime = 'nodejs'
@@ -75,17 +75,45 @@ async function getEmpresaIdFromSedeId(sedeId: string): Promise<string | null> {
 }
 
 export async function GET(request: NextRequest) {
-  const access = await requireApiAccess(ModuleKey.CONFIG, 'READ')
-  if (!access.ok) return access.response
+  const configAccess = await requireApiAccess(ModuleKey.CONFIG, 'READ')
+
+  // El cotizador necesita leer algunos dropdowns (p.ej. Transporte Litografía),
+  // incluso si el usuario no tiene acceso al módulo CONFIG.
+  let access: ApiAccessOk
+  let accessMode: 'config' | 'cotizador'
+
+  if (configAccess.ok) {
+    access = configAccess
+    accessMode = 'config'
+  } else {
+    const cotizadorAccess = await requireApiAccess(ModuleKey.COTIZADOR, 'READ')
+    if (!cotizadorAccess.ok) return configAccess.response
+    access = cotizadorAccess
+    accessMode = 'cotizador'
+  }
 
   const empresaId = await getEmpresaIdFromSedeId(access.sedeId)
   if (!empresaId) return NextResponse.json({ ok: false, error: 'Empresa no encontrada' }, { status: 404 })
 
   const includeItems = request.nextUrl.searchParams.get('includeItems') === '1'
 
+  // Si el acceso viene desde el módulo COTIZADOR, limitamos a los dropdowns requeridos por el cotizador.
+  const allowKeysForCotizador = new Set<string>([
+    'litografia_transporte',
+    'litografia_tiraje_tiers',
+    'litografia_editorial_producto',
+  ])
+
   try {
     const dropdowns = await prismaCompat.configDropdown.findMany({
-      where: { empresaId },
+      where: {
+        empresaId,
+        ...(accessMode === 'config'
+          ? {}
+          : {
+              key: { in: Array.from(allowKeysForCotizador) },
+            }),
+      },
       orderBy: [{ nombre: 'asc' }],
       select: {
         id: true,

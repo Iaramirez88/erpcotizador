@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { 
   FileText, 
   Download, 
@@ -19,7 +20,8 @@ import {
   Clock,
   XCircle,
   ClipboardCheck,
-  Eye
+  Eye,
+  History
 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -52,6 +54,10 @@ interface Cotizacion {
   iva: number;
   total: number;
   validezDias: number;
+  postApprovalEditCount?: number;
+  ventaRealizadaAt?: string | null;
+  ganancia?: number | null;
+  margenPct?: number | null;
   emailSentCount: number;
   whatsappSentCount: number;
   lastEmailSentAt?: string | null;
@@ -73,6 +79,25 @@ interface Cotizacion {
     } | null;
   }[];
 }
+
+type AuditEvent = {
+  id: string;
+  action:
+    | 'CREATED'
+    | 'UPDATED'
+    | 'APPROVED'
+    | 'SENT'
+    | 'SALE_REALIZED_SET'
+    | 'SALE_REALIZED_UNSET';
+  effect: 'NONE' | 'DEBIT' | 'CREDIT';
+  note: string | null;
+  autoSummary?: string[];
+  before?: unknown;
+  after?: unknown;
+  createdAt: string;
+  performedBy: { id: string; name: string | null; email: string } | null;
+  requestedBy: { id: string; name: string | null; email: string } | null;
+};
 
 export default function CotizacionesPage() {
   const { t, language } = useI18n();
@@ -105,22 +130,19 @@ export default function CotizacionesPage() {
 
   // Estado para el preview
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [traceOpen, setTraceOpen] = useState(false);
+  const [traceTarget, setTraceTarget] = useState<{ id: string; numero: string } | null>(null);
   const [previewNumero, setPreviewNumero] = useState<string | null>(null);
   const [previewCotizacion, setPreviewCotizacion] = useState<
     (CotizacionPdfData & { id: string; estado?: string }) | null
   >(null);
   const [previewTemplate, setPreviewTemplate] = useState<CotizacionTemplateSettings | null>(null);
-  const [auditEvents, setAuditEvents] = useState<
-    Array<{
-      id: string;
-      action: 'CREATED' | 'UPDATED' | 'APPROVED';
-      effect: 'NONE' | 'DEBIT' | 'CREDIT';
-      note: string | null;
-      createdAt: string;
-      performedBy: { id: string; name: string | null; email: string } | null;
-      requestedBy: { id: string; name: string | null; email: string } | null;
-    }>
-  >([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+
+  const [diffOpen, setDiffOpen] = useState(false);
+  const [diffEvent, setDiffEvent] = useState<AuditEvent | null>(null);
+
+  const [ventaRealizadaBusy, setVentaRealizadaBusy] = useState(false);
 
   useEffect(() => {
     cargarCotizaciones({ page: 1 });
@@ -161,23 +183,52 @@ export default function CotizacionesPage() {
         params.append('pageSize', 'all');
       }
 
-      const res = await fetch(`/api/cotizaciones?${params}`);
-      const response = await res.json();
+      const res = await fetch(`/api/cotizaciones?${params.toString()}`);
+      const contentType = res.headers.get('content-type') ?? '';
+      const rawText = await res.text().catch(() => '');
+      const response: unknown = (() => {
+        if (!rawText) return {};
+        try {
+          return JSON.parse(rawText) as unknown;
+        } catch {
+          return {};
+        }
+      })();
       
       // El API retorna { success, data }
-      if (response.success && Array.isArray(response.data)) {
-        setCotizaciones(response.data);
-        const meta = response.meta as
+      if (
+        res.ok &&
+        response &&
+        typeof response === 'object' &&
+        'success' in response &&
+        (response as any).success === true &&
+        'data' in response &&
+        Array.isArray((response as any).data)
+      ) {
+        const okResponse = response as any;
+        setCotizaciones(okResponse.data);
+        const meta = okResponse.meta as
           | { page?: number; pageSize?: number | 'all'; total?: number; totalPages?: number }
           | undefined;
         const nextTotalPages = typeof meta?.totalPages === 'number' && meta.totalPages > 0 ? meta.totalPages : 1;
-        const nextTotal = typeof meta?.total === 'number' && meta.total >= 0 ? meta.total : response.data.length;
+        const nextTotal = typeof meta?.total === 'number' && meta.total >= 0 ? meta.total : okResponse.data.length;
 
         setTotalPages(effectivePageSize === 'all' ? 1 : nextTotalPages);
         setTotal(nextTotal);
         setPage(effectivePageSize === 'all' ? 1 : pageToLoad);
       } else {
-        console.error('La respuesta no tiene el formato esperado:', response);
+        const apiError =
+          response && typeof response === 'object' && 'error' in response && typeof (response as any).error === 'string'
+            ? (response as any).error
+            : null;
+        console.error('La respuesta no tiene el formato esperado:', {
+          status: res.status,
+          ok: res.ok,
+          contentType,
+          rawStart: rawText ? rawText.slice(0, 220) : null,
+          error: apiError,
+          response,
+        });
         setCotizaciones([]);
         setTotalPages(1);
         setTotal(0);
@@ -315,6 +366,34 @@ export default function CotizacionesPage() {
     }
   };
 
+  const cargarAuditoria = async (cotizacionId: string) => {
+    try {
+      const auditRes = await fetch(`/api/cotizaciones/${cotizacionId}/audit`, { cache: 'no-store' });
+      if (!auditRes.ok) {
+        setAuditEvents([]);
+        return;
+      }
+
+      const auditJson = await auditRes.json().catch(() => null);
+      const events = auditJson?.success ? auditJson?.data?.events : null;
+      setAuditEvents(Array.isArray(events) ? (events as AuditEvent[]) : []);
+    } catch {
+      setAuditEvents([]);
+    }
+  };
+
+  const abrirTrazabilidad = async (cotizacion: Cotizacion) => {
+    try {
+      setTraceTarget({ id: cotizacion.id, numero: cotizacion.numero });
+      setAuditEvents([]);
+      setTraceOpen(true);
+      await cargarAuditoria(cotizacion.id);
+    } catch {
+      setAuditEvents([]);
+      setTraceOpen(true);
+    }
+  };
+
   const abrirPreview = async (cotizacion: Cotizacion) => {
     try {
       setPreviewNumero(cotizacion.numero);
@@ -329,14 +408,7 @@ export default function CotizacionesPage() {
       if (!data?.success || !data?.data) throw new Error(data?.error ?? t('quotes.errors.loadQuote'));
       setPreviewCotizacion(data.data as CotizacionPdfData & { id: string; estado?: string });
 
-      const auditRes = await fetch(`/api/cotizaciones/${cotizacion.id}/audit`, { cache: 'no-store' });
-      if (auditRes.ok) {
-        const auditJson = await auditRes.json().catch(() => null);
-        const events = auditJson?.success ? auditJson?.data?.events : null;
-        setAuditEvents(Array.isArray(events) ? events : []);
-      } else {
-        setAuditEvents([]);
-      }
+      await cargarAuditoria(cotizacion.id);
 
       const templateRes = await fetch('/api/cotizacion-template', { cache: 'no-store' });
       if (templateRes.ok) {
@@ -356,6 +428,34 @@ export default function CotizacionesPage() {
       setPreviewNumero(null);
       setPreviewOpen(false);
       setAuditEvents([]);
+    }
+  };
+
+  const setVentaRealizada = async (nextValue: boolean) => {
+    if (!previewCotizacion?.id) return;
+    setVentaRealizadaBusy(true);
+    try {
+      const res = await fetch(`/api/cotizaciones/${previewCotizacion.id}/venta-realizada`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: nextValue }),
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        alert(t('common.errorWithDetails', { details: json?.error ?? 'No se pudo actualizar' }));
+        return;
+      }
+
+      const ventaRealizadaAt = (json?.data as { ventaRealizadaAt?: string | null } | null)?.ventaRealizadaAt ?? null;
+      setPreviewCotizacion((prev) => (prev ? ({ ...prev, ventaRealizadaAt } as typeof prev) : prev));
+      await cargarAuditoria(previewCotizacion.id);
+      cargarCotizaciones();
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error al actualizar venta realizada');
+    } finally {
+      setVentaRealizadaBusy(false);
     }
   };
 
@@ -460,6 +560,73 @@ export default function CotizacionesPage() {
       day: 'numeric',
     });
   };
+
+  const parseLitografiaMetaFromObservaciones = (
+    raw: unknown
+  ): { costoProduccion: number; precioVenta: number } | null => {
+    if (typeof raw !== 'string') return null;
+    const idx = raw.indexOf('LITOGRAFIA_META:');
+    if (idx < 0) return null;
+    const json = raw.slice(idx + 'LITOGRAFIA_META:'.length).trim();
+    if (!json) return null;
+    try {
+      const parsed = JSON.parse(json) as unknown;
+      if (!parsed || typeof parsed !== 'object') return null;
+      const rec = parsed as Record<string, unknown>;
+      if (rec.version !== 1) return null;
+      const costoProduccion =
+        typeof rec.costoProduccion === 'number' ? rec.costoProduccion : Number(rec.costoProduccion);
+      const precioVenta =
+        typeof rec.precioVenta === 'number' ? rec.precioVenta : Number(rec.precioVenta);
+      if (!Number.isFinite(costoProduccion) || !Number.isFinite(precioVenta)) return null;
+      return { costoProduccion, precioVenta };
+    } catch {
+      return null;
+    }
+  };
+
+  const computeGananciaFromItems = (itemsRaw: unknown): { ganancia: number | null; margenPct: number | null } => {
+    const items = Array.isArray(itemsRaw) ? (itemsRaw as Array<Record<string, unknown>>) : [];
+    if (!items.length) return { ganancia: null, margenPct: null };
+
+    let venta = 0;
+    let costo = 0;
+
+    for (const it of items) {
+      const meta = parseLitografiaMetaFromObservaciones(it.observaciones);
+      if (meta) {
+        venta += meta.precioVenta;
+        costo += meta.costoProduccion;
+        continue;
+      }
+
+      const subtotal = typeof it.subtotal === 'number' ? it.subtotal : Number(it.subtotal);
+      venta += Number.isFinite(subtotal) ? subtotal : 0;
+
+      const qty = typeof it.cantidad === 'number' ? it.cantidad : Number(it.cantidad);
+      const q = Number.isFinite(qty) ? qty : 0;
+
+      const cm = typeof it.costoMaterial === 'number' ? it.costoMaterial : Number(it.costoMaterial);
+      const ci = typeof it.costoImpresion === 'number' ? it.costoImpresion : Number(it.costoImpresion);
+      const ca = typeof it.costoAcabados === 'number' ? it.costoAcabados : Number(it.costoAcabados);
+      const cins = typeof it.costoInstalacion === 'number' ? it.costoInstalacion : Number(it.costoInstalacion);
+
+      costo += (Number.isFinite(cm) ? cm : 0) * q;
+      costo += (Number.isFinite(ci) ? ci : 0) * q;
+      costo += Number.isFinite(ca) ? ca : 0;
+      costo += Number.isFinite(cins) ? cins : 0;
+    }
+
+    if (venta <= 0) return { ganancia: null, margenPct: null };
+    const ganancia = venta - costo;
+    const margenPct = (ganancia / venta) * 100;
+    return { ganancia, margenPct };
+  };
+
+  const previewGanancia = useMemo(() => {
+    const items = (previewCotizacion as unknown as { items?: unknown } | null)?.items;
+    return computeGananciaFromItems(items);
+  }, [previewCotizacion]);
 
   const buildWhatsAppMessage = (cotizacion: Cotizacion, pdfUrl: string) => {
     const createdAt = new Date(cotizacion.createdAt);
@@ -669,6 +836,11 @@ export default function CotizacionesPage() {
                         {getEstadoIcon(cot.estado)}
                         {getEstadoLabel(cot.estado)}
                       </span>
+                      {cot.ventaRealizadaAt ? (
+                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          Venta realizada
+                        </span>
+                      ) : null}
                     </div>
                     
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm text-muted-foreground mb-2">
@@ -683,12 +855,25 @@ export default function CotizacionesPage() {
                       <div>
                         <span className="font-medium">{t('quotes.fields.items')}</span>
                         <p className="text-gray-900">{cot.items.length}</p>
+                        {(cot.postApprovalEditCount ?? 0) > 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            Post-aprob.: {cot.postApprovalEditCount}
+                          </p>
+                        ) : null}
                       </div>
                       <div>
                         <span className="font-medium">{t('quotes.fields.total')}</span>
                         <p className="text-gray-900 text-lg font-semibold">
                           {formatCurrency(cot.total)}
                         </p>
+                        {typeof cot.ganancia === 'number' && Number.isFinite(cot.ganancia) ? (
+                          <p className="text-xs text-muted-foreground">
+                            Ganancia: {formatCurrency(cot.ganancia)}
+                            {typeof cot.margenPct === 'number' && Number.isFinite(cot.margenPct)
+                              ? ` (${cot.margenPct.toFixed(1)}%)`
+                              : ''}
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -703,6 +888,16 @@ export default function CotizacionesPage() {
                       title={t('quotes.actions.preview')}
                     >
                       <Eye className="w-4 h-4" />
+                    </Button>
+
+                    {/* Trazabilidad */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void abrirTrazabilidad(cot)}
+                      title="Trazabilidad"
+                    >
+                      <History className="w-4 h-4" />
                     </Button>
 
                     {/* Editar (permitido también en aprobadas; se bloquea si ya tiene orden) */}
@@ -889,6 +1084,7 @@ export default function CotizacionesPage() {
           setPreviewCotizacion(null);
           setPreviewTemplate(null);
           setAuditEvents([]);
+          setTraceOpen(false);
         }}
       >
         <DialogContent className="max-w-4xl max-h-[90vh]">
@@ -918,9 +1114,47 @@ export default function CotizacionesPage() {
           {previewCotizacion?.id ? (
             <div className="mt-3 space-y-2 rounded border p-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="font-medium">Trazabilidad</div>
-                <div className="text-muted-foreground">
-                  Ediciones: {auditEvents.filter((e) => e.action === 'UPDATED').length}
+                <div className="flex items-center gap-2">
+                  <div className="font-medium">Trazabilidad</div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setTraceOpen(true)}
+                    disabled={!auditEvents.length}
+                  >
+                    Ver trazabilidad
+                  </Button>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-muted-foreground">
+                  <div>
+                    Total: <span className="text-foreground font-medium">{formatCurrency(previewCotizacion.total)}</span>
+                    {typeof previewGanancia.ganancia === 'number' && Number.isFinite(previewGanancia.ganancia) ? (
+                      <>
+                        {' '}• Ganancia:{' '}
+                        <span className="text-foreground font-medium">{formatCurrency(previewGanancia.ganancia)}</span>
+                        {typeof previewGanancia.margenPct === 'number' && Number.isFinite(previewGanancia.margenPct)
+                          ? ` (${previewGanancia.margenPct.toFixed(1)}%)`
+                          : ''}
+                      </>
+                    ) : null}
+                  </div>
+
+                  <div>
+                    Ediciones: {auditEvents.filter((e) => e.action === 'UPDATED').length}
+                    {typeof (previewCotizacion as unknown as { postApprovalEditCount?: unknown }).postApprovalEditCount === 'number'
+                      ? ` • Post-aprob.: ${(previewCotizacion as unknown as { postApprovalEditCount: number }).postApprovalEditCount}`
+                      : ''}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span>Venta realizada</span>
+                    <Switch
+                      checked={Boolean((previewCotizacion as unknown as { ventaRealizadaAt?: unknown }).ventaRealizadaAt)}
+                      onCheckedChange={(checked) => setVentaRealizada(checked)}
+                      disabled={ventaRealizadaBusy || String((previewCotizacion as unknown as { estado?: unknown }).estado) !== 'APROBADA'}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -942,21 +1176,53 @@ export default function CotizacionesPage() {
                             ? ' (Nota crédito)'
                             : '';
 
+                      const channel = (e.after && typeof e.after === 'object')
+                        ? String((e.after as Record<string, unknown>).channel || '')
+                        : '';
+
                       const actionLabel =
                         e.action === 'CREATED'
                           ? 'Creada'
                           : e.action === 'APPROVED'
                             ? 'Aprobada'
-                            : `Editada${effectLabel}`;
+                            : e.action === 'SENT'
+                              ? (channel ? `Enviada (${channel})` : 'Enviada')
+                              : e.action === 'SALE_REALIZED_SET'
+                                ? 'Venta realizada (marcada)'
+                                : e.action === 'SALE_REALIZED_UNSET'
+                                  ? 'Venta realizada (desmarcada)'
+                                  : `Editada${effectLabel}`;
+
+                      const canDiff = e.action === 'UPDATED' && Boolean(e.before) && Boolean(e.after);
 
                       return (
                         <div key={e.id} className="flex flex-col gap-0.5 rounded px-2 py-1 hover:bg-muted/50">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="font-medium">{actionLabel}</div>
-                            <div className="text-muted-foreground">{fecha}</div>
+                            <div className="flex items-center gap-2">
+                              {canDiff ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setDiffEvent(e);
+                                    setDiffOpen(true);
+                                  }}
+                                >
+                                  Ver cambios
+                                </Button>
+                              ) : null}
+                              <div className="text-muted-foreground">{fecha}</div>
+                            </div>
                           </div>
                           <div className="text-muted-foreground">{who}</div>
-                          {e.note ? <div className="text-muted-foreground">{e.note}</div> : null}
+                          {Array.isArray(e.autoSummary) && e.autoSummary.length ? (
+                            <div className="text-muted-foreground">
+                              {e.autoSummary.slice(0, 2).map((line, idx) => (
+                                <div key={idx}>{line}</div>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       );
                     })}
@@ -967,6 +1233,240 @@ export default function CotizacionesPage() {
               )}
             </div>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog para trazabilidad (automática) */}
+      <Dialog
+        open={traceOpen}
+        onOpenChange={(open) => {
+          setTraceOpen(open);
+          if (!open) {
+            setTraceTarget(null);
+            setAuditEvents([]);
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Trazabilidad de cambios{traceTarget?.numero ? ` (${traceTarget.numero})` : ''}
+            </DialogTitle>
+          </DialogHeader>
+
+          {auditEvents.length ? (
+            <div className="space-y-2 text-sm">
+              {auditEvents.map((e) => {
+                const fecha = new Date(e.createdAt).toLocaleString(locale);
+                const performed = e.performedBy?.name || e.performedBy?.email || '-';
+                const requested = e.requestedBy?.name || e.requestedBy?.email || null;
+                const who = requested && requested !== performed
+                  ? `Solicitó: ${requested} • Ejecutó: ${performed}`
+                  : `Por: ${performed}`;
+
+                const effectLabel =
+                  e.effect === 'DEBIT'
+                    ? ' (Nota débito)'
+                    : e.effect === 'CREDIT'
+                      ? ' (Nota crédito)'
+                      : '';
+
+                const channel = (e.after && typeof e.after === 'object')
+                  ? String((e.after as Record<string, unknown>).channel || '')
+                  : '';
+
+                const actionLabel =
+                  e.action === 'CREATED'
+                    ? 'Creada'
+                    : e.action === 'APPROVED'
+                      ? 'Aprobada'
+                      : e.action === 'SENT'
+                        ? (channel ? `Enviada (${channel})` : 'Enviada')
+                        : e.action === 'SALE_REALIZED_SET'
+                          ? 'Venta realizada (marcada)'
+                          : e.action === 'SALE_REALIZED_UNSET'
+                            ? 'Venta realizada (desmarcada)'
+                            : `Editada${effectLabel}`;
+
+                return (
+                  <div key={e.id} className="rounded border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-medium">{actionLabel}</div>
+                      <div className="text-muted-foreground">{fecha}</div>
+                    </div>
+                    <div className="text-muted-foreground">{who}</div>
+
+                    {Array.isArray(e.autoSummary) && e.autoSummary.length ? (
+                      <div className="mt-2 space-y-1">
+                        {e.autoSummary.map((line, idx) => (
+                          <div key={idx}>{line}</div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-muted-foreground">Sin detalle automático</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-muted-foreground text-sm">Sin registros</div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog para ver cambios (diff) */}
+      <Dialog
+        open={diffOpen}
+        onOpenChange={(open) => {
+          setDiffOpen(open);
+          if (open) return;
+          setDiffEvent(null);
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Ver cambios</DialogTitle>
+          </DialogHeader>
+
+          {diffEvent ? (
+            (() => {
+              const before = diffEvent.before && typeof diffEvent.before === 'object'
+                ? (diffEvent.before as Record<string, unknown>)
+                : {};
+              const after = diffEvent.after && typeof diffEvent.after === 'object'
+                ? (diffEvent.after as Record<string, unknown>)
+                : {};
+
+              const beforeItemsRaw = Array.isArray(before.items) ? (before.items as unknown[]) : [];
+              const afterItemsRaw = Array.isArray(after.items) ? (after.items as unknown[]) : [];
+
+              const norm = (x: unknown) => {
+                const it = x && typeof x === 'object' ? (x as Record<string, unknown>) : {};
+                return {
+                  materialId: typeof it.materialId === 'string' ? it.materialId : null,
+                  descripcion: String(it.descripcion || '').trim(),
+                  unidad: String(it.unidad || '').trim(),
+                  cantidad: Number(it.cantidad) || 0,
+                  precioUnitario: Number(it.precioUnitario) || 0,
+                  subtotal: Number(it.subtotal) || 0,
+                };
+              };
+
+              const beforeItems = beforeItemsRaw.map(norm);
+              const afterItems = afterItemsRaw.map(norm);
+
+              const keyOf = (it: ReturnType<typeof norm>) =>
+                `${it.materialId ?? ''}::${it.descripcion}::${it.unidad}`;
+
+              const group = (items: Array<ReturnType<typeof norm>>) => {
+                const map = new Map<string, Array<ReturnType<typeof norm>>>();
+                for (const it of items) {
+                  const k = keyOf(it);
+                  const arr = map.get(k);
+                  if (arr) arr.push(it);
+                  else map.set(k, [it]);
+                }
+                return map;
+              };
+
+              const bMap = group(beforeItems);
+              const aMap = group(afterItems);
+              const allKeys = new Set<string>([...Array.from(bMap.keys()), ...Array.from(aMap.keys())]);
+
+              const added: Array<ReturnType<typeof norm>> = [];
+              const removed: Array<ReturnType<typeof norm>> = [];
+              const changed: Array<{ before: ReturnType<typeof norm>; after: ReturnType<typeof norm> }> = [];
+
+              for (const k of allKeys) {
+                const b = bMap.get(k) ?? [];
+                const a = aMap.get(k) ?? [];
+                const m = Math.min(b.length, a.length);
+                for (let i = 0; i < m; i++) {
+                  const bb = b[i];
+                  const aa = a[i];
+                  if (
+                    bb.cantidad !== aa.cantidad ||
+                    Math.abs(bb.precioUnitario - aa.precioUnitario) > 1e-9 ||
+                    Math.abs(bb.subtotal - aa.subtotal) > 1e-9
+                  ) {
+                    changed.push({ before: bb, after: aa });
+                  }
+                }
+                for (let i = m; i < b.length; i++) removed.push(b[i]);
+                for (let i = m; i < a.length; i++) added.push(a[i]);
+              }
+
+              const beforeTotal = Number(before.total) || 0;
+              const afterTotal = Number(after.total) || 0;
+              const beforeSub = Number(before.subtotal) || 0;
+              const afterSub = Number(after.subtotal) || 0;
+
+              return (
+                <div className="space-y-4 text-sm">
+                  <div className="rounded border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-medium">Totales</div>
+                      <div className="text-muted-foreground">
+                        Subtotal: {formatCurrency(beforeSub)} → {formatCurrency(afterSub)}
+                        {' '}• Total: {formatCurrency(beforeTotal)} → {formatCurrency(afterTotal)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {changed.length ? (
+                    <div className="rounded border p-3">
+                      <div className="font-medium mb-2">Modificados</div>
+                      <div className="space-y-2">
+                        {changed.map((x, idx) => (
+                          <div key={`chg-${idx}`} className="rounded bg-muted/40 p-2">
+                            <div className="font-medium">{x.after.descripcion || x.before.descripcion || 'Ítem'}</div>
+                            <div className="text-muted-foreground">
+                              Cant: {x.before.cantidad} → {x.after.cantidad}
+                              {' '}• Unit: {formatCurrency(x.before.precioUnitario)} → {formatCurrency(x.after.precioUnitario)}
+                              {' '}• Subtotal: {formatCurrency(x.before.subtotal)} → {formatCurrency(x.after.subtotal)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {added.length ? (
+                    <div className="rounded border p-3">
+                      <div className="font-medium mb-2">Agregados</div>
+                      <div className="space-y-1">
+                        {added.map((x, idx) => (
+                          <div key={`add-${idx}`} className="text-muted-foreground">
+                            + {x.cantidad}{x.unidad ? ` ${x.unidad}` : ''} • {x.descripcion || 'Ítem'} • {formatCurrency(x.subtotal)}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {removed.length ? (
+                    <div className="rounded border p-3">
+                      <div className="font-medium mb-2">Eliminados</div>
+                      <div className="space-y-1">
+                        {removed.map((x, idx) => (
+                          <div key={`rem-${idx}`} className="text-muted-foreground">
+                            - {x.cantidad}{x.unidad ? ` ${x.unidad}` : ''} • {x.descripcion || 'Ítem'} • {formatCurrency(x.subtotal)}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {!changed.length && !added.length && !removed.length ? (
+                    <div className="text-muted-foreground">No se detectaron cambios en los ítems.</div>
+                  ) : null}
+                </div>
+              );
+            })()
+          ) : (
+            <div className="text-muted-foreground">Sin datos de cambios.</div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

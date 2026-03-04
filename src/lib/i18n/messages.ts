@@ -1119,7 +1119,8 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'printshopQuote.desc.dieCut': 'Troquelado:',
     'printshopQuote.desc.cut': 'Corte:',
     'printshopQuote.desc.specialFinishes': 'Acabados especiales:',
-    'printshopQuote.desc.transport': 'Transporte:',
+    'printshopQuote.desc.transport': 'Zona de envío:',
+    'printshopQuote.desc.sides': 'Caras: {n}',
 
     'printshopQuote.notes.label': 'Notas:',
 
@@ -1131,10 +1132,10 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
 
     'printshopQuote.dialog.title': 'Cotización Litografía',
     'printshopQuote.dialog.descriptionAdmin': 'Calcula con tarifario o usa cálculo detallado (admin).',
-    'printshopQuote.dialog.descriptionUser': 'Calcula precios desde el tarifario según tiraje, formato y opciones.',
+    'printshopQuote.dialog.descriptionUser': 'Calcula precios desde el tarifario según tamaños de papel, formato y opciones.',
 
     'printshopQuote.sections.parameters': 'Parámetros',
-    'printshopQuote.sections.parametersDescAdmin': 'Define tiraje, formato y costos para cálculo.',
+    'printshopQuote.sections.parametersDescAdmin': 'Define tamaños de papel, formato y costos para cálculo.',
     'printshopQuote.sections.parametersDescUser': 'Selecciona formato, papeles y acabados.',
     'printshopQuote.sections.result': 'Resultado',
 
@@ -1142,7 +1143,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'printshopQuote.fields.rateTable': 'Tarifario',
     'printshopQuote.fields.margin': 'Utilidad/Margen',
     'printshopQuote.fields.optionalPctHint': '(opcional %)',
-    'printshopQuote.fields.runQty': 'Tiraje',
+    'printshopQuote.fields.runQty': 'Tiraje (unidades)',
     'printshopQuote.fields.printSize': 'Tamaño impresión',
     'printshopQuote.fields.platesCost': 'Costo planchas',
     'printshopQuote.fields.inkCost': 'Costo tintas',
@@ -1153,12 +1154,12 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'printshopQuote.fields.dieCut': 'Troquelado',
     'printshopQuote.fields.cut': 'Corte',
     'printshopQuote.fields.specialFinishes': 'Acabados especiales',
-    'printshopQuote.fields.transport': 'Transporte',
+    'printshopQuote.fields.transport': 'Zona de envío',
     'printshopQuote.fields.notes': 'Descripción',
 
     'printshopQuote.placeholders.nameRef': 'Ej: Volantes A5',
     'printshopQuote.placeholders.qtyShort': 'Cant.',
-    'printshopQuote.placeholders.searchTransport': 'Buscar transporte…',
+    'printshopQuote.placeholders.searchTransport': 'Buscar zona de envío…',
     'printshopQuote.placeholders.notes': 'Notas/observaciones (opcional)…',
 
     'printshopQuote.rateTable.help': 'Se usa para obtener precio base por rango.',
@@ -1173,8 +1174,8 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'printshopQuote.select.noneLamination': 'Sin plastificado',
     'printshopQuote.select.noneDieCut': 'Sin troquelado',
     'printshopQuote.select.noneCut': 'Sin corte',
-    'printshopQuote.select.noneTransport': 'Sin transporte',
-    'printshopQuote.select.noTransportConfigured': 'Sin transportes configurados',
+    'printshopQuote.select.noneTransport': 'Sin zona de envío',
+    'printshopQuote.select.noTransportConfigured': 'Sin zonas de envío configuradas',
 
     'printshopQuote.help.createSizes': 'Configura tamaños en Litografía > Tamaños.',
     'printshopQuote.help.multiplePlateProfiles': 'Puedes seleccionar varios perfiles.',
@@ -1219,7 +1220,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
 
     'printshopQuote.breakdown.baseRateTable': 'Base (tarifario)',
     'printshopQuote.breakdown.baseEstimated': 'Base (estimado)',
-    'printshopQuote.breakdown.transport': 'Transporte',
+    'printshopQuote.breakdown.transport': 'Zona de envío',
     'printshopQuote.breakdown.finishes': 'Acabados',
     'printshopQuote.breakdown.specialFinishes': 'Acabados especiales',
     'printshopQuote.breakdown.lamination': 'Plastificado',
@@ -1243,11 +1244,11 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'printshopQuote.admin.salePrice': 'Precio venta',
     'printshopQuote.admin.saleUnitPrice': 'Precio unitario',
 
-    'printshopQuote.customFields.title': 'Campos personalizados',
+    'printshopQuote.customFields.title': 'Costos adicionales',
     'printshopQuote.customFields.description': 'Se anexan a la descripción del ítem. Si el valor es numérico, se suma al total.',
     'printshopQuote.customFields.addField': 'Agregar campo',
     'printshopQuote.customFields.empty': 'No hay campos extra.',
-    'printshopQuote.customFields.sectionLabel': 'Campos personalizados:',
+    'printshopQuote.customFields.sectionLabel': 'Costos adicionales:',
     'printshopQuote.customFields.label': 'Etiqueta',
     'printshopQuote.customFields.labelPlaceholder': 'Ej: Tamaño',
     'printshopQuote.customFields.value': 'Valor',
@@ -2871,7 +2872,8 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'printshopQuote.desc.dieCut': 'Die cut:',
     'printshopQuote.desc.cut': 'Cut:',
     'printshopQuote.desc.specialFinishes': 'Special finishes:',
-    'printshopQuote.desc.transport': 'Transport:',
+    'printshopQuote.desc.transport': 'Shipping zone:',
+    'printshopQuote.desc.sides': 'Sides: {n}',
 
     'printshopQuote.notes.label': 'Notes:',
 
@@ -2905,12 +2907,12 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'printshopQuote.fields.dieCut': 'Die cut',
     'printshopQuote.fields.cut': 'Cut',
     'printshopQuote.fields.specialFinishes': 'Special finishes',
-    'printshopQuote.fields.transport': 'Transport',
+    'printshopQuote.fields.transport': 'Shipping zone',
     'printshopQuote.fields.notes': 'Description',
 
     'printshopQuote.placeholders.nameRef': 'e.g. A5 flyers',
     'printshopQuote.placeholders.qtyShort': 'Qty',
-    'printshopQuote.placeholders.searchTransport': 'Search transport…',
+    'printshopQuote.placeholders.searchTransport': 'Search shipping zone…',
     'printshopQuote.placeholders.notes': 'Notes/observations (optional)…',
 
     'printshopQuote.rateTable.help': 'Used to get the base price by range.',
@@ -2925,8 +2927,8 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'printshopQuote.select.noneLamination': 'No lamination',
     'printshopQuote.select.noneDieCut': 'No die cut',
     'printshopQuote.select.noneCut': 'No cut',
-    'printshopQuote.select.noneTransport': 'No transport',
-    'printshopQuote.select.noTransportConfigured': 'No transport configured',
+    'printshopQuote.select.noneTransport': 'No shipping zone',
+    'printshopQuote.select.noTransportConfigured': 'No shipping zones configured',
 
     'printshopQuote.help.createSizes': 'Configure sizes in Printshop > Sizes.',
     'printshopQuote.help.multiplePlateProfiles': 'You can select multiple profiles.',
@@ -2971,7 +2973,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
 
     'printshopQuote.breakdown.baseRateTable': 'Base (rate table)',
     'printshopQuote.breakdown.baseEstimated': 'Base (estimate)',
-    'printshopQuote.breakdown.transport': 'Transport',
+    'printshopQuote.breakdown.transport': 'Shipping zone',
     'printshopQuote.breakdown.finishes': 'Finishes',
     'printshopQuote.breakdown.specialFinishes': 'Special finishes',
     'printshopQuote.breakdown.lamination': 'Lamination',

@@ -1524,6 +1524,11 @@ model Cotizacion {
 
   // Trazabilidad de cambios (ediciones)
   editCount Int @default(0)
+  // Ediciones realizadas después de estar APROBADA (cambios post-aprobación)
+  postApprovalEditCount Int @default(0)
+
+  // Marca de "Venta Realizada" (aprobación final del cliente)
+  ventaRealizadaAt DateTime?
 
   clienteId String
   cliente   Cliente @relation(fields: [clienteId], references: [id])
@@ -1573,6 +1578,9 @@ enum CotizacionAuditAction {
   CREATED
   UPDATED
   APPROVED
+  SENT
+  SALE_REALIZED_SET
+  SALE_REALIZED_UNSET
 }
 
 enum CotizacionAuditEffect {

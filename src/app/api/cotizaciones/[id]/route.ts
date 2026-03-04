@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { ModuleKey } from '@prisma/client'
 
+export const runtime = 'nodejs'
+
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
 }
@@ -42,7 +44,16 @@ export async function GET(
     return NextResponse.json({ success: true, data: cotizacion })
   } catch (error) {
     console.error('Error:', error)
-    return NextResponse.json({ success: false, error: 'Error al obtener cotización' }, { status: 500 })
+    const details =
+      process.env.NODE_ENV !== 'production'
+        ? error instanceof Error
+          ? error.message
+          : String(error)
+        : undefined
+    return NextResponse.json(
+      { success: false, error: 'Error al obtener cotización', ...(details ? { details } : {}) },
+      { status: 500 }
+    )
   }
 }
 
@@ -78,7 +89,16 @@ export async function DELETE(
     return NextResponse.json({ success: true, message: 'Cotización eliminada' })
   } catch (error) {
     console.error('Error:', error)
-    return NextResponse.json({ success: false, error: 'Error al eliminar' }, { status: 500 })
+    const details =
+      process.env.NODE_ENV !== 'production'
+        ? error instanceof Error
+          ? error.message
+          : String(error)
+        : undefined
+    return NextResponse.json(
+      { success: false, error: 'Error al eliminar', ...(details ? { details } : {}) },
+      { status: 500 }
+    )
   }
 }
 
@@ -121,7 +141,25 @@ export async function PATCH(
         descuento: true,
         iva: true,
         total: true,
-        items: { select: { id: true } },
+        editCount: true,
+        postApprovalEditCount: true,
+        ventaRealizadaAt: true,
+        items: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            materialId: true,
+            descripcion: true,
+            unidad: true,
+            cantidad: true,
+            precioUnitario: true,
+            subtotal: true,
+            observaciones: true,
+            costoMaterial: true,
+            costoImpresion: true,
+            costoAcabados: true,
+            costoInstalacion: true,
+          },
+        },
         orden: { select: { id: true } },
       },
     })
@@ -157,6 +195,8 @@ export async function PATCH(
     }
 
     const grossAfterDiscount = Math.max(0, itemsTotal - Math.max(0, desc))
+
+    const isPostApprovalEdit = String(existing.estado) === 'APROBADA'
 
     const result = await prisma.$transaction(async (tx) => {
       const sede = await tx.sede.findUnique({
@@ -194,6 +234,30 @@ export async function PATCH(
         .filter(Boolean)
         .join('\n\n')
 
+      const beforeSnapshot = {
+        estado: existing.estado,
+        subtotal: existing.subtotal,
+        descuento: existing.descuento,
+        iva: existing.iva,
+        total: existing.total,
+        editCount: existing.editCount,
+        postApprovalEditCount: existing.postApprovalEditCount,
+        ventaRealizadaAt: existing.ventaRealizadaAt,
+        items: (existing.items ?? []).map((it) => ({
+          materialId: it.materialId,
+          descripcion: it.descripcion,
+          unidad: it.unidad,
+          cantidad: it.cantidad,
+          precioUnitario: it.precioUnitario,
+          subtotal: it.subtotal,
+          observaciones: it.observaciones,
+          costoMaterial: it.costoMaterial,
+          costoImpresion: it.costoImpresion,
+          costoAcabados: it.costoAcabados,
+          costoInstalacion: it.costoInstalacion,
+        })),
+      }
+
       await tx.itemCotizacion.deleteMany({ where: { cotizacionId: id } })
 
       const updated = await tx.cotizacion.update({
@@ -213,18 +277,25 @@ export async function PATCH(
             : [],
           boldCheckoutUrl: boldCheckoutUrl ? String(boldCheckoutUrl).trim() || null : null,
           editCount: { increment: 1 },
+          ...(isPostApprovalEdit ? { postApprovalEditCount: { increment: 1 } } : {}),
           items: {
             create: items.map((item: unknown) => {
               const it = asRecord(item)
               const terminadosRaw = it.terminados
               const terminados = Array.isArray(terminadosRaw) ? terminadosRaw : []
 
+              const qty = toFloatOrNaN(it.cantidad)
+              const costoMaterialUnit = toFloatOrNaN(it.costoMaterial)
+              const costoImpresionUnit = toFloatOrNaN(it.costoImpresion)
+              const costoAcabadosTotal = toFloatOrNaN(it.costoAcabados)
+              const costoInstalacionTotal = toFloatOrNaN(it.costoInstalacion)
+
               return {
                 descripcion: typeof it.descripcion === 'string' ? it.descripcion.trim() : '',
                 observaciones:
                   typeof it.observaciones === 'string' ? it.observaciones.trim() || null : null,
                 material: it.materialId ? { connect: { id: String(it.materialId) } } : undefined,
-                cantidad: toFloatOrNaN(it.cantidad),
+                cantidad: qty,
                 unidad: typeof it.unidad === 'string' && it.unidad.trim() ? it.unidad.trim() : 'unidad',
                 ancho: toFloatOrNaN(it.ancho) || null,
                 alto: toFloatOrNaN(it.alto) || null,
@@ -233,10 +304,19 @@ export async function PATCH(
                 laminado: Boolean(it.laminado),
                 troquelado: Boolean(it.troquelado),
                 instalacion: Boolean(it.instalacion),
-                costoMaterial: toFloatOrNaN(it.precioUnitario) || 0,
-                costoImpresion: 0,
-                costoAcabados: (toFloatOrNaN(it.costoLaminado) || 0) + (toFloatOrNaN(it.costoTroquelado) || 0),
-                costoInstalacion: toFloatOrNaN(it.costoInstalacion) || 0,
+                // Costos: compatibilidad
+                // - Si vienen costos explícitos, se respetan.
+                // - Si no, se asume costoMaterial ~= precioUnitario (margen 0 por defecto).
+                costoMaterial: Number.isFinite(costoMaterialUnit)
+                  ? costoMaterialUnit
+                  : (toFloatOrNaN(it.precioUnitario) || 0),
+                costoImpresion: Number.isFinite(costoImpresionUnit) ? costoImpresionUnit : 0,
+                costoAcabados: Number.isFinite(costoAcabadosTotal)
+                  ? costoAcabadosTotal
+                  : (toFloatOrNaN(it.costoLaminado) || 0) + (toFloatOrNaN(it.costoTroquelado) || 0),
+                costoInstalacion: Number.isFinite(costoInstalacionTotal)
+                  ? costoInstalacionTotal
+                  : (toFloatOrNaN(it.costoInstalacion) || 0),
                 precioUnitario: toFloatOrNaN(it.precioUnitario) || 0,
                 subtotal: toFloatOrNaN(it.subtotal) || 0,
                 terminados:
@@ -266,25 +346,31 @@ export async function PATCH(
         },
       })
 
-      const before = {
-        estado: existing.estado,
-        subtotal: existing.subtotal,
-        descuento: existing.descuento,
-        iva: existing.iva,
-        total: existing.total,
-        itemsCount: existing.items?.length ?? 0,
-      }
-      const after = {
+      const afterSnapshot = {
         estado: updated.estado,
         subtotal: updated.subtotal,
         descuento: updated.descuento,
         iva: updated.iva,
         total: updated.total,
-        itemsCount: updated.items?.length ?? 0,
         editCount: updated.editCount,
+        postApprovalEditCount: updated.postApprovalEditCount,
+        ventaRealizadaAt: updated.ventaRealizadaAt,
+        items: (updated.items ?? []).map((it) => ({
+          materialId: it.materialId,
+          descripcion: it.descripcion,
+          unidad: it.unidad,
+          cantidad: it.cantidad,
+          precioUnitario: it.precioUnitario,
+          subtotal: it.subtotal,
+          observaciones: it.observaciones,
+          costoMaterial: it.costoMaterial,
+          costoImpresion: it.costoImpresion,
+          costoAcabados: it.costoAcabados,
+          costoInstalacion: it.costoInstalacion,
+        })),
       }
 
-      const deltaTotal = (after.total ?? 0) - (before.total ?? 0)
+      const deltaTotal = (afterSnapshot.total ?? 0) - (beforeSnapshot.total ?? 0)
       const effect = deltaTotal > 0.000001 ? 'DEBIT' : deltaTotal < -0.000001 ? 'CREDIT' : 'NONE'
 
       await tx.cotizacionAuditEvent.create({
@@ -295,8 +381,8 @@ export async function PATCH(
           note: auditNote || null,
           performedById: access.userId,
           requestedById: access.userId,
-          before,
-          after,
+          before: beforeSnapshot,
+          after: afterSnapshot,
         },
       })
 
@@ -306,6 +392,15 @@ export async function PATCH(
     return NextResponse.json({ success: true, data: result })
   } catch (error) {
     console.error('Error al actualizar cotización:', error)
-    return NextResponse.json({ success: false, error: 'Error al actualizar cotización' }, { status: 500 })
+    const details =
+      process.env.NODE_ENV !== 'production'
+        ? error instanceof Error
+          ? error.message
+          : String(error)
+        : undefined
+    return NextResponse.json(
+      { success: false, error: 'Error al actualizar cotización', ...(details ? { details } : {}) },
+      { status: 500 }
+    )
   }
 }

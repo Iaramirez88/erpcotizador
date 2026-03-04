@@ -161,7 +161,7 @@ export async function POST(
 
     // Preparar destinatarios
     const to = destinatarios;
-    const cc = [];
+    const cc: string[] = [];
     
     if (copiarContabilidad && process.env.CONTABILIDAD_EMAIL) {
       cc.push(process.env.CONTABILIDAD_EMAIL);
@@ -296,14 +296,62 @@ export async function POST(
       );
     }
 
-    await prisma.cotizacion.update({
-      where: { id },
-      data: {
-        emailSentCount: { increment: 1 },
-        lastEmailSentAt: new Date(),
-        estado: cotizacion.estado === 'BORRADOR' ? 'ENVIADA' : undefined,
-      },
-    });
+    const beforeAudit = {
+      estado: cotizacion.estado,
+      emailSentCount: cotizacion.emailSentCount,
+      whatsappSentCount: cotizacion.whatsappSentCount,
+      lastEmailSentAt: cotizacion.lastEmailSentAt,
+      lastWhatsappSentAt: cotizacion.lastWhatsappSentAt,
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.cotizacion.update({
+        where: { id },
+        data: {
+          emailSentCount: { increment: 1 },
+          lastEmailSentAt: new Date(),
+          estado: cotizacion.estado === 'BORRADOR' ? 'ENVIADA' : undefined,
+        },
+        select: {
+          id: true,
+          estado: true,
+          emailSentCount: true,
+          whatsappSentCount: true,
+          lastEmailSentAt: true,
+          lastWhatsappSentAt: true,
+          subtotal: true,
+          iva: true,
+          total: true,
+          descuento: true,
+        },
+      })
+
+      await tx.cotizacionAuditEvent.create({
+        data: {
+          cotizacionId: updated.id,
+          action: 'SENT',
+          effect: 'NONE',
+          performedById: access.userId,
+          requestedById: access.userId,
+          before: beforeAudit,
+          after: {
+            estado: updated.estado,
+            emailSentCount: updated.emailSentCount,
+            whatsappSentCount: updated.whatsappSentCount,
+            lastEmailSentAt: updated.lastEmailSentAt,
+            lastWhatsappSentAt: updated.lastWhatsappSentAt,
+            channel: 'email',
+            toCount: Array.isArray(to) ? to.length : 0,
+            ccCount: Array.isArray(cc) ? cc.length : 0,
+            copiarContabilidad: Boolean(copiarContabilidad),
+            subtotal: updated.subtotal,
+            iva: updated.iva,
+            total: updated.total,
+            descuento: updated.descuento,
+          },
+        },
+      })
+    })
 
     return NextResponse.json({
       success: true,
