@@ -441,12 +441,151 @@ export async function POST(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ success: true, data: { module: moduleParam, totalRows: rows.length, toCreate: data.length, errors, warnings } })
     }
 
-    const result = await prisma.material.createMany({
-      data: data as never,
-      skipDuplicates: true,
+    const rowsToApply = data as Array<{
+      externalId: string | null
+      nombre: string
+      tipo: TipoMaterial
+      categoria: string | null
+      imagenUrl: string | null
+      ancho: number | null
+      largo: number | null
+      espesor: number | null
+      color: string | null
+      precioM2: number | null
+      precioMetro: number | null
+      precioUnidad: number | null
+      precioCompra: number | null
+      stockActual: number
+      stockMinimo: number
+      unidadMedida: string
+      proveedor: string | null
+      observaciones: string | null
+      activo: boolean
+      empresaId: string
+    }>
+
+    const normalizeNameKey = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ')
+
+    const existing = await prisma.material.findMany({
+      where: { empresaId },
+      select: { id: true, nombre: true, externalId: true },
     })
 
-    return NextResponse.json({ success: true, data: { module: moduleParam, created: result.count, totalRows: rows.length, errors, warnings } })
+    const byExternalId = new Map<string, string>()
+    const byNameKey = new Map<string, Array<{ id: string; externalId: string | null }>>()
+
+    for (const m of existing) {
+      const ext = typeof m.externalId === 'string' ? m.externalId.trim() : ''
+      if (ext) byExternalId.set(ext, m.id)
+      const key = normalizeNameKey(m.nombre)
+      const arr = byNameKey.get(key) ?? []
+      arr.push({ id: m.id, externalId: m.externalId ?? null })
+      byNameKey.set(key, arr)
+    }
+
+    let created = 0
+    let updated = 0
+    let skipped = 0
+
+    const usedImportExternalIds = new Set<string>()
+
+    await prisma.$transaction(async (tx) => {
+      for (const row of rowsToApply) {
+        const ext = typeof row.externalId === 'string' ? row.externalId.trim() : ''
+        const extValue = ext || null
+        const nameKey = normalizeNameKey(row.nombre)
+
+        if (ext && usedImportExternalIds.has(ext)) {
+          warnings.push(`externalId duplicado en el archivo: ${ext}. Se omitió una fila.`)
+          skipped += 1
+          continue
+        }
+        if (ext) usedImportExternalIds.add(ext)
+
+        // Si ya existe por externalId, omitimos (no sobreescribimos precios/stock).
+        if (ext && byExternalId.has(ext)) {
+          skipped += 1
+          continue
+        }
+
+        const matchesByName = byNameKey.get(nameKey) ?? []
+
+        // Si existe por nombre y es único, llenamos externalId si está vacío.
+        if (matchesByName.length === 1) {
+          const match = matchesByName[0]!
+          if (extValue && !match.externalId) {
+            if (byExternalId.has(ext)) {
+              warnings.push(`externalId ya está asignado en BD: ${ext}. Se omitió actualizar \"${row.nombre}\".`)
+              skipped += 1
+              continue
+            }
+
+            await tx.material.update({
+              where: { id: match.id },
+              data: { externalId: extValue },
+              select: { id: true },
+            })
+            updated += 1
+            match.externalId = extValue
+            byExternalId.set(ext, match.id)
+          } else {
+            skipped += 1
+          }
+          continue
+        }
+
+        if (matchesByName.length > 1) {
+          warnings.push(`Nombre duplicado en BD: \"${row.nombre}\". Se omitió la fila para evitar asignaciones ambiguas.`)
+          skipped += 1
+          continue
+        }
+
+        const createdMaterial = await tx.material.create({
+          data: {
+            externalId: extValue,
+            nombre: row.nombre,
+            tipo: row.tipo,
+            categoria: row.categoria,
+            imagenUrl: row.imagenUrl,
+            ancho: row.ancho,
+            largo: row.largo,
+            espesor: row.espesor,
+            color: row.color,
+            precioM2: row.precioM2,
+            precioMetro: row.precioMetro,
+            precioUnidad: row.precioUnidad,
+            precioCompra: row.precioCompra,
+            stockActual: row.stockActual,
+            stockMinimo: row.stockMinimo,
+            unidadMedida: row.unidadMedida,
+            proveedor: row.proveedor,
+            observaciones: row.observaciones,
+            activo: row.activo,
+            empresaId: row.empresaId,
+          },
+          select: { id: true, nombre: true, externalId: true },
+        })
+
+        created += 1
+        if (createdMaterial.externalId) byExternalId.set(createdMaterial.externalId, createdMaterial.id)
+        const arr = byNameKey.get(nameKey) ?? []
+        arr.push({ id: createdMaterial.id, externalId: createdMaterial.externalId ?? null })
+        byNameKey.set(nameKey, arr)
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        module: moduleParam,
+        created,
+        updated,
+        skipped,
+        totalRows: rows.length,
+        errors,
+        warnings,
+      },
+    })
   }
 
   if (moduleParam === 'compras') {

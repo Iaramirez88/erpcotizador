@@ -25,7 +25,7 @@ type ImportResult = {
 }
 
 const MODULE_NOTES: Partial<Record<ImportModule, string>> = {
-  materiales: 'Para “Código/ID externo (Caja)” puedes usar una columna llamada externalId o ID.',
+  materiales: 'Para “Código/ID externo (Caja)” puedes usar una columna llamada externalId o ID. Si el producto ya existe (mismo nombre), la importación llena el externalId sin duplicar.',
 }
 
 const TEMPLATE_HEADERS: Record<ImportModule, string[]> = {

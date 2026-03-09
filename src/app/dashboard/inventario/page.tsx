@@ -25,6 +25,7 @@ import { Download } from 'lucide-react'
 
 type Material = {
   id: string
+  externalId?: string | null
   nombre: string
   stockActual: number
   stockMinimo: number
@@ -85,6 +86,18 @@ export default function InventarioPage() {
   const [search, setSearch] = useState("")
 
   const [warehouseFilterId, setWarehouseFilterId] = useState("")
+
+  const materialById = useMemo(() => {
+    return new Map(materials.map((m) => [m.id, m]))
+  }, [materials])
+
+  const formatMaterialName = useCallback(
+    (materialId: string, nombre: string) => {
+      const code = String(materialById.get(materialId)?.externalId ?? '').trim()
+      return code ? `(${code}) ${nombre}` : nombre
+    },
+    [materialById]
+  )
 
   const exportExcel = useCallback(() => {
     const params = new URLSearchParams()
@@ -389,6 +402,7 @@ export default function InventarioPage() {
                   {activeMaterials.map((m) => {
                     const low = n(m.stockActual) <= n(m.stockMinimo)
                     const wh = m.stocks?.[0]?.warehouse ?? null
+                    const nombreView = formatMaterialName(m.id, m.nombre)
                     return (
                       <tr key={m.id} className="border-b last:border-b-0">
                         <td className="py-2 pr-3">
@@ -402,7 +416,7 @@ export default function InventarioPage() {
                             }}
                           />
                         </td>
-                        <td className="py-2 pr-4 font-medium text-gray-900">{m.nombre}</td>
+                        <td className="py-2 pr-4 font-medium text-gray-900">{nombreView}</td>
                         <td className="py-2 pr-4 text-gray-700">
                           {wh ? `${wh.nombre}${wh.isDefault ? ` (${t('inventory.site.primary')})` : ''}` : naText}
                         </td>
@@ -466,7 +480,14 @@ export default function InventarioPage() {
                       <td className="py-2 pr-4 text-gray-700">
                         {new Date(mv.createdAt).toLocaleString(locale)}
                       </td>
-                      <td className="py-2 pr-4 font-medium text-gray-900">{mv.material?.nombre || naText}</td>
+                      <td className="py-2 pr-4 font-medium text-gray-900">
+                        {mv.material?.id
+                          ? formatMaterialName(
+                              mv.material.id,
+                              String(mv.material?.nombre || naText)
+                            )
+                          : mv.material?.nombre || naText}
+                      </td>
                       <td className="py-2 pr-4 text-gray-700">{mv.warehouse?.nombre || naText}</td>
                       <td className="py-2 pr-4">
                         <span className={cn("text-xs font-semibold px-2 py-1 rounded", movementBadgeClass(mv.type))}>
@@ -505,7 +526,7 @@ export default function InventarioPage() {
               >
                 {activeMaterials.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.nombre}
+                    {formatMaterialName(m.id, m.nombre)}
                   </option>
                 ))}
               </select>

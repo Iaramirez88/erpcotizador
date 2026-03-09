@@ -39,7 +39,7 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
             id: true,
             quantity: true,
             note: true,
-            material: { select: { id: true, nombre: true, unidadMedida: true } },
+            material: { select: { id: true, externalId: true, nombre: true, unidadMedida: true } },
           },
         },
       },

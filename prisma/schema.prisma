@@ -106,6 +106,10 @@ model User {
   // Contabilidad
   accountingJournalEntriesCreated AccountingJournalEntry[] @relation("AccountingJournalEntryCreatedBy")
 
+  // Productos personalizados (solicitudes)
+  customProductRequestsCreated  CustomProductRequest[] @relation("CustomProductRequestCreatedBy")
+  customProductRequestsApproved CustomProductRequest[] @relation("CustomProductRequestApprovedBy")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -526,6 +530,7 @@ model Empresa {
   clientes       Cliente[]
   materiales     Material[]
   terminados     Terminado[]
+  customProductRequests CustomProductRequest[]
   maquinas       Maquina[]
 
   remisiones Remision[]
@@ -1688,6 +1693,13 @@ model Material {
   tipo      TipoMaterial
   categoria String?
 
+  // Productos creados vía flujo “personalizado” (requiere aprobación admin)
+  isCustom Boolean @default(false)
+
+  // Scope de productos personalizados: solo visibles para el usuario y sede que lo creó
+  customOwnerUserId String?
+  customSedeId      String?
+
   // Imagen del producto/servicio (URL pública o ruta absoluta/relativa)
   imagenUrl String?
 
@@ -1718,6 +1730,11 @@ model Material {
 
   items ItemCotizacion[]
 
+  // Terminados permitidos por producto (si existe al menos 1, se restringe el listado en el cotizador)
+  allowedTerminados MaterialAllowedTerminado[]
+
+  customProductRequests CustomProductRequest[]
+
   sedeWastes SedeMaterialWaste[]
 
   quantityDiscounts MaterialQuantityDiscount[]
@@ -1736,7 +1753,107 @@ model Material {
   @@unique([empresaId, externalId], map: "uq_materiales_empresa_external_id")
   @@index([empresaId, externalId], map: "idx_materiales_empresa_external_id")
   @@index([empresaId, activo], map: "idx_materiales_empresa_activo")
+  @@index([empresaId, isCustom], map: "idx_materiales_empresa_is_custom")
+  @@index([empresaId, customOwnerUserId, customSedeId], map: "idx_materiales_empresa_custom_scope")
   @@map("materiales")
+}
+
+model MaterialAllowedTerminado {
+  id String @id @default(cuid())
+
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  terminadoId String
+  terminado   Terminado @relation(fields: [terminadoId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([materialId, terminadoId])
+  @@index([terminadoId])
+  @@index([materialId])
+  @@map("material_allowed_terminados")
+}
+
+enum CustomProductRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CustomProductKind {
+  METRAJE
+  FISICO
+}
+
+model CustomProductRequest {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  createdByUserId String
+  createdByUser   User @relation("CustomProductRequestCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  // Sede desde donde se solicitó (scope del producto)
+  sedeId String
+
+  approvedByUserId String?
+  approvedByUser   User? @relation("CustomProductRequestApprovedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+
+  status       CustomProductRequestStatus @default(PENDING)
+  decisionNote String? @db.Text
+
+  // Datos solicitados
+  externalId String?
+  nombre     String
+  kind       CustomProductKind
+
+  // Tipo del material solicitado
+  tipo TipoMaterial @default(OTRO)
+
+  unidadMedida String
+  categoria   String?
+  proveedor   String?
+  observaciones String? @db.Text
+
+  ancho Float?
+  largo Float?
+
+  precioM2     Float?
+  precioMetro  Float?
+  precioUnidad Float?
+
+  // Si se aprueba, queda vinculado al material creado
+  materialId String?
+  material   Material? @relation(fields: [materialId], references: [id], onDelete: SetNull)
+
+  terminados CustomProductRequestTerminado[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([empresaId, createdAt])
+  @@index([empresaId, sedeId, status])
+  @@map("custom_product_requests")
+}
+
+model CustomProductRequestTerminado {
+  id String @id @default(cuid())
+
+  requestId String
+  request   CustomProductRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  terminadoId String
+  terminado   Terminado @relation(fields: [terminadoId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([requestId, terminadoId])
+  @@index([terminadoId])
+  @@index([requestId])
+  @@map("custom_product_request_terminados")
 }
 
 model SedeMaterialWaste {
@@ -1790,6 +1907,9 @@ model Terminado {
   empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
 
   items ItemCotizacionTerminado[]
+
+  allowedInMaterials MaterialAllowedTerminado[]
+  customRequests CustomProductRequestTerminado[]
 
   activo    Boolean  @default(true)
   createdAt DateTime @default(now())

@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
         items: {
           select: {
             quantity: true,
-            material: { select: { nombre: true, unidadMedida: true } },
+            material: { select: { externalId: true, nombre: true, unidadMedida: true } },
           },
         },
       },

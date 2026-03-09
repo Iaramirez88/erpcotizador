@@ -51,6 +51,13 @@ export async function GET(request: Request) {
 
     const empresaId = access.empresaId
 
+    const me = await prisma.user.findUnique({
+      where: { id: access.userId },
+      select: { role: true },
+    })
+
+    const isAdmin = me?.role === 'ADMIN'
+
     const sede = await prisma.sede.findUnique({ where: { id: access.sedeId }, select: { id: true } })
     let sedeId = sede?.id ?? access.sedeId
 
@@ -114,6 +121,16 @@ export async function GET(request: Request) {
     const where: any = { empresaId }
 
     const andFilters: unknown[] = []
+
+    // Productos personalizados: visibles solo para su creador (usuario+sede), excepto ADMIN.
+    if (!isAdmin) {
+      andFilters.push({
+        OR: [
+          { isCustom: false },
+          { isCustom: true, customOwnerUserId: access.userId, customSedeId: access.sedeId },
+        ],
+      })
+    }
 
     if (search) {
       andFilters.push({

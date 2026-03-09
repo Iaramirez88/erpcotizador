@@ -20,6 +20,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { CustomProductRequestsAdminDialog } from "@/components/materiales/custom-product-requests-admin-dialog"
+import { CustomProductRequestsMyDialog } from "@/components/materiales/custom-product-requests-my-dialog"
 import { formatCurrency, formatUnidadMedidaLabel } from "@/lib/utils"
 
 interface Material {
@@ -145,6 +147,10 @@ export default function ProductosPage() {
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [customRequestsOpen, setCustomRequestsOpen] = useState(false)
+  const [myCustomRequestsOpen, setMyCustomRequestsOpen] = useState(false)
+
   const [proveedorMatches, setProveedorMatches] = useState<ProveedorLite[]>([])
   const [proveedorLoading, setProveedorLoading] = useState(false)
   const [proveedorCreateOpen, setProveedorCreateOpen] = useState(false)
@@ -232,6 +238,26 @@ export default function ProductosPage() {
     }
 
     void loadBodegas()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadMe = async () => {
+      try {
+        const res = await fetch('/api/me', { cache: 'no-store' })
+        const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { role?: string } } | null
+        const role = String(json?.data?.role ?? '')
+        if (!cancelled) setIsAdmin(role === 'ADMIN')
+      } catch {
+        if (!cancelled) setIsAdmin(false)
+      }
+    }
+
+    void loadMe()
     return () => {
       cancelled = true
     }
@@ -841,6 +867,8 @@ export default function ProductosPage() {
 
   return (
     <div className="space-y-6">
+      <CustomProductRequestsAdminDialog open={customRequestsOpen} onOpenChange={setCustomRequestsOpen} />
+      <CustomProductRequestsMyDialog open={myCustomRequestsOpen} onOpenChange={setMyCustomRequestsOpen} />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -850,6 +878,11 @@ export default function ProductosPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {isAdmin ? (
+            <Button variant="outline" type="button" onClick={() => setCustomRequestsOpen(true)}>
+              Solicitudes personalizados
+            </Button>
+          ) : null}
           <span data-tour="materiales-import">
             <ImportDialog
               module="materiales"
@@ -890,6 +923,9 @@ export default function ProductosPage() {
                     className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                   >
                     <option value="">Sede activa</option>
+                    <Button variant="outline" type="button" onClick={() => setMyCustomRequestsOpen(true)}>
+                      Mis solicitudes
+                    </Button>
                     {sedes.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.nombre}{s.codigo ? ` (${s.codigo})` : ''}
@@ -1039,7 +1075,7 @@ export default function ProductosPage() {
               <div className="flex-1 min-w-[240px]">
                 <Input
                   data-tour="materiales-search"
-                  placeholder="Buscar producto..."
+                  placeholder="Buscar por nombre o código..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -1286,6 +1322,8 @@ export default function ProductosPage() {
               <div className="divide-y">
                 {materiales.map((material) => {
                 const tipoLabel = TIPOS_MATERIAL.find((t) => t.value === material.tipo)?.label || material.tipo
+                const externalIdTrim = String(material.externalId ?? '').trim()
+                const materialNombreView = externalIdTrim ? `(${externalIdTrim}) ${material.nombre}` : material.nombre
                 const specs = [
                   material.ancho ? `Ancho ${material.ancho}cm` : null,
                   material.color ? `Color ${material.color}` : null,
@@ -1320,7 +1358,7 @@ export default function ProductosPage() {
                               e.currentTarget.src = "/placeholder-product.svg"
                             }}
                           />
-                          <div className="font-medium truncate">{material.nombre}</div>
+                          <div className="font-medium truncate">{materialNombreView}</div>
                           {!material.activo ? (
                             <span className="px-2 py-0.5 text-[10px] border rounded bg-muted">Inactivo</span>
                           ) : null}

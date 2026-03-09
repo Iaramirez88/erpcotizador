@@ -82,7 +82,7 @@ export async function GET(request: Request) {
           select: {
             id: true,
             quantity: true,
-            material: { select: { id: true, nombre: true, unidadMedida: true } },
+            material: { select: { id: true, externalId: true, nombre: true, unidadMedida: true } },
           },
         },
       },
@@ -274,7 +274,7 @@ export async function POST(request: Request) {
               id: true,
               quantity: true,
               note: true,
-              material: { select: { id: true, nombre: true, unidadMedida: true } },
+              material: { select: { id: true, externalId: true, nombre: true, unidadMedida: true } },
             },
           },
         },

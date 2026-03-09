@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
         stockAfter: true,
         note: true,
         createdAt: true,
-        material: { select: { id: true, nombre: true, unidadMedida: true } },
+        material: { select: { id: true, externalId: true, nombre: true, unidadMedida: true } },
         warehouse: { select: { id: true, nombre: true } },
         createdBy: { select: { name: true, email: true } },
       },

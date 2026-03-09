@@ -41,8 +41,26 @@ export async function GET(
 
     const { id } = await context.params
 
-    const material = await prisma.material.findUnique({
-      where: { id },
+    const me = await prisma.user.findUnique({
+      where: { id: access.userId },
+      select: { role: true },
+    })
+
+    const isAdmin = me?.role === 'ADMIN'
+
+    const material = await prisma.material.findFirst({
+      where: {
+        id,
+        empresaId: access.empresaId,
+        ...(isAdmin
+          ? {}
+          : {
+              OR: [
+                { isCustom: false },
+                { isCustom: true, customOwnerUserId: access.userId, customSedeId: access.sedeId },
+              ],
+            }),
+      },
       include: {
         quantityDiscounts: { orderBy: { minQty: 'asc' } }
       }
@@ -81,6 +99,13 @@ export async function PUT(
     const { id } = await context.params
     const body = await request.json()
 
+    const me = await prisma.user.findUnique({
+      where: { id: access.userId },
+      select: { role: true },
+    })
+
+    const isAdmin = me?.role === 'ADMIN'
+
     const externalIdNorm = typeof body.externalId === 'string' ? body.externalId.trim() : ''
     const externalIdValue = externalIdNorm ? externalIdNorm : null
 
@@ -113,6 +138,17 @@ export async function PUT(
     }
 
     if (materialExistente.empresaId !== access.empresaId) {
+      return NextResponse.json(
+        { error: "Material no encontrado" },
+        { status: 404 }
+      )
+    }
+
+    if (
+      materialExistente.isCustom &&
+      !isAdmin &&
+      !(materialExistente.customOwnerUserId === access.userId && materialExistente.customSedeId === access.sedeId)
+    ) {
       return NextResponse.json(
         { error: "Material no encontrado" },
         { status: 404 }

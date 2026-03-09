@@ -22,6 +22,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { LitografiaQuoteDialog, type LitografiaMeta } from "@/components/litografia/litografia-quote-dialog"
+import {
+  MetrajeQuoteDialog,
+  type MetrajeItemDraft,
+  type MetrajeMaterial,
+} from "@/components/metraje/metraje-quote-dialog"
+import { CustomProductRequestDialog } from "@/components/materiales/custom-product-request-dialog"
 import CotizacionPDF, { type CotizacionPdfData } from "@/lib/pdf-template.client"
 import type { CotizacionTemplateSettings } from "@/lib/cotizacion-template"
 import { useI18n } from "@/components/providers/i18n-provider"
@@ -49,8 +55,11 @@ interface Cliente {
 
 interface Material {
   id: string
+  externalId?: string | null
   nombre: string
   tipo: string
+  ancho?: number | null
+  largo?: number | null
   precioM2?: number | null
   precioMetro?: number | null
   precioUnidad?: number | null
@@ -68,9 +77,11 @@ interface ItemCotizacion {
   materialId: string | null
   material: Material | null
   cantidad: number
+  unidad: string
   ancho: number | null
   alto: number | null
   m2: number | null
+  desperdicioPct: number
   precioUnitario: number
   subtotal: number
   laminado: boolean
@@ -80,6 +91,14 @@ interface ItemCotizacion {
   costoTroquelado: number
   costoInstalacion: number
   observaciones: string
+  terminados: Array<{
+    terminadoId: string
+    unidadAplicacion: string
+    baseCantidad: number
+    precioUnitario: number
+    costoTotal: number
+    nombre?: string
+  }>
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -97,6 +116,11 @@ export default function CotizadorPage() {
       style: 'currency',
       currency: 'MXN',
     }).format(value)
+  }
+
+  const formatMaterialLabel = (m: Pick<Material, 'nombre' | 'externalId'>) => {
+    const code = String(m.externalId ?? '').trim()
+    return code ? `(${code}) ${m.nombre}` : m.nombre
   }
 
   const router = useRouter()
@@ -144,6 +168,8 @@ export default function CotizadorPage() {
   const [isLoadingCotizacion, setIsLoadingCotizacion] = useState(false)
 
   const [litografiaOpen, setLitografiaOpen] = useState(false)
+  const [metrajeOpen, setMetrajeOpen] = useState(false)
+  const [customProductOpen, setCustomProductOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
 
   // Datos de la cotización
@@ -159,6 +185,7 @@ export default function CotizadorPage() {
   const [items, setItems] = useState<ItemCotizacion[]>([])
   const [editingManualItemId, setEditingManualItemId] = useState<string | null>(null)
   const [litografiaEdit, setLitografiaEdit] = useState<{ itemId: string; meta: LitografiaMeta } | null>(null)
+  const [metrajeEdit, setMetrajeEdit] = useState<{ itemId: string; item: Partial<MetrajeItemDraft> } | null>(null)
   
   // Formulario de nuevo item
   const [showItemForm, setShowItemForm] = useState(false)
@@ -187,7 +214,10 @@ export default function CotizadorPage() {
   const filteredMateriales = (materialSearch.trim()
     ? materiales.filter((m) => {
         const q = materialSearch.trim().toLowerCase()
-        return String(m.nombre || "").toLowerCase().includes(q)
+        return (
+          String(m.nombre || "").toLowerCase().includes(q) ||
+          String(m.externalId || "").toLowerCase().includes(q)
+        )
       })
     : materiales
   ).slice(0, 80)
@@ -298,8 +328,11 @@ export default function CotizadorPage() {
               const material = it.material
                 ? {
                     id: String(matRec.id || ""),
+                    externalId: matRec.externalId != null ? String(matRec.externalId) : null,
                     nombre: String(matRec.nombre || ""),
                     tipo: String(matRec.tipo || ""),
+                    ancho: typeof matRec.ancho === "number" ? matRec.ancho : null,
+                    largo: typeof matRec.largo === "number" ? matRec.largo : null,
                     precioM2: typeof matRec.precioM2 === "number" ? matRec.precioM2 : null,
                     precioMetro: typeof matRec.precioMetro === "number" ? matRec.precioMetro : null,
                     precioUnidad: typeof matRec.precioUnidad === "number" ? matRec.precioUnidad : null,
@@ -313,15 +346,36 @@ export default function CotizadorPage() {
               const subtotalRaw = it.subtotal
               const observacionesRaw = it.observaciones
 
+              const terminadosRaw = it.terminados
+              const terminadosArr = Array.isArray(terminadosRaw) ? terminadosRaw : []
+              const terminados = terminadosArr
+                .map((tr: unknown) => {
+                  const trRec = asRecord(tr)
+                  const termRec = asRecord(trRec.terminado)
+                  const terminadoId = trRec.terminadoId ? String(trRec.terminadoId) : String(termRec.id || "")
+                  if (!terminadoId) return null
+                  return {
+                    terminadoId,
+                    unidadAplicacion: String(trRec.unidadAplicacion || "unidad"),
+                    baseCantidad: Number(trRec.baseCantidad ?? 0) || 0,
+                    precioUnitario: Number(trRec.precioUnitario ?? 0) || 0,
+                    costoTotal: Number(trRec.costoTotal ?? 0) || 0,
+                    nombre: termRec.nombre ? String(termRec.nombre) : undefined,
+                  }
+                })
+                .filter(Boolean) as ItemCotizacion["terminados"]
+
               return {
                 id: String(it.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`),
                 descripcion: String(it.descripcion || ""),
                 materialId: it.materialId ? String(it.materialId) : null,
                 material,
                 cantidad: typeof cantidadRaw === "number" ? cantidadRaw : parseFloat(String(cantidadRaw || 1)) || 1,
+                unidad: typeof it.unidad === "string" ? String(it.unidad) : "unidad",
                 ancho: it.ancho != null ? Number(it.ancho) : null,
                 alto: it.alto != null ? Number(it.alto) : null,
                 m2: it.area != null ? Number(it.area) : null,
+                desperdicioPct: it.desperdicioPct != null ? Number(it.desperdicioPct) : 0,
                 precioUnitario:
                   typeof precioUnitarioRaw === "number" ? precioUnitarioRaw : parseFloat(String(precioUnitarioRaw || 0)) || 0,
                 subtotal: typeof subtotalRaw === "number" ? subtotalRaw : parseFloat(String(subtotalRaw || 0)) || 0,
@@ -333,6 +387,7 @@ export default function CotizadorPage() {
                 costoInstalacion: it.costoInstalacion != null ? Number(it.costoInstalacion) : 0,
                 observaciones:
                   typeof observacionesRaw === "string" ? String(observacionesRaw) : "",
+                terminados,
               }
             })
           : []
@@ -652,7 +707,7 @@ export default function CotizadorPage() {
     }
 
     // Este formulario manual es solo para productos por unidad.
-    // Los productos por m²/ml se agregan por el Cotizador de Litografía.
+    // Los productos por m²/ml se agregan por el Cotizador de Metraje.
     if (material.precioM2 || material.precioMetro) {
       alert(t('quoteBuilder.errors.productRequiresLithography'))
       return
@@ -677,9 +732,11 @@ export default function CotizadorPage() {
       materialId: itemForm.materialId,
       material,
       cantidad,
+      unidad: "unidad",
       ancho,
       alto,
       m2: null,
+      desperdicioPct: 0,
       precioUnitario,
       subtotal,
       laminado: false,
@@ -688,7 +745,8 @@ export default function CotizadorPage() {
       costoLaminado: 0,
       costoTroquelado: 0,
       costoInstalacion: 0,
-      observaciones: itemForm.observaciones
+      observaciones: itemForm.observaciones,
+      terminados: [],
     }
 
     if (editingManualItemId) {
@@ -718,9 +776,11 @@ export default function CotizadorPage() {
       materialId: null,
       material: null,
       cantidad: payload.cantidad,
+      unidad: payload.unidad,
       ancho: null,
       alto: null,
       m2: null,
+      desperdicioPct: payload.desperdicioPct,
       precioUnitario: payload.precioUnitario,
       subtotal: payload.subtotal,
       laminado: false,
@@ -735,6 +795,7 @@ export default function CotizadorPage() {
       ]
         .filter(Boolean)
         .join("\n"),
+      terminados: [],
     }
 
     setItems((prev) => [...prev, nuevoItem])
@@ -759,6 +820,8 @@ export default function CotizadorPage() {
           ...it,
           descripcion: payload.descripcion,
           cantidad: payload.cantidad,
+          unidad: payload.unidad,
+          desperdicioPct: payload.desperdicioPct,
           precioUnitario: payload.precioUnitario,
           subtotal: payload.subtotal,
           observaciones: [
@@ -772,6 +835,58 @@ export default function CotizadorPage() {
     )
     setLitografiaEdit(null)
     setLitografiaOpen(false)
+  }
+
+  const agregarItemMetraje = (draft: MetrajeItemDraft) => {
+    const nuevoItem: ItemCotizacion = {
+      ...draft,
+      materialId: draft.materialId,
+      material: draft.material as unknown as Material,
+      cantidad: draft.cantidad,
+      unidad: draft.unidad,
+      ancho: draft.ancho,
+      alto: draft.alto,
+      m2: draft.m2,
+      desperdicioPct: 0,
+      precioUnitario: draft.precioUnitario,
+      subtotal: draft.subtotal,
+      laminado: false,
+      troquelado: false,
+      instalacion: false,
+      costoLaminado: 0,
+      costoTroquelado: 0,
+      costoInstalacion: 0,
+      observaciones: draft.observaciones,
+      terminados: (draft.terminados || []) as any,
+    }
+
+    setItems((prev) => [...prev, nuevoItem])
+    setShowItemForm(false)
+    setMetrajeEdit(null)
+  }
+
+  const actualizarItemMetraje = (draft: MetrajeItemDraft) => {
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== draft.id) return it
+        return {
+          ...it,
+          descripcion: draft.descripcion,
+          materialId: draft.materialId,
+          material: draft.material as unknown as Material,
+          cantidad: draft.cantidad,
+          unidad: draft.unidad,
+          ancho: draft.ancho,
+          alto: draft.alto,
+          m2: draft.m2,
+          precioUnitario: draft.precioUnitario,
+          subtotal: draft.subtotal,
+          terminados: (draft.terminados || []) as any,
+        }
+      })
+    )
+    setMetrajeEdit(null)
+    setMetrajeOpen(false)
   }
 
   const eliminarItem = (id: string) => {
@@ -804,6 +919,27 @@ export default function CotizadorPage() {
         setLitografiaOpen(true)
         return
       }
+    }
+
+    // Metraje (m²/ml) => reabrir el cotizador de metraje
+    if (item.materialId && (String(item.unidad) === "m2" || String(item.unidad) === "ml")) {
+      setMetrajeEdit({
+        itemId: item.id,
+        item: {
+          id: item.id,
+          descripcion: item.descripcion,
+          materialId: item.materialId,
+          cantidad: item.cantidad,
+          unidad: item.unidad === "ml" ? "ml" : "m2",
+          ancho: item.ancho,
+          alto: item.alto,
+          m2: item.m2,
+          terminados: item.terminados as any,
+        },
+      })
+      setShowItemForm(false)
+      setMetrajeOpen(true)
+      return
     }
 
     // Manual (por unidad) => reusar el formulario de creación
@@ -885,9 +1021,11 @@ export default function CotizadorPage() {
             descripcion: item.descripcion,
             materialId: item.materialId,
             cantidad: item.cantidad,
+            unidad: item.unidad,
             ancho: item.ancho,
             alto: item.alto,
             m2: item.m2,
+            desperdicioPct: item.desperdicioPct,
             precioUnitario: item.precioUnitario,
             subtotal: item.subtotal,
             laminado: item.laminado,
@@ -896,7 +1034,8 @@ export default function CotizadorPage() {
             costoLaminado: item.costoLaminado,
             costoTroquelado: item.costoTroquelado,
             costoInstalacion: item.costoInstalacion,
-            observaciones: item.observaciones
+            observaciones: item.observaciones,
+            terminados: item.terminados,
           })),
           subtotal,
           descuento: 0,
@@ -982,6 +1121,7 @@ export default function CotizadorPage() {
     setShowItemForm(false)
     setEditingManualItemId(null)
     setLitografiaEdit(null)
+    setMetrajeEdit(null)
     resetItemForm()
     setSubtotal(0)
     setDescuento(0)
@@ -997,6 +1137,25 @@ export default function CotizadorPage() {
         onAddItem={agregarItemLitografia}
         edit={litografiaEdit}
         onUpdateItem={actualizarItemLitografia}
+      />
+
+      <MetrajeQuoteDialog
+        open={metrajeOpen}
+        onOpenChange={(v) => {
+          setMetrajeOpen(v)
+          if (!v) setMetrajeEdit(null)
+        }}
+        materiales={materiales as unknown as MetrajeMaterial[]}
+        formatCurrency={formatCurrency}
+        onAddItem={agregarItemMetraje}
+        edit={metrajeEdit}
+        onUpdateItem={actualizarItemMetraje}
+      />
+
+      <CustomProductRequestDialog
+        open={customProductOpen}
+        onOpenChange={setCustomProductOpen}
+        defaultNombre={materialSearch}
       />
 
       {/* Preview post-guardar */}
@@ -1402,6 +1561,18 @@ export default function CotizadorPage() {
                   >
                     {t('quoteBuilder.actions.lithographyQuoteBuilder')}
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={() => {
+                      setShowItemForm(false)
+                      setMetrajeEdit(null)
+                      setMetrajeOpen(true)
+                    }}
+                  >
+                    {t('quoteBuilder.actions.metrageQuoteBuilder')}
+                  </Button>
                   <Button onClick={() => setShowItemForm(true)} size="sm" data-tour="cotizador-add-item">
                     <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1464,7 +1635,7 @@ export default function CotizadorPage() {
                                       setMaterialDropdownOpen(false)
                                     }}
                                   >
-                                    <div className="truncate">{mat.nombre}</div>
+                                    <div className="truncate">{formatMaterialLabel(mat)}</div>
                                     {priceHint ? (
                                       <div className="text-xs text-muted-foreground truncate">{priceHint}</div>
                                     ) : null}
@@ -1474,6 +1645,16 @@ export default function CotizadorPage() {
                             )}
                           </div>
                         ) : null}
+                      </div>
+                      <div className="mt-2 flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          type="button"
+                          onClick={() => setCustomProductOpen(true)}
+                        >
+                          Crear producto personalizado
+                        </Button>
                       </div>
                     </div>
 
@@ -1555,8 +1736,11 @@ export default function CotizadorPage() {
                     const tiraje = Math.max(0, Math.trunc(parseFloat(tirajeRaw) || 0))
                     const detailParts: string[] = []
                     if (item.material?.nombre) detailParts.push(item.material.nombre)
-                    if (item.ancho && item.alto) {
-                      detailParts.push(`${item.ancho} x ${item.alto} cm (${item.m2?.toFixed(2)} m²)`)
+                    if (String(item.unidad) === 'm2' && item.ancho && item.alto) {
+                      detailParts.push(`${item.ancho} x ${item.alto} cm (${(item.m2 ?? 0).toFixed(4)} m²)`)
+                    } else if (String(item.unidad) === 'ml' && item.m2) {
+                      const anchoLabel = item.ancho ? ` • ancho ${item.ancho} cm` : ''
+                      detailParts.push(`${item.m2.toFixed(2)} ml${anchoLabel}`)
                     }
                     if (tiraje > 0) detailParts.push(`Tiraje: ${tiraje}`)
                     detailParts.push(`${t('quoteBuilder.fields.quantityLabel')}: ${item.cantidad}`)
@@ -1575,6 +1759,24 @@ export default function CotizadorPage() {
                               {item.instalacion && <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded">{t('quoteBuilder.items.installation')}</span>}
                             </div>
                           )}
+                          {Array.isArray(item.terminados) && item.terminados.length > 0 ? (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {item.terminados.slice(0, 6).map((tr) => (
+                                <span
+                                  key={tr.terminadoId}
+                                  className="text-xs px-2 py-1 bg-muted text-muted-foreground rounded"
+                                  title={tr.unidadAplicacion}
+                                >
+                                  {tr.nombre || 'Terminado'}
+                                </span>
+                              ))}
+                              {item.terminados.length > 6 ? (
+                                <span className="text-xs px-2 py-1 bg-muted text-muted-foreground rounded">
+                                  +{item.terminados.length - 6}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
                           </div>
                           <div className="text-right space-y-1">
                             <p className="text-sm text-muted-foreground">
