@@ -40,6 +40,20 @@ function isEnabled(level: AccessLevel | undefined): boolean {
   return (level ?? 'NONE') !== 'NONE'
 }
 
+function baseAccessForSedeRole(role: Props['initialSedeRole']): AccessLevel {
+  switch (role) {
+    case 'ADMIN':
+      return 'ADMIN'
+    case 'MANAGER':
+      return 'WRITE'
+    case 'MEMBER':
+      return 'WRITE'
+    case 'READER':
+    default:
+      return 'READ'
+  }
+}
+
 export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole, modules, initial, trigger }: Props) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
@@ -47,6 +61,14 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
   const [saving, setSaving] = useState<Partial<Record<ModuleKey, boolean>>>({})
   const [sedeRole, setSedeRole] = useState<Props['initialSedeRole']>(initialSedeRole)
   const [savingRole, setSavingRole] = useState(false)
+
+  const baseLevel = useMemo(() => baseAccessForSedeRole(sedeRole), [sedeRole])
+
+  const effectiveLevel = (moduleKey: ModuleKey): AccessLevel => {
+    // Override explícito por módulo (incluye NONE para deshabilitar)
+    const explicit = levels[moduleKey]
+    return explicit ?? baseLevel
+  }
 
   const roleOptions: Props['initialSedeRole'][] = ['ADMIN', 'MANAGER', 'MEMBER', 'READER']
 
@@ -89,7 +111,8 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
       })
       const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { level?: AccessLevel } } | null
       if (res.ok && json?.success) {
-        setLevels((prev) => ({ ...prev, [moduleKey]: json.data?.level ?? (enabled ? 'READ' : 'NONE') }))
+        // El backend devuelve el nivel aplicado según rol (READ/WRITE/ADMIN) o NONE.
+        setLevels((prev) => ({ ...prev, [moduleKey]: json.data?.level ?? (enabled ? baseLevel : 'NONE') }))
       }
     } finally {
       setSaving((prev) => ({ ...prev, [moduleKey]: false }))
@@ -107,6 +130,19 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
       const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { role?: Props['initialSedeRole'] } } | null
       if (res.ok && json?.success) {
         setSedeRole(json.data?.role ?? nextRole)
+
+        // Mantener consistencia UI: si había overrides "habilitados" (≠ NONE),
+        // al cambiar el rol los alineamos al nuevo acceso base.
+        const nextBase = baseAccessForSedeRole(json.data?.role ?? nextRole)
+        setLevels((prev) => {
+          const next: Partial<Record<ModuleKey, AccessLevel>> = { ...prev }
+          for (const key of Object.keys(next) as ModuleKey[]) {
+            if (next[key] && next[key] !== 'NONE') {
+              next[key] = nextBase
+            }
+          }
+          return next
+        })
       }
     } finally {
       setSavingRole(false)
@@ -169,11 +205,11 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
                   >
                     <div className="min-w-0">
                       <div className="text-sm font-medium truncate">{t(`rbac.module.${moduleKey}`)}</div>
-                      <div className="text-xs text-muted-foreground">{t('rbac.userPermissions.current')}: {t(`rbac.access.${levels[moduleKey] ?? 'NONE'}`)}</div>
+                      <div className="text-xs text-muted-foreground">{t('rbac.userPermissions.current')}: {t(`rbac.access.${effectiveLevel(moduleKey)}`)}</div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Switch
-                        checked={isEnabled(levels[moduleKey])}
+                        checked={isEnabled(effectiveLevel(moduleKey))}
                         onCheckedChange={(v) => void toggle(moduleKey, Boolean(v))}
                         disabled={Boolean(saving[moduleKey])}
                       />
@@ -195,10 +231,10 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
                   >
                     <div className="min-w-0">
                       <div className="text-sm font-medium truncate">{t(`rbac.module.${moduleKey}`)}</div>
-                      <div className="text-xs text-muted-foreground">{t('rbac.userPermissions.current')}: {t(`rbac.access.${levels[moduleKey] ?? 'NONE'}`)}</div>
+                      <div className="text-xs text-muted-foreground">{t('rbac.userPermissions.current')}: {t(`rbac.access.${effectiveLevel(moduleKey)}`)}</div>
                     </div>
                     <Switch
-                      checked={isEnabled(levels[moduleKey])}
+                      checked={isEnabled(effectiveLevel(moduleKey))}
                       onCheckedChange={(v) => void toggle(moduleKey, Boolean(v))}
                       disabled={Boolean(saving[moduleKey])}
                     />

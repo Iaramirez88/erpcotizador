@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { requireEmpresaIdForUser } from '@/lib/rbac'
+import { requireEmpresaIdForUser, sedeRoleToBaseAccess } from '@/lib/rbac'
 import { SedeRole } from '@prisma/client'
 
 export const runtime = 'nodejs'
@@ -65,6 +65,19 @@ export async function PATCH(request: Request) {
     where: { sedeId_userId: { sedeId, userId: targetUser.id } },
     data: { role },
     select: { role: true },
+  })
+
+  // Consistencia: si el rol cambia, alinear los permisos explícitos por módulo
+  // para que los módulos habilitados (≠ NONE) reflejen el nivel base del rol.
+  // Los módulos deshabilitados (NONE) se mantienen como override.
+  const base = sedeRoleToBaseAccess(updated.role)
+  await prisma.userModuleAccess.updateMany({
+    where: {
+      sedeId,
+      userId: targetUser.id,
+      level: { not: 'NONE' },
+    },
+    data: { level: base },
   })
 
   await prisma.notification.create({

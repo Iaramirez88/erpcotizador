@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { requireEmpresaIdForUser } from '@/lib/rbac'
+import { requireEmpresaIdForUser, sedeRoleToBaseAccess } from '@/lib/rbac'
 import { AccessLevel, ModuleKey } from '@prisma/client'
 
 export const runtime = 'nodejs'
@@ -80,13 +80,14 @@ export async function PATCH(request: Request) {
 
   const targetMembership = await prisma.sedeMembership.findUnique({
     where: { sedeId_userId: { sedeId, userId: targetUser.id } },
-    select: { id: true },
+    select: { id: true, role: true },
   })
   if (!targetMembership?.id) {
     return NextResponse.json({ success: false, error: 'El usuario no pertenece a esta sede' }, { status: 400 })
   }
 
-  const level: AccessLevel = enabled ? 'READ' : 'NONE'
+  const base = sedeRoleToBaseAccess(targetMembership.role)
+  const level: AccessLevel = enabled ? base : 'NONE'
 
   const updated = await prisma.userModuleAccess.upsert({
     where: { sedeId_userId_module: { sedeId, userId: targetUser.id, module: moduleKey } },
