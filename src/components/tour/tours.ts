@@ -19,7 +19,7 @@ export function tourIdFromPath(pathname: string): TourId | null {
   if (pathname.startsWith('/dashboard/clientes')) return 'dashboard-clientes.v1'
   if (pathname.startsWith('/dashboard/materiales')) return 'dashboard-materiales.v1'
   if (pathname.startsWith('/dashboard/inventario')) return 'dashboard-inventario.v1'
-  if (pathname.startsWith('/dashboard/bodegas')) return 'dashboard-sedes.v1'
+  if (pathname.startsWith('/dashboard/configuracion/sedes')) return 'dashboard-sedes.v1'
   return null
 }
 

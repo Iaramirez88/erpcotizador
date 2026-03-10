@@ -65,12 +65,13 @@ function moduleForHref(href: string): string | null {
       return 'MATERIALES'
     case '/dashboard/inventario':
     case '/dashboard/inventario/traslados':
+    case '/dashboard/bodegas':
       return 'INVENTARIO'
     case '/dashboard/compras':
       return 'COMPRAS'
     case '/dashboard/proveedores':
       return 'PROVEEDORES'
-    case '/dashboard/bodegas':
+    case '/dashboard/configuracion/sedes':
     case '/dashboard/configuracion/usuarios':
     case '/dashboard/configuracion/permisos':
     case '/dashboard/configuracion/empresa':
@@ -270,7 +271,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
   // Gestión
   {
     name: t('nav.branches'),
-    href: "/dashboard/bodegas",
+    href: "/dashboard/configuracion/sedes",
     icon: <Building2 className="h-5 w-5" />,
   },
   {
@@ -620,7 +621,7 @@ export default function Sidebar({ user }: SidebarProps) {
       {
         title: 'Gestión',
         items: [
-          get('/dashboard/bodegas'),
+          get('/dashboard/configuracion/sedes'),
           get('/dashboard/configuracion/usuarios'),
           get('/dashboard/configuracion/permisos'),
           get('/dashboard/configuracion/empresa'),

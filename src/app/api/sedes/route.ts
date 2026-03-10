@@ -53,12 +53,42 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   }
 
-  const sede = await prisma.sede.create({
-    data: {
-      empresaId: access.empresaId,
-      nombre,
-      codigo: codigo || null,
-    },
+  const sede = await prisma.$transaction(async (tx) => {
+    const created = await tx.sede.create({
+      data: {
+        empresaId: access.empresaId,
+        nombre,
+        codigo: codigo || null,
+      },
+    })
+
+    // Si quien crea NO es system ADMIN, asegúrate que quede con membresía en la sede
+    // (mínimo MANAGER/ADMIN), para poder administrarla luego desde Permisos.
+    if (access.session.user.role !== 'ADMIN') {
+      const myMembership = await tx.sedeMembership.findFirst({
+        where: {
+          userId: access.userId,
+          sede: { empresaId: access.empresaId },
+          role: { in: ['ADMIN', 'MANAGER'] },
+        },
+        select: { role: true },
+      })
+
+      const roleToAssign = myMembership?.role === 'ADMIN' ? 'ADMIN' : 'MANAGER'
+
+      await tx.sedeMembership
+        .create({
+          data: {
+            sedeId: created.id,
+            userId: access.userId,
+            role: roleToAssign,
+          },
+          select: { id: true },
+        })
+        .catch(() => null)
+    }
+
+    return created
   })
 
   return NextResponse.json({ success: true, data: sede }, { status: 201 })

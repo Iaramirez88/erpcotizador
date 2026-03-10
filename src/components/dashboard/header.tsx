@@ -126,7 +126,7 @@ export default function Header({ user }: HeaderProps) {
       { name: t('nav.purchases'), href: '/dashboard/compras' },
       { name: t('nav.suppliers'), href: '/dashboard/proveedores' },
       { name: t('nav.waste'), href: '/dashboard/configuracion/desperdicios' },
-      { name: t('nav.branches'), href: '/dashboard/bodegas' },
+      { name: t('nav.branches'), href: '/dashboard/configuracion/sedes' },
       { name: t('nav.users'), href: '/dashboard/configuracion/usuarios' },
       { name: t('nav.permissions'), href: '/dashboard/configuracion/permisos' },
       { name: t('nav.company'), href: '/dashboard/configuracion/empresa' },

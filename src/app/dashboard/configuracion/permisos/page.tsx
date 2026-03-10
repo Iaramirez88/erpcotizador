@@ -10,6 +10,8 @@ import { translate } from '@/lib/i18n/messages'
 import { MemberActionsMenu } from '@/components/rbac/member-actions-menu'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 const MODULES: ModuleKey[] = [
   'DASHBOARD',

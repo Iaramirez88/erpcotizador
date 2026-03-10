@@ -23,13 +23,13 @@ function moduleForPath(pathname: string): string | null {
     if (pathname.startsWith('/dashboard/escaneos')) return 'ESCANEOS'
     if (pathname.startsWith('/dashboard/terminados')) return 'MATERIALES'
     if (pathname.startsWith('/dashboard/inventario')) return 'INVENTARIO'
+    if (pathname.startsWith('/dashboard/bodegas')) return 'INVENTARIO'
     if (pathname.startsWith('/dashboard/compras')) return 'COMPRAS'
     if (pathname.startsWith('/dashboard/proveedores')) return 'PROVEEDORES'
     if (pathname.startsWith('/dashboard/litografia')) return 'COTIZADOR'
 
     // Todo lo de configuración (excepto /plan) se considera CONFIG.
     if (pathname.startsWith('/dashboard/configuracion')) return 'CONFIG'
-    if (pathname.startsWith('/dashboard/bodegas')) return 'CONFIG'
   }
 
   return null
