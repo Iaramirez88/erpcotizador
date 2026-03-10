@@ -17,6 +17,7 @@ import {
   CheckCircle,
   XCircle,
   Truck,
+  Trash2,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -51,11 +52,24 @@ export default function OrdenesPage() {
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<string>('');
+  const [canDeleteOrders, setCanDeleteOrders] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
+    void cargarPermisos();
     cargarOrdenes();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const cargarPermisos = async () => {
+    try {
+      const res = await fetch('/api/me');
+      const json = await res.json();
+      setCanDeleteOrders(Boolean(json?.success && json?.data?.canDeleteOrders));
+    } catch {
+      setCanDeleteOrders(false);
+    }
+  };
 
   const cargarOrdenes = async () => {
     try {
@@ -135,6 +149,33 @@ export default function OrdenesPage() {
 
   const getEstadoLabel = (estado: string) => {
     return t(`orders.status.${estado}`);
+  };
+
+  const borrarOrden = async (orden: OrdenTrabajo) => {
+    if (!canDeleteOrders) return;
+
+    const ok = window.confirm(
+      t('orders.delete.confirm', { numero: String(orden.numero) })
+    );
+    if (!ok) return;
+
+    setDeletingId(orden.id);
+    try {
+      const res = await fetch(`/api/ordenes/${orden.id}`, { method: 'DELETE' });
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.success) {
+        const msg = json?.error || t('orders.delete.error');
+        window.alert(msg);
+        return;
+      }
+
+      await cargarOrdenes();
+    } catch {
+      window.alert(t('orders.delete.error'));
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -256,6 +297,20 @@ export default function OrdenesPage() {
                       </div>
                     </div>
                   </div>
+
+                  {canDeleteOrders && (
+                    <div className="ml-4 flex items-center">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => void borrarOrden(orden)}
+                        disabled={deletingId === orden.id}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        {deletingId === orden.id ? t('orders.delete.deleting') : t('orders.delete.action')}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

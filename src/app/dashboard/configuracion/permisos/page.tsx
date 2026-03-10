@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { ModuleKey, AccessLevel, SedeRole } from '@prisma/client'
 import { getServerLanguage } from '@/lib/i18n/server'
 import { translate } from '@/lib/i18n/messages'
-import { UserPermissionsModal } from '@/components/rbac/user-permissions-modal'
+import { MemberActionsMenu } from '@/components/rbac/member-actions-menu'
 
 export const runtime = 'nodejs'
 
@@ -31,8 +31,13 @@ const MODULES: ModuleKey[] = [
 
 const ACCESS: AccessLevel[] = ['NONE', 'READ', 'WRITE', 'ADMIN']
 const SEDE_ROLES: SedeRole[] = ['ADMIN', 'MANAGER', 'MEMBER', 'READER']
+const SEDE_ROLES_UI: SedeRole[] = ['ADMIN', 'MANAGER', 'READER']
 
-export default async function PermisosPage() {
+type PageProps = {
+  searchParams?: { [key: string]: string | string[] | undefined }
+}
+
+export default async function PermisosPage({ searchParams }: PageProps) {
   const language = await getServerLanguage()
   const t = (key: string, vars?: Record<string, string | number>) => translate(language, key, vars)
   const naText = t('common.na')
@@ -66,41 +71,9 @@ export default async function PermisosPage() {
     select: { id: true, nombre: true, codigo: true },
   })
 
-  const activeSedeId = sedes[0]?.id
-
-  async function createSede(formData: FormData) {
-    'use server'
-    const session2 = await auth()
-    if (!session2) return
-
-    const nombre = String(formData.get('nombre') || '').trim()
-    const codigo = String(formData.get('codigo') || '').trim()
-
-    if (!nombre) return
-
-    const empresaId2 = await requireEmpresaIdForUser(session2.user.id)
-
-    const anyAdmin2 =
-      session2.user.role === 'ADMIN' ||
-      !!(await prisma.sedeMembership.findFirst({
-        where: {
-          userId: session2.user.id,
-          sede: { empresaId: empresaId2 },
-          role: { in: ['ADMIN', 'MANAGER'] },
-        },
-        select: { id: true },
-      }))
-
-    if (!anyAdmin2) return
-
-    await prisma.sede.create({
-      data: {
-        empresaId: empresaId2,
-        nombre,
-        codigo: codigo || null,
-      },
-    })
-  }
+  const requestedSedeIdRaw = searchParams?.sedeId
+  const requestedSedeId = typeof requestedSedeIdRaw === 'string' ? requestedSedeIdRaw : ''
+  const activeSedeId = sedes.some((s) => s.id === requestedSedeId) ? requestedSedeId : sedes[0]?.id
 
   async function addMember(formData: FormData) {
     'use server'
@@ -132,6 +105,7 @@ export default async function PermisosPage() {
       update: { role },
     })
   }
+
 
   async function setGlobalAccess(formData: FormData) {
     'use server'
@@ -205,7 +179,7 @@ export default async function PermisosPage() {
     ? await prisma.sedeMembership.findMany({
         where: { sedeId: activeSedeId },
         orderBy: { createdAt: 'asc' },
-        select: { id: true, role: true, user: { select: { id: true, email: true, name: true } } },
+        select: { id: true, role: true, user: { select: { id: true, email: true, name: true, sedeDefaultId: true } } },
       })
     : []
 
@@ -241,11 +215,29 @@ export default async function PermisosPage() {
           <CardTitle>{t('rbac.membersAndPermissions.title', { sede: activeSede?.nombre ?? naText })}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <form method="get" className="grid gap-2 max-w-lg">
+            <label className="text-sm font-medium">{t('rbac.common.sedeLabel')}</label>
+            <select name="sedeId" defaultValue={activeSedeId ?? ''} className="border rounded px-3 py-2">
+              {sedes.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nombre}{s.codigo ? ` (${s.codigo})` : ''}
+                </option>
+              ))}
+            </select>
+            <Button type="submit" variant="secondary">{t('common.view')}</Button>
+          </form>
+
           <form action={addMember} className="grid gap-2 max-w-lg">
-            <input type="hidden" name="sedeId" value={activeSedeId ?? ''} />
+            <select name="sedeId" className="border rounded px-3 py-2" defaultValue={activeSedeId ?? ''}>
+              {sedes.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nombre}{s.codigo ? ` (${s.codigo})` : ''}
+                </option>
+              ))}
+            </select>
             <input name="email" placeholder={t('rbac.common.emailPlaceholder')} className="border rounded px-3 py-2" />
             <select name="role" className="border rounded px-3 py-2">
-              {SEDE_ROLES.map((r) => (
+              {SEDE_ROLES_UI.map((r) => (
                 <option key={r} value={r}>
                   {sedeRoleLabel(r)}
                 </option>
@@ -261,19 +253,18 @@ export default async function PermisosPage() {
                   <div className="font-medium">{m.user.name ?? m.user.email}</div>
                   <div className="text-xs text-muted-foreground">{m.user.email}</div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="text-sm text-muted-foreground">{sedeRoleLabel(m.role)}</div>
-                  {activeSedeId && activeSede?.nombre ? (
-                    <UserPermissionsModal
-                      sedeId={activeSedeId}
-                      sedeNombre={activeSede.nombre}
-                      user={{ id: m.user.id, email: m.user.email, name: m.user.name ?? null }}
-                      initialSedeRole={m.role}
-                      modules={MODULES}
-                      initial={accessByUserId[m.user.id] ?? {}}
-                    />
-                  ) : null}
-                </div>
+                {activeSedeId && activeSede?.nombre ? (
+                  <MemberActionsMenu
+                    sedes={sedes}
+                    user={{ id: m.user.id, email: m.user.email, name: m.user.name ?? null }}
+                    userDefaultSedeId={m.user.sedeDefaultId ?? null}
+                    activeSedeId={activeSedeId}
+                    activeSedeNombre={activeSede.nombre}
+                    initialSedeRole={m.role}
+                    modules={MODULES}
+                    initialAccess={accessByUserId[m.user.id] ?? {}}
+                  />
+                ) : null}
               </div>
             ))}
             {members.length === 0 && <div className="text-sm text-muted-foreground">{t('rbac.members.empty')}</div>}
@@ -312,52 +303,19 @@ export default async function PermisosPage() {
                   <div className="font-medium">{ga.user.name ?? ga.user.email}</div>
                   <div className="text-xs text-muted-foreground">{ga.user.email}</div>
                 </div>
-                <div className="text-sm">{accessLabel(ga.level)}</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-sm">{accessLabel(ga.level)}</div>
+                  <form action={setGlobalAccess}>
+                    <input type="hidden" name="email" value={ga.user.email} />
+                    <input type="hidden" name="level" value="NONE" />
+                    <Button type="submit" variant="outline" size="sm">{t('rbac.globalAccess.remove')}</Button>
+                  </form>
+                </div>
               </div>
             ))}
             {globalAccess.length === 0 && (
               <div className="text-sm text-muted-foreground">{t('rbac.globalAccess.empty')}</div>
             )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('rbac.sedes.createTitle')}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form action={createSede} className="flex flex-col gap-3 max-w-md">
-            <input
-              name="nombre"
-              placeholder={t('rbac.sedes.namePlaceholder')}
-              className="border rounded px-3 py-2"
-            />
-            <input
-              name="codigo"
-              placeholder={t('rbac.sedes.codePlaceholder')}
-              className="border rounded px-3 py-2"
-            />
-            <Button type="submit">{t('rbac.sedes.create')}</Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('rbac.sedes.title')}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-2">
-            {sedes.map((s) => (
-              <div key={s.id} className="flex items-center justify-between border rounded px-3 py-2">
-                <div>
-                  <div className="font-medium">{s.nombre}</div>
-                  <div className="text-xs text-muted-foreground">{s.codigo ?? naText}</div>
-                </div>
-                <div className="text-xs text-muted-foreground">{s.id}</div>
-              </div>
-            ))}
           </div>
         </CardContent>
       </Card>

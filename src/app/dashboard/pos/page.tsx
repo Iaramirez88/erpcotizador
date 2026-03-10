@@ -27,7 +27,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatCurrency, formatUnidadMedidaLabel } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useI18n } from '@/components/providers/i18n-provider'
-import { Download, Search } from 'lucide-react'
+import { Download, Plus, Search } from 'lucide-react'
 
 type DianDirection = 'OUTBOUND' | 'INBOUND'
 type DianType = 'INVOICE' | 'CREDIT_NOTE' | 'DEBIT_NOTE' | 'ELECTRONIC_INSTRUMENT'
@@ -233,17 +233,22 @@ type ReturnDetail = {
   }>
 }
 
-type StockRow = {
-  id: string
-  quantity: number
-  updatedAt: string
-  material: { id: string; nombre: string; unidadMedida: string }
-}
-
 type ApiListResponse<T> = { success?: boolean; data?: T; error?: string }
 
 function n(value: unknown, fallback = 0) {
   const num = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(num) ? num : fallback
+}
+
+function parseMoneyInput(value: unknown, fallback = 0) {
+  const s = String(value ?? '').trim()
+  if (!s) return fallback
+  const cleaned = s
+    .replace(/\$/g, '')
+    .replace(/\s/g, '')
+    .replace(/\.(?=\d{3}(\D|$))/g, '')
+    .replace(',', '.')
+  const num = Number(cleaned)
   return Number.isFinite(num) ? num : fallback
 }
 
@@ -258,6 +263,31 @@ type DraftItem = {
   quantity: string
   unitPrice: string
 }
+
+type PaymentMethod =
+  | 'CASH'
+  | 'CREDIT'
+  | 'DEBIT_CARD'
+  | 'CREDIT_CARD'
+  | 'CHECK'
+  | 'TRANSFER'
+  | 'BONUS'
+  | 'LETTER'
+  | 'VALE'
+  | 'OTHER'
+
+const PAYMENT_METHODS: PaymentMethod[] = [
+  'CASH',
+  'CREDIT',
+  'DEBIT_CARD',
+  'CREDIT_CARD',
+  'CHECK',
+  'TRANSFER',
+  'BONUS',
+  'LETTER',
+  'VALE',
+  'OTHER',
+]
 
 type ClientePickerItem = {
   id: string
@@ -306,11 +336,6 @@ export default function PosPage() {
   const [returnDetailLoading, setReturnDetailLoading] = useState(false)
   const [returnDetailError, setReturnDetailError] = useState<string | null>(null)
   const [returnDetail, setReturnDetail] = useState<ReturnDetail | null>(null)
-
-  const [selectedWarehouseForStock, setSelectedWarehouseForStock] = useState('')
-  const [stockLoading, setStockLoading] = useState(false)
-  const [stockError, setStockError] = useState<string | null>(null)
-  const [stockRows, setStockRows] = useState<StockRow[]>([])
 
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -411,14 +436,39 @@ export default function PosPage() {
   const [productoPickerError, setProductoPickerError] = useState<string | null>(null)
   const [productoPickerItems, setProductoPickerItems] = useState<Material[]>([])
 
+  const [createClienteInlineOpen, setCreateClienteInlineOpen] = useState(false)
+  const [createClienteInlineSubmitting, setCreateClienteInlineSubmitting] = useState(false)
+  const [createClienteInlineError, setCreateClienteInlineError] = useState<string | null>(null)
+  const [createClienteInlineForm, setCreateClienteInlineForm] = useState({
+    nombre: '',
+    tipoDocumento: 'CC',
+    documento: '',
+    email: '',
+    telefono: '',
+    celular: '',
+    direccion: '',
+    ciudad: '',
+    departamento: '',
+  })
+
   const [form, setForm] = useState({
     clienteNombre: '',
     clienteDocumento: '',
     ivaPct: '0',
+    discountAmount: '0',
+    otherTaxesAmount: '0',
     note: '',
     warehouseId: '',
     items: [{ materialId: '', descripcion: '', quantity: '1', unitPrice: '' }] as DraftItem[],
   })
+
+  const [paymentAmounts, setPaymentAmounts] = useState<Record<PaymentMethod, string>>(() =>
+    PAYMENT_METHODS.reduce((acc, key) => {
+      acc[key] = '0'
+      return acc
+    }, {} as Record<PaymentMethod, string>),
+  )
+  const [paymentsTouched, setPaymentsTouched] = useState(false)
 
   const [returnForm, setReturnForm] = useState({
     invoiceId: '',
@@ -495,37 +545,6 @@ export default function PosPage() {
   const exportExcel = useCallback(() => {
     window.location.href = '/api/pos/export'
   }, [])
-
-  useEffect(() => {
-    if (!selectedWarehouseForStock && defaultBodegaId) {
-      setSelectedWarehouseForStock(defaultBodegaId)
-    }
-  }, [defaultBodegaId, selectedWarehouseForStock])
-
-  async function loadStock(warehouseId: string) {
-    if (!warehouseId) {
-      setStockRows([])
-      return
-    }
-
-    setStockLoading(true)
-    setStockError(null)
-    try {
-      const res = await fetch(`/api/bodegas/${warehouseId}/stock`)
-      const json = (await res.json().catch(() => ({}))) as ApiListResponse<StockRow[]>
-      if (!res.ok || !json.success || !Array.isArray(json.data)) {
-        setStockError(json.error || t('pos.errors.loadWarehouseStock'))
-        setStockRows([])
-        return
-      }
-      setStockRows(json.data)
-    } catch (e) {
-      setStockError(e instanceof Error ? e.message : t('common.unexpectedError'))
-      setStockRows([])
-    } finally {
-      setStockLoading(false)
-    }
-  }
 
   const loadDianDocs = useCallback(async () => {
     setDianLoading(true)
@@ -1345,10 +1364,6 @@ export default function PosPage() {
   }, [dianDetail?.events, locale])
 
   useEffect(() => {
-    void loadStock(selectedWarehouseForStock)
-  }, [selectedWarehouseForStock])
-
-  useEffect(() => {
     if (activeTab !== 'dian') return
     void loadDianDocs()
   }, [activeTab, loadDianDocs])
@@ -1361,14 +1376,71 @@ export default function PosPage() {
     setError(null)
     setCreateAsDraft(false)
     setForm({
-      clienteNombre: '',
+      clienteNombre: t('pos.createDialog.defaultCustomer'),
       clienteDocumento: '',
       ivaPct: '0',
+      discountAmount: '0',
+      otherTaxesAmount: '0',
       note: '',
       warehouseId: defaultBodegaId,
       items: [{ materialId: '', descripcion: '', quantity: '1', unitPrice: '' }],
     })
+    setPaymentsTouched(false)
+    setPaymentAmounts(
+      PAYMENT_METHODS.reduce((acc, key) => {
+        acc[key] = '0'
+        return acc
+      }, {} as Record<PaymentMethod, string>),
+    )
     setCreateOpen(true)
+  }
+
+  async function submitInlineCliente(e: React.FormEvent) {
+    e.preventDefault()
+    setCreateClienteInlineSubmitting(true)
+    setCreateClienteInlineError(null)
+
+    try {
+      const payload = {
+        ...createClienteInlineForm,
+        nombre: createClienteInlineForm.nombre.trim(),
+        documento: createClienteInlineForm.documento.trim(),
+        email: createClienteInlineForm.email.trim() || undefined,
+        telefono: createClienteInlineForm.telefono.trim() || undefined,
+        celular: createClienteInlineForm.celular.trim() || undefined,
+        direccion: createClienteInlineForm.direccion.trim() || undefined,
+        ciudad: createClienteInlineForm.ciudad.trim() || undefined,
+        departamento: createClienteInlineForm.departamento.trim() || undefined,
+      }
+
+      if (!payload.nombre || !payload.tipoDocumento || !payload.documento) {
+        setCreateClienteInlineError(t('pos.customers.inlineCreate.errors.required'))
+        return
+      }
+
+      const res = await fetch('/api/clientes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      const json = (await res.json().catch(() => ({}))) as { success?: boolean; data?: unknown; error?: string }
+      if (!res.ok || !json.success) {
+        setCreateClienteInlineError(json.error || t('pos.customers.inlineCreate.errors.failed'))
+        return
+      }
+
+      const created = json.data as { nombre?: unknown; documento?: unknown }
+      const nombre = String(created?.nombre ?? payload.nombre)
+      const documento = String(created?.documento ?? payload.documento)
+
+      setForm((p) => ({ ...p, clienteNombre: nombre, clienteDocumento: documento }))
+      setCreateClienteInlineOpen(false)
+    } catch (e) {
+      setCreateClienteInlineError(e instanceof Error ? e.message : t('common.unexpectedError'))
+    } finally {
+      setCreateClienteInlineSubmitting(false)
+    }
   }
 
   function openReturn() {
@@ -1500,11 +1572,41 @@ export default function PosPage() {
       .filter((it) => it.quantity > 0)
 
     const subtotal = lines.reduce((sum, it) => sum + it.total, 0)
-    const iva = subtotal * (ivaPct / 100)
-    const total = subtotal + iva
+    const discountAmount = Math.max(0, parseMoneyInput(form.discountAmount, 0))
+    const otherTaxesAmount = Math.max(0, parseMoneyInput(form.otherTaxesAmount, 0))
+    const discountFinal = Math.min(subtotal, discountAmount)
+    const taxableBase = Math.max(0, subtotal - discountFinal)
+    const iva = taxableBase * (ivaPct / 100)
+    const total = taxableBase + iva + otherTaxesAmount
 
-    return { ivaPct, lines, subtotal, iva, total }
-  }, [form.items, form.ivaPct])
+    return { ivaPct, lines, subtotal, discountAmount: discountFinal, taxableBase, otherTaxesAmount, iva, total }
+  }, [form.items, form.ivaPct, form.discountAmount, form.otherTaxesAmount])
+
+  const computedPayments = useMemo(() => {
+    const normalized = PAYMENT_METHODS.map((method) => ({
+      method,
+      amount: Math.max(0, parseMoneyInput(paymentAmounts[method], 0)),
+    })).filter((p) => p.amount > 0)
+
+    const sum = normalized.reduce((acc, p) => acc + p.amount, 0)
+    const diff = computed.total - sum
+    const ok = createAsDraft || Math.abs(diff) < 0.01
+
+    return { normalized, sum, diff, ok }
+  }, [createAsDraft, paymentAmounts, computed.total])
+
+  useEffect(() => {
+    if (!createOpen) return
+    if (createAsDraft) return
+    if (paymentsTouched) return
+
+    setPaymentAmounts((prev) => {
+      const next = { ...prev }
+      for (const key of PAYMENT_METHODS) next[key] = '0'
+      next.CASH = String(Math.max(0, Math.round(computed.total)))
+      return next
+    })
+  }, [createAsDraft, createOpen, computed.total, paymentsTouched])
 
   async function submitInvoice(e: React.FormEvent) {
     e.preventDefault()
@@ -1522,10 +1624,17 @@ export default function PosPage() {
         return
       }
 
+      if (!createAsDraft && !computedPayments.ok) {
+        setError(t('pos.errors.paymentsMustMatchTotal'))
+        return
+      }
+
       const payload = {
         clienteNombre: form.clienteNombre.trim(),
         clienteDocumento: form.clienteDocumento.trim() || undefined,
         ivaPct: computed.ivaPct,
+        discountAmount: computed.discountAmount,
+        otherTaxesAmount: computed.otherTaxesAmount,
         note: form.note.trim() || undefined,
         warehouseId: form.warehouseId || undefined,
         asDraft: createAsDraft,
@@ -1535,6 +1644,7 @@ export default function PosPage() {
           quantity: it.quantity,
           unitPrice: it.unitPrice,
         })),
+        payments: createAsDraft ? undefined : computedPayments.normalized,
       }
 
       const res = await fetch('/api/pos/facturas', {
@@ -1890,70 +2000,6 @@ export default function PosPage() {
                               {t('pos.actions.view')}
                             </Button>
                           </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('pos.stock.title')}</CardTitle>
-              <CardDescription>{t('pos.stock.description')}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col sm:flex-row gap-2 sm:items-center mb-3">
-                <div className="sm:w-80">
-                  <Label>{t('pos.labels.warehouse')}</Label>
-                  <select
-                    className="w-full h-10 rounded-md border px-3 text-sm"
-                    value={selectedWarehouseForStock}
-                    onChange={(e) => setSelectedWarehouseForStock(e.target.value)}
-                  >
-                    <option value="">{t('pos.placeholders.select')}</option>
-                    {bodegas.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.nombre}{b.isDefault ? ` ${t('pos.labels.defaultShort')}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="sm:pt-6">
-                  <Button type="button" variant="secondary" onClick={() => void loadStock(selectedWarehouseForStock)} disabled={stockLoading}>
-                    {t('pos.stock.actions.refresh')}
-                  </Button>
-                </div>
-              </div>
-
-              {stockError ? <div className="text-sm text-red-600 mb-2">{stockError}</div> : null}
-
-              {stockLoading ? (
-                <div className="text-sm text-gray-600">{t('common.loading')}</div>
-              ) : !selectedWarehouseForStock ? (
-                <div className="text-sm text-gray-600">{t('pos.stock.selectWarehouse')}</div>
-              ) : stockRows.length === 0 ? (
-                <div className="text-sm text-gray-600">{t('pos.stock.empty')}</div>
-              ) : (
-                <div className="overflow-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-gray-600 border-b">
-                        <th className="py-2 pr-4">{t('pos.stock.columns.material')}</th>
-                        <th className="py-2 pr-4">{t('pos.stock.columns.quantity')}</th>
-                        <th className="py-2 pr-4">{t('pos.stock.columns.unit')}</th>
-                        <th className="py-2 pr-4">{t('pos.stock.columns.updatedAt')}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stockRows.map((row) => (
-                        <tr key={row.id} className="border-b last:border-b-0">
-                          <td className="py-2 pr-4 text-gray-900">{row.material.nombre}</td>
-                          <td className="py-2 pr-4 text-gray-700">{n(row.quantity, 0).toLocaleString(locale)}</td>
-                          <td className="py-2 pr-4 text-gray-700">{formatUnidadMedidaLabel(row.material.unidadMedida)}</td>
-                          <td className="py-2 pr-4 text-gray-700">{new Date(row.updatedAt).toLocaleString(locale)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -3154,15 +3200,15 @@ export default function PosPage() {
               </div>
 
               <div className="overflow-auto">
-                <table className="min-w-full text-sm">
+                <table className="min-w-full text-xs">
                   <thead>
                     <tr className="text-left text-gray-600 border-b">
-                      <th className="py-2 pr-3">{t('pos.items.columns.material')}</th>
-                      <th className="py-2 pr-3">{t('pos.items.columns.description')}</th>
-                      <th className="py-2 pr-3">{t('pos.items.columns.quantity')}</th>
-                      <th className="py-2 pr-3">{t('pos.items.columns.price')}</th>
-                      <th className="py-2 pr-3">{t('pos.items.columns.total')}</th>
-                      <th className="py-2 pr-2"></th>
+                      <th className="py-1 pr-3">{t('pos.items.columns.material')}</th>
+                      <th className="py-1 pr-3">{t('pos.items.columns.description')}</th>
+                      <th className="py-1 pr-3">{t('pos.items.columns.quantity')}</th>
+                      <th className="py-1 pr-3">{t('pos.items.columns.price')}</th>
+                      <th className="py-1 pr-3">{t('pos.items.columns.total')}</th>
+                      <th className="py-1 pr-2"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3243,14 +3289,14 @@ export default function PosPage() {
       </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="w-[90vw] max-w-6xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('pos.createDialog.title')}</DialogTitle>
             <DialogDescription>{t('pos.createDialog.description')}</DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={(e) => void submitInvoice(e)} className="space-y-4">
-            <div className="flex items-center justify-between rounded-md border p-3">
+          <form onSubmit={(e) => void submitInvoice(e)} className="space-y-3">
+            <div className="flex items-center justify-between rounded-md border p-2">
               <div>
                 <div className="text-sm font-medium">{t('pos.createDialog.saveAsDraft.title')}</div>
                 <div className="text-xs text-muted-foreground">{t('pos.createDialog.saveAsDraft.description')}</div>
@@ -3264,22 +3310,47 @@ export default function PosPage() {
               </label>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div className="sm:col-span-2">
                 <div className="flex items-center justify-between">
                   <Label>{t('pos.labels.client')}</Label>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="outline"
-                    onClick={() => {
-                      setClientePickerTarget('interna')
-                      setClientePickerOpen(true)
-                    }}
-                    title={t('pos.clientPicker.openTitle')}
-                  >
-                    <Search className="h-4 w-4" />
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      onClick={() => {
+                        setCreateClienteInlineError(null)
+                        setCreateClienteInlineForm({
+                          nombre: '',
+                          tipoDocumento: 'CC',
+                          documento: '',
+                          email: '',
+                          telefono: '',
+                          celular: '',
+                          direccion: '',
+                          ciudad: '',
+                          departamento: '',
+                        })
+                        setCreateClienteInlineOpen(true)
+                      }}
+                      title={t('pos.customers.inlineCreate.open')}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      onClick={() => {
+                        setClientePickerTarget('interna')
+                        setClientePickerOpen(true)
+                      }}
+                      title={t('pos.clientPicker.openTitle')}
+                    >
+                      <Search className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
                 <Input value={form.clienteNombre} onChange={(e) => setForm((p) => ({ ...p, clienteNombre: e.target.value }))} />
               </div>
@@ -3341,10 +3412,10 @@ export default function PosPage() {
 
                       return (
                         <tr key={idx} className="border-b last:border-b-0">
-                          <td className="py-2 pr-3">
+                          <td className="py-1 pr-3">
                             <div className="flex gap-2 items-center">
                               <select
-                                className="w-56 h-10 rounded-md border px-2 text-sm"
+                                className="w-56 h-9 rounded-md border px-2 text-xs"
                                 value={it.materialId}
                                 onChange={(e) => updateItem(idx, { materialId: e.target.value })}
                               >
@@ -3369,29 +3440,30 @@ export default function PosPage() {
                               </Button>
                             </div>
                           </td>
-                          <td className="py-2 pr-3">
+                          <td className="py-1 pr-3">
                             <Input
                               value={it.descripcion}
                               onChange={(e) => updateItem(idx, { descripcion: e.target.value })}
                               placeholder={t('pos.items.placeholders.description')}
+                              className="h-9 text-xs"
                             />
                           </td>
-                          <td className="py-2 pr-3">
+                          <td className="py-1 pr-3">
                             <Input
                               value={it.quantity}
                               onChange={(e) => updateItem(idx, { quantity: e.target.value })}
-                              className="w-24"
+                              className="w-24 h-9 text-xs"
                             />
                           </td>
-                          <td className="py-2 pr-3">
+                          <td className="py-1 pr-3">
                             <Input
                               value={it.unitPrice}
                               onChange={(e) => updateItem(idx, { unitPrice: e.target.value })}
-                              className="w-32"
+                              className="w-32 h-9 text-xs"
                             />
                           </td>
-                          <td className="py-2 pr-3 font-medium">{formatCurrency(lineTotal)}</td>
-                          <td className="py-2 pr-2">
+                          <td className="py-1 pr-3 font-medium">{formatCurrency(lineTotal)}</td>
+                          <td className="py-1 pr-2">
                             <Button type="button" size="sm" variant="outline" onClick={() => removeItem(idx)}>
                               {t('common.remove')}
                             </Button>
@@ -3404,21 +3476,90 @@ export default function PosPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-start">
-              <div className="sm:col-span-2">
-                <Label>{t('pos.createDialog.noteOptional')}</Label>
-                <Textarea value={form.note} onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))} />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 items-start">
+              <div className="lg:col-span-2 space-y-3">
+                <div className="rounded-md border p-2">
+                  <div className="text-sm font-medium">{t('pos.payments.title')}</div>
+                  <div className="text-xs text-muted-foreground">{t('pos.payments.description')}</div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                    {PAYMENT_METHODS.map((method) => (
+                      <div key={method} className="flex items-center justify-between gap-2">
+                        <Label className="text-xs">{t(`pos.payments.methods.${method}`)}</Label>
+                        <Input
+                          inputMode="numeric"
+                          disabled={createAsDraft}
+                          value={paymentAmounts[method]}
+                          onChange={(e) => {
+                            setPaymentsTouched(true)
+                            const value = e.target.value
+                            setPaymentAmounts((p) => ({ ...p, [method]: value }))
+                          }}
+                          className="h-9 text-xs w-40"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  {!createAsDraft ? (
+                    <div className="flex items-center justify-between text-xs mt-2">
+                      <span className={computedPayments.ok ? 'text-muted-foreground' : 'text-red-600'}>
+                        {t('pos.payments.sum')} {formatCurrency(computedPayments.sum)}
+                      </span>
+                      <span className={computedPayments.ok ? 'text-muted-foreground' : 'text-red-600'}>
+                        {t('pos.payments.diff')} {formatCurrency(Math.abs(computedPayments.diff))}
+                      </span>
+                    </div>
+                  ) : null}
+
+                  {!createAsDraft && !computedPayments.ok ? (
+                    <div className="text-xs text-red-600 mt-2">{t('pos.errors.paymentsMustMatchTotal')}</div>
+                  ) : null}
+                </div>
+
+                <div>
+                  <Label>{t('pos.createDialog.noteOptional')}</Label>
+                  <Textarea value={form.note} onChange={(e) => setForm((p) => ({ ...p, note: e.target.value }))} />
+                </div>
               </div>
+
               <div className="rounded-md border p-3">
                 <div className="flex justify-between text-sm">
                   <span>{t('pos.summary.subtotal')}</span>
                   <span className="font-medium">{formatCurrency(computed.subtotal)}</span>
                 </div>
-                <div className="flex justify-between text-sm">
+
+                <div className="flex items-center justify-between gap-2 text-sm mt-2">
+                  <span>{t('pos.summary.discount')}</span>
+                  <Input
+                    inputMode="numeric"
+                    value={form.discountAmount}
+                    onChange={(e) => setForm((p) => ({ ...p, discountAmount: e.target.value }))}
+                    className="h-9 text-xs w-32"
+                  />
+                </div>
+
+                <div className="flex justify-between text-sm mt-2">
+                  <span>{t('pos.summary.taxableBase')}</span>
+                  <span className="font-medium">{formatCurrency(computed.taxableBase)}</span>
+                </div>
+
+                <div className="flex justify-between text-sm mt-2">
                   <span>{t('pos.summary.vat')}</span>
                   <span className="font-medium">{formatCurrency(computed.iva)}</span>
                 </div>
-                <div className="flex justify-between text-sm mt-2">
+
+                <div className="flex items-center justify-between gap-2 text-sm mt-2">
+                  <span>{t('pos.summary.otherTaxes')}</span>
+                  <Input
+                    inputMode="numeric"
+                    value={form.otherTaxesAmount}
+                    onChange={(e) => setForm((p) => ({ ...p, otherTaxesAmount: e.target.value }))}
+                    className="h-9 text-xs w-32"
+                  />
+                </div>
+
+                <div className="flex justify-between text-sm mt-3">
                   <span>{t('pos.summary.total')}</span>
                   <span className="font-semibold">{formatCurrency(computed.total)}</span>
                 </div>
@@ -3431,6 +3572,72 @@ export default function PosPage() {
               </Button>
               <Button type="submit" disabled={isSubmitting}>
                 {isSubmitting ? t('pos.actions.creating') : t('pos.createDialog.create')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={createClienteInlineOpen} onOpenChange={setCreateClienteInlineOpen}>
+        <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t('pos.customers.inlineCreate.title')}</DialogTitle>
+            <DialogDescription>{t('pos.customers.inlineCreate.description')}</DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={(e) => void submitInlineCliente(e)} className="space-y-3">
+            {createClienteInlineError ? <div className="text-sm text-red-600">{createClienteInlineError}</div> : null}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="sm:col-span-2">
+                <Label>{t('pos.customers.inlineCreate.fields.name')}</Label>
+                <Input
+                  value={createClienteInlineForm.nombre}
+                  onChange={(e) => setCreateClienteInlineForm((p) => ({ ...p, nombre: e.target.value }))}
+                />
+              </div>
+
+              <div>
+                <Label>{t('pos.customers.inlineCreate.fields.documentType')}</Label>
+                <select
+                  value={createClienteInlineForm.tipoDocumento}
+                  onChange={(e) => setCreateClienteInlineForm((p) => ({ ...p, tipoDocumento: e.target.value }))}
+                  className="w-full h-10 rounded-md border px-3 text-sm"
+                >
+                  <option value="NIT">NIT</option>
+                  <option value="CC">CC</option>
+                  <option value="CE">CE</option>
+                  <option value="PASAPORTE">{t('pos.customers.inlineCreate.fields.passport')}</option>
+                </select>
+              </div>
+              <div>
+                <Label>{t('pos.customers.inlineCreate.fields.document')}</Label>
+                <Input
+                  value={createClienteInlineForm.documento}
+                  onChange={(e) => setCreateClienteInlineForm((p) => ({ ...p, documento: e.target.value }))}
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <Label>{t('pos.customers.inlineCreate.fields.emailOptional')}</Label>
+                <Input
+                  value={createClienteInlineForm.email}
+                  onChange={(e) => setCreateClienteInlineForm((p) => ({ ...p, email: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateClienteInlineOpen(false)}
+                disabled={createClienteInlineSubmitting}
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit" disabled={createClienteInlineSubmitting}>
+                {createClienteInlineSubmitting ? t('pos.actions.creating') : t('pos.customers.inlineCreate.create')}
               </Button>
             </DialogFooter>
           </form>

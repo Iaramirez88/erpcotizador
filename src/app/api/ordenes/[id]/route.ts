@@ -130,7 +130,8 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const access = await requireApiAccess(ModuleKey.ORDENES, 'WRITE');
+    // Borrado solo para ADMIN del módulo (y superadmin por email, vía RBAC)
+    const access = await requireApiAccess(ModuleKey.ORDENES, 'ADMIN');
     if (!access.ok) return access.response;
 
     const { id } = await context.params;
@@ -145,17 +146,6 @@ export async function DELETE(
       return NextResponse.json(
         { success: false, error: 'Orden no encontrada' },
         { status: 404 }
-      );
-    }
-
-    // Solo se pueden eliminar órdenes PENDIENTE o CANCELADA
-    if (orden.estado !== 'PENDIENTE' && orden.estado !== 'CANCELADA') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Solo se pueden eliminar órdenes pendientes o canceladas',
-        },
-        { status: 400 }
       );
     }
 

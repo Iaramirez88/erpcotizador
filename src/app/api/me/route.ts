@@ -40,15 +40,18 @@ export async function GET() {
 
   // Para UI: incluir acceso efectivo (por sede) a CONFIG
   let configAccess: AccessLevel = 'NONE'
+  let ordersAccess: AccessLevel = 'NONE'
   try {
     const sede = await getActiveSedeForUser(userId)
     configAccess = await getEffectiveAccess({ userId, sedeId: sede.id, module: ModuleKey.CONFIG })
+    ordersAccess = await getEffectiveAccess({ userId, sedeId: sede.id, module: ModuleKey.ORDENES })
   } catch {
     // si algo falla (sede no resuelta, etc), dejamos NONE
   }
 
   const order: Record<AccessLevel, number> = { NONE: 0, READ: 1, WRITE: 2, ADMIN: 3 }
   const canConfigWrite = order[configAccess] >= order.WRITE
+  const canDeleteOrders = order[ordersAccess] >= order.ADMIN
 
   const empresaId = user?.empresaId ?? null
   const isSystemSuperAdmin = isSuperAdminEmail(user?.email)
@@ -60,8 +63,9 @@ export async function GET() {
     data: user
       ? {
           ...user,
-          access: { config: configAccess },
+          access: { config: configAccess, orders: ordersAccess },
           canConfigWrite,
+          canDeleteOrders,
           empresaId,
           isPlanOwner,
           canManageBilling,

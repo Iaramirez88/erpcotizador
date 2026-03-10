@@ -202,14 +202,19 @@ export default async function DashboardPage({
   const ordWhere = { vendedorId: user.id, ...sedeScope, ...buildDateRange("createdAt") }
   const compraWhere = { userId: user.id, ...sedeScope, ...buildDateRange("fechaCompra") }
   const scanWhere = { userId: user.id, ...sedeScope, ...buildDateRange("createdAt") }
+  const now = new Date()
   const notifWhere = {
     userId: user.id,
     ...(sedeId ? { sedeId } : allowedSedeIds.length ? { sedeId: { in: allowedSedeIds } } : { sedeId: '__NO_SEDE__' }),
+    archivedAt: null as null,
+    publishAt: { lte: now },
     ...buildDateRange("createdAt"),
   }
 
   const sedeNotifWhere = {
     ...(sedeId ? { sedeId } : allowedSedeIds.length ? { sedeId: { in: allowedSedeIds } } : { sedeId: '__NO_SEDE__' }),
+    archivedAt: null as null,
+    publishAt: { lte: now },
     ...buildDateRange("createdAt"),
   }
 

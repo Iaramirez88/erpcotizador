@@ -85,6 +85,9 @@ model User {
   // Notificaciones
   notifications Notification[]
 
+  // Videos de Ayuda
+  helpVideos HelpVideo[]
+
   // Inventario
   inventoryMovements InventoryMovement[]
 
@@ -425,6 +428,13 @@ enum PosPaymentMethod {
   CARD
   TRANSFER
   OTHER
+  CREDIT
+  DEBIT_CARD
+  CREDIT_CARD
+  CHECK
+  BONUS
+  LETTER
+  VALE
 }
 
 // ============================================
@@ -1000,6 +1010,8 @@ model PosInvoice {
 
   ivaPct   Float @default(0)
   subtotal Float @default(0)
+  discountAmount   Float @default(0)
+  otherTaxesAmount Float @default(0)
   iva      Float @default(0)
   total    Float @default(0)
 
@@ -1455,12 +1467,29 @@ model Notification {
   user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   readAt    DateTime?
+  archivedAt DateTime?
+  publishAt  DateTime  @default(now())
   createdAt DateTime  @default(now())
 
   @@index([userId])
+  @@index([userId, archivedAt, publishAt])
   @@index([empresaId])
   @@index([sedeId])
   @@map("notifications")
+}
+
+model HelpVideo {
+  id        String   @id @default(cuid())
+  title     String
+  url       String
+  embedUrl  String
+  createdAt DateTime @default(now())
+
+  createdById String?
+  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@map("help_videos")
 }
 
 // ============================================

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { ModuleKey, type AccessLevel } from '@prisma/client'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,6 +27,7 @@ type Props = {
   initialSedeRole: 'ADMIN' | 'MANAGER' | 'MEMBER' | 'READER'
   modules: ModuleKey[]
   initial: Partial<Record<ModuleKey, AccessLevel>>
+  trigger?: ReactNode
 }
 
 type Section = {
@@ -39,13 +40,15 @@ function isEnabled(level: AccessLevel | undefined): boolean {
   return (level ?? 'NONE') !== 'NONE'
 }
 
-export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole, modules, initial }: Props) {
+export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole, modules, initial, trigger }: Props) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [levels, setLevels] = useState<Partial<Record<ModuleKey, AccessLevel>>>(initial)
   const [saving, setSaving] = useState<Partial<Record<ModuleKey, boolean>>>({})
   const [sedeRole, setSedeRole] = useState<Props['initialSedeRole']>(initialSedeRole)
   const [savingRole, setSavingRole] = useState(false)
+
+  const roleOptions: Props['initialSedeRole'][] = ['ADMIN', 'MANAGER', 'MEMBER', 'READER']
 
   const sections: Section[] = useMemo(
     () => [
@@ -115,9 +118,13 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="sm">
-          {t('rbac.userPermissions.button')}
-        </Button>
+        {trigger ? (
+          trigger
+        ) : (
+          <Button type="button" variant="outline" size="sm">
+            {t('rbac.userPermissions.button')}
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -142,10 +149,11 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
                 }}
                 disabled={savingRole}
               >
-                <option value="ADMIN">{t('rbac.sedeRole.ADMIN')}</option>
-                <option value="MANAGER">{t('rbac.sedeRole.MANAGER')}</option>
-                <option value="MEMBER">{t('rbac.sedeRole.MEMBER')}</option>
-                <option value="READER">{t('rbac.sedeRole.READER')}</option>
+                {roleOptions.map((r) => (
+                  <option key={r} value={r}>
+                    {t(`rbac.sedeRole.${r}`)}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

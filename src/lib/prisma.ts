@@ -43,6 +43,11 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasWorkspaceCode = runtimeModelHasField(prismaClient, 'Empresa', 'workspaceCode')
   const hasPlanOwnerUserId = runtimeModelHasField(prismaClient, 'Empresa', 'planOwnerUserId')
 
+  const hasNotificationArchivedAt = runtimeModelHasField(prismaClient, 'Notification', 'archivedAt')
+  const hasNotificationPublishAt = runtimeModelHasField(prismaClient, 'Notification', 'publishAt')
+
+  const hasHelpVideoDelegate = typeof (prismaClient as any)?.helpVideo?.findMany === 'function'
+
   const hasEmpresaTemplateDelegate = typeof (prismaClient as any)?.empresaCotizacionTemplate?.findUnique === 'function'
   const hasEmpresaTemplateVersionDelegate =
     typeof (prismaClient as any)?.empresaCotizacionTemplateVersion?.findMany === 'function'
@@ -52,6 +57,9 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasTrialTier ||
     !hasWorkspaceCode ||
     !hasPlanOwnerUserId ||
+    !hasNotificationArchivedAt ||
+    !hasNotificationPublishAt ||
+    !hasHelpVideoDelegate ||
     !hasEmpresaTemplateDelegate ||
     !hasEmpresaTemplateVersionDelegate ||
     !hasCotizacionTemplateVersionDelegate

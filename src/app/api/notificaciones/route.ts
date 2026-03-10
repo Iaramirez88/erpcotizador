@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 
 export const runtime = 'nodejs'
 
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest) {
   const limit = normalizeLimit(searchParams.get('limit'))
 
   const userId = session.user.id
+  const now = new Date()
 
   // Si el usuario no tiene notificaciones, creamos 1 de ejemplo para orientar.
   const existingCount = await prisma.notification.count({ where: { userId } })
@@ -33,9 +35,18 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  const where = {
+  const where: Prisma.NotificationWhereInput = {
     userId,
-    ...(unreadOnly ? { readAt: null as null } : {}),
+    archivedAt: null,
+    publishAt: { lte: now },
+  }
+  if (unreadOnly) where.readAt = null
+
+  const unreadCountWhere: Prisma.NotificationWhereInput = {
+    userId,
+    readAt: null,
+    archivedAt: null,
+    publishAt: { lte: now },
   }
 
   const [items, unreadCount] = await Promise.all([
@@ -52,7 +63,7 @@ export async function GET(request: NextRequest) {
         createdAt: true,
       },
     }),
-    prisma.notification.count({ where: { userId, readAt: null } }),
+    prisma.notification.count({ where: unreadCountWhere }),
   ])
 
   return NextResponse.json({ ok: true, items, unreadCount })
@@ -63,12 +74,19 @@ export async function PATCH(request: NextRequest) {
   if (!session) return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
 
   const userId = session.user.id
+  const now = new Date()
   const body: unknown = await request.json().catch(() => ({}))
   const { id, all } = (body ?? {}) as { id?: unknown; all?: unknown }
 
   if (all === true) {
+    const markAllWhere: Prisma.NotificationWhereInput = {
+      userId,
+      readAt: null,
+      archivedAt: null,
+      publishAt: { lte: now },
+    }
     await prisma.notification.updateMany({
-      where: { userId, readAt: null },
+      where: markAllWhere,
       data: { readAt: new Date() },
     })
     return NextResponse.json({ ok: true })
@@ -79,8 +97,15 @@ export async function PATCH(request: NextRequest) {
   }
 
   // Asegura que solo marque como leída una notificación del usuario.
+  const markOneWhere: Prisma.NotificationWhereInput = {
+    id,
+    userId,
+    readAt: null,
+    archivedAt: null,
+    publishAt: { lte: now },
+  }
   await prisma.notification.updateMany({
-    where: { id, userId, readAt: null },
+    where: markOneWhere,
     data: { readAt: new Date() },
   })
 

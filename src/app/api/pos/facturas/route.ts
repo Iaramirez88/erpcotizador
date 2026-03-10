@@ -90,11 +90,20 @@ type PostBody = {
   clienteNombre: string
   clienteDocumento?: string | null
   ivaPct?: number | null
+  discountAmount?: number | null
+  otherTaxesAmount?: number | null
   note?: string | null
   warehouseId?: string | null
   asDraft?: boolean
   items: InvoiceItemInput[]
   payments?: PaymentInput[]
+}
+
+function normalizePaymentMethod(value: unknown): PosPaymentMethod {
+  if (typeof value !== 'string') return PosPaymentMethod.OTHER
+  const v = value.trim().toUpperCase()
+  const allowed = Object.values(PosPaymentMethod) as string[]
+  return allowed.includes(v) ? (v as PosPaymentMethod) : PosPaymentMethod.OTHER
 }
 
 export async function GET(request: Request) {
@@ -149,6 +158,8 @@ export async function POST(request: Request) {
     }
 
     const ivaPct = Math.max(0, n(body?.ivaPct ?? 0) ?? 0)
+    const discountAmountInput = Math.max(0, n(body?.discountAmount ?? 0) ?? 0)
+    const otherTaxesAmountInput = Math.max(0, n(body?.otherTaxesAmount ?? 0) ?? 0)
     const note = typeof body?.note === 'string' ? body.note.trim() : null
     const clienteDocumento = typeof body?.clienteDocumento === 'string' ? body.clienteDocumento.trim() : null
     const asDraft = Boolean(body?.asDraft)
@@ -206,14 +217,16 @@ export async function POST(request: Request) {
       })
 
       const subtotal = computedLineTotals.reduce((sum, it) => sum + it.total, 0)
-      const iva = subtotal * (ivaPct / 100)
-      const total = subtotal + iva
+      const discountFinal = Math.min(subtotal, discountAmountInput)
+      const taxableBase = Math.max(0, subtotal - discountFinal)
+      const iva = taxableBase * (ivaPct / 100)
+      const total = taxableBase + iva + otherTaxesAmountInput
 
       const paymentsInput = Array.isArray(body?.payments) ? body.payments : []
       const paymentsNormalized: PaymentInput[] = paymentsInput
         .map((p) => {
           const amount = n(p.amount) ?? 0
-          const method = p.method
+          const method = normalizePaymentMethod((p as any).method)
           const note = typeof p.note === 'string' ? p.note.trim() : null
           return { method, amount, note }
         })
@@ -227,11 +240,12 @@ export async function POST(request: Request) {
             ? [{ method: PosPaymentMethod.CASH, amount: total, note: null }]
             : []
 
-      const status: PosInvoiceStatus = asDraft
-        ? PosInvoiceStatus.DRAFT
-        : paymentsFinal.reduce((sum, p) => sum + p.amount, 0) + 1e-6 >= total
-          ? PosInvoiceStatus.PAID
-          : PosInvoiceStatus.DRAFT
+      const paidSum = paymentsFinal.reduce((sum, p) => sum + p.amount, 0)
+      if (!asDraft && Math.abs(paidSum - total) >= 0.01) {
+        throw new Error('PAYMENTS_TOTAL_MISMATCH')
+      }
+
+      const status: PosInvoiceStatus = asDraft ? PosInvoiceStatus.DRAFT : PosInvoiceStatus.PAID
 
       const invoice = await tx.posInvoice.create({
         data: {
@@ -244,6 +258,8 @@ export async function POST(request: Request) {
           clienteDocumento,
           ivaPct,
           subtotal,
+          discountAmount: discountFinal,
+          otherTaxesAmount: otherTaxesAmountInput,
           iva,
           total,
           note,
@@ -358,6 +374,9 @@ export async function POST(request: Request) {
       }
       if (error.message === 'STOCK_INSUFFICIENT') {
         return NextResponse.json({ error: 'Stock insuficiente' }, { status: 400 })
+      }
+      if (error.message === 'PAYMENTS_TOTAL_MISMATCH') {
+        return NextResponse.json({ error: 'La suma de pagos debe ser igual al total' }, { status: 400 })
       }
     }
 

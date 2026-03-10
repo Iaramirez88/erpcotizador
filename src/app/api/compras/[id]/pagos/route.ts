@@ -12,11 +12,10 @@ function n(value: unknown, fallback = 0) {
 }
 
 function parseMetodo(value: unknown): PosPaymentMethod {
-  const v = String(value || '').trim().toUpperCase()
-  if (v === 'CASH') return PosPaymentMethod.CASH
-  if (v === 'CARD') return PosPaymentMethod.CARD
-  if (v === 'TRANSFER') return PosPaymentMethod.TRANSFER
-  return PosPaymentMethod.OTHER
+  if (typeof value !== 'string') return PosPaymentMethod.OTHER
+  const v = value.trim().toUpperCase()
+  const allowed = Object.values(PosPaymentMethod) as string[]
+  return allowed.includes(v) ? (v as PosPaymentMethod) : PosPaymentMethod.OTHER
 }
 
 async function getCompraOr404(compraId: string, sedeId: string, userId: string) {

@@ -174,27 +174,12 @@ export default function Header({ user }: HeaderProps) {
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" type="button" className="relative">
                 {t('common.more')}
-                {unreadCount > 0 ? (
-                  <span className="ml-2 inline-flex items-center rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-semibold text-white">
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </span>
-                ) : null}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>{t('header.sections.access')}</DropdownMenuLabel>
               <DropdownMenuItem asChild>
                 <Link href="/dashboard/perfil">{t('header.profile')}</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/notificaciones" className="flex items-center justify-between gap-2">
-                  <span>{t('header.notifications')}</span>
-                  {unreadCount > 0 ? (
-                    <span className="inline-flex items-center rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-semibold text-white">
-                      {unreadCount > 99 ? '99+' : unreadCount}
-                    </span>
-                  ) : null}
-                </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {navPrefs ? (

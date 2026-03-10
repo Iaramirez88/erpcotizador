@@ -2128,8 +2128,18 @@ export function LitografiaQuoteDialog(props: {
               className="mb-4"
             >
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="normal">Cotización personalizada</TabsTrigger>
-                <TabsTrigger value="editorial">Libros / Cartillas / Revistas</TabsTrigger>
+                <TabsTrigger
+                  value="normal"
+                  className="bg-primary/15 text-primary data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none"
+                >
+                  Cotización personalizada
+                </TabsTrigger>
+                <TabsTrigger
+                  value="editorial"
+                  className="bg-primary/15 text-primary data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none"
+                >
+                  Libros / Cartillas / Revistas
+                </TabsTrigger>
               </TabsList>
             </Tabs>
             <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)] gap-4">

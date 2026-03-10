@@ -34,6 +34,13 @@ function n(value: unknown): number | null {
   return Number.isFinite(num) ? num : null
 }
 
+function normalizePaymentMethod(value: unknown): PosPaymentMethod {
+  if (typeof value !== 'string') return PosPaymentMethod.OTHER
+  const v = value.trim().toUpperCase()
+  const allowed = Object.values(PosPaymentMethod) as string[]
+  return allowed.includes(v) ? (v as PosPaymentMethod) : PosPaymentMethod.OTHER
+}
+
 async function ensureDefaultWarehouse(tx: Prisma.TransactionClient, args: { empresaId: string; sedeId: string }) {
   const existingDefault = await tx.inventoryWarehouse.findFirst({
     where: { empresaId: args.empresaId, sedeId: args.sedeId, isDefault: true },
@@ -142,7 +149,7 @@ async function finalizeInvoice(
         .map((p) => {
           const amount = n(p.amount) ?? 0
           const note = typeof p.note === 'string' ? p.note.trim() : null
-          return { method: p.method, amount, note }
+          return { method: normalizePaymentMethod((p as any).method), amount, note }
         })
         .filter((p) => p.amount > 0)
     : []
@@ -154,8 +161,8 @@ async function finalizeInvoice(
       : []
 
   const paidNow = paymentsFinal.reduce((sum, p) => sum + p.amount, 0)
-  if (paidNow + 1e-6 < remaining) {
-    throw new Error('PAYMENT_INSUFFICIENT')
+  if (Math.abs(paidNow - remaining) >= 0.01) {
+    throw new Error('PAYMENTS_TOTAL_MISMATCH')
   }
 
   const resolvedWarehouseId = await resolveWarehouseId(tx, {
@@ -318,6 +325,9 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       }
       if (error.message === 'INVOICE_STATUS_NOT_ALLOWED') {
         return NextResponse.json({ error: 'Estado de factura no permite finalizar' }, { status: 400 })
+      }
+      if (error.message === 'PAYMENTS_TOTAL_MISMATCH') {
+        return NextResponse.json({ error: 'La suma de pagos debe ser igual al total' }, { status: 400 })
       }
       if (error.message === 'PAYMENT_INSUFFICIENT') {
         return NextResponse.json({ error: 'Pago insuficiente' }, { status: 400 })
