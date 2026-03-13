@@ -2499,26 +2499,30 @@ export function LitografiaQuoteDialog(props: {
                               </p>
                             </div>
 
-                            <div>
-                              <Label>Páginas por pliego (según tamaño de impresión)</Label>
-                              <Input
-                                className={INPUT_COMPACT}
-                                type="number"
-                                step="1"
-                                min={1}
-                                value={editorialPaginasPorPliego}
-                                onChange={(e) => setEditorialPaginasPorPliego(e.target.value)}
-                              />
-                                <p className={HELP_TEXT}>
-                                Cuántas páginas caben en 1 pliego para ese tamaño (ej. medio pliego ≈ 2, cuarto ≈ 4).
-                              </p>
-                            </div>
-                            <div className="sm:col-span-2">
-                              <p className="text-xs text-muted-foreground">
-                                  Planchas (CMYK): portada <span className="font-medium">{(editorialSplitCalc?.coverPlanchas ?? 0) * 4}</span> • internas <span className="font-medium">{(editorialSplitCalc?.innerPlanchas ?? 0) * 4}</span> • total <span className="font-medium">{((editorialSplitCalc?.coverPlanchas ?? 0) + (editorialSplitCalc?.innerPlanchas ?? 0)) * 4}</span>
-                                {" "}• Pliegos por unidad: portada <span className="font-medium">{editorialSplitCalc?.coverPliegosPorUnidad ?? 0}</span> • internas <span className="font-medium">{editorialSplitCalc?.innerPliegosPorUnidad ?? 0}</span> • total <span className="font-medium">{(editorialSplitCalc?.coverPliegosPorUnidad ?? 0) + (editorialSplitCalc?.innerPliegosPorUnidad ?? 0)}</span>
-                              </p>
-                            </div>
+                            {showAdvanced ? (
+                              <>
+                                <div>
+                                  <Label>Páginas por pliego (según tamaño de impresión)</Label>
+                                  <Input
+                                    className={INPUT_COMPACT}
+                                    type="number"
+                                    step="1"
+                                    min={1}
+                                    value={editorialPaginasPorPliego}
+                                    onChange={(e) => setEditorialPaginasPorPliego(e.target.value)}
+                                  />
+                                  <p className={HELP_TEXT}>
+                                    Cuántas páginas caben en 1 pliego para ese tamaño (ej. medio pliego ≈ 2, cuarto ≈ 4).
+                                  </p>
+                                </div>
+                                <div className="sm:col-span-2">
+                                  <p className="text-xs text-muted-foreground">
+                                    Planchas (CMYK): portada <span className="font-medium">{(editorialSplitCalc?.coverPlanchas ?? 0) * 4}</span> • internas <span className="font-medium">{(editorialSplitCalc?.innerPlanchas ?? 0) * 4}</span> • total <span className="font-medium">{((editorialSplitCalc?.coverPlanchas ?? 0) + (editorialSplitCalc?.innerPlanchas ?? 0)) * 4}</span>
+                                    {" "}• Pliegos por unidad: portada <span className="font-medium">{editorialSplitCalc?.coverPliegosPorUnidad ?? 0}</span> • internas <span className="font-medium">{editorialSplitCalc?.innerPliegosPorUnidad ?? 0}</span> • total <span className="font-medium">{(editorialSplitCalc?.coverPliegosPorUnidad ?? 0) + (editorialSplitCalc?.innerPliegosPorUnidad ?? 0)}</span>
+                                  </p>
+                                </div>
+                              </>
+                            ) : null}
 
                             <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                               <div className={`${BOX_BLUR_MUTED} p-3`}>
@@ -2601,73 +2605,77 @@ export function LitografiaQuoteDialog(props: {
                                     ) : null}
                                   </div>
 
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <Label className={requiredLabelClass(validation.missingPlancha)}>{t('printshopQuote.fields.platesCost')}</Label>
-                                      <select
-                                        className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPlancha)}`}
-                                        value={editorialCover.planchaProfileId}
-                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, planchaProfileId: e.target.value }))}
-                                        disabled={!activePlanchaProfiles.length}
-                                      >
-                                        <option value="">{t('printshopQuote.select.nonePlates')}</option>
-                                        {activePlanchaProfiles.map((p) => (
-                                          <option key={p.id} value={p.id}>
-                                            {p.nombre}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                    <div>
-                                      <Label>Cantidad</Label>
-                                      <Input
-                                        className={INPUT_COMPACT}
-                                        type="number"
-                                        min={1}
-                                        step="1"
-                                        value={editorialCover.planchaProfileQty}
-                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, planchaProfileQty: e.target.value }))}
-                                        placeholder={t('printshopQuote.placeholders.qtyShort')}
-                                      />
-                                      <p className={HELP_TEXT}>
-                                        Multiplica el costo del perfil de planchas (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.planchaProfileQty || "1")) || 0) || 1)}).
-                                      </p>
-                                    </div>
-                                  </div>
+                                  {!showAdvanced ? null : (
+                                    <>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                          <Label className={requiredLabelClass(validation.missingPlancha)}>{t('printshopQuote.fields.platesCost')}</Label>
+                                          <select
+                                            className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPlancha)}`}
+                                            value={editorialCover.planchaProfileId}
+                                            onChange={(e) => setEditorialCover((prev) => ({ ...prev, planchaProfileId: e.target.value }))}
+                                            disabled={!activePlanchaProfiles.length}
+                                          >
+                                            <option value="">{t('printshopQuote.select.nonePlates')}</option>
+                                            {activePlanchaProfiles.map((p) => (
+                                              <option key={p.id} value={p.id}>
+                                                {p.nombre}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                        <div>
+                                          <Label>Cantidad</Label>
+                                          <Input
+                                            className={INPUT_COMPACT}
+                                            type="number"
+                                            min={1}
+                                            step="1"
+                                            value={editorialCover.planchaProfileQty}
+                                            onChange={(e) => setEditorialCover((prev) => ({ ...prev, planchaProfileQty: e.target.value }))}
+                                            placeholder={t('printshopQuote.placeholders.qtyShort')}
+                                          />
+                                          <p className={HELP_TEXT}>
+                                            Multiplica el costo del perfil de planchas (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.planchaProfileQty || "1")) || 0) || 1)}).
+                                          </p>
+                                        </div>
+                                      </div>
 
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <Label className={requiredLabelClass(validation.missingTinta)}>{t('printshopQuote.fields.inkCost')}</Label>
-                                      <select
-                                        className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingTinta)}`}
-                                        value={editorialCover.tintaProfileId}
-                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, tintaProfileId: e.target.value }))}
-                                        disabled={!activeTintaProfiles.length}
-                                      >
-                                        <option value="">{t('printshopQuote.select.noneInks')}</option>
-                                        {activeTintaProfiles.map((p) => (
-                                          <option key={p.id} value={p.id}>
-                                            {p.nombre}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                    <div>
-                                      <Label>Cantidad</Label>
-                                      <Input
-                                        className={INPUT_COMPACT}
-                                        type="number"
-                                        min={1}
-                                        step="1"
-                                        value={editorialCover.tintaProfileQty}
-                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, tintaProfileQty: e.target.value }))}
-                                        placeholder={t('printshopQuote.placeholders.qtyShort')}
-                                      />
-                                      <p className={HELP_TEXT}>
-                                        Multiplica el costo del perfil de tinta (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.tintaProfileQty || "1")) || 0) || 1)}).
-                                      </p>
-                                    </div>
-                                  </div>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                          <Label className={requiredLabelClass(validation.missingTinta)}>{t('printshopQuote.fields.inkCost')}</Label>
+                                          <select
+                                            className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingTinta)}`}
+                                            value={editorialCover.tintaProfileId}
+                                            onChange={(e) => setEditorialCover((prev) => ({ ...prev, tintaProfileId: e.target.value }))}
+                                            disabled={!activeTintaProfiles.length}
+                                          >
+                                            <option value="">{t('printshopQuote.select.noneInks')}</option>
+                                            {activeTintaProfiles.map((p) => (
+                                              <option key={p.id} value={p.id}>
+                                                {p.nombre}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                        <div>
+                                          <Label>Cantidad</Label>
+                                          <Input
+                                            className={INPUT_COMPACT}
+                                            type="number"
+                                            min={1}
+                                            step="1"
+                                            value={editorialCover.tintaProfileQty}
+                                            onChange={(e) => setEditorialCover((prev) => ({ ...prev, tintaProfileQty: e.target.value }))}
+                                            placeholder={t('printshopQuote.placeholders.qtyShort')}
+                                          />
+                                          <p className={HELP_TEXT}>
+                                            Multiplica el costo del perfil de tinta (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.tintaProfileQty || "1")) || 0) || 1)}).
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
 
                                   <div>
                                     <Label className={requiredLabelClass(validation.missingPaper)}>{t('printshopQuote.fields.paper')}</Label>
@@ -2689,191 +2697,195 @@ export function LitografiaQuoteDialog(props: {
                                     </p>
                                   </div>
 
-                                  <div className="grid grid-cols-1 gap-3">
-                                    <div>
-                                      <Label>Sobrante mínimo</Label>
-                                      <Input
-                                        className={INPUT_COMPACT}
-                                        type="number"
-                                        step="1"
-                                        min={0}
-                                        value={editorialCover.sobranteMinimo}
-                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, sobranteMinimo: e.target.value }))}
-                                      />
-                                      <p className={HELP_TEXT}>
-                                        Unidades extra para cubrir desperdicio/merma.
-                                      </p>
-                                      {editorialCoverIsPolicromiaAmbasCaras ? (
-                                        <p className={HELP_TEXT}>
-                                          En policromía ambas caras (4/4) se recomienda duplicar este sobrante (2×) por doble pasada.
-                                        </p>
-                                      ) : null}
-                                    </div>
-                                  </div>
+                                    {showAdvanced ? (
+                                      <>
+                                        <div className="grid grid-cols-1 gap-3">
+                                          <div>
+                                            <Label>Sobrante mínimo</Label>
+                                            <Input
+                                              className={INPUT_COMPACT}
+                                              type="number"
+                                              step="1"
+                                              min={0}
+                                              value={editorialCover.sobranteMinimo}
+                                              onChange={(e) => setEditorialCover((prev) => ({ ...prev, sobranteMinimo: e.target.value }))}
+                                            />
+                                            <p className={HELP_TEXT}>
+                                              Unidades extra para cubrir desperdicio/merma.
+                                            </p>
+                                            {editorialCoverIsPolicromiaAmbasCaras ? (
+                                              <p className={HELP_TEXT}>
+                                                En policromía ambas caras (4/4) se recomienda duplicar este sobrante (2×) por doble pasada.
+                                              </p>
+                                            ) : null}
+                                          </div>
+                                        </div>
 
-                                  <div>
-                                    <Label>Acabado (opcional)</Label>
-                                    <select
-                                      className={SELECT_COMPACT}
-                                      value={editorialCover.finishId}
-                                      onChange={(e) => setEditorialCover((prev) => ({ ...prev, finishId: e.target.value }))}
-                                      disabled={!activeFinishes.length}
-                                    >
-                                      <option value="">Ninguno</option>
-                                      {activeFinishes.map((f) => (
-                                        <option key={f.id} value={f.id}>
-                                          {f.nombre}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <p className={HELP_TEXT}>
-                                      Se suma al total (valor fijo del acabado).
-                                    </p>
-                                  </div>
+                                        <div>
+                                          <Label>Acabado (opcional)</Label>
+                                          <select
+                                            className={SELECT_COMPACT}
+                                            value={editorialCover.finishId}
+                                            onChange={(e) => setEditorialCover((prev) => ({ ...prev, finishId: e.target.value }))}
+                                            disabled={!activeFinishes.length}
+                                          >
+                                            <option value="">Ninguno</option>
+                                            {activeFinishes.map((f) => (
+                                              <option key={f.id} value={f.id}>
+                                                {f.nombre}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <p className={HELP_TEXT}>
+                                            Se suma al total (valor fijo del acabado).
+                                          </p>
+                                        </div>
 
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <Label>Acabado especial</Label>
-                                      <select
-                                        className={SELECT_COMPACT}
-                                        value={editorialCover.specialFinishId}
-                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, specialFinishId: e.target.value }))}
-                                        disabled={!activeSpecialFinishes.length}
-                                      >
-                                        <option value="">Ninguno</option>
-                                        {activeSpecialFinishes.map((f) => (
-                                          <option key={f.id} value={f.id}>
-                                            {f.nombre}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <p className={HELP_TEXT}>
-                                        Se suma como valor × cantidad.
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <Label>Cantidad</Label>
-                                      <Input
-                                        className={INPUT_COMPACT}
-                                        type="number"
-                                        step="1"
-                                        min={1}
-                                        value={editorialCover.specialFinishQty}
-                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, specialFinishQty: e.target.value }))}
-                                      />
-                                      <p className={HELP_TEXT}>
-                                        Total = valor × cantidad (x{Math.max(0, Math.trunc(parseFloat(String(editorialCover.specialFinishQty || "0")) || 0))}).
-                                      </p>
-                                    </div>
-                                  </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                          <div>
+                                            <Label>Acabado especial</Label>
+                                            <select
+                                              className={SELECT_COMPACT}
+                                              value={editorialCover.specialFinishId}
+                                              onChange={(e) => setEditorialCover((prev) => ({ ...prev, specialFinishId: e.target.value }))}
+                                              disabled={!activeSpecialFinishes.length}
+                                            >
+                                              <option value="">Ninguno</option>
+                                              {activeSpecialFinishes.map((f) => (
+                                                <option key={f.id} value={f.id}>
+                                                  {f.nombre}
+                                                </option>
+                                              ))}
+                                            </select>
+                                            <p className={HELP_TEXT}>
+                                              Se suma como valor × cantidad.
+                                            </p>
+                                          </div>
+                                          <div>
+                                            <Label>Cantidad</Label>
+                                            <Input
+                                              className={INPUT_COMPACT}
+                                              type="number"
+                                              step="1"
+                                              min={1}
+                                              value={editorialCover.specialFinishQty}
+                                              onChange={(e) => setEditorialCover((prev) => ({ ...prev, specialFinishQty: e.target.value }))}
+                                            />
+                                            <p className={HELP_TEXT}>
+                                              Total = valor × cantidad (x{Math.max(0, Math.trunc(parseFloat(String(editorialCover.specialFinishQty || "0")) || 0))}).
+                                            </p>
+                                          </div>
+                                        </div>
 
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <Label>Plastificado</Label>
-                                      <select
-                                        className={SELECT_COMPACT}
-                                        value={editorialCover.plastificadoId}
-                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, plastificadoId: e.target.value }))}
-                                        disabled={!activePlastificados.length}
-                                      >
-                                        <option value="">Ninguno</option>
-                                        {activePlastificados.map((f) => (
-                                          <option key={f.id} value={f.id}>
-                                            {f.nombre}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <p className={HELP_TEXT}>
-                                        Se suma como valor × cantidad.
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <Label>Cantidad</Label>
-                                      <Input
-                                        className={INPUT_COMPACT}
-                                        type="number"
-                                        step="1"
-                                        min={1}
-                                        value={editorialCover.plastificadoQty}
-                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, plastificadoQty: e.target.value }))}
-                                      />
-                                      <p className={HELP_TEXT}>
-                                        Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.plastificadoQty || "1")) || 0) || 1)}).
-                                      </p>
-                                    </div>
-                                  </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                          <div>
+                                            <Label>Plastificado</Label>
+                                            <select
+                                              className={SELECT_COMPACT}
+                                              value={editorialCover.plastificadoId}
+                                              onChange={(e) => setEditorialCover((prev) => ({ ...prev, plastificadoId: e.target.value }))}
+                                              disabled={!activePlastificados.length}
+                                            >
+                                              <option value="">Ninguno</option>
+                                              {activePlastificados.map((f) => (
+                                                <option key={f.id} value={f.id}>
+                                                  {f.nombre}
+                                                </option>
+                                              ))}
+                                            </select>
+                                            <p className={HELP_TEXT}>
+                                              Se suma como valor × cantidad.
+                                            </p>
+                                          </div>
+                                          <div>
+                                            <Label>Cantidad</Label>
+                                            <Input
+                                              className={INPUT_COMPACT}
+                                              type="number"
+                                              step="1"
+                                              min={1}
+                                              value={editorialCover.plastificadoQty}
+                                              onChange={(e) => setEditorialCover((prev) => ({ ...prev, plastificadoQty: e.target.value }))}
+                                            />
+                                            <p className={HELP_TEXT}>
+                                              Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.plastificadoQty || "1")) || 0) || 1)}).
+                                            </p>
+                                          </div>
+                                        </div>
 
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <Label>Troquelado</Label>
-                                      <select
-                                        className={SELECT_COMPACT}
-                                        value={editorialCover.troqueladoId}
-                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, troqueladoId: e.target.value }))}
-                                        disabled={!activeTroquelados.length}
-                                      >
-                                        <option value="">Ninguno</option>
-                                        {activeTroquelados.map((f) => (
-                                          <option key={f.id} value={f.id}>
-                                            {f.nombre}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <p className={HELP_TEXT}>
-                                        Se suma como valor × cantidad.
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <Label>Cantidad</Label>
-                                      <Input
-                                        className={INPUT_COMPACT}
-                                        type="number"
-                                        step="1"
-                                        min={1}
-                                        value={editorialCover.troqueladoQty}
-                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, troqueladoQty: e.target.value }))}
-                                      />
-                                      <p className={HELP_TEXT}>
-                                        Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.troqueladoQty || "1")) || 0) || 1)}).
-                                      </p>
-                                    </div>
-                                  </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                          <div>
+                                            <Label>Troquelado</Label>
+                                            <select
+                                              className={SELECT_COMPACT}
+                                              value={editorialCover.troqueladoId}
+                                              onChange={(e) => setEditorialCover((prev) => ({ ...prev, troqueladoId: e.target.value }))}
+                                              disabled={!activeTroquelados.length}
+                                            >
+                                              <option value="">Ninguno</option>
+                                              {activeTroquelados.map((f) => (
+                                                <option key={f.id} value={f.id}>
+                                                  {f.nombre}
+                                                </option>
+                                              ))}
+                                            </select>
+                                            <p className={HELP_TEXT}>
+                                              Se suma como valor × cantidad.
+                                            </p>
+                                          </div>
+                                          <div>
+                                            <Label>Cantidad</Label>
+                                            <Input
+                                              className={INPUT_COMPACT}
+                                              type="number"
+                                              step="1"
+                                              min={1}
+                                              value={editorialCover.troqueladoQty}
+                                              onChange={(e) => setEditorialCover((prev) => ({ ...prev, troqueladoQty: e.target.value }))}
+                                            />
+                                            <p className={HELP_TEXT}>
+                                              Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.troqueladoQty || "1")) || 0) || 1)}).
+                                            </p>
+                                          </div>
+                                        </div>
 
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <Label>Corte</Label>
-                                      <select
-                                        className={SELECT_COMPACT}
-                                        value={editorialCover.corteId}
-                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, corteId: e.target.value }))}
-                                        disabled={!activeCortes.length}
-                                      >
-                                        <option value="">Ninguno</option>
-                                        {activeCortes.map((f) => (
-                                          <option key={f.id} value={f.id}>
-                                            {f.nombre}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <p className={HELP_TEXT}>
-                                        Se suma como valor × cantidad.
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <Label>Cantidad</Label>
-                                      <Input
-                                        className={INPUT_COMPACT}
-                                        type="number"
-                                        step="1"
-                                        min={1}
-                                        value={editorialCover.corteQty}
-                                        onChange={(e) => setEditorialCover((prev) => ({ ...prev, corteQty: e.target.value }))}
-                                      />
-                                      <p className={HELP_TEXT}>
-                                        Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.corteQty || "1")) || 0) || 1)}).
-                                      </p>
-                                    </div>
-                                  </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                          <div>
+                                            <Label>Corte</Label>
+                                            <select
+                                              className={SELECT_COMPACT}
+                                              value={editorialCover.corteId}
+                                              onChange={(e) => setEditorialCover((prev) => ({ ...prev, corteId: e.target.value }))}
+                                              disabled={!activeCortes.length}
+                                            >
+                                              <option value="">Ninguno</option>
+                                              {activeCortes.map((f) => (
+                                                <option key={f.id} value={f.id}>
+                                                  {f.nombre}
+                                                </option>
+                                              ))}
+                                            </select>
+                                            <p className={HELP_TEXT}>
+                                              Se suma como valor × cantidad.
+                                            </p>
+                                          </div>
+                                          <div>
+                                            <Label>Cantidad</Label>
+                                            <Input
+                                              className={INPUT_COMPACT}
+                                              type="number"
+                                              step="1"
+                                              min={1}
+                                              value={editorialCover.corteQty}
+                                              onChange={(e) => setEditorialCover((prev) => ({ ...prev, corteQty: e.target.value }))}
+                                            />
+                                            <p className={HELP_TEXT}>
+                                              Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.corteQty || "1")) || 0) || 1)}).
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </>
+                                    ) : null}
                                 </div>
                               </div>
 
@@ -2957,73 +2969,77 @@ export function LitografiaQuoteDialog(props: {
                                     ) : null}
                                   </div>
 
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <Label className={requiredLabelClass(validation.missingPlancha)}>{t('printshopQuote.fields.platesCost')}</Label>
-                                      <select
-                                        className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPlancha)}`}
-                                        value={editorialInner.planchaProfileId}
-                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, planchaProfileId: e.target.value }))}
-                                        disabled={!activePlanchaProfiles.length}
-                                      >
-                                        <option value="">{t('printshopQuote.select.nonePlates')}</option>
-                                        {activePlanchaProfiles.map((p) => (
-                                          <option key={p.id} value={p.id}>
-                                            {p.nombre}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                    <div>
-                                      <Label>Cantidad</Label>
-                                      <Input
-                                        className={INPUT_COMPACT}
-                                        type="number"
-                                        min={1}
-                                        step="1"
-                                        value={editorialInner.planchaProfileQty}
-                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, planchaProfileQty: e.target.value }))}
-                                        placeholder={t('printshopQuote.placeholders.qtyShort')}
-                                      />
-                                      <p className={HELP_TEXT}>
-                                        Multiplica el costo del perfil de planchas (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.planchaProfileQty || "1")) || 0) || 1)}).
-                                      </p>
-                                    </div>
-                                  </div>
+                                  {!showAdvanced ? null : (
+                                    <>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                          <Label className={requiredLabelClass(validation.missingPlancha)}>{t('printshopQuote.fields.platesCost')}</Label>
+                                          <select
+                                            className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPlancha)}`}
+                                            value={editorialInner.planchaProfileId}
+                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, planchaProfileId: e.target.value }))}
+                                            disabled={!activePlanchaProfiles.length}
+                                          >
+                                            <option value="">{t('printshopQuote.select.nonePlates')}</option>
+                                            {activePlanchaProfiles.map((p) => (
+                                              <option key={p.id} value={p.id}>
+                                                {p.nombre}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                        <div>
+                                          <Label>Cantidad</Label>
+                                          <Input
+                                            className={INPUT_COMPACT}
+                                            type="number"
+                                            min={1}
+                                            step="1"
+                                            value={editorialInner.planchaProfileQty}
+                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, planchaProfileQty: e.target.value }))}
+                                            placeholder={t('printshopQuote.placeholders.qtyShort')}
+                                          />
+                                          <p className={HELP_TEXT}>
+                                            Multiplica el costo del perfil de planchas (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.planchaProfileQty || "1")) || 0) || 1)}).
+                                          </p>
+                                        </div>
+                                      </div>
 
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <Label className={requiredLabelClass(validation.missingTinta)}>{t('printshopQuote.fields.inkCost')}</Label>
-                                      <select
-                                        className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingTinta)}`}
-                                        value={editorialInner.tintaProfileId}
-                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, tintaProfileId: e.target.value }))}
-                                        disabled={!activeTintaProfiles.length}
-                                      >
-                                        <option value="">{t('printshopQuote.select.noneInks')}</option>
-                                        {activeTintaProfiles.map((p) => (
-                                          <option key={p.id} value={p.id}>
-                                            {p.nombre}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-                                    <div>
-                                      <Label>Cantidad</Label>
-                                      <Input
-                                        className={INPUT_COMPACT}
-                                        type="number"
-                                        min={1}
-                                        step="1"
-                                        value={editorialInner.tintaProfileQty}
-                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, tintaProfileQty: e.target.value }))}
-                                        placeholder={t('printshopQuote.placeholders.qtyShort')}
-                                      />
-                                      <p className={HELP_TEXT}>
-                                        Multiplica el costo del perfil de tinta (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.tintaProfileQty || "1")) || 0) || 1)}).
-                                      </p>
-                                    </div>
-                                  </div>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                          <Label className={requiredLabelClass(validation.missingTinta)}>{t('printshopQuote.fields.inkCost')}</Label>
+                                          <select
+                                            className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingTinta)}`}
+                                            value={editorialInner.tintaProfileId}
+                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, tintaProfileId: e.target.value }))}
+                                            disabled={!activeTintaProfiles.length}
+                                          >
+                                            <option value="">{t('printshopQuote.select.noneInks')}</option>
+                                            {activeTintaProfiles.map((p) => (
+                                              <option key={p.id} value={p.id}>
+                                                {p.nombre}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                        <div>
+                                          <Label>Cantidad</Label>
+                                          <Input
+                                            className={INPUT_COMPACT}
+                                            type="number"
+                                            min={1}
+                                            step="1"
+                                            value={editorialInner.tintaProfileQty}
+                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, tintaProfileQty: e.target.value }))}
+                                            placeholder={t('printshopQuote.placeholders.qtyShort')}
+                                          />
+                                          <p className={HELP_TEXT}>
+                                            Multiplica el costo del perfil de tinta (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.tintaProfileQty || "1")) || 0) || 1)}).
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
 
                                   <div>
                                     <Label className={requiredLabelClass(validation.missingPaper)}>{t('printshopQuote.fields.paper')}</Label>
@@ -3045,191 +3061,195 @@ export function LitografiaQuoteDialog(props: {
                                     </p>
                                   </div>
 
-                                  <div className="grid grid-cols-1 gap-3">
-                                    <div>
-                                      <Label>Sobrante mínimo</Label>
-                                      <Input
-                                        className={INPUT_COMPACT}
-                                        type="number"
-                                        step="1"
-                                        min={0}
-                                        value={editorialInner.sobranteMinimo}
-                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, sobranteMinimo: e.target.value }))}
-                                      />
-                                      <p className={HELP_TEXT}>
-                                        Unidades extra para cubrir desperdicio/merma.
-                                      </p>
-                                      {editorialInnerIsPolicromiaAmbasCaras ? (
+                                  {showAdvanced ? (
+                                    <>
+                                      <div className="grid grid-cols-1 gap-3">
+                                        <div>
+                                          <Label>Sobrante mínimo</Label>
+                                          <Input
+                                            className={INPUT_COMPACT}
+                                            type="number"
+                                            step="1"
+                                            min={0}
+                                            value={editorialInner.sobranteMinimo}
+                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, sobranteMinimo: e.target.value }))}
+                                          />
+                                          <p className={HELP_TEXT}>
+                                            Unidades extra para cubrir desperdicio/merma.
+                                          </p>
+                                          {editorialInnerIsPolicromiaAmbasCaras ? (
+                                            <p className={HELP_TEXT}>
+                                              En policromía ambas caras (4/4) se recomienda duplicar este sobrante (2×) por doble pasada.
+                                            </p>
+                                          ) : null}
+                                        </div>
+                                      </div>
+
+                                      <div>
+                                        <Label>Acabado (opcional)</Label>
+                                        <select
+                                          className={SELECT_COMPACT}
+                                          value={editorialInner.finishId}
+                                          onChange={(e) => setEditorialInner((prev) => ({ ...prev, finishId: e.target.value }))}
+                                          disabled={!activeFinishes.length}
+                                        >
+                                          <option value="">Ninguno</option>
+                                          {activeFinishes.map((f) => (
+                                            <option key={f.id} value={f.id}>
+                                              {f.nombre}
+                                            </option>
+                                          ))}
+                                        </select>
                                         <p className={HELP_TEXT}>
-                                          En policromía ambas caras (4/4) se recomienda duplicar este sobrante (2×) por doble pasada.
+                                          Se suma al total (valor fijo del acabado).
                                         </p>
-                                      ) : null}
-                                    </div>
-                                  </div>
+                                      </div>
 
-                                  <div>
-                                    <Label>Acabado (opcional)</Label>
-                                    <select
-                                      className={SELECT_COMPACT}
-                                      value={editorialInner.finishId}
-                                      onChange={(e) => setEditorialInner((prev) => ({ ...prev, finishId: e.target.value }))}
-                                      disabled={!activeFinishes.length}
-                                    >
-                                      <option value="">Ninguno</option>
-                                      {activeFinishes.map((f) => (
-                                        <option key={f.id} value={f.id}>
-                                          {f.nombre}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <p className={HELP_TEXT}>
-                                      Se suma al total (valor fijo del acabado).
-                                    </p>
-                                  </div>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                          <Label>Acabado especial</Label>
+                                          <select
+                                            className={SELECT_COMPACT}
+                                            value={editorialInner.specialFinishId}
+                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, specialFinishId: e.target.value }))}
+                                            disabled={!activeSpecialFinishes.length}
+                                          >
+                                            <option value="">Ninguno</option>
+                                            {activeSpecialFinishes.map((f) => (
+                                              <option key={f.id} value={f.id}>
+                                                {f.nombre}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <p className={HELP_TEXT}>
+                                            Se suma como valor × cantidad.
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <Label>Cantidad</Label>
+                                          <Input
+                                            className={INPUT_COMPACT}
+                                            type="number"
+                                            step="1"
+                                            min={1}
+                                            value={editorialInner.specialFinishQty}
+                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, specialFinishQty: e.target.value }))}
+                                          />
+                                          <p className={HELP_TEXT}>
+                                            Total = valor × cantidad (x{Math.max(0, Math.trunc(parseFloat(String(editorialInner.specialFinishQty || "0")) || 0))}).
+                                          </p>
+                                        </div>
+                                      </div>
 
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <Label>Acabado especial</Label>
-                                      <select
-                                        className={SELECT_COMPACT}
-                                        value={editorialInner.specialFinishId}
-                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, specialFinishId: e.target.value }))}
-                                        disabled={!activeSpecialFinishes.length}
-                                      >
-                                        <option value="">Ninguno</option>
-                                        {activeSpecialFinishes.map((f) => (
-                                          <option key={f.id} value={f.id}>
-                                            {f.nombre}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <p className={HELP_TEXT}>
-                                        Se suma como valor × cantidad.
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <Label>Cantidad</Label>
-                                      <Input
-                                        className={INPUT_COMPACT}
-                                        type="number"
-                                        step="1"
-                                        min={1}
-                                        value={editorialInner.specialFinishQty}
-                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, specialFinishQty: e.target.value }))}
-                                      />
-                                      <p className={HELP_TEXT}>
-                                        Total = valor × cantidad (x{Math.max(0, Math.trunc(parseFloat(String(editorialInner.specialFinishQty || "0")) || 0))}).
-                                      </p>
-                                    </div>
-                                  </div>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                          <Label>Plastificado</Label>
+                                          <select
+                                            className={SELECT_COMPACT}
+                                            value={editorialInner.plastificadoId}
+                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, plastificadoId: e.target.value }))}
+                                            disabled={!activePlastificados.length}
+                                          >
+                                            <option value="">Ninguno</option>
+                                            {activePlastificados.map((f) => (
+                                              <option key={f.id} value={f.id}>
+                                                {f.nombre}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <p className={HELP_TEXT}>
+                                            Se suma como valor × cantidad.
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <Label>Cantidad</Label>
+                                          <Input
+                                            className={INPUT_COMPACT}
+                                            type="number"
+                                            step="1"
+                                            min={1}
+                                            value={editorialInner.plastificadoQty}
+                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, plastificadoQty: e.target.value }))}
+                                          />
+                                          <p className={HELP_TEXT}>
+                                            Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.plastificadoQty || "1")) || 0) || 1)}).
+                                          </p>
+                                        </div>
+                                      </div>
 
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <Label>Plastificado</Label>
-                                      <select
-                                        className={SELECT_COMPACT}
-                                        value={editorialInner.plastificadoId}
-                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, plastificadoId: e.target.value }))}
-                                        disabled={!activePlastificados.length}
-                                      >
-                                        <option value="">Ninguno</option>
-                                        {activePlastificados.map((f) => (
-                                          <option key={f.id} value={f.id}>
-                                            {f.nombre}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <p className={HELP_TEXT}>
-                                        Se suma como valor × cantidad.
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <Label>Cantidad</Label>
-                                      <Input
-                                        className={INPUT_COMPACT}
-                                        type="number"
-                                        step="1"
-                                        min={1}
-                                        value={editorialInner.plastificadoQty}
-                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, plastificadoQty: e.target.value }))}
-                                      />
-                                      <p className={HELP_TEXT}>
-                                        Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.plastificadoQty || "1")) || 0) || 1)}).
-                                      </p>
-                                    </div>
-                                  </div>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                          <Label>Troquelado</Label>
+                                          <select
+                                            className={SELECT_COMPACT}
+                                            value={editorialInner.troqueladoId}
+                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, troqueladoId: e.target.value }))}
+                                            disabled={!activeTroquelados.length}
+                                          >
+                                            <option value="">Ninguno</option>
+                                            {activeTroquelados.map((f) => (
+                                              <option key={f.id} value={f.id}>
+                                                {f.nombre}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <p className={HELP_TEXT}>
+                                            Se suma como valor × cantidad.
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <Label>Cantidad</Label>
+                                          <Input
+                                            className={INPUT_COMPACT}
+                                            type="number"
+                                            step="1"
+                                            min={1}
+                                            value={editorialInner.troqueladoQty}
+                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, troqueladoQty: e.target.value }))}
+                                          />
+                                          <p className={HELP_TEXT}>
+                                            Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.troqueladoQty || "1")) || 0) || 1)}).
+                                          </p>
+                                        </div>
+                                      </div>
 
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <Label>Troquelado</Label>
-                                      <select
-                                        className={SELECT_COMPACT}
-                                        value={editorialInner.troqueladoId}
-                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, troqueladoId: e.target.value }))}
-                                        disabled={!activeTroquelados.length}
-                                      >
-                                        <option value="">Ninguno</option>
-                                        {activeTroquelados.map((f) => (
-                                          <option key={f.id} value={f.id}>
-                                            {f.nombre}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <p className={HELP_TEXT}>
-                                        Se suma como valor × cantidad.
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <Label>Cantidad</Label>
-                                      <Input
-                                        className={INPUT_COMPACT}
-                                        type="number"
-                                        step="1"
-                                        min={1}
-                                        value={editorialInner.troqueladoQty}
-                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, troqueladoQty: e.target.value }))}
-                                      />
-                                      <p className={HELP_TEXT}>
-                                        Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.troqueladoQty || "1")) || 0) || 1)}).
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                      <Label>Corte</Label>
-                                      <select
-                                        className={SELECT_COMPACT}
-                                        value={editorialInner.corteId}
-                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, corteId: e.target.value }))}
-                                        disabled={!activeCortes.length}
-                                      >
-                                        <option value="">Ninguno</option>
-                                        {activeCortes.map((f) => (
-                                          <option key={f.id} value={f.id}>
-                                            {f.nombre}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <p className={HELP_TEXT}>
-                                        Se suma como valor × cantidad.
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <Label>Cantidad</Label>
-                                      <Input
-                                        className={INPUT_COMPACT}
-                                        type="number"
-                                        step="1"
-                                        min={1}
-                                        value={editorialInner.corteQty}
-                                        onChange={(e) => setEditorialInner((prev) => ({ ...prev, corteQty: e.target.value }))}
-                                      />
-                                      <p className={HELP_TEXT}>
-                                        Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.corteQty || "1")) || 0) || 1)}).
-                                      </p>
-                                    </div>
-                                  </div>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                          <Label>Corte</Label>
+                                          <select
+                                            className={SELECT_COMPACT}
+                                            value={editorialInner.corteId}
+                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, corteId: e.target.value }))}
+                                            disabled={!activeCortes.length}
+                                          >
+                                            <option value="">Ninguno</option>
+                                            {activeCortes.map((f) => (
+                                              <option key={f.id} value={f.id}>
+                                                {f.nombre}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <p className={HELP_TEXT}>
+                                            Se suma como valor × cantidad.
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <Label>Cantidad</Label>
+                                          <Input
+                                            className={INPUT_COMPACT}
+                                            type="number"
+                                            step="1"
+                                            min={1}
+                                            value={editorialInner.corteQty}
+                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, corteQty: e.target.value }))}
+                                          />
+                                          <p className={HELP_TEXT}>
+                                            Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.corteQty || "1")) || 0) || 1)}).
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </>
+                                  ) : null}
                                 </div>
                               </div>
                             </div>
@@ -3537,241 +3557,245 @@ export function LitografiaQuoteDialog(props: {
                           )}
                         </div>
 
-                        <div className="sm:col-span-2">
-                          <Label>{t('printshopQuote.fields.finishes')}</Label>
-                          <div className="mt-2 space-y-2">
-                            {selectedFinishIds.map((id, idx) => (
-                              <div key={`${idx}-${id}`} className="flex items-center gap-2">
+                        {showAdvanced ? (
+                          <>
+                            <div className="sm:col-span-2">
+                              <Label>{t('printshopQuote.fields.finishes')}</Label>
+                              <div className="mt-2 space-y-2">
+                                {selectedFinishIds.map((id, idx) => (
+                                  <div key={`${idx}-${id}`} className="flex items-center gap-2">
+                                    <select
+                                      className={SELECT_COMPACT}
+                                      value={id}
+                                      onChange={(e) => updateFinishRow(idx, e.target.value)}
+                                    >
+                                      <option value="">{t('printshopQuote.select.noneFinish')}</option>
+                                      {activeFinishes.map((f) => (
+                                        <option key={f.id} value={f.id}>
+                                          {f.nombre}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    {selectedFinishIds.length > 1 ? (
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-red-600"
+                                        onClick={() => removeFinishRow(idx)}
+                                      >
+                                        {t('common.remove')}
+                                      </Button>
+                                    ) : null}
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="mt-2 flex items-center justify-between gap-2">
+                                <span className="text-[10px] leading-tight text-muted-foreground">{t('printshopQuote.help.multipleFinishes')}</span>
+                                <Button type="button" variant="outline" size="sm" onClick={addFinishRow}>
+                                  {t('common.addAnother')}
+                                </Button>
+                              </div>
+                              <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                                {finishIdsNormalized.length
+                                  ? <>{t('printshopQuote.selectedList', { list: selectedFinishes.map((f) => f.nombre).join(", ") })}</>
+                                  : <>{t('printshopQuote.examples.finish')}</>}
+                              </p>
+                              <p className={HELP_TEXT}>
+                                Se suman al total. Si seleccionas varias filas, se acumulan.
+                              </p>
+                            </div>
+
+                            <div className="sm:col-span-2">
+                              <Label>{t('printshopQuote.fields.lamination')}</Label>
+                              <div className="mt-2 flex items-center gap-2">
                                 <select
-                                  className={SELECT_COMPACT}
-                                  value={id}
-                                  onChange={(e) => updateFinishRow(idx, e.target.value)}
+                                  className={`${SELECT_COMPACT} mt-0`}
+                                  value={selectedPlastificadoId}
+                                  onChange={(e) => setSelectedPlastificadoId(e.target.value)}
+                                  disabled={!activePlastificados.length}
                                 >
-                                  <option value="">{t('printshopQuote.select.noneFinish')}</option>
-                                  {activeFinishes.map((f) => (
+                                  <option value="">{t('printshopQuote.select.noneLamination')}</option>
+                                  {activePlastificados.map((f) => (
                                     <option key={f.id} value={f.id}>
                                       {f.nombre}
                                     </option>
                                   ))}
                                 </select>
-                                {selectedFinishIds.length > 1 ? (
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-red-600"
-                                    onClick={() => removeFinishRow(idx)}
-                                  >
-                                    {t('common.remove')}
-                                  </Button>
-                                ) : null}
+                                <Input
+                                  className={`${INPUT_COMPACT} w-24 shrink-0`}
+                                  type="number"
+                                  min={1}
+                                  step="1"
+                                  value={selectedPlastificadoQty}
+                                  onChange={(e) => setSelectedPlastificadoQty(e.target.value)}
+                                  placeholder={t('printshopQuote.placeholders.qtyShort')}
+                                />
                               </div>
-                            ))}
-                          </div>
-                          <div className="mt-2 flex items-center justify-between gap-2">
-                            <span className="text-[10px] leading-tight text-muted-foreground">{t('printshopQuote.help.multipleFinishes')}</span>
-                            <Button type="button" variant="outline" size="sm" onClick={addFinishRow}>
-                              {t('common.addAnother')}
-                            </Button>
-                          </div>
-                          <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                            {finishIdsNormalized.length
-                              ? <>{t('printshopQuote.selectedList', { list: selectedFinishes.map((f) => f.nombre).join(", ") })}</>
-                              : <>{t('printshopQuote.examples.finish')}</>}
-                          </p>
-                          <p className={HELP_TEXT}>
-                            Se suman al total. Si seleccionas varias filas, se acumulan.
-                          </p>
-                        </div>
+                              {!activePlastificados.length ? (
+                                <p className={HELP_TEXT}>
+                                  {t('printshopQuote.help.configureLamination')}
+                                </p>
+                              ) : null}
+                              {selectedPlastificado ? (
+                                <p className={HELP_TEXT}>
+                                  Total = {formatCurrency(plastificadoCost)} × {plastificadoQty} = {formatCurrency(plastificadoCostTotal)}.
+                                </p>
+                              ) : (
+                                <p className={HELP_TEXT}>Opcional. Si eliges uno, se multiplica por la cantidad.</p>
+                              )}
+                            </div>
 
-                        <div className="sm:col-span-2">
-                          <Label>{t('printshopQuote.fields.lamination')}</Label>
-                          <div className="mt-2 flex items-center gap-2">
-                            <select
-                              className={`${SELECT_COMPACT} mt-0`}
-                              value={selectedPlastificadoId}
-                              onChange={(e) => setSelectedPlastificadoId(e.target.value)}
-                              disabled={!activePlastificados.length}
-                            >
-                              <option value="">{t('printshopQuote.select.noneLamination')}</option>
-                              {activePlastificados.map((f) => (
-                                <option key={f.id} value={f.id}>
-                                  {f.nombre}
-                                </option>
-                              ))}
-                            </select>
-                            <Input
-                              className={`${INPUT_COMPACT} w-24 shrink-0`}
-                              type="number"
-                              min={1}
-                              step="1"
-                              value={selectedPlastificadoQty}
-                              onChange={(e) => setSelectedPlastificadoQty(e.target.value)}
-                              placeholder={t('printshopQuote.placeholders.qtyShort')}
-                            />
-                          </div>
-                          {!activePlastificados.length ? (
-                            <p className={HELP_TEXT}>
-                              {t('printshopQuote.help.configureLamination')}
-                            </p>
-                          ) : null}
-                          {selectedPlastificado ? (
-                            <p className={HELP_TEXT}>
-                              Total = {formatCurrency(plastificadoCost)} × {plastificadoQty} = {formatCurrency(plastificadoCostTotal)}.
-                            </p>
-                          ) : (
-                            <p className={HELP_TEXT}>Opcional. Si eliges uno, se multiplica por la cantidad.</p>
-                          )}
-                        </div>
+                            <div className="sm:col-span-2">
+                              <Label>{t('printshopQuote.fields.dieCut')}</Label>
+                              <div className="mt-2 flex items-center gap-2">
+                                <select
+                                  className={`${SELECT_COMPACT} mt-0`}
+                                  value={selectedTroqueladoId}
+                                  onChange={(e) => setSelectedTroqueladoId(e.target.value)}
+                                  disabled={!activeTroquelados.length}
+                                >
+                                  <option value="">{t('printshopQuote.select.noneDieCut')}</option>
+                                  {activeTroquelados.map((f) => (
+                                    <option key={f.id} value={f.id}>
+                                      {f.nombre}
+                                    </option>
+                                  ))}
+                                </select>
+                                <Input
+                                  className={`${INPUT_COMPACT} w-24 shrink-0`}
+                                  type="number"
+                                  min={1}
+                                  step="1"
+                                  value={selectedTroqueladoQty}
+                                  onChange={(e) => setSelectedTroqueladoQty(e.target.value)}
+                                  placeholder={t('printshopQuote.placeholders.qtyShort')}
+                                />
+                              </div>
+                              {!activeTroquelados.length ? (
+                                <p className={HELP_TEXT}>
+                                  {t('printshopQuote.help.configureDieCut')}
+                                </p>
+                              ) : null}
+                              {selectedTroquelado ? (
+                                <p className={HELP_TEXT}>
+                                  Total = {formatCurrency(troqueladoCost)} × {troqueladoQty} = {formatCurrency(troqueladoCostTotal)}.
+                                </p>
+                              ) : (
+                                <p className={HELP_TEXT}>Opcional. Si eliges uno, se multiplica por la cantidad.</p>
+                              )}
+                            </div>
 
-                        <div className="sm:col-span-2">
-                          <Label>{t('printshopQuote.fields.dieCut')}</Label>
-                          <div className="mt-2 flex items-center gap-2">
-                            <select
-                              className={`${SELECT_COMPACT} mt-0`}
-                              value={selectedTroqueladoId}
-                              onChange={(e) => setSelectedTroqueladoId(e.target.value)}
-                              disabled={!activeTroquelados.length}
-                            >
-                              <option value="">{t('printshopQuote.select.noneDieCut')}</option>
-                              {activeTroquelados.map((f) => (
-                                <option key={f.id} value={f.id}>
-                                  {f.nombre}
-                                </option>
-                              ))}
-                            </select>
-                            <Input
-                              className={`${INPUT_COMPACT} w-24 shrink-0`}
-                              type="number"
-                              min={1}
-                              step="1"
-                              value={selectedTroqueladoQty}
-                              onChange={(e) => setSelectedTroqueladoQty(e.target.value)}
-                              placeholder={t('printshopQuote.placeholders.qtyShort')}
-                            />
-                          </div>
-                          {!activeTroquelados.length ? (
-                            <p className={HELP_TEXT}>
-                              {t('printshopQuote.help.configureDieCut')}
-                            </p>
-                          ) : null}
-                          {selectedTroquelado ? (
-                            <p className={HELP_TEXT}>
-                              Total = {formatCurrency(troqueladoCost)} × {troqueladoQty} = {formatCurrency(troqueladoCostTotal)}.
-                            </p>
-                          ) : (
-                            <p className={HELP_TEXT}>Opcional. Si eliges uno, se multiplica por la cantidad.</p>
-                          )}
-                        </div>
+                            <div className="sm:col-span-2">
+                              <Label>{t('printshopQuote.fields.cut')}</Label>
+                              <div className="mt-2 flex items-center gap-2">
+                                <select
+                                  className={`${SELECT_COMPACT} mt-0`}
+                                  value={selectedCorteId}
+                                  onChange={(e) => setSelectedCorteId(e.target.value)}
+                                  disabled={!activeCortes.length}
+                                >
+                                  <option value="">{t('printshopQuote.select.noneCut')}</option>
+                                  {activeCortes.map((f) => (
+                                    <option key={f.id} value={f.id}>
+                                      {f.nombre}
+                                    </option>
+                                  ))}
+                                </select>
+                                <Input
+                                  className={`${INPUT_COMPACT} w-24 shrink-0`}
+                                  type="number"
+                                  min={1}
+                                  step="1"
+                                  value={selectedCorteQty}
+                                  onChange={(e) => setSelectedCorteQty(e.target.value)}
+                                  placeholder={t('printshopQuote.placeholders.qtyShort')}
+                                />
+                              </div>
+                              {!activeCortes.length ? (
+                                <p className={HELP_TEXT}>
+                                  {t('printshopQuote.help.configureCut')}
+                                </p>
+                              ) : null}
+                              {selectedCorte ? (
+                                <p className={HELP_TEXT}>
+                                  Total = {formatCurrency(corteCost)} × {corteQty} = {formatCurrency(corteCostTotal)}.
+                                </p>
+                              ) : (
+                                <p className={HELP_TEXT}>Opcional. Si eliges uno, se multiplica por la cantidad.</p>
+                              )}
+                            </div>
 
-                        <div className="sm:col-span-2">
-                          <Label>{t('printshopQuote.fields.cut')}</Label>
-                          <div className="mt-2 flex items-center gap-2">
-                            <select
-                              className={`${SELECT_COMPACT} mt-0`}
-                              value={selectedCorteId}
-                              onChange={(e) => setSelectedCorteId(e.target.value)}
-                              disabled={!activeCortes.length}
-                            >
-                              <option value="">{t('printshopQuote.select.noneCut')}</option>
-                              {activeCortes.map((f) => (
-                                <option key={f.id} value={f.id}>
-                                  {f.nombre}
-                                </option>
-                              ))}
-                            </select>
-                            <Input
-                              className={`${INPUT_COMPACT} w-24 shrink-0`}
-                              type="number"
-                              min={1}
-                              step="1"
-                              value={selectedCorteQty}
-                              onChange={(e) => setSelectedCorteQty(e.target.value)}
-                              placeholder={t('printshopQuote.placeholders.qtyShort')}
-                            />
-                          </div>
-                          {!activeCortes.length ? (
-                            <p className={HELP_TEXT}>
-                              {t('printshopQuote.help.configureCut')}
-                            </p>
-                          ) : null}
-                          {selectedCorte ? (
-                            <p className={HELP_TEXT}>
-                              Total = {formatCurrency(corteCost)} × {corteQty} = {formatCurrency(corteCostTotal)}.
-                            </p>
-                          ) : (
-                            <p className={HELP_TEXT}>Opcional. Si eliges uno, se multiplica por la cantidad.</p>
-                          )}
-                        </div>
+                            <div className="sm:col-span-2">
+                              <Label>{t('printshopQuote.fields.specialFinishes')}</Label>
+                              <p className={HELP_TEXT}>
+                                Cada fila: valor del acabado especial × cantidad. Se acumulan entre filas.
+                              </p>
+                              <div className="mt-2 space-y-2">
+                                {specialFinishRows.map((row, idx) => {
+                                  const finishId = String(row.finishId || "").trim()
+                                  const selected = finishId ? activeSpecialFinishes.find((f) => f.id === finishId) || null : null
 
-                        <div className="sm:col-span-2">
-                          <Label>{t('printshopQuote.fields.specialFinishes')}</Label>
-                          <p className={HELP_TEXT}>
-                            Cada fila: valor del acabado especial × cantidad. Se acumulan entre filas.
-                          </p>
-                          <div className="mt-2 space-y-2">
-                            {specialFinishRows.map((row, idx) => {
-                              const finishId = String(row.finishId || "").trim()
-                              const selected = finishId ? activeSpecialFinishes.find((f) => f.id === finishId) || null : null
+                                  return (
+                                    <div key={`${idx}-${finishId}`} className="flex items-center gap-2">
+                                      <select
+                                        className={SELECT_COMPACT}
+                                        value={finishId}
+                                        onChange={(e) => updateSpecialFinishRow(idx, e.target.value)}
+                                      >
+                                        <option value="">{t('common.select')}</option>
+                                        {activeSpecialFinishes.map((f) => (
+                                          <option key={f.id} value={f.id}>
+                                            {f.nombre}
+                                          </option>
+                                        ))}
+                                      </select>
 
-                              return (
-                                <div key={`${idx}-${finishId}`} className="flex items-center gap-2">
-                                  <select
-                                    className={SELECT_COMPACT}
-                                    value={finishId}
-                                    onChange={(e) => updateSpecialFinishRow(idx, e.target.value)}
-                                  >
-                                    <option value="">{t('common.select')}</option>
-                                    {activeSpecialFinishes.map((f) => (
-                                      <option key={f.id} value={f.id}>
-                                        {f.nombre}
-                                      </option>
-                                    ))}
-                                  </select>
+                                      <span className="text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
+                                        {selected ? `${formatCurrency(selected.valor || 0)} ${t('quoteBuilder.items.each')}` : ""}
+                                      </span>
 
-                                  <span className="text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
-                                    {selected ? `${formatCurrency(selected.valor || 0)} ${t('quoteBuilder.items.each')}` : ""}
-                                  </span>
+                                      <Input
+                                        className={`${INPUT_COMPACT} w-24 shrink-0`}
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        value={row.qty ?? "1"}
+                                        onChange={(e) => updateSpecialFinishQty(idx, e.target.value)}
+                                        placeholder={t('printshopQuote.placeholders.qtyShort')}
+                                      />
 
-                                  <Input
-                                    className={`${INPUT_COMPACT} w-24 shrink-0`}
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    value={row.qty ?? "1"}
-                                    onChange={(e) => updateSpecialFinishQty(idx, e.target.value)}
-                                    placeholder={t('printshopQuote.placeholders.qtyShort')}
-                                  />
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-red-600"
+                                        onClick={() => removeSpecialFinishRow(idx)}
+                                      >
+                                        {t('common.remove')}
+                                      </Button>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                              <div className="mt-2 flex items-center justify-between gap-2">
+                                <span className="text-[10px] leading-tight text-muted-foreground">{t('printshopQuote.help.multipleSpecialFinishes')}</span>
+                                <Button type="button" variant="outline" size="sm" onClick={addSpecialFinishRow}>
+                                  {t('printshopQuote.actions.addAnotherSpecialFinish')}
+                                </Button>
+                              </div>
+                              <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                                {selectedSpecialFinishNames.length
+                                  ? <>{t('printshopQuote.selectedList', { list: selectedSpecialFinishNames.join(", ") })}</>
+                                  : <>{t('printshopQuote.examples.specialFinishes')}</>}
+                              </p>
 
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-red-600"
-                                    onClick={() => removeSpecialFinishRow(idx)}
-                                  >
-                                    {t('common.remove')}
-                                  </Button>
-                                </div>
-                              )
-                            })}
-                          </div>
-                            <div className="mt-2 flex items-center justify-between gap-2">
-                            <span className="text-[10px] leading-tight text-muted-foreground">{t('printshopQuote.help.multipleSpecialFinishes')}</span>
-                            <Button type="button" variant="outline" size="sm" onClick={addSpecialFinishRow}>
-                              {t('printshopQuote.actions.addAnotherSpecialFinish')}
-                            </Button>
-                          </div>
-                          <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                            {selectedSpecialFinishNames.length
-                              ? <>{t('printshopQuote.selectedList', { list: selectedSpecialFinishNames.join(", ") })}</>
-                              : <>{t('printshopQuote.examples.specialFinishes')}</>}
-                          </p>
-
-                          <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                            {t('printshopQuote.summary.totalSpecialFinishes', { total: formatCurrency(specialFinishesCost) })}
-                          </p>
-                        </div>
+                              <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                                {t('printshopQuote.summary.totalSpecialFinishes', { total: formatCurrency(specialFinishesCost) })}
+                              </p>
+                            </div>
+                          </>
+                        ) : null}
                         </>
 
                       ) : null}
