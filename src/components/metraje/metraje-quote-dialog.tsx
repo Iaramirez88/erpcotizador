@@ -17,6 +17,9 @@ export type MetrajeMaterial = {
   id: string
   externalId?: string | null
   nombre: string
+  // Campos opcionales (vienen desde /api/materiales) para agrupar rangos/tamaños base.
+  tipo?: string | null
+  categoria?: string | null
   unidadMedida: string
   ancho?: number | null // cm
   largo?: number | null // cm o metros (según unidad)
@@ -82,6 +85,135 @@ function toNumber(value: string): number {
 
 function clampNonNeg(n: number) {
   return Number.isFinite(n) ? Math.max(0, n) : 0
+}
+
+function approxEqual(a: number, b: number, tolerance = 0.25): boolean {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false
+  return Math.abs(a - b) <= tolerance
+}
+
+function areaM2FromDimsCm(anchoCm: number, altoCm: number): number {
+  if (!Number.isFinite(anchoCm) || !Number.isFinite(altoCm)) return 0
+  if (anchoCm <= 0 || altoCm <= 0) return 0
+  return (anchoCm * altoCm) / 10000
+}
+
+function normalizeGroupLabel(m: Pick<MetrajeMaterial, 'categoria' | 'nombre'>): string {
+  const fromCategory = String(m.categoria ?? '').trim()
+  if (fromCategory) return fromCategory.toLowerCase()
+  return normalizeRateGroupKeyFromName(String(m.nombre ?? ''))
+}
+
+function normalizeRateGroupKeyFromName(nombre: string): string {
+  const raw = String(nombre ?? '').trim().toLowerCase()
+  if (!raw) return ''
+
+  // Quitar medidas tipo “100cm x 40cm”, “100 cm × 40 cm”, etc.
+  const withoutDims = raw
+    .replace(/\b\d+(?:[\.,]\d+)?\s*cm\s*[x×]\s*\d+(?:[\.,]\d+)?\s*cm\b/gi, ' ')
+    .replace(/\b\d+(?:[\.,]\d+)?\s*cm\b/gi, ' ')
+
+  // Normalizar prefijos típicos del tarifario por metraje.
+  const withoutPrefix = withoutDims
+    .replace(/^\s*(minima|minimo|metro|metraje)\s+de\s+/i, '')
+    .replace(/\s+de\s+/gi, ' ')
+
+  return withoutPrefix.replace(/\s+/g, ' ').trim()
+}
+
+function normalizeTipo(value: unknown): string {
+  return String(value ?? '').trim().toUpperCase()
+}
+
+type M2RatePoint = {
+  areaM2: number
+  priceTotal: number
+  material: MetrajeMaterial
+}
+
+function buildM2RatePoints(args: {
+  materiales: MetrajeMaterial[]
+  selected: MetrajeMaterial
+  anchoCm: number
+  altoCm: number
+}): M2RatePoint[] {
+  const selectedTipo = normalizeTipo(args.selected.tipo)
+  const selectedLabel = normalizeGroupLabel(args.selected)
+
+  const base = args.materiales
+    .filter((m) => {
+      if (m.precioM2 == null) return false
+      if (m.ancho == null || m.largo == null) return false
+      const area = areaM2FromDimsCm(Number(m.ancho), Number(m.largo))
+      return area > 0
+    })
+    .filter((m) => {
+      const tipoOk = selectedTipo ? normalizeTipo(m.tipo) === selectedTipo : true
+      const labelOk = selectedLabel ? normalizeGroupLabel(m) === selectedLabel : true
+      return tipoOk && labelOk
+    })
+    .map((m) => {
+      const areaM2 = areaM2FromDimsCm(Number(m.ancho), Number(m.largo))
+      const priceTotal = Number(m.precioM2 ?? 0) || 0
+      return { areaM2, priceTotal, material: m } satisfies M2RatePoint
+    })
+    .filter((p) => p.areaM2 > 0 && p.priceTotal > 0)
+    .sort((a, b) => a.areaM2 - b.areaM2)
+
+  if (!base.length) return []
+
+  // Si el usuario digitó un ancho específico y hay puntos con ese ancho,
+  // priorizamos esa “familia” para evitar mezclar listas.
+  const anchoInput = args.anchoCm
+  const byWidth =
+    anchoInput > 0
+      ? base.filter((p) => typeof p.material.ancho === 'number' && approxEqual(Number(p.material.ancho), anchoInput))
+      : []
+
+  const chosen = byWidth.length >= 2 ? byWidth : base
+
+  // De-dupe por área (si hay repetidos, nos quedamos con el más barato).
+  const bestByArea = new Map<number, M2RatePoint>()
+  for (const p of chosen) {
+    const prev = bestByArea.get(p.areaM2)
+    if (!prev || p.priceTotal < prev.priceTotal) bestByArea.set(p.areaM2, p)
+  }
+
+  return [...bestByArea.values()].sort((a, b) => a.areaM2 - b.areaM2)
+}
+
+function computePiecewiseLinearTotal(area: number, points: M2RatePoint[]): number {
+  if (!Number.isFinite(area) || area <= 0) return 0
+  if (points.length === 0) return 0
+  if (points.length === 1) return points[0].priceTotal
+
+  const first = points[0]
+  if (area <= first.areaM2) return first.priceTotal
+
+  const last = points[points.length - 1]
+  if (area >= last.areaM2) {
+    const prev = points[points.length - 2]
+    const denom = last.areaM2 - prev.areaM2
+    const slope = denom > 0 ? (last.priceTotal - prev.priceTotal) / denom : 0
+    const safeSlope = Number.isFinite(slope) ? slope : 0
+    return last.priceTotal + safeSlope * (area - last.areaM2)
+  }
+
+  // Buscar el segmento [lower, upper] donde cae el área.
+  for (let i = 0; i < points.length - 1; i++) {
+    const lower = points[i]
+    const upper = points[i + 1]
+    if (area < lower.areaM2) continue
+    if (area > upper.areaM2) continue
+
+    const denom = upper.areaM2 - lower.areaM2
+    if (!(denom > 0)) return lower.priceTotal
+    const t = (area - lower.areaM2) / denom
+    return lower.priceTotal + (upper.priceTotal - lower.priceTotal) * t
+  }
+
+  // Fallback: no debería ocurrir.
+  return last.priceTotal
 }
 
 export function MetrajeQuoteDialog(props: {
@@ -154,9 +286,30 @@ export function MetrajeQuoteDialog(props: {
 
   const costoMaterialPorUnidad = useMemo(() => {
     if (!selectedMaterial || !unidad) return 0
-    if (unidad === "m2") return (selectedMaterial.precioM2 || 0) * medidaPorUnidad
+    if (unidad === "m2") {
+      if (!medidaPorUnidad) return 0
+
+      // 1) Intentar calcular por “lista de precios por rangos” (breakpoints) usando
+      //    materiales que tengan (ancho, largo) + (precioM2 como precio TOTAL del tamaño base).
+      const points = buildM2RatePoints({
+        materiales,
+        selected: selectedMaterial,
+        anchoCm: anchoCmN,
+        altoCm: altoCmN,
+      })
+
+      if (points.length >= 2) {
+        const total = computePiecewiseLinearTotal(medidaPorUnidad, points)
+        // Regla del usuario: si es menor, mantener la mínima.
+        const minTotal = points[0].priceTotal
+        return Math.max(minTotal, Number.isFinite(total) ? total : 0)
+      }
+
+      // 2) Fallback: tratar como “precio por m²”.
+      return (Number(selectedMaterial.precioM2) || 0) * medidaPorUnidad
+    }
     return (selectedMaterial.precioMetro || 0) * medidaPorUnidad
-  }, [selectedMaterial, unidad, medidaPorUnidad])
+  }, [selectedMaterial, unidad, medidaPorUnidad, materiales, anchoCmN, altoCmN])
 
   const terminadosDisponibles = useMemo(() => {
     if (!unidad) return []

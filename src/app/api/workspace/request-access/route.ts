@@ -39,8 +39,10 @@ export async function POST(req: Request) {
       sede: { empresaId: empresa.id },
       role: { in: ['ADMIN', 'MANAGER'] },
     },
-    select: { user: { select: { email: true } } },
+    select: { userId: true, user: { select: { email: true } } },
   })
+
+  const recipientUserIds = Array.from(new Set(admins.map((a) => a.userId).filter(Boolean)))
 
   const recipients = Array.from(
     new Set(
@@ -69,14 +71,50 @@ export async function POST(req: Request) {
   const subject = `Solicitud de acceso · ${empresa.nombre} · Ordex`
   const who = requesterName ? `${requesterName} (${requesterEmail})` : requesterEmail
 
+  // Registrar solicitud pendiente (evita duplicados PENDING por usuario+empresa)
+  const existingRequest = await prisma.workspaceAccessRequest.findFirst({
+    where: {
+      empresaId: empresa.id,
+      requesterUserId: requester.id,
+      status: 'PENDING',
+    },
+    select: { id: true },
+  })
+
+  if (!existingRequest?.id) {
+    await prisma.workspaceAccessRequest.create({
+      data: {
+        empresaId: empresa.id,
+        requesterUserId: requester.id,
+        workspaceCode: empresa.workspaceCode || workspaceCode || null,
+        status: 'PENDING',
+      },
+      select: { id: true },
+    })
+  }
+
+  // Notificación in-app para admins/manager (más rápido que email).
+  if (recipientUserIds.length) {
+    await prisma.notification.createMany({
+      data: recipientUserIds.map((userId) => ({
+        userId,
+        empresaId: empresa.id,
+        type: 'WARNING',
+        title: 'Solicitud de acceso',
+        body: `${who} solicitó acceso a ${empresa.nombre}. Ve a Configuración → Usuarios para invitarlo o asignarle permisos.`,
+      })),
+      skipDuplicates: false,
+    })
+  }
+
   const html = renderEmail({
     title: 'Solicitud de acceso',
     preheader: `${who} solicitó acceso a ${empresa.nombre}.`,
     intro: `${who} solicitó acceso al espacio de trabajo ${empresa.nombre}.`,
     bodyHtml: `
-      <p style="margin:0 0 12px; color:#374151;">Si deseas permitir el ingreso, comparte el <b>código de empresa</b> o envía una invitación desde el panel (Configuración → Usuarios).</p>
+      <p style="margin:0 0 12px; color:#374151;">Si deseas permitir el ingreso, envía una invitación desde el panel (Configuración → Usuarios). Si aplica, también puedes compartir el <b>código de espacio (WS-...)</b>.</p>
       ${empresa.workspaceCode ? renderEmailCode(empresa.workspaceCode, { size: 'md' }) : ''}
-      <p style="margin:0; color:#6B7280; font-size:12px;">Espacio: <b>${escapeHtml(empresa.nombre)}</b> · ID: ${escapeHtml(empresa.id)}</p>
+      <p style="margin:0; color:#6B7280; font-size:12px;">Espacio: <b>${escapeHtml(empresa.nombre)}</b></p>
     `,
   })
 

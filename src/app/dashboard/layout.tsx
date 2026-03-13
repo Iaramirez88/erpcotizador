@@ -15,6 +15,8 @@ import PlanLimitFetchInterceptor from "@/components/dashboard/plan-limit-fetch-i
 import PlanLimitModal from "@/components/dashboard/plan-limit-modal"
 import RouteLoadingIndicator from "@/components/dashboard/route-loading-indicator"
 import RouteLoadingStartListener from "@/components/dashboard/route-loading-start-listener"
+import { getActiveSedeForUser, getEffectiveAccessMap, NAV_MODULES } from "@/lib/rbac"
+import { resolveUserIdFromSession } from "@/lib/session-user"
 
 export default async function DashboardLayout({
   children,
@@ -28,11 +30,24 @@ export default async function DashboardLayout({
     redirect("/auth/login")
   }
 
+  let allowedModules: string[] | null = null
+  try {
+    const userId = await resolveUserIdFromSession(session)
+    if (userId) {
+      const sede = await getActiveSedeForUser(userId)
+      const access = await getEffectiveAccessMap({ userId, sedeId: sede.id, modules: NAV_MODULES })
+      allowedModules = NAV_MODULES.filter((m) => (access[m] ?? 'NONE') !== 'NONE')
+    }
+  } catch {
+    allowedModules = null
+  }
+
   const user = {
     name: session.user.name ?? null,
     email: session.user.email ?? null,
     role: session.user.role,
     image: session.user.image ?? null,
+    allowedModules,
   }
 
   return (

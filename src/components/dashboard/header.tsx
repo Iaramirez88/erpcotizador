@@ -29,6 +29,54 @@ interface HeaderProps {
     name?: string | null
     role?: string
     image?: string | null
+    allowedModules?: string[] | null
+  }
+}
+
+function moduleForHref(href: string): string | null {
+  switch (href) {
+    case '/dashboard':
+      return 'DASHBOARD'
+    case '/dashboard/reportes':
+      return 'REPORTES'
+    case '/dashboard/contabilidad':
+      return 'CONTABILIDAD'
+    case '/dashboard/cotizador':
+      return 'COTIZADOR'
+    case '/dashboard/cotizaciones':
+      return 'COTIZACIONES'
+    case '/dashboard/remisiones':
+      return 'REMISIONES'
+    case '/dashboard/pos':
+      return 'POS'
+    case '/dashboard/clientes':
+      return 'CLIENTES'
+    case '/dashboard/ordenes':
+      return 'ORDENES'
+    case '/dashboard/litografia':
+      return 'COTIZADOR'
+    case '/dashboard/escaneos':
+      return 'ESCANEOS'
+    case '/dashboard/materiales':
+      return 'MATERIALES'
+    case '/dashboard/terminados':
+      return 'MATERIALES'
+    case '/dashboard/inventario':
+    case '/dashboard/inventario/traslados':
+      return 'INVENTARIO'
+    case '/dashboard/compras':
+      return 'COMPRAS'
+    case '/dashboard/proveedores':
+      return 'PROVEEDORES'
+    case '/dashboard/configuracion/desperdicios':
+    case '/dashboard/configuracion/sedes':
+    case '/dashboard/configuracion/usuarios':
+    case '/dashboard/configuracion/permisos':
+    case '/dashboard/configuracion/empresa':
+    case '/dashboard/configuracion/plan':
+      return 'CONFIG'
+    default:
+      return null
   }
 }
 
@@ -44,6 +92,11 @@ export default function Header({ user }: HeaderProps) {
   useEffect(() => {
     if (user.role === 'ADMIN') setCanManageBilling(true)
   }, [user.role])
+
+  const allowedModules = useMemo(() => {
+    if (!user.allowedModules) return null
+    return new Set(user.allowedModules)
+  }, [user.allowedModules])
 
   const initials = useMemo(() => {
     const name = (user.name ?? '').trim()
@@ -132,8 +185,14 @@ export default function Header({ user }: HeaderProps) {
       { name: t('nav.company'), href: '/dashboard/configuracion/empresa' },
       ...(canManageBilling ? [{ name: t('nav.plan'), href: '/dashboard/configuracion/plan' }] : []),
     ]
-    return base
-  }, [canManageBilling, t])
+    const withRbacGate = base.filter((it) => {
+      const moduleKey = moduleForHref(it.href)
+      if (!moduleKey) return true
+      if (!allowedModules) return true
+      return allowedModules.has(moduleKey)
+    })
+    return withRbacGate
+  }, [canManageBilling, t, allowedModules])
 
   async function saveNav(next: Record<string, boolean>) {
     setNavPrefs(next)

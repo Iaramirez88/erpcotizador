@@ -3,9 +3,12 @@ import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { ensureDefaultSedeForEmpresa, requireEmpresaIdForUser } from '@/lib/rbac'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { InviteUserCard } from '@/components/users/invite-user-card'
 import { getServerLanguage } from '@/lib/i18n/server'
 import { translate } from '@/lib/i18n/messages'
+import { revalidatePath } from 'next/cache'
+import { checkPlanLimit } from '@/lib/plan-limits'
 
 export const runtime = 'nodejs'
 
@@ -47,6 +50,191 @@ export default async function UsuariosPage() {
     redirect('/dashboard')
   }
 
+  async function approveAccessRequest(formData: FormData) {
+    'use server'
+
+    const session2 = await auth()
+    if (!session2?.user?.id) return
+
+    const empresaId2 = await requireEmpresaIdForUser(session2.user.id)
+    await ensureDefaultSedeForEmpresa(empresaId2, session2.user.id)
+
+    const myAdmin2 = await prisma.sedeMembership.findFirst({
+      where: {
+        userId: session2.user.id,
+        sede: { empresaId: empresaId2 },
+        role: { in: ['ADMIN', 'MANAGER'] },
+      },
+      select: { id: true },
+    })
+
+    if (session2.user.role !== 'ADMIN' && !myAdmin2) return
+
+    const requestId = String(formData.get('requestId') ?? '')
+    if (!requestId) return
+
+    const req = await prisma.workspaceAccessRequest.findFirst({
+      where: { id: requestId, empresaId: empresaId2, status: 'PENDING' },
+      select: {
+        id: true,
+        empresaId: true,
+        requesterUserId: true,
+        requesterUser: { select: { id: true, email: true, name: true, empresaId: true } },
+      },
+    })
+
+    if (!req?.id) return
+
+    const requester = req.requesterUser
+    const requesterName = (requester?.name || '').trim()
+    const requesterEmail = (requester?.email || '').trim().toLowerCase()
+    const who = requesterName ? `${requesterName} (${requesterEmail})` : requesterEmail
+
+    const alreadyInEmpresa = requester?.empresaId === empresaId2
+    if (!alreadyInEmpresa) {
+      const limit = await checkPlanLimit(empresaId2, 'USUARIOS_MAX')
+      if (!limit.ok) {
+        await prisma.notification.create({
+          data: {
+            userId: req.requesterUserId,
+            empresaId: empresaId2,
+            type: 'ERROR',
+            title: 'Solicitud de acceso rechazada',
+            body: `No se pudo aprobar el acceso a tiempo: ${limit.message || 'límite del plan alcanzado'}.`,
+          },
+        })
+        await prisma.workspaceAccessRequest.update({
+          where: { id: req.id },
+          data: { status: 'REJECTED', decidedAt: new Date(), decidedByUserId: session2.user.id },
+          select: { id: true },
+        })
+        revalidatePath('/dashboard/configuracion/usuarios')
+        return
+      }
+
+      if (requester?.empresaId && requester.empresaId !== empresaId2) {
+        const currentEmpresa = await prisma.empresa.findUnique({
+          where: { id: requester.empresaId },
+          select: { id: true, nit: true },
+        })
+        const isPersonal = currentEmpresa?.nit === `PERS-${requester.id}`
+        if (!isPersonal) {
+          await prisma.notification.create({
+            data: {
+              userId: req.requesterUserId,
+              empresaId: empresaId2,
+              type: 'ERROR',
+              title: 'Solicitud de acceso rechazada',
+              body: 'Tu usuario ya pertenece a otra entidad. Pídele a un administrador que te invite por email o revisa tu cuenta actual.',
+            },
+          })
+          await prisma.workspaceAccessRequest.update({
+            where: { id: req.id },
+            data: { status: 'REJECTED', decidedAt: new Date(), decidedByUserId: session2.user.id },
+            select: { id: true },
+          })
+          revalidatePath('/dashboard/configuracion/usuarios')
+          return
+        }
+      }
+
+      await prisma.user.update({ where: { id: req.requesterUserId }, data: { empresaId: empresaId2 }, select: { id: true } })
+      await ensureDefaultSedeForEmpresa(empresaId2, req.requesterUserId)
+    }
+
+    await prisma.workspaceAccessRequest.update({
+      where: { id: req.id },
+      data: { status: 'APPROVED', decidedAt: new Date(), decidedByUserId: session2.user.id },
+      select: { id: true },
+    })
+
+    await prisma.notification.create({
+      data: {
+        userId: req.requesterUserId,
+        empresaId: empresaId2,
+        type: 'SUCCESS',
+        title: 'Acceso aprobado',
+        body: `Tu solicitud fue aprobada. Ya puedes ingresar a este espacio de trabajo.`,
+      },
+    })
+
+    await prisma.notification.create({
+      data: {
+        userId: session2.user.id,
+        empresaId: empresaId2,
+        type: 'INFO',
+        title: 'Solicitud aprobada',
+        body: `Aprobaste el acceso de ${who}.`,
+      },
+    })
+
+    revalidatePath('/dashboard/configuracion/usuarios')
+  }
+
+  async function rejectAccessRequest(formData: FormData) {
+    'use server'
+
+    const session2 = await auth()
+    if (!session2?.user?.id) return
+
+    const empresaId2 = await requireEmpresaIdForUser(session2.user.id)
+    await ensureDefaultSedeForEmpresa(empresaId2, session2.user.id)
+
+    const myAdmin2 = await prisma.sedeMembership.findFirst({
+      where: {
+        userId: session2.user.id,
+        sede: { empresaId: empresaId2 },
+        role: { in: ['ADMIN', 'MANAGER'] },
+      },
+      select: { id: true },
+    })
+
+    if (session2.user.role !== 'ADMIN' && !myAdmin2) return
+
+    const requestId = String(formData.get('requestId') ?? '')
+    if (!requestId) return
+
+    const req = await prisma.workspaceAccessRequest.findFirst({
+      where: { id: requestId, empresaId: empresaId2, status: 'PENDING' },
+      select: {
+        id: true,
+        requesterUserId: true,
+      },
+    })
+
+    if (!req?.id) return
+
+    await prisma.workspaceAccessRequest.update({
+      where: { id: req.id },
+      data: { status: 'REJECTED', decidedAt: new Date(), decidedByUserId: session2.user.id },
+      select: { id: true },
+    })
+
+    await prisma.notification.create({
+      data: {
+        userId: req.requesterUserId,
+        empresaId: empresaId2,
+        type: 'ERROR',
+        title: 'Solicitud de acceso rechazada',
+        body: 'Un administrador rechazó tu solicitud. Si crees que es un error, solicita una invitación por email.',
+      },
+    })
+
+    revalidatePath('/dashboard/configuracion/usuarios')
+  }
+
+  const accessRequests = await prisma.workspaceAccessRequest.findMany({
+    where: { empresaId, status: 'PENDING' },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+    select: {
+      id: true,
+      workspaceCode: true,
+      createdAt: true,
+      requesterUser: { select: { id: true, email: true, name: true } },
+    },
+  })
+
   const users = await prisma.user.findMany({
     where: {
       OR: [
@@ -75,6 +263,53 @@ export default async function UsuariosPage() {
       </div>
 
       <InviteUserCard />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Solicitudes de acceso</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {accessRequests.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="py-2 text-left">Usuario</th>
+                    <th className="py-2 text-left">Email</th>
+                    <th className="py-2 text-left">Código</th>
+                    <th className="py-2 text-left">Creada</th>
+                    <th className="py-2 text-right">Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {accessRequests.map((r) => (
+                    <tr key={r.id} className="border-b">
+                      <td className="py-2">{r.requesterUser.name ?? '—'}</td>
+                      <td className="py-2 break-all">{r.requesterUser.email}</td>
+                      <td className="py-2 font-mono">{r.workspaceCode ?? '—'}</td>
+                      <td className="py-2">{fmtDate(r.createdAt, locale, naText)}</td>
+                      <td className="py-2">
+                        <div className="flex items-center justify-end gap-2 flex-wrap">
+                          <form action={approveAccessRequest}>
+                            <input type="hidden" name="requestId" value={r.id} />
+                            <Button type="submit" size="sm">Aprobar</Button>
+                          </form>
+                          <form action={rejectAccessRequest}>
+                            <input type="hidden" name="requestId" value={r.id} />
+                            <Button type="submit" size="sm" variant="outline">Rechazar</Button>
+                          </form>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">No hay solicitudes pendientes.</div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

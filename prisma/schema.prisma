@@ -85,6 +85,10 @@ model User {
   // Notificaciones
   notifications Notification[]
 
+  // Solicitudes de acceso por código WS-...
+  workspaceAccessRequestsCreated WorkspaceAccessRequest[] @relation("WorkspaceAccessRequestRequester")
+  workspaceAccessRequestsDecided WorkspaceAccessRequest[] @relation("WorkspaceAccessRequestDecidedBy")
+
   // Videos de Ayuda
   helpVideos HelpVideo[]
 
@@ -386,6 +390,12 @@ enum NotificationType {
   ERROR
 }
 
+enum WorkspaceAccessRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 // ============================================
 // INVENTARIO (MVP)
 // ============================================
@@ -551,6 +561,7 @@ model Empresa {
 
   sedes         Sede[]
   notifications Notification[]
+  workspaceAccessRequests WorkspaceAccessRequest[]
   billingReminderLogs BillingReminderLog[]
 
   // Tarifario global de Litografía (misma configuración para todas las sedes)
@@ -1476,6 +1487,32 @@ model Notification {
   @@index([empresaId])
   @@index([sedeId])
   @@map("notifications")
+}
+
+model WorkspaceAccessRequest {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  requesterUserId String
+  requesterUser   User @relation("WorkspaceAccessRequestRequester", fields: [requesterUserId], references: [id], onDelete: Cascade)
+
+  // Código WS-... usado al solicitar (auditoría / soporte)
+  workspaceCode String?
+
+  status WorkspaceAccessRequestStatus @default(PENDING)
+
+  decidedAt       DateTime?
+  decidedByUserId String?
+  decidedByUser   User? @relation("WorkspaceAccessRequestDecidedBy", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status, createdAt])
+  @@index([requesterUserId, status])
+  @@map("workspace_access_requests")
 }
 
 model HelpVideo {

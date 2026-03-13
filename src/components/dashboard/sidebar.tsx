@@ -20,6 +20,7 @@ interface SidebarProps {
     name?: string | null
     email?: string | null
     role?: string
+    allowedModules?: string[] | null
   }
 }
 
@@ -398,6 +399,11 @@ export default function Sidebar({ user }: SidebarProps) {
   const moduleNavigation = useMemo(() => buildModuleNavigation(t), [t])
   const preferenceNavigation = useMemo(() => buildPreferenceNavigation(t), [t])
 
+  const allowedModules = useMemo(() => {
+    if (!user.allowedModules) return null
+    return new Set(user.allowedModules)
+  }, [user.allowedModules])
+
   const [canManageBilling, setCanManageBilling] = useState(() => user.role === 'ADMIN')
 
   const mobileNavOpen = useUiStore((s) => s.mobileNavOpen)
@@ -525,7 +531,13 @@ export default function Sidebar({ user }: SidebarProps) {
   // Para persona individual, mostrar todos los módulos (candado si no está habilitado por plan)
   const visibleNavigation = useMemo(() => {
     const base = !navPrefs ? moduleNavigation : moduleNavigation.filter((it) => navPrefs[it.href] !== false)
-    const withAdminGate = base.filter((it) => {
+    const withRbacGate = base.filter((it) => {
+      const moduleKey = moduleForHref(it.href)
+      if (!moduleKey) return true
+      if (!allowedModules) return true
+      return allowedModules.has(moduleKey)
+    })
+    const withAdminGate = withRbacGate.filter((it) => {
       const isSuperAdminRoute =
         it.href === '/dashboard/configuracion/super-admin/modulos-por-plan' ||
         it.href === '/dashboard/configuracion/super-admin/empresas' ||
@@ -538,7 +550,7 @@ export default function Sidebar({ user }: SidebarProps) {
       return canManageBilling
     })
     return withBillingGate
-  }, [navPrefs, enabledModules, user?.role, canManageBilling])
+  }, [navPrefs, enabledModules, user?.role, canManageBilling, allowedModules, moduleNavigation])
 
   const visibleHrefs = useMemo(() => {
     return new Set(visibleNavigation.map((it) => it.href))
@@ -558,6 +570,12 @@ export default function Sidebar({ user }: SidebarProps) {
 
   const navSettingsItems: NavSettingsItem[] = useMemo(() => {
     const base = moduleNavigation
+      .filter((it) => {
+        const moduleKey = moduleForHref(it.href)
+        if (!moduleKey) return true
+        if (!allowedModules) return true
+        return allowedModules.has(moduleKey)
+      })
       .filter((it) => (it.href === '/dashboard/configuracion/plan' ? canManageBilling : true))
       .filter((it) => {
         const isSuperAdminRoute =
@@ -569,7 +587,7 @@ export default function Sidebar({ user }: SidebarProps) {
       })
       .map((it) => ({ name: it.name, href: it.href }))
     return base
-  }, [canManageBilling, user?.role])
+  }, [canManageBilling, user?.role, allowedModules, moduleNavigation])
 
   async function saveNav(next: Record<string, boolean>) {
     setNavPrefs(next)

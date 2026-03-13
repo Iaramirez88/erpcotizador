@@ -179,6 +179,71 @@ export async function getEffectiveAccess(args: {
   return base
 }
 
+export const NAV_MODULES: ModuleKey[] = [
+  'DASHBOARD',
+  'REPORTES',
+  'CONTABILIDAD',
+  'COTIZADOR',
+  'COTIZACIONES',
+  'CLIENTES',
+  'ORDENES',
+  'REMISIONES',
+  'POS',
+  'ESCANEOS',
+  'MATERIALES',
+  'INVENTARIO',
+  'COMPRAS',
+  'PROVEEDORES',
+  'NOTIFICACIONES',
+  'CONFIG',
+]
+
+export async function getEffectiveAccessMap(args: {
+  userId: string
+  sedeId: string
+  modules: ModuleKey[]
+}): Promise<Partial<Record<ModuleKey, AccessLevel>>> {
+  const modules = args.modules
+  if (!modules.length) return {}
+
+  const user = await prisma.user.findUnique({
+    where: { id: args.userId },
+    select: { email: true, globalAccess: { select: { level: true } } },
+  })
+
+  if (isSuperAdminEmail(user?.email)) {
+    const all: Partial<Record<ModuleKey, AccessLevel>> = {}
+    for (const m of modules) all[m] = 'ADMIN'
+    return all
+  }
+
+  const globalBase: AccessLevel = user?.globalAccess?.level ?? 'NONE'
+
+  const membership = await prisma.sedeMembership.findUnique({
+    where: { sedeId_userId: { sedeId: args.sedeId, userId: args.userId } },
+    select: { role: true },
+  })
+
+  const base = membership ? sedeRoleToBaseAccess(membership.role) : globalBase
+
+  const explicit = await prisma.userModuleAccess.findMany({
+    where: {
+      sedeId: args.sedeId,
+      userId: args.userId,
+      module: { in: modules },
+    },
+    select: { module: true, level: true },
+  })
+
+  const access: Partial<Record<ModuleKey, AccessLevel>> = {}
+  for (const m of modules) access[m] = base
+  for (const row of explicit) {
+    access[row.module] = row.level
+  }
+
+  return access
+}
+
 export async function requireSedeAccess(args: {
   userId: string
   sedeId: string

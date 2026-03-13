@@ -78,27 +78,6 @@ export function WorkspaceAccessCard() {
       </CardHeader>
       <CardContent className="pt-0 space-y-4 text-sm">
         <div className="space-y-2">
-          <Label htmlFor="company-code">{t('profile.access.companyCodeLabel')}</Label>
-          <div className="flex gap-2 flex-wrap">
-            <Input
-              id="company-code"
-              value={companyCode}
-              onChange={(e) => setCompanyCode(e.target.value)}
-              placeholder={t('profile.access.companyCodePlaceholder')}
-              autoComplete="one-time-code"
-              disabled={busy}
-              className="max-w-sm"
-            />
-            <Button type="button" variant="outline" onClick={() => void claimByCode()} disabled={busy || !companyCode.trim()}>
-              {busy ? t('common.processing') : t('profile.access.join')}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {t('profile.access.companyCodeHelp')}
-          </p>
-        </div>
-
-        <div className="space-y-2">
           <Label htmlFor="workspace-code">{t('profile.access.workspaceCodeLabel')}</Label>
           <div className="flex gap-2 flex-wrap">
             <Input
@@ -116,6 +95,25 @@ export function WorkspaceAccessCard() {
           <p className="text-xs text-muted-foreground">
             {t('profile.access.workspaceCodeHelp')}
           </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="company-code">{t('profile.access.companyCodeLabel')}</Label>
+          <div className="flex gap-2 flex-wrap">
+            <Input
+              id="company-code"
+              value={companyCode}
+              onChange={(e) => setCompanyCode(e.target.value)}
+              placeholder={t('profile.access.companyCodePlaceholder')}
+              autoComplete="one-time-code"
+              disabled={busy}
+              className="max-w-sm"
+            />
+            <Button type="button" variant="outline" onClick={() => void claimByCode()} disabled={busy || !companyCode.trim()}>
+              {busy ? t('common.processing') : t('profile.access.join')}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">{t('profile.access.companyCodeHelp')}</p>
         </div>
 
         {status ? <div className="text-xs text-muted-foreground">{status}</div> : null}
