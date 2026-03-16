@@ -30,6 +30,16 @@ type Channel = {
   status: string
 }
 
+type ConversationMessage = {
+  id: string
+  direction: MessageDirection
+  messageType?: string
+  status?: string
+  bodyText?: string | null
+  occurredAt: string
+  sentByUser?: Assignee | null
+}
+
 type ConversationListItem = {
   id: string
   status: ConversationStatus
@@ -45,25 +55,12 @@ type ConversationListItem = {
   cliente?: { id: string; nombre: string; documento: string } | null
   opportunity?: { id: string; title: string; stage: OpportunityStage } | null
   channelConnection: Channel
-  messages?: Array<{
-    id: string
-    direction: MessageDirection
-    bodyText?: string | null
-    occurredAt: string
-  }>
+  messages?: ConversationMessage[]
   _count?: { messages: number; captures: number }
 }
 
 type ConversationDetail = ConversationListItem & {
-  messages: Array<{
-    id: string
-    direction: MessageDirection
-    messageType: string
-    status: string
-    bodyText?: string | null
-    occurredAt: string
-    sentByUser?: Assignee | null
-  }>
+  messages: ConversationMessage[]
   captures: Array<{
     id: string
     captureType: string
@@ -550,14 +547,14 @@ export function CrmConversationsClient() {
                       <CardContent className="space-y-3">
                         <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
                           {selectedConversation.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes registrados.</p> : null}
-                          {selectedConversation.messages.map((message) => (
+                          {selectedConversation.messages.map((message: ConversationMessage) => (
                             <div key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[88%] rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[88%] rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600' : 'mr-auto max-w-[88%] rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}>
                               <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-slate-500">
                                 <span>{message.direction}</span>
                                 <span>{formatDate(message.occurredAt, locale, naText)}</span>
                               </div>
                               <p className="mt-2 whitespace-pre-wrap leading-6">{message.bodyText || 'Sin contenido textual'}</p>
-                              {message.sentByUser ? <p className="mt-2 text-[11px] text-slate-500">{message.sentByUser.name || message.sentByUser.email}</p> : null}
+                              {'sentByUser' in message && message.sentByUser ? <p className="mt-2 text-[11px] text-slate-500">{message.sentByUser.name || message.sentByUser.email}</p> : null}
                             </div>
                           ))}
                         </div>

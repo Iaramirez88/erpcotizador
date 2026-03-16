@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { AccessLevel, ModuleKey } from '@prisma/client'
+import { AccessLevel, ModuleKey, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { assertCrmSedeAccess, normalizeString } from '@/lib/crm'
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
         utmTerm: normalizeString(body?.utmTerm),
         landingPageUrl: normalizeString(body?.landingPageUrl),
         referrerUrl: normalizeString(body?.referrerUrl),
-        rawPayloadJson: body ?? {},
+        rawPayloadJson: (body ?? {}) as Prisma.InputJsonValue,
         normalizedDataJson: {
           nombre,
           email,
