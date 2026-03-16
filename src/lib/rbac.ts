@@ -186,6 +186,7 @@ export const NAV_MODULES: ModuleKey[] = [
   'COTIZADOR',
   'COTIZACIONES',
   'CLIENTES',
+  'CRM',
   'ORDENES',
   'REMISIONES',
   'POS',

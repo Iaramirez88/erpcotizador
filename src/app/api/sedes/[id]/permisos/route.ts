@@ -10,6 +10,7 @@ const moduleKeys = new Set<ModuleKey>([
   'COTIZADOR',
   'COTIZACIONES',
   'CLIENTES',
+  'CRM',
   'MATERIALES',
   'INVENTARIO',
   'REMISIONES',

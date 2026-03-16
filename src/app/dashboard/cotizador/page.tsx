@@ -126,6 +126,9 @@ export default function CotizadorPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const cotizacionIdParam = searchParams?.get('id')
+  const crmOpportunityIdParam = searchParams?.get('crmOpportunityId')?.trim() || ''
+  const clienteIdParam = searchParams?.get('clienteId')?.trim() || ''
+  const opportunityTitleParam = searchParams?.get('opportunityTitle')?.trim() || ''
 
   const [previewCotizacion, setPreviewCotizacion] = useState<(CotizacionPdfData & { id: string; estado?: string }) | null>(null)
   const [previewTemplate, setPreviewTemplate] = useState<CotizacionTemplateSettings | null>(null)
@@ -156,6 +159,7 @@ export default function CotizadorPage() {
   const [creatingInvoiceFromCotizacion, setCreatingInvoiceFromCotizacion] = useState(false)
   const [remittingElectronic, setRemittingElectronic] = useState(false)
   const [createdInvoice, setCreatedInvoice] = useState<{ id: string; numero: string } | null>(null)
+  const [appliedCrmPrefillKey, setAppliedCrmPrefillKey] = useState<string | null>(null)
 
   const [taxConfig, setTaxConfig] = useState<{ pricesIncludeIva: boolean; ivaPct: number }>({
     pricesIncludeIva: true,
@@ -252,6 +256,22 @@ export default function CotizadorPage() {
     fetchMateriales()
     void fetchCotizacionesConfig()
   }, [])
+
+  useEffect(() => {
+    if (editingId) return
+    if (!crmOpportunityIdParam) return
+    if (appliedCrmPrefillKey === crmOpportunityIdParam) return
+
+    if (clienteIdParam) {
+      setClienteId(clienteIdParam)
+    }
+
+    if (opportunityTitleParam && !descripcion.trim()) {
+      setDescripcion(`Cotización para oportunidad CRM: ${opportunityTitleParam}`)
+    }
+
+    setAppliedCrmPrefillKey(crmOpportunityIdParam)
+  }, [appliedCrmPrefillKey, clienteIdParam, crmOpportunityIdParam, descripcion, editingId, opportunityTitleParam])
 
   const fetchCotizacionesConfig = async () => {
     try {
@@ -1016,6 +1036,7 @@ export default function CotizadorPage() {
         },
         body: JSON.stringify({
           clienteId,
+          crmOpportunityId: !editingId && crmOpportunityIdParam ? crmOpportunityIdParam : undefined,
           descripcion,
           items: items.map(item => ({
             descripcion: item.descripcion,
@@ -1066,6 +1087,9 @@ export default function CotizadorPage() {
         // Si estamos CREANDO una nueva cotización, abrir preview con acciones.
         if (!editingId && id) {
           await abrirPreviewPorId(id)
+          if (crmOpportunityIdParam) {
+            router.replace('/dashboard/cotizador')
+          }
           resetCotizador()
           return
         }

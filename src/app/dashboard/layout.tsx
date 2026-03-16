@@ -57,7 +57,7 @@ export default async function DashboardLayout({
       <PlanLimitFetchInterceptor />
       <PlanLimitModal />
       <RouteLoadingStartListener />
-      <div className="flex h-screen bg-gray-50">
+      <div className="flex h-screen bg-[#eef3ef]">
         {/* Sidebar */}
         <Sidebar user={user} />
 
@@ -67,9 +67,13 @@ export default async function DashboardLayout({
           <Header user={user} />
 
           {/* Page Content */}
-          <main className="relative flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
-            <RouteLoadingIndicator />
-            {children}
+          <main className="erp-shell relative flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
+            <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[radial-gradient(circle_at_top_left,_rgba(14,116,144,0.18),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(22,163,74,0.12),_transparent_28%)]" />
+            <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-28 h-64 bg-[linear-gradient(180deg,_rgba(255,255,255,0.32),_rgba(255,255,255,0))]" />
+            <div className="erp-shell__content mx-auto flex w-full max-w-[1680px] flex-col gap-6">
+              <RouteLoadingIndicator />
+              {children}
+            </div>
           </main>
         </div>
       </div>

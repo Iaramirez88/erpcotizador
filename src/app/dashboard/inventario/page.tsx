@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { ErpPageHero } from "@/components/dashboard/erp-page-chrome"
 import { cn, formatUnidadMedidaLabel } from "@/lib/utils"
 import { useI18n } from "@/components/providers/i18n-provider"
 import { Download } from 'lucide-react'
@@ -344,21 +345,32 @@ export default function InventarioPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight" data-tour="inventario-title">{t('inventory.title')}</h1>
-          <p className="text-muted-foreground">{t('inventory.subtitle')}</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={exportExcel} disabled={isLoading}>
-            <Download className="w-4 h-4 mr-2" />
-            {t('inventory.actions.exportExcel')}
-          </Button>
-          <Button onClick={openModal} disabled={isLoading} data-tour="inventario-movimiento">
-            {t('inventory.actions.registerMovement')}
-          </Button>
-        </div>
-      </div>
+      <ErpPageHero
+        eyebrow="ERP operativo"
+        title={<span data-tour="inventario-title">{t('inventory.title')}</span>}
+        description={t('inventory.subtitle')}
+        actions={
+          <>
+            <Button variant="outline" onClick={exportExcel} disabled={isLoading}>
+              <Download className="mr-2 h-4 w-4" />
+              {t('inventory.actions.exportExcel')}
+            </Button>
+            <Button onClick={openModal} disabled={isLoading} data-tour="inventario-movimiento">
+              {t('inventory.actions.registerMovement')}
+            </Button>
+          </>
+        }
+        stats={[
+          { label: 'Materiales', value: activeMaterials.length, hint: 'Productos activos', tone: 'neutral' },
+          { label: 'Movimientos', value: movements.length, hint: 'Últimos registros', tone: 'sky' },
+          {
+            label: 'Bodega',
+            value: warehouseFilterId ? bodegas.find((b) => b.id === warehouseFilterId)?.nombre || warehouseFilterId : naText,
+            hint: warehouseFilterId ? 'Filtro activo' : 'Todas las bodegas',
+            tone: 'amber',
+          },
+        ]}
+      />
 
       {error ? <div className="text-sm text-red-600">{error}</div> : null}
 

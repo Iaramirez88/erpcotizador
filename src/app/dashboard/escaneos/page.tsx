@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { ErpPageHero } from "@/components/dashboard/erp-page-chrome"
 
 type ScanStatus = "PENDIENTE" | "PROCESADO" | "FALLIDO" | "APROBADO"
 
@@ -525,10 +526,31 @@ export default function EscaneosPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Escaneos</h1>
-        <p className="text-muted-foreground">Escanea facturas/cotizaciones y valida coherencia contable</p>
-      </div>
+      <ErpPageHero
+        eyebrow="Operacion"
+        title="Escaneos"
+        description="Escanea facturas o cotizaciones, valida coherencia contable y administra el flujo de confirmacion desde un mismo tablero."
+        stats={[
+          {
+            label: 'Registros cargados',
+            value: total,
+            hint: 'Total de documentos encontrados en el historial',
+            tone: 'sky',
+          },
+          {
+            label: 'Pagina actual',
+            value: `${page}/${totalPages}`,
+            hint: debouncedQuery ? `Filtro activo: ${debouncedQuery}` : 'Navegacion del historial actual',
+            tone: 'neutral',
+          },
+          {
+            label: 'Seleccionados',
+            value: Object.values(selectedIds).filter(Boolean).length,
+            hint: 'Documentos marcados para acciones en lote',
+            tone: 'teal',
+          },
+        ]}
+      />
 
       <Card>
         <CardHeader>

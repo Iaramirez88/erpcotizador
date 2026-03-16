@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { useI18n } from '@/components/providers/i18n-provider'
 
 type CompraItem = {
@@ -362,19 +363,25 @@ export default function ComprasPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">{t('purchases.title')}</h1>
-          <p className="text-muted-foreground mt-1">{t('purchases.subtitle')}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <ImportDialog module="compras" title={t('purchases.actions.import')} />
-          <Button variant="outline" onClick={exportExcel}>
-            {t('purchases.actions.exportExcel')}
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <ErpPageHero
+        eyebrow="ERP de abastecimiento"
+        title={t('purchases.title')}
+        description={t('purchases.subtitle')}
+        actions={
+          <>
+            <ImportDialog module="compras" title={t('purchases.actions.import')} />
+            <Button variant="outline" onClick={exportExcel}>
+              {t('purchases.actions.exportExcel')}
+            </Button>
+          </>
+        }
+        stats={[
+          { label: 'Compras', value: compras.length, hint: 'Registros visibles', tone: 'neutral' },
+          { label: 'Borrador actual', value: formatCOP(totals.total, locale), hint: 'Total del formulario', tone: 'amber' },
+          { label: 'Búsqueda', value: query || naText, hint: 'Filtro activo', tone: 'sky' },
+        ]}
+      />
 
       <Card>
         <CardHeader>

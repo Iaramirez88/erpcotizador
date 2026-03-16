@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { ErpPageHero, ErpSectionHeading } from '@/components/dashboard/erp-page-chrome'
 import { PIE_COLORS } from '@/lib/chart-colors'
 import type { AccountingAccountType, AccountingEventType } from '@prisma/client'
 
@@ -255,11 +256,27 @@ export default function ContabilidadHomePage() {
   }, [accounts, areaKind, chartKind, costCenters, rules])
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Contabilidad</h1>
-        <p className="text-sm text-muted-foreground">Configura el plan de cuentas, centros de costo y reglas contables.</p>
-      </div>
+    <div className="space-y-6">
+      <ErpPageHero
+        eyebrow="ERP financiero"
+        title="Contabilidad"
+        description="Configura el plan de cuentas, centros de costo y reglas contables con una vista más clara del estado del módulo."
+        actions={
+          <>
+            <Link href="/dashboard/contabilidad/plan-de-cuentas" className="inline-flex h-11 items-center rounded-2xl border border-slate-200 bg-white/80 px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white">
+              Plan de cuentas
+            </Link>
+            <Link href="/dashboard/contabilidad/reglas" className="inline-flex h-11 items-center rounded-2xl border border-slate-200 bg-white/80 px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white">
+              Reglas
+            </Link>
+          </>
+        }
+        stats={[
+          { label: 'Cuentas', value: accounts.length, hint: 'Registros configurados', tone: 'neutral' },
+          { label: 'Centros', value: costCenters.length, hint: 'Dimensiones activas', tone: 'sky' },
+          { label: 'Reglas', value: rules.length, hint: 'Automatizaciones contables', tone: 'teal' },
+        ]}
+      />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Link href="/dashboard/contabilidad/plan-de-cuentas" className="rounded-lg border p-4 hover:bg-muted/50">
@@ -278,9 +295,9 @@ export default function ContabilidadHomePage() {
         </Link>
       </div>
 
-      <div className="rounded-lg border">
+      <div className="rounded-[26px] border border-slate-200 bg-white/90 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
         <div className="border-b p-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm font-medium">Estadísticas</div>
+          <ErpSectionHeading title="Estadísticas" description="Distribución y evolución de configuración por área contable." />
           <div className="flex flex-wrap gap-2">
             <Select value={areaKind} onValueChange={(v) => setAreaKind(v as AreaKind)}>
               <SelectTrigger className="w-[220px]">

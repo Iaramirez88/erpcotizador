@@ -9,6 +9,7 @@ import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { checkPlanLimit } from '@/lib/plan-limits'
 import { EstadoCotizacion, ModuleKey, Prisma } from '@prisma/client'
+import { applyOpportunityStageAutomation } from '@/lib/crm'
 
 export const runtime = 'nodejs'
 
@@ -492,6 +493,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const {
       clienteId,
+      crmOpportunityId,
       descripcion,
       items,
       descuento,
@@ -510,6 +512,59 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Cliente e items son requeridos' },
         { status: 400 }
       )
+    }
+
+    let crmOpportunity:
+      | {
+          id: string
+          empresaId: string
+          clienteId: string | null
+          cotizacionId: string | null
+          sedeId: string | null
+          leadId: string | null
+        }
+      | null = null
+
+    if (typeof crmOpportunityId === 'string' && crmOpportunityId.trim()) {
+      crmOpportunity = await prisma.crmOpportunity.findUnique({
+        where: { id: crmOpportunityId.trim() },
+        select: {
+          id: true,
+          empresaId: true,
+          clienteId: true,
+          cotizacionId: true,
+          sedeId: true,
+          leadId: true,
+        },
+      })
+
+      if (!crmOpportunity || crmOpportunity.empresaId !== access.empresaId) {
+        return NextResponse.json(
+          { success: false, error: 'crmOpportunityId inválido' },
+          { status: 400 }
+        )
+      }
+
+      if (!crmOpportunity.clienteId) {
+        return NextResponse.json(
+          { success: false, error: 'La oportunidad debe estar asociada a un cliente para crear la cotización' },
+          { status: 400 }
+        )
+      }
+
+      if (crmOpportunity.clienteId !== clienteId) {
+        return NextResponse.json(
+          { success: false, error: 'El cliente de la cotización no coincide con el cliente de la oportunidad' },
+          { status: 400 }
+        )
+      }
+
+      if (crmOpportunity.cotizacionId) {
+        return NextResponse.json(
+          { success: false, error: 'La oportunidad ya tiene una cotización vinculada' },
+          { status: 409 }
+        )
+      }
     }
 
     // Recalcular totales en servidor (fuente de verdad)
@@ -684,6 +739,36 @@ export async function POST(request: NextRequest) {
           },
         },
       })
+
+      if (crmOpportunity) {
+        await tx.crmOpportunity.update({
+          where: { id: crmOpportunity.id },
+          data: { cotizacionId: cotizacion.id },
+        })
+
+        await tx.crmActivity.create({
+          data: {
+            empresaId: access.empresaId,
+            sedeId: crmOpportunity.sedeId,
+            type: 'QUOTE_SENT',
+            summary: `Cotización vinculada: ${cotizacion.numero}`,
+            opportunityId: crmOpportunity.id,
+            leadId: crmOpportunity.leadId,
+            clienteId: crmOpportunity.clienteId,
+            occurredAt: new Date(),
+            createdById: access.userId,
+          },
+        })
+
+        await applyOpportunityStageAutomation({
+          client: tx,
+          empresaId: access.empresaId,
+          userId: access.userId,
+          cotizacionId: cotizacion.id,
+          trigger: 'QUOTE_LINKED',
+          details: 'Creacion de cotizacion desde oportunidad CRM',
+        })
+      }
 
       return cotizacion
     })

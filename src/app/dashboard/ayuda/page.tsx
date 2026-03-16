@@ -9,6 +9,7 @@ import { isSuperAdminEmail } from '@/lib/super-admin'
 import { revalidatePath } from 'next/cache'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 
 type SearchParams = Record<string, string | string[] | undefined>
 
@@ -139,10 +140,16 @@ export default async function AyudaPage({
 
   return (
     <div className="p-3 sm:p-4 lg:p-6 space-y-4">
-      <div className="rounded-xl border bg-gradient-to-r from-slate-950 to-slate-900 text-slate-50 p-5">
-        <h1 className="text-2xl sm:text-3xl font-bold">Ayuda</h1>
-        <p className="text-slate-200 mt-1 text-sm">Tutoriales y documentación para el equipo.</p>
-      </div>
+      <ErpPageHero
+        eyebrow="ERP soporte"
+        title="Ayuda"
+        description="Tutoriales, documentación y videos para el equipo en una estructura más clara y mantenible."
+        stats={[
+          { label: 'PDFs', value: pdfs.length, hint: 'Documentos disponibles', tone: 'neutral' },
+          { label: 'Videos', value: videos.length, hint: isSuperAdmin ? 'Editable por super admin' : 'Biblioteca visible', tone: 'sky' },
+          { label: 'Vista previa', value: selected || 'Sin selección', hint: 'Documento activo', tone: 'amber' },
+        ]}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>

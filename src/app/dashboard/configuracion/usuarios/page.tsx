@@ -9,6 +9,7 @@ import { getServerLanguage } from '@/lib/i18n/server'
 import { translate } from '@/lib/i18n/messages'
 import { revalidatePath } from 'next/cache'
 import { checkPlanLimit } from '@/lib/plan-limits'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 
 export const runtime = 'nodejs'
 
@@ -257,10 +258,25 @@ export default async function UsuariosPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">{t('rbac.users.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('rbac.users.subtitle')}</p>
-      </div>
+      <ErpPageHero
+        eyebrow="Configuracion"
+        title={t('rbac.users.title')}
+        description={t('rbac.users.subtitle')}
+        stats={[
+          {
+            label: 'Usuarios vinculados',
+            value: users.length,
+            hint: 'Miembros detectados en la empresa y sus sedes',
+            tone: 'sky',
+          },
+          {
+            label: 'Solicitudes pendientes',
+            value: accessRequests.length,
+            hint: 'Accesos esperando aprobacion o rechazo',
+            tone: accessRequests.length ? 'amber' : 'teal',
+          },
+        ]}
+      />
 
       <InviteUserCard />
 

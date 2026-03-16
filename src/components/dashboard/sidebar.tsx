@@ -54,6 +54,8 @@ function moduleForHref(href: string): string | null {
       return 'POS'
     case '/dashboard/clientes':
       return 'CLIENTES'
+    case '/dashboard/crm':
+      return 'CRM'
     case '/dashboard/ordenes':
       return 'ORDENES'
     case '/dashboard/litografia':
@@ -165,6 +167,15 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+      </svg>
+    ),
+  },
+  {
+    name: t('nav.crm'),
+    href: "/dashboard/crm",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h6m-6 4h8M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z" />
       </svg>
     ),
   },
@@ -614,6 +625,7 @@ export default function Sidebar({ user }: SidebarProps) {
           get('/dashboard/remisiones'),
           get('/dashboard/pos'),
           get('/dashboard/clientes'),
+          get('/dashboard/crm'),
         ].filter(Boolean) as NavItem[],
       },
       {
@@ -699,7 +711,7 @@ export default function Sidebar({ user }: SidebarProps) {
 
       <aside
         className={cn(
-          "bg-slate-950 text-slate-100 border-r border-slate-800 flex flex-col",
+          "flex flex-col border-r border-white/10 bg-[linear-gradient(180deg,#0f172a_0%,#111827_52%,#101a2d_100%)] text-slate-100 shadow-[18px_0_40px_-32px_rgba(15,23,42,0.75)]",
           "fixed inset-y-0 left-0 z-50 md:static",
           sidebarCollapsed ? "w-20" : "w-72 md:w-64",
           "transform transition-transform md:translate-x-0",
@@ -707,9 +719,9 @@ export default function Sidebar({ user }: SidebarProps) {
         )}
       >
         {/* Logo */}
-        <div className="p-4 border-b border-slate-800">
+        <div className="border-b border-white/10 p-4">
           <div className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "space-x-3")}>
-            <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-primary-foreground text-lg font-bold shadow-sm overflow-hidden">
+            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl bg-[linear-gradient(135deg,#0f766e_0%,#2563eb_100%)] text-lg font-bold text-primary-foreground shadow-[0_16px_30px_-18px_rgba(37,99,235,0.7)]">
               {empresa?.logo ? (
                 <Image src={empresa.logo} alt={empresa.nombre} width={40} height={40} className="h-10 w-10 object-contain" />
               ) : (
@@ -726,7 +738,7 @@ export default function Sidebar({ user }: SidebarProps) {
             <button
               type="button"
               className={cn(
-                "hidden md:inline-flex ml-auto h-9 w-9 items-center justify-center rounded-md border border-slate-800 text-slate-200 hover:bg-slate-800/40",
+                "ml-auto hidden h-9 w-9 items-center justify-center rounded-xl border border-white/10 text-slate-200 hover:bg-white/10 md:inline-flex",
                 sidebarCollapsed ? "ml-0" : ""
               )}
               onClick={toggleSidebarCollapsed}
@@ -771,7 +783,7 @@ export default function Sidebar({ user }: SidebarProps) {
                           }}
                           className={cn(
                             "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
-                            isActive ? "bg-slate-800/60 text-white" : "text-slate-200 hover:bg-slate-800/40",
+                            isActive ? "bg-white/14 text-white shadow-[0_16px_24px_-20px_rgba(148,163,184,0.45)]" : "text-slate-200 hover:bg-white/8",
                             isBlocked ? "opacity-60 cursor-not-allowed" : ""
                           )}
                           title={item.name}
@@ -814,7 +826,7 @@ export default function Sidebar({ user }: SidebarProps) {
                     })
                   }}
                   className={cn(
-                    "w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-slate-200 hover:bg-slate-800/40"
+                    "w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors text-slate-200 hover:bg-white/8"
                   )}
                 >
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{section.title}</span>
@@ -852,7 +864,7 @@ export default function Sidebar({ user }: SidebarProps) {
                             }}
                             className={cn(
                               "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
-                              isActive ? "bg-slate-800/60 text-white" : "text-slate-200 hover:bg-slate-800/40",
+                              isActive ? "bg-white/14 text-white shadow-[0_16px_24px_-20px_rgba(148,163,184,0.45)]" : "text-slate-200 hover:bg-white/8",
                               isBlocked ? "opacity-60 cursor-not-allowed" : ""
                             )}
                           >
@@ -921,7 +933,7 @@ export default function Sidebar({ user }: SidebarProps) {
                     })
                   }}
                   className={cn(
-                    "w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-slate-200 hover:bg-slate-800/40"
+                    "w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors text-slate-200 hover:bg-white/8"
                   )}
                 >
                   <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{t('sidebar.preferences')}</span>
@@ -960,7 +972,7 @@ export default function Sidebar({ user }: SidebarProps) {
                           }}
                           className={cn(
                             "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
-                            isActive ? "bg-slate-800/60 text-white" : "text-slate-200 hover:bg-slate-800/40"
+                            isActive ? "bg-white/14 text-white shadow-[0_16px_24px_-20px_rgba(148,163,184,0.45)]" : "text-slate-200 hover:bg-white/8"
                           )}
                         >
                           <div className="flex items-center space-x-3">
@@ -980,7 +992,7 @@ export default function Sidebar({ user }: SidebarProps) {
                               type="button"
                               onClick={() => open()}
                               className={cn(
-                                "w-full flex items-center justify-between px-3 py-2 rounded-lg transition-colors text-slate-200 hover:bg-slate-800/40"
+                                "w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors text-slate-200 hover:bg-white/8"
                               )}
                             >
                               <div className="flex items-center space-x-3">
@@ -1007,9 +1019,9 @@ export default function Sidebar({ user }: SidebarProps) {
         </nav>
 
         {/* User Info + Cambiar contraseña */}
-        <div className={cn("p-4 border-t border-slate-800", sidebarCollapsed ? "px-2" : "px-4")}>
+        <div className={cn("border-t border-white/10 p-4", sidebarCollapsed ? "px-2" : "px-4")}>
           <div className={cn("flex items-center space-x-3", sidebarCollapsed ? "justify-center" : "")}>
-            <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-200 font-medium">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 font-medium text-slate-100">
               {user.name?.charAt(0).toUpperCase()}
             </div>
             {!sidebarCollapsed ? (

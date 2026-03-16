@@ -13,6 +13,7 @@ import { translate } from "@/lib/i18n/messages"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { ErpPageHero, ErpSectionHeading } from "@/components/dashboard/erp-page-chrome"
 import Link from "next/link"
 
 function fmtDate(date: Date | null | undefined, locale: string, naText: string) {
@@ -512,19 +513,52 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">
-          {session.user.name || session.user.email
+      <ErpPageHero
+        eyebrow={t('header.controlPanel')}
+        title={
+          session.user.name || session.user.email
             ? t('dashboard.header.welcomeBack', { name: session.user.name ?? session.user.email ?? '' })
-            : t('dashboard.header.welcomeBackGeneric')}
-        </h1>
-        <p className="text-muted-foreground">
-          {activeSedeLabel
+            : t('dashboard.header.welcomeBackGeneric')
+        }
+        description={
+          activeSedeLabel
             ? t('dashboard.header.activityWithSede', { sede: activeSedeLabel.nombre })
-            : t('dashboard.header.activity')}
-        </p>
-      </div>
+            : t('dashboard.header.activity')
+        }
+        actions={
+          <>
+            <Link href="/dashboard/reportes" className="inline-flex h-11 items-center rounded-2xl border border-slate-200 bg-white/80 px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white">
+              {t('dashboard.summary.links.reports')}
+            </Link>
+            <Link href="/dashboard/pos" className="inline-flex h-11 items-center rounded-2xl border border-slate-200 bg-white/80 px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white">
+              {t('dashboard.summary.links.pos')}
+            </Link>
+            <Link href="/dashboard/compras" className="inline-flex h-11 items-center rounded-2xl border border-slate-200 bg-white/80 px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white">
+              {t('dashboard.summary.links.purchases')}
+            </Link>
+          </>
+        }
+        stats={[
+          {
+            label: t('dashboard.filters.warehouse'),
+            value: activeSedeLabel?.nombre ?? t('dashboard.filters.noWarehouses'),
+            hint: showSedeActivity ? t('dashboard.summary.view.sede') : t('dashboard.summary.view.me'),
+            tone: 'neutral',
+          },
+          {
+            label: t('dashboard.filters.from'),
+            value: rawFrom || naText,
+            hint: t('dashboard.filters.to'),
+            tone: 'sky',
+          },
+          {
+            label: t('dashboard.filters.to'),
+            value: rawTo || naText,
+            hint: t('dashboard.filters.scopeLabel'),
+            tone: 'teal',
+          },
+        ]}
+      />
 
       {/* Filtros */}
       <Card>
@@ -586,27 +620,12 @@ export default async function DashboardPage({
 
       {/* Resumen general */}
       <div>
-        <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
-          <div>
-            <h2 className="text-xl font-semibold">{t('dashboard.summary.title')}</h2>
-            <p className="text-sm text-muted-foreground">
-              {t('dashboard.summary.line', {
-                view: showSedeActivity ? t('dashboard.summary.view.sede') : t('dashboard.summary.view.me'),
-              })}
-            </p>
-          </div>
-          <div className="flex gap-3 text-sm">
-            <Link href="/dashboard/reportes" className="text-sky-600 hover:underline">
-              {t('dashboard.summary.links.reports')}
-            </Link>
-            <Link href="/dashboard/pos" className="text-sky-600 hover:underline">
-              {t('dashboard.summary.links.pos')}
-            </Link>
-            <Link href="/dashboard/compras" className="text-sky-600 hover:underline">
-              {t('dashboard.summary.links.purchases')}
-            </Link>
-          </div>
-        </div>
+        <ErpSectionHeading
+          title={t('dashboard.summary.title')}
+          description={t('dashboard.summary.line', {
+            view: showSedeActivity ? t('dashboard.summary.view.sede') : t('dashboard.summary.view.me'),
+          })}
+        />
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>

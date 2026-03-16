@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { ModuleKey, EstadoCotizacion } from '@prisma/client'
+import { applyOpportunityStageAutomation } from '@/lib/crm'
 
 export const runtime = 'nodejs'
 
@@ -64,6 +65,15 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
             descuento: upd.descuento,
           },
         },
+      })
+
+      await applyOpportunityStageAutomation({
+        client: tx,
+        empresaId: access.empresaId,
+        userId: access.userId,
+        cotizacionId: upd.id,
+        trigger: 'QUOTE_APPROVED',
+        details: 'Aprobacion de cotizacion desde ERP',
       })
 
       return { id: upd.id, estado: upd.estado }

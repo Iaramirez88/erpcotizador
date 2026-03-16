@@ -1,0 +1,672 @@
+"use client"
+
+import Link from 'next/link'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import { useI18n } from '@/components/providers/i18n-provider'
+
+type ConversationStatus = 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM'
+type MessageDirection = 'INBOUND' | 'OUTBOUND' | 'SYSTEM'
+type ChannelProvider = 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'FACEBOOK_PAGE' | 'MESSENGER' | 'WEB_FORM' | 'WEB_CHATBOT' | 'INSTAGRAM_DM'
+type OpportunityStage = 'NEW' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON' | 'LOST'
+
+type Assignee = {
+  id: string
+  name?: string | null
+  email?: string | null
+}
+
+type Channel = {
+  id: string
+  name: string
+  provider: ChannelProvider
+  status: string
+}
+
+type ConversationListItem = {
+  id: string
+  status: ConversationStatus
+  contactDisplayName?: string | null
+  contactPhone?: string | null
+  contactEmail?: string | null
+  unreadCount: number
+  lastMessageAt: string
+  source?: string | null
+  sourceCampaign?: string | null
+  assignedTo?: Assignee | null
+  lead?: { id: string; nombre: string; status: string } | null
+  cliente?: { id: string; nombre: string; documento: string } | null
+  opportunity?: { id: string; title: string; stage: OpportunityStage } | null
+  channelConnection: Channel
+  messages?: Array<{
+    id: string
+    direction: MessageDirection
+    bodyText?: string | null
+    occurredAt: string
+  }>
+  _count?: { messages: number; captures: number }
+}
+
+type ConversationDetail = ConversationListItem & {
+  messages: Array<{
+    id: string
+    direction: MessageDirection
+    messageType: string
+    status: string
+    bodyText?: string | null
+    occurredAt: string
+    sentByUser?: Assignee | null
+  }>
+  captures: Array<{
+    id: string
+    captureType: string
+    utmSource?: string | null
+    utmMedium?: string | null
+    utmCampaign?: string | null
+    createdAt: string
+  }>
+}
+
+type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
+
+const STATUS_OPTIONS: Array<'ALL' | ConversationStatus> = ['ALL', 'OPEN', 'PENDING', 'BOT_ACTIVE', 'HUMAN_ACTIVE', 'RESOLVED', 'SPAM']
+
+async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
+  const res = await fetch(url, init)
+  return (await res.json().catch(() => ({}))) as JsonResponse<T>
+}
+
+function formatDate(value: string | null | undefined, locale: string, fallback: string) {
+  if (!value) return fallback
+  try {
+    return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+  } catch {
+    return String(value)
+  }
+}
+
+function formatRelativeChannel(provider: ChannelProvider) {
+  switch (provider) {
+    case 'WHATSAPP_CLOUD':
+    case 'WHATSAPP_SANDBOX':
+      return 'WhatsApp'
+    case 'MESSENGER':
+    case 'FACEBOOK_PAGE':
+      return 'Messenger/Facebook'
+    case 'WEB_FORM':
+      return 'Formulario web'
+    case 'WEB_CHATBOT':
+      return 'Chatbot web'
+    case 'INSTAGRAM_DM':
+      return 'Instagram DM'
+    default:
+      return provider
+  }
+}
+
+export function CrmConversationsClient() {
+  const { language } = useI18n()
+  const locale = language === 'en' ? 'en-US' : 'es-CO'
+  const naText = '—'
+
+  const [loading, setLoading] = useState(true)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'ALL' | ConversationStatus>('ALL')
+  const [assignedFilter, setAssignedFilter] = useState<'ALL' | string>('ALL')
+  const [channelFilter, setChannelFilter] = useState<'ALL' | string>('ALL')
+  const [conversations, setConversations] = useState<ConversationListItem[]>([])
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
+  const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null)
+  const [assignees, setAssignees] = useState<Assignee[]>([])
+  const [channels, setChannels] = useState<Channel[]>([])
+
+  const [assigning, setAssigning] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [resolving, setResolving] = useState(false)
+  const [creatingOpportunity, setCreatingOpportunity] = useState(false)
+  const [simulatorOpen, setSimulatorOpen] = useState(false)
+  const [simulating, setSimulating] = useState(false)
+
+  const [assigneeDraft, setAssigneeDraft] = useState('__none__')
+  const [messageDraft, setMessageDraft] = useState('')
+  const [opportunityForm, setOpportunityForm] = useState({
+    title: '',
+    description: '',
+    stage: 'NEW' as OpportunityStage,
+    expectedValue: '',
+    probabilityPct: '0',
+    expectedCloseAt: '',
+  })
+  const [simulateForm, setSimulateForm] = useState({
+    channelConnectionId: '',
+    nombre: '',
+    email: '',
+    telefono: '',
+    empresaNombre: '',
+    ciudad: '',
+    documento: '',
+    message: '',
+    sourceCampaign: '',
+    sourceMedium: '',
+    sourceContent: '',
+  })
+
+  const loadConversations = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (search.trim()) params.set('search', search.trim())
+      if (statusFilter !== 'ALL') params.set('status', statusFilter)
+      if (assignedFilter !== 'ALL') params.set('assignedToUserId', assignedFilter)
+      if (channelFilter !== 'ALL') params.set('channelConnectionId', channelFilter)
+
+      const suffix = params.toString() ? `?${params.toString()}` : ''
+      const json = await requestJson<ConversationListItem[]>(`/api/crm/conversations${suffix}`)
+      const rows = Array.isArray(json.data) ? json.data : []
+      setConversations(rows)
+      setSelectedConversationId((current) => current && rows.some((row) => row.id === current) ? current : rows[0]?.id ?? null)
+    } finally {
+      setLoading(false)
+    }
+  }, [assignedFilter, channelFilter, search, statusFilter])
+
+  const loadMeta = useCallback(async () => {
+    const [assigneeRes, channelRes] = await Promise.all([
+      requestJson<Assignee[]>('/api/crm/assignees'),
+      requestJson<Channel[]>('/api/crm/channels'),
+    ])
+    setAssignees(Array.isArray(assigneeRes.data) ? assigneeRes.data : [])
+    setChannels(Array.isArray(channelRes.data) ? channelRes.data : [])
+    setSimulateForm((prev) => ({
+      ...prev,
+      channelConnectionId: prev.channelConnectionId || (Array.isArray(channelRes.data) ? channelRes.data[0]?.id || '' : ''),
+    }))
+  }, [])
+
+  const loadDetail = useCallback(async (conversationId: string) => {
+    setDetailLoading(true)
+    try {
+      const json = await requestJson<ConversationDetail>(`/api/crm/conversations/${conversationId}`)
+      const row = json.success && json.data ? json.data : null
+      setSelectedConversation(row)
+      setAssigneeDraft(row?.assignedTo?.id || '__none__')
+      if (row) {
+        setOpportunityForm((prev) => ({
+          ...prev,
+          title: prev.title || `Oportunidad ${row.contactDisplayName || row.contactPhone || row.contactEmail || ''}`.trim(),
+        }))
+      }
+    } finally {
+      setDetailLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void Promise.all([loadConversations(), loadMeta()])
+  }, [loadConversations, loadMeta])
+
+  useEffect(() => {
+    if (!selectedConversationId) {
+      setSelectedConversation(null)
+      return
+    }
+    void loadDetail(selectedConversationId)
+  }, [loadDetail, selectedConversationId])
+
+  const stats = useMemo(() => {
+    const openCount = conversations.filter((item) => item.status !== 'RESOLVED' && item.status !== 'SPAM').length
+    const unassignedCount = conversations.filter((item) => !item.assignedTo).length
+    const unreadCount = conversations.reduce((sum, item) => sum + (item.unreadCount || 0), 0)
+    return { openCount, unassignedCount, unreadCount }
+  }, [conversations])
+
+  async function submitAssign() {
+    if (!selectedConversation) return
+    setAssigning(true)
+    try {
+      const json = await requestJson(`/api/crm/conversations/${selectedConversation.id}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignedToUserId: assigneeDraft === '__none__' ? null : assigneeDraft }),
+      })
+      if (!json.success) {
+        alert(json.error || 'No se pudo asignar la conversación.')
+        return
+      }
+      await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
+    } finally {
+      setAssigning(false)
+    }
+  }
+
+  async function submitMessage() {
+    if (!selectedConversation) return
+    if (!messageDraft.trim()) {
+      alert('Escribe un mensaje antes de enviar.')
+      return
+    }
+
+    setSending(true)
+    try {
+      const json = await requestJson(`/api/crm/conversations/${selectedConversation.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bodyText: messageDraft }),
+      })
+      if (!json.success) {
+        alert(json.error || 'No se pudo registrar el mensaje.')
+        return
+      }
+      setMessageDraft('')
+      await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
+    } finally {
+      setSending(false)
+    }
+  }
+
+  async function resolveConversation() {
+    if (!selectedConversation) return
+    setResolving(true)
+    try {
+      const json = await requestJson(`/api/crm/conversations/${selectedConversation.id}/resolve`, { method: 'POST' })
+      if (!json.success) {
+        alert(json.error || 'No se pudo resolver la conversación.')
+        return
+      }
+      await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
+    } finally {
+      setResolving(false)
+    }
+  }
+
+  async function createOpportunityFromConversation() {
+    if (!selectedConversation) return
+    setCreatingOpportunity(true)
+    try {
+      const json = await requestJson(`/api/crm/conversations/${selectedConversation.id}/create-opportunity`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(opportunityForm),
+      })
+      if (!json.success) {
+        alert(json.error || 'No se pudo crear la oportunidad desde la conversación.')
+        return
+      }
+      await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
+    } finally {
+      setCreatingOpportunity(false)
+    }
+  }
+
+  async function runSimulation() {
+    if (!simulateForm.channelConnectionId) {
+      alert('Selecciona un canal para simular.')
+      return
+    }
+    setSimulating(true)
+    try {
+      const json = await requestJson(`/api/crm/conversations/simulate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(simulateForm),
+      })
+      if (!json.success) {
+        alert(json.error || 'No se pudo simular el inbound.')
+        return
+      }
+      setSimulatorOpen(false)
+      setSimulateForm((prev) => ({ ...prev, nombre: '', email: '', telefono: '', empresaNombre: '', ciudad: '', documento: '', message: '', sourceCampaign: '', sourceMedium: '', sourceContent: '' }))
+      await loadConversations()
+    } finally {
+      setSimulating(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6 pb-6">
+      <ErpPageHero
+        eyebrow="CRM Omnicanal"
+        title="Bandeja de conversaciones"
+        description="Opera el inbox de pruebas, asigna hilos a asesores, simula inbound y convierte conversaciones en oportunidades sin salir del CRM."
+        actions={
+          <>
+            <Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85" onClick={() => void Promise.all([loadConversations(), loadMeta()])}>
+              Refrescar
+            </Button>
+            <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => setSimulatorOpen(true)}>
+              Simular inbound
+            </Button>
+          </>
+        }
+        stats={[
+          { label: 'Conversaciones abiertas', value: stats.openCount, hint: 'Hilos activos sin cerrar', tone: 'sky' },
+          { label: 'Sin asignar', value: stats.unassignedCount, hint: 'Pendientes por tomar', tone: 'amber' },
+          { label: 'No leidas', value: stats.unreadCount, hint: 'Mensajes pendientes de revisar', tone: 'teal' },
+        ]}
+      />
+
+      <Card className="rounded-[26px] border-slate-200 bg-white/90 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.35)]">
+        <CardContent className="grid gap-3 p-4 md:grid-cols-4 md:p-5">
+          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 md:col-span-2">
+            <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Buscar</Label>
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nombre, telefono, email o mensaje..." className="h-11 rounded-xl border-slate-200 bg-white" />
+          </div>
+          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+            <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estado</Label>
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'ALL' | ConversationStatus)}>
+              <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+            <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Asesor</Label>
+            <Select value={assignedFilter} onValueChange={setAssignedFilter}>
+              <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos</SelectItem>
+                {assignees.map((item) => <SelectItem key={item.id} value={item.id}>{item.name || item.email || item.id}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 md:col-span-2">
+            <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Canal</Label>
+            <Select value={channelFilter} onValueChange={setChannelFilter}>
+              <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos</SelectItem>
+                {channels.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-end rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 md:col-span-2">
+            <Button className="h-11 w-full rounded-xl" onClick={() => void loadConversations()}>
+              Aplicar filtros
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
+          <CardHeader className="border-b border-slate-100 pb-5">
+            <CardTitle className="text-xl">Conversaciones ({conversations.length})</CardTitle>
+            <CardDescription>Hilos omnicanal con prioridad comercial y acceso rápido al lead.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 p-4 md:p-5">
+            {loading ? <p className="text-sm text-muted-foreground">Cargando conversaciones...</p> : null}
+            {!loading && conversations.length === 0 ? <p className="text-sm text-muted-foreground">No hay conversaciones para mostrar.</p> : null}
+            {conversations.map((item) => {
+              const isActive = item.id === selectedConversationId
+              const preview = item.messages?.[0]?.bodyText || item.sourceCampaign || item.contactEmail || item.contactPhone || naText
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSelectedConversationId(item.id)}
+                  className={isActive ? 'w-full rounded-3xl border border-sky-300 bg-sky-50/80 p-4 text-left shadow-sm' : 'w-full rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-4 text-left shadow-sm transition-shadow hover:shadow-md'}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-slate-900">{item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || 'Contacto sin nombre'}</span>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{formatRelativeChannel(item.channelConnection.provider)}</span>
+                      </div>
+                      <p className="line-clamp-2 text-sm text-slate-600">{preview}</p>
+                    </div>
+                    <div className="grid gap-2 text-right">
+                      <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 bg-slate-100">{item.status}</span>
+                      {item.unreadCount > 0 ? <span className="text-xs font-semibold text-amber-700">{item.unreadCount} sin leer</span> : null}
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                    <span>{item.assignedTo?.name || item.assignedTo?.email || 'Sin asesor'}</span>
+                    <span>{formatDate(item.lastMessageAt, locale, naText)}</span>
+                  </div>
+                </button>
+              )
+            })}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
+          <CardHeader className="border-b border-slate-100 pb-5">
+            <CardTitle className="text-xl">Detalle</CardTitle>
+            <CardDescription>Asignación, contexto del lead, oportunidad y mensajes del hilo seleccionado.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5 p-4 md:p-5">
+            {detailLoading ? <p className="text-sm text-muted-foreground">Cargando detalle...</p> : null}
+            {!detailLoading && !selectedConversation ? <p className="text-sm text-muted-foreground">Selecciona una conversación para ver el detalle.</p> : null}
+            {selectedConversation ? (
+              <>
+                <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-slate-50/70 p-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-xl font-semibold text-slate-950">{selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación sin alias'}</h2>
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">{selectedConversation.status}</span>
+                    </div>
+                    <p className="text-sm text-slate-600">
+                      {selectedConversation.contactPhone || naText} · {selectedConversation.contactEmail || naText} · {selectedConversation.channelConnection.name}
+                    </p>
+                    <div className="flex flex-wrap gap-3 text-xs text-slate-500">
+                      <span>Canal: {formatRelativeChannel(selectedConversation.channelConnection.provider)}</span>
+                      <span>Último mensaje: {formatDate(selectedConversation.lastMessageAt, locale, naText)}</span>
+                      <span>Capturas: {selectedConversation.captures.length}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {!selectedConversation.opportunity ? (
+                      <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void createOpportunityFromConversation()} disabled={creatingOpportunity}>
+                        {creatingOpportunity ? 'Creando...' : 'Crear oportunidad'}
+                      </Button>
+                    ) : null}
+                    <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void resolveConversation()} disabled={resolving || selectedConversation.status === 'RESOLVED'}>
+                      {resolving ? 'Resolviendo...' : 'Resolver'}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+                  <div className="space-y-4">
+                    <Card className="rounded-3xl border-slate-200 bg-white/85">
+                      <CardHeader>
+                        <CardTitle className="text-base">Asignación</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <Select value={assigneeDraft} onValueChange={setAssigneeDraft}>
+                          <SelectTrigger className="rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Sin asesor</SelectItem>
+                            {assignees.map((item) => <SelectItem key={item.id} value={item.id}>{item.name || item.email || item.id}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <Button className="w-full rounded-xl" onClick={() => void submitAssign()} disabled={assigning}>
+                          {assigning ? 'Guardando...' : 'Guardar asignación'}
+                        </Button>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="rounded-3xl border-slate-200 bg-white/85">
+                      <CardHeader>
+                        <CardTitle className="text-base">Relaciones CRM</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-sm text-slate-600">
+                        <p>
+                          Lead:{' '}
+                          {selectedConversation.lead ? (
+                            <Link href={`/dashboard/crm/leads/${selectedConversation.lead.id}`} className="font-medium text-sky-700 hover:underline">
+                              {selectedConversation.lead.nombre}
+                            </Link>
+                          ) : 'Sin lead'}
+                        </p>
+                        <p>Cliente: {selectedConversation.cliente?.nombre || 'Sin cliente'}</p>
+                        <p>Oportunidad: {selectedConversation.opportunity?.title || 'Sin oportunidad'}</p>
+                        {selectedConversation.opportunity && selectedConversation.cliente ? (
+                          <Button asChild variant="ghost" className="h-auto p-0 text-sky-700 hover:text-sky-800">
+                            <Link href={`/dashboard/cotizador?crmOpportunityId=${selectedConversation.opportunity.id}&clienteId=${selectedConversation.cliente.id}&opportunityTitle=${encodeURIComponent(selectedConversation.opportunity.title)}`}>
+                              Ir al cotizador
+                            </Link>
+                          </Button>
+                        ) : null}
+                      </CardContent>
+                    </Card>
+
+                    <Card className="rounded-3xl border-slate-200 bg-white/85">
+                      <CardHeader>
+                        <CardTitle className="text-base">Ultimas capturas</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {selectedConversation.captures.length === 0 ? <p className="text-sm text-muted-foreground">Sin capturas registradas.</p> : null}
+                        {selectedConversation.captures.map((capture) => (
+                          <div key={capture.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-slate-900">{capture.captureType}</span>
+                              <span className="text-xs text-slate-500">{formatDate(capture.createdAt, locale, naText)}</span>
+                            </div>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {capture.utmSource || 'sin utm_source'} · {capture.utmMedium || 'sin utm_medium'} · {capture.utmCampaign || 'sin campaña'}
+                            </p>
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className="space-y-4">
+                    <Card className="rounded-3xl border-slate-200 bg-white/85">
+                      <CardHeader>
+                        <CardTitle className="text-base">Mensajes</CardTitle>
+                        <CardDescription>Historial del hilo en modo pruebas.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
+                          {selectedConversation.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes registrados.</p> : null}
+                          {selectedConversation.messages.map((message) => (
+                            <div key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[88%] rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[88%] rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600' : 'mr-auto max-w-[88%] rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}>
+                              <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-slate-500">
+                                <span>{message.direction}</span>
+                                <span>{formatDate(message.occurredAt, locale, naText)}</span>
+                              </div>
+                              <p className="mt-2 whitespace-pre-wrap leading-6">{message.bodyText || 'Sin contenido textual'}</p>
+                              {message.sentByUser ? <p className="mt-2 text-[11px] text-slate-500">{message.sentByUser.name || message.sentByUser.email}</p> : null}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+                          <Label>Responder en modo pruebas</Label>
+                          <Textarea value={messageDraft} onChange={(e) => setMessageDraft(e.target.value)} rows={4} placeholder="Escribe una respuesta o nota saliente..." />
+                          <div className="flex justify-end">
+                            <Button className="rounded-xl" onClick={() => void submitMessage()} disabled={sending}>
+                              {sending ? 'Enviando...' : 'Registrar mensaje'}
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {!selectedConversation.opportunity ? (
+                      <Card className="rounded-3xl border-slate-200 bg-white/85">
+                        <CardHeader>
+                          <CardTitle className="text-base">Crear oportunidad</CardTitle>
+                          <CardDescription>Convierte el hilo en negocio activo cuando ya haya intención comercial clara.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-3">
+                          <div className="grid gap-2">
+                            <Label>Título</Label>
+                            <Input value={opportunityForm.title} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, title: e.target.value }))} />
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            <div className="grid gap-2">
+                              <Label>Etapa</Label>
+                              <Select value={opportunityForm.stage} onValueChange={(value) => setOpportunityForm((prev) => ({ ...prev, stage: value as OpportunityStage }))}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  {['NEW', 'QUALIFIED', 'PROPOSAL', 'NEGOTIATION', 'WON', 'LOST'].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>Valor esperado</Label>
+                              <Input value={opportunityForm.expectedValue} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, expectedValue: e.target.value }))} placeholder="1500000" />
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>Probabilidad %</Label>
+                              <Input value={opportunityForm.probabilityPct} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, probabilityPct: e.target.value }))} />
+                            </div>
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Cierre estimado</Label>
+                            <Input type="date" value={opportunityForm.expectedCloseAt} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, expectedCloseAt: e.target.value }))} />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Descripción</Label>
+                            <Textarea value={opportunityForm.description} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, description: e.target.value }))} rows={3} />
+                          </div>
+                          <div className="flex justify-end">
+                            <Button className="rounded-xl" onClick={() => void createOpportunityFromConversation()} disabled={creatingOpportunity}>
+                              {creatingOpportunity ? 'Creando...' : 'Crear oportunidad'}
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ) : null}
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Dialog open={simulatorOpen} onOpenChange={setSimulatorOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Simular inbound</DialogTitle>
+            <DialogDescription>Genera un mensaje o captura entrante para QA del funnel omnicanal sin depender de integraciones externas.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label>Canal</Label>
+              <Select value={simulateForm.channelConnectionId} onValueChange={(value) => setSimulateForm((prev) => ({ ...prev, channelConnectionId: value }))}>
+                <SelectTrigger><SelectValue placeholder="Selecciona un canal" /></SelectTrigger>
+                <SelectContent>
+                  {channels.map((item) => <SelectItem key={item.id} value={item.id}>{item.name} · {formatRelativeChannel(item.provider)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2"><Label>Nombre</Label><Input value={simulateForm.nombre} onChange={(e) => setSimulateForm((prev) => ({ ...prev, nombre: e.target.value }))} /></div>
+              <div className="grid gap-2"><Label>Empresa</Label><Input value={simulateForm.empresaNombre} onChange={(e) => setSimulateForm((prev) => ({ ...prev, empresaNombre: e.target.value }))} /></div>
+              <div className="grid gap-2"><Label>Email</Label><Input value={simulateForm.email} onChange={(e) => setSimulateForm((prev) => ({ ...prev, email: e.target.value }))} /></div>
+              <div className="grid gap-2"><Label>Teléfono</Label><Input value={simulateForm.telefono} onChange={(e) => setSimulateForm((prev) => ({ ...prev, telefono: e.target.value }))} /></div>
+              <div className="grid gap-2"><Label>Ciudad</Label><Input value={simulateForm.ciudad} onChange={(e) => setSimulateForm((prev) => ({ ...prev, ciudad: e.target.value }))} /></div>
+              <div className="grid gap-2"><Label>Documento</Label><Input value={simulateForm.documento} onChange={(e) => setSimulateForm((prev) => ({ ...prev, documento: e.target.value }))} /></div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Mensaje</Label>
+              <Textarea value={simulateForm.message} onChange={(e) => setSimulateForm((prev) => ({ ...prev, message: e.target.value }))} rows={4} />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-2"><Label>Campaña</Label><Input value={simulateForm.sourceCampaign} onChange={(e) => setSimulateForm((prev) => ({ ...prev, sourceCampaign: e.target.value }))} /></div>
+              <div className="grid gap-2"><Label>Medio</Label><Input value={simulateForm.sourceMedium} onChange={(e) => setSimulateForm((prev) => ({ ...prev, sourceMedium: e.target.value }))} /></div>
+              <div className="grid gap-2"><Label>Contenido</Label><Input value={simulateForm.sourceContent} onChange={(e) => setSimulateForm((prev) => ({ ...prev, sourceContent: e.target.value }))} /></div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSimulatorOpen(false)}>Cancelar</Button>
+            <Button onClick={() => void runSimulation()} disabled={simulating}>{simulating ? 'Simulando...' : 'Crear inbound'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}

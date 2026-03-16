@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import {
   Select,
   SelectContent,
@@ -107,10 +108,16 @@ export default function PlanDeCuentasPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Plan de cuentas</h1>
-        <p className="text-sm text-muted-foreground">Crea cuentas contables por empresa (código único).</p>
-      </div>
+      <ErpPageHero
+        eyebrow="ERP financiero"
+        title="Plan de cuentas"
+        description="Crea cuentas contables por empresa con una jerarquía visual consistente y código único."
+        stats={[
+          { label: 'Cuentas', value: rows.length, hint: 'Registros activos', tone: 'neutral' },
+          { label: 'Padres', value: parentOptions.length, hint: 'Opciones jerárquicas', tone: 'sky' },
+          { label: 'Movimiento', value: isPosting ? 'Sí' : 'No', hint: 'Tipo de cuenta actual', tone: 'teal' },
+        ]}
+      />
 
       <div className="rounded-lg border p-4 space-y-3">
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">

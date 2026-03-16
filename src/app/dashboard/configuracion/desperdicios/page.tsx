@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 
 type ApiResponse =
   | {
@@ -133,10 +134,25 @@ export default function ConfigDesperdiciosPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Configuración de desperdicios</h1>
-        <p className="text-sm text-gray-600">Ajustes por sede: % de desperdicio por defecto y overrides por material.</p>
-      </div>
+      <ErpPageHero
+        eyebrow="Configuracion"
+        title="Configuracion de desperdicios"
+        description="Ajustes por sede para controlar el porcentaje base y los overrides por material."
+        stats={[
+          {
+            label: 'Sede activa',
+            value: sedeNombre || '—',
+            hint: loading ? 'Cargando contexto...' : 'Configuracion aplicada sobre esta sede',
+            tone: 'sky',
+          },
+          {
+            label: 'Materiales filtrados',
+            value: filtered.length,
+            hint: search ? 'Resultado de la busqueda actual' : 'Materiales disponibles para ajustar',
+            tone: 'teal',
+          },
+        ]}
+      />
 
       <Card>
         <CardHeader>

@@ -11,6 +11,7 @@ import { ImportDialog } from "@/components/import/import-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { ErpPageHero } from "@/components/dashboard/erp-page-chrome"
 import { useI18n } from "@/components/providers/i18n-provider"
 import {
   Dialog,
@@ -328,35 +329,43 @@ export default function ClientesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight" data-tour="clientes-title">{t('customers.title')}</h1>
-          <p className="text-muted-foreground">
-            {t('customers.subtitle')}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span data-tour="clientes-import">
-            <ImportDialog
-              module="clientes"
-              title={t('customers.actions.import')}
-              onSuccess={async () => {
-                await fetchClientes()
-              }}
-            />
-          </span>
-          <Button variant="outline" onClick={() => setIsExportOpen(true)}>
-            {t('customers.actions.exportExcel')}
-          </Button>
-          <Button onClick={openNewClienteModal} data-tour="clientes-new">
-            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            {t('customers.actions.new')}
-          </Button>
-        </div>
-      </div>
+      <ErpPageHero
+        eyebrow="ERP comercial"
+        title={<span data-tour="clientes-title">{t('customers.title')}</span>}
+        description={t('customers.subtitle')}
+        actions={
+          <>
+            <span data-tour="clientes-import">
+              <ImportDialog
+                module="clientes"
+                title={t('customers.actions.import')}
+                onSuccess={async () => {
+                  await fetchClientes()
+                }}
+              />
+            </span>
+            <Button variant="outline" onClick={() => setIsExportOpen(true)}>
+              {t('customers.actions.exportExcel')}
+            </Button>
+            <Button onClick={openNewClienteModal} data-tour="clientes-new">
+              <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              {t('customers.actions.new')}
+            </Button>
+          </>
+        }
+        stats={[
+          { label: 'Clientes', value: clientes.length, hint: 'Registros visibles', tone: 'neutral' },
+          { label: 'Sedes', value: sedes.length, hint: 'Sucursales consultables', tone: 'sky' },
+          {
+            label: 'Segmento activo',
+            value: segmentoFiltro ? segmentoLabel(segmentoFiltro) : t('customers.filters.segment.all'),
+            hint: search || naText,
+            tone: 'teal',
+          },
+        ]}
+      />
 
       {/* Modal de exportación */}
       <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>

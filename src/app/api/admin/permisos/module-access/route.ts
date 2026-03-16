@@ -11,6 +11,7 @@ const MODULES: ModuleKey[] = [
   'COTIZADOR',
   'COTIZACIONES',
   'CLIENTES',
+  'CRM',
   'MATERIALES',
   'INVENTARIO',
   'REMISIONES',

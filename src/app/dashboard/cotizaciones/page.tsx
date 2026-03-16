@@ -34,6 +34,7 @@ import CotizacionPDF, { type CotizacionPdfData } from '@/lib/pdf-template.client
 import type { CotizacionTemplateSettings } from '@/lib/cotizacion-template';
 import { useI18n } from '@/components/providers/i18n-provider';
 import { buildWhatsAppWebUrl } from '@/lib/whatsapp-link';
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome';
 
 function PdfPreviewLoading() {
   const { t } = useI18n();
@@ -713,31 +714,42 @@ export default function CotizacionesPage() {
   };
 
   return (
-    <div className="p-3 sm:p-4 lg:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">{t('quotes.page.title')}</h1>
-          <p className="text-muted-foreground mt-0.5">{t('quotes.page.subtitle')}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href="/dashboard/cotizaciones/plantilla">
-            <Button variant="outline">
-              <ClipboardCheck className="w-4 h-4 mr-2" />
-              {t('quotes.actions.editTemplate')}
+    <div className="space-y-4 p-3 sm:p-4 lg:p-6">
+      <ErpPageHero
+        eyebrow="ERP comercial"
+        title={t('quotes.page.title')}
+        description={t('quotes.page.subtitle')}
+        actions={
+          <>
+            <Link href="/dashboard/cotizaciones/plantilla">
+              <Button variant="outline">
+                <ClipboardCheck className="mr-2 h-4 w-4" />
+                {t('quotes.actions.editTemplate')}
+              </Button>
+            </Link>
+            <Button variant="outline" onClick={exportExcel}>
+              <Download className="mr-2 h-4 w-4" />
+              {t('quotes.actions.exportExcel')}
             </Button>
-          </Link>
-          <Button variant="outline" onClick={exportExcel}>
-            <Download className="w-4 h-4 mr-2" />
-            {t('quotes.actions.exportExcel')}
-          </Button>
-          <Link href="/dashboard/cotizador">
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              {t('quotes.actions.newQuote')}
-            </Button>
-          </Link>
-        </div>
-      </div>
+            <Link href="/dashboard/cotizador">
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                {t('quotes.actions.newQuote')}
+              </Button>
+            </Link>
+          </>
+        }
+        stats={[
+          { label: 'Cotizaciones', value: total, hint: 'Resultados en paginación', tone: 'neutral' },
+          { label: 'Página', value: `${page}/${pageCount || 1}`, hint: 'Navegación actual', tone: 'sky' },
+          {
+            label: 'Estado',
+            value: filtroEstado ? getEstadoLabel(filtroEstado) : t('quotes.filters.allStatuses'),
+            hint: filtroSede ? sedes.find((sede) => sede.id === filtroSede)?.nombre || filtroSede : t('quotes.filters.allBranches'),
+            tone: 'teal',
+          },
+        ]}
+      />
 
       {/* Filtros */}
       <Card className="mb-4">

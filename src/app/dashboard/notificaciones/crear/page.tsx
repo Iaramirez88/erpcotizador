@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import { requireEmpresaIdForUser } from '@/lib/rbac'
 import { NotificationType, Prisma } from '@prisma/client'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 
 export const runtime = 'nodejs'
 
@@ -150,15 +151,30 @@ export default async function CrearNotificacionPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Crear notificación</h1>
-          <p className="text-sm text-muted-foreground">Envía avisos segmentados y con fecha de publicación.</p>
-        </div>
-        <Button asChild variant="outline">
-          <Link href="/dashboard/notificaciones">Volver</Link>
-        </Button>
-      </div>
+      <ErpPageHero
+        eyebrow="Comunicaciones"
+        title="Crear notificacion"
+        description="Configura avisos segmentados por alcance, agenda su publicacion y vuelve al centro de notificaciones cuando termines."
+        actions={
+          <Button asChild variant="outline">
+            <Link href="/dashboard/notificaciones">Volver</Link>
+          </Button>
+        }
+        stats={[
+          {
+            label: 'Sedes disponibles',
+            value: sedes.length,
+            hint: 'Segmentacion por sucursal si el alcance lo requiere',
+            tone: 'sky',
+          },
+          {
+            label: 'Usuarios elegibles',
+            value: users.length,
+            hint: 'Destinatarios disponibles para avisos individuales',
+            tone: 'teal',
+          },
+        ]}
+      />
 
       <Card>
         <CardHeader>

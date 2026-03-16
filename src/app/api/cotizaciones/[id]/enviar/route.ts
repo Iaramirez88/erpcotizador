@@ -6,6 +6,7 @@ import { Resend } from 'resend';
 import CotizacionPDF from '@/lib/pdf-template';
 import { getReactPdfRenderer, pdfToBuffer } from '@/lib/react-pdf-node';
 import { requireEmpresaIdForUser } from '@/lib/rbac';
+import { applyOpportunityStageAutomation } from '@/lib/crm';
 
 export const runtime = 'nodejs';
 
@@ -350,6 +351,15 @@ export async function POST(
             descuento: updated.descuento,
           },
         },
+      })
+
+      await applyOpportunityStageAutomation({
+        client: tx,
+        empresaId: access.empresaId,
+        userId: access.userId,
+        cotizacionId: updated.id,
+        trigger: 'QUOTE_SENT',
+        details: 'Envio de cotizacion al cliente',
       })
     })
 

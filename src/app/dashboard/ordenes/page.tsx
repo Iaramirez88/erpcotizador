@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ImportDialog } from '@/components/import/import-dialog';
 import { Input } from '@/components/ui/input';
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome';
 import { useI18n } from '@/components/providers/i18n-provider';
 import {
   FileText,
@@ -179,26 +180,32 @@ export default function OrdenesPage() {
   };
 
   return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">{t('orders.title')}</h1>
-          <p className="text-gray-600 mt-1">{t('orders.subtitle')}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <ImportDialog module="ordenes" title={t('orders.actions.import')} />
-          <Button variant="outline" onClick={exportExcel}>
-            <Download className="w-4 h-4 mr-2" />
-            {t('orders.actions.exportExcel')}
-          </Button>
-          <Link href="/dashboard/cotizaciones">
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              {t('orders.actions.fromQuote')}
+    <div className="space-y-6 p-8">
+      <ErpPageHero
+        eyebrow="ERP operativo"
+        title={t('orders.title')}
+        description={t('orders.subtitle')}
+        actions={
+          <>
+            <ImportDialog module="ordenes" title={t('orders.actions.import')} />
+            <Button variant="outline" onClick={exportExcel}>
+              <Download className="mr-2 h-4 w-4" />
+              {t('orders.actions.exportExcel')}
             </Button>
-          </Link>
-        </div>
-      </div>
+            <Link href="/dashboard/cotizaciones">
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                {t('orders.actions.fromQuote')}
+              </Button>
+            </Link>
+          </>
+        }
+        stats={[
+          { label: 'Órdenes', value: ordenes.length, hint: 'Resultados visibles', tone: 'neutral' },
+          { label: 'Estado', value: filtroEstado || t('orders.filters.allStatuses'), hint: busqueda || naText, tone: 'amber' },
+          { label: 'Eliminar', value: canDeleteOrders ? 'Habilitado' : 'Restringido', hint: 'Permiso operativo', tone: 'sky' },
+        ]}
+      />
 
       {/* Filtros */}
       <Card className="mb-6">

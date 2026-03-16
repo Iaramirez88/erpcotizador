@@ -11,6 +11,7 @@ import Link from 'next/link'
 import { revalidatePath } from 'next/cache'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import { requireEmpresaIdForUser } from '@/lib/rbac'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 
 export const runtime = 'nodejs'
 
@@ -165,28 +166,34 @@ export default async function NotificacionesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">{t('notifications.title')}</h1>
-          <p className="text-sm text-muted-foreground">
-            {unreadCount > 0
-              ? t('notifications.unreadCount', { count: String(unreadCount) })
-              : t('notifications.allCaughtUp')}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {canManageNotifications && (
-            <Button asChild>
-              <Link href="/dashboard/notificaciones/crear">{t('notifications.actions.create')}</Link>
-            </Button>
-          )}
-          <form action={markAllRead}>
-            <Button type="submit" variant="outline" disabled={unreadCount === 0}>
-              {t('notifications.actions.markAllRead')}
-            </Button>
-          </form>
-        </div>
-      </div>
+      <ErpPageHero
+        eyebrow="ERP comunicación"
+        title={t('notifications.title')}
+        description={
+          unreadCount > 0
+            ? t('notifications.unreadCount', { count: String(unreadCount) })
+            : t('notifications.allCaughtUp')
+        }
+        actions={
+          <>
+            {canManageNotifications && (
+              <Button asChild>
+                <Link href="/dashboard/notificaciones/crear">{t('notifications.actions.create')}</Link>
+              </Button>
+            )}
+            <form action={markAllRead}>
+              <Button type="submit" variant="outline" disabled={unreadCount === 0}>
+                {t('notifications.actions.markAllRead')}
+              </Button>
+            </form>
+          </>
+        }
+        stats={[
+          { label: 'Pendientes', value: unreadCount, hint: 'Sin leer', tone: 'amber' },
+          { label: 'Visibles', value: items.length, hint: 'Listado actual', tone: 'neutral' },
+          { label: 'Gestión', value: canManageNotifications ? 'Admin' : 'Lectura', hint: 'Nivel de acción', tone: 'sky' },
+        ]}
+      />
 
       <div className="grid gap-4">
         {items.length === 0 ? (

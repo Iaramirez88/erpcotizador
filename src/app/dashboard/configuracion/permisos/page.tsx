@@ -8,6 +8,7 @@ import { ModuleKey, AccessLevel, SedeRole } from '@prisma/client'
 import { getServerLanguage } from '@/lib/i18n/server'
 import { translate } from '@/lib/i18n/messages'
 import { MemberActionsMenu } from '@/components/rbac/member-actions-menu'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -18,6 +19,7 @@ const MODULES: ModuleKey[] = [
   'COTIZADOR',
   'COTIZACIONES',
   'CLIENTES',
+  'CRM',
   'MATERIALES',
   'INVENTARIO',
   'REMISIONES',
@@ -207,10 +209,31 @@ export default async function PermisosPage({ searchParams }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">{t('rbac.permissions.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('rbac.permissions.subtitle')}</p>
-      </div>
+      <ErpPageHero
+        eyebrow="Configuracion"
+        title={t('rbac.permissions.title')}
+        description={t('rbac.permissions.subtitle')}
+        stats={[
+          {
+            label: 'Sede activa',
+            value: activeSede?.nombre ?? naText,
+            hint: 'Contexto actual para miembros y modulos',
+            tone: 'sky',
+          },
+          {
+            label: 'Miembros visibles',
+            value: members.length,
+            hint: 'Usuarios asociados a la sede seleccionada',
+            tone: 'teal',
+          },
+          {
+            label: 'Accesos globales',
+            value: globalAccess.length,
+            hint: 'Registros globales a nivel empresa',
+            tone: 'amber',
+          },
+        ]}
+      />
 
       <Card>
         <CardHeader>

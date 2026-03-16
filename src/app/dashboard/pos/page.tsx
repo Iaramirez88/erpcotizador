@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { formatCurrency, formatUnidadMedidaLabel } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useI18n } from '@/components/providers/i18n-provider'
@@ -1845,18 +1846,17 @@ export default function PosPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">{t('pos.title')}</h1>
-          <p className="text-muted-foreground">{t('pos.subtitle')}</p>
-        </div>
-        {activeTab === 'interna' ? (
-          <div className="flex gap-2">
+      <ErpPageHero
+        eyebrow="ERP comercial"
+        title={t('pos.title')}
+        description={t('pos.subtitle')}
+        actions={activeTab === 'interna' ? (
+          <>
             <Button onClick={() => void loadAll()} variant="secondary" disabled={isLoading}>
               {t('pos.actions.refresh')}
             </Button>
             <Button variant="outline" onClick={exportExcel} disabled={isLoading}>
-              <Download className="w-4 h-4 mr-2" />
+              <Download className="mr-2 h-4 w-4" />
               {t('pos.actions.exportExcel')}
             </Button>
             <Button onClick={openReturn} variant="outline" disabled={isLoading}>
@@ -1865,15 +1865,18 @@ export default function PosPage() {
             <Button onClick={openCreate} disabled={isLoading}>
               {t('pos.actions.newInvoice')}
             </Button>
-          </div>
+          </>
         ) : (
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => void loadDianDocs()} disabled={dianLoading}>
-              {t('pos.dian.actions.refresh')}
-            </Button>
-          </div>
+          <Button variant="secondary" onClick={() => void loadDianDocs()} disabled={dianLoading}>
+            {t('pos.dian.actions.refresh')}
+          </Button>
         )}
-      </div>
+        stats={[
+          { label: 'Facturas', value: invoices.length, hint: 'Registros cargados', tone: 'neutral' },
+          { label: 'Devoluciones', value: returns.length, hint: 'Documentos internos', tone: 'amber' },
+          { label: 'DIAN', value: dianDocs.length, hint: activeTab === 'dian' ? 'Histórico visible' : 'Documentos sincronizados', tone: 'teal' },
+        ]}
+      />
 
       {error ? <div className="text-sm text-red-600">{error}</div> : null}
 

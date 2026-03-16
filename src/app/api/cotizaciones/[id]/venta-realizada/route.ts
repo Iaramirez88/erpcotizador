@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { ModuleKey } from '@prisma/client'
+import { applyOpportunityStageAutomation } from '@/lib/crm'
 
 export const runtime = 'nodejs'
 
@@ -92,6 +93,15 @@ export async function POST(request: NextRequest, ctx: { params: Promise<{ id: st
             descuento: upd.descuento,
           },
         },
+      })
+
+      await applyOpportunityStageAutomation({
+        client: tx,
+        empresaId: access.empresaId,
+        userId: access.userId,
+        cotizacionId: upd.id,
+        trigger: nextValue ? 'SALE_REALIZED_SET' : 'SALE_REALIZED_UNSET',
+        details: nextValue ? 'Venta realizada confirmada' : 'Venta realizada revertida',
       })
 
       return upd

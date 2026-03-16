@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 
 type SedeRow = {
   id: string
@@ -103,24 +104,35 @@ export default function SedesConfigPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight" data-tour="sedes-title">
-            Sedes
-          </h1>
-          <p className="text-muted-foreground">
-            Crea sedes (sucursales) y asígnalas desde Permisos.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={() => void load()} variant="secondary" disabled={isLoading}>
-            Refrescar
-          </Button>
-          <Button onClick={openCreate} disabled={isLoading} data-tour="sedes-new">
-            Nueva sede
-          </Button>
-        </div>
-      </div>
+      <ErpPageHero
+        eyebrow="Configuracion"
+        title={<span data-tour="sedes-title">Sedes</span>}
+        description="Crea sucursales, organiza la operacion por ubicacion y luego asignalas desde permisos."
+        actions={
+          <>
+            <Button onClick={() => void load()} variant="secondary" disabled={isLoading}>
+              Refrescar
+            </Button>
+            <Button onClick={openCreate} disabled={isLoading} data-tour="sedes-new">
+              Nueva sede
+            </Button>
+          </>
+        }
+        stats={[
+          {
+            label: 'Sedes registradas',
+            value: sorted.length,
+            hint: 'Sucursales disponibles para operacion y permisos',
+            tone: 'sky',
+          },
+          {
+            label: 'Estado',
+            value: isLoading ? 'Cargando' : 'Actualizado',
+            hint: isLoading ? 'Consultando informacion...' : 'Listado sincronizado con la API',
+            tone: isLoading ? 'amber' : 'teal',
+          },
+        ]}
+      />
 
       {error ? <div className="text-sm text-red-600">{error}</div> : null}
 

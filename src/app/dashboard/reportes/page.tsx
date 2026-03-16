@@ -5,6 +5,7 @@ import { useI18n } from '@/components/providers/i18n-provider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome';
 import {
   Dialog,
   DialogContent,
@@ -428,35 +429,41 @@ export default function ReportesPage() {
   }
 
   return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-bold">{t('reports.title')}</h1>
-          <p className="text-gray-600 mt-1">{t('reports.subtitle')}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setReportPrefsDraft(reportPrefs);
-              setPrefsOpen(true);
-            }}
-            disabled={prefsLoading}
-          >
-            {t('reports.actions.customize')}
-          </Button>
-          <select
-            className="px-4 py-2 border rounded-md"
-            value={periodo}
-            onChange={(e) => setPeriodo(e.target.value)}
-          >
-            <option value="mes">{t('reports.period.thisMonth')}</option>
-            <option value="trimestre">{t('reports.period.quarter')}</option>
-            <option value="año">{t('reports.period.year')}</option>
-          </select>
-        </div>
-      </div>
+    <div className="space-y-6 p-8">
+      <ErpPageHero
+        eyebrow="ERP analítico"
+        title={t('reports.title')}
+        description={t('reports.subtitle')}
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setReportPrefsDraft(reportPrefs);
+                setPrefsOpen(true);
+              }}
+              disabled={prefsLoading}
+            >
+              {t('reports.actions.customize')}
+            </Button>
+            <select
+              className="px-4 py-2 border rounded-md"
+              value={periodo}
+              onChange={(e) => setPeriodo(e.target.value)}
+            >
+              <option value="mes">{t('reports.period.thisMonth')}</option>
+              <option value="trimestre">{t('reports.period.quarter')}</option>
+              <option value="año">{t('reports.period.year')}</option>
+            </select>
+          </>
+        }
+        stats={[
+          { label: 'Ventas', value: formatCurrency(estadisticas.ventasTotales), hint: 'Periodo actual', tone: 'teal' },
+          { label: 'Órdenes', value: estadisticas.ordenesTrabajo, hint: 'Trabajo registrado', tone: 'sky' },
+          { label: 'Conversión', value: `${estadisticas.tasaConversion.toFixed(1)}%`, hint: 'Desempeño comercial', tone: 'amber' },
+        ]}
+      />
 
       <Card className="mb-6">
         <CardHeader>

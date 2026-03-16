@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 
 type EmpresaConfig = {
   empresaId: string
@@ -123,10 +124,16 @@ export default function ConfigEmpresaPage() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Empresa</h1>
-        <p className="text-muted-foreground">Personaliza el branding y comparte el código correcto para solicitar acceso.</p>
-      </div>
+      <ErpPageHero
+        eyebrow="ERP configuración"
+        title="Empresa"
+        description="Personaliza el branding y comparte el código correcto para solicitar acceso."
+        stats={[
+          { label: 'Código', value: config?.workspaceCode || 'Cargando...', hint: 'Acceso al workspace', tone: 'neutral' },
+          { label: 'Nombre', value: nombre || config?.nombre || 'Sin nombre', hint: 'Branding actual', tone: 'sky' },
+          { label: 'Logo', value: logoPreview ? 'Configurado' : 'Pendiente', hint: 'Identidad visual', tone: 'amber' },
+        ]}
+      />
 
       <Card>
         <CardHeader>

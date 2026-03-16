@@ -10,6 +10,7 @@ import { AvatarUploader } from '@/components/profile/avatar-uploader'
 import { ProfileBasicsForm } from '@/components/profile/profile-basics-form'
 import { LeaveWorkspaceCard } from '@/components/profile/leave-workspace-card'
 import { WorkspaceAccessCard } from '@/components/profile/workspace-access-card'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { getServerLanguage } from '@/lib/i18n/server'
 import { translate, type UiLanguage } from '@/lib/i18n/messages'
 import { resolveUserIdFromSession } from '@/lib/session-user'
@@ -95,22 +96,16 @@ export default async function PerfilPage() {
 
   return (
     <div className="p-3 sm:p-4 lg:p-6 space-y-4">
-      <div className="rounded-xl border bg-gradient-to-r from-slate-950 to-slate-900 text-slate-50 p-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold">{t('profile.title')}</h1>
-            <p className="text-slate-200 mt-1 text-sm">{t('profile.subtitle')}</p>
-          </div>
-          <div className="text-xs text-slate-300">
-            <div>
-              {t('profile.meta.role')}: <span className="text-slate-100 font-medium">{roleLabel(user.role)}</span>
-            </div>
-            <div>
-              {t('profile.meta.memberSince')}: <span className="text-slate-100 font-medium">{fmtDate(user.createdAt, locale, naText)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <ErpPageHero
+        eyebrow="ERP personal"
+        title={t('profile.title')}
+        description={t('profile.subtitle')}
+        stats={[
+          { label: t('profile.meta.role'), value: roleLabel(user.role), hint: user.empresa?.nombre ?? naText, tone: 'neutral' },
+          { label: t('profile.meta.memberSince'), value: fmtDate(user.createdAt, locale, naText), hint: 'Antigüedad en el sistema', tone: 'sky' },
+          { label: 'Accesos', value: user.moduleAccess.length, hint: `${user.sedeMemberships.length} sedes vinculadas`, tone: 'teal' },
+        ]}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">

@@ -55,6 +55,16 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasEmpresaTemplateVersionDelegate =
     typeof (prismaClient as any)?.empresaCotizacionTemplateVersion?.findMany === 'function'
   const hasCotizacionTemplateVersionDelegate = typeof (prismaClient as any)?.cotizacionTemplateVersion?.findMany === 'function'
+  const hasCrmLeadDelegate = typeof (prismaClient as any)?.crmLead?.findMany === 'function'
+  const hasCrmOpportunityDelegate = typeof (prismaClient as any)?.crmOpportunity?.findMany === 'function'
+  const hasCrmStageSettingDelegate = typeof (prismaClient as any)?.crmStageSetting?.findMany === 'function'
+  const hasCrmContactDelegate = typeof (prismaClient as any)?.crmContact?.findMany === 'function'
+  const hasCrmActivityDelegate = typeof (prismaClient as any)?.crmActivity?.findMany === 'function'
+  const hasCrmTaskDelegate = typeof (prismaClient as any)?.crmTask?.findMany === 'function'
+  const hasCrmChannelConnectionDelegate = typeof (prismaClient as any)?.crmChannelConnection?.findMany === 'function'
+  const hasCrmConversationDelegate = typeof (prismaClient as any)?.crmConversation?.findMany === 'function'
+  const hasCrmMessageDelegate = typeof (prismaClient as any)?.crmMessage?.findMany === 'function'
+  const hasCrmLeadCaptureDelegate = typeof (prismaClient as any)?.crmLeadCapture?.findMany === 'function'
 
   if (
     !hasTrialTier ||
@@ -66,7 +76,17 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasHelpVideoDelegate ||
     !hasEmpresaTemplateDelegate ||
     !hasEmpresaTemplateVersionDelegate ||
-    !hasCotizacionTemplateVersionDelegate
+    !hasCotizacionTemplateVersionDelegate ||
+    !hasCrmLeadDelegate ||
+    !hasCrmOpportunityDelegate ||
+    !hasCrmStageSettingDelegate ||
+    !hasCrmContactDelegate ||
+    !hasCrmActivityDelegate ||
+    !hasCrmTaskDelegate ||
+    !hasCrmChannelConnectionDelegate ||
+    !hasCrmConversationDelegate ||
+    !hasCrmMessageDelegate ||
+    !hasCrmLeadCaptureDelegate
   ) {
     prismaClient = undefined
   }

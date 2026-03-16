@@ -6,6 +6,7 @@ export const ALL_MODULE_KEYS: ModuleKey[] = [
   'COTIZADOR',
   'COTIZACIONES',
   'CLIENTES',
+  'CRM',
   'MATERIALES',
   'INVENTARIO',
   'REMISIONES',
@@ -20,7 +21,7 @@ export const ALL_MODULE_KEYS: ModuleKey[] = [
   'CONFIG',
 ]
 
-export const ALL_PLAN_TIERS: PlanTier[] = ['BASIC', 'INTERMEDIO', 'FULL']
+export const ALL_PLAN_TIERS: PlanTier[] = ['BASIC', 'MEDIO', 'INTERMEDIO', 'FULL']
 
 export async function ensurePlanModuleDefaults(): Promise<void> {
   try {

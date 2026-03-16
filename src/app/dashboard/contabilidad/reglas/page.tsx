@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import {
   Select,
   SelectContent,
@@ -176,10 +177,16 @@ export default function ReglasContablesPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Reglas contables</h1>
-        <p className="text-sm text-muted-foreground">Define reglas por evento para generar asientos automáticamente.</p>
-      </div>
+      <ErpPageHero
+        eyebrow="ERP financiero"
+        title="Reglas contables"
+        description="Define reglas por evento para generar asientos automáticamente con el mismo lenguaje visual del ERP." 
+        stats={[
+          { label: 'Reglas', value: rules.length, hint: 'Automatizaciones activas', tone: 'neutral' },
+          { label: 'Cuentas', value: accounts.length, hint: 'Base disponible', tone: 'sky' },
+          { label: 'Líneas', value: lines.length, hint: 'Borrador actual', tone: 'amber' },
+        ]}
+      />
 
       <div className="rounded-lg border p-4 space-y-3">
         <div className="grid gap-3 md:grid-cols-2">

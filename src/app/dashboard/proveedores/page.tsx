@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { useI18n } from '@/components/providers/i18n-provider'
 
 type Proveedor = {
@@ -112,25 +113,31 @@ export default function ProveedoresPage() {
   }
 
   return (
-    <div className="p-8 space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">{t('suppliers.title')}</h1>
-          <p className="text-muted-foreground mt-1">{t('suppliers.subtitle')}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <ImportDialog
-            module="proveedores"
-            title={t('suppliers.actions.import')}
-            onSuccess={async () => {
-              await load()
-            }}
-          />
-          <Button variant="outline" onClick={exportExcel}>
-            {t('suppliers.actions.exportExcel')}
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-6 p-8">
+      <ErpPageHero
+        eyebrow="ERP de abastecimiento"
+        title={t('suppliers.title')}
+        description={t('suppliers.subtitle')}
+        actions={
+          <>
+            <ImportDialog
+              module="proveedores"
+              title={t('suppliers.actions.import')}
+              onSuccess={async () => {
+                await load()
+              }}
+            />
+            <Button variant="outline" onClick={exportExcel}>
+              {t('suppliers.actions.exportExcel')}
+            </Button>
+          </>
+        }
+        stats={[
+          { label: 'Proveedores', value: items.length, hint: 'Registros visibles', tone: 'neutral' },
+          { label: 'Búsqueda', value: query || naText, hint: 'Filtro activo', tone: 'sky' },
+          { label: 'Nuevo proveedor', value: nombre.trim() || naText, hint: 'Formulario actual', tone: 'amber' },
+        ]}
+      />
 
       <Card>
         <CardHeader>
