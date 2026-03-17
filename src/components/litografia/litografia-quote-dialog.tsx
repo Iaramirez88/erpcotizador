@@ -3745,6 +3745,15 @@ export function LitografiaQuoteDialog(props: {
                           )}
                         </div>
 
+                        {currentImpositionPreview ? (
+                          <div className="sm:col-span-2">
+                            <LitografiaImpositionPreview
+                              {...currentImpositionPreview}
+                              className="border-sky-200 bg-sky-50/40"
+                            />
+                          </div>
+                        ) : null}
+
                         {showAdvanced ? (
                           <>
                             <div className="sm:col-span-2">
@@ -4176,6 +4185,13 @@ export function LitografiaQuoteDialog(props: {
                             </div>
                           ) : null}
 
+                          {currentImpositionPreview ? (
+                            <LitografiaImpositionPreview
+                              {...currentImpositionPreview}
+                              className="border-sky-200 bg-sky-50/30"
+                            />
+                          ) : null}
+
                           <div className="border-t pt-3">
                             {(() => {
                               const extras = customFieldsTotal
@@ -4233,6 +4249,13 @@ export function LitografiaQuoteDialog(props: {
                             <div className={`${BOX_BLUR_MUTED} bg-muted/10 p-3 text-xs text-muted-foreground`}>
                               {currentImpositionSummary.detail}
                             </div>
+                          ) : null}
+
+                          {currentImpositionPreview ? (
+                            <LitografiaImpositionPreview
+                              {...currentImpositionPreview}
+                              className="border-sky-200 bg-sky-50/30"
+                            />
                           ) : null}
 
                           <div className="flex justify-between">
