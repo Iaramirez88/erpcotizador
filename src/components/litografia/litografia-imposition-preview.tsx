@@ -3,6 +3,11 @@ import { cn } from "@/lib/utils"
 type LitografiaImpositionPreviewProps = {
   sheetWidthCm: number
   sheetHeightCm: number
+  machineSheetWidthCm?: number
+  machineSheetHeightCm?: number
+  machineSheetsAcross?: number
+  machineSheetsDown?: number
+  machineSheetsPerParent?: number
   utilWidthCm: number
   utilHeightCm: number
   pieceWidthCm: number
@@ -64,6 +69,10 @@ function buildPieceRects(args: {
 export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewProps) {
   const sheetWidth = safePositive(props.sheetWidthCm)
   const sheetHeight = safePositive(props.sheetHeightCm)
+  const machineSheetWidth = Math.min(sheetWidth, safePositive(props.machineSheetWidthCm ?? props.utilWidthCm, sheetWidth))
+  const machineSheetHeight = Math.min(sheetHeight, safePositive(props.machineSheetHeightCm ?? props.utilHeightCm, sheetHeight))
+  const machineSheetsAcross = Math.max(0, Math.trunc(props.machineSheetsAcross ?? 0))
+  const machineSheetsDown = Math.max(0, Math.trunc(props.machineSheetsDown ?? 0))
   const utilWidth = Math.min(sheetWidth, safePositive(props.utilWidthCm, sheetWidth))
   const utilHeight = Math.min(sheetHeight, safePositive(props.utilHeightCm, sheetHeight))
   const pieceWidth = safePositive(props.pieceWidthCm)
@@ -72,8 +81,17 @@ export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewPr
   const piecesDown = Math.max(0, Math.trunc(props.piecesDown))
   const gap = Math.max(0, Number(props.gapCm) || 0)
 
-  const utilX = Math.max(0, (sheetWidth - utilWidth) / 2)
-  const utilY = Math.max(0, (sheetHeight - utilHeight) / 2)
+  const machineRects = buildPieceRects({
+    startX: 0,
+    startY: 0,
+    pieceWidth: machineSheetWidth,
+    pieceHeight: machineSheetHeight,
+    gap: 0,
+    across: machineSheetsAcross,
+    down: machineSheetsDown,
+  })
+  const utilX = Math.max(0, (machineSheetWidth - utilWidth) / 2)
+  const utilY = Math.max(0, (machineSheetHeight - utilHeight) / 2)
   const usedWidth = piecesAcross > 0 ? (piecesAcross * pieceWidth) + (Math.max(0, piecesAcross - 1) * gap) : 0
   const usedHeight = piecesDown > 0 ? (piecesDown * pieceHeight) + (Math.max(0, piecesDown - 1) * gap) : 0
   const pieceRects = buildPieceRects({
@@ -101,64 +119,99 @@ export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewPr
         </div>
       </div>
 
-      <div className="mt-3 rounded-lg border bg-gradient-to-b from-slate-50 to-white p-3">
-        <svg
-          viewBox={`0 0 ${sheetWidth} ${sheetHeight}`}
-          className="mx-auto block h-auto max-h-[320px] w-full"
-          aria-label="Vista de imposicion sobre pliego"
-          role="img"
-        >
-          <rect x={0} y={0} width={sheetWidth} height={sheetHeight} rx={2} ry={2} fill="#e2e8f0" />
-          <rect x={0} y={0} width={sheetWidth} height={sheetHeight} rx={2} ry={2} fill="#f8fafc" stroke="#64748b" strokeWidth={0.5} />
-          <rect
-            x={utilX}
-            y={utilY}
-            width={utilWidth}
-            height={utilHeight}
-            rx={1.5}
-            ry={1.5}
-            fill="#eff6ff"
-            stroke="#0ea5e9"
-            strokeDasharray="2 1"
-            strokeWidth={0.5}
-          />
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+        <div className="rounded-lg border bg-gradient-to-b from-slate-50 to-white p-3">
+          <p className="mb-2 text-[11px] font-medium text-foreground">1. Del pliego sale el corte de máquina</p>
+          <svg
+            viewBox={`0 0 ${sheetWidth} ${sheetHeight}`}
+            className="mx-auto block h-auto max-h-[240px] w-full"
+            aria-label="Vista del pliego y corte de máquina"
+            role="img"
+          >
+            <rect x={0} y={0} width={sheetWidth} height={sheetHeight} rx={2} ry={2} fill="#f8fafc" stroke="#64748b" strokeWidth={0.5} />
+            {machineRects.map((piece, index) => (
+              <rect
+                key={`machine-${piece.x}-${piece.y}-${index}`}
+                x={piece.x}
+                y={piece.y}
+                width={piece.width}
+                height={piece.height}
+                rx={1}
+                ry={1}
+                fill="#fef3c7"
+                stroke="#d97706"
+                strokeWidth={0.45}
+              />
+            ))}
+          </svg>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            {props.machineSheetsPerParent ?? 0} hojas de máquina por pliego
+          </p>
+        </div>
 
-          {pieceRects.map((piece, index) => (
-            <rect
-              key={`${piece.x}-${piece.y}-${index}`}
-              x={piece.x}
-              y={piece.y}
-              width={piece.width}
-              height={piece.height}
-              rx={0.8}
-              ry={0.8}
-              fill="#0ea5e9"
-              fillOpacity={0.18}
-              stroke="#0284c7"
-              strokeWidth={0.35}
-            />
-          ))}
-
-          {usedWidth > 0 && usedHeight > 0 ? (
+        <div className="rounded-lg border bg-gradient-to-b from-slate-50 to-white p-3">
+          <p className="mb-2 text-[11px] font-medium text-foreground">2. En cada hoja de máquina caben las piezas finales</p>
+          <svg
+            viewBox={`0 0 ${machineSheetWidth} ${machineSheetHeight}`}
+            className="mx-auto block h-auto max-h-[240px] w-full"
+            aria-label="Vista de imposición en hoja de máquina"
+            role="img"
+          >
+            <rect x={0} y={0} width={machineSheetWidth} height={machineSheetHeight} rx={2} ry={2} fill="#fff7ed" stroke="#c2410c" strokeWidth={0.5} />
             <rect
               x={utilX}
               y={utilY}
-              width={Math.min(usedWidth, utilWidth)}
-              height={Math.min(usedHeight, utilHeight)}
-              rx={1}
-              ry={1}
-              fill="transparent"
-              stroke="#0369a1"
-              strokeWidth={0.7}
+              width={utilWidth}
+              height={utilHeight}
+              rx={1.5}
+              ry={1.5}
+              fill="#eff6ff"
+              stroke="#0ea5e9"
+              strokeDasharray="2 1"
+              strokeWidth={0.5}
             />
-          ) : null}
-        </svg>
+
+            {pieceRects.map((piece, index) => (
+              <rect
+                key={`${piece.x}-${piece.y}-${index}`}
+                x={piece.x}
+                y={piece.y}
+                width={piece.width}
+                height={piece.height}
+                rx={0.8}
+                ry={0.8}
+                fill="#0ea5e9"
+                fillOpacity={0.18}
+                stroke="#0284c7"
+                strokeWidth={0.35}
+              />
+            ))}
+
+            {usedWidth > 0 && usedHeight > 0 ? (
+              <rect
+                x={utilX}
+                y={utilY}
+                width={Math.min(usedWidth, utilWidth)}
+                height={Math.min(usedHeight, utilHeight)}
+                rx={1}
+                ry={1}
+                fill="transparent"
+                stroke="#0369a1"
+                strokeWidth={0.7}
+              />
+            ) : null}
+          </svg>
+        </div>
       </div>
 
       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground">
           <p className="font-medium text-foreground">Pliego</p>
           <p>{formatCm(sheetWidth)} x {formatCm(sheetHeight)} cm</p>
+        </div>
+        <div className="rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground">
+          <p className="font-medium text-foreground">Corte máquina</p>
+          <p>{formatCm(machineSheetWidth)} x {formatCm(machineSheetHeight)} cm</p>
         </div>
         <div className="rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground">
           <p className="font-medium text-foreground">Area util</p>
@@ -178,6 +231,10 @@ export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewPr
         <span className="inline-flex items-center gap-1">
           <span className="h-3 w-3 rounded-sm border border-slate-500 bg-slate-100" />
           Pliego completo
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="h-3 w-3 rounded-sm border border-amber-600 bg-amber-100" />
+          Corte de máquina
         </span>
         <span className="inline-flex items-center gap-1">
           <span className="h-3 w-3 rounded-sm border border-sky-500 bg-sky-100" />

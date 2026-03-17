@@ -41,6 +41,11 @@ export type LitografiaResult = {
   qtyConDesperdicio: number
   piezasPorPliego?: number
   pliegosNecesarios?: number
+  hojasMaquinaPorPliego?: number
+  hojasMaquinaNecesarias?: number
+  hojasMaquinaHorizontal?: number
+  hojasMaquinaVertical?: number
+  orientacionCorte?: "normal" | "girada"
   papelPliegoWidthCm?: number
   papelPliegoHeightCm?: number
   papelFormatoWidthCm?: number
@@ -130,6 +135,11 @@ export function computeLitografia(params: LitografiaParams): LitografiaResult {
   let papelModo: "unidad" | "pliego" = requestedPapelModo
   let piezasPorPliego: number | undefined
   let pliegosNecesarios: number | undefined
+  let hojasMaquinaPorPliego: number | undefined
+  let hojasMaquinaNecesarias: number | undefined
+  let hojasMaquinaHorizontal: number | undefined
+  let hojasMaquinaVertical: number | undefined
+  let orientacionCorte: "normal" | "girada" | undefined
   let pliegoUtilWidthCm: number | undefined
   let pliegoUtilHeightCm: number | undefined
   let piezasHorizontal: number | undefined
@@ -138,17 +148,23 @@ export function computeLitografia(params: LitografiaParams): LitografiaResult {
 
   let papel = 0
   if (requestedPapelModo === "pliego" && costoPliego > 0 && pliegoW > 0 && pliegoH > 0 && formatoW > 0 && formatoH > 0) {
-    const utilW = maquinaW > 0 ? Math.min(pliegoW, maquinaW) : pliegoW
-    const utilH = maquinaH > 0 ? Math.min(pliegoH, maquinaH) : pliegoH
-    const layout = computePiecesPerSheet(utilW, utilH, formatoW, formatoH, maquinaSeparacion)
-    if (layout.total >= 1) {
-      pliegoUtilWidthCm = utilW
-      pliegoUtilHeightCm = utilH
+    const hojaMaquinaW = maquinaW > 0 ? Math.min(pliegoW, maquinaW) : pliegoW
+    const hojaMaquinaH = maquinaH > 0 ? Math.min(pliegoH, maquinaH) : pliegoH
+    const corteLayout = computePiecesPerSheet(pliegoW, pliegoH, hojaMaquinaW, hojaMaquinaH, 0)
+    const layout = computePiecesPerSheet(hojaMaquinaW, hojaMaquinaH, formatoW, formatoH, maquinaSeparacion)
+    if (layout.total >= 1 && corteLayout.total >= 1) {
+      hojasMaquinaPorPliego = corteLayout.total
+      hojasMaquinaNecesarias = Math.ceil(qtyConDesperdicio / layout.total)
+      hojasMaquinaHorizontal = corteLayout.across
+      hojasMaquinaVertical = corteLayout.down
+      orientacionCorte = corteLayout.orientation
+      pliegoUtilWidthCm = hojaMaquinaW
+      pliegoUtilHeightCm = hojaMaquinaH
       piezasHorizontal = layout.across
       piezasVertical = layout.down
       orientacionImpresion = layout.orientation
       piezasPorPliego = layout.total
-      pliegosNecesarios = Math.ceil(qtyConDesperdicio / layout.total)
+      pliegosNecesarios = Math.ceil(hojasMaquinaNecesarias / corteLayout.total)
       papel = pliegosNecesarios * costoPliego
     } else {
       papelModo = "unidad"
@@ -178,6 +194,11 @@ export function computeLitografia(params: LitografiaParams): LitografiaResult {
     qtyConDesperdicio,
     piezasPorPliego,
     pliegosNecesarios,
+    hojasMaquinaPorPliego,
+    hojasMaquinaNecesarias,
+    hojasMaquinaHorizontal,
+    hojasMaquinaVertical,
+    orientacionCorte,
     papelPliegoWidthCm: papelModo === "pliego" ? pliegoW : undefined,
     papelPliegoHeightCm: papelModo === "pliego" ? pliegoH : undefined,
     papelFormatoWidthCm: papelModo === "pliego" ? formatoW : undefined,

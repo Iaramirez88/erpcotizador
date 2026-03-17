@@ -2547,8 +2547,8 @@ export function LitografiaCalculator() {
               <summary className="relative cursor-pointer list-none [&::-webkit-details-marker]:hidden [&::marker]:content-['']">
                 <ChevronRight className="absolute left-2.5 top-4 h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
                 <CardHeader className="pl-8">
-                  <CardTitle>Planchas</CardTitle>
-                  <CardDescription>Costo de plancha por color.</CardDescription>
+                  <CardTitle>Se imprime en</CardTitle>
+                  <CardDescription>Define el formato real de impresión: área útil, separación y costo base de plancha si quieres dejarlo autollenado.</CardDescription>
                 </CardHeader>
               </summary>
               <CardContent className="space-y-4">
@@ -2559,7 +2559,7 @@ export function LitografiaCalculator() {
                       className={INPUT_COMPACT}
                       value={newPlanchaProfileNombre}
                       onChange={(e) => setNewPlanchaProfileNombre(e.target.value)}
-                      placeholder="Ej: Offset 70×100"
+                      placeholder="Ej: Cuarto pliego"
                     />
                   </div>
                   <div>
@@ -2630,7 +2630,7 @@ export function LitografiaCalculator() {
                   {profilesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
                   {planchaProfiles.length === 0 && !profilesLoading ? (
                     <p className="text-sm text-muted-foreground">
-                      {hasPlanchaProfiles && planchaProfilesSearch.trim() ? "Sin resultados." : "No hay registros de planchas."}
+                      {hasPlanchaProfiles && planchaProfilesSearch.trim() ? "Sin resultados." : "No hay formatos de impresión configurados."}
                     </p>
                   ) : null}
 
@@ -2639,7 +2639,7 @@ export function LitografiaCalculator() {
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
                           <p className="font-medium truncate">{p.nombre}</p>
-                          <p className="text-xs text-muted-foreground">Plancha/Color: {formatCurrency(p.costoPlanchaPorColor)}</p>
+                          <p className="text-xs text-muted-foreground">Costo plancha/color: {formatCurrency(p.costoPlanchaPorColor)}</p>
                           <p className="text-xs text-muted-foreground">Área útil: {p.anchoUtilCm}×{p.altoUtilCm} cm{(p.separacionPiezasCm ?? 0) > 0 ? ` • separación ${p.separacionPiezasCm} cm` : ""}</p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -3529,75 +3529,75 @@ export function LitografiaCalculator() {
               <summary className="relative cursor-pointer list-none [&::-webkit-details-marker]:hidden [&::marker]:content-['']">
                 <ChevronRight className="absolute left-2.5 top-4 h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
                 <CardHeader className="pl-8">
-                  <CardTitle>Tamaños de impresión</CardTitle>
-                  <CardDescription>Define los formatos disponibles (código, nombre y dimensiones).</CardDescription>
+                  <CardTitle>Tamaños cliente</CardTitle>
+                  <CardDescription>Define los tamaños finales que compra o recibe el cliente.</CardDescription>
                 </CardHeader>
               </summary>
               <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
-                <div className="md:col-span-2">
-                  <Label>Nombre</Label>
-                  <Input className={INPUT_COMPACT} value={newSizeNombre} onChange={(e) => setNewSizeNombre(e.target.value)} placeholder="Ej: Medio oficio" />
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                  <div className="md:col-span-2">
+                    <Label>Nombre</Label>
+                    <Input className={INPUT_COMPACT} value={newSizeNombre} onChange={(e) => setNewSizeNombre(e.target.value)} placeholder="Ej: Carta" />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Código</Label>
+                    <Input className={INPUT_COMPACT} value={newSizeKey} onChange={(e) => setNewSizeKey(e.target.value)} placeholder="Ej: MEDIO_OFICIO" />
+                  </div>
+                  <div>
+                    <Label>W (cm)</Label>
+                    <Input className={INPUT_COMPACT} type="number" step="0.1" value={newSizeW} onChange={(e) => setNewSizeW(e.target.value)} />
+                  </div>
+                  <div>
+                    <Label>H (cm)</Label>
+                    <Input className={INPUT_COMPACT} type="number" step="0.1" value={newSizeH} onChange={(e) => setNewSizeH(e.target.value)} />
+                  </div>
+                  <div className="md:col-span-4">
+                    <Button
+                      type="button"
+                      onClick={createSize}
+                      disabled={!newSizeNombre.trim() || !newSizeKey.trim() || !(parseFloat(newSizeW) > 0) || !(parseFloat(newSizeH) > 0)}
+                    >
+                      Agregar tamaño
+                    </Button>
+                  </div>
                 </div>
-                <div className="md:col-span-2">
-                  <Label>Código</Label>
-                  <Input className={INPUT_COMPACT} value={newSizeKey} onChange={(e) => setNewSizeKey(e.target.value)} placeholder="Ej: MEDIO_OFICIO" />
-                </div>
+
                 <div>
-                  <Label>W (cm)</Label>
-                  <Input className={INPUT_COMPACT} type="number" step="0.1" value={newSizeW} onChange={(e) => setNewSizeW(e.target.value)} />
+                  <Label>Buscar</Label>
+                  <Input
+                    className={INPUT_COMPACT}
+                    value={sizesSearch}
+                    onChange={(e) => setSizesSearch(e.target.value)}
+                    placeholder="Buscar por nombre o código…"
+                  />
                 </div>
-                <div>
-                  <Label>H (cm)</Label>
-                  <Input className={INPUT_COMPACT} type="number" step="0.1" value={newSizeH} onChange={(e) => setNewSizeH(e.target.value)} />
-                </div>
-                <div className="md:col-span-4">
-                  <Button
-                    type="button"
-                    onClick={createSize}
-                    disabled={!newSizeNombre.trim() || !newSizeKey.trim() || !(parseFloat(newSizeW) > 0) || !(parseFloat(newSizeH) > 0)}
-                  >
-                    Agregar tamaño
-                  </Button>
-                </div>
-              </div>
 
-              <div>
-                <Label>Buscar</Label>
-                <Input
-                  className={INPUT_COMPACT}
-                  value={sizesSearch}
-                  onChange={(e) => setSizesSearch(e.target.value)}
-                  placeholder="Buscar por nombre o código…"
-                />
-              </div>
+                <div className="space-y-2">
+                  {sizesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
+                  {sizesList.length === 0 && !sizesLoading ? (
+                    <p className="text-sm text-muted-foreground">{sizes.length > 0 && sizesSearch.trim() ? "Sin resultados." : "No hay tamaños cliente configurados."}</p>
+                  ) : null}
 
-              <div className="space-y-2">
-                {sizesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
-                {sizesList.length === 0 && !sizesLoading ? (
-                  <p className="text-sm text-muted-foreground">{sizes.length > 0 && sizesSearch.trim() ? "Sin resultados." : "No hay tamaños configurados."}</p>
-                ) : null}
-
-                {pagedSizes.map((s) => (
-                  <div key={s.id} className="rounded-md border p-3 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{s.nombre}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Código: {s.key} • {s.widthCm}×{s.heightCm} cm
-                        </p>
+                  {pagedSizes.map((s) => (
+                    <div key={s.id} className="rounded-md border p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{s.nombre}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Código: {s.key} • {s.widthCm}×{s.heightCm} cm
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button type="button" variant={s.activo ? "outline" : "default"} onClick={() => patchSize(s.id, { activo: !s.activo })}>
+                            {s.activo ? "Desactivar" : "Activar"}
+                          </Button>
+                          <Button type="button" variant="ghost" className="text-red-600" onClick={() => deleteSize(s.id)}>
+                            Eliminar
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button type="button" variant={s.activo ? "outline" : "default"} onClick={() => patchSize(s.id, { activo: !s.activo })}>
-                          {s.activo ? "Desactivar" : "Activar"}
-                        </Button>
-                        <Button type="button" variant="ghost" className="text-red-600" onClick={() => deleteSize(s.id)}>
-                          Eliminar
-                        </Button>
-                      </div>
-                    </div>
 
-                    {(() => {
+                      {(() => {
                       const draft = sizeEdits[s.id]
                       const draftNombre = draft?.nombre ?? s.nombre
                       const draftKey = draft?.key ?? s.key
@@ -4841,7 +4841,7 @@ export function LitografiaCalculator() {
                     ]}
                   />
                   {!sizeOptions.length ? (
-                    <p className="mt-1 text-xs text-muted-foreground">Crea tamaños en Configuración &gt; Tamaños de impresión.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Crea tamaños en Configuración &gt; Tamaños cliente.</p>
                   ) : null}
                 </div>
                 <div>
@@ -5338,10 +5338,13 @@ export function LitografiaCalculator() {
           <div>
             <Label>Cantidad (tiraje)</Label>
             <Input className={INPUT_COMPACT} type="number" step="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Aquí va la cantidad final que compra el cliente. Si el cliente pide 6000 volantes carta, en este campo debes poner 6000.
+            </p>
           </div>
 
           <div>
-            <Label>Tamaño de impresión</Label>
+            <Label>Tamaño final cliente</Label>
             <SearchableNativeSelect
               value={formatoKey}
               onChange={(nextKey) => {
@@ -5368,32 +5371,35 @@ export function LitografiaCalculator() {
               ]}
             />
             {!sizeOptions.length ? (
-              <p className="mt-1 text-xs text-muted-foreground">Crea tamaños en Configuración &gt; Tamaños de impresión para poder cotizar.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Crea tamaños en Configuración &gt; Tamaños cliente para poder cotizar.</p>
             ) : null}
+            <p className="mt-1 text-xs text-muted-foreground">Este selector define lo que recibe el cliente: carta, media carta, cuarto, octavo, medio pliego o pliego.</p>
           </div>
 
           <div>
-            <Label>Planchas (costo)</Label>
+            <Label>Se imprime en</Label>
             <SearchableNativeSelect
               value={selectedPlanchaProfileId}
               onChange={(v) => setSelectedPlanchaProfileId(v)}
               disabled={!activePlanchaProfiles.length}
               searchClassName={INPUT_COMPACT}
               selectClassName={SELECT_COMPACT}
-              searchPlaceholder="Buscar planchas…"
+              searchPlaceholder="Buscar formato de impresión…"
               options={
                 activePlanchaProfiles.length
-                  ? activePlanchaProfiles.map((p) => ({ value: p.id, label: p.nombre }))
-                  : [{ value: "", label: "Sin perfiles", disabled: true }]
+                  ? activePlanchaProfiles.map((p) => ({ value: p.id, label: `${p.nombre} (${p.anchoUtilCm}×${p.altoUtilCm} cm)` }))
+                  : [{ value: "", label: "Sin formatos configurados", disabled: true }]
               }
             />
             <p className="mt-1 text-xs text-muted-foreground">
               {selectedPlanchaProfile ? (
                 <>
-                  <span className="block">Plancha/Color: {formatCurrency(selectedPlanchaProfile.costoPlanchaPorColor)}</span>
+                  <span className="block">Área útil: {selectedPlanchaProfile.anchoUtilCm}×{selectedPlanchaProfile.altoUtilCm} cm</span>
+                  <span className="block">Separación: {selectedPlanchaProfile.separacionPiezasCm ?? 0} cm</span>
+                  <span className="block">Costo plancha/color: {formatCurrency(selectedPlanchaProfile.costoPlanchaPorColor)}</span>
                 </>
               ) : (
-                <>Selecciona planchas.</>
+                <>Selecciona el formato real en que se imprimirá; desde aquí también se toma el costo base de plancha.</>
               )}
             </p>
           </div>
