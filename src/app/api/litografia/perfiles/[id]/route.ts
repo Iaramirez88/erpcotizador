@@ -37,6 +37,9 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   }
   if (body.costoPlanchaPorColor !== undefined) patch.costoPlanchaPorColor = Math.max(0, asNumber(body.costoPlanchaPorColor, 0))
   if (body.costoTintaPorColor !== undefined) patch.costoTintaPorColor = Math.max(0, asNumber(body.costoTintaPorColor, 0))
+  if (body.anchoUtilCm !== undefined) patch.anchoUtilCm = Math.max(0.1, asNumber(body.anchoUtilCm, 70))
+  if (body.altoUtilCm !== undefined) patch.altoUtilCm = Math.max(0.1, asNumber(body.altoUtilCm, 100))
+  if (body.separacionPiezasCm !== undefined) patch.separacionPiezasCm = Math.max(0, asNumber(body.separacionPiezasCm, 0))
   if (body.activo !== undefined) patch.activo = Boolean(body.activo)
 
   try {
@@ -48,6 +51,9 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
         nombre: true,
         costoPlanchaPorColor: true,
         costoTintaPorColor: true,
+        anchoUtilCm: true,
+        altoUtilCm: true,
+        separacionPiezasCm: true,
         activo: true,
         updatedAt: true,
       },

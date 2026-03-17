@@ -34,6 +34,9 @@ export async function GET() {
       nombre: true,
       costoPlanchaPorColor: true,
       costoTintaPorColor: true,
+      anchoUtilCm: true,
+      altoUtilCm: true,
+      separacionPiezasCm: true,
       activo: true,
       updatedAt: true,
     },
@@ -56,6 +59,9 @@ export async function POST(request: NextRequest) {
 
   const costoPlanchaPorColor = Math.max(0, asNumber(body.costoPlanchaPorColor, 0))
   const costoTintaPorColor = Math.max(0, asNumber(body.costoTintaPorColor, 0))
+  const anchoUtilCm = Math.max(0.1, asNumber(body.anchoUtilCm, 70))
+  const altoUtilCm = Math.max(0.1, asNumber(body.altoUtilCm, 100))
+  const separacionPiezasCm = Math.max(0, asNumber(body.separacionPiezasCm, 0))
   const activo = body.activo === undefined ? true : Boolean(body.activo)
 
   try {
@@ -65,6 +71,9 @@ export async function POST(request: NextRequest) {
         nombre,
         costoPlanchaPorColor,
         costoTintaPorColor,
+        anchoUtilCm,
+        altoUtilCm,
+        separacionPiezasCm,
         activo,
       },
       select: {
@@ -72,6 +81,9 @@ export async function POST(request: NextRequest) {
         nombre: true,
         costoPlanchaPorColor: true,
         costoTintaPorColor: true,
+        anchoUtilCm: true,
+        altoUtilCm: true,
+        separacionPiezasCm: true,
         activo: true,
         updatedAt: true,
       },

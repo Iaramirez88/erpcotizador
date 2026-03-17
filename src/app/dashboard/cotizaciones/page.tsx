@@ -574,7 +574,8 @@ export default function CotizacionesPage() {
       const parsed = JSON.parse(json) as unknown;
       if (!parsed || typeof parsed !== 'object') return null;
       const rec = parsed as Record<string, unknown>;
-      if (rec.version !== 1) return null;
+      const version = Number(rec.version);
+      if (![1, 2].includes(version)) return null;
       const costoProduccion =
         typeof rec.costoProduccion === 'number' ? rec.costoProduccion : Number(rec.costoProduccion);
       const precioVenta =

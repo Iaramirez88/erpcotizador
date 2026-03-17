@@ -922,7 +922,8 @@ export default function CotizadorPage() {
       const parsed = JSON.parse(json) as unknown
       if (!parsed || typeof parsed !== "object") return null
       const rec = parsed as Record<string, unknown>
-      if (rec.version !== 1) return null
+      const version = Number(rec.version)
+      if (![1, 2].includes(version)) return null
       return parsed as LitografiaMeta
     } catch {
       return null
@@ -1767,6 +1768,8 @@ export default function CotizadorPage() {
                       detailParts.push(`${item.m2.toFixed(2)} ml${anchoLabel}`)
                     }
                     if (tiraje > 0) detailParts.push(`Tiraje: ${tiraje}`)
+                    if (meta?.selectedMachineName) detailParts.push(`Máquina: ${meta.selectedMachineName}`)
+                    if (meta?.impositionShort) detailParts.push(meta.impositionShort)
                     detailParts.push(`${t('quoteBuilder.fields.quantityLabel')}: ${item.cantidad}`)
                     const details = detailParts.join(" • ")
 

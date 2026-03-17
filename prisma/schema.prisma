@@ -646,6 +646,12 @@ model LitografiaPrintProfile {
   costoPlanchaPorColor Float @default(0)
   costoTintaPorColor   Float @default(0)
 
+  // Área útil máxima que la máquina/perfil puede imprimir sobre el pliego seleccionado.
+  // Se cruza con el tamaño del papel para calcular la imposición real.
+  anchoUtilCm         Float @default(70)
+  altoUtilCm          Float @default(100)
+  separacionPiezasCm  Float @default(0)
+
   activo Boolean @default(true)
 
   createdAt DateTime @default(now())

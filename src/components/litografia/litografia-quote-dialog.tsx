@@ -17,7 +17,8 @@ import { Label } from "@/components/ui/label"
 import { SearchableNativeSelect } from "@/components/ui/searchable-native-select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { computeLitografia } from "@/lib/litografia"
+import { LitografiaImpositionPreview } from "@/components/litografia/litografia-imposition-preview"
+import { computeLitografia, type LitografiaResult } from "@/lib/litografia"
 import { formatCurrency } from "@/lib/utils"
 
 type PapelTipo = "bond" | "propalcote" | "periodico" | "otro"
@@ -80,6 +81,9 @@ type PrintProfile = {
   nombre: string
   costoPlanchaPorColor: number
   costoTintaPorColor: number
+  anchoUtilCm: number
+  altoUtilCm: number
+  separacionPiezasCm: number
   activo: boolean
 }
 
@@ -153,6 +157,12 @@ function parseCopNumber(value: unknown): number {
   const digits = raw.replace(/[^0-9-]/g, "")
   const n = Math.trunc(parseFloat(digits) || 0)
   return Number.isFinite(n) ? n : 0
+}
+
+function formatCm(value: number | null | undefined) {
+  const n = Number(value)
+  if (!Number.isFinite(n) || n <= 0) return "—"
+  return Number.isInteger(n) ? String(n) : n.toFixed(2)
 }
 
 function getDefaultCostoPliego(tipo: PapelTipo) {
@@ -287,6 +297,15 @@ export type LitografiaMeta = {
     cover: EditorialPartState
     inner: EditorialPartState
   }
+
+  costoProduccion?: number
+  precioVenta?: number
+  selectedMachineName?: string
+  selectedMachineWidthCm?: string
+  selectedMachineHeightCm?: string
+  selectedMachineGapCm?: string
+  impositionShort?: string
+  impositionSummary?: string
 }
 
 type AddLitografiaItemPayload = {
@@ -770,8 +789,9 @@ export function LitografiaQuoteDialog(props: {
       })
       .filter(Boolean) as Array<{ paperId: string; qty: string; formatoKey?: string }>
     const selectedPaperIds = paperRows.map((r) => String(r.paperId || "").trim())
+    const computed = isAdmin ? calc : fallbackCalc
     return {
-      version: 1,
+      version: 2,
       titulo,
       descripcion,
       margenPct,
@@ -829,6 +849,14 @@ export function LitografiaQuoteDialog(props: {
           inner: { ...editorialInner, desperdicioPct: "0" },
         }
         : undefined,
+      costoProduccion: computed?.costoProduccion,
+      precioVenta: computed?.precioVenta,
+      selectedMachineName: primaryPlanchaProfile?.nombre,
+      selectedMachineWidthCm: primaryPlanchaProfile ? String(primaryMachineWidth) : undefined,
+      selectedMachineHeightCm: primaryPlanchaProfile ? String(primaryMachineHeight) : undefined,
+      selectedMachineGapCm: primaryPlanchaProfile ? String(primaryMachineGap) : undefined,
+      impositionShort: currentImpositionSummary?.short,
+      impositionSummary: currentImpositionSummary?.detail,
     }
   }
 
@@ -1075,6 +1103,9 @@ export function LitografiaQuoteDialog(props: {
   const primaryPlanchaProfile = selectedPlanchaProfiles[0] ?? null
   const primaryTintaProfile = selectedTintaProfiles[0] ?? null
   const primaryPaper = (primaryPaperId ? papers.find((p) => p.id === primaryPaperId) || null : null)
+  const primaryMachineWidth = Number(primaryPlanchaProfile?.anchoUtilCm) || 0
+  const primaryMachineHeight = Number(primaryPlanchaProfile?.altoUtilCm) || 0
+  const primaryMachineGap = Math.max(0, Number(primaryPlanchaProfile?.separacionPiezasCm) || 0)
 
   const planchaCostConfigured = useMemo(() => {
     const byId = new Map(profiles.map((p) => [p.id, p] as const))
@@ -1311,6 +1342,7 @@ export function LitografiaQuoteDialog(props: {
     if (!paper) return null
     const preset = sizeOptions.find((s) => s.key === String(part.formatoKey || "").trim()) || null
     if (!preset) return null
+    const planchaProfile = profiles.find((p) => p.id === String(part.planchaProfileId || "").trim()) || null
 
     const sobranteDefault = parseFloat(sobranteMinimo) || 0
     const sobranteLocal = parseFloat(String(part.sobranteMinimo))
@@ -1331,6 +1363,9 @@ export function LitografiaQuoteDialog(props: {
       papelPliegoHeightCm: paper.pliegoHeightCm ?? 0,
       papelFormatoWidthCm: preset.widthCm ?? 0,
       papelFormatoHeightCm: preset.heightCm ?? 0,
+      maquinaPliegoWidthCm: Number(planchaProfile?.anchoUtilCm) || 0,
+      maquinaPliegoHeightCm: Number(planchaProfile?.altoUtilCm) || 0,
+      maquinaSeparacionCm: Math.max(0, Number(planchaProfile?.separacionPiezasCm) || 0),
       costoPliego: 1,
       costoCorte: 0,
       costoAcabados: 0,
@@ -1346,7 +1381,7 @@ export function LitografiaQuoteDialog(props: {
       piezasPorPliego: r.piezasPorPliego,
       pliegosNecesarios: r.pliegosNecesarios,
     }
-  }, [cantidad, papers, sizeOptions, sobranteMinimo])
+  }, [cantidad, papers, profiles, sizeOptions, sobranteMinimo])
 
   const editorialCoverSheetsPreview = useMemo(() => {
     if (!editorialEnabled) return null
@@ -1465,7 +1500,7 @@ export function LitografiaQuoteDialog(props: {
     setSobranteMinimo((prev) => (String(prev || "").trim() ? prev : "100"))
   }, [papers, primaryPaperId])
 
-  const calc = useMemo(() => {
+  const calc = useMemo<LitografiaResult | null>(() => {
     if (!isAdmin) return null
     const qtyBase = parseFloat(cantidad) || 0
     const sobrante = parseFloat(sobranteMinimo) || 0
@@ -1541,6 +1576,9 @@ export function LitografiaQuoteDialog(props: {
           papelPliegoHeightCm: paper.pliegoHeightCm ?? 0,
           papelFormatoWidthCm: preset.widthCm ?? 0,
           papelFormatoHeightCm: preset.heightCm ?? 0,
+          maquinaPliegoWidthCm: Number(planchaProfile?.anchoUtilCm) || 0,
+          maquinaPliegoHeightCm: Number(planchaProfile?.altoUtilCm) || 0,
+          maquinaSeparacionCm: Math.max(0, Number(planchaProfile?.separacionPiezasCm) || 0),
           costoPliego: paper.costoPliego ?? 0,
           costoCorte: corteCostLocal,
           costoAcabados: finishesCost + specialCost + plastCost + troqCost,
@@ -1586,7 +1624,7 @@ export function LitografiaQuoteDialog(props: {
         precioVenta,
         costoUnitario: costoProduccion / qty,
         precioUnitario: precioVenta / qty,
-      }
+      } as LitografiaResult
     }
 
     const qtyForCompute = qtyBase
@@ -1610,6 +1648,9 @@ export function LitografiaQuoteDialog(props: {
       papelPliegoHeightCm: parseFloat(pliegoH) || 0,
       papelFormatoWidthCm: selectedPreset?.widthCm ?? 0,
       papelFormatoHeightCm: selectedPreset?.heightCm ?? 0,
+      maquinaPliegoWidthCm: primaryMachineWidth,
+      maquinaPliegoHeightCm: primaryMachineHeight,
+      maquinaSeparacionCm: primaryMachineGap,
       costoPliego: parseFloat(costoPliego) || 0,
       costoCorte: parseFloat(costoCorte) || 0,
       costoAcabados: parseFloat(costoAcabados) || 0,
@@ -1632,7 +1673,7 @@ export function LitografiaQuoteDialog(props: {
         precioVenta,
         costoUnitario: costoProduccion / qty,
         precioUnitario: precioVenta / qty,
-      }
+      } as LitografiaResult
     })()
 
     if (papelPorPliego && selectedPreset) {
@@ -1653,6 +1694,9 @@ export function LitografiaQuoteDialog(props: {
         papelPliegoHeightCm: (primaryPaper?.pliegoHeightCm ?? parseFloat(pliegoH)) || 0,
         papelFormatoWidthCm: selectedPreset.widthCm ?? 0,
         papelFormatoHeightCm: selectedPreset.heightCm ?? 0,
+        maquinaPliegoWidthCm: primaryMachineWidth,
+        maquinaPliegoHeightCm: primaryMachineHeight,
+        maquinaSeparacionCm: primaryMachineGap,
         costoPliego: 0,
         costoCorte: parseFloat(costoCorte) || 0,
         costoAcabados: parseFloat(costoAcabados) || 0,
@@ -1689,6 +1733,9 @@ export function LitografiaQuoteDialog(props: {
           papelPliegoHeightCm: paper.pliegoHeightCm ?? 0,
           papelFormatoWidthCm: rowPreset?.widthCm ?? 0,
           papelFormatoHeightCm: rowPreset?.heightCm ?? 0,
+          maquinaPliegoWidthCm: primaryMachineWidth,
+          maquinaPliegoHeightCm: primaryMachineHeight,
+          maquinaSeparacionCm: primaryMachineGap,
           costoPliego: paper.costoPliego ?? 0,
           costoCorte: 0,
           costoAcabados: 0,
@@ -1714,7 +1761,7 @@ export function LitografiaQuoteDialog(props: {
           precioVenta,
           costoUnitario: costoProduccion / qty,
           precioUnitario: precioVenta / qty,
-        }
+        } as LitografiaResult
       }
     }
     return withExtras
@@ -1745,6 +1792,9 @@ export function LitografiaQuoteDialog(props: {
     costoTransporte,
     paperRows,
     primaryPaper,
+    primaryMachineWidth,
+    primaryMachineHeight,
+    primaryMachineGap,
     papers,
     profiles,
     finishes,
@@ -1752,7 +1802,7 @@ export function LitografiaQuoteDialog(props: {
     tintas,
   ])
 
-  const fallbackCalc = useMemo(() => {
+  const fallbackCalc = useMemo<LitografiaResult | null>(() => {
     if (isAdmin) return null
     if (!props.open) return null
 
@@ -1831,6 +1881,9 @@ export function LitografiaQuoteDialog(props: {
           papelPliegoHeightCm: paper.pliegoHeightCm ?? 0,
           papelFormatoWidthCm: preset.widthCm ?? 0,
           papelFormatoHeightCm: preset.heightCm ?? 0,
+          maquinaPliegoWidthCm: Number(planchaProfile?.anchoUtilCm) || 0,
+          maquinaPliegoHeightCm: Number(planchaProfile?.altoUtilCm) || 0,
+          maquinaSeparacionCm: Math.max(0, Number(planchaProfile?.separacionPiezasCm) || 0),
           costoPliego: paper.costoPliego ?? 0,
           costoCorte: corteCostLocal,
           costoAcabados: finishesCost + specialCost + plastCost + troqCost,
@@ -1875,7 +1928,7 @@ export function LitografiaQuoteDialog(props: {
         precioVenta,
         costoUnitario: costoProduccion / qty,
         precioUnitario: precioVenta / qty,
-      }
+      } as LitografiaResult
     }
 
     if (!selectedPreset) return null
@@ -1901,6 +1954,9 @@ export function LitografiaQuoteDialog(props: {
       papelPliegoHeightCm: paper.pliegoHeightCm ?? 0,
       papelFormatoWidthCm: selectedPreset.widthCm ?? 0,
       papelFormatoHeightCm: selectedPreset.heightCm ?? 0,
+      maquinaPliegoWidthCm: primaryMachineWidth,
+      maquinaPliegoHeightCm: primaryMachineHeight,
+      maquinaSeparacionCm: primaryMachineGap,
       costoPliego: paper.costoPliego ?? 0,
       costoCorte: 0,
       costoAcabados: 0,
@@ -1927,6 +1983,9 @@ export function LitografiaQuoteDialog(props: {
         papelPliegoHeightCm: paper.pliegoHeightCm ?? 0,
         papelFormatoWidthCm: selectedPreset.widthCm ?? 0,
         papelFormatoHeightCm: selectedPreset.heightCm ?? 0,
+        maquinaPliegoWidthCm: primaryMachineWidth,
+        maquinaPliegoHeightCm: primaryMachineHeight,
+        maquinaSeparacionCm: primaryMachineGap,
         costoPliego: 0,
         costoCorte: 0,
         costoAcabados: 0,
@@ -1963,6 +2022,9 @@ export function LitografiaQuoteDialog(props: {
           papelPliegoHeightCm: p.pliegoHeightCm ?? 0,
           papelFormatoWidthCm: rowPreset?.widthCm ?? 0,
           papelFormatoHeightCm: rowPreset?.heightCm ?? 0,
+          maquinaPliegoWidthCm: primaryMachineWidth,
+          maquinaPliegoHeightCm: primaryMachineHeight,
+          maquinaSeparacionCm: primaryMachineGap,
           costoPliego: p.costoPliego ?? 0,
           costoCorte: 0,
           costoAcabados: 0,
@@ -1982,7 +2044,7 @@ export function LitografiaQuoteDialog(props: {
           precioVenta,
           costoUnitario: costoProduccion / baseNoPaper.qty,
           precioUnitario: precioVenta / baseNoPaper.qty,
-        }
+        } as LitografiaResult
       }
     }
     return base
@@ -2001,6 +2063,9 @@ export function LitografiaQuoteDialog(props: {
     costoTransporte,
     selectedPreset,
     primaryPaper,
+    primaryMachineWidth,
+    primaryMachineHeight,
+    primaryMachineGap,
     paperRows,
     papers,
     profiles,
@@ -2008,6 +2073,105 @@ export function LitografiaQuoteDialog(props: {
     sizeOptions,
     tintas,
   ])
+
+  const currentComputed = isAdmin ? calc : fallbackCalc
+
+  const currentImpositionSummary = useMemo(() => {
+    if (!currentComputed || currentComputed.papelModo !== "pliego") return null
+
+    const runQty = Math.max(0, Math.trunc(parseFloat(cantidad) || 0))
+    const sobrante = Math.max(0, Math.trunc(parseFloat(sobranteMinimo) || 0))
+    const piezas = Math.max(0, Math.trunc(Number(currentComputed.qtyConDesperdicio) || 0))
+    const formatoLabel = selectedPreset
+      ? `${selectedPreset.nombre} (${formatCm(selectedPreset.widthCm)}×${formatCm(selectedPreset.heightCm)} cm)`
+      : (formatoKey ? String(formatoKey) : "—")
+    const paperLabel = primaryPaper
+      ? `${primaryPaper.nombre} ${formatCm(primaryPaper.pliegoWidthCm)}×${formatCm(primaryPaper.pliegoHeightCm)} cm`
+      : `${formatCm(currentComputed.papelPliegoWidthCm)}×${formatCm(currentComputed.papelPliegoHeightCm)} cm`
+    const machineLabel = primaryPlanchaProfile
+      ? `${primaryPlanchaProfile.nombre} (${formatCm(primaryMachineWidth)}×${formatCm(primaryMachineHeight)} cm útiles)`
+      : "Máquina no configurada"
+    const utilLabel = `${formatCm(currentComputed.pliegoUtilWidthCm)}×${formatCm(currentComputed.pliegoUtilHeightCm)} cm`
+    const arrangement = (currentComputed.piezasHorizontal ?? 0) > 0 && (currentComputed.piezasVertical ?? 0) > 0
+      ? `${currentComputed.piezasHorizontal} × ${currentComputed.piezasVertical}`
+      : null
+    const orientation = currentComputed.orientacionImpresion === "girada" ? "girado" : "normal"
+    const short = arrangement && (currentComputed.piezasPorPliego ?? 0) > 0
+      ? `${primaryPlanchaProfile?.nombre ?? "Máquina"}: ${arrangement} = ${currentComputed.piezasPorPliego} pzas/pliego, ${currentComputed.pliegosNecesarios ?? "—"} pliegos.`
+      : `${primaryPlanchaProfile?.nombre ?? "Máquina"}: ${currentComputed.piezasPorPliego ?? "—"} pzas/pliego, ${currentComputed.pliegosNecesarios ?? "—"} pliegos.`
+    const detail = [
+      `Formato final ${formatoLabel}`,
+      `papel ${paperLabel}`,
+      `máquina ${machineLabel}`,
+      `área útil usada ${utilLabel}`,
+      arrangement ? `imposición ${arrangement} (${orientation})` : null,
+      `piezas = tiraje ${runQty} + sobrante ${sobrante} = ${piezas}`,
+      `pliegos = ⌈${piezas} / ${currentComputed.piezasPorPliego ?? "—"}⌉ = ${currentComputed.pliegosNecesarios ?? "—"}`,
+      (currentComputed.maquinaSeparacionCm ?? 0) > 0 ? `separación ${formatCm(currentComputed.maquinaSeparacionCm)} cm` : null,
+    ].filter(Boolean).join(" • ")
+
+    return {
+      short,
+      detail,
+      arrangement,
+      orientation,
+      machineLabel,
+      utilLabel,
+    }
+  }, [
+    currentComputed,
+    cantidad,
+    sobranteMinimo,
+    selectedPreset,
+    formatoKey,
+    primaryPaper,
+    primaryPlanchaProfile,
+    primaryMachineWidth,
+    primaryMachineHeight,
+  ])
+
+  const currentImpositionPreview = useMemo(() => {
+    if (editorialMode) return null
+    if (!currentComputed || currentComputed.papelModo !== "pliego" || !selectedPreset) return null
+
+    const piecesAcross = Math.max(0, Math.trunc(Number(currentComputed.piezasHorizontal) || 0))
+    const piecesDown = Math.max(0, Math.trunc(Number(currentComputed.piezasVertical) || 0))
+    if (piecesAcross <= 0 || piecesDown <= 0) return null
+
+    const isRotated = currentComputed.orientacionImpresion === "girada"
+    const pieceWidthCm = isRotated ? selectedPreset.heightCm : selectedPreset.widthCm
+    const pieceHeightCm = isRotated ? selectedPreset.widthCm : selectedPreset.heightCm
+    const sheetWidthCm = Number(currentComputed.papelPliegoWidthCm) || 0
+    const sheetHeightCm = Number(currentComputed.papelPliegoHeightCm) || 0
+    const utilWidthCm = Number(currentComputed.pliegoUtilWidthCm) || sheetWidthCm
+    const utilHeightCm = Number(currentComputed.pliegoUtilHeightCm) || sheetHeightCm
+    if (sheetWidthCm <= 0 || sheetHeightCm <= 0 || utilWidthCm <= 0 || utilHeightCm <= 0) return null
+
+    const paperLabel = primaryPaper
+      ? `${primaryPaper.nombre} ${formatCm(primaryPaper.pliegoWidthCm)}×${formatCm(primaryPaper.pliegoHeightCm)} cm`
+      : `Pliego ${formatCm(sheetWidthCm)}×${formatCm(sheetHeightCm)} cm`
+    const formatLabel = `${selectedPreset.nombre} ${formatCm(selectedPreset.widthCm)}×${formatCm(selectedPreset.heightCm)} cm`
+    const machineLabel = primaryPlanchaProfile
+      ? `${primaryPlanchaProfile.nombre} · area util ${formatCm(utilWidthCm)}×${formatCm(utilHeightCm)} cm`
+      : `Area util ${formatCm(utilWidthCm)}×${formatCm(utilHeightCm)} cm`
+
+    return {
+      sheetWidthCm,
+      sheetHeightCm,
+      utilWidthCm,
+      utilHeightCm,
+      pieceWidthCm,
+      pieceHeightCm,
+      piecesAcross,
+      piecesDown,
+      gapCm: Number(currentComputed.maquinaSeparacionCm) || 0,
+      paperLabel,
+      formatLabel,
+      machineLabel,
+      arrangementLabel: `${piecesAcross} x ${piecesDown}`,
+      orientationLabel: isRotated ? "girado" : "normal",
+    }
+  }, [editorialMode, currentComputed, selectedPreset, primaryPaper, primaryPlanchaProfile])
 
   const validation = useMemo(() => {
     const qty = Math.trunc(parseFloat(cantidad) || 0)
@@ -2098,28 +2262,37 @@ export function LitografiaQuoteDialog(props: {
     const piezas = Math.max(0, Math.trunc(Number(computed.qtyConDesperdicio) || 0))
 
     const formatoLabel = selectedPreset
-      ? `${selectedPreset.nombre} (${selectedPreset.widthCm}×${selectedPreset.heightCm} cm)`
+      ? `${selectedPreset.nombre} (${formatCm(selectedPreset.widthCm)}×${formatCm(selectedPreset.heightCm)} cm)`
       : (formatoKey ? String(formatoKey) : "—")
-    const pliegoLabel = `${String(pliegoW || "—")}×${String(pliegoH || "—")} cm`
+    const pliegoLabel = primaryPaper
+      ? `${formatCm(primaryPaper.pliegoWidthCm)}×${formatCm(primaryPaper.pliegoHeightCm)} cm`
+      : `${String(pliegoW || "—")}×${String(pliegoH || "—")} cm`
 
     if (computed.papelModo !== "pliego") {
       return {
-        line1: `Operación: piezas = tiraje (${runQty}) + sobrante (${sobrante}) = ${piezas}.`,
-        line2: null as string | null,
+        line1: `Formato final: ${formatoLabel}.`,
+        line2: `Operación: piezas = tiraje (${runQty}) + sobrante (${sobrante}) = ${piezas}.`,
+        line3: null as string | null,
       }
     }
 
     const pzasPorPliego = Math.max(0, Math.trunc(Number(computed.piezasPorPliego) || 0))
     const pliegos = Math.max(0, Math.trunc(Number(computed.pliegosNecesarios) || 0))
-    const op = pzasPorPliego > 0
-      ? `pliegos = ⌈${piezas} / ${pzasPorPliego}⌉ = ${pliegos}.`
-      : `pliegos = ⌈${piezas} / pzasPorPliego⌉ = ${pliegos}.`
+    const arrangement = (computed.piezasHorizontal ?? 0) > 0 && (computed.piezasVertical ?? 0) > 0
+      ? `${computed.piezasHorizontal} × ${computed.piezasVertical}`
+      : null
+    const orientation = computed.orientacionImpresion === "girada" ? "girado" : "normal"
+    const machineLabel = primaryPlanchaProfile
+      ? `${primaryPlanchaProfile.nombre} (${formatCm(primaryMachineWidth)}×${formatCm(primaryMachineHeight)} cm útiles)`
+      : "sin máquina configurada"
+    const utilLabel = `${formatCm(computed.pliegoUtilWidthCm)}×${formatCm(computed.pliegoUtilHeightCm)} cm`
 
     return {
-      line1: `Impresión en máquina de: ${formatoLabel}. Pliego: ${pliegoLabel}.`,
-      line2: `Operación: piezas = tiraje (${runQty}) + sobrante (${sobrante}) = ${piezas}. pzas/pliego = ${pzasPorPliego || "—"}; ${op}`,
+      line1: `Formato final: ${formatoLabel}. Papel: ${pliegoLabel}.`,
+      line2: `Máquina: ${machineLabel}. Área útil usada: ${utilLabel}.${arrangement ? ` Imposición: ${arrangement} (${orientation}) = ${pzasPorPliego} pzas/pliego.` : ` Piezas por pliego: ${pzasPorPliego || "—"}.`}`,
+      line3: `Cálculo: piezas = tiraje (${runQty}) + sobrante (${sobrante}) = ${piezas}; pliegos = ⌈${piezas} / ${pzasPorPliego || "—"}⌉ = ${pliegos}.${(computed.maquinaSeparacionCm ?? 0) > 0 ? ` Separación entre piezas: ${formatCm(computed.maquinaSeparacionCm)} cm.` : ""}`,
     }
-  }, [isAdmin, calc, fallbackCalc, cantidad, sobranteMinimo, selectedPreset, formatoKey, pliegoW, pliegoH])
+  }, [isAdmin, calc, fallbackCalc, cantidad, sobranteMinimo, selectedPreset, formatoKey, pliegoW, pliegoH, primaryPaper, primaryPlanchaProfile, primaryMachineWidth, primaryMachineHeight])
 
   const defaultDescripcion = useMemo(() => {
     const defaultTitle = t('printshopQuote.defaultTitle')
@@ -2153,6 +2326,7 @@ export function LitografiaQuoteDialog(props: {
         const opt = transporteOptions.find((o) => o.value === selectedTransporteKey)
         parts.push(`${t('printshopQuote.desc.transport')} ${opt?.label ?? ""}`.trim())
       }
+      if (!editorialEnabled && currentImpositionSummary?.short) parts.push(currentImpositionSummary.short)
       if (qtyShown > 0) parts.push(t('printshopQuote.desc.run', { qty: qtyShown }))
       return parts.join(" • ")
     }
@@ -2174,10 +2348,11 @@ export function LitografiaQuoteDialog(props: {
       parts.push(`${t('printshopQuote.desc.paper')} ${papelTipo}`)
       parts.push(`${formatoLabel}`)
       if (pl > 0 && pzas > 0) parts.push(t('printshopQuote.desc.sheetsSummary', { pl, pzas }))
+      if (currentImpositionSummary?.short) parts.push(currentImpositionSummary.short)
     }
 
     return parts.join(" • ")
-  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, calc, papelTipo, primaryPaper, selectedFinishes, selectedSpecialFinishNames, selectedTransporteKey, selectedPlastificado, selectedTroquelado, selectedCorte, transporteOptions, t, editorialEnabled, editorialOptions, selectedEditorialProductoKey])
+  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, calc, papelTipo, primaryPaper, selectedFinishes, selectedSpecialFinishNames, selectedTransporteKey, selectedPlastificado, selectedTroquelado, selectedCorte, transporteOptions, t, editorialEnabled, editorialOptions, selectedEditorialProductoKey, currentImpositionSummary])
 
 
   const buildDescripcion = () => {
@@ -2363,6 +2538,11 @@ export function LitografiaQuoteDialog(props: {
                               {runQtyHelp.line2}
                             </p>
                           ) : null}
+                          {runQtyHelp?.line3 ? (
+                            <p className={HELP_TEXT}>
+                              {runQtyHelp.line3}
+                            </p>
+                          ) : null}
                           {!editorialEnabled ? (
                             (isAdmin ? calc : fallbackCalc) && (isAdmin ? calc : fallbackCalc)!.papelModo === "pliego" ? (
                               <p className={HELP_TEXT}>
@@ -2445,6 +2625,12 @@ export function LitografiaQuoteDialog(props: {
                           </div>
                         ) : null}
                       </div>
+
+                      {currentImpositionPreview ? (
+                        <div className="sm:col-span-2">
+                          <LitografiaImpositionPreview {...currentImpositionPreview} />
+                        </div>
+                      ) : null}
 
                       {editorialMode ? (
                         <div className="sm:col-span-2">
@@ -3289,7 +3475,7 @@ export function LitografiaQuoteDialog(props: {
 
                       {!editorialMode && showAdvanced ? (
                       <div className="sm:col-span-2">
-                        <Label className={requiredLabelClass(validation.missingPlancha)}>{t('printshopQuote.fields.platesCost')}</Label>
+                        <Label className={requiredLabelClass(validation.missingPlancha)}>Máquina de impresión / plancha</Label>
                         <div className="mt-2 space-y-2">
                           {selectedPlanchaProfileIds.map((id, idx) => (
                             <div key={`${idx}-${id}`} className="flex items-center gap-2">
@@ -3339,13 +3525,15 @@ export function LitografiaQuoteDialog(props: {
                         </div>
                         <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
                           {primaryPlanchaProfile ? (
-                            <>{t('printshopQuote.summary.totalPlates', { total: formatCurrency(planchaCostConfigured) })}</>
+                            <>
+                              {t('printshopQuote.summary.totalPlates', { total: formatCurrency(planchaCostConfigured) })} Área útil: {formatCm(primaryMachineWidth)}×{formatCm(primaryMachineHeight)} cm{primaryMachineGap > 0 ? ` • separación ${formatCm(primaryMachineGap)} cm` : ""}.
+                            </>
                           ) : (
                             <>{t('printshopQuote.help.selectPlates')}</>
                           )}
                         </p>
                         <p className={HELP_TEXT}>
-                          Si agregas varias filas, se suman. Cada “Cantidad” multiplica ese perfil.
+                          La primera fila define la máquina usada para la imposición. Si agregas varias filas, sus costos se suman y cada “Cantidad” multiplica ese perfil.
                         </p>
                       </div>
                       ) : null}
@@ -3982,6 +4170,12 @@ export function LitografiaQuoteDialog(props: {
                             </div>
                           </div>
 
+                          {currentImpositionSummary ? (
+                            <div className={`${BOX_BLUR_MUTED} bg-muted/10 p-3 text-xs text-muted-foreground`}>
+                              {currentImpositionSummary.detail}
+                            </div>
+                          ) : null}
+
                           <div className="border-t pt-3">
                             {(() => {
                               const extras = customFieldsTotal
@@ -4032,6 +4226,12 @@ export function LitografiaQuoteDialog(props: {
                                 <span>{t('printshopQuote.admin.sheetsRequired')}</span>
                                 <span className="font-medium">{calc.pliegosNecesarios ?? "—"}</span>
                               </div>
+                            </div>
+                          ) : null}
+
+                          {currentImpositionSummary ? (
+                            <div className={`${BOX_BLUR_MUTED} bg-muted/10 p-3 text-xs text-muted-foreground`}>
+                              {currentImpositionSummary.detail}
                             </div>
                           ) : null}
 

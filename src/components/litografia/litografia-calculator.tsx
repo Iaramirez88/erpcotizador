@@ -70,6 +70,9 @@ type PrintProfile = {
   nombre: string
   costoPlanchaPorColor: number
   costoTintaPorColor: number
+  anchoUtilCm: number
+  altoUtilCm: number
+  separacionPiezasCm: number
   activo: boolean
 }
 
@@ -268,11 +271,14 @@ export function LitografiaCalculator() {
   // Formularios independientes (usuarios escriben en ambos módulos)
   const [newPlanchaProfileNombre, setNewPlanchaProfileNombre] = useState("")
   const [newPlanchaProfilePlancha, setNewPlanchaProfilePlancha] = useState("0")
+  const [newPlanchaProfileAnchoUtil, setNewPlanchaProfileAnchoUtil] = useState("70")
+  const [newPlanchaProfileAltoUtil, setNewPlanchaProfileAltoUtil] = useState("100")
+  const [newPlanchaProfileSeparacion, setNewPlanchaProfileSeparacion] = useState("0")
 
   const [newTintaProfileNombre, setNewTintaProfileNombre] = useState("")
   const [newTintaProfileTinta, setNewTintaProfileTinta] = useState("0")
 
-  const [profileEdits, setProfileEdits] = useState<Record<string, { nombre: string; plancha: string; tinta: string }>>({})
+  const [profileEdits, setProfileEdits] = useState<Record<string, { nombre: string; plancha: string; tinta: string; anchoUtil?: string; altoUtil?: string; separacion?: string }>>({})
 
   const [newPaperNombre, setNewPaperNombre] = useState("")
   const [newPaperTipo, setNewPaperTipo] = useState("")
@@ -1172,18 +1178,27 @@ export function LitografiaCalculator() {
   const createPlanchaProfile = async () => {
     const nombre = newPlanchaProfileNombre.trim()
     const plancha = parseFloat(newPlanchaProfilePlancha) || 0
-    if (!nombre || plancha <= 0) return
+    const anchoUtilCm = parseFloat(newPlanchaProfileAnchoUtil) || 0
+    const altoUtilCm = parseFloat(newPlanchaProfileAltoUtil) || 0
+    const separacionPiezasCm = Math.max(0, parseFloat(newPlanchaProfileSeparacion) || 0)
+    if (!nombre || plancha <= 0 || anchoUtilCm <= 0 || altoUtilCm <= 0) return
 
     const created = await createProfileDirect({
       nombre,
       costoPlanchaPorColor: plancha,
       costoTintaPorColor: 0,
+      anchoUtilCm,
+      altoUtilCm,
+      separacionPiezasCm,
       activo: true,
     })
 
     if (created) {
       setNewPlanchaProfileNombre("")
       setNewPlanchaProfilePlancha("0")
+      setNewPlanchaProfileAnchoUtil("70")
+      setNewPlanchaProfileAltoUtil("100")
+      setNewPlanchaProfileSeparacion("0")
     }
   }
 
@@ -1196,6 +1211,9 @@ export function LitografiaCalculator() {
       nombre,
       costoPlanchaPorColor: 0,
       costoTintaPorColor: tinta,
+      anchoUtilCm: 70,
+      altoUtilCm: 100,
+      separacionPiezasCm: 0,
       activo: true,
     })
 
@@ -1209,6 +1227,9 @@ export function LitografiaCalculator() {
     nombre: string
     costoPlanchaPorColor: number
     costoTintaPorColor: number
+    anchoUtilCm?: number
+    altoUtilCm?: number
+    separacionPiezasCm?: number
     activo: boolean
   }): Promise<PrintProfile | null> => {
     setConfigError(null)
@@ -1426,6 +1447,9 @@ export function LitografiaCalculator() {
       papelPliegoHeightCm: parseFloat(pliegoH) || 0,
       papelFormatoWidthCm: parsedFormatoW,
       papelFormatoHeightCm: parsedFormatoH,
+      maquinaPliegoWidthCm: Number(selectedPlanchaProfile?.anchoUtilCm) || 0,
+      maquinaPliegoHeightCm: Number(selectedPlanchaProfile?.altoUtilCm) || 0,
+      maquinaSeparacionCm: Math.max(0, Number(selectedPlanchaProfile?.separacionPiezasCm) || 0),
       costoPliego: parseFloat(costoPliego) || 0,
       costoCorte: parseFloat(costoCorte) || 0,
       // En modo tarifario, los acabados suelen ir dentro del precio del tarifario.
@@ -1449,6 +1473,7 @@ export function LitografiaCalculator() {
     formatoW,
     formatoH,
     selectedPreset,
+    selectedPlanchaProfile,
     selectedFinish,
     costoCorte,
     costoAcabados,
@@ -2547,11 +2572,44 @@ export function LitografiaCalculator() {
                       onChange={(e) => setNewPlanchaProfilePlancha(e.target.value)}
                     />
                   </div>
+                  <div>
+                    <Label>Ancho útil (cm)</Label>
+                    <Input
+                      className={INPUT_COMPACT}
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={newPlanchaProfileAnchoUtil}
+                      onChange={(e) => setNewPlanchaProfileAnchoUtil(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>Alto útil (cm)</Label>
+                    <Input
+                      className={INPUT_COMPACT}
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={newPlanchaProfileAltoUtil}
+                      onChange={(e) => setNewPlanchaProfileAltoUtil(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>Separación piezas (cm)</Label>
+                    <Input
+                      className={INPUT_COMPACT}
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={newPlanchaProfileSeparacion}
+                      onChange={(e) => setNewPlanchaProfileSeparacion(e.target.value)}
+                    />
+                  </div>
                   <div className="md:col-span-3">
                     <Button
                       type="button"
                       onClick={() => void createPlanchaProfile()}
-                      disabled={!newPlanchaProfileNombre.trim() || (parseFloat(newPlanchaProfilePlancha) || 0) <= 0}
+                      disabled={!newPlanchaProfileNombre.trim() || (parseFloat(newPlanchaProfilePlancha) || 0) <= 0 || (parseFloat(newPlanchaProfileAnchoUtil) || 0) <= 0 || (parseFloat(newPlanchaProfileAltoUtil) || 0) <= 0}
                     >
                       Agregar plancha
                     </Button>
@@ -2582,6 +2640,7 @@ export function LitografiaCalculator() {
                         <div className="min-w-0">
                           <p className="font-medium truncate">{p.nombre}</p>
                           <p className="text-xs text-muted-foreground">Plancha/Color: {formatCurrency(p.costoPlanchaPorColor)}</p>
+                          <p className="text-xs text-muted-foreground">Área útil: {p.anchoUtilCm}×{p.altoUtilCm} cm{(p.separacionPiezasCm ?? 0) > 0 ? ` • separación ${p.separacionPiezasCm} cm` : ""}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Button type="button" variant={p.activo ? "outline" : "default"} onClick={() => patchProfile(p.id, { activo: !p.activo })}>
@@ -2597,7 +2656,13 @@ export function LitografiaCalculator() {
                         const draft = profileEdits[p.id]
                         const draftNombre = draft?.nombre ?? p.nombre
                         const draftPlancha = draft?.plancha ?? String(p.costoPlanchaPorColor)
+                        const draftAnchoUtil = draft?.anchoUtil ?? String(p.anchoUtilCm)
+                        const draftAltoUtil = draft?.altoUtil ?? String(p.altoUtilCm)
+                        const draftSeparacion = draft?.separacion ?? String(p.separacionPiezasCm ?? 0)
                         const parsedPlancha = parseFloat(draftPlancha)
+                        const parsedAnchoUtil = parseFloat(draftAnchoUtil)
+                        const parsedAltoUtil = parseFloat(draftAltoUtil)
+                        const parsedSeparacion = parseFloat(draftSeparacion)
 
                         const hasDraft = Boolean(draft)
                         const isNombreDirty = draft?.nombre !== undefined && draftNombre.trim() !== p.nombre
@@ -2606,10 +2671,28 @@ export function LitografiaCalculator() {
                           Number.isFinite(parsedPlancha) &&
                           parsedPlancha >= 0 &&
                           parsedPlancha !== p.costoPlanchaPorColor
+                        const isAnchoDirty =
+                          draft?.anchoUtil !== undefined &&
+                          Number.isFinite(parsedAnchoUtil) &&
+                          parsedAnchoUtil > 0 &&
+                          parsedAnchoUtil !== p.anchoUtilCm
+                        const isAltoDirty =
+                          draft?.altoUtil !== undefined &&
+                          Number.isFinite(parsedAltoUtil) &&
+                          parsedAltoUtil > 0 &&
+                          parsedAltoUtil !== p.altoUtilCm
+                        const isSeparacionDirty =
+                          draft?.separacion !== undefined &&
+                          Number.isFinite(parsedSeparacion) &&
+                          parsedSeparacion >= 0 &&
+                          parsedSeparacion !== (p.separacionPiezasCm ?? 0)
 
                         const canSave =
-                          (isNombreDirty || isPlanchaDirty) &&
-                          (!draftPlancha.trim() || (Number.isFinite(parsedPlancha) && parsedPlancha >= 0))
+                          (isNombreDirty || isPlanchaDirty || isAnchoDirty || isAltoDirty || isSeparacionDirty) &&
+                          (!draftPlancha.trim() || (Number.isFinite(parsedPlancha) && parsedPlancha >= 0)) &&
+                          (!draftAnchoUtil.trim() || (Number.isFinite(parsedAnchoUtil) && parsedAnchoUtil > 0)) &&
+                          (!draftAltoUtil.trim() || (Number.isFinite(parsedAltoUtil) && parsedAltoUtil > 0)) &&
+                          (!draftSeparacion.trim() || (Number.isFinite(parsedSeparacion) && parsedSeparacion >= 0))
 
                         return (
                           <>
@@ -2627,6 +2710,9 @@ export function LitografiaCalculator() {
                                         nombre: v,
                                         plancha: prev[p.id]?.plancha ?? String(p.costoPlanchaPorColor),
                                         tinta: prev[p.id]?.tinta ?? String(p.costoTintaPorColor),
+                                        anchoUtil: prev[p.id]?.anchoUtil ?? String(p.anchoUtilCm),
+                                        altoUtil: prev[p.id]?.altoUtil ?? String(p.altoUtilCm),
+                                        separacion: prev[p.id]?.separacion ?? String(p.separacionPiezasCm ?? 0),
                                       },
                                     }))
                                   }}
@@ -2648,6 +2734,81 @@ export function LitografiaCalculator() {
                                         nombre: prev[p.id]?.nombre ?? p.nombre,
                                         plancha: v,
                                         tinta: prev[p.id]?.tinta ?? String(p.costoTintaPorColor),
+                                        anchoUtil: prev[p.id]?.anchoUtil ?? String(p.anchoUtilCm),
+                                        altoUtil: prev[p.id]?.altoUtil ?? String(p.altoUtilCm),
+                                        separacion: prev[p.id]?.separacion ?? String(p.separacionPiezasCm ?? 0),
+                                      },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Ancho útil</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  type="number"
+                                  step="0.1"
+                                  min="0"
+                                  value={draftAnchoUtil}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setProfileEdits((prev) => ({
+                                      ...prev,
+                                      [p.id]: {
+                                        nombre: prev[p.id]?.nombre ?? p.nombre,
+                                        plancha: prev[p.id]?.plancha ?? String(p.costoPlanchaPorColor),
+                                        tinta: prev[p.id]?.tinta ?? String(p.costoTintaPorColor),
+                                        anchoUtil: v,
+                                        altoUtil: prev[p.id]?.altoUtil ?? String(p.altoUtilCm),
+                                        separacion: prev[p.id]?.separacion ?? String(p.separacionPiezasCm ?? 0),
+                                      },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Alto útil</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  type="number"
+                                  step="0.1"
+                                  min="0"
+                                  value={draftAltoUtil}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setProfileEdits((prev) => ({
+                                      ...prev,
+                                      [p.id]: {
+                                        nombre: prev[p.id]?.nombre ?? p.nombre,
+                                        plancha: prev[p.id]?.plancha ?? String(p.costoPlanchaPorColor),
+                                        tinta: prev[p.id]?.tinta ?? String(p.costoTintaPorColor),
+                                        anchoUtil: prev[p.id]?.anchoUtil ?? String(p.anchoUtilCm),
+                                        altoUtil: v,
+                                        separacion: prev[p.id]?.separacion ?? String(p.separacionPiezasCm ?? 0),
+                                      },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Separación</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  type="number"
+                                  step="0.1"
+                                  min="0"
+                                  value={draftSeparacion}
+                                  onChange={(e) => {
+                                    const v = e.target.value
+                                    setProfileEdits((prev) => ({
+                                      ...prev,
+                                      [p.id]: {
+                                        nombre: prev[p.id]?.nombre ?? p.nombre,
+                                        plancha: prev[p.id]?.plancha ?? String(p.costoPlanchaPorColor),
+                                        tinta: prev[p.id]?.tinta ?? String(p.costoTintaPorColor),
+                                        anchoUtil: prev[p.id]?.anchoUtil ?? String(p.anchoUtilCm),
+                                        altoUtil: prev[p.id]?.altoUtil ?? String(p.altoUtilCm),
+                                        separacion: v,
                                       },
                                     }))
                                   }}
@@ -2687,6 +2848,9 @@ export function LitografiaCalculator() {
                                         nombre: nombre || p.nombre,
                                         costoPlanchaPorColor: nextPlancha,
                                         costoTintaPorColor: 0,
+                                        anchoUtilCm: Number.isFinite(parsedAnchoUtil) && parsedAnchoUtil > 0 ? parsedAnchoUtil : p.anchoUtilCm,
+                                        altoUtilCm: Number.isFinite(parsedAltoUtil) && parsedAltoUtil > 0 ? parsedAltoUtil : p.altoUtilCm,
+                                        separacionPiezasCm: Number.isFinite(parsedSeparacion) && parsedSeparacion >= 0 ? parsedSeparacion : (p.separacionPiezasCm ?? 0),
                                         activo: p.activo,
                                       })
 
@@ -2703,6 +2867,15 @@ export function LitografiaCalculator() {
                                     if (nombre && nombre !== p.nombre) patch.nombre = nombre
                                     if (Number.isFinite(parsedPlancha) && parsedPlancha >= 0 && parsedPlancha !== p.costoPlanchaPorColor) {
                                       patch.costoPlanchaPorColor = parsedPlancha
+                                    }
+                                    if (Number.isFinite(parsedAnchoUtil) && parsedAnchoUtil > 0 && parsedAnchoUtil !== p.anchoUtilCm) {
+                                      patch.anchoUtilCm = parsedAnchoUtil
+                                    }
+                                    if (Number.isFinite(parsedAltoUtil) && parsedAltoUtil > 0 && parsedAltoUtil !== p.altoUtilCm) {
+                                      patch.altoUtilCm = parsedAltoUtil
+                                    }
+                                    if (Number.isFinite(parsedSeparacion) && parsedSeparacion >= 0 && parsedSeparacion !== (p.separacionPiezasCm ?? 0)) {
+                                      patch.separacionPiezasCm = parsedSeparacion
                                     }
                                     if (Object.keys(patch).length === 0) return
                                     void patchProfile(p.id, patch)
@@ -2925,6 +3098,9 @@ export function LitografiaCalculator() {
                                         nombre: nombre || p.nombre,
                                         costoPlanchaPorColor: 0,
                                         costoTintaPorColor: nextTinta,
+                                        anchoUtilCm: p.anchoUtilCm,
+                                        altoUtilCm: p.altoUtilCm,
+                                        separacionPiezasCm: p.separacionPiezasCm ?? 0,
                                         activo: p.activo,
                                       })
 
