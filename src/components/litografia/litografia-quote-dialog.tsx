@@ -232,6 +232,8 @@ function createDefaultEditorialPart(): EditorialPartState {
 
 type CustomField = { id: string; label: string; value: string }
 
+const LITOGRAFIA_ITEM_IVA_PCT = 19
+
 export type LitografiaMeta = {
   version?: number
   titulo: string
@@ -284,6 +286,10 @@ export type LitografiaMeta = {
   costoAcabados: string
   costoTransporte: string
   customFields: CustomField[]
+  itemSubtotalIncludesIva?: boolean
+  itemIvaPct?: number
+  subtotalSinIva?: number
+  subtotalConIva?: number
 
   quoteMode?: QuoteMode
 
@@ -767,6 +773,43 @@ export function LitografiaQuoteDialog(props: {
     return 1 + pct / 100
   }, [margenPct])
 
+  const buildLitografiaQuoteAmounts = (computed: LitografiaResult | null) => {
+    if (!computed) return null
+
+    const ignoreNormalExtras = editorialEnabled
+    const addFinishesCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : selectedFinishesCost)
+    const addSpecialFinishesCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : specialFinishesCost)
+    const addPlastificadoCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : plastificadoCostTotal)
+    const addTroqueladoCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : troqueladoCostTotal)
+    const addCorteCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : corteCostTotal)
+
+    const baseValue = computed.precioVenta ?? 0
+    const subtotalSinIva =
+      (baseValue * margenMultiplier) +
+      addFinishesCost +
+      addSpecialFinishesCost +
+      addPlastificadoCost +
+      addTroqueladoCost +
+      addCorteCost +
+      customFieldsTotal
+    const ivaValue = subtotalSinIva * (LITOGRAFIA_ITEM_IVA_PCT / 100)
+    const subtotalConIva = subtotalSinIva + ivaValue
+
+    return {
+      baseValue,
+      addFinishesCost,
+      addSpecialFinishesCost,
+      addPlastificadoCost,
+      addTroqueladoCost,
+      addCorteCost,
+      extras: customFieldsTotal,
+      subtotalSinIva,
+      ivaPct: LITOGRAFIA_ITEM_IVA_PCT,
+      ivaValue,
+      subtotalConIva,
+    }
+  }
+
   const buildMeta = (): LitografiaMeta => {
     const finishIds = selectedFinishIds.map((x) => String(x || "").trim()).filter(Boolean)
     const primaryFinishId = finishIds[0] ?? ""
@@ -791,6 +834,7 @@ export function LitografiaQuoteDialog(props: {
       .filter(Boolean) as Array<{ paperId: string; qty: string; formatoKey?: string }>
     const selectedPaperIds = paperRows.map((r) => String(r.paperId || "").trim())
     const computed = isAdmin ? calc : fallbackCalc
+    const quoteAmounts = buildLitografiaQuoteAmounts(computed)
     return {
       version: 2,
       titulo,
@@ -837,6 +881,10 @@ export function LitografiaQuoteDialog(props: {
       costoAcabados,
       costoTransporte,
       customFields,
+      itemSubtotalIncludesIva: true,
+      itemIvaPct: quoteAmounts?.ivaPct,
+      subtotalSinIva: quoteAmounts?.subtotalSinIva,
+      subtotalConIva: quoteAmounts?.subtotalConIva,
 
       editorialProductoKey: editorialEnabled ? selectedEditorialProductoKey : undefined,
       editorialTotalPaginas: editorialEnabled ? editorialTotalPaginas : undefined,
@@ -851,7 +899,7 @@ export function LitografiaQuoteDialog(props: {
         }
         : undefined,
       costoProduccion: computed?.costoProduccion,
-      precioVenta: computed?.precioVenta,
+      precioVenta: quoteAmounts?.subtotalSinIva ?? computed?.precioVenta,
       selectedMachineName: primaryPlanchaProfile?.nombre,
       selectedMachineWidthCm: primaryPlanchaProfile ? String(primaryMachineWidth) : undefined,
       selectedMachineHeightCm: primaryPlanchaProfile ? String(primaryMachineHeight) : undefined,
@@ -2136,6 +2184,9 @@ export function LitografiaQuoteDialog(props: {
     primaryMachineHeight,
   ])
 
+  const estimatedQuoteAmounts = buildLitografiaQuoteAmounts(fallbackCalc)
+  const adminQuoteAmounts = buildLitografiaQuoteAmounts(calc)
+
   const validation = useMemo(() => {
     const qty = Math.trunc(parseFloat(cantidad) || 0)
     const missingCantidad = qty <= 0
@@ -2371,24 +2422,14 @@ export function LitografiaQuoteDialog(props: {
         return
       }
 
-      const ignoreNormalExtras = editorialEnabled
-      const addFinishesCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : selectedFinishesCost)
-      const addSpecialFinishesCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : specialFinishesCost)
-      const addPlastificadoCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : plastificadoCostTotal)
-      const addTroqueladoCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : troqueladoCostTotal)
-      const addCorteCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : corteCostTotal)
+      const quoteAmounts = buildLitografiaQuoteAmounts(computed)
+      if (!quoteAmounts) {
+        setPricingError(t('printshopQuote.errors.noRateOrEstimate'))
+        return
+      }
 
       const meta = buildMeta()
-      const baseValue = computed.precioVenta ?? 0
-      const subtotalPerItem =
-        (baseValue * margenMultiplier) +
-        addFinishesCost +
-        addSpecialFinishesCost +
-        addPlastificadoCost +
-        addTroqueladoCost +
-        addCorteCost +
-        customFieldsTotal
-      const subtotal = subtotalPerItem
+      const subtotal = quoteAmounts.subtotalConIva
       const precioUnitario = runQty > 0 ? subtotal / runQty : subtotal
       const payload: AddLitografiaItemPayload = {
         descripcion: buildDescripcion(),
@@ -4046,6 +4087,9 @@ export function LitografiaQuoteDialog(props: {
                             <p className={HELP_TEXT}>
                               Precio final = precio base × (1 + %/100).
                             </p>
+                            <p className={HELP_TEXT}>
+                              IVA del ítem litografía: +{LITOGRAFIA_ITEM_IVA_PCT}% sobre el precio final de este ítem.
+                            </p>
                           </div>
 
                           <div className="sm:col-span-2">
@@ -4186,14 +4230,8 @@ export function LitografiaQuoteDialog(props: {
 
                           <div className="border-t pt-3">
                             {(() => {
-                              const extras = customFieldsTotal
-                              const baseValue = fallbackCalc.precioVenta || 0
-                              const addFinishes = editorialEnabled ? 0 : selectedFinishesCost
-                              const addSpecial = editorialEnabled ? 0 : specialFinishesCost
-                              const addPlast = editorialEnabled ? 0 : plastificadoCostTotal
-                              const addTroq = editorialEnabled ? 0 : troqueladoCostTotal
-                              const addCorte = editorialEnabled ? 0 : corteCostTotal
-                              const total = (baseValue * margenMultiplier) + addFinishes + addSpecial + addPlast + addTroq + addCorte + extras
+                              const quote = estimatedQuoteAmounts
+                              if (!quote) return null
                               return (
                                 <>
                                   <div className="space-y-1">
@@ -4203,15 +4241,17 @@ export function LitografiaQuoteDialog(props: {
                                     <div className="flex justify-between"><span className="text-muted-foreground">{t('printshopQuote.breakdown.transport')}</span><span className="font-medium">{formatCurrency(fallbackCalc.transporte || 0)}</span></div>
                                   </div>
 
-                                  <div className="flex justify-between mt-2"><span className="text-muted-foreground">{t('printshopQuote.breakdown.baseEstimated')}</span><span className="font-medium">{formatCurrency(baseValue)}</span></div>
-                                  {addFinishes ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.finishes')}</span><span className="font-medium">{formatCurrency(addFinishes)}</span></div> : null}
-                                  {addSpecial ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.specialFinishes')}</span><span className="font-medium">{formatCurrency(addSpecial)}</span></div> : null}
-                                  {addPlast ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.lamination')}{plastificadoQty > 1 ? ` (x${plastificadoQty})` : ""}</span><span className="font-medium">{formatCurrency(addPlast)}</span></div> : null}
-                                  {addTroq ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.dieCut')}{troqueladoQty > 1 ? ` (x${troqueladoQty})` : ""}</span><span className="font-medium">{formatCurrency(addTroq)}</span></div> : null}
-                                  {addCorte ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.cut')}{corteQty > 1 ? ` (x${corteQty})` : ""}</span><span className="font-medium">{formatCurrency(addCorte)}</span></div> : null}
-                                  {extras ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.extraFields')}</span><span className="font-medium">{formatCurrency(extras)}</span></div> : null}
-                                  <div className="flex justify-between mt-2"><span className="font-medium">{t('printshopQuote.breakdown.total')}</span><span className="font-bold text-blue-700">{formatCurrency(total)}</span></div>
-                                  <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.unit')}</span><span className="font-medium">{formatCurrency(total)}</span></div>
+                                  <div className="flex justify-between mt-2"><span className="text-muted-foreground">{t('printshopQuote.breakdown.baseEstimated')}</span><span className="font-medium">{formatCurrency(quote.baseValue)}</span></div>
+                                  {quote.addFinishesCost ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.finishes')}</span><span className="font-medium">{formatCurrency(quote.addFinishesCost)}</span></div> : null}
+                                  {quote.addSpecialFinishesCost ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.specialFinishes')}</span><span className="font-medium">{formatCurrency(quote.addSpecialFinishesCost)}</span></div> : null}
+                                  {quote.addPlastificadoCost ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.lamination')}{plastificadoQty > 1 ? ` (x${plastificadoQty})` : ""}</span><span className="font-medium">{formatCurrency(quote.addPlastificadoCost)}</span></div> : null}
+                                  {quote.addTroqueladoCost ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.dieCut')}{troqueladoQty > 1 ? ` (x${troqueladoQty})` : ""}</span><span className="font-medium">{formatCurrency(quote.addTroqueladoCost)}</span></div> : null}
+                                  {quote.addCorteCost ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.cut')}{corteQty > 1 ? ` (x${corteQty})` : ""}</span><span className="font-medium">{formatCurrency(quote.addCorteCost)}</span></div> : null}
+                                  {quote.extras ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.extraFields')}</span><span className="font-medium">{formatCurrency(quote.extras)}</span></div> : null}
+                                  <div className="flex justify-between mt-2"><span className="text-muted-foreground">Precio ítem sin IVA</span><span className="font-medium">{formatCurrency(quote.subtotalSinIva)}</span></div>
+                                  <div className="flex justify-between mt-1"><span className="text-muted-foreground">IVA ítem ({quote.ivaPct}%)</span><span className="font-medium">{formatCurrency(quote.ivaValue)}</span></div>
+                                  <div className="flex justify-between mt-2"><span className="font-medium">Total ítem</span><span className="font-bold text-blue-700">{formatCurrency(quote.subtotalConIva)}</span></div>
+                                  <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.unit')}</span><span className="font-medium">{formatCurrency(quote.subtotalConIva)}</span></div>
                                 </>
                               )
                             })()}
@@ -4285,17 +4325,21 @@ export function LitografiaQuoteDialog(props: {
 
                           <div className="border-t pt-3">
                             {(() => {
-                              const baseValue = calc.precioVenta || 0
-                              const total = (baseValue * margenMultiplier) + customFieldsTotal
+                              const quote = adminQuoteAmounts
+                              if (!quote) return null
                               return (
                                 <>
                                   <div className="flex justify-between">
                                     <span className="font-medium">{t('printshopQuote.admin.salePrice')}</span>
-                                    <span className="font-bold text-blue-700">{formatCurrency(total)}</span>
+                                    <span className="font-bold">{formatCurrency(quote.subtotalSinIva)}</span>
                                   </div>
                                   <div className="flex justify-between mt-1">
-                                    <span className="text-muted-foreground">{t('printshopQuote.admin.saleUnitPrice')}</span>
-                                    <span className="font-medium">{formatCurrency(total)}</span>
+                                    <span className="text-muted-foreground">IVA ítem ({quote.ivaPct}%)</span>
+                                    <span className="font-medium">{formatCurrency(quote.ivaValue)}</span>
+                                  </div>
+                                  <div className="flex justify-between mt-1">
+                                    <span className="font-medium">Total ítem con IVA</span>
+                                    <span className="font-bold text-blue-700">{formatCurrency(quote.subtotalConIva)}</span>
                                   </div>
                                 </>
                               )

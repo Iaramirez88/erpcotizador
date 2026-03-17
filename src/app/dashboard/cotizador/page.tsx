@@ -105,6 +105,25 @@ function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {}
 }
 
+function getLitografiaItemIncludedIvaPct(raw: unknown): number | null {
+  if (typeof raw !== "string") return null
+  const idx = raw.indexOf("LITOGRAFIA_META:")
+  if (idx < 0) return null
+  const json = raw.slice(idx + "LITOGRAFIA_META:".length).trim()
+  if (!json) return null
+
+  try {
+    const parsed = JSON.parse(json) as unknown
+    if (!parsed || typeof parsed !== "object") return null
+    const rec = parsed as Record<string, unknown>
+    if (rec.itemSubtotalIncludesIva !== true) return null
+    const ivaPct = typeof rec.itemIvaPct === "number" ? rec.itemIvaPct : Number(rec.itemIvaPct)
+    return Number.isFinite(ivaPct) && ivaPct > 0 ? ivaPct : null
+  } catch {
+    return null
+  }
+}
+
 export default function CotizadorPage() {
   const { t, language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-MX'
@@ -995,24 +1014,44 @@ export default function CotizadorPage() {
   }
 
   const calcularTotales = () => {
-    const sub = items.reduce((sum, item) => sum + item.subtotal, 0)
-    // Descuento deshabilitado por el momento.
-    const subConDescuento = sub
-
     const ivaPct = Math.min(100, Math.max(0, taxConfig.ivaPct))
     const rate = ivaPct / 100
 
+    let subtotalGeneral = 0
+    let subtotalLitografiaSinIva = 0
+    let ivaLitografia = 0
+
+    for (const item of items) {
+      const subtotalItem = Number.isFinite(item.subtotal) ? item.subtotal : 0
+      const itemIvaPct = getLitografiaItemIncludedIvaPct(item.observaciones)
+
+      if (itemIvaPct && subtotalItem > 0) {
+        const denom = 1 + itemIvaPct / 100
+        const base = denom > 0 ? subtotalItem / denom : subtotalItem
+        subtotalLitografiaSinIva += base
+        ivaLitografia += subtotalItem - base
+        continue
+      }
+
+      subtotalGeneral += subtotalItem
+    }
+
     let ivaCalc = 0
     let tot = 0
+    let sub = 0
 
     if (taxConfig.pricesIncludeIva) {
       const denom = 1 + rate
-      const base = denom > 0 ? subConDescuento / denom : subConDescuento
-      ivaCalc = subConDescuento - base
-      tot = subConDescuento
+      const baseGeneral = denom > 0 ? subtotalGeneral / denom : subtotalGeneral
+      const ivaGeneral = subtotalGeneral - baseGeneral
+      sub = baseGeneral + subtotalLitografiaSinIva
+      ivaCalc = ivaGeneral + ivaLitografia
+      tot = subtotalGeneral + subtotalLitografiaSinIva + ivaLitografia
     } else {
-      ivaCalc = subConDescuento * rate
-      tot = subConDescuento + ivaCalc
+      const ivaGeneral = subtotalGeneral * rate
+      sub = subtotalGeneral + subtotalLitografiaSinIva
+      ivaCalc = ivaGeneral + ivaLitografia
+      tot = subtotalGeneral + ivaGeneral + subtotalLitografiaSinIva + ivaLitografia
     }
 
     setSubtotal(sub)
