@@ -1155,7 +1155,7 @@ export function LitografiaQuoteDialog(props: {
   const primaryPaper = (primaryPaperId ? papers.find((p) => p.id === primaryPaperId) || null : null)
   const primaryMachineWidth = Number(primaryPlanchaProfile?.anchoUtilCm) || 0
   const primaryMachineHeight = Number(primaryPlanchaProfile?.altoUtilCm) || 0
-  const primaryMachineGap = Math.max(0, Number(primaryPlanchaProfile?.separacionPiezasCm) || 0)
+  const primaryMachineGap = 0
 
   const planchaCostConfigured = useMemo(() => {
     const byId = new Map(profiles.map((p) => [p.id, p] as const))
@@ -1415,7 +1415,7 @@ export function LitografiaQuoteDialog(props: {
       papelFormatoHeightCm: preset.heightCm ?? 0,
       maquinaPliegoWidthCm: Number(planchaProfile?.anchoUtilCm) || 0,
       maquinaPliegoHeightCm: Number(planchaProfile?.altoUtilCm) || 0,
-      maquinaSeparacionCm: Math.max(0, Number(planchaProfile?.separacionPiezasCm) || 0),
+      maquinaSeparacionCm: 0,
       costoPliego: 1,
       costoCorte: 0,
       costoAcabados: 0,
@@ -1628,7 +1628,7 @@ export function LitografiaQuoteDialog(props: {
           papelFormatoHeightCm: preset.heightCm ?? 0,
           maquinaPliegoWidthCm: Number(planchaProfile?.anchoUtilCm) || 0,
           maquinaPliegoHeightCm: Number(planchaProfile?.altoUtilCm) || 0,
-          maquinaSeparacionCm: Math.max(0, Number(planchaProfile?.separacionPiezasCm) || 0),
+          maquinaSeparacionCm: 0,
           costoPliego: paper.costoPliego ?? 0,
           costoCorte: corteCostLocal,
           costoAcabados: finishesCost + specialCost + plastCost + troqCost,
@@ -1933,7 +1933,7 @@ export function LitografiaQuoteDialog(props: {
           papelFormatoHeightCm: preset.heightCm ?? 0,
           maquinaPliegoWidthCm: Number(planchaProfile?.anchoUtilCm) || 0,
           maquinaPliegoHeightCm: Number(planchaProfile?.altoUtilCm) || 0,
-          maquinaSeparacionCm: Math.max(0, Number(planchaProfile?.separacionPiezasCm) || 0),
+          maquinaSeparacionCm: 0,
           costoPliego: paper.costoPliego ?? 0,
           costoCorte: corteCostLocal,
           costoAcabados: finishesCost + specialCost + plastCost + troqCost,
@@ -2139,9 +2139,8 @@ export function LitografiaQuoteDialog(props: {
       ? `${primaryPaper.nombre} ${formatCm(primaryPaper.pliegoWidthCm)}×${formatCm(primaryPaper.pliegoHeightCm)} cm`
       : `${formatCm(currentComputed.papelPliegoWidthCm)}×${formatCm(currentComputed.papelPliegoHeightCm)} cm`
     const machineLabel = primaryPlanchaProfile
-      ? `${primaryPlanchaProfile.nombre} (${formatCm(primaryMachineWidth)}×${formatCm(primaryMachineHeight)} cm útiles)`
-      : "Máquina no configurada"
-    const utilLabel = `${formatCm(currentComputed.pliegoUtilWidthCm)}×${formatCm(currentComputed.pliegoUtilHeightCm)} cm`
+      ? `${primaryPlanchaProfile.nombre} (${formatCm(primaryMachineWidth)}×${formatCm(primaryMachineHeight)} cm)`
+      : "Perfil no configurado"
     const hojasMaquinaPorPliego = Math.max(0, Math.trunc(Number(currentComputed.hojasMaquinaPorPliego) || 0))
     const hojasMaquinaNecesarias = Math.max(0, Math.trunc(Number(currentComputed.hojasMaquinaNecesarias) || 0))
     const arrangement = (currentComputed.piezasHorizontal ?? 0) > 0 && (currentComputed.piezasVertical ?? 0) > 0
@@ -2154,14 +2153,12 @@ export function LitografiaQuoteDialog(props: {
     const detail = [
       `cliente recibe ${formatoLabel}`,
       `papel ${paperLabel}`,
-      `máquina ${machineLabel}`,
+      `impresión ${machineLabel}`,
       hojasMaquinaPorPliego > 0 ? `del pliego salen ${hojasMaquinaPorPliego} hojas de máquina` : null,
-      `área útil usada ${utilLabel}`,
       arrangement ? `imposición ${arrangement} (${orientation})` : null,
       `producción = tiraje cliente ${runQty} + sobrante ${sobrante} = ${piezas} piezas finales`,
       `tiraje impresor = ⌈${piezas} / ${currentComputed.piezasPorPliego ?? "—"}⌉ = ${hojasMaquinaNecesarias || "—"} hojas de impresión`,
       hojasMaquinaPorPliego > 0 ? `pliegos papel = ⌈${hojasMaquinaNecesarias || "—"} / ${hojasMaquinaPorPliego}⌉ = ${currentComputed.pliegosNecesarios ?? "—"}` : `pliegos papel = ${currentComputed.pliegosNecesarios ?? "—"}`,
-      (currentComputed.maquinaSeparacionCm ?? 0) > 0 ? `separación ${formatCm(currentComputed.maquinaSeparacionCm)} cm` : null,
     ].filter(Boolean).join(" • ")
 
     return {
@@ -2170,7 +2167,6 @@ export function LitografiaQuoteDialog(props: {
       arrangement,
       orientation,
       machineLabel,
-      utilLabel,
     }
   }, [
     currentComputed,
@@ -2299,14 +2295,13 @@ export function LitografiaQuoteDialog(props: {
       : null
     const orientation = computed.orientacionImpresion === "girada" ? "girado" : "normal"
     const machineLabel = primaryPlanchaProfile
-      ? `${primaryPlanchaProfile.nombre} (${formatCm(primaryMachineWidth)}×${formatCm(primaryMachineHeight)} cm útiles)`
-      : "sin máquina configurada"
-    const utilLabel = `${formatCm(computed.pliegoUtilWidthCm)}×${formatCm(computed.pliegoUtilHeightCm)} cm`
+      ? `${primaryPlanchaProfile.nombre} (${formatCm(primaryMachineWidth)}×${formatCm(primaryMachineHeight)} cm)`
+      : "sin perfil configurado"
 
     return {
       line1: `Cliente recibe: ${formatoLabel}. Papel base: ${pliegoLabel}.`,
-      line2: `Máquina de impresión: ${machineLabel}. Del pliego salen ${hojasMaquinaPorPliego || "—"} hojas de impresión. Área útil usada: ${utilLabel}.${arrangement ? ` En cada hoja: ${arrangement} (${orientation}) = ${pzasPorPliego} piezas finales.` : ` Piezas finales por hoja: ${pzasPorPliego || "—"}.`}`,
-      line3: `Cálculo interno: producción = tiraje cliente (${runQty}) + sobrante (${sobrante}) = ${piezas}; tiraje impresor = ⌈${piezas} / ${pzasPorPliego || "—"}⌉ = ${hojasMaquinaNecesarias || "—"} hojas; pliegos papel = ⌈${hojasMaquinaNecesarias || "—"} / ${hojasMaquinaPorPliego || "—"}⌉ = ${pliegos}.${(computed.maquinaSeparacionCm ?? 0) > 0 ? ` Separación entre piezas: ${formatCm(computed.maquinaSeparacionCm)} cm.` : ""}`,
+      line2: `Impresión en: ${machineLabel}. Del pliego salen ${hojasMaquinaPorPliego || "—"} hojas de impresión.${arrangement ? ` En cada hoja: ${arrangement} (${orientation}) = ${pzasPorPliego} piezas finales.` : ` Piezas finales por hoja: ${pzasPorPliego || "—"}.`}`,
+      line3: `Cálculo interno: producción = tiraje cliente (${runQty}) + sobrante (${sobrante}) = ${piezas}; tiraje impresor = ⌈${piezas} / ${pzasPorPliego || "—"}⌉ = ${hojasMaquinaNecesarias || "—"} hojas; pliegos papel = ⌈${hojasMaquinaNecesarias || "—"} / ${hojasMaquinaPorPliego || "—"}⌉ = ${pliegos}.`,
     }
   }, [isAdmin, calc, fallbackCalc, cantidad, sobranteMinimo, selectedPreset, formatoKey, pliegoW, pliegoH, primaryPaper, primaryPlanchaProfile, primaryMachineWidth, primaryMachineHeight])
 
@@ -3461,12 +3456,12 @@ export function LitografiaQuoteDialog(props: {
                               <option value="">Seleccionar formato…</option>
                               {activePlanchaProfiles.map((p) => (
                                 <option key={p.id} value={p.id}>
-                                  {p.nombre} ({formatCm(p.anchoUtilCm)}×{formatCm(p.altoUtilCm)} cm útiles)
+                                  {p.nombre} ({formatCm(p.anchoUtilCm)}×{formatCm(p.altoUtilCm)} cm)
                                 </option>
                               ))}
                             </select>
                             <p className={HELP_TEXT}>
-                              Aquí defines el formato real en que se imprimirá el trabajo. Esto cambia las hojas de impresión, los pliegos requeridos y el costo base de plancha.
+                              Aquí defines el tamaño real en que se imprimirá el trabajo. Desde aquí se toma el costo base de plancha por color.
                             </p>
                           </div>
 
@@ -3571,7 +3566,7 @@ export function LitografiaQuoteDialog(props: {
                         <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
                           {primaryPlanchaProfile ? (
                             <>
-                              {t('printshopQuote.summary.totalPlates', { total: formatCurrency(planchaCostConfigured) })} Área útil: {formatCm(primaryMachineWidth)}×{formatCm(primaryMachineHeight)} cm{primaryMachineGap > 0 ? ` • separación ${formatCm(primaryMachineGap)} cm` : ""}.
+                              {t('printshopQuote.summary.totalPlates', { total: formatCurrency(planchaCostConfigured) })} Tamaño de impresión: {formatCm(primaryMachineWidth)}×{formatCm(primaryMachineHeight)} cm.
                             </>
                           ) : (
                             <>{t('printshopQuote.help.selectPlates')}</>

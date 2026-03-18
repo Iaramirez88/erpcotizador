@@ -273,7 +273,6 @@ export function LitografiaCalculator() {
   const [newPlanchaProfilePlancha, setNewPlanchaProfilePlancha] = useState("0")
   const [newPlanchaProfileAnchoUtil, setNewPlanchaProfileAnchoUtil] = useState("70")
   const [newPlanchaProfileAltoUtil, setNewPlanchaProfileAltoUtil] = useState("100")
-  const [newPlanchaProfileSeparacion, setNewPlanchaProfileSeparacion] = useState("0")
 
   const [newTintaProfileNombre, setNewTintaProfileNombre] = useState("")
   const [newTintaProfileTinta, setNewTintaProfileTinta] = useState("0")
@@ -1180,7 +1179,7 @@ export function LitografiaCalculator() {
     const plancha = parseFloat(newPlanchaProfilePlancha) || 0
     const anchoUtilCm = parseFloat(newPlanchaProfileAnchoUtil) || 0
     const altoUtilCm = parseFloat(newPlanchaProfileAltoUtil) || 0
-    const separacionPiezasCm = Math.max(0, parseFloat(newPlanchaProfileSeparacion) || 0)
+    const separacionPiezasCm = 0
     if (!nombre || plancha <= 0 || anchoUtilCm <= 0 || altoUtilCm <= 0) return
 
     const created = await createProfileDirect({
@@ -1198,7 +1197,6 @@ export function LitografiaCalculator() {
       setNewPlanchaProfilePlancha("0")
       setNewPlanchaProfileAnchoUtil("70")
       setNewPlanchaProfileAltoUtil("100")
-      setNewPlanchaProfileSeparacion("0")
     }
   }
 
@@ -1449,7 +1447,7 @@ export function LitografiaCalculator() {
       papelFormatoHeightCm: parsedFormatoH,
       maquinaPliegoWidthCm: Number(selectedPlanchaProfile?.anchoUtilCm) || 0,
       maquinaPliegoHeightCm: Number(selectedPlanchaProfile?.altoUtilCm) || 0,
-      maquinaSeparacionCm: Math.max(0, Number(selectedPlanchaProfile?.separacionPiezasCm) || 0),
+      maquinaSeparacionCm: 0,
       costoPliego: parseFloat(costoPliego) || 0,
       costoCorte: parseFloat(costoCorte) || 0,
       // En modo tarifario, los acabados suelen ir dentro del precio del tarifario.
@@ -2548,7 +2546,7 @@ export function LitografiaCalculator() {
                 <ChevronRight className="absolute left-2.5 top-4 h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
                 <CardHeader className="pl-8">
                   <CardTitle>Se imprime en</CardTitle>
-                  <CardDescription>Define el formato real de impresión: área útil, separación y costo base de plancha si quieres dejarlo autollenado.</CardDescription>
+                  <CardDescription>Configura el tamaño real de impresión y el costo base de plancha por color para reutilizarlo en cotizaciones.</CardDescription>
                 </CardHeader>
               </summary>
               <CardContent className="space-y-4">
@@ -2573,7 +2571,7 @@ export function LitografiaCalculator() {
                     />
                   </div>
                   <div>
-                    <Label>Ancho útil (cm)</Label>
+                    <Label>Ancho (cm)</Label>
                     <Input
                       className={INPUT_COMPACT}
                       type="number"
@@ -2584,7 +2582,7 @@ export function LitografiaCalculator() {
                     />
                   </div>
                   <div>
-                    <Label>Alto útil (cm)</Label>
+                    <Label>Alto (cm)</Label>
                     <Input
                       className={INPUT_COMPACT}
                       type="number"
@@ -2592,17 +2590,6 @@ export function LitografiaCalculator() {
                       min="0"
                       value={newPlanchaProfileAltoUtil}
                       onChange={(e) => setNewPlanchaProfileAltoUtil(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label>Separación piezas (cm)</Label>
-                    <Input
-                      className={INPUT_COMPACT}
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={newPlanchaProfileSeparacion}
-                      onChange={(e) => setNewPlanchaProfileSeparacion(e.target.value)}
                     />
                   </div>
                   <div className="md:col-span-3">
@@ -2640,7 +2627,7 @@ export function LitografiaCalculator() {
                         <div className="min-w-0">
                           <p className="font-medium truncate">{p.nombre}</p>
                           <p className="text-xs text-muted-foreground">Costo plancha/color: {formatCurrency(p.costoPlanchaPorColor)}</p>
-                          <p className="text-xs text-muted-foreground">Área útil: {p.anchoUtilCm}×{p.altoUtilCm} cm{(p.separacionPiezasCm ?? 0) > 0 ? ` • separación ${p.separacionPiezasCm} cm` : ""}</p>
+                          <p className="text-xs text-muted-foreground">Tamaño de impresión: {p.anchoUtilCm}×{p.altoUtilCm} cm</p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Button type="button" variant={p.activo ? "outline" : "default"} onClick={() => patchProfile(p.id, { activo: !p.activo })}>
@@ -2743,7 +2730,7 @@ export function LitografiaCalculator() {
                                 />
                               </div>
                               <div>
-                                <Label className="text-xs">Ancho útil</Label>
+                                <Label className="text-xs">Ancho</Label>
                                 <Input
                                   className={INPUT_COMPACT}
                                   type="number"
@@ -2767,7 +2754,7 @@ export function LitografiaCalculator() {
                                 />
                               </div>
                               <div>
-                                <Label className="text-xs">Alto útil</Label>
+                                <Label className="text-xs">Alto</Label>
                                 <Input
                                   className={INPUT_COMPACT}
                                   type="number"
@@ -2785,30 +2772,6 @@ export function LitografiaCalculator() {
                                         anchoUtil: prev[p.id]?.anchoUtil ?? String(p.anchoUtilCm),
                                         altoUtil: v,
                                         separacion: prev[p.id]?.separacion ?? String(p.separacionPiezasCm ?? 0),
-                                      },
-                                    }))
-                                  }}
-                                />
-                              </div>
-                              <div>
-                                <Label className="text-xs">Separación</Label>
-                                <Input
-                                  className={INPUT_COMPACT}
-                                  type="number"
-                                  step="0.1"
-                                  min="0"
-                                  value={draftSeparacion}
-                                  onChange={(e) => {
-                                    const v = e.target.value
-                                    setProfileEdits((prev) => ({
-                                      ...prev,
-                                      [p.id]: {
-                                        nombre: prev[p.id]?.nombre ?? p.nombre,
-                                        plancha: prev[p.id]?.plancha ?? String(p.costoPlanchaPorColor),
-                                        tinta: prev[p.id]?.tinta ?? String(p.costoTintaPorColor),
-                                        anchoUtil: prev[p.id]?.anchoUtil ?? String(p.anchoUtilCm),
-                                        altoUtil: prev[p.id]?.altoUtil ?? String(p.altoUtilCm),
-                                        separacion: v,
                                       },
                                     }))
                                   }}
@@ -5394,12 +5357,11 @@ export function LitografiaCalculator() {
             <p className="mt-1 text-xs text-muted-foreground">
               {selectedPlanchaProfile ? (
                 <>
-                  <span className="block">Área útil: {selectedPlanchaProfile.anchoUtilCm}×{selectedPlanchaProfile.altoUtilCm} cm</span>
-                  <span className="block">Separación: {selectedPlanchaProfile.separacionPiezasCm ?? 0} cm</span>
+                  <span className="block">Tamaño de impresión: {selectedPlanchaProfile.anchoUtilCm}×{selectedPlanchaProfile.altoUtilCm} cm</span>
                   <span className="block">Costo plancha/color: {formatCurrency(selectedPlanchaProfile.costoPlanchaPorColor)}</span>
                 </>
               ) : (
-                <>Selecciona el formato real en que se imprimirá; desde aquí también se toma el costo base de plancha.</>
+                <>Selecciona el tamaño real de impresión; desde aquí se toma el costo base por color.</>
               )}
             </p>
           </div>
