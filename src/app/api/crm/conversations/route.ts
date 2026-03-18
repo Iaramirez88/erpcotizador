@@ -16,6 +16,7 @@ export async function GET(request: Request) {
     const sedeId = normalizeString(searchParams.get('sedeId'))
     const assignedToUserId = normalizeString(searchParams.get('assignedToUserId'))
     const channelConnectionId = normalizeString(searchParams.get('channelConnectionId'))
+    const provider = normalizeString(searchParams.get('provider'))
     const status = parseConversationStatus(searchParams.get('status'))
 
     if (sedeId) {
@@ -29,6 +30,7 @@ export async function GET(request: Request) {
         ...(sedeId ? { sedeId } : {}),
         ...(assignedToUserId ? { assignedToUserId } : {}),
         ...(channelConnectionId ? { channelConnectionId } : {}),
+        ...(provider ? { channelConnection: { provider: provider as never } } : {}),
         ...(status ? { status } : {}),
         ...(search
           ? {

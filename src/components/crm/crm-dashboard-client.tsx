@@ -578,6 +578,15 @@ export function CrmDashboardClient() {
                 <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por lead, oportunidad o cliente..." className="h-12 rounded-2xl border-slate-200 bg-white/90 pr-4 shadow-sm" />
               </div>
               <div className="flex gap-2">
+                <Button asChild variant="outline" className="h-12 rounded-2xl border-emerald-200 bg-emerald-50/80 px-5 text-emerald-800 hover:bg-emerald-100">
+                  <Link href="/dashboard/crm/chatbot">Panel chatbot</Link>
+                </Button>
+                <Button asChild variant="outline" className="h-12 rounded-2xl border-slate-200 bg-white/80 px-5">
+                  <Link href="/dashboard/crm/conversations">Bandeja omnicanal</Link>
+                </Button>
+                <Button asChild variant="outline" className="h-12 rounded-2xl border-slate-200 bg-white/80 px-5">
+                  <Link href="/dashboard/crm/integraciones">Integraciones</Link>
+                </Button>
                 <Button variant="outline" className="h-12 rounded-2xl border-slate-200 bg-white/80 px-5" onClick={openStageDialog}>Configurar pipeline</Button>
                 <Button variant="outline" className="h-12 rounded-2xl border-slate-200 bg-white/80 px-5" onClick={() => void loadData()}>Refrescar</Button>
               </div>
@@ -649,6 +658,15 @@ export function CrmDashboardClient() {
             <TabsTrigger value="tasks" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">Tareas</TabsTrigger>
           </TabsList>
           <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50/80 text-emerald-800 hover:bg-emerald-100">
+              <Link href="/dashboard/crm/chatbot">Mensajes chatbot</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
+              <Link href="/dashboard/crm/integraciones">Canales e integraciones</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
+              <Link href="/dashboard/crm/conversations">Inbox omnicanal</Link>
+            </Button>
             <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={openCreateLeadDialog}>Nuevo lead</Button>
             <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={openCreateOpportunityDialog}>Nueva oportunidad</Button>
             <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={openCreateTaskDialog}>Nueva tarea</Button>

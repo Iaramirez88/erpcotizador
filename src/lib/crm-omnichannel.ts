@@ -399,5 +399,23 @@ export async function createInboundArtifacts(args: {
     providerLeadId: args.providerLeadId,
   })
 
+  const notificationUserId = conversation.assignedToUserId || args.ownerUserId || lead.ownerUserId || args.createdById
+  if (notificationUserId) {
+    const contactLabel = normalizeString(args.nombre) || conversation.contactDisplayName || lead.nombre || 'prospecto'
+    const messagePreview = normalizeString(args.messageText)
+    await args.client.notification.create({
+      data: {
+        type: 'INFO',
+        title: `Nuevo mensaje de ${contactLabel}`,
+        body: messagePreview
+          ? `${normalizeString(args.sourceLabel) || 'Canal CRM'} · ${messagePreview.slice(0, 220)}`
+          : `${normalizeString(args.sourceLabel) || 'Canal CRM'} registró un nuevo inbound.`,
+        empresaId: args.empresaId,
+        sedeId: args.sedeId ?? null,
+        userId: notificationUserId,
+      },
+    })
+  }
+
   return { lead, conversation, message, capture }
 }

@@ -1,0 +1,87 @@
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { normalizeString } from '@/lib/crm'
+import { extractHostFromUrl, getPublicChatbotSettings, getRequestHost, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
+
+export const runtime = 'nodejs'
+
+type RouteContext = {
+  params: Promise<{ channelId: string }>
+}
+
+export async function GET(request: Request, context: RouteContext) {
+  try {
+    const { channelId } = await context.params
+    const { searchParams } = new URL(request.url)
+    const externalThreadId = normalizeString(searchParams.get('threadId'))
+    const rawParentReferrer = normalizeString(searchParams.get('parentReferrer'))
+
+    if (!externalThreadId) {
+      return NextResponse.json({ error: 'threadId es requerido' }, { status: 400 })
+    }
+
+    const channel = await prisma.crmChannelConnection.findUnique({
+      where: { id: channelId },
+      select: { id: true, provider: true, status: true, settingsJson: true },
+    })
+
+    if (!channel || channel.provider !== 'WEB_CHATBOT' || !['TESTING', 'ACTIVE'].includes(channel.status)) {
+      return NextResponse.json({ error: 'Canal chatbot no disponible' }, { status: 404 })
+    }
+
+    const settings = getPublicChatbotSettings(channel.settingsJson)
+    if (!settings.publicEmbedEnabled) {
+      return NextResponse.json({ error: 'Embed público deshabilitado' }, { status: 403 })
+    }
+
+    const requestHost = await getRequestHost()
+    const parentHost = extractHostFromUrl(rawParentReferrer)
+    if (!isChatbotDomainAllowed({ allowedDomains: settings.allowedDomains, candidateHost: parentHost || requestHost, appHost: requestHost })) {
+      return NextResponse.json({ error: 'Dominio no autorizado para este chatbot' }, { status: 403 })
+    }
+
+    const conversation = await prisma.crmConversation.findFirst({
+      where: {
+        channelConnectionId: channel.id,
+        externalThreadId,
+      },
+      select: {
+        id: true,
+        status: true,
+        unreadCount: true,
+        lastMessageAt: true,
+        messages: {
+          orderBy: [{ occurredAt: 'asc' }, { createdAt: 'asc' }],
+          take: 80,
+          select: {
+            id: true,
+            direction: true,
+            bodyText: true,
+            occurredAt: true,
+            sentByUser: { select: { name: true, email: true } },
+          },
+        },
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        conversationId: conversation?.id || null,
+        status: conversation?.status || 'OPEN',
+        unreadCount: conversation?.unreadCount || 0,
+        lastMessageAt: conversation?.lastMessageAt || null,
+        messages: (conversation?.messages || []).map((message) => ({
+          id: message.id,
+          role: message.direction === 'OUTBOUND' ? 'assistant' : message.direction === 'SYSTEM' ? 'system' : 'user',
+          body: message.bodyText || '',
+          at: message.occurredAt,
+          author: message.sentByUser?.name || message.sentByUser?.email || null,
+        })),
+      },
+    })
+  } catch (error) {
+    console.error('Error sincronizando chatbot público:', error)
+    return NextResponse.json({ error: 'Error sincronizando chatbot público' }, { status: 500 })
+  }
+}

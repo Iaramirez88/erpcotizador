@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useI18n } from '@/components/providers/i18n-provider'
 
@@ -71,7 +72,29 @@ type ConversationDetail = ConversationListItem & {
   }>
 }
 
+type MaterialLookupItem = {
+  id: string
+  nombre: string
+  categoria?: string | null
+  proveedor?: string | null
+  unidadMedida?: string | null
+  stockActual?: number | null
+  precioUnidad?: number | null
+  precioMetro?: number | null
+  precioM2?: number | null
+  stocks?: Array<{
+    quantity?: number | null
+    warehouse?: { id: string; nombre: string; codigo?: string | null } | null
+  }>
+}
+
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
+
+type CrmConversationsClientProps = {
+  initialProviderFilter?: ChannelProvider | null
+  title?: string
+  description?: string
+}
 
 const STATUS_OPTIONS: Array<'ALL' | ConversationStatus> = ['ALL', 'OPEN', 'PENDING', 'BOT_ACTIVE', 'HUMAN_ACTIVE', 'RESOLVED', 'SPAM']
 
@@ -108,7 +131,23 @@ function formatRelativeChannel(provider: ChannelProvider) {
   }
 }
 
-export function CrmConversationsClient() {
+function formatMoney(value: number | null | undefined, locale: string) {
+  if (!Number.isFinite(value)) return '—'
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(Number(value))
+}
+
+function getMaterialPrice(material: MaterialLookupItem) {
+  return material.precioUnidad ?? material.precioMetro ?? material.precioM2 ?? null
+}
+
+function getVisibleStock(material: MaterialLookupItem) {
+  const warehouseStock = material.stocks?.[0]?.quantity
+  if (Number.isFinite(warehouseStock)) return Number(warehouseStock)
+  if (Number.isFinite(material.stockActual)) return Number(material.stockActual)
+  return 0
+}
+
+export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = '—'
@@ -119,6 +158,7 @@ export function CrmConversationsClient() {
   const [statusFilter, setStatusFilter] = useState<'ALL' | ConversationStatus>('ALL')
   const [assignedFilter, setAssignedFilter] = useState<'ALL' | string>('ALL')
   const [channelFilter, setChannelFilter] = useState<'ALL' | string>('ALL')
+  const [providerFilter, setProviderFilter] = useState<'ALL' | ChannelProvider>(props.initialProviderFilter ?? 'ALL')
   const [conversations, setConversations] = useState<ConversationListItem[]>([])
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null)
@@ -131,6 +171,14 @@ export function CrmConversationsClient() {
   const [creatingOpportunity, setCreatingOpportunity] = useState(false)
   const [simulatorOpen, setSimulatorOpen] = useState(false)
   const [simulating, setSimulating] = useState(false)
+  const [liveMode, setLiveMode] = useState(true)
+  const [lastRefreshAt, setLastRefreshAt] = useState<string | null>(null)
+  const [materialSearch, setMaterialSearch] = useState('')
+  const [materialResults, setMaterialResults] = useState<MaterialLookupItem[]>([])
+  const [materialLoading, setMaterialLoading] = useState(false)
+  const [selectedMaterial, setSelectedMaterial] = useState<MaterialLookupItem | null>(null)
+  const [interestNotes, setInterestNotes] = useState('')
+  const [savingInterest, setSavingInterest] = useState(false)
 
   const [assigneeDraft, setAssigneeDraft] = useState('__none__')
   const [messageDraft, setMessageDraft] = useState('')
@@ -164,16 +212,18 @@ export function CrmConversationsClient() {
       if (statusFilter !== 'ALL') params.set('status', statusFilter)
       if (assignedFilter !== 'ALL') params.set('assignedToUserId', assignedFilter)
       if (channelFilter !== 'ALL') params.set('channelConnectionId', channelFilter)
+      if (providerFilter !== 'ALL') params.set('provider', providerFilter)
 
       const suffix = params.toString() ? `?${params.toString()}` : ''
       const json = await requestJson<ConversationListItem[]>(`/api/crm/conversations${suffix}`)
       const rows = Array.isArray(json.data) ? json.data : []
       setConversations(rows)
       setSelectedConversationId((current) => current && rows.some((row) => row.id === current) ? current : rows[0]?.id ?? null)
+      setLastRefreshAt(new Date().toISOString())
     } finally {
       setLoading(false)
     }
-  }, [assignedFilter, channelFilter, search, statusFilter])
+  }, [assignedFilter, channelFilter, providerFilter, search, statusFilter])
 
   const loadMeta = useCallback(async () => {
     const [assigneeRes, channelRes] = await Promise.all([
@@ -217,6 +267,26 @@ export function CrmConversationsClient() {
     }
     void loadDetail(selectedConversationId)
   }, [loadDetail, selectedConversationId])
+
+  useEffect(() => {
+    if (!liveMode) return
+
+    const interval = window.setInterval(() => {
+      void loadConversations()
+      if (selectedConversationId) {
+        void loadDetail(selectedConversationId)
+      }
+    }, 4000)
+
+    return () => window.clearInterval(interval)
+  }, [liveMode, loadConversations, loadDetail, selectedConversationId])
+
+  useEffect(() => {
+    setMaterialSearch('')
+    setMaterialResults([])
+    setSelectedMaterial(null)
+    setInterestNotes('')
+  }, [selectedConversationId])
 
   const stats = useMemo(() => {
     const openCount = conversations.filter((item) => item.status !== 'RESOLVED' && item.status !== 'SPAM').length
@@ -327,16 +397,114 @@ export function CrmConversationsClient() {
     }
   }
 
+  async function searchMaterials() {
+    if (!materialSearch.trim()) {
+      setMaterialResults([])
+      return
+    }
+
+    setMaterialLoading(true)
+    try {
+      const params = new URLSearchParams({
+        search: materialSearch.trim(),
+        activo: 'true',
+        sort: 'stockDesc',
+        pageSize: '6',
+      })
+      const json = await requestJson<MaterialLookupItem[]>(`/api/materiales?${params.toString()}`)
+      setMaterialResults(Array.isArray(json.data) ? json.data : [])
+    } finally {
+      setMaterialLoading(false)
+    }
+  }
+
+  async function saveInterestSelection() {
+    if (!selectedConversation) return
+    if (!selectedMaterial && !interestNotes.trim()) {
+      alert('Selecciona un producto/material o escribe el interés consignado.')
+      return
+    }
+
+    const relationPayload = selectedConversation.opportunity
+      ? { opportunityId: selectedConversation.opportunity.id }
+      : selectedConversation.lead
+        ? { leadId: selectedConversation.lead.id }
+        : selectedConversation.cliente
+          ? { clienteId: selectedConversation.cliente.id }
+          : null
+
+    if (!relationPayload) {
+      alert('Esta conversación aún no tiene un lead, cliente u oportunidad asociada para consignar el interés.')
+      return
+    }
+
+    const stock = selectedMaterial ? getVisibleStock(selectedMaterial) : null
+    const price = selectedMaterial ? getMaterialPrice(selectedMaterial) : null
+
+    setSavingInterest(true)
+    try {
+      const json = await requestJson('/api/crm/activities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...relationPayload,
+          type: 'NOTE',
+          summary: selectedMaterial ? `Interés comercial registrado: ${selectedMaterial.nombre}` : 'Interés comercial registrado desde conversación',
+          details: [
+            selectedMaterial ? `Producto/material: ${selectedMaterial.nombre}` : null,
+            selectedMaterial?.categoria ? `Categoría: ${selectedMaterial.categoria}` : null,
+            selectedMaterial?.proveedor ? `Proveedor: ${selectedMaterial.proveedor}` : null,
+            stock !== null ? `Stock visible: ${stock}` : null,
+            price !== null ? `Precio de referencia: ${formatMoney(price, locale)}` : null,
+            interestNotes.trim() ? `Observación comercial: ${interestNotes.trim()}` : null,
+          ].filter(Boolean).join('\n'),
+        }),
+      })
+
+      if (!json.success) {
+        alert(json.error || 'No se pudo consignar el interés comercial.')
+        return
+      }
+
+      alert('Interés comercial consignado en el CRM.')
+      await loadDetail(selectedConversation.id)
+    } finally {
+      setSavingInterest(false)
+    }
+  }
+
   return (
     <div className="space-y-6 pb-6">
       <ErpPageHero
         eyebrow="CRM Omnicanal"
-        title="Bandeja de conversaciones"
-        description="Opera el inbox de pruebas, asigna hilos a asesores, simula inbound y convierte conversaciones en oportunidades sin salir del CRM."
+        title={props.title || 'Bandeja de conversaciones'}
+        description={props.description || 'Opera el inbox de pruebas, asigna hilos a asesores, simula inbound y convierte conversaciones en oportunidades sin salir del CRM.'}
         actions={
           <>
+            <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/85 px-4 py-2 text-sm text-slate-600">
+              <div className="grid gap-0.5">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Tiempo real</span>
+                <span>{liveMode ? `Activo · ${formatDate(lastRefreshAt, locale, 'sin sincronizar')}` : 'Pausado'}</span>
+              </div>
+              <Switch checked={liveMode} onCheckedChange={setLiveMode} />
+            </div>
             <Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85" onClick={() => void Promise.all([loadConversations(), loadMeta()])}>
               Refrescar
+            </Button>
+            <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
+              <Link href="/dashboard/crm/integraciones">Canales e iframe</Link>
+            </Button>
+            {providerFilter === 'WEB_CHATBOT' ? (
+              <Button asChild variant="outline" className="rounded-2xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
+                <Link href="/dashboard/crm/conversations">Ver inbox completo</Link>
+              </Button>
+            ) : (
+              <Button asChild variant="outline" className="rounded-2xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
+                <Link href="/dashboard/crm/chatbot">Panel chatbot</Link>
+              </Button>
+            )}
+            <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
+              <Link href="/dashboard/notificaciones">Notificaciones</Link>
             </Button>
             <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => setSimulatorOpen(true)}>
               Simular inbound
@@ -382,6 +550,22 @@ export function CrmConversationsClient() {
               <SelectContent>
                 <SelectItem value="ALL">Todos</SelectItem>
                 {channels.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 md:col-span-2">
+            <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Proveedor</Label>
+            <Select value={providerFilter} onValueChange={(value) => setProviderFilter(value as 'ALL' | ChannelProvider)} disabled={Boolean(props.initialProviderFilter)}>
+              <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos</SelectItem>
+                <SelectItem value="WEB_CHATBOT">Chatbot web</SelectItem>
+                <SelectItem value="WEB_FORM">Formulario web</SelectItem>
+                <SelectItem value="WHATSAPP_CLOUD">WhatsApp Cloud</SelectItem>
+                <SelectItem value="WHATSAPP_SANDBOX">WhatsApp Sandbox</SelectItem>
+                <SelectItem value="FACEBOOK_PAGE">Facebook Page</SelectItem>
+                <SelectItem value="MESSENGER">Messenger</SelectItem>
+                <SelectItem value="INSTAGRAM_DM">Instagram DM</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -461,6 +645,11 @@ export function CrmConversationsClient() {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    {selectedConversation.lead ? (
+                      <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
+                        <Link href={`/dashboard/crm/leads/${selectedConversation.lead.id}`}>Abrir lead</Link>
+                      </Button>
+                    ) : null}
                     {!selectedConversation.opportunity ? (
                       <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void createOpportunityFromConversation()} disabled={creatingOpportunity}>
                         {creatingOpportunity ? 'Creando...' : 'Crear oportunidad'}
@@ -519,6 +708,22 @@ export function CrmConversationsClient() {
 
                     <Card className="rounded-3xl border-slate-200 bg-white/85">
                       <CardHeader>
+                        <CardTitle className="text-base">Alertas y seguimiento</CardTitle>
+                        <CardDescription>Los nuevos inbounds ahora generan una notificación interna para el responsable del hilo.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-3 text-sm text-slate-600">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+                          <p className="font-medium text-slate-900">Panel actual de prospectos y mensajes</p>
+                          <p className="mt-1 leading-6">Este mismo detalle es el panel operativo del chatbot: aquí ves lo consignado, respondes, asignas y conviertes a oportunidad.</p>
+                        </div>
+                        <Button asChild variant="outline" className="w-full rounded-xl border-slate-200 bg-white">
+                          <Link href="/dashboard/notificaciones">Abrir centro de notificaciones</Link>
+                        </Button>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="rounded-3xl border-slate-200 bg-white/85">
+                      <CardHeader>
                         <CardTitle className="text-base">Ultimas capturas</CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-3">
@@ -566,6 +771,92 @@ export function CrmConversationsClient() {
                               {sending ? 'Enviando...' : 'Registrar mensaje'}
                             </Button>
                           </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="rounded-3xl border-slate-200 bg-white/85">
+                      <CardHeader>
+                        <CardTitle className="text-base">Interés y stock</CardTitle>
+                        <CardDescription>Busca el producto/material que pidió el cliente, valida disponibilidad y deja trazabilidad comercial.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                          <Input
+                            value={materialSearch}
+                            onChange={(e) => setMaterialSearch(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                void searchMaterials()
+                              }
+                            }}
+                            placeholder="Buscar producto, material, proveedor o categoría..."
+                          />
+                          <Button className="rounded-xl" variant="outline" onClick={() => void searchMaterials()} disabled={materialLoading}>
+                            {materialLoading ? 'Buscando...' : 'Buscar stock'}
+                          </Button>
+                        </div>
+
+                        {materialResults.length > 0 ? (
+                          <div className="space-y-2">
+                            {materialResults.map((material) => {
+                              const stock = getVisibleStock(material)
+                              const selected = selectedMaterial?.id === material.id
+                              return (
+                                <button
+                                  key={material.id}
+                                  type="button"
+                                  onClick={() => setSelectedMaterial(material)}
+                                  className={selected ? 'w-full rounded-2xl border border-emerald-300 bg-emerald-50/80 p-3 text-left shadow-sm' : 'w-full rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-left'}
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <p className="font-medium text-slate-900">{material.nombre}</p>
+                                      <p className="mt-1 text-xs text-slate-500">{material.categoria || 'Sin categoría'} · {material.proveedor || 'Sin proveedor'}</p>
+                                    </div>
+                                    <div className="text-right text-xs">
+                                      <p className={stock > 0 ? 'font-semibold text-emerald-700' : 'font-semibold text-rose-700'}>{stock > 0 ? `Stock ${stock}` : 'Sin stock'}</p>
+                                      <p className="mt-1 text-slate-500">{formatMoney(getMaterialPrice(material), locale)}</p>
+                                    </div>
+                                  </div>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        ) : materialSearch.trim() && !materialLoading ? (
+                          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">
+                            No encontré coincidencias con ese término en materiales activos.
+                          </div>
+                        ) : null}
+
+                        {selectedMaterial ? (
+                          <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="font-semibold text-slate-900">Seleccionado: {selectedMaterial.nombre}</p>
+                              <Button asChild variant="ghost" className="h-auto p-0 text-sky-700 hover:text-sky-800">
+                                <Link href={`/dashboard/materiales?search=${encodeURIComponent(selectedMaterial.nombre)}`}>Ver en materiales</Link>
+                              </Button>
+                            </div>
+                            <p className="mt-2 leading-6">Stock visible: {getVisibleStock(selectedMaterial)} {selectedMaterial.unidadMedida || 'unidad'} · Precio ref.: {formatMoney(getMaterialPrice(selectedMaterial), locale)}</p>
+                          </div>
+                        ) : null}
+
+                        <div className="grid gap-2">
+                          <Label>Qué pidió o en qué está interesado</Label>
+                          <Textarea value={interestNotes} onChange={(e) => setInterestNotes(e.target.value)} rows={4} placeholder="Ejemplo: quiere 200 unidades, entrega esta semana, validar stock inmediato y cerrar en venta real si hay disponibilidad." />
+                        </div>
+
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <Button variant="outline" className="rounded-xl" onClick={() => {
+                            setSelectedMaterial(null)
+                            setInterestNotes('')
+                          }} disabled={savingInterest}>
+                            Limpiar
+                          </Button>
+                          <Button className="rounded-xl" onClick={() => void saveInterestSelection()} disabled={savingInterest}>
+                            {savingInterest ? 'Consignando...' : 'Consignar interés'}
+                          </Button>
                         </div>
                       </CardContent>
                     </Card>

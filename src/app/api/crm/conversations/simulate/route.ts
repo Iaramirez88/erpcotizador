@@ -46,7 +46,9 @@ export async function POST(request: Request) {
 
     const mapping = provider === 'WEB_FORM'
       ? { source: 'WEB' as const, captureType: 'WEB_FORM' as const, activityType: 'NOTE' as const, messageType: 'FORM_SUBMISSION' as const, sourceLabel: 'Formulario web' }
-      : provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX'
+      : provider === 'WEB_CHATBOT'
+        ? { source: 'WEB' as const, captureType: 'CHATBOT_START' as const, activityType: 'NOTE' as const, messageType: 'TEXT' as const, sourceLabel: 'Chatbot web' }
+        : provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX'
         ? { source: 'WHATSAPP' as const, captureType: 'WHATSAPP_INBOUND' as const, activityType: 'WHATSAPP' as const, messageType: 'TEXT' as const, sourceLabel: 'WhatsApp' }
         : { source: 'OTRO' as const, captureType: 'MESSENGER_INBOUND' as const, activityType: 'OTHER' as const, messageType: 'TEXT' as const, sourceLabel: 'Messenger/Facebook' }
 
