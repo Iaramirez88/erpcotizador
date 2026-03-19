@@ -276,7 +276,7 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
   return (
     <div className="sgd-chatbot-page min-h-screen p-3 text-slate-950" style={{ ...accentStyle, background: `radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 30%), linear-gradient(180deg, ${props.pageBackgroundColor} 0%, ${props.pageBackgroundColor} 45%, ${props.backgroundColor} 100%)` }}>
       {props.customCss.trim() ? <style>{props.customCss}</style> : null}
-      <div className="sgd-chatbot-shell mx-auto flex min-h-[calc(100vh-24px)] max-w-[420px] flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_90px_-44px_rgba(15,23,42,0.42)]">
+      <div className="sgd-chatbot-shell mx-auto flex h-[720px] max-h-[calc(100vh-24px)] max-w-[420px] flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_90px_-44px_rgba(15,23,42,0.42)]">
         <div className="sgd-chatbot-header border-b border-slate-100 px-5 py-4 text-white" style={{ background: `linear-gradient(135deg, #0f172a, ${props.accentColor})` }}>
           <div className="flex items-center justify-between gap-3">
             <div>
