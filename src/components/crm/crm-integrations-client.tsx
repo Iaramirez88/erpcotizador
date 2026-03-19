@@ -1535,7 +1535,7 @@ export function CrmIntegrationsClient() {
                           <div className="relative mt-3 overflow-hidden rounded-[26px] border border-emerald-200 p-3 shadow-sm" style={{ background: `radial-gradient(circle at top, rgba(14,165,233,0.14), transparent 32%), linear-gradient(180deg, ${createForm.pageBackgroundColor} 0%, ${createForm.pageBackgroundColor} 55%, ${createForm.backgroundColor} 100%)`, minHeight: wizardChatPreviewViewport === 'mobile' ? 500 : 420 }}>
                             {derivedChatbotCustomCss.trim() ? <style>{derivedChatbotCustomCss}</style> : null}
                             <div className="flex h-full px-3 pb-20 pt-4" style={{ justifyContent: createForm.launcherPosition === 'left' ? 'flex-start' : 'flex-end' }}>
-                              <div className="sgd-preview-root relative w-full" style={{ maxWidth: wizardChatPreviewViewport === 'mobile' ? 340 : 420, fontFamily: createForm.fontFamily }}>
+                              <div className="sgd-preview-root relative flex min-h-full w-full items-end" style={{ maxWidth: wizardChatPreviewViewport === 'mobile' ? 340 : 420, fontFamily: createForm.fontFamily }}>
                                 {wizardChatPreviewMode === 'expanded' ? (
                                   <div className="sgd-preview-panel overflow-hidden border border-slate-200 bg-white" style={{ marginTop: 24, marginLeft: createForm.launcherPosition === 'left' ? 0 : 'auto', marginRight: createForm.launcherPosition === 'left' ? 'auto' : 0, borderRadius: `${normalizePixelValue(createForm.chatShellRadius, '30')}px`, boxShadow: getPanelShadowValue(createForm.panelShadowPreset) }}>
                                     <div className="sgd-preview-panel-header px-4 py-4 text-white" style={{ background: `linear-gradient(135deg, #0f172a, ${createForm.accentColor})` }}>
@@ -1566,7 +1566,7 @@ export function CrmIntegrationsClient() {
                                 ) : null}
 
                                 {createForm.floatingLauncherEnabled ? (
-                                  <div className="sgd-preview-launcher absolute bottom-3" style={{ left: createForm.launcherPosition === 'left' ? 12 : undefined, right: createForm.launcherPosition === 'right' ? 12 : undefined, maxWidth: 'calc(100% - 24px)' }}>
+                                  <div className="sgd-preview-launcher absolute bottom-3 z-10" style={{ left: createForm.launcherPosition === 'left' ? 12 : undefined, right: createForm.launcherPosition === 'right' ? 12 : undefined, maxWidth: 'calc(100% - 24px)' }}>
                                     <div className="flex max-w-full items-center justify-center whitespace-nowrap text-white shadow-[0_18px_44px_-26px_rgba(15,23,42,0.55)]" style={{ backgroundColor: createForm.accentColor, borderRadius: wizardLauncherMetrics.buttonRadius, padding: wizardLauncherMetrics.buttonPadding, height: wizardLauncherMetrics.buttonHeight, gap: wizardChatPreviewMode === 'compact' ? '0' : wizardLauncherMetrics.buttonGap, minWidth: wizardChatPreviewMode === 'compact' ? wizardLauncherMetrics.buttonHeight : undefined, fontSize: wizardLauncherMetrics.fontSize, fontWeight: 700 }}>
                                       <span style={{ fontSize: wizardLauncherMetrics.iconSize, lineHeight: 1 }}>{getLauncherPreviewIcon(createForm.launcherIcon)}</span>
                                       {wizardChatPreviewMode !== 'compact' && wizardLauncherMetrics.labelVisible ? <span>{createForm.launcherLabel}</span> : null}
