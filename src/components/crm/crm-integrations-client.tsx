@@ -46,6 +46,24 @@ type ChannelConnection = {
   _count?: { conversations: number; captures: number }
 }
 
+type MetaPageAsset = {
+  pageId: string
+  pageName: string
+  instagramAccountId?: string | null
+  instagramUsername?: string | null
+  instagramName?: string | null
+}
+
+type MetaWhatsAppAsset = {
+  businessId: string
+  businessName: string
+  wabaId: string
+  wabaName: string
+  phoneNumberId: string
+  displayPhoneNumber?: string | null
+  verifiedName?: string | null
+}
+
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
 
 type TemplatePreset = {
@@ -60,6 +78,11 @@ type TemplatePreset = {
 }
 
 type WizardStep = 'template' | 'config' | 'review'
+type ChatbotPreviewMode = 'floating' | 'compact' | 'expanded'
+type ChatbotPreviewViewport = 'desktop' | 'mobile'
+type LauncherPosition = 'right' | 'left'
+type LauncherSize = 'compact' | 'standard' | 'large'
+type PanelShadowPreset = 'soft' | 'medium' | 'strong'
 
 type ReadinessItem = {
   label: string
@@ -78,6 +101,8 @@ function getInitialChannelForm() {
     externalAccountId: '',
     externalPageId: '',
     externalPhoneNumberId: '',
+    whatsappAccessToken: '',
+    whatsappApiVersion: 'v23.0',
     formSelector: '#lead-form',
     chatbotTitle: 'Asesor virtual SGDigital',
     chatbotPrompt: 'Cuéntanos tu proyecto y te contactamos.',
@@ -86,6 +111,30 @@ function getInitialChannelForm() {
     iframeHeight: '720',
     allowedDomains: '',
     accentColor: '#1d4ed8',
+    pageBackgroundColor: '#eef5ff',
+    backgroundColor: '#f8fbff',
+    fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+    floatingLauncherEnabled: true,
+    launcherLabel: 'Abrir asesor virtual',
+    launcherIcon: 'bot',
+    launcherPosition: 'right' as LauncherPosition,
+    launcherSize: 'standard' as LauncherSize,
+    headerBadgeLabel: 'Chatbot CRM',
+    statusBadgeLabel: 'En linea',
+    chatShellRadius: '30',
+    messageBubbleRadius: '22',
+    panelShadowPreset: 'medium' as PanelShadowPreset,
+    showProductField: true,
+    nameLabel: 'Nombre',
+    namePlaceholder: 'Tu nombre',
+    emailLabel: 'Correo',
+    emailPlaceholder: 'tu@correo.com',
+    phoneLabel: 'Teléfono o WhatsApp',
+    phonePlaceholder: '300 000 0000',
+    productLabel: 'Producto',
+    productPlaceholder: '¿Qué producto necesitas?',
+    messageLabel: 'Mensaje',
+    messagePlaceholder: 'Cuéntanos qué necesitas y para cuándo.',
   }
 }
 
@@ -104,6 +153,47 @@ const TEMPLATE_PRESETS: TemplatePreset[] = [
   { key: 'tiktok-bridge', name: 'TikTok Lead Bridge', provider: 'WEB_FORM', bridgeKind: 'TIKTOK', description: 'Usa Make/Zapier o webhook para llevar leads al CRM.', connectionModel: 'Bridge automation', readiness: 'Demo guiada', focus: 'Lead Ads y formularios externos' },
   { key: 'youtube-bridge', name: 'YouTube Lead Bridge', provider: 'WEB_FORM', bridgeKind: 'YOUTUBE', description: 'Bridge para formularios, comentarios o capturas desde campañas.', connectionModel: 'Bridge automation', readiness: 'Demo guiada', focus: 'Captura desde video y campañas' },
 ]
+
+const MANAGED_CHANNEL_SETTING_KEYS = new Set([
+  'testingToken',
+  'bridgeKind',
+  'whatsappAccessToken',
+  'whatsappApiVersion',
+  'formSelector',
+  'chatbotTitle',
+  'chatbotPrompt',
+  'assistantName',
+  'publicEmbedEnabled',
+  'iframeHeight',
+  'allowedDomains',
+  'accentColor',
+  'pageBackgroundColor',
+  'backgroundColor',
+  'fontFamily',
+  'floatingLauncherEnabled',
+  'launcherLabel',
+  'launcherIcon',
+  'launcherPosition',
+  'launcherSize',
+  'headerBadgeLabel',
+  'statusBadgeLabel',
+  'chatShellRadius',
+  'messageBubbleRadius',
+  'panelShadowPreset',
+  'chatbotCustomCss',
+  'showProductField',
+  'nameLabel',
+  'namePlaceholder',
+  'emailLabel',
+  'emailPlaceholder',
+  'phoneLabel',
+  'phonePlaceholder',
+  'productLabel',
+  'productPlaceholder',
+  'messageLabel',
+  'messagePlaceholder',
+  'allowHumanHandoff',
+])
 
 function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
   return fetch(url, init).then((res) => res.json().catch(() => ({}))) as Promise<JsonResponse<T>>
@@ -130,6 +220,14 @@ function getFormSelector(settingsJson: Record<string, unknown> | null | undefine
   return typeof settingsJson?.formSelector === 'string' ? settingsJson.formSelector : '#lead-form'
 }
 
+function getWhatsAppAccessToken(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.whatsappAccessToken === 'string' ? settingsJson.whatsappAccessToken : ''
+}
+
+function getWhatsAppApiVersion(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.whatsappApiVersion === 'string' ? settingsJson.whatsappApiVersion : 'v23.0'
+}
+
 function getChatbotTitle(settingsJson: Record<string, unknown> | null | undefined) {
   return typeof settingsJson?.chatbotTitle === 'string' ? settingsJson.chatbotTitle : 'Asesor virtual SGDigital'
 }
@@ -154,8 +252,146 @@ function getAllowedDomains(settingsJson: Record<string, unknown> | null | undefi
   return typeof settingsJson?.allowedDomains === 'string' ? settingsJson.allowedDomains : ''
 }
 
+function getBackgroundColor(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.backgroundColor === 'string' ? settingsJson.backgroundColor : '#f8fbff'
+}
+
+function getPageBackgroundColor(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.pageBackgroundColor === 'string' ? settingsJson.pageBackgroundColor : '#eef5ff'
+}
+
+function getFontFamily(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.fontFamily === 'string' ? settingsJson.fontFamily : 'ui-sans-serif, system-ui, sans-serif'
+}
+
+function getFloatingLauncherEnabled(settingsJson: Record<string, unknown> | null | undefined) {
+  return settingsJson?.floatingLauncherEnabled !== false
+}
+
+function getLauncherLabel(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.launcherLabel === 'string' ? settingsJson.launcherLabel : 'Abrir asesor virtual'
+}
+
+function getLauncherIcon(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.launcherIcon === 'string' ? settingsJson.launcherIcon : 'bot'
+}
+
+function getLauncherPosition(settingsJson: Record<string, unknown> | null | undefined): LauncherPosition {
+  return settingsJson?.launcherPosition === 'left' ? 'left' : 'right'
+}
+
+function getLauncherSize(settingsJson: Record<string, unknown> | null | undefined): LauncherSize {
+  if (settingsJson?.launcherSize === 'compact') return 'compact'
+  if (settingsJson?.launcherSize === 'large') return 'large'
+  return 'standard'
+}
+
+function getHeaderBadgeLabel(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.headerBadgeLabel === 'string' && settingsJson.headerBadgeLabel.trim() ? settingsJson.headerBadgeLabel : 'Chatbot CRM'
+}
+
+function getStatusBadgeLabel(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.statusBadgeLabel === 'string' && settingsJson.statusBadgeLabel.trim() ? settingsJson.statusBadgeLabel : 'En linea'
+}
+
+function getChatShellRadius(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.chatShellRadius === 'string' && settingsJson.chatShellRadius.trim() ? settingsJson.chatShellRadius : '30'
+}
+
+function getMessageBubbleRadius(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.messageBubbleRadius === 'string' && settingsJson.messageBubbleRadius.trim() ? settingsJson.messageBubbleRadius : '22'
+}
+
+function getPanelShadowPreset(settingsJson: Record<string, unknown> | null | undefined): PanelShadowPreset {
+  if (settingsJson?.panelShadowPreset === 'soft') return 'soft'
+  if (settingsJson?.panelShadowPreset === 'strong') return 'strong'
+  return 'medium'
+}
+
+function getChatbotCustomCss(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.chatbotCustomCss === 'string' ? settingsJson.chatbotCustomCss : ''
+}
+
+function getShowProductField(settingsJson: Record<string, unknown> | null | undefined) {
+  return settingsJson?.showProductField !== false
+}
+
+function getSettingText(settingsJson: Record<string, unknown> | null | undefined, key: string, fallback: string) {
+  return typeof settingsJson?.[key] === 'string' ? settingsJson[key] as string : fallback
+}
+
+function getLauncherPreviewIcon(icon: string) {
+  if (icon === 'sparkles') return '✦'
+  if (icon === 'message-circle') return '◔'
+  if (icon === 'bot') return '🤖'
+  return '◔'
+}
+
 function getPublicEmbedEnabled(settingsJson: Record<string, unknown> | null | undefined) {
   return settingsJson?.publicEmbedEnabled !== false
+}
+
+function normalizePixelValue(rawValue: string, fallback: string) {
+  const digits = rawValue.replace(/[^0-9]/g, '')
+  return digits || fallback
+}
+
+function getPanelShadowValue(preset: PanelShadowPreset) {
+  if (preset === 'soft') return '0 18px 44px -30px rgba(15,23,42,0.26)'
+  if (preset === 'strong') return '0 34px 90px -36px rgba(15,23,42,0.46)'
+  return '0 24px 60px -36px rgba(15,23,42,0.36)'
+}
+
+function buildFriendlyChatbotCustomCss(args: {
+  chatShellRadius: string
+  messageBubbleRadius: string
+  panelShadowPreset: PanelShadowPreset
+}) {
+  const shellRadius = normalizePixelValue(args.chatShellRadius, '30')
+  const bubbleRadius = normalizePixelValue(args.messageBubbleRadius, '22')
+  const panelShadow = getPanelShadowValue(args.panelShadowPreset)
+
+  return [
+    `.sgd-chatbot-shell{border-radius:${shellRadius}px;box-shadow:${panelShadow};}`,
+    `.sgd-preview-panel{border-radius:${shellRadius}px;box-shadow:${panelShadow};}`,
+    `.sgd-chatbot-bubble-assistant,.sgd-chatbot-bubble-user,.sgd-chatbot-bubble-system{border-radius:${bubbleRadius}px;}`,
+  ].join('\n')
+}
+
+function getLauncherPreviewMetrics(size: LauncherSize) {
+  if (size === 'compact') {
+    return {
+      buttonPadding: '0 16px',
+      buttonHeight: '56px',
+      buttonRadius: '999px',
+      buttonGap: '0',
+      iconSize: '20px',
+      labelVisible: false,
+      fontSize: '14px',
+    }
+  }
+
+  if (size === 'large') {
+    return {
+      buttonPadding: '0 24px',
+      buttonHeight: '66px',
+      buttonRadius: '999px',
+      buttonGap: '12px',
+      iconSize: '22px',
+      labelVisible: true,
+      fontSize: '15px',
+    }
+  }
+
+  return {
+    buttonPadding: '0 20px',
+    buttonHeight: '60px',
+    buttonRadius: '999px',
+    buttonGap: '10px',
+    iconSize: '20px',
+    labelVisible: true,
+    fontSize: '14px',
+  }
 }
 
 function getEndpoint(baseUrl: string, channel: ChannelConnection | null) {
@@ -179,6 +415,25 @@ function providerSummary(provider: CrmChannelProvider, bridgeKind: CrmBridgeKind
   return 'Canal omnicanal basado en webhook para inbox y mensajería inbound.'
 }
 
+function usesMetaProvider(provider: CrmChannelProvider) {
+  return provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX' || provider === 'FACEBOOK_PAGE' || provider === 'MESSENGER' || provider === 'INSTAGRAM_DM'
+}
+
+function getMetaConnectionState(settingsJson: Record<string, unknown> | null | undefined) {
+  return {
+    connectedUserName: typeof settingsJson?.metaConnectedUserName === 'string' ? settingsJson.metaConnectedUserName : '',
+    connectedAt: typeof settingsJson?.metaConnectedAt === 'string' ? settingsJson.metaConnectedAt : '',
+    lastSyncAt: typeof settingsJson?.metaLastSyncAt === 'string' ? settingsJson.metaLastSyncAt : '',
+    tokenExpiresAt: typeof settingsJson?.metaTokenExpiresAt === 'string' ? settingsJson.metaTokenExpiresAt : '',
+    selectedPageId: typeof settingsJson?.metaSelectedPageId === 'string' ? settingsJson.metaSelectedPageId : '',
+    selectedInstagramAccountId: typeof settingsJson?.metaSelectedInstagramAccountId === 'string' ? settingsJson.metaSelectedInstagramAccountId : '',
+    selectedPhoneNumberId: typeof settingsJson?.metaSelectedPhoneNumberId === 'string' ? settingsJson.metaSelectedPhoneNumberId : '',
+    pages: Array.isArray(settingsJson?.metaPages) ? settingsJson.metaPages as MetaPageAsset[] : [],
+    whatsappAssets: Array.isArray(settingsJson?.metaWhatsAppAssets) ? settingsJson.metaWhatsAppAssets as MetaWhatsAppAsset[] : [],
+    hasConnection: Boolean(settingsJson?.metaAccessTokenEncrypted || settingsJson?.metaConnectedAt),
+  }
+}
+
 function getChannelReadiness(channel: ChannelConnection, baseUrl: string) {
   const settings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
   const token = getTokenFromSettings(settings)
@@ -188,6 +443,9 @@ function getChannelReadiness(channel: ChannelConnection, baseUrl: string) {
   const publicEmbed = getPublicEmbedEnabled(settings)
   const allowedDomains = getAllowedDomains(settings)
   const hasExternalId = Boolean(channel.externalAccountId || channel.externalPageId || channel.externalPhoneNumberId)
+  const hasWhatsAppCredentials = channel.provider !== 'WHATSAPP_CLOUD' && channel.provider !== 'WHATSAPP_SANDBOX'
+    ? true
+    : Boolean(getWhatsAppAccessToken(settings))
 
   const configured: ReadinessItem[] = [
     { label: 'Base configurada', done: Boolean(channel.name && channel.provider), hint: 'Nombre y proveedor definidos.' },
@@ -205,6 +463,7 @@ function getChannelReadiness(channel: ChannelConnection, baseUrl: string) {
     { label: 'Estado productivo', done: channel.status === 'ACTIVE', hint: 'Para producción el canal debe estar activo.' },
     { label: 'Dominio endurecido', done: !isChatbot || !publicEmbed || Boolean(allowedDomains.trim()), hint: 'El chatbot debería restringirse por dominios.' },
     { label: 'Identificadores externos', done: !isWebhook || hasExternalId, hint: 'Meta o proveedor externo debe quedar identificado.' },
+    { label: 'Credenciales proveedor', done: hasWhatsAppCredentials, hint: 'WhatsApp Cloud requiere access token para enviar desde el inbox.' },
   ]
 
   return { configured, demo, production }
@@ -225,6 +484,9 @@ export function CrmIntegrationsClient() {
   const [copiedKey, setCopiedKey] = useState('')
   const [activeAssetTab, setActiveAssetTab] = useState('overview')
   const [createForm, setCreateForm] = useState<ChannelFormState>(getInitialChannelForm())
+  const [floatingPreviewOpen, setFloatingPreviewOpen] = useState(false)
+  const [wizardChatPreviewMode, setWizardChatPreviewMode] = useState<ChatbotPreviewMode>('floating')
+  const [wizardChatPreviewViewport, setWizardChatPreviewViewport] = useState<ChatbotPreviewViewport>('desktop')
 
   const loadChannels = useCallback(async () => {
     setLoading(true)
@@ -251,11 +513,32 @@ export function CrmIntegrationsClient() {
     return () => window.clearTimeout(timeout)
   }, [copiedKey])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const search = new URLSearchParams(window.location.search)
+    const channelId = search.get('channelId')
+    const metaStatus = search.get('meta')
+    const message = search.get('message')
+
+    if (channelId) {
+      setSelectedChannelId(channelId)
+    }
+
+    if (metaStatus === 'connected') {
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (metaStatus === 'error') {
+      alert(message || 'No se pudo completar la conexión con Meta.')
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
+
   const selectedChannel = useMemo(() => channels.find((item) => item.id === selectedChannelId) ?? null, [channels, selectedChannelId])
   const createPreset = useMemo(() => TEMPLATE_PRESETS.find((item) => item.key === createForm.templateKey) ?? TEMPLATE_PRESETS[0], [createForm.templateKey])
   const createIsChatbot = createForm.provider === 'WEB_CHATBOT'
   const createIsBridge = createForm.provider === 'WEB_FORM' && createForm.bridgeKind !== 'GENERIC'
   const createUsesWebhook = createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' || createForm.provider === 'FACEBOOK_PAGE' || createForm.provider === 'MESSENGER' || createForm.provider === 'INSTAGRAM_DM'
+  const wizardLauncherMetrics = useMemo(() => getLauncherPreviewMetrics(createForm.launcherSize), [createForm.launcherSize])
+  const derivedChatbotCustomCss = useMemo(() => buildFriendlyChatbotCustomCss({ chatShellRadius: createForm.chatShellRadius, messageBubbleRadius: createForm.messageBubbleRadius, panelShadowPreset: createForm.panelShadowPreset }), [createForm.chatShellRadius, createForm.messageBubbleRadius, createForm.panelShadowPreset])
 
   const stats = useMemo(() => {
     return {
@@ -276,6 +559,7 @@ export function CrmIntegrationsClient() {
   const selectedChatbotAssistant = getAssistantName(selectedSettings)
   const selectedChatbotAccent = getAccentColor(selectedSettings)
   const selectedReadiness = useMemo(() => selectedChannel ? getChannelReadiness(selectedChannel, baseUrl) : null, [baseUrl, selectedChannel])
+  const selectedMeta = useMemo(() => getMetaConnectionState(selectedSettings), [selectedSettings])
 
   const snippets = useMemo(() => {
     if (!selectedChannel || !baseUrl) return null
@@ -294,6 +578,13 @@ export function CrmIntegrationsClient() {
         token,
         title: getChatbotTitle(selectedSettings),
         prompt: getChatbotPrompt(selectedSettings),
+        accentColor: getAccentColor(selectedSettings),
+        backgroundColor: getBackgroundColor(selectedSettings),
+        launcherLabel: getLauncherLabel(selectedSettings),
+        launcherIcon: getLauncherIcon(selectedSettings),
+        launcherPosition: getLauncherPosition(selectedSettings),
+        launcherSize: getLauncherSize(selectedSettings),
+        customCss: getChatbotCustomCss(selectedSettings),
       }),
       chatbotIframe: buildChatbotIframeSnippet({
         baseUrl,
@@ -329,6 +620,8 @@ export function CrmIntegrationsClient() {
   function openCreateWizard() {
     setEditingChannelId(null)
     setCreateForm(getInitialChannelForm())
+    setWizardChatPreviewMode('floating')
+    setWizardChatPreviewViewport('desktop')
     setWizardStep('template')
     setCreateOpen(true)
   }
@@ -349,6 +642,8 @@ export function CrmIntegrationsClient() {
       externalAccountId: channel.externalAccountId || '',
       externalPageId: channel.externalPageId || '',
       externalPhoneNumberId: channel.externalPhoneNumberId || '',
+      whatsappAccessToken: getWhatsAppAccessToken(settings),
+      whatsappApiVersion: getWhatsAppApiVersion(settings),
       formSelector: getFormSelector(settings),
       chatbotTitle: getChatbotTitle(settings),
       chatbotPrompt: getChatbotPrompt(settings),
@@ -357,7 +652,33 @@ export function CrmIntegrationsClient() {
       iframeHeight: getIframeHeight(settings),
       allowedDomains: getAllowedDomains(settings),
       accentColor: getAccentColor(settings),
+      pageBackgroundColor: getPageBackgroundColor(settings),
+      backgroundColor: getBackgroundColor(settings),
+      fontFamily: getFontFamily(settings),
+      floatingLauncherEnabled: getFloatingLauncherEnabled(settings),
+      launcherLabel: getLauncherLabel(settings),
+      launcherIcon: getLauncherIcon(settings),
+      launcherPosition: getLauncherPosition(settings),
+      launcherSize: getLauncherSize(settings),
+      headerBadgeLabel: getHeaderBadgeLabel(settings),
+      statusBadgeLabel: getStatusBadgeLabel(settings),
+      chatShellRadius: getChatShellRadius(settings),
+      messageBubbleRadius: getMessageBubbleRadius(settings),
+      panelShadowPreset: getPanelShadowPreset(settings),
+      showProductField: getShowProductField(settings),
+      nameLabel: getSettingText(settings, 'nameLabel', 'Nombre'),
+      namePlaceholder: getSettingText(settings, 'namePlaceholder', 'Tu nombre'),
+      emailLabel: getSettingText(settings, 'emailLabel', 'Correo'),
+      emailPlaceholder: getSettingText(settings, 'emailPlaceholder', 'tu@correo.com'),
+      phoneLabel: getSettingText(settings, 'phoneLabel', 'Teléfono o WhatsApp'),
+      phonePlaceholder: getSettingText(settings, 'phonePlaceholder', '300 000 0000'),
+      productLabel: getSettingText(settings, 'productLabel', 'Producto'),
+      productPlaceholder: getSettingText(settings, 'productPlaceholder', '¿Qué producto necesitas?'),
+      messageLabel: getSettingText(settings, 'messageLabel', 'Mensaje'),
+      messagePlaceholder: getSettingText(settings, 'messagePlaceholder', 'Cuéntanos qué necesitas y para cuándo.'),
     })
+    setWizardChatPreviewMode('floating')
+    setWizardChatPreviewViewport('desktop')
     setWizardStep('config')
     setCreateOpen(true)
   }
@@ -366,6 +687,36 @@ export function CrmIntegrationsClient() {
     if (!value) return
     await navigator.clipboard.writeText(value)
     setCopiedKey(key)
+  }
+
+  async function syncMeta(channelId: string) {
+    setUpdatingChannelId(channelId)
+    try {
+      const json = await requestJson<ChannelConnection>(`/api/crm/channels/${channelId}/meta/sync`, { method: 'POST' })
+      if (!json.success) {
+        alert(json.error || 'No se pudo sincronizar Meta.')
+        return
+      }
+      await loadChannels()
+      setSelectedChannelId(channelId)
+    } finally {
+      setUpdatingChannelId(null)
+    }
+  }
+
+  async function disconnectMeta(channelId: string) {
+    setUpdatingChannelId(channelId)
+    try {
+      const json = await requestJson<ChannelConnection>(`/api/crm/channels/${channelId}/meta/disconnect`, { method: 'POST' })
+      if (!json.success) {
+        alert(json.error || 'No se pudo desconectar Meta.')
+        return
+      }
+      await loadChannels()
+      setSelectedChannelId(channelId)
+    } finally {
+      setUpdatingChannelId(null)
+    }
   }
 
   async function saveChannel() {
@@ -379,6 +730,8 @@ export function CrmIntegrationsClient() {
       const settingsJson = {
         testingToken: createForm.testingToken,
         bridgeKind: createForm.bridgeKind,
+        whatsappAccessToken: createForm.whatsappAccessToken,
+        whatsappApiVersion: createForm.whatsappApiVersion,
         formSelector: createForm.formSelector,
         chatbotTitle: createForm.chatbotTitle,
         chatbotPrompt: createForm.chatbotPrompt,
@@ -387,6 +740,31 @@ export function CrmIntegrationsClient() {
         iframeHeight: createForm.iframeHeight,
         allowedDomains: createForm.allowedDomains,
         accentColor: createForm.accentColor,
+        pageBackgroundColor: createForm.pageBackgroundColor,
+        backgroundColor: createForm.backgroundColor,
+        fontFamily: createForm.fontFamily,
+        floatingLauncherEnabled: createForm.floatingLauncherEnabled,
+        launcherLabel: createForm.launcherLabel,
+        launcherIcon: createForm.launcherIcon,
+        launcherPosition: createForm.launcherPosition,
+        launcherSize: createForm.launcherSize,
+        headerBadgeLabel: createForm.headerBadgeLabel,
+        statusBadgeLabel: createForm.statusBadgeLabel,
+        chatShellRadius: normalizePixelValue(createForm.chatShellRadius, '30'),
+        messageBubbleRadius: normalizePixelValue(createForm.messageBubbleRadius, '22'),
+        panelShadowPreset: createForm.panelShadowPreset,
+        chatbotCustomCss: derivedChatbotCustomCss,
+        showProductField: createForm.showProductField,
+        nameLabel: createForm.nameLabel,
+        namePlaceholder: createForm.namePlaceholder,
+        emailLabel: createForm.emailLabel,
+        emailPlaceholder: createForm.emailPlaceholder,
+        phoneLabel: createForm.phoneLabel,
+        phonePlaceholder: createForm.phonePlaceholder,
+        productLabel: createForm.productLabel,
+        productPlaceholder: createForm.productPlaceholder,
+        messageLabel: createForm.messageLabel,
+        messagePlaceholder: createForm.messagePlaceholder,
         allowHumanHandoff: true,
       }
 
@@ -414,6 +792,8 @@ export function CrmIntegrationsClient() {
       setCreateOpen(false)
       setEditingChannelId(null)
       setWizardStep('template')
+      setWizardChatPreviewMode('floating')
+      setWizardChatPreviewViewport('desktop')
       setActiveAssetTab(json.data.provider === 'WEB_CHATBOT' ? 'chatbot' : 'overview')
       setCreateForm(getInitialChannelForm())
       await loadChannels()
@@ -510,6 +890,11 @@ export function CrmIntegrationsClient() {
   return (
     <div className="space-y-6 pb-6">
       <ErpPageHero
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'CRM', href: '/dashboard/crm' },
+          { label: 'Integraciones' },
+        ]}
         eyebrow="CRM Omnicanal"
         title="Centro de integraciones y captura de leads"
         description="Activa canales, genera scripts para formularios y chatbot, y monta bridges demo para correo y redes sin duplicar módulos del ERP. Todo termina en leads, conversaciones y oportunidades del CRM existente."
@@ -540,7 +925,7 @@ export function CrmIntegrationsClient() {
             <CardTitle>Canales configurados</CardTitle>
             <CardDescription>Selecciona un canal para ver assets, webhooks y bridges listos para copiar.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 p-4 md:p-5">
+          <CardContent className="max-h-[72vh] space-y-3 overflow-y-auto p-4 md:p-5 xl:max-h-[calc(100vh-19rem)]">
             {loading ? <p className="text-sm text-muted-foreground">Cargando canales...</p> : null}
             {!loading && channels.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50/80 p-5 text-sm text-slate-500">
@@ -664,12 +1049,12 @@ export function CrmIntegrationsClient() {
                       <div className="mt-5 rounded-2xl border border-emerald-200 bg-white/85 p-4">
                         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Iframe vinculado</p>
                         <p className="mt-2 break-all text-sm font-medium text-slate-900">{selectedChatbotEmbedUrl}</p>
-                        <div className="mt-4 overflow-hidden rounded-[24px] border border-emerald-200 bg-[linear-gradient(180deg,#ecfdf5,#ffffff)] shadow-sm">
+                        <div className="mt-4 overflow-hidden rounded-[24px] border border-emerald-200 shadow-sm" style={{ backgroundColor: getBackgroundColor(selectedSettings) }}>
                           <div className="flex items-center justify-between border-b border-emerald-100 px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-800">
                             <span>{selectedChatbotTitle}</span>
                             <span>{selectedChatbotAssistant}</span>
                           </div>
-                          <div className="space-y-3 p-4">
+                          <div className="space-y-3 p-4" style={{ backgroundColor: getBackgroundColor(selectedSettings) }}>
                             <div className="max-w-[78%] rounded-2xl rounded-tl-md bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
                               {selectedChatbotPrompt}
                             </div>
@@ -733,12 +1118,40 @@ export function CrmIntegrationsClient() {
                         </Button>
                         {selectedChannel.provider === 'WEB_CHATBOT' ? <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"><Link href="/dashboard/crm/chatbot">Panel chatbot</Link></Button> : null}
                         {selectedChannel.provider === 'WEB_CHATBOT' && selectedChatbotEmbedUrl ? <Button asChild variant="outline" className="rounded-xl"><Link href={selectedChatbotEmbedUrl}>Ver iframe</Link></Button> : null}
+                        {usesMetaProvider(selectedChannel.provider) ? <Button asChild variant="outline" className="rounded-xl border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100"><Link href={`/api/crm/channels/${selectedChannel.id}/meta/connect`}>{selectedMeta.hasConnection ? 'Reconectar Meta' : 'Conectar con Meta'}</Link></Button> : null}
+                        {usesMetaProvider(selectedChannel.provider) ? <Button variant="outline" className="rounded-xl" onClick={() => void syncMeta(selectedChannel.id)} disabled={updatingChannelId === selectedChannel.id || !selectedMeta.hasConnection}>{updatingChannelId === selectedChannel.id ? 'Sincronizando...' : 'Sincronizar Meta'}</Button> : null}
+                        {usesMetaProvider(selectedChannel.provider) ? <Button variant="outline" className="rounded-xl border-amber-200 text-amber-800 hover:bg-amber-50" onClick={() => void disconnectMeta(selectedChannel.id)} disabled={updatingChannelId === selectedChannel.id || !selectedMeta.hasConnection}>Desconectar Meta</Button> : null}
                         <Button variant="outline" className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => setDeleteCandidate(selectedChannel)} disabled={deletingChannelId === selectedChannel.id}>
                           {deletingChannelId === selectedChannel.id ? 'Eliminando...' : 'Eliminar canal'}
                         </Button>
                       </div>
                       <p className="mt-3 text-xs leading-5 text-slate-500">Solo se eliminan canales sin conversaciones ni capturas. Si ya hubo actividad, deben desactivarse.</p>
                     </div>
+
+                    {usesMetaProvider(selectedChannel.provider) ? (
+                      <div className="rounded-[26px] border border-sky-200 bg-sky-50/60 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">Conexión real con Meta</p>
+                        {selectedMeta.hasConnection ? (
+                          <div className="mt-4 space-y-3 text-sm text-slate-700">
+                            <p><span className="font-semibold text-slate-900">Cuenta conectada:</span> {selectedMeta.connectedUserName || 'Meta conectada'}</p>
+                            <p><span className="font-semibold text-slate-900">Conectado:</span> {formatDate(selectedMeta.connectedAt)}</p>
+                            <p><span className="font-semibold text-slate-900">Última sincronización:</span> {formatDate(selectedMeta.lastSyncAt)}</p>
+                            <p><span className="font-semibold text-slate-900">Expira token:</span> {formatDate(selectedMeta.tokenExpiresAt)}</p>
+                            {selectedChannel.provider === 'WHATSAPP_CLOUD' || selectedChannel.provider === 'WHATSAPP_SANDBOX' ? (
+                              <p><span className="font-semibold text-slate-900">Número activo:</span> {selectedMeta.whatsappAssets.find((item) => item.phoneNumberId === selectedChannel.externalPhoneNumberId)?.displayPhoneNumber || selectedChannel.externalPhoneNumberId || 'Sin número asociado'}</p>
+                            ) : null}
+                            {selectedChannel.provider === 'FACEBOOK_PAGE' || selectedChannel.provider === 'MESSENGER' ? (
+                              <p><span className="font-semibold text-slate-900">Página activa:</span> {selectedMeta.pages.find((item) => item.pageId === selectedChannel.externalPageId)?.pageName || selectedChannel.externalPageId || 'Sin página asociada'}</p>
+                            ) : null}
+                            {selectedChannel.provider === 'INSTAGRAM_DM' ? (
+                              <p><span className="font-semibold text-slate-900">Instagram activo:</span> {selectedMeta.pages.find((item) => item.instagramAccountId === selectedChannel.externalAccountId)?.instagramUsername || selectedChannel.externalAccountId || 'Sin cuenta asociada'}</p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="mt-3 text-sm leading-6 text-slate-700">Este canal ya puede enlazarse con Meta usando OAuth real desde el CRM. Al conectar, el sistema sincroniza páginas, cuentas de Instagram y assets de WhatsApp para dejar el canal operativo con IDs reales.</p>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </CardContent>
@@ -761,13 +1174,15 @@ export function CrmIntegrationsClient() {
                 </div>
               ) : (
                 <Tabs value={activeAssetTab} onValueChange={setActiveAssetTab} className="space-y-4">
-                  <TabsList className="h-auto flex-wrap rounded-2xl border border-slate-200 bg-slate-50 p-1">
+                  <div className="overflow-x-auto pb-1">
+                    <TabsList className="inline-flex h-auto min-w-max flex-nowrap rounded-2xl border border-slate-200 bg-slate-50 p-1 md:flex-wrap">
                     {selectedAssetTabs.includes('overview') ? <TabsTrigger value="overview" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Resumen</TabsTrigger> : null}
                     {selectedAssetTabs.includes('form') ? <TabsTrigger value="form" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Formulario</TabsTrigger> : null}
                     {selectedAssetTabs.includes('chatbot') ? <TabsTrigger value="chatbot" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Chatbot</TabsTrigger> : null}
                     {selectedAssetTabs.includes('webhook') ? <TabsTrigger value="webhook" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Webhook social</TabsTrigger> : null}
                     {selectedAssetTabs.includes('bridge') ? <TabsTrigger value="bridge" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Bridges</TabsTrigger> : null}
-                  </TabsList>
+                    </TabsList>
+                  </div>
 
                   <TabsContent value="overview" className="space-y-4">
                     <div className="grid gap-4 lg:grid-cols-3">
@@ -803,7 +1218,7 @@ export function CrmIntegrationsClient() {
                       </div>
                       <div className="rounded-3xl border border-sky-200 bg-sky-50/80 p-4 text-sm text-sky-900">
                         <p className="font-semibold">Meta / WhatsApp / Instagram</p>
-                        <p className="mt-2 leading-6">Quedaron listos vía webhook con el modelo omnicanal actual. Cuando tengas credenciales reales, solo conectas el webhook y los leads entran al mismo inbox comercial.</p>
+                        <p className="mt-2 leading-6">Ahora puedes conectar Meta directamente desde el CRM por OAuth real. El sistema sincroniza páginas, cuentas de Instagram y assets de WhatsApp para dejar el canal listo sobre el mismo inbox comercial.</p>
                       </div>
                     </div>
 
@@ -815,7 +1230,11 @@ export function CrmIntegrationsClient() {
                         </div>
                         <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4 text-sm text-slate-700">
                           <p className="font-semibold text-slate-900">Asistente visible</p>
-                          <p className="mt-2 leading-6">{getAssistantName(selectedSettings)} con color {getAccentColor(selectedSettings)}.</p>
+                          <p className="mt-2 leading-6">{getAssistantName(selectedSettings)} con color {getAccentColor(selectedSettings)} y fondo {getBackgroundColor(selectedSettings)}.</p>
+                        </div>
+                        <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4 text-sm text-slate-700">
+                          <p className="font-semibold text-slate-900">Launcher flotante</p>
+                          <p className="mt-2 leading-6">{getFloatingLauncherEnabled(selectedSettings) ? `Activo con etiqueta ${getLauncherLabel(selectedSettings)}.` : 'Desactivado desde configuración.'}</p>
                         </div>
                         <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4 text-sm text-slate-700">
                           <p className="font-semibold text-slate-900">Dominios previstos</p>
@@ -878,8 +1297,49 @@ export function CrmIntegrationsClient() {
                         <CardDescription>Opción secundaria si el cliente prefiere botón flotante en lugar de iframe.</CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-3">
-                        <Textarea value={snippets.chatbot} readOnly rows={18} className="font-mono text-xs" />
-                        <Button className="rounded-xl" onClick={() => void copyText('snippet-chatbot', snippets.chatbot)}>
+                        <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,#f8fbff,#ffffff)] p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">Preview del launcher</p>
+                              <p className="text-xs leading-5 text-slate-500">Simula la entrada del icono y el despliegue del panel flotante.</p>
+                            </div>
+                            <Button variant="outline" className="rounded-xl" onClick={() => setFloatingPreviewOpen((current) => !current)} disabled={!getFloatingLauncherEnabled(selectedSettings)}>
+                              {floatingPreviewOpen ? 'Cerrar preview' : 'Abrir preview'}
+                            </Button>
+                          </div>
+                          <div className="relative mt-4 min-h-[260px] overflow-hidden rounded-[24px] border border-slate-200 p-4" style={{ backgroundColor: getPageBackgroundColor(selectedSettings) }}>
+                            <div className={floatingPreviewOpen ? 'absolute inset-0 bg-slate-950/10 backdrop-blur-[2px] transition-opacity duration-300 opacity-100' : 'absolute inset-0 bg-slate-950/10 backdrop-blur-[2px] transition-opacity duration-300 opacity-0 pointer-events-none'} />
+                            <div className={floatingPreviewOpen ? 'absolute bottom-24 right-4 w-[280px] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_80px_-30px_rgba(15,23,42,.45)] transition-all duration-300 ease-out opacity-100 translate-y-0 scale-100' : 'absolute bottom-24 right-4 w-[280px] overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_80px_-30px_rgba(15,23,42,.45)] transition-all duration-300 ease-out opacity-0 translate-y-4 scale-95 pointer-events-none'}>
+                              <div className="flex items-center justify-between px-4 py-3 text-white" style={{ background: `linear-gradient(135deg, #0f172a, ${getAccentColor(selectedSettings)})` }}>
+                                <div>
+                                  <p className="text-sm font-semibold">{selectedChatbotTitle}</p>
+                                  <p className="text-[11px] text-white/80">{selectedChatbotAssistant}</p>
+                                </div>
+                                <button type="button" className="rounded-full bg-white/15 px-2 py-1 text-xs">×</button>
+                              </div>
+                              <div className="space-y-3 p-4" style={{ backgroundColor: getBackgroundColor(selectedSettings) }}>
+                                <div className="max-w-[82%] rounded-2xl rounded-tl-md bg-white px-3 py-2 text-xs text-slate-700 shadow-sm">
+                                  Hola. Soy {selectedChatbotAssistant}. Te puedo ayudar con tu cotización.
+                                </div>
+                                <div className="ml-auto max-w-[74%] rounded-2xl rounded-tr-md px-3 py-2 text-xs text-white shadow-sm" style={{ backgroundColor: getAccentColor(selectedSettings) }}>
+                                  Quiero información de un producto.
+                                </div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className={floatingPreviewOpen ? 'absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(15,23,42,.22)] transition-all duration-300 ease-out translate-y-0 scale-100' : 'absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_40px_rgba(15,23,42,.22)] transition-all duration-500 ease-out translate-y-0 scale-100'}
+                              style={{ backgroundColor: getAccentColor(selectedSettings) }}
+                              onClick={() => setFloatingPreviewOpen((current) => !current)}
+                              disabled={!getFloatingLauncherEnabled(selectedSettings)}
+                            >
+                              <span>{getLauncherPreviewIcon(getLauncherIcon(selectedSettings))}</span>
+                              <span>{getLauncherLabel(selectedSettings)}</span>
+                            </button>
+                          </div>
+                        </div>
+                        <Textarea value={getFloatingLauncherEnabled(selectedSettings) ? snippets.chatbot : 'Launcher flotante desactivado en la configuración del canal.'} readOnly rows={18} className="font-mono text-xs" />
+                        <Button className="rounded-xl" onClick={() => void copyText('snippet-chatbot', snippets.chatbot)} disabled={!getFloatingLauncherEnabled(selectedSettings)}>
                           {copiedKey === 'snippet-chatbot' ? 'Snippet copiado' : 'Copiar widget'}
                         </Button>
                       </CardContent>
@@ -964,15 +1424,16 @@ export function CrmIntegrationsClient() {
       </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-h-[92vh] max-w-5xl overflow-hidden rounded-[30px] border-slate-200 bg-white/98 p-0 shadow-[0_28px_80px_-42px_rgba(15,23,42,0.45)]">
-          <div className="grid h-full gap-0 lg:grid-cols-[0.9fr_1.1fr]">
-            <div className="border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,.18),transparent_32%),linear-gradient(180deg,#f8fbff,#ffffff)] p-6 lg:border-b-0 lg:border-r">
+        <DialogContent className="h-[92vh] max-h-[92vh] max-w-5xl overflow-hidden rounded-[30px] border-slate-200 bg-white/98 p-0 shadow-[0_28px_80px_-42px_rgba(15,23,42,0.45)]">
+          <div className="grid h-full min-h-0 gap-0 lg:grid-cols-[0.9fr_1.1fr]">
+            <div className="min-h-0 overflow-y-auto border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,.18),transparent_32%),linear-gradient(180deg,#f8fbff,#ffffff)] p-6 lg:border-b-0 lg:border-r">
               <DialogHeader>
                 <DialogTitle>{editingChannelId ? 'Editar canal omnicanal' : 'Nuevo canal omnicanal'}</DialogTitle>
                 <DialogDescription>{editingChannelId ? 'Ajusta configuración, demo e iframe desde el mismo wizard sin perder el contexto del canal.' : 'Wizard por pasos para dejar el canal listo, con preview comercial y checklist antes de crearlo.'}</DialogDescription>
               </DialogHeader>
 
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-4 overflow-x-auto pb-1">
+                <div className="flex min-w-max gap-2 sm:min-w-0 sm:flex-wrap">
                 {[
                   { id: 'template', label: '1. Plantilla' },
                   { id: 'config', label: '2. Configuración' },
@@ -987,10 +1448,11 @@ export function CrmIntegrationsClient() {
                     {step.label}
                   </button>
                 ))}
+                </div>
               </div>
 
               {wizardStep === 'template' ? (
-                <div className="mt-5 max-h-[62vh] space-y-3 overflow-y-auto pr-1">
+                <div className="mt-5 space-y-3 pr-1">
                   {TEMPLATE_PRESETS.map((preset) => (
                     <button
                       key={preset.key}
@@ -1021,17 +1483,112 @@ export function CrmIntegrationsClient() {
                       <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3">
                         <p className="text-[11px] uppercase tracking-[0.14em] text-emerald-700">Iframe visible al crear</p>
                         <p className="mt-2 text-sm leading-6 text-emerald-900">{wizardPreview.iframeUrl}</p>
-                        <div className="mt-3 overflow-hidden rounded-[22px] border border-emerald-200 bg-white shadow-sm">
-                          <div className="flex items-center justify-between border-b border-emerald-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">
-                            <span>{createForm.chatbotTitle}</span>
-                            <span>{createForm.assistantName}</span>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-700">
+                            <span className="h-3.5 w-3.5 rounded-full border border-slate-200" style={{ backgroundColor: createForm.accentColor }} />
+                            <span>Acento {createForm.accentColor}</span>
                           </div>
-                          <div className="space-y-2 p-3">
-                            <div className="max-w-[82%] rounded-2xl rounded-tl-md bg-emerald-50 px-3 py-2 text-xs leading-5 text-slate-700">
-                              {createForm.chatbotPrompt}
+                          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-700">
+                            <span className="h-3.5 w-3.5 rounded-full border border-slate-200" style={{ backgroundColor: createForm.pageBackgroundColor }} />
+                            <span>Fondo general {createForm.pageBackgroundColor}</span>
+                          </div>
+                          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-700">
+                            <span className="h-3.5 w-3.5 rounded-full border border-slate-200" style={{ backgroundColor: createForm.backgroundColor }} />
+                            <span>Fondo interno {createForm.backgroundColor}</span>
+                          </div>
+                        </div>
+                        <div className="mt-4 rounded-2xl border border-emerald-200 bg-white/80 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex flex-wrap gap-2">
+                              {[
+                                { value: 'floating', label: 'Boton flotante' },
+                                { value: 'compact', label: 'Compactado' },
+                                { value: 'expanded', label: 'Desplegado' },
+                              ].map((mode) => (
+                                <button
+                                  key={mode.value}
+                                  type="button"
+                                  onClick={() => setWizardChatPreviewMode(mode.value as ChatbotPreviewMode)}
+                                  className={wizardChatPreviewMode === mode.value ? 'rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600'}
+                                >
+                                  {mode.label}
+                                </button>
+                              ))}
                             </div>
-                            <div className="ml-auto max-w-[72%] rounded-2xl rounded-tr-md px-3 py-2 text-xs leading-5 text-white" style={{ backgroundColor: createForm.accentColor }}>
-                              Necesito asesoría para una campaña con materiales impresos.
+                            <div className="flex gap-2">
+                              {[
+                                { value: 'desktop', label: 'Desktop' },
+                                { value: 'mobile', label: 'Mobile' },
+                              ].map((viewport) => (
+                                <button
+                                  key={viewport.value}
+                                  type="button"
+                                  onClick={() => setWizardChatPreviewViewport(viewport.value as ChatbotPreviewViewport)}
+                                  className={wizardChatPreviewViewport === viewport.value ? 'rounded-full border border-sky-300 bg-sky-100 px-3 py-1 text-[11px] font-semibold text-sky-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600'}
+                                >
+                                  {viewport.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="relative mt-3 overflow-hidden rounded-[26px] border border-emerald-200 p-3 shadow-sm" style={{ background: `radial-gradient(circle at top, rgba(14,165,233,0.14), transparent 32%), linear-gradient(180deg, ${createForm.pageBackgroundColor} 0%, ${createForm.pageBackgroundColor} 55%, ${createForm.backgroundColor} 100%)`, minHeight: wizardChatPreviewViewport === 'mobile' ? 500 : 420 }}>
+                            {derivedChatbotCustomCss.trim() ? <style>{derivedChatbotCustomCss}</style> : null}
+                            <div className="flex h-full px-3 pb-20 pt-4" style={{ justifyContent: createForm.launcherPosition === 'left' ? 'flex-start' : 'flex-end' }}>
+                              <div className="sgd-preview-root relative w-full" style={{ maxWidth: wizardChatPreviewViewport === 'mobile' ? 340 : 420, fontFamily: createForm.fontFamily }}>
+                                {wizardChatPreviewMode === 'expanded' ? (
+                                  <div className="sgd-preview-panel overflow-hidden border border-slate-200 bg-white" style={{ marginTop: 24, marginLeft: createForm.launcherPosition === 'left' ? 0 : 'auto', marginRight: createForm.launcherPosition === 'left' ? 'auto' : 0, borderRadius: `${normalizePixelValue(createForm.chatShellRadius, '30')}px`, boxShadow: getPanelShadowValue(createForm.panelShadowPreset) }}>
+                                    <div className="sgd-preview-panel-header px-4 py-4 text-white" style={{ background: `linear-gradient(135deg, #0f172a, ${createForm.accentColor})` }}>
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-100">{createForm.headerBadgeLabel}</p>
+                                          <p className="mt-1 text-base font-semibold">{createForm.chatbotTitle}</p>
+                                        </div>
+                                        <div className="rounded-full bg-white/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/90">{createForm.statusBadgeLabel}</div>
+                                      </div>
+                                    </div>
+                                    <div className="sgd-preview-messages space-y-3 px-4 py-4" style={{ backgroundColor: createForm.backgroundColor }}>
+                                      <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(createForm.messageBubbleRadius, '22')}px` }}>{createForm.chatbotPrompt}</div>
+                                      {createForm.showProductField ? <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(createForm.messageBubbleRadius, '22')}px` }}>Tambien puedo pedir producto y cantidad para revisar inventario.</div> : null}
+                                      <div className="ml-auto max-w-[78%] px-4 py-3 text-xs leading-5 text-white shadow-sm" style={{ backgroundColor: createForm.accentColor, borderRadius: `${normalizePixelValue(createForm.messageBubbleRadius, '22')}px` }}>Necesito una propuesta comercial para mi marca.</div>
+                                    </div>
+                                    <div className="sgd-preview-composer border-t border-slate-100 bg-white px-4 py-4">
+                                      <div className="grid gap-2">
+                                        {createForm.showProductField ? <div className="rounded-2xl border border-slate-200 px-3 py-2 text-xs text-slate-400">{createForm.productLabel}: {createForm.productPlaceholder}</div> : null}
+                                        <div className="rounded-2xl border border-slate-200 px-3 py-3 text-xs text-slate-400">{createForm.messageLabel}: {createForm.messagePlaceholder}</div>
+                                        <div className="flex gap-2">
+                                          <div className="flex-1 rounded-xl px-3 py-2 text-center text-xs font-semibold text-white" style={{ backgroundColor: createForm.accentColor }}>Responder</div>
+                                          <div className="rounded-xl border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-600">Asesor humano</div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : null}
+
+                                {createForm.floatingLauncherEnabled ? (
+                                  <div className="sgd-preview-launcher absolute bottom-3" style={{ left: createForm.launcherPosition === 'left' ? 12 : undefined, right: createForm.launcherPosition === 'right' ? 12 : undefined, maxWidth: 'calc(100% - 24px)' }}>
+                                    <div className="flex max-w-full items-center justify-center whitespace-nowrap text-white shadow-[0_18px_44px_-26px_rgba(15,23,42,0.55)]" style={{ backgroundColor: createForm.accentColor, borderRadius: wizardLauncherMetrics.buttonRadius, padding: wizardLauncherMetrics.buttonPadding, height: wizardLauncherMetrics.buttonHeight, gap: wizardChatPreviewMode === 'compact' ? '0' : wizardLauncherMetrics.buttonGap, minWidth: wizardChatPreviewMode === 'compact' ? wizardLauncherMetrics.buttonHeight : undefined, fontSize: wizardLauncherMetrics.fontSize, fontWeight: 700 }}>
+                                      <span style={{ fontSize: wizardLauncherMetrics.iconSize, lineHeight: 1 }}>{getLauncherPreviewIcon(createForm.launcherIcon)}</span>
+                                      {wizardChatPreviewMode !== 'compact' && wizardLauncherMetrics.labelVisible ? <span>{createForm.launcherLabel}</span> : null}
+                                    </div>
+                                  </div>
+                                ) : <div className="absolute bottom-0 rounded-full border border-dashed border-slate-300 bg-white/80 px-3 py-2 text-[11px] font-semibold text-slate-500">Launcher flotante desactivado</div>}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 grid gap-2 text-[11px] text-slate-600 sm:grid-cols-3">
+                            <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2">
+                              <p className="font-semibold text-slate-900">Launcher</p>
+                              <p className="mt-1">{createForm.launcherPosition === 'left' ? 'Izquierda' : 'Derecha'} · {createForm.launcherSize}</p>
+                            </div>
+                            <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2">
+                              <p className="font-semibold text-slate-900">Estado</p>
+                              <p className="mt-1">{wizardChatPreviewMode === 'expanded' ? 'Panel abierto' : wizardChatPreviewMode === 'compact' ? 'Launcher compacto' : 'Launcher visible'}</p>
+                            </div>
+                            <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2">
+                              <p className="font-semibold text-slate-900">Extensión</p>
+                              <p className="mt-1">Radio {normalizePixelValue(createForm.chatShellRadius, '30')}px · Sombra {createForm.panelShadowPreset}</p>
                             </div>
                           </div>
                         </div>
@@ -1058,7 +1615,7 @@ export function CrmIntegrationsClient() {
               )}
             </div>
 
-            <div className="flex max-h-[92vh] flex-col overflow-hidden p-6">
+            <div className="flex min-h-0 flex-col overflow-hidden p-6">
               <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#fbfdff,#ffffff)] p-4 shadow-sm">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-slate-950 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">{createPreset.connectionModel}</span>
@@ -1102,14 +1659,49 @@ export function CrmIntegrationsClient() {
                 </div>
                 {createUsesWebhook ? (
                   <>
+                    {usesMetaProvider(createForm.provider) ? (
+                      <div className="rounded-2xl border border-sky-200 bg-sky-50/80 p-4 text-sm text-sky-900 md:col-span-2">
+                        <p className="font-semibold">Conexión Meta en esta versión</p>
+                        <p className="mt-2 leading-6">
+                          Este canal ya soporta webhook inbound y, en WhatsApp Cloud, también envío saliente por Graph API.
+                          La autorización automática con ventana de Meta, callback OAuth e intercambio de tokens aún no está implementada en este módulo.
+                        </p>
+                        <p className="mt-2 leading-6">
+                          Por ahora la activación se hace con credenciales manuales: Account ID, Page ID o Phone Number ID, token de verificación y, para WhatsApp Cloud, Access Token.
+                        </p>
+                      </div>
+                    ) : null}
                     <div className="grid gap-2">
                       <Label>{createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? 'Business Account ID' : 'Account ID'}</Label>
                       <Input value={createForm.externalAccountId} onChange={(e) => setCreateForm((prev) => ({ ...prev, externalAccountId: e.target.value }))} className="h-11 rounded-xl" placeholder="Cuenta conectada" />
                     </div>
                     <div className="grid gap-2">
                       <Label>{createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? 'Phone Number ID' : 'Page ID / Inbox ID'}</Label>
-                      <Input value={createForm.externalPageId} onChange={(e) => setCreateForm((prev) => ({ ...prev, externalPageId: e.target.value }))} className="h-11 rounded-xl" placeholder="Identificador del canal" />
+                      <Input
+                        value={createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? createForm.externalPhoneNumberId : createForm.externalPageId}
+                        onChange={(e) => setCreateForm((prev) => ({
+                          ...prev,
+                          ...(createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX'
+                            ? { externalPhoneNumberId: e.target.value }
+                            : { externalPageId: e.target.value }),
+                        }))}
+                        className="h-11 rounded-xl"
+                        placeholder="Identificador del canal"
+                      />
                     </div>
+                    {createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? (
+                      <>
+                        <div className="grid gap-2 md:col-span-2">
+                          <Label>Access Token Cloud API</Label>
+                          <Input value={createForm.whatsappAccessToken} onChange={(e) => setCreateForm((prev) => ({ ...prev, whatsappAccessToken: e.target.value }))} className="h-11 rounded-xl" placeholder="EAAG..." />
+                          <p className="text-xs leading-5 text-slate-500">Si lo dejas vacío, el inbox seguirá operando en modo demo local para mensajes salientes.</p>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Versión Graph API</Label>
+                          <Input value={createForm.whatsappApiVersion} onChange={(e) => setCreateForm((prev) => ({ ...prev, whatsappApiVersion: e.target.value }))} className="h-11 rounded-xl" placeholder="v23.0" />
+                        </div>
+                      </>
+                    ) : null}
                   </>
                 ) : null}
 
@@ -1156,11 +1748,184 @@ export function CrmIntegrationsClient() {
                     </div>
                     <div className="grid gap-2">
                       <Label>Color de acento</Label>
-                      <Input value={createForm.accentColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, accentColor: e.target.value }))} className="h-11 rounded-xl" placeholder="#1d4ed8" />
+                      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                        <input
+                          type="color"
+                          value={createForm.accentColor}
+                          onChange={(e) => setCreateForm((prev) => ({ ...prev, accentColor: e.target.value }))}
+                          className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0"
+                          aria-label="Seleccionar color de acento"
+                        />
+                        <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.accentColor }} />
+                        <Input value={createForm.accentColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, accentColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="#1d4ed8" />
+                      </div>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Color de fondo general</Label>
+                      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                        <input
+                          type="color"
+                          value={createForm.pageBackgroundColor}
+                          onChange={(e) => setCreateForm((prev) => ({ ...prev, pageBackgroundColor: e.target.value }))}
+                          className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0"
+                          aria-label="Seleccionar color de fondo general"
+                        />
+                        <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.pageBackgroundColor }} />
+                        <Input value={createForm.pageBackgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, pageBackgroundColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="#eef5ff" />
+                      </div>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Color de fondo interno</Label>
+                      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                        <input
+                          type="color"
+                          value={createForm.backgroundColor}
+                          onChange={(e) => setCreateForm((prev) => ({ ...prev, backgroundColor: e.target.value }))}
+                          className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0"
+                          aria-label="Seleccionar color de fondo interno"
+                        />
+                        <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.backgroundColor }} />
+                        <Input value={createForm.backgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, backgroundColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="#f8fbff" />
+                      </div>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Fuente CSS</Label>
+                      <Input value={createForm.fontFamily} onChange={(e) => setCreateForm((prev) => ({ ...prev, fontFamily: e.target.value }))} className="h-11 rounded-xl" placeholder="ui-sans-serif, system-ui, sans-serif" />
+                    </div>
+                    <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">Habilitar launcher flotante</p>
+                        <p className="text-xs text-slate-500">Controla si se genera y se usa el botón flotante además del iframe público.</p>
+                      </div>
+                      <Switch checked={createForm.floatingLauncherEnabled} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, floatingLauncherEnabled: checked }))} />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Texto del launcher flotante</Label>
+                      <Input value={createForm.launcherLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, launcherLabel: e.target.value }))} className="h-11 rounded-xl" placeholder="Abrir asesor virtual" />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Icono del launcher</Label>
+                      <Select value={createForm.launcherIcon} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherIcon: value }))}>
+                        <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="bot">bot</SelectItem>
+                          <SelectItem value="message-circle">message-circle</SelectItem>
+                          <SelectItem value="sparkles">sparkles</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Posición del launcher</Label>
+                      <Select value={createForm.launcherPosition} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherPosition: value as LauncherPosition }))}>
+                        <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="right">Derecha</SelectItem>
+                          <SelectItem value="left">Izquierda</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Tamaño del launcher</Label>
+                      <Select value={createForm.launcherSize} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherSize: value as LauncherSize }))}>
+                        <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="compact">Compacto</SelectItem>
+                          <SelectItem value="standard">Estándar</SelectItem>
+                          <SelectItem value="large">Grande</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="grid gap-2 md:col-span-2">
                       <Label>Dominios permitidos</Label>
                       <Textarea value={createForm.allowedDomains} onChange={(e) => setCreateForm((prev) => ({ ...prev, allowedDomains: e.target.value }))} rows={3} className="rounded-2xl" placeholder="cliente.com, demo.cliente.com" />
+                    </div>
+                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:col-span-2 md:grid-cols-2">
+                      <div className="md:col-span-2">
+                        <p className="text-sm font-semibold text-slate-900">Estilos avanzados fáciles</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">Ajusta apariencia del panel con valores simples, sin escribir CSS ni JSON.</p>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Etiqueta superior</Label>
+                        <Input value={createForm.headerBadgeLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, headerBadgeLabel: e.target.value }))} className="h-11 rounded-xl" placeholder="Chatbot CRM" />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Estado del asistente</Label>
+                        <Input value={createForm.statusBadgeLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, statusBadgeLabel: e.target.value }))} className="h-11 rounded-xl" placeholder="En linea" />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Radio del panel</Label>
+                        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <Input value={createForm.chatShellRadius} onChange={(e) => setCreateForm((prev) => ({ ...prev, chatShellRadius: normalizePixelValue(e.target.value, '30') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="30" />
+                          <span className="text-xs font-medium text-slate-500">px</span>
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Radio de burbujas</Label>
+                        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <Input value={createForm.messageBubbleRadius} onChange={(e) => setCreateForm((prev) => ({ ...prev, messageBubbleRadius: normalizePixelValue(e.target.value, '22') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="22" />
+                          <span className="text-xs font-medium text-slate-500">px</span>
+                        </div>
+                      </div>
+                      <div className="grid gap-2 md:col-span-2">
+                        <Label>Sombra del panel</Label>
+                        <Select value={createForm.panelShadowPreset} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, panelShadowPreset: value as PanelShadowPreset }))}>
+                          <SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="soft">Suave</SelectItem>
+                            <SelectItem value="medium">Media</SelectItem>
+                            <SelectItem value="strong">Fuerte</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">Solicitar producto en la captura inicial</p>
+                        <p className="text-xs text-slate-500">Permite que el bot consulte inventario y responda con referencia, precio y disponibilidad.</p>
+                      </div>
+                      <Switch checked={createForm.showProductField} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, showProductField: checked }))} />
+                    </div>
+                    <div className="grid gap-3 md:col-span-2 md:grid-cols-2">
+                      <div className="grid gap-2">
+                        <Label>Label nombre</Label>
+                        <Input value={createForm.nameLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, nameLabel: e.target.value }))} className="h-11 rounded-xl" />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Placeholder nombre</Label>
+                        <Input value={createForm.namePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, namePlaceholder: e.target.value }))} className="h-11 rounded-xl" />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Label correo</Label>
+                        <Input value={createForm.emailLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, emailLabel: e.target.value }))} className="h-11 rounded-xl" />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Placeholder correo</Label>
+                        <Input value={createForm.emailPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, emailPlaceholder: e.target.value }))} className="h-11 rounded-xl" />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Label teléfono</Label>
+                        <Input value={createForm.phoneLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, phoneLabel: e.target.value }))} className="h-11 rounded-xl" />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Placeholder teléfono</Label>
+                        <Input value={createForm.phonePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, phonePlaceholder: e.target.value }))} className="h-11 rounded-xl" />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Label producto</Label>
+                        <Input value={createForm.productLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, productLabel: e.target.value }))} className="h-11 rounded-xl" />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Placeholder producto</Label>
+                        <Input value={createForm.productPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, productPlaceholder: e.target.value }))} className="h-11 rounded-xl" />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Label mensaje</Label>
+                        <Input value={createForm.messageLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, messageLabel: e.target.value }))} className="h-11 rounded-xl" />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Placeholder mensaje</Label>
+                        <Input value={createForm.messagePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, messagePlaceholder: e.target.value }))} className="h-11 rounded-xl" />
+                      </div>
                     </div>
                     <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
                       <div>

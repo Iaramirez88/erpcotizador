@@ -1,5 +1,11 @@
+import Link from 'next/link'
 import type { ReactNode } from "react"
 import { cn } from "@/lib/utils"
+
+export type ErpBreadcrumbItem = {
+  label: ReactNode
+  href?: string
+}
 
 type HeroStat = {
   label: string
@@ -9,6 +15,7 @@ type HeroStat = {
 }
 
 type ErpPageHeroProps = {
+  breadcrumbs?: ErpBreadcrumbItem[]
   eyebrow?: string
   title: ReactNode
   description?: ReactNode
@@ -25,6 +32,7 @@ const toneClassName: Record<NonNullable<HeroStat["tone"]>, string> = {
 }
 
 export function ErpPageHero({
+  breadcrumbs = [],
   eyebrow,
   title,
   description,
@@ -41,6 +49,7 @@ export function ErpPageHero({
     >
       <div className="grid gap-6 p-6 lg:grid-cols-[1.2fr_0.8fr] lg:p-8">
         <div className="space-y-4">
+          {breadcrumbs.length ? <ErpBreadcrumbs items={breadcrumbs} /> : null}
           {eyebrow ? (
             <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700 backdrop-blur">
               {eyebrow}
@@ -72,6 +81,30 @@ export function ErpPageHero({
         ) : null}
       </div>
     </section>
+  )
+}
+
+export function ErpBreadcrumbs({ items, className }: { items: ErpBreadcrumbItem[]; className?: string }) {
+  if (!items.length) return null
+
+  return (
+    <nav aria-label="Breadcrumb" className={cn('flex flex-wrap items-center gap-2 text-sm text-slate-500', className)}>
+      {items.map((item, index) => {
+        const isLast = index === items.length - 1
+        return (
+          <div key={`${String(item.label)}-${index}`} className="inline-flex items-center gap-2">
+            {item.href && !isLast ? (
+              <Link href={item.href} className="rounded-full px-2 py-1 transition-colors hover:bg-white/80 hover:text-slate-900">
+                {item.label}
+              </Link>
+            ) : (
+              <span className={cn('rounded-full px-2 py-1', isLast ? 'bg-white/80 font-semibold text-slate-900' : '')}>{item.label}</span>
+            )}
+            {!isLast ? <span className="text-slate-300">/</span> : null}
+          </div>
+        )
+      })}
+    </nav>
   )
 }
 

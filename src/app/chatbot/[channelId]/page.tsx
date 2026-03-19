@@ -42,6 +42,21 @@ export default async function PublicChatbotPage(props: PageProps) {
       prompt={settings.chatbotPrompt}
       assistantName={settings.assistantName}
       accentColor={settings.accentColor}
+      pageBackgroundColor={settings.pageBackgroundColor}
+      backgroundColor={settings.backgroundColor}
+      fontFamily={settings.fontFamily}
+      customCss={settings.chatbotCustomCss}
+      nameLabel={settings.nameLabel}
+      namePlaceholder={settings.namePlaceholder}
+      emailLabel={settings.emailLabel}
+      emailPlaceholder={settings.emailPlaceholder}
+      phoneLabel={settings.phoneLabel}
+      phonePlaceholder={settings.phonePlaceholder}
+      showProductField={settings.showProductField}
+      productLabel={settings.productLabel}
+      productPlaceholder={settings.productPlaceholder}
+      messageLabel={settings.messageLabel}
+      messagePlaceholder={settings.messagePlaceholder}
       allowHumanHandoff={settings.allowHumanHandoff}
     />
   )

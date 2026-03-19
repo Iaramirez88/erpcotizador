@@ -53,12 +53,14 @@ export async function GET(request: Request, context: RouteContext) {
         messages: {
           orderBy: [{ occurredAt: 'asc' }, { createdAt: 'asc' }],
           take: 80,
-          select: {
-            id: true,
-            direction: true,
-            bodyText: true,
-            occurredAt: true,
-            sentByUser: { select: { name: true, email: true } },
+            select: {
+              id: true,
+              direction: true,
+              bodyText: true,
+              occurredAt: true,
+              sentByUser: { select: { name: true, email: true } },
+              attachmentsJson: true,
+              payloadJson: true,
           },
         },
       },
@@ -77,6 +79,10 @@ export async function GET(request: Request, context: RouteContext) {
           body: message.bodyText || '',
           at: message.occurredAt,
           author: message.sentByUser?.name || message.sentByUser?.email || null,
+          attachments: Array.isArray(message.attachmentsJson) ? message.attachmentsJson : [],
+          meta: message.payloadJson && typeof message.payloadJson === 'object' && !Array.isArray(message.payloadJson)
+            ? { nextField: typeof message.payloadJson.chatFlowNextField === 'string' ? message.payloadJson.chatFlowNextField : null }
+            : undefined,
         })),
       },
     })

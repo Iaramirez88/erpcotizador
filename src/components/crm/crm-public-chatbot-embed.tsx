@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 
 type PublicChatbotMessage = {
@@ -11,6 +10,8 @@ type PublicChatbotMessage = {
   body: string
   at: string
   author?: string | null
+  attachments?: Array<{ type?: string | null; url?: string | null; alt?: string | null }>
+  meta?: { nextField?: string | null }
 }
 
 type PublicChatbotEmbedProps = {
@@ -19,13 +20,29 @@ type PublicChatbotEmbedProps = {
   prompt: string
   assistantName: string
   accentColor: string
+  pageBackgroundColor: string
+  backgroundColor: string
+  fontFamily: string
+  customCss: string
   allowHumanHandoff: boolean
+  nameLabel: string
+  namePlaceholder: string
+  emailLabel: string
+  emailPlaceholder: string
+  phoneLabel: string
+  phonePlaceholder: string
+  showProductField: boolean
+  productLabel: string
+  productPlaceholder: string
+  messageLabel: string
+  messagePlaceholder: string
 }
 
 type ChatIdentity = {
   nombre: string
   email: string
   telefono: string
+  producto: string
 }
 
 type ConversationSyncResponse = {
@@ -55,17 +72,59 @@ function buildWelcomeMessage(prompt: string): PublicChatbotMessage {
   }
 }
 
+function extractEmail(value: string) {
+  const match = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
+  return match?.[0]?.trim() || ''
+}
+
+function extractPhone(value: string) {
+  const digits = value.replace(/\D+/g, '')
+  return digits.length >= 7 ? digits : ''
+}
+
+function extractName(value: string) {
+  const patterns = [
+    /me llamo\s+([a-záéíóúñ\s]{2,40})/i,
+    /mi nombre es\s+([a-záéíóúñ\s]{2,40})/i,
+    /^soy\s+([a-záéíóúñ\s]{2,40})$/i,
+  ]
+  for (const pattern of patterns) {
+    const match = value.match(pattern)
+    if (match?.[1]) return match[1].trim().replace(/\s+/g, ' ')
+  }
+  return ''
+}
+
+function inferIdentityFromMessage(current: ChatIdentity, messageBody: string, nextField?: string | null) {
+  const trimmedMessage = messageBody.trim()
+  const extractedEmail = extractEmail(trimmedMessage)
+  const extractedPhone = extractPhone(trimmedMessage)
+  const extractedName = extractName(trimmedMessage)
+  const canTreatAsProduct = !extractedEmail && !extractedPhone && !extractedName && trimmedMessage.length >= 3 && nextField !== 'email' && nextField !== 'name'
+
+  return {
+    nombre: current.nombre || (nextField === 'name' ? extractedName || trimmedMessage : extractedName),
+    email: current.email || (nextField === 'email' ? extractedEmail : extractedEmail),
+    telefono: current.telefono || (nextField === 'phone' ? extractedPhone : extractedPhone),
+    producto: current.producto || ((nextField === 'product' || canTreatAsProduct) ? trimmedMessage : current.producto),
+  }
+}
+
 export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
   const [ready, setReady] = useState(false)
   const [sessionId, setSessionId] = useState('')
-  const [identity, setIdentity] = useState<ChatIdentity>({ nombre: '', email: '', telefono: '' })
+  const [identity, setIdentity] = useState<ChatIdentity>({ nombre: '', email: '', telefono: '', producto: '' })
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [connectionState, setConnectionState] = useState<'connecting' | 'online' | 'error'>('connecting')
   const [messages, setMessages] = useState<PublicChatbotMessage[]>([buildWelcomeMessage(props.prompt)])
 
-  const accentStyle = useMemo(() => ({ ['--chat-accent' as string]: props.accentColor }), [props.accentColor])
+  const accentStyle = useMemo(() => ({ ['--chat-accent' as string]: props.accentColor, ['--chat-background' as string]: props.backgroundColor, ['--chat-page-background' as string]: props.pageBackgroundColor, fontFamily: props.fontFamily }), [props.accentColor, props.backgroundColor, props.pageBackgroundColor, props.fontFamily])
+  const latestAssistantPrompt = useMemo(() => {
+    const assistantMessages = [...messages].reverse().find((item) => item.role === 'assistant' && item.meta?.nextField)
+    return assistantMessages?.meta?.nextField || null
+  }, [messages])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -86,6 +145,7 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
           nombre: typeof parsed.nombre === 'string' ? parsed.nombre : '',
           email: typeof parsed.email === 'string' ? parsed.email : '',
           telefono: typeof parsed.telefono === 'string' ? parsed.telefono : '',
+          producto: typeof parsed.producto === 'string' ? parsed.producto : '',
         })
       } catch {
         window.localStorage.removeItem(identityKey)
@@ -144,10 +204,9 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
   async function sendMessage(messageBody: string, requestHuman = false) {
     const trimmedMessage = messageBody.trim()
     if (!trimmedMessage || sending || !sessionId) return
-    if (!identity.nombre.trim() && !identity.email.trim() && !identity.telefono.trim()) {
-      alert('Registra al menos nombre, email o telefono antes de enviar.')
-      return
-    }
+
+    const nextIdentity = inferIdentityFromMessage(identity, trimmedMessage, latestAssistantPrompt)
+    setIdentity(nextIdentity)
 
     const optimisticMessage: PublicChatbotMessage = {
       id: `optimistic-${Date.now()}`,
@@ -165,9 +224,10 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           channelId: props.channelId,
-          nombre: identity.nombre,
-          email: identity.email,
-          telefono: identity.telefono,
+          nombre: nextIdentity.nombre,
+          email: nextIdentity.email,
+          telefono: nextIdentity.telefono,
+          producto: nextIdentity.producto,
           message: trimmedMessage,
           requestHuman,
           externalThreadId: sessionId,
@@ -177,6 +237,7 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
           payload: {
             source: 'iframe-chatbot',
             userAgent: navigator.userAgent,
+            chatFlowNextField: latestAssistantPrompt,
           },
         }),
       })
@@ -213,9 +274,10 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.12),transparent_30%),linear-gradient(180deg,#f8fbff_0%,#f8fafc_55%,#eef5ff_100%)] p-3 text-slate-950" style={accentStyle}>
-      <div className="mx-auto flex min-h-[calc(100vh-24px)] max-w-[420px] flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_90px_-44px_rgba(15,23,42,0.42)]">
-        <div className="border-b border-slate-100 bg-[linear-gradient(135deg,#0f172a,#1d4ed8)] px-5 py-4 text-white">
+    <div className="sgd-chatbot-page min-h-screen p-3 text-slate-950" style={{ ...accentStyle, background: `radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 30%), linear-gradient(180deg, ${props.pageBackgroundColor} 0%, ${props.pageBackgroundColor} 45%, ${props.backgroundColor} 100%)` }}>
+      {props.customCss.trim() ? <style>{props.customCss}</style> : null}
+      <div className="sgd-chatbot-shell mx-auto flex min-h-[calc(100vh-24px)] max-w-[420px] flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_90px_-44px_rgba(15,23,42,0.42)]">
+        <div className="sgd-chatbot-header border-b border-slate-100 px-5 py-4 text-white" style={{ background: `linear-gradient(135deg, #0f172a, ${props.accentColor})` }}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-100">Chatbot CRM</p>
@@ -225,33 +287,33 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
               {connectionState === 'online' ? 'En linea' : connectionState === 'error' ? 'Reconectando' : 'Conectando'}
             </div>
           </div>
-          <p className="mt-3 text-sm leading-6 text-slate-200">{props.assistantName} captura cada mensaje y lo envía al inbox omnicanal del CRM en tiempo real.</p>
         </div>
 
-        <div className="grid gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-4">
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Input value={identity.nombre} onChange={(e) => setIdentity((current) => ({ ...current, nombre: e.target.value }))} placeholder="Nombre" className="h-11 rounded-xl border-slate-200 bg-white" />
-            <Input value={identity.email} onChange={(e) => setIdentity((current) => ({ ...current, email: e.target.value }))} placeholder="Email" className="h-11 rounded-xl border-slate-200 bg-white" />
-          </div>
-          <Input value={identity.telefono} onChange={(e) => setIdentity((current) => ({ ...current, telefono: e.target.value }))} placeholder="Telefono o WhatsApp" className="h-11 rounded-xl border-slate-200 bg-white" />
-          <p className="text-xs leading-5 text-slate-500">Para continuar, registra al menos uno de estos datos. Cada nuevo mensaje se consolida en la misma conversación del CRM.</p>
-        </div>
-
-        <div className="flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-4">
+        <div className="sgd-chatbot-messages flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-4">
           {messages.map((message) => (
-            <div key={message.id} className={message.role === 'user' ? 'ml-auto max-w-[88%] rounded-[22px] bg-slate-950 px-4 py-3 text-sm text-white shadow-sm' : message.role === 'system' ? 'mx-auto max-w-[92%] rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900' : 'mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'}>
+            <div key={message.id} className={message.role === 'user' ? 'sgd-chatbot-bubble-user ml-auto max-w-[88%] rounded-[22px] bg-slate-950 px-4 py-3 text-sm text-white shadow-sm' : message.role === 'system' ? 'sgd-chatbot-bubble-system mx-auto max-w-[92%] rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900' : 'sgd-chatbot-bubble-assistant mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'}>
               <p className="whitespace-pre-wrap leading-6">{message.body}</p>
+              {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
+                <div className="mt-3 space-y-2">
+                  {message.attachments.filter((item) => item?.type === 'image' && item?.url).map((item, index) => (
+                    <img key={`${message.id}-attachment-${index}`} src={item.url || ''} alt={item.alt || 'Imagen del producto'} className="w-full rounded-2xl border border-slate-200 object-cover" />
+                  ))}
+                </div>
+              ) : null}
               {message.author ? <p className="mt-2 text-[11px] text-slate-500">{message.author}</p> : null}
             </div>
           ))}
         </div>
 
-        <div className="border-t border-slate-100 bg-white px-4 py-4">
+        <div className="sgd-chatbot-composer border-t border-slate-100 bg-white px-4 py-4">
           <div className="grid gap-3">
-            <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={4} placeholder="Escribe tu mensaje aqui..." className="rounded-2xl border-slate-200" />
+            <div className="grid gap-1.5">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{props.messageLabel}</p>
+              <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} placeholder={props.messagePlaceholder} className="rounded-2xl border-slate-200" />
+            </div>
             <div className="flex flex-wrap gap-2">
-              <Button className="flex-1 rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={submitDraft} disabled={sending || !ready}>
-                {sending ? 'Enviando...' : 'Enviar al CRM'}
+              <Button className="flex-1 rounded-xl text-white" style={{ backgroundColor: props.accentColor }} onClick={submitDraft} disabled={sending || !ready}>
+                {sending ? 'Enviando...' : 'Responder'}
               </Button>
               {props.allowHumanHandoff ? (
                 <Button variant="outline" className="rounded-xl border-slate-200" onClick={requestHumanSupport} disabled={sending || !ready}>
@@ -259,7 +321,6 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
                 </Button>
               ) : null}
             </div>
-            <p className="text-[11px] leading-5 text-slate-500">Demo operativa: cada mensaje genera o actualiza lead, conversación e historial comercial en el CRM omnicanal. {syncing ? 'Sincronizando...' : 'Sincronización activa cada pocos segundos.'}</p>
           </div>
         </div>
       </div>

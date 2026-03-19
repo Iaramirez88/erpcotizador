@@ -165,6 +165,22 @@ function formatCm(value: number | null | undefined) {
   return Number.isInteger(n) ? String(n) : n.toFixed(2)
 }
 
+function normalizeFinishText(value: string | null | undefined) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+}
+
+function isTroquelLikeFinish(finish: Pick<FinishOption, "key" | "nombre">) {
+  return normalizeFinishText(`${finish.key} ${finish.nombre}`).includes("troquel")
+}
+
+function isCompaginadoFinish(finish: Pick<FinishOption, "key" | "nombre">) {
+  return normalizeFinishText(`${finish.key} ${finish.nombre}`).includes("compagin")
+}
+
 function getDefaultCostoPliego(tipo: PapelTipo) {
   switch (tipo) {
     case "bond":
@@ -441,6 +457,14 @@ export function LitografiaQuoteDialog(props: {
 
   const editorialMode = quoteMode === "editorial"
   const editorialEnabled = editorialMode && Boolean(String(selectedEditorialProductoKey || "").trim())
+  const selectedEditorialOption = useMemo(
+    () => editorialOptions.find((option) => option.value === selectedEditorialProductoKey) || null,
+    [editorialOptions, selectedEditorialProductoKey]
+  )
+  const isEditorialCartilla = useMemo(() => {
+    if (!editorialEnabled || !selectedEditorialOption) return false
+    return normalizeFinishText(`${selectedEditorialOption.value} ${selectedEditorialOption.label}`).includes("cartilla")
+  }, [editorialEnabled, selectedEditorialOption])
 
   const prevQuoteModeRef = useRef<QuoteMode>(quoteMode)
 
@@ -1076,11 +1100,11 @@ export function LitografiaQuoteDialog(props: {
   const getGrupo = (f: FinishOption) => (f.grupo ?? "ACABADO")
 
   const activeFinishes = useMemo(
-    () => finishes.filter((f) => f.activo && getGrupo(f) === "ACABADO" && !f.especial),
+    () => finishes.filter((f) => f.activo && getGrupo(f) === "ACABADO" && !f.especial && !isTroquelLikeFinish(f)),
     [finishes]
   )
   const activeSpecialFinishes = useMemo(
-    () => finishes.filter((f) => f.activo && getGrupo(f) === "ACABADO" && Boolean(f.especial)),
+    () => finishes.filter((f) => f.activo && getGrupo(f) === "ACABADO" && Boolean(f.especial) && !isTroquelLikeFinish(f)),
     [finishes]
   )
 
@@ -1089,13 +1113,26 @@ export function LitografiaQuoteDialog(props: {
     [finishes]
   )
   const activeTroquelados = useMemo(
-    () => finishes.filter((f) => f.activo && getGrupo(f) === "TROQUELADO"),
+    () => finishes.filter((f) => f.activo && (getGrupo(f) === "TROQUELADO" || isTroquelLikeFinish(f))),
     [finishes]
   )
   const activeCortes = useMemo(
     () => finishes.filter((f) => f.activo && getGrupo(f) === "CORTE"),
     [finishes]
   )
+  const compaginadoFinish = useMemo(
+    () => activeFinishes.find((finish) => isCompaginadoFinish(finish)) || null,
+    [activeFinishes]
+  )
+  const editorialCoverFinishes = useMemo(() => {
+    if (!isEditorialCartilla) return activeFinishes
+    return activeFinishes.filter((finish) => !isCompaginadoFinish(finish))
+  }, [activeFinishes, isEditorialCartilla])
+  const editorialInnerFinishes = useMemo(() => {
+    if (!isEditorialCartilla) return activeFinishes
+    const withoutCompaginado = activeFinishes.filter((finish) => !isCompaginadoFinish(finish))
+    return compaginadoFinish ? [compaginadoFinish, ...withoutCompaginado] : withoutCompaginado
+  }, [activeFinishes, compaginadoFinish, isEditorialCartilla])
 
   const selectedPlastificado = useMemo(() => {
     if (!selectedPlastificadoId) return null
@@ -1385,6 +1422,50 @@ export function LitografiaQuoteDialog(props: {
     }
   }, [props.open, selectedEditorialProductoKey, editorialTotalPaginas, editorialPaginasPortadaContraportada, editorialPaginasPorPliego])
 
+  const editorialInnerCompaginadoQty = useMemo(() => {
+    if (!editorialEnabled || !isEditorialCartilla) return 0
+    const runQty = Math.max(0, Math.trunc(parseFloat(cantidad) || 0))
+    const pliegosPorUnidad = Math.max(0, editorialSplitCalc?.innerPliegosPorUnidad ?? 0)
+    if (runQty <= 0 || pliegosPorUnidad <= 0) return 0
+    return runQty * pliegosPorUnidad
+  }, [cantidad, editorialEnabled, editorialSplitCalc, isEditorialCartilla])
+
+  useEffect(() => {
+    if (!props.open) return
+
+    setSelectedFinishIds((prev) => {
+      const next = prev.filter((id) => {
+        const finish = finishes.find((item) => item.id === String(id || "").trim())
+        return !finish || !isTroquelLikeFinish(finish)
+      })
+      return next.length ? next : [""]
+    })
+
+    setSpecialFinishRows((prev) => {
+      const next = prev.filter((row) => {
+        const finish = finishes.find((item) => item.id === String(row.finishId || "").trim())
+        return !finish || !isTroquelLikeFinish(finish)
+      })
+      return next.length ? next : [{ finishId: "", qty: "1" }]
+    })
+  }, [props.open, finishes])
+
+  useEffect(() => {
+    if (!props.open || !editorialEnabled || !isEditorialCartilla) return
+
+    setEditorialCover((prev) => {
+      if (!compaginadoFinish || prev.finishId !== compaginadoFinish.id) return prev
+      return { ...prev, finishId: "" }
+    })
+
+    if (!compaginadoFinish) return
+
+    setEditorialInner((prev) => {
+      if (String(prev.finishId || "").trim()) return prev
+      return { ...prev, finishId: compaginadoFinish.id }
+    })
+  }, [props.open, editorialEnabled, isEditorialCartilla, compaginadoFinish])
+
   const computeEditorialSheetsPreview = useCallback((part: EditorialPartState, pliegosPorUnidad: number) => {
     const runQty = Math.max(0, Math.trunc(parseFloat(cantidad) || 0))
     if (runQty <= 0) return null
@@ -1572,7 +1653,12 @@ export function LitografiaQuoteDialog(props: {
         return "otro"
       }
 
-      const computePart = (part: EditorialPartState, pliegosPorUnidad: number, planchasPorUnidad: number) => {
+      const computePart = (
+        partKey: "cover" | "inner",
+        part: EditorialPartState,
+        pliegosPorUnidad: number,
+        planchasPorUnidad: number
+      ) => {
         const runQty = Math.max(0, Math.trunc(qtyBase))
         if (runQty <= 0) return null
         const paper = papers.find((p) => p.id === String(part.paperId || "").trim()) || null
@@ -1593,7 +1679,12 @@ export function LitografiaQuoteDialog(props: {
         const sobranteLocal = parseFloat(String(part.sobranteMinimo))
 
         const finish = part.finishId ? finishes.find((f) => f.id === part.finishId) || null : null
-        const finishesCost = finish && !finish.especial && getGrupo(finish) === "ACABADO" ? (Number(finish.valor) || 0) : 0
+        const finishMultiplier = finish && isEditorialCartilla && partKey === "inner" && isCompaginadoFinish(finish)
+          ? Math.max(1, runQty * Math.max(1, pliegosPorUnidad))
+          : 1
+        const finishesCost = finish && !finish.especial && getGrupo(finish) === "ACABADO"
+          ? (Number(finish.valor) || 0) * finishMultiplier
+          : 0
 
         const special = part.specialFinishId ? finishes.find((f) => f.id === part.specialFinishId) || null : null
         const specialQty = Math.max(0, Math.trunc(parseFloat(String(part.specialFinishQty)) || 0))
@@ -1638,10 +1729,10 @@ export function LitografiaQuoteDialog(props: {
       }
 
       const cover = defaults.coverPliegosPorUnidad > 0
-        ? computePart(editorialCover, defaults.coverPliegosPorUnidad, defaults.coverPlanchas)
+        ? computePart("cover", editorialCover, defaults.coverPliegosPorUnidad, defaults.coverPlanchas)
         : null
       const inner = defaults.innerPliegosPorUnidad > 0
-        ? computePart(editorialInner, defaults.innerPliegosPorUnidad, defaults.innerPlanchas)
+        ? computePart("inner", editorialInner, defaults.innerPliegosPorUnidad, defaults.innerPlanchas)
         : null
 
       if (!cover && !inner) return null
@@ -1877,7 +1968,12 @@ export function LitografiaQuoteDialog(props: {
         return "otro"
       }
 
-      const computePart = (part: EditorialPartState, pliegosPorUnidad: number, planchasPorUnidad: number) => {
+      const computePart = (
+        partKey: "cover" | "inner",
+        part: EditorialPartState,
+        pliegosPorUnidad: number,
+        planchasPorUnidad: number
+      ) => {
         const runQty = Math.max(0, Math.trunc(qty))
         if (runQty <= 0) return null
         const paper = papers.find((p) => p.id === String(part.paperId || "").trim()) || null
@@ -1898,7 +1994,12 @@ export function LitografiaQuoteDialog(props: {
         const sobranteLocal = parseFloat(String(part.sobranteMinimo))
 
         const finish = part.finishId ? finishes.find((f) => f.id === part.finishId) || null : null
-        const finishesCost = finish && !finish.especial && getGrupo(finish) === "ACABADO" ? (Number(finish.valor) || 0) : 0
+        const finishMultiplier = finish && isEditorialCartilla && partKey === "inner" && isCompaginadoFinish(finish)
+          ? Math.max(1, runQty * Math.max(1, pliegosPorUnidad))
+          : 1
+        const finishesCost = finish && !finish.especial && getGrupo(finish) === "ACABADO"
+          ? (Number(finish.valor) || 0) * finishMultiplier
+          : 0
 
         const special = part.specialFinishId ? finishes.find((f) => f.id === part.specialFinishId) || null : null
         const specialQty = Math.max(0, Math.trunc(parseFloat(String(part.specialFinishQty)) || 0))
@@ -1943,10 +2044,10 @@ export function LitografiaQuoteDialog(props: {
       }
 
       const cover = defaults.coverPliegosPorUnidad > 0
-        ? computePart(editorialCover, defaults.coverPliegosPorUnidad, defaults.coverPlanchas)
+        ? computePart("cover", editorialCover, defaults.coverPliegosPorUnidad, defaults.coverPlanchas)
         : null
       const inner = defaults.innerPliegosPorUnidad > 0
-        ? computePart(editorialInner, defaults.innerPliegosPorUnidad, defaults.innerPlanchas)
+        ? computePart("inner", editorialInner, defaults.innerPliegosPorUnidad, defaults.innerPlanchas)
         : null
 
       if (!cover && !inner) return null
@@ -2611,14 +2712,14 @@ export function LitografiaQuoteDialog(props: {
                               </div>
                             </div>
                             <p className={HELP_TEXT}>
-                              Prellena planchas/tintas y ajusta el sobrante mínimo recomendado.
+                              Prellena planchas/impresión y ajusta el sobrante mínimo recomendado.
                             </p>
                             <p className={HELP_TEXT}>
                               Selección: {inkLabel(printInkFront)} / {inkLabel(printInkBack)}
                             </p>
                             {hasSpecialInk(printInkFront) || hasSpecialInk(printInkBack) ? (
                               <p className={HELP_TEXT}>
-                                Si usas tintas especiales (Pantone, Dorado, Blanco, Barniz UV), ajusta manualmente el multiplicador de planchas/tintas si aplica.
+                                Si usas tintas especiales (Pantone, Dorado, Blanco, Barniz UV), ajusta manualmente el multiplicador de planchas/impresión si aplica.
                               </p>
                             ) : null}
                             {isPolicromiaAmbasCaras ? (
@@ -2752,14 +2853,14 @@ export function LitografiaQuoteDialog(props: {
                                       </div>
                                     </div>
                                     <p className={HELP_TEXT}>
-                                      Prellena planchas/tintas y ajusta el sobrante mínimo recomendado.
+                                      Prellena planchas/impresión y ajusta el sobrante mínimo recomendado.
                                     </p>
                                     <p className={HELP_TEXT}>
                                       Selección: {inkLabel(editorialCover.printInkFront)} / {inkLabel(editorialCover.printInkBack)}
                                     </p>
                                     {hasSpecialInk(editorialCover.printInkFront) || hasSpecialInk(editorialCover.printInkBack) ? (
                                       <p className={HELP_TEXT}>
-                                        Si usas tintas especiales (Pantone, Dorado, Blanco, Barniz UV), ajusta manualmente el multiplicador de planchas/tintas si aplica.
+                                        Si usas tintas especiales (Pantone, Dorado, Blanco, Barniz UV), ajusta manualmente el multiplicador de planchas/impresión si aplica.
                                       </p>
                                     ) : null}
                                     {editorialCoverIsPolicromiaAmbasCaras ? (
@@ -2820,7 +2921,7 @@ export function LitografiaQuoteDialog(props: {
                                             placeholder={t('printshopQuote.placeholders.qtyShort')}
                                           />
                                           <p className={HELP_TEXT}>
-                                            Multiplica el costo del perfil de planchas (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.planchaProfileQty || "1")) || 0) || 1)}).
+                                            Multiplica el perfil de planchas (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.planchaProfileQty || "1")) || 0) || 1)}).
                                           </p>
                                         </div>
                                       </div>
@@ -2854,7 +2955,7 @@ export function LitografiaQuoteDialog(props: {
                                             placeholder={t('printshopQuote.placeholders.qtyShort')}
                                           />
                                           <p className={HELP_TEXT}>
-                                            Multiplica el costo del perfil de tinta (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.tintaProfileQty || "1")) || 0) || 1)}).
+                                            Multiplica el perfil de impresión (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.tintaProfileQty || "1")) || 0) || 1)}).
                                           </p>
                                         </div>
                                       </div>
@@ -2911,10 +3012,10 @@ export function LitografiaQuoteDialog(props: {
                                             className={SELECT_COMPACT}
                                             value={editorialCover.finishId}
                                             onChange={(e) => setEditorialCover((prev) => ({ ...prev, finishId: e.target.value }))}
-                                            disabled={!activeFinishes.length}
+                                            disabled={!editorialCoverFinishes.length}
                                           >
                                             <option value="">Ninguno</option>
-                                            {activeFinishes.map((f) => (
+                                            {editorialCoverFinishes.map((f) => (
                                               <option key={f.id} value={f.id}>
                                                 {f.nombre}
                                               </option>
@@ -2999,7 +3100,7 @@ export function LitografiaQuoteDialog(props: {
 
                                         <div className="grid grid-cols-2 gap-3">
                                           <div>
-                                            <Label>Troquelado</Label>
+                                            <Label>Troquel</Label>
                                             <select
                                               className={SELECT_COMPACT}
                                               value={editorialCover.troqueladoId}
@@ -3116,14 +3217,14 @@ export function LitografiaQuoteDialog(props: {
                                       </div>
                                     </div>
                                     <p className={HELP_TEXT}>
-                                      Prellena planchas/tintas y ajusta el sobrante mínimo recomendado.
+                                      Prellena planchas/impresión y ajusta el sobrante mínimo recomendado.
                                     </p>
                                     <p className={HELP_TEXT}>
                                       Selección: {inkLabel(editorialInner.printInkFront)} / {inkLabel(editorialInner.printInkBack)}
                                     </p>
                                     {hasSpecialInk(editorialInner.printInkFront) || hasSpecialInk(editorialInner.printInkBack) ? (
                                       <p className={HELP_TEXT}>
-                                        Si usas tintas especiales (Pantone, Dorado, Blanco, Barniz UV), ajusta manualmente el multiplicador de planchas/tintas si aplica.
+                                        Si usas tintas especiales (Pantone, Dorado, Blanco, Barniz UV), ajusta manualmente el multiplicador de planchas/impresión si aplica.
                                       </p>
                                     ) : null}
                                     {editorialInnerIsPolicromiaAmbasCaras ? (
@@ -3184,7 +3285,7 @@ export function LitografiaQuoteDialog(props: {
                                             placeholder={t('printshopQuote.placeholders.qtyShort')}
                                           />
                                           <p className={HELP_TEXT}>
-                                            Multiplica el costo del perfil de planchas (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.planchaProfileQty || "1")) || 0) || 1)}).
+                                            Multiplica el perfil de planchas (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.planchaProfileQty || "1")) || 0) || 1)}).
                                           </p>
                                         </div>
                                       </div>
@@ -3218,7 +3319,7 @@ export function LitografiaQuoteDialog(props: {
                                             placeholder={t('printshopQuote.placeholders.qtyShort')}
                                           />
                                           <p className={HELP_TEXT}>
-                                            Multiplica el costo del perfil de tinta (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.tintaProfileQty || "1")) || 0) || 1)}).
+                                            Multiplica el perfil de impresión (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.tintaProfileQty || "1")) || 0) || 1)}).
                                           </p>
                                         </div>
                                       </div>
@@ -3275,10 +3376,10 @@ export function LitografiaQuoteDialog(props: {
                                           className={SELECT_COMPACT}
                                           value={editorialInner.finishId}
                                           onChange={(e) => setEditorialInner((prev) => ({ ...prev, finishId: e.target.value }))}
-                                          disabled={!activeFinishes.length}
+                                            disabled={!editorialInnerFinishes.length}
                                         >
                                           <option value="">Ninguno</option>
-                                          {activeFinishes.map((f) => (
+                                            {editorialInnerFinishes.map((f) => (
                                             <option key={f.id} value={f.id}>
                                               {f.nombre}
                                             </option>
@@ -3287,6 +3388,11 @@ export function LitografiaQuoteDialog(props: {
                                         <p className={HELP_TEXT}>
                                           Se suma al total (valor fijo del acabado).
                                         </p>
+                                          {isEditorialCartilla && compaginadoFinish?.id === editorialInner.finishId ? (
+                                            <p className={HELP_TEXT}>
+                                              Compaginado automático: {Math.max(0, editorialSplitCalc?.innerPliegosPorUnidad ?? 0)} pliegos internos por cartilla x {Math.max(0, Math.trunc(parseFloat(cantidad) || 0))} unidades = {editorialInnerCompaginadoQty}.
+                                            </p>
+                                          ) : null}
                                       </div>
 
                                       <div className="grid grid-cols-2 gap-3">
@@ -3363,7 +3469,7 @@ export function LitografiaQuoteDialog(props: {
 
                                       <div className="grid grid-cols-2 gap-3">
                                         <div>
-                                          <Label>Troquelado</Label>
+                                          <Label>Troquel</Label>
                                           <select
                                             className={SELECT_COMPACT}
                                             value={editorialInner.troqueladoId}
@@ -3461,7 +3567,7 @@ export function LitografiaQuoteDialog(props: {
                               ))}
                             </select>
                             <p className={HELP_TEXT}>
-                              Aquí defines el tamaño real en que se imprimirá el trabajo. Desde aquí se toma el costo base de plancha por color.
+                              Aquí defines el tamaño real en que se imprimirá el trabajo. Desde aquí se toma la referencia base de planchas.
                             </p>
                           </div>
 
@@ -3515,7 +3621,7 @@ export function LitografiaQuoteDialog(props: {
 
                       {!editorialMode && showAdvanced ? (
                       <div className="sm:col-span-2">
-                        <Label className={requiredLabelClass(validation.missingPlancha)}>Planchas (costo / avanzado)</Label>
+                        <Label className={requiredLabelClass(validation.missingPlancha)}>Planchas (avanzado)</Label>
                         <div className="mt-2 space-y-2">
                           {selectedPlanchaProfileIds.map((id, idx) => (
                             <div key={`${idx}-${id}`} className="flex items-center gap-2">
@@ -3573,7 +3679,7 @@ export function LitografiaQuoteDialog(props: {
                           )}
                         </p>
                         <p className={HELP_TEXT}>
-                          La primera fila queda sincronizada con “Se imprime en”. Si agregas varias filas, sus costos de plancha se suman y cada “Cantidad” multiplica ese perfil.
+                          La primera fila queda sincronizada con “Se imprime en”. Si agregas varias filas, sus planchas se suman y cada “Cantidad” multiplica ese perfil.
                         </p>
                       </div>
                       ) : null}

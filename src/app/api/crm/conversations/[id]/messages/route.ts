@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
-import { AccessLevel, ModuleKey } from '@prisma/client'
+import { AccessLevel, ModuleKey, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { assertCrmSedeAccess, normalizeString, parseMessageType } from '@/lib/crm'
+import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
 
 export const runtime = 'nodejs'
 
@@ -18,7 +19,16 @@ export async function POST(request: Request, context: RouteContext) {
     const { id } = await context.params
     const current = await prisma.crmConversation.findUnique({
       where: { id },
-      include: { channelConnection: { select: { provider: true } } },
+      include: {
+        channelConnection: {
+          select: {
+            provider: true,
+            externalPhoneNumberId: true,
+            externalPageId: true,
+            settingsJson: true,
+          },
+        },
+      },
     })
     if (!current || current.empresaId !== access.empresaId) {
       return NextResponse.json({ error: 'Conversación no encontrada' }, { status: 404 })
@@ -37,17 +47,58 @@ export async function POST(request: Request, context: RouteContext) {
       return NextResponse.json({ error: 'bodyText es requerido' }, { status: 400 })
     }
 
+    const isWhatsApp = current.channelConnection.provider === 'WHATSAPP_CLOUD' || current.channelConnection.provider === 'WHATSAPP_SANDBOX'
+    const whatsappConfig = getWhatsAppDispatchConfig(current.channelConnection)
+    const recipientPhone = normalizeWhatsAppRecipient(current.contactPhone)
+
+    let providerMessageId: string | null = null
+    let providerPayload: Prisma.InputJsonValue = { testing: true, provider: current.channelConnection.provider }
+    let messageStatus: 'SENT' | 'FAILED' = 'SENT'
+    let sendErrorMessage: string | null = null
+
+    if (isWhatsApp && whatsappConfig.enabled) {
+      if (!recipientPhone) {
+        return NextResponse.json({ error: 'La conversación no tiene teléfono del contacto para enviar por WhatsApp.' }, { status: 400 })
+      }
+
+      try {
+        const result = await sendWhatsAppTextMessage({
+          config: whatsappConfig,
+          to: recipientPhone,
+          bodyText,
+        })
+        providerMessageId = result.providerMessageId
+        providerPayload = result.payloadJson
+      } catch (error) {
+        messageStatus = 'FAILED'
+        sendErrorMessage = error instanceof Error ? error.message : 'No se pudo enviar por WhatsApp Cloud.'
+        providerPayload = {
+          provider: current.channelConnection.provider,
+          dispatch: 'whatsapp-cloud',
+          error: sendErrorMessage,
+        }
+      }
+    } else if (isWhatsApp) {
+      providerPayload = {
+        testing: true,
+        provider: current.channelConnection.provider,
+        dispatch: 'local-demo',
+        reason: 'El canal no tiene access token y phone number id configurados.',
+      }
+    }
+
     const row = await prisma.$transaction(async (tx) => {
       const message = await tx.crmMessage.create({
         data: {
           empresaId: access.empresaId,
           sedeId: current.sedeId,
           conversationId: current.id,
+          providerMessageId,
           direction: 'OUTBOUND',
           messageType,
-          status: 'SENT',
+          status: messageStatus,
           bodyText,
-          payloadJson: { testing: true, provider: current.channelConnection.provider },
+          payloadJson: providerPayload,
           attachmentsJson: [],
           sentByUserId: access.userId,
           occurredAt: new Date(),
@@ -60,7 +111,7 @@ export async function POST(request: Request, context: RouteContext) {
         data: {
           lastMessageAt: message.occurredAt,
           directionLastMessage: 'OUTBOUND',
-          status: current.status === 'RESOLVED' ? 'HUMAN_ACTIVE' : current.status,
+          status: messageStatus === 'FAILED' ? current.status : (current.status === 'RESOLVED' ? 'HUMAN_ACTIVE' : current.status),
         },
       })
 
@@ -69,8 +120,8 @@ export async function POST(request: Request, context: RouteContext) {
           empresaId: access.empresaId,
           sedeId: current.sedeId,
           type: current.channelConnection.provider === 'WHATSAPP_CLOUD' || current.channelConnection.provider === 'WHATSAPP_SANDBOX' ? 'WHATSAPP' : 'OTHER',
-          summary: 'Mensaje saliente desde CRM',
-          details: bodyText,
+          summary: messageStatus === 'FAILED' ? 'Intento fallido de mensaje saliente desde CRM' : 'Mensaje saliente desde CRM',
+          details: sendErrorMessage ? `${bodyText}\n\nError proveedor: ${sendErrorMessage}` : bodyText,
           leadId: current.leadId,
           opportunityId: current.opportunityId,
           clienteId: current.clienteId,
@@ -81,6 +132,10 @@ export async function POST(request: Request, context: RouteContext) {
 
       return message
     })
+
+    if (messageStatus === 'FAILED') {
+      return NextResponse.json({ error: sendErrorMessage || 'No se pudo enviar el mensaje por WhatsApp.', data: row }, { status: 502 })
+    }
 
     return NextResponse.json({ success: true, data: row }, { status: 201 })
   } catch (error) {

@@ -22,6 +22,13 @@ type ChatbotSnippetArgs = {
   token: string
   title?: string
   prompt?: string
+  accentColor?: string
+  backgroundColor?: string
+  launcherLabel?: string
+  launcherIcon?: string
+  launcherPosition?: 'right' | 'left'
+  launcherSize?: 'compact' | 'standard' | 'large'
+  customCss?: string
 }
 
 type ChatbotIframeArgs = {
@@ -140,13 +147,41 @@ export function buildWebFormSnippet(args: WebFormSnippetArgs) {
 export function buildChatbotSnippet(args: ChatbotSnippetArgs) {
   const title = args.title || 'Asesor virtual SGDigital'
   const prompt = args.prompt || 'Cuéntanos tu proyecto y te contactamos.'
+  const accentColor = args.accentColor || '#1d4ed8'
+  const backgroundColor = args.backgroundColor || '#f8fbff'
+  const launcherLabel = args.launcherLabel || title
+  const launcherIcon = args.launcherIcon || 'chat'
+  const launcherPosition = args.launcherPosition === 'left' ? 'left' : 'right'
+  const launcherSize = args.launcherSize === 'compact' ? 'compact' : args.launcherSize === 'large' ? 'large' : 'standard'
+  const customCss = args.customCss || ''
+  const iframeUrl = buildChatbotEmbedUrl(args.baseUrl, args.channelId)
+  const iconMarkup = launcherIcon === 'sparkles'
+    ? '&#10024;'
+    : launcherIcon === 'message-circle'
+      ? '&#128172;'
+      : launcherIcon === 'bot'
+        ? '&#129302;'
+        : '&#128172;'
+  const launcherAnchorStyle = launcherPosition === 'left' ? 'left:24px;' : 'right:24px;'
+  const panelAnchorStyle = launcherPosition === 'left' ? 'left:24px;' : 'right:24px;'
+  const panelTransformOrigin = launcherPosition === 'left' ? 'bottom left' : 'bottom right'
+  const launcherLabelMarkup = launcherSize === 'compact' ? '' : `<span>${launcherLabel}</span>`
+  const launcherButtonStyle = launcherSize === 'compact'
+    ? `position:fixed;bottom:24px;${launcherAnchorStyle}z-index:99999;border:none;border-radius:999px;width:58px;height:58px;background:${accentColor};color:#fff;font:700 14px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0;backdrop-filter:blur(14px);`
+    : launcherSize === 'large'
+      ? `position:fixed;bottom:24px;${launcherAnchorStyle}z-index:99999;border:none;border-radius:999px;padding:0 24px;height:66px;background:${accentColor};color:#fff;font:700 15px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;display:flex;align-items:center;gap:12px;backdrop-filter:blur(14px);`
+      : `position:fixed;bottom:24px;${launcherAnchorStyle}z-index:99999;border:none;border-radius:999px;padding:0 20px;height:60px;background:${accentColor};color:#fff;font:700 14px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;display:flex;align-items:center;gap:10px;backdrop-filter:blur(14px);`
 
   return `<script>
 (function () {
-  const endpoint = '${args.baseUrl}/api/crm/captures/chatbot';
-  const channelId = '${args.channelId}';
-  const token = '${args.token}';
+  if (window.__sgdChatbotWidgetMounted) return;
+  window.__sgdChatbotWidgetMounted = true;
+
   const panelId = 'sgd-crm-chatbot-panel';
+  const backdropId = 'sgd-crm-chatbot-backdrop';
+  const launcherId = 'sgd-crm-chatbot-launcher';
+  const styleId = 'sgd-crm-chatbot-styles';
+  const iframeUrl = '${iframeUrl}';
 
   function createNode(tag, style, html) {
     const node = document.createElement(tag);
@@ -155,48 +190,49 @@ export function buildChatbotSnippet(args: ChatbotSnippetArgs) {
     return node;
   }
 
-  async function submitLead(payload) {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-crm-channel-token': token,
-      },
-      body: JSON.stringify({
-        channelId,
-        ...payload,
-        landingPageUrl: window.location.href,
-        referrerUrl: document.referrer || '',
-      }),
-    });
-    return response.ok;
-  }
+  const style = document.createElement('style');
+  style.id = styleId;
+  style.textContent = '\n    @keyframes sgd-chatbot-launcher-in {\n      from { opacity: 0; transform: translateY(24px) scale(.82); }\n      to { opacity: 1; transform: translateY(0) scale(1); }\n    }\n    @keyframes sgd-chatbot-launcher-pulse {\n      0%, 100% { box-shadow: 0 18px 40px rgba(15,23,42,.22); }\n      50% { box-shadow: 0 22px 52px rgba(15,23,42,.30); }\n    }\n    #'+launcherId+' {\n      opacity: 0;\n      transform: translateY(24px) scale(.82);\n      transition: transform .28s ease, box-shadow .28s ease, filter .28s ease;\n      animation: sgd-chatbot-launcher-in .55s cubic-bezier(.22,1,.36,1) forwards, sgd-chatbot-launcher-pulse 3.8s ease-in-out .75s infinite;\n    }\n    #'+launcherId+':hover {\n      transform: translateY(-2px) scale(1.02);\n      filter: saturate(1.05);\n    }\n    #'+backdropId+' {\n      opacity: 0;\n      pointer-events: none;\n      transition: opacity .26s ease;\n    }\n    #'+backdropId+'.is-open {\n      opacity: 1;\n      pointer-events: auto;\n    }\n    #'+panelId+' {\n      opacity: 0;\n      transform: translateY(18px) scale(.92);\n      transform-origin: ${panelTransformOrigin};\n      pointer-events: none;\n      transition: opacity .28s ease, transform .34s cubic-bezier(.22,1,.36,1);\n    }\n    #'+panelId+'.is-open {\n      opacity: 1;\n      transform: translateY(0) scale(1);\n      pointer-events: auto;\n    }\n    #'+panelId+'.is-closing {\n      opacity: 0;\n      transform: translateY(16px) scale(.94);\n      pointer-events: none;\n    }';
+  const customCss = ${JSON.stringify(customCss)};
+  if (customCss) style.textContent += '\n' + customCss;
+  if (!document.getElementById(styleId)) document.head.appendChild(style);
 
-  const button = createNode('button', 'position:fixed;bottom:24px;right:24px;z-index:99999;border:none;border-radius:999px;padding:14px 18px;background:linear-gradient(135deg,#0f172a,#0ea5e9);color:#fff;font:600 14px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;', '${title}');
-  const panel = createNode('div', 'display:none;position:fixed;bottom:84px;right:24px;z-index:99999;width:min(360px,calc(100vw - 32px));border:1px solid rgba(148,163,184,.28);border-radius:24px;background:#fff;padding:18px;box-shadow:0 24px 80px rgba(15,23,42,.28);font:14px sans-serif;color:#0f172a;', '<div style="font-weight:700;font-size:18px;margin-bottom:6px;">${title}</div><div style="color:#475569;line-height:1.5;margin-bottom:14px;">${prompt}</div><form id="sgd-chatbot-form" style="display:grid;gap:10px;"><input name="nombre" placeholder="Tu nombre" style="padding:12px 14px;border:1px solid #cbd5e1;border-radius:14px;"><input name="email" placeholder="Tu email" style="padding:12px 14px;border:1px solid #cbd5e1;border-radius:14px;"><input name="telefono" placeholder="Tu teléfono" style="padding:12px 14px;border:1px solid #cbd5e1;border-radius:14px;"><textarea name="message" placeholder="¿Qué necesitas?" rows="4" style="padding:12px 14px;border:1px solid #cbd5e1;border-radius:14px;resize:vertical;"></textarea><button type="submit" style="border:none;border-radius:14px;padding:12px 16px;background:#0f172a;color:#fff;font-weight:600;cursor:pointer;">Enviar</button></form><div id="sgd-chatbot-status" style="margin-top:10px;color:#475569;font-size:12px;"></div>');
+  const button = createNode('button', '${launcherButtonStyle}', '<span style="font-size:${launcherSize === 'large' ? '20px' : '16px'};line-height:1;">${iconMarkup}</span>${launcherLabelMarkup}');
+  button.id = launcherId;
+  const backdrop = createNode('div', 'position:fixed;inset:0;z-index:99997;background:linear-gradient(180deg,rgba(15,23,42,.08),rgba(15,23,42,.18));backdrop-filter:blur(3px);', '');
+  backdrop.id = backdropId;
+  const panel = createNode('div', 'position:fixed;bottom:96px;${panelAnchorStyle}z-index:99998;width:min(420px,calc(100vw - 24px));height:min(760px,calc(100vh - 120px));border:1px solid rgba(148,163,184,.28);border-radius:24px;background:${backgroundColor};overflow:hidden;box-shadow:0 24px 80px rgba(15,23,42,.28);font:14px sans-serif;color:#0f172a;', '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(226,232,240,1);background:linear-gradient(135deg,#0f172a,${accentColor});color:#fff;"><div><div style="font-weight:700;font-size:16px;">${title}</div><div style="font-size:12px;opacity:.9;margin-top:4px;">${prompt}</div></div><button type="button" id="sgd-chatbot-close" style="border:none;background:rgba(255,255,255,.14);color:#fff;width:34px;height:34px;border-radius:999px;cursor:pointer;font-size:18px;transition:transform .2s ease, background .2s ease;">×</button></div><iframe src="'+iframeUrl+'" title="${title}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" style="display:block;width:100%;height:calc(100% - 68px);border:0;background:${backgroundColor};"></iframe>');
   panel.id = panelId;
 
+  function openPanel() {
+    backdrop.classList.add('is-open');
+    panel.classList.remove('is-closing');
+    requestAnimationFrame(function () {
+      panel.classList.add('is-open');
+    });
+  }
+
+  function closePanel() {
+    backdrop.classList.remove('is-open');
+    panel.classList.remove('is-open');
+    panel.classList.add('is-closing');
+  }
+
   button.addEventListener('click', function () {
-    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    if (panel.classList.contains('is-open')) {
+      closePanel();
+      return;
+    }
+    openPanel();
   });
 
+  backdrop.addEventListener('click', closePanel);
   document.body.appendChild(button);
+  document.body.appendChild(backdrop);
   document.body.appendChild(panel);
 
-  panel.querySelector('#sgd-chatbot-form').addEventListener('submit', async function (event) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const status = panel.querySelector('#sgd-chatbot-status');
-    status.textContent = 'Enviando...';
-    const ok = await submitLead({
-      nombre: data.get('nombre') || '',
-      email: data.get('email') || '',
-      telefono: data.get('telefono') || '',
-      message: data.get('message') || '',
-    });
-    status.textContent = ok ? 'Gracias. Un asesor te contactará pronto.' : 'No pudimos enviar tu solicitud.';
-    if (ok) form.reset();
+  panel.querySelector('#sgd-chatbot-close').addEventListener('click', function () {
+    closePanel();
   });
 })();
 </script>`

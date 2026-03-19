@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
+import { ErpBreadcrumbs } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -378,8 +379,15 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-1">
-          <Link href="/dashboard/crm" className="text-sm text-primary hover:underline">← Volver al CRM</Link>
+        <div className="space-y-2">
+          <ErpBreadcrumbs
+            items={[
+              { label: 'Dashboard', href: '/dashboard' },
+              { label: 'CRM', href: '/dashboard/crm' },
+              { label: 'Lead', href: '/dashboard/crm' },
+              { label: lead.nombre },
+            ]}
+          />
           <h1 className="text-2xl font-bold">{lead.nombre}</h1>
           <p className="text-sm text-muted-foreground">{lead.empresaNombre || 'Sin empresa'} · {lead.email || lead.telefono || lead.ciudad || naText}</p>
         </div>

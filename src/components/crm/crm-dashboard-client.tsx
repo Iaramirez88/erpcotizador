@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ErpBreadcrumbs } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -564,8 +565,14 @@ export function CrmDashboardClient() {
   return (
     <div className="space-y-6 pb-6">
       <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,116,144,0.18),_transparent_32%),linear-gradient(135deg,_#fffdf8_0%,_#f8fbff_48%,_#f2f7f4_100%)] shadow-[0_24px_60px_-36px_rgba(15,23,42,0.35)]">
-        <div className="grid gap-6 p-6 lg:grid-cols-[1.15fr_0.85fr] lg:p-8">
+        <div className="grid gap-6 p-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)] xl:items-start lg:p-8">
           <div className="space-y-4">
+            <ErpBreadcrumbs
+              items={[
+                { label: 'Dashboard', href: '/dashboard' },
+                { label: 'CRM' },
+              ]}
+            />
             <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700 backdrop-blur">
               CRM Comercial
             </div>
@@ -573,11 +580,11 @@ export function CrmDashboardClient() {
               <h1 className="max-w-2xl text-3xl font-semibold tracking-tight text-slate-950 lg:text-4xl">Visibilidad comercial clara para leads, oportunidades y seguimiento.</h1>
               <p className="max-w-2xl text-sm leading-6 text-slate-600 lg:text-base">Centraliza prospección, pipeline y tareas en una sola vista con contexto ERP, cotizaciones vinculadas y señales de cierre más claras.</p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="relative min-w-[280px] max-w-xl flex-1">
+            <div className="flex flex-col gap-2">
+              <div className="relative min-w-0 max-w-xl flex-1">
                 <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por lead, oportunidad o cliente..." className="h-12 rounded-2xl border-slate-200 bg-white/90 pr-4 shadow-sm" />
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button asChild variant="outline" className="h-12 rounded-2xl border-emerald-200 bg-emerald-50/80 px-5 text-emerald-800 hover:bg-emerald-100">
                   <Link href="/dashboard/crm/chatbot">Panel chatbot</Link>
                 </Button>
@@ -592,21 +599,21 @@ export function CrmDashboardClient() {
               </div>
             </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-            <div className="rounded-3xl border border-slate-200/80 bg-white/85 p-5 shadow-sm backdrop-blur">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Leads activos</p>
-              <p className="mt-4 text-4xl font-semibold text-slate-950">{stats.activeLeads}</p>
-              <p className="mt-2 text-sm text-slate-500">Prospectos en seguimiento comercial.</p>
+          <div className="grid gap-3 sm:grid-cols-3 xl:self-start">
+            <div className="min-w-0 rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Leads activos</p>
+              <p className="mt-3 text-3xl font-semibold text-slate-950">{stats.activeLeads}</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Prospectos en seguimiento comercial.</p>
             </div>
-            <div className="rounded-3xl border border-emerald-200/80 bg-[linear-gradient(180deg,_rgba(236,253,245,0.95),_rgba(255,255,255,0.9))] p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Pipeline estimado</p>
-              <p className="mt-4 text-4xl font-semibold text-emerald-950">{formatMoney(stats.pipelineValue, locale)}</p>
-              <p className="mt-2 text-sm text-emerald-700/80">Valor proyectado de oportunidades activas.</p>
+            <div className="min-w-0 rounded-2xl border border-emerald-200/80 bg-[linear-gradient(180deg,_rgba(236,253,245,0.95),_rgba(255,255,255,0.9))] p-4 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Pipeline estimado</p>
+              <p className="mt-3 text-3xl font-semibold text-emerald-950">{formatMoney(stats.pipelineValue, locale)}</p>
+              <p className="mt-1 text-xs leading-5 text-emerald-700/80">Valor proyectado de oportunidades activas.</p>
             </div>
-            <div className="rounded-3xl border border-amber-200/80 bg-[linear-gradient(180deg,_rgba(255,251,235,0.96),_rgba(255,255,255,0.9))] p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Tareas abiertas</p>
-              <p className="mt-4 text-4xl font-semibold text-amber-950">{stats.openTasks}</p>
-              <p className="mt-2 text-sm text-amber-700/80">Pendientes que requieren acción del equipo.</p>
+            <div className="min-w-0 rounded-2xl border border-amber-200/80 bg-[linear-gradient(180deg,_rgba(255,251,235,0.96),_rgba(255,255,255,0.9))] p-4 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Tareas abiertas</p>
+              <p className="mt-3 text-3xl font-semibold text-amber-950">{stats.openTasks}</p>
+              <p className="mt-1 text-xs leading-5 text-amber-700/80">Pendientes que requieren acción del equipo.</p>
             </div>
           </div>
         </div>
@@ -685,8 +692,8 @@ export function CrmDashboardClient() {
                 {!loading && leads.length === 0 ? <p className="text-sm text-muted-foreground">No hay leads para mostrar.</p> : null}
                 {leads.map((lead) => (
                   <div key={lead.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-3">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <Link href={`/dashboard/crm/leads/${lead.id}`} className="text-lg font-semibold text-sky-700 hover:text-sky-800 hover:underline">
                             {lead.nombre}
@@ -694,21 +701,27 @@ export function CrmDashboardClient() {
                           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">{lead.status}</span>
                           <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-700">{lead.source}</span>
                         </div>
-                        <div className="grid gap-2 text-sm text-slate-600 md:grid-cols-2">
+                        <div className="grid gap-1 text-sm text-slate-600 md:grid-cols-2">
                           <p>{lead.empresaNombre || 'Sin empresa'} · {lead.email || lead.telefono || lead.ciudad || naText}</p>
                           <p>Última actividad: {formatDate(lead.lastActivityAt || lead.createdAt, locale, naText)}</p>
                         </div>
                       </div>
-                      <div className="grid min-w-[180px] gap-3 text-sm text-slate-500 md:grid-cols-3 lg:grid-cols-1">
-                        <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                          <p className="text-xs uppercase tracking-wide text-slate-400">Oportunidades</p>
-                          <p className="mt-1 text-lg font-semibold text-slate-900">{lead._count?.opportunities ?? 0}</p>
+                      <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 lg:flex-nowrap">
+                        <div className="grid min-w-[132px] grid-cols-[auto_1fr] items-center gap-x-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Oportunidades</p>
+                          <p className="text-base font-semibold text-slate-900">{lead._count?.opportunities ?? 0}</p>
                         </div>
-                        <div className="rounded-2xl bg-slate-50 px-4 py-3">
-                          <p className="text-xs uppercase tracking-wide text-slate-400">Tareas</p>
-                          <p className="mt-1 text-lg font-semibold text-slate-900">{lead._count?.tasks ?? 0}</p>
+                        <div className="grid min-w-[108px] grid-cols-[auto_1fr] items-center gap-x-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Tareas</p>
+                          <p className="text-base font-semibold text-slate-900">{lead._count?.tasks ?? 0}</p>
                         </div>
-                        <Button variant="ghost" className="justify-start rounded-2xl px-4 text-sky-700 hover:bg-sky-50 hover:text-sky-800" onClick={() => void openEditLeadDialog(lead)}>Editar lead</Button>
+                        <Button
+                          variant="ghost"
+                          className="h-10 rounded-xl border border-slate-200 px-3 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                          onClick={() => void openEditLeadDialog(lead)}
+                        >
+                          Editar lead
+                        </Button>
                       </div>
                     </div>
                   </div>

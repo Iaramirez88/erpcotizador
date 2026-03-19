@@ -476,6 +476,13 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   return (
     <div className="space-y-6 pb-6">
       <ErpPageHero
+        breadcrumbs={[
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'CRM', href: '/dashboard/crm' },
+          props.initialProviderFilter === 'WEB_CHATBOT'
+            ? { label: 'Panel chatbot' }
+            : { label: 'Conversaciones' },
+        ]}
         eyebrow="CRM Omnicanal"
         title={props.title || 'Bandeja de conversaciones'}
         description={props.description || 'Opera el inbox de pruebas, asigna hilos a asesores, simula inbound y convierte conversaciones en oportunidades sin salir del CRM.'}
@@ -624,8 +631,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
             <CardTitle className="text-xl">Detalle</CardTitle>
             <CardDescription>Asignación, contexto del lead, oportunidad y mensajes del hilo seleccionado.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-5 p-4 md:p-5">
-            {detailLoading ? <p className="text-sm text-muted-foreground">Cargando detalle...</p> : null}
+          <CardContent className="space-y-5 p-4 md:p-5" aria-busy={detailLoading}>
+            {detailLoading ? <span className="sr-only">Cargando detalle...</span> : null}
             {!detailLoading && !selectedConversation ? <p className="text-sm text-muted-foreground">Selecciona una conversación para ver el detalle.</p> : null}
             {selectedConversation ? (
               <>
