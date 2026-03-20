@@ -11,6 +11,47 @@ function roleForCreatedSede(args: { isSystemAdmin: boolean; membershipRole: stri
   return args.membershipRole === 'ADMIN' ? 'ADMIN' : 'MANAGER'
 }
 
+async function ensureSedeManageAccess(args: {
+  empresaId: string
+  userId: string
+  isSystemAdmin: boolean
+}) {
+  if (args.isSystemAdmin) return true
+
+  const anyAdmin = await prisma.sedeMembership.findFirst({
+    where: {
+      userId: args.userId,
+      sede: { empresaId: args.empresaId },
+      role: { in: ['ADMIN', 'MANAGER'] },
+    },
+    select: { id: true },
+  })
+
+  return Boolean(anyAdmin?.id)
+}
+
+async function findDuplicateSede(args: {
+  empresaId: string
+  nombre: string
+  codigo?: string | null
+  excludeId?: string
+}) {
+  const nombre = args.nombre.trim()
+  const codigo = args.codigo?.trim() || null
+
+  return prisma.sede.findFirst({
+    where: {
+      empresaId: args.empresaId,
+      ...(args.excludeId ? { NOT: { id: args.excludeId } } : {}),
+      OR: [
+        { nombre: { equals: nombre, mode: 'insensitive' } },
+        ...(codigo ? [{ codigo: { equals: codigo, mode: 'insensitive' as const } }] : []),
+      ],
+    },
+    select: { id: true, nombre: true, codigo: true },
+  })
+}
+
 export async function GET() {
   const access = await requireApiAccess(ModuleKey.CONFIG, 'READ')
   if (!access.ok) return access.response
@@ -45,17 +86,27 @@ export async function POST(request: Request) {
 
   // Permiso: rol sistema ADMIN o ser ADMIN/MANAGER en alguna sede de la empresa.
   const isSystemAdmin = access.session.user.role === 'ADMIN'
-  const anyAdmin = await prisma.sedeMembership.findFirst({
-    where: {
-      userId: access.userId,
-      sede: { empresaId: access.empresaId },
-      role: { in: ['ADMIN', 'MANAGER'] },
-    },
-    select: { id: true },
+  const canManage = await ensureSedeManageAccess({
+    empresaId: access.empresaId,
+    userId: access.userId,
+    isSystemAdmin,
   })
 
-  if (!isSystemAdmin && !anyAdmin) {
+  if (!canManage) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+  }
+
+  const duplicate = await findDuplicateSede({
+    empresaId: access.empresaId,
+    nombre,
+    codigo,
+  })
+
+  if (duplicate?.id) {
+    return NextResponse.json(
+      { error: 'Ya existe una sede con ese nombre o código.' },
+      { status: 409 }
+    )
   }
 
   const sede = await prisma.$transaction(async (tx) => {

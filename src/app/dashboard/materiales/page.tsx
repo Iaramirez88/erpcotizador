@@ -77,6 +77,12 @@ type SedeLite = {
   codigo: string | null
 }
 
+type SedeWarehouseOption = {
+  sedeId: string
+  warehouseId: string
+  label: string
+}
+
 const TIPOS_MATERIAL = [
   { value: "VINILO", label: "Vinilo" },
   { value: "LONA", label: "Lona" },
@@ -216,6 +222,44 @@ export default function ProductosPage() {
       return `${bodega.nombre}${bodega.isDefault ? ' (Principal)' : ''} · ${sedeLabel}`
     },
     [sedeById]
+  )
+
+  const sedeWarehouseOptions = useMemo<SedeWarehouseOption[]>(() => {
+    const sortedSedes = [...sedes].sort((a, b) => {
+      const aIsPrincipal = a.nombre.trim().toLowerCase() === 'principal'
+      const bIsPrincipal = b.nombre.trim().toLowerCase() === 'principal'
+      if (aIsPrincipal !== bIsPrincipal) return aIsPrincipal ? 1 : -1
+      return a.nombre.localeCompare(b.nombre, 'es')
+    })
+
+    return sortedSedes
+      .map((sede) => {
+        const warehouse =
+          bodegas.find((bodega) => bodega.sedeId === sede.id && bodega.isDefault) ??
+          bodegas.find((bodega) => bodega.sedeId === sede.id)
+
+        if (!warehouse?.id) return null
+
+        return {
+          sedeId: sede.id,
+          warehouseId: warehouse.id,
+          label: sede.codigo ? `${sede.nombre} (${sede.codigo})` : sede.nombre,
+        }
+      })
+      .filter((option): option is SedeWarehouseOption => Boolean(option?.warehouseId))
+  }, [bodegas, sedes])
+
+  const resolveWarehouseIdForSedePicker = useCallback(
+    (warehouseId: string) => {
+      if (!warehouseId) return ''
+      if (sedeWarehouseOptions.some((option) => option.warehouseId === warehouseId)) return warehouseId
+
+      const currentWarehouse = bodegas.find((bodega) => bodega.id === warehouseId)
+      if (!currentWarehouse?.sedeId) return warehouseId
+
+      return sedeWarehouseOptions.find((option) => option.sedeId === currentWarehouse.sedeId)?.warehouseId ?? warehouseId
+    },
+    [bodegas, sedeWarehouseOptions]
   )
 
   useEffect(() => {
@@ -719,7 +763,7 @@ export default function ProductosPage() {
       stockActual: "0",
       stockMinimo: material.stockMinimo?.toString() || "0",
       unidadMedida: material.unidadMedida,
-      warehouseId: material.stocks?.[0]?.warehouse?.id ?? "",
+      warehouseId: resolveWarehouseIdForSedePicker(material.stocks?.[0]?.warehouse?.id ?? ""),
       stockScope: 'warehouse',
       proveedor: material.proveedor ?? "",
       observaciones: material.observaciones ?? "",
@@ -747,7 +791,7 @@ export default function ProductosPage() {
       stockActual: material.stockActual.toString(),
       stockMinimo: material.stockMinimo.toString(),
       unidadMedida: material.unidadMedida,
-      warehouseId: material.stocks?.[0]?.warehouse?.id ?? "",
+      warehouseId: resolveWarehouseIdForSedePicker(material.stocks?.[0]?.warehouse?.id ?? ""),
       stockScope: 'warehouse',
       proveedor: material.proveedor || "",
       observaciones: material.observaciones || "",
@@ -1818,10 +1862,10 @@ export default function ProductosPage() {
                       className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                       required
                     >
-                      <option value="">Selecciona una bodega…</option>
-                      {bodegas.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {formatBodegaLabel(b)}
+                      <option value="">Selecciona una sede…</option>
+                      {sedeWarehouseOptions.map((option) => (
+                        <option key={option.sedeId} value={option.warehouseId}>
+                          {option.label}
                         </option>
                       ))}
                     </select>
@@ -1831,7 +1875,7 @@ export default function ProductosPage() {
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground mt-1">
-                    El stock quedará registrado en esta bodega.
+                    El stock quedará registrado en la bodega principal de la sede seleccionada.
                   </p>
                 </div>
               ) : (

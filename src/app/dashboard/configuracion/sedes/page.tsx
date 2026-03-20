@@ -32,6 +32,8 @@ export default function SedesConfigPage() {
 
   const [createOpen, setCreateOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [editingSede, setEditingSede] = useState<SedeRow | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const [form, setForm] = useState({
     nombre: '',
@@ -39,7 +41,12 @@ export default function SedesConfigPage() {
   })
 
   const sorted = useMemo(() => {
-    return [...sedes].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+    return [...sedes].sort((a, b) => {
+      const aIsPrincipal = a.nombre.trim().toLowerCase() === 'principal'
+      const bIsPrincipal = b.nombre.trim().toLowerCase() === 'principal'
+      if (aIsPrincipal !== bIsPrincipal) return aIsPrincipal ? 1 : -1
+      return a.nombre.localeCompare(b.nombre, 'es')
+    })
   }, [sedes])
 
   async function load() {
@@ -66,7 +73,15 @@ export default function SedesConfigPage() {
 
   function openCreate() {
     setError(null)
+    setEditingSede(null)
     setForm({ nombre: '', codigo: '' })
+    setCreateOpen(true)
+  }
+
+  function openEdit(sede: SedeRow) {
+    setError(null)
+    setEditingSede(sede)
+    setForm({ nombre: sede.nombre, codigo: sede.codigo ?? '' })
     setCreateOpen(true)
   }
 
@@ -81,8 +96,8 @@ export default function SedesConfigPage() {
         codigo: form.codigo.trim() || undefined,
       }
 
-      const res = await fetch('/api/sedes', {
-        method: 'POST',
+      const res = await fetch(editingSede ? `/api/sedes/${editingSede.id}` : '/api/sedes', {
+        method: editingSede ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
@@ -94,11 +109,35 @@ export default function SedesConfigPage() {
       }
 
       setCreateOpen(false)
+      setEditingSede(null)
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error inesperado')
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  async function deleteSede(sede: SedeRow) {
+    const ok = window.confirm(`¿Eliminar la sede "${sede.nombre}"? Solo se eliminará si no tiene información asociada.`)
+    if (!ok) return
+
+    setDeletingId(sede.id)
+    setError(null)
+
+    try {
+      const res = await fetch(`/api/sedes/${sede.id}`, { method: 'DELETE' })
+      const json = (await res.json().catch(() => ({}))) as ApiResponse<{ id: string }>
+      if (!res.ok || !json.success) {
+        setError(json.error || 'No se pudo eliminar la sede')
+        return
+      }
+
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error inesperado')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -155,6 +194,7 @@ export default function SedesConfigPage() {
                   <tr className="text-left text-gray-600 border-b">
                     <th className="py-2 pr-4">Nombre</th>
                     <th className="py-2 pr-4">Código</th>
+                    <th className="py-2 pr-4 text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -162,6 +202,23 @@ export default function SedesConfigPage() {
                     <tr key={s.id} className="border-b last:border-b-0">
                       <td className="py-2 pr-4 font-medium text-gray-900">{s.nombre}</td>
                       <td className="py-2 pr-4 text-gray-700">{s.codigo || '—'}</td>
+                      <td className="py-2 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button type="button" variant="outline" size="sm" onClick={() => openEdit(s)}>
+                            Editar
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="text-red-600"
+                            onClick={() => void deleteSede(s)}
+                            disabled={deletingId === s.id}
+                          >
+                            {deletingId === s.id ? 'Eliminando…' : 'Eliminar'}
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -174,9 +231,11 @@ export default function SedesConfigPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Nueva sede</DialogTitle>
+            <DialogTitle>{editingSede ? 'Editar sede' : 'Nueva sede'}</DialogTitle>
             <DialogDescription>
-              Crea una sede para separar operación y permisos por sucursal.
+              {editingSede
+                ? 'Actualiza el nombre o código de la sede.'
+                : 'Crea una sede para separar operación y permisos por sucursal.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -200,11 +259,19 @@ export default function SedesConfigPage() {
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)} disabled={isSubmitting}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setCreateOpen(false)
+                  setEditingSede(null)
+                }}
+                disabled={isSubmitting}
+              >
                 Cancelar
               </Button>
               <Button type="submit" disabled={isSubmitting || !form.nombre.trim()}>
-                {isSubmitting ? 'Guardando…' : 'Crear'}
+                {isSubmitting ? 'Guardando…' : editingSede ? 'Guardar cambios' : 'Crear'}
               </Button>
             </DialogFooter>
           </form>

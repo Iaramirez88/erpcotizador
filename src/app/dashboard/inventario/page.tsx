@@ -54,6 +54,12 @@ type SedeLite = {
   codigo: string | null
 }
 
+type SedeWarehouseOption = {
+  sedeId: string
+  warehouseId: string
+  label: string
+}
+
 type Movement = {
   id: string
   type: "IN" | "OUT" | "ADJUST" | string
@@ -149,6 +155,31 @@ export default function InventarioPage() {
 
   const defaultBodegaId = useMemo(() => bodegas.find((b) => b.isDefault)?.id ?? "", [bodegas])
 
+  const sedeWarehouseOptions = useMemo<SedeWarehouseOption[]>(() => {
+    const sortedSedes = [...sedes].sort((a, b) => {
+      const aIsPrincipal = a.nombre.trim().toLowerCase() === 'principal'
+      const bIsPrincipal = b.nombre.trim().toLowerCase() === 'principal'
+      if (aIsPrincipal !== bIsPrincipal) return aIsPrincipal ? 1 : -1
+      return a.nombre.localeCompare(b.nombre, 'es')
+    })
+
+    return sortedSedes
+      .map((sede) => {
+        const warehouse =
+          bodegas.find((bodega) => bodega.sedeId === sede.id && bodega.isDefault) ??
+          bodegas.find((bodega) => bodega.sedeId === sede.id)
+
+        if (!warehouse?.id) return null
+
+        return {
+          sedeId: sede.id,
+          warehouseId: warehouse.id,
+          label: sede.codigo ? `${sede.nombre} (${sede.codigo})` : sede.nombre,
+        }
+      })
+      .filter((option): option is SedeWarehouseOption => Boolean(option?.warehouseId))
+  }, [bodegas, sedes])
+
   async function load() {
     setIsLoading(true)
     setError(null)
@@ -217,10 +248,11 @@ export default function InventarioPage() {
   }, [])
 
   useEffect(() => {
-    if (!form.warehouseId && defaultBodegaId) {
-      setForm((p) => ({ ...p, warehouseId: defaultBodegaId }))
+    const preferredId = sedeWarehouseOptions[0]?.warehouseId ?? defaultBodegaId
+    if (!form.warehouseId && preferredId) {
+      setForm((p) => ({ ...p, warehouseId: preferredId }))
     }
-  }, [defaultBodegaId, form.warehouseId])
+  }, [defaultBodegaId, form.warehouseId, sedeWarehouseOptions])
 
   const activeMaterials = useMemo(() => materials.filter((m) => m.activo !== false), [materials])
 
@@ -594,9 +626,9 @@ export default function InventarioPage() {
                 onChange={(e) => setForm((p) => ({ ...p, warehouseId: e.target.value }))}
               >
                 <option value="">{t('inventory.site.global')}</option>
-                {bodegas.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {formatBodegaLabel(b)}
+                {sedeWarehouseOptions.map((option) => (
+                  <option key={option.sedeId} value={option.warehouseId}>
+                    {option.label}
                   </option>
                 ))}
               </select>
