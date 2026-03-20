@@ -6,6 +6,11 @@ import { ModuleKey } from '@prisma/client'
 
 export const runtime = 'nodejs'
 
+function roleForCreatedSede(args: { isSystemAdmin: boolean; membershipRole: string | null }): 'ADMIN' | 'MANAGER' {
+  if (args.isSystemAdmin) return 'ADMIN'
+  return args.membershipRole === 'ADMIN' ? 'ADMIN' : 'MANAGER'
+}
+
 export async function GET() {
   const access = await requireApiAccess(ModuleKey.CONFIG, 'READ')
   if (!access.ok) return access.response
@@ -54,6 +59,15 @@ export async function POST(request: Request) {
   }
 
   const sede = await prisma.$transaction(async (tx) => {
+    const myMembership = await tx.sedeMembership.findFirst({
+      where: {
+        userId: access.userId,
+        sede: { empresaId: access.empresaId },
+        role: { in: ['ADMIN', 'MANAGER'] },
+      },
+      select: { role: true },
+    })
+
     const created = await tx.sede.create({
       data: {
         empresaId: access.empresaId,
@@ -62,31 +76,45 @@ export async function POST(request: Request) {
       },
     })
 
-    // Si quien crea NO es system ADMIN, asegúrate que quede con membresía en la sede
-    // (mínimo MANAGER/ADMIN), para poder administrarla luego desde Permisos.
-    if (access.session.user.role !== 'ADMIN') {
-      const myMembership = await tx.sedeMembership.findFirst({
-        where: {
-          userId: access.userId,
-          sede: { empresaId: access.empresaId },
-          role: { in: ['ADMIN', 'MANAGER'] },
+    const roleToAssign = roleForCreatedSede({
+      isSystemAdmin: access.session.user.role === 'ADMIN',
+      membershipRole: myMembership?.role ?? null,
+    })
+
+    await tx.sedeMembership.upsert({
+      where: { sedeId_userId: { sedeId: created.id, userId: access.userId } },
+      create: {
+        sedeId: created.id,
+        userId: access.userId,
+        role: roleToAssign,
+      },
+      update: {
+        role: roleToAssign,
+      },
+      select: { id: true },
+    })
+
+    await tx.inventoryWarehouse.upsert({
+      where: {
+        empresaId_sedeId_nombre: {
+          empresaId: access.empresaId,
+          sedeId: created.id,
+          nombre: 'Principal',
         },
-        select: { role: true },
-      })
-
-      const roleToAssign = myMembership?.role === 'ADMIN' ? 'ADMIN' : 'MANAGER'
-
-      await tx.sedeMembership
-        .create({
-          data: {
-            sedeId: created.id,
-            userId: access.userId,
-            role: roleToAssign,
-          },
-          select: { id: true },
-        })
-        .catch(() => null)
-    }
+      },
+      create: {
+        empresaId: access.empresaId,
+        sedeId: created.id,
+        nombre: 'Principal',
+        codigo: 'PRIN',
+        isDefault: true,
+      },
+      update: {
+        codigo: 'PRIN',
+        isDefault: true,
+      },
+      select: { id: true },
+    })
 
     return created
   })

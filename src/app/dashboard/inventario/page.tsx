@@ -45,6 +45,13 @@ type Bodega = {
   nombre: string
   codigo: string | null
   isDefault: boolean
+  sedeId: string | null
+}
+
+type SedeLite = {
+  id: string
+  nombre: string
+  codigo: string | null
 }
 
 type Movement = {
@@ -78,6 +85,7 @@ export default function InventarioPage() {
   const [materials, setMaterials] = useState<Material[]>([])
   const [movements, setMovements] = useState<Movement[]>([])
   const [bodegas, setBodegas] = useState<Bodega[]>([])
+  const [sedes, setSedes] = useState<SedeLite[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -92,12 +100,25 @@ export default function InventarioPage() {
     return new Map(materials.map((m) => [m.id, m]))
   }, [materials])
 
+  const sedeById = useMemo(() => {
+    return new Map(sedes.map((sede) => [sede.id, sede]))
+  }, [sedes])
+
   const formatMaterialName = useCallback(
     (materialId: string, nombre: string) => {
       const code = String(materialById.get(materialId)?.externalId ?? '').trim()
       return code ? `(${code}) ${nombre}` : nombre
     },
     [materialById]
+  )
+
+  const formatBodegaLabel = useCallback(
+    (bodega: Bodega) => {
+      const sede = bodega.sedeId ? sedeById.get(bodega.sedeId) : null
+      const sedeLabel = sede ? `${sede.nombre}${sede.codigo ? ` (${sede.codigo})` : ''}` : t('inventory.site.global')
+      return `${bodega.nombre}${bodega.isDefault ? ` (${t('inventory.site.primary')})` : ''} · ${sedeLabel}`
+    },
+    [sedeById, t]
   )
 
   const exportExcel = useCallback(() => {
@@ -173,6 +194,27 @@ export default function InventarioPage() {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, warehouseFilterId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadSedes = async () => {
+      try {
+        const res = await fetch('/api/sedes', { cache: 'no-store' })
+        const json = (await res.json().catch(() => ({}))) as { success?: boolean; data?: SedeLite[] }
+        if (!cancelled && res.ok && json.success && Array.isArray(json.data)) {
+          setSedes(json.data)
+        }
+      } catch {
+        if (!cancelled) setSedes([])
+      }
+    }
+
+    void loadSedes()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (!form.warehouseId && defaultBodegaId) {
@@ -464,7 +506,7 @@ export default function InventarioPage() {
               <option value="">{t('inventory.filters.allSites')}</option>
               {bodegas.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.nombre}{b.isDefault ? ` (${t('inventory.site.primary')})` : ""}
+                  {formatBodegaLabel(b)}
                 </option>
               ))}
             </select>
@@ -554,7 +596,7 @@ export default function InventarioPage() {
                 <option value="">{t('inventory.site.global')}</option>
                 {bodegas.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {b.nombre}{b.isDefault ? ` (${t('inventory.site.primary')})` : ""}
+                    {formatBodegaLabel(b)}
                   </option>
                 ))}
               </select>

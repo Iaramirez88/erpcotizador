@@ -5,7 +5,7 @@
 
 "use client"
 
-import { useMemo, useState, useEffect } from "react"
+import { useCallback, useMemo, useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { ImportDialog } from "@/components/import/import-dialog"
 import { Input } from "@/components/ui/input"
@@ -204,6 +204,19 @@ export default function ProductosPage() {
     if (anyDefault?.id) return anyDefault.id
     return bodegas[0]?.id ?? ''
   }, [bodegas])
+
+  const sedeById = useMemo(() => {
+    return new Map(sedes.map((sede) => [sede.id, sede]))
+  }, [sedes])
+
+  const formatBodegaLabel = useCallback(
+    (bodega: Bodega) => {
+      const sede = bodega.sedeId ? sedeById.get(bodega.sedeId) : null
+      const sedeLabel = sede ? `${sede.nombre}${sede.codigo ? ` (${sede.codigo})` : ''}` : 'Global'
+      return `${bodega.nombre}${bodega.isDefault ? ' (Principal)' : ''} · ${sedeLabel}`
+    },
+    [sedeById]
+  )
 
   useEffect(() => {
     if (!isModalOpen) return
@@ -944,7 +957,7 @@ export default function ProductosPage() {
                     <option value="">Todas las bodegas</option>
                     {bodegasFiltroList.map((b) => (
                       <option key={b.id} value={b.id}>
-                        {b.nombre}
+                        {formatBodegaLabel(b)}
                       </option>
                     ))}
                   </select>
@@ -1141,7 +1154,7 @@ export default function ProductosPage() {
                 <option value="">Todas las bodegas</option>
                 {bodegasFiltroList.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {b.nombre}
+                    {formatBodegaLabel(b)}
                   </option>
                 ))}
               </select>
@@ -1808,7 +1821,7 @@ export default function ProductosPage() {
                       <option value="">Selecciona una bodega…</option>
                       {bodegas.map((b) => (
                         <option key={b.id} value={b.id}>
-                          {b.nombre}{b.isDefault ? ' (Principal)' : ''}
+                          {formatBodegaLabel(b)}
                         </option>
                       ))}
                     </select>

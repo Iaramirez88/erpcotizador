@@ -7,7 +7,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
-import { InventoryMovementType, ModuleKey } from '@prisma/client'
+import { AccessLevel, InventoryMovementType, ModuleKey } from '@prisma/client'
+import { requireSedeAccess } from '@/lib/rbac'
 
 export const runtime = 'nodejs'
 
@@ -32,6 +33,33 @@ export async function GET(request: Request) {
     const type = searchParams.get('type') || undefined
     const warehouseId = searchParams.get('warehouseId') || undefined
     const limit = Math.min(200, Math.max(1, Number(searchParams.get('limit') || 50)))
+
+    if (warehouseId) {
+      const warehouse = await prisma.inventoryWarehouse.findUnique({
+        where: { id: warehouseId },
+        select: { id: true, empresaId: true, sedeId: true },
+      })
+
+      if (!warehouse || warehouse.empresaId !== empresaId) {
+        return NextResponse.json({ error: 'Sede no encontrada' }, { status: 404 })
+      }
+
+      if (warehouse.sedeId && access.session.user.role !== 'ADMIN') {
+        try {
+          await requireSedeAccess({
+            userId: access.userId,
+            sedeId: warehouse.sedeId,
+            module: 'INVENTARIO' as ModuleKey,
+            minLevel: AccessLevel.READ,
+          })
+        } catch (error) {
+          if (error instanceof Error && error.message === 'FORBIDDEN') {
+            return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
+          }
+          throw error
+        }
+      }
+    }
 
     const where: {
       empresaId: string
@@ -105,6 +133,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Body inválido. Esperado: { materialId, type, ... }' }, { status: 400 })
     }
 
+    let movementSedeId = access.sedeId
+
     if (warehouseId) {
       const wh = await prisma.inventoryWarehouse.findUnique({
         where: { id: warehouseId },
@@ -115,8 +145,25 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Sede no encontrada' }, { status: 404 })
       }
 
-      if (wh.sedeId && wh.sedeId !== access.sedeId) {
-        return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
+      if (wh.sedeId && access.session.user.role !== 'ADMIN') {
+        try {
+          await requireSedeAccess({
+            userId: access.userId,
+            sedeId: wh.sedeId,
+            module: 'INVENTARIO' as ModuleKey,
+            minLevel: AccessLevel.WRITE,
+          })
+        } catch (error) {
+          if (error instanceof Error && error.message === 'FORBIDDEN') {
+            return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
+          }
+          throw error
+        }
+
+      }
+
+      if (wh.sedeId) {
+        movementSedeId = wh.sedeId
       }
     }
 
@@ -217,7 +264,7 @@ export async function POST(request: Request) {
       const movement = await tx.inventoryMovement.create({
         data: {
           empresaId,
-          sedeId: access.sedeId,
+          sedeId: movementSedeId,
           warehouseId,
           materialId,
           type,

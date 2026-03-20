@@ -99,20 +99,54 @@ export async function GET(request: Request) {
     if (sedeIdParam) {
       const sedeTarget = await prisma.sede.findFirst({ where: { id: sedeIdParam, empresaId }, select: { id: true } })
       if (sedeTarget?.id) {
+        if (access.session.user.role !== 'ADMIN') {
+          try {
+            await requireSedeAccess({
+              userId: access.userId,
+              sedeId: sedeTarget.id,
+              module: ModuleKey.MATERIALES,
+              minLevel: AccessLevel.READ,
+            })
+          } catch (error) {
+            if (error instanceof Error && error.message === 'FORBIDDEN') {
+              return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
+            }
+            throw error
+          }
+        }
+
+        sedeId = sedeTarget.id
+      }
+    }
+
+    if (warehouseId) {
+      const warehouse = await prisma.inventoryWarehouse.findUnique({
+        where: { id: warehouseId },
+        select: { id: true, empresaId: true, sedeId: true },
+      })
+
+      if (!warehouse || warehouse.empresaId !== empresaId) {
+        return NextResponse.json({ error: 'Bodega inválida' }, { status: 404 })
+      }
+
+      if (warehouse.sedeId && access.session.user.role !== 'ADMIN') {
         try {
           await requireSedeAccess({
             userId: access.userId,
-            sedeId: sedeTarget.id,
+            sedeId: warehouse.sedeId,
             module: ModuleKey.MATERIALES,
             minLevel: AccessLevel.READ,
           })
-          sedeId = sedeTarget.id
         } catch (error) {
           if (error instanceof Error && error.message === 'FORBIDDEN') {
             return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
           }
           throw error
         }
+      }
+
+      if (warehouse.sedeId) {
+        sedeId = warehouse.sedeId
       }
     }
 
@@ -567,15 +601,23 @@ export async function POST(request: Request) {
 
     const canUseRequestedWarehouse = async () => {
       if (!requestedWarehouseId) return null
-      const sedeId = access.sedeId
-      return prisma.inventoryWarehouse.findFirst({
-        where: {
-          id: requestedWarehouseId,
-          empresaId,
-          OR: [{ sedeId }, { sedeId: null }],
-        },
-        select: { id: true },
+      const warehouse = await prisma.inventoryWarehouse.findUnique({
+        where: { id: requestedWarehouseId },
+        select: { id: true, empresaId: true, sedeId: true },
       })
+
+      if (!warehouse || warehouse.empresaId !== empresaId) return null
+
+      if (warehouse.sedeId && access.session.user.role !== 'ADMIN') {
+        await requireSedeAccess({
+          userId: access.userId,
+          sedeId: warehouse.sedeId,
+          module: ModuleKey.MATERIALES,
+          minLevel: AccessLevel.WRITE,
+        })
+      }
+
+      return warehouse
     }
 
     // Regla: si el stock aplica a una bodega específica, debe venir explícita (no auto-asignamos).
@@ -586,9 +628,21 @@ export async function POST(request: Request) {
       )
     }
 
-    const whValidated = stockActualN > 0 && stockScope === 'warehouse'
-      ? await canUseRequestedWarehouse()
-      : null
+    let whValidated: Awaited<ReturnType<typeof canUseRequestedWarehouse>> = null
+
+    if (stockActualN > 0 && stockScope === 'warehouse') {
+      try {
+        whValidated = await canUseRequestedWarehouse()
+      } catch (error) {
+        if (error instanceof Error && error.message === 'FORBIDDEN') {
+          return NextResponse.json(
+            { error: 'Bodega inválida o sin acceso para registrar stock.' },
+            { status: 403 }
+          )
+        }
+        throw error
+      }
+    }
 
     if (stockActualN > 0 && stockScope === 'warehouse' && !whValidated?.id) {
       return NextResponse.json(
