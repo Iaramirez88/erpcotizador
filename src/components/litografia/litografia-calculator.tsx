@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ComponentProps } from "react"
 import { ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { LitografiaPaperRequestsAdminDialog } from "@/components/litografia/litografia-paper-requests-admin-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -183,6 +184,8 @@ export function LitografiaCalculator() {
 
   const [meLoaded, setMeLoaded] = useState(false)
   const [canConfigWrite, setCanConfigWrite] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [paperRequestsOpen, setPaperRequestsOpen] = useState(false)
 
   const [cantidad, setCantidad] = useState("1000")
   const [colores] = useState("4")
@@ -951,6 +954,7 @@ export function LitografiaCalculator() {
         const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
         const data = (env.data && typeof env.data === "object" ? (env.data as Record<string, unknown>) : {})
         setCanConfigWrite(Boolean(data.canConfigWrite))
+        setIsAdmin(String(data.role || "").toUpperCase() === "ADMIN")
       } finally {
         setMeLoaded(true)
       }
@@ -1748,6 +1752,11 @@ export function LitografiaCalculator() {
 
   return (
     <div className="space-y-4">
+      <LitografiaPaperRequestsAdminDialog
+        open={paperRequestsOpen}
+        onOpenChange={setPaperRequestsOpen}
+        onApproved={fetchPapers}
+      />
       {configError ? <p className="text-sm text-red-600">{configError}</p> : null}
 
       {tab === "config" ? (
@@ -3174,9 +3183,16 @@ export function LitografiaCalculator() {
                   <Input className={INPUT_COMPACT} type="number" step="0.1" value={newPaperPliegoH} onChange={(e) => setNewPaperPliegoH(e.target.value)} />
                 </div>
                 <div className="md:col-span-3">
-                  <Button type="button" onClick={createPaper} disabled={!newPaperNombre.trim()}>
-                    Agregar papel
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" onClick={createPaper} disabled={!isAdmin || !newPaperNombre.trim()}>
+                      Agregar papel
+                    </Button>
+                    {isAdmin ? (
+                      <Button type="button" variant="outline" onClick={() => setPaperRequestsOpen(true)}>
+                        Solicitudes de papeles
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
 

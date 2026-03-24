@@ -18,6 +18,7 @@ import { SearchableNativeSelect } from "@/components/ui/searchable-native-select
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { LitografiaCutGuide } from "@/components/litografia/litografia-cut-guide"
+import { LitografiaPaperRequestDialog } from "@/components/litografia/litografia-paper-request-dialog"
 import { computeLitografia, type LitografiaResult } from "@/lib/litografia"
 import { formatCurrency } from "@/lib/utils"
 
@@ -380,6 +381,7 @@ export function LitografiaQuoteDialog(props: {
   const [papers, setPapers] = useState<PaperRate[]>([])
   const [finishes, setFinishes] = useState<FinishOption[]>([])
   const [sizes, setSizes] = useState<PrintSize[]>([])
+  const [paperRequestOpen, setPaperRequestOpen] = useState(false)
   const [configError, setConfigError] = useState<string | null>(null)
   const [selectedPlanchaProfileIds, setSelectedPlanchaProfileIds] = useState<string[]>([""])
   const [selectedPlanchaProfileQtys, setSelectedPlanchaProfileQtys] = useState<string[]>(["1"])
@@ -734,6 +736,19 @@ export function LitografiaQuoteDialog(props: {
       return next
     })
   }
+
+  const handlePaperSubmitted = useCallback((result: { mode: 'created' | 'requested'; paper?: PaperRate | null }) => {
+    if (result.mode !== 'created' || !result.paper) return
+    setPapers((prev) => {
+      const next = [...prev.filter((paper) => paper.id !== result.paper!.id), result.paper!]
+      next.sort((left, right) => {
+        if (left.activo !== right.activo) return left.activo ? -1 : 1
+        return left.nombre.localeCompare(right.nombre)
+      })
+      return next
+    })
+    updatePaperRow(0, result.paper.id)
+  }, [updatePaperRow])
 
   const addFinishRow = () => {
     setSelectedFinishIds((prev) => [...prev, ""])
@@ -2550,6 +2565,12 @@ export function LitografiaQuoteDialog(props: {
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogContent className="max-w-5xl p-0">
+        <LitografiaPaperRequestDialog
+          open={paperRequestOpen}
+          onOpenChange={setPaperRequestOpen}
+          isAdmin={isAdmin}
+          onSubmitted={handlePaperSubmitted}
+        />
         <div className="flex flex-col max-h-[90vh]">
           <div className="p-6 pb-3">
             <DialogHeader>
@@ -3821,9 +3842,14 @@ export function LitografiaQuoteDialog(props: {
                                 <span className="text-[10px] leading-tight text-muted-foreground">
                                   {t('printshopQuote.help.paperRows')}
                                 </span>
-                                <Button type="button" variant="outline" size="sm" onClick={addPaperRow}>
-                                  {t('common.addAnother')}
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                  <Button type="button" variant="outline" size="sm" onClick={() => setPaperRequestOpen(true)}>
+                                    Agregar papel
+                                  </Button>
+                                  <Button type="button" variant="outline" size="sm" onClick={addPaperRow}>
+                                    {t('common.addAnother')}
+                                  </Button>
+                                </div>
                               </div>
                               <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
                                 {primaryPaper ? (
@@ -3876,6 +3902,11 @@ export function LitografiaQuoteDialog(props: {
                                 <div className="min-w-[120px] text-[10px] leading-tight text-muted-foreground">
                                   {t('printshopQuote.paper.runLabel', { qty: String(cantidad || "0") })}
                                 </div>
+                              </div>
+                              <div className="mt-2 flex justify-end">
+                                <Button type="button" variant="outline" size="sm" onClick={() => setPaperRequestOpen(true)}>
+                                  Agregar papel
+                                </Button>
                               </div>
                               <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
                                 {primaryPaper ? (

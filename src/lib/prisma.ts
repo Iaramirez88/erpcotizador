@@ -65,6 +65,7 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasCrmConversationDelegate = typeof (prismaClient as any)?.crmConversation?.findMany === 'function'
   const hasCrmMessageDelegate = typeof (prismaClient as any)?.crmMessage?.findMany === 'function'
   const hasCrmLeadCaptureDelegate = typeof (prismaClient as any)?.crmLeadCapture?.findMany === 'function'
+  const hasLitografiaPaperRequestDelegate = typeof (prismaClient as any)?.litografiaPaperRequest?.findMany === 'function'
 
   if (
     !hasTrialTier ||
@@ -86,7 +87,8 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasCrmChannelConnectionDelegate ||
     !hasCrmConversationDelegate ||
     !hasCrmMessageDelegate ||
-    !hasCrmLeadCaptureDelegate
+    !hasCrmLeadCaptureDelegate ||
+    !hasLitografiaPaperRequestDelegate
   ) {
     prismaClient = undefined
   }

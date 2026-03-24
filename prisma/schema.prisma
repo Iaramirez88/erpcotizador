@@ -96,6 +96,9 @@ model User {
   // Notificaciones
   notifications Notification[]
 
+  litografiaPaperRequestsCreated  LitografiaPaperRequest[] @relation("LitografiaPaperRequestCreatedBy")
+  litografiaPaperRequestsApproved LitografiaPaperRequest[] @relation("LitografiaPaperRequestApprovedBy")
+
   // Solicitudes de acceso por código WS-...
   workspaceAccessRequestsCreated WorkspaceAccessRequest[] @relation("WorkspaceAccessRequestRequester")
   workspaceAccessRequestsDecided WorkspaceAccessRequest[] @relation("WorkspaceAccessRequestDecidedBy")
@@ -589,6 +592,7 @@ model Empresa {
   // Tarifario global de Litografía (misma configuración para todas las sedes)
   litografiaPrintProfiles LitografiaPrintProfile[]
   litografiaPaperRates    LitografiaPaperRate[]
+  litografiaPaperRequests LitografiaPaperRequest[]
   litografiaFlyerRates    LitografiaFlyerRate[]
   litografiaProductos     LitografiaProducto[]
   litografiaFinishOptions LitografiaFinishOption[]
@@ -682,6 +686,7 @@ model LitografiaPaperRate {
 
   flyerRates LitografiaFlyerRate[]
   productos  LitografiaProducto[]
+  requests   LitografiaPaperRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -689,6 +694,50 @@ model LitografiaPaperRate {
   @@unique([empresaId, nombre])
   @@index([empresaId])
   @@map("litografia_paper_rates")
+}
+
+enum LitografiaPaperRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model LitografiaPaperRequest {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  createdByUserId String
+  createdByUser   User @relation("LitografiaPaperRequestCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  sedeId String
+
+  approvedByUserId String?
+  approvedByUser   User? @relation("LitografiaPaperRequestApprovedBy", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+
+  status       LitografiaPaperRequestStatus @default(PENDING)
+  decisionNote String? @db.Text
+
+  nombre String
+  tipo   String?
+
+  gramaje Int?
+
+  pliegoWidthCm  Float @default(70)
+  pliegoHeightCm Float @default(100)
+  costoPliego    Float @default(0)
+
+  paperRateId String?
+  paperRate   LitografiaPaperRate? @relation(fields: [paperRateId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([empresaId, sedeId, status])
+  @@index([empresaId, createdAt])
+  @@map("litografia_paper_requests")
 }
 
 model LitografiaFinishOption {
