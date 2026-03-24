@@ -15,6 +15,7 @@ import PlanLimitFetchInterceptor from "@/components/dashboard/plan-limit-fetch-i
 import PlanLimitModal from "@/components/dashboard/plan-limit-modal"
 import RouteLoadingIndicator from "@/components/dashboard/route-loading-indicator"
 import RouteLoadingStartListener from "@/components/dashboard/route-loading-start-listener"
+import FloatingChatDrawer from "@/components/dashboard/floating-chat-drawer"
 import { getActiveSedeForUser, getEffectiveAccessMap, NAV_MODULES } from "@/lib/rbac"
 import { resolveUserIdFromSession } from "@/lib/session-user"
 
@@ -74,6 +75,7 @@ export default async function DashboardLayout({
               <RouteLoadingIndicator />
               {children}
             </div>
+            <FloatingChatDrawer />
           </main>
         </div>
       </div>

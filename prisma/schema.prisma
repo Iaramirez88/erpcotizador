@@ -64,9 +64,17 @@ model User {
   crmContactsCreated CrmContact[] @relation("CrmContactCreatedBy")
   crmTasksAssigned CrmTask[] @relation("CrmTaskAssignedTo")
   crmTasksCreated CrmTask[] @relation("CrmTaskCreatedBy")
+  crmTaskWorkspacesCreated CrmTaskWorkspace[] @relation("CrmTaskWorkspaceCreatedBy")
+  crmTaskWorkspacesOwned CrmTaskWorkspace[] @relation("CrmTaskWorkspaceOwner")
+  crmTaskWorkspaceMemberships CrmTaskWorkspaceMember[] @relation("CrmTaskWorkspaceMemberUser")
+  crmTaskAssignments CrmTaskAssignment[] @relation("CrmTaskAssignmentUser")
+  crmTaskHistoriesActed CrmTaskHistory[] @relation("CrmTaskHistoryActor")
   crmChannelConnectionsCreated CrmChannelConnection[] @relation("CrmChannelConnectionCreatedBy")
   crmConversationsAssigned CrmConversation[] @relation("CrmConversationAssignedTo")
   crmMessagesSent CrmMessage[] @relation("CrmMessageSentBy")
+  internalChatParticipants InternalChatParticipant[]
+  internalChatMessagesSent InternalChatMessage[] @relation("InternalChatMessageSentBy")
+  internalChatsCreated InternalChatThread[] @relation("InternalChatThreadCreatedBy")
 
   // Auditoría de cotizaciones
   cotizacionAuditEventsPerformed CotizacionAuditEvent[] @relation("CotizacionAuditPerformedBy")
@@ -569,10 +577,15 @@ model Empresa {
   crmContacts      CrmContact[]
   crmActivities  CrmActivity[]
   crmTasks       CrmTask[]
+  crmTaskWorkspaces CrmTaskWorkspace[]
+  crmTaskAssignments CrmTaskAssignment[]
+  crmTaskHistories CrmTaskHistory[]
   crmChannelConnections CrmChannelConnection[]
   crmConversations     CrmConversation[]
   crmMessages          CrmMessage[]
   crmLeadCaptures      CrmLeadCapture[]
+  internalChatThreads  InternalChatThread[]
+  internalChatMessages InternalChatMessage[]
   materiales     Material[]
   terminados     Terminado[]
   customProductRequests CustomProductRequest[]
@@ -1348,6 +1361,7 @@ model Sede {
   crmContacts       CrmContact[]
   crmActivities     CrmActivity[]
   crmTasks          CrmTask[]
+  crmTaskWorkspaces CrmTaskWorkspace[]
   crmChannelConnections CrmChannelConnection[]
   crmConversations     CrmConversation[]
   crmMessages          CrmMessage[]
@@ -1675,6 +1689,29 @@ enum CrmTaskPriority {
   HIGH
 }
 
+enum CrmTaskWorkspaceScope {
+  SEDE
+  USER
+}
+
+enum CrmTaskWorkspaceMemberRole {
+  VIEWER
+  EDITOR
+  MANAGER
+}
+
+enum CrmTaskHistoryType {
+  CREATED
+  UPDATED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  DUE_DATE_CHANGED
+  ASSIGNEES_CHANGED
+  NOTE_ADDED
+  ARCHIVED
+  RESTORED
+}
+
 enum CrmChannelProvider {
   WHATSAPP_CLOUD
   WHATSAPP_SANDBOX
@@ -1725,6 +1762,11 @@ enum CrmMessageStatus {
   DELIVERED
   READ
   FAILED
+}
+
+enum InternalChatThreadType {
+  DIRECT
+  GROUP
 }
 
 enum CrmLeadCaptureType {
@@ -1942,12 +1984,16 @@ model CrmTask {
   sedeId String?
   sede   Sede?   @relation(fields: [sedeId], references: [id], onDelete: SetNull)
 
+  workspaceId String?
+  workspace   CrmTaskWorkspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
   title       String
   description String? @db.Text
   status      CrmTaskStatus @default(OPEN)
   priority    CrmTaskPriority @default(NORMAL)
   dueAt       DateTime?
   completedAt DateTime?
+  archivedAt  DateTime?
 
   leadId String?
   lead   CrmLead? @relation(fields: [leadId], references: [id], onDelete: SetNull)
@@ -1960,6 +2006,8 @@ model CrmTask {
 
   assignedToUserId String?
   assignedTo       User?   @relation("CrmTaskAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  assignments      CrmTaskAssignment[]
+  history          CrmTaskHistory[]
 
   createdById String
   createdBy   User   @relation("CrmTaskCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -1969,10 +2017,105 @@ model CrmTask {
 
   @@index([empresaId, status, dueAt])
   @@index([assignedToUserId, status, dueAt])
+  @@index([workspaceId, status, dueAt])
   @@index([leadId])
   @@index([opportunityId])
   @@index([clienteId])
   @@map("crm_tasks")
+}
+
+model CrmTaskWorkspace {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  sedeId String?
+  sede   Sede? @relation(fields: [sedeId], references: [id], onDelete: SetNull)
+
+  scope CrmTaskWorkspaceScope
+  name  String
+  description String? @db.Text
+
+  ownerUserId String?
+  ownerUser   User? @relation("CrmTaskWorkspaceOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  createdById String
+  createdBy   User @relation("CrmTaskWorkspaceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  members CrmTaskWorkspaceMember[]
+  tasks   CrmTask[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, scope, createdAt])
+  @@index([sedeId, createdAt])
+  @@index([ownerUserId, createdAt])
+  @@map("crm_task_workspaces")
+}
+
+model CrmTaskWorkspaceMember {
+  id String @id @default(cuid())
+
+  workspaceId String
+  workspace   CrmTaskWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User @relation("CrmTaskWorkspaceMemberUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  role CrmTaskWorkspaceMemberRole @default(VIEWER)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, userId])
+  @@index([userId, role])
+  @@map("crm_task_workspace_members")
+}
+
+model CrmTaskAssignment {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  taskId String
+  task   CrmTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User @relation("CrmTaskAssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([taskId, userId])
+  @@index([empresaId, createdAt])
+  @@index([userId, createdAt])
+  @@map("crm_task_assignments")
+}
+
+model CrmTaskHistory {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  taskId String
+  task   CrmTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  actorUserId String?
+  actorUser   User? @relation("CrmTaskHistoryActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  type    CrmTaskHistoryType
+  message String @db.Text
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([empresaId, createdAt])
+  @@index([taskId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("crm_task_history")
 }
 
 model CrmChannelConnection {
@@ -2145,6 +2288,72 @@ model CrmLeadCapture {
   @@index([leadId, createdAt])
   @@index([conversationId, createdAt])
   @@map("crm_lead_captures")
+}
+
+model InternalChatThread {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  type  InternalChatThreadType @default(DIRECT)
+  title String?
+
+  createdById String?
+  createdBy   User? @relation("InternalChatThreadCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  participants InternalChatParticipant[]
+  messages     InternalChatMessage[]
+
+  lastMessageAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([empresaId, lastMessageAt])
+  @@index([createdById, createdAt])
+  @@map("internal_chat_threads")
+}
+
+model InternalChatParticipant {
+  id String @id @default(cuid())
+
+  threadId String
+  thread   InternalChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  lastReadAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([threadId, userId])
+  @@index([userId, updatedAt])
+  @@map("internal_chat_participants")
+}
+
+model InternalChatMessage {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  threadId String
+  thread   InternalChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  sentByUserId String?
+  sentByUser   User? @relation("InternalChatMessageSentBy", fields: [sentByUserId], references: [id], onDelete: SetNull)
+
+  bodyText        String? @db.Text
+  attachmentsJson Json?   @default("[]")
+  occurredAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([empresaId, occurredAt])
+  @@index([threadId, occurredAt])
+  @@index([sentByUserId, occurredAt])
+  @@map("internal_chat_messages")
 }
 
 model Cliente {

@@ -61,11 +61,18 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasCrmContactDelegate = typeof (prismaClient as any)?.crmContact?.findMany === 'function'
   const hasCrmActivityDelegate = typeof (prismaClient as any)?.crmActivity?.findMany === 'function'
   const hasCrmTaskDelegate = typeof (prismaClient as any)?.crmTask?.findMany === 'function'
+  const hasCrmTaskWorkspaceDelegate = typeof (prismaClient as any)?.crmTaskWorkspace?.findMany === 'function'
+  const hasCrmTaskWorkspaceMemberDelegate = typeof (prismaClient as any)?.crmTaskWorkspaceMember?.findMany === 'function'
+  const hasCrmTaskAssignmentDelegate = typeof (prismaClient as any)?.crmTaskAssignment?.findMany === 'function'
+  const hasCrmTaskHistoryDelegate = typeof (prismaClient as any)?.crmTaskHistory?.findMany === 'function'
   const hasCrmChannelConnectionDelegate = typeof (prismaClient as any)?.crmChannelConnection?.findMany === 'function'
   const hasCrmConversationDelegate = typeof (prismaClient as any)?.crmConversation?.findMany === 'function'
   const hasCrmMessageDelegate = typeof (prismaClient as any)?.crmMessage?.findMany === 'function'
   const hasCrmLeadCaptureDelegate = typeof (prismaClient as any)?.crmLeadCapture?.findMany === 'function'
   const hasLitografiaPaperRequestDelegate = typeof (prismaClient as any)?.litografiaPaperRequest?.findMany === 'function'
+  const hasInternalChatThreadDelegate = typeof (prismaClient as any)?.internalChatThread?.findMany === 'function'
+  const hasInternalChatParticipantDelegate = typeof (prismaClient as any)?.internalChatParticipant?.findMany === 'function'
+  const hasInternalChatMessageDelegate = typeof (prismaClient as any)?.internalChatMessage?.findMany === 'function'
 
   if (
     !hasTrialTier ||
@@ -84,11 +91,18 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasCrmContactDelegate ||
     !hasCrmActivityDelegate ||
     !hasCrmTaskDelegate ||
+    !hasCrmTaskWorkspaceDelegate ||
+    !hasCrmTaskWorkspaceMemberDelegate ||
+    !hasCrmTaskAssignmentDelegate ||
+    !hasCrmTaskHistoryDelegate ||
     !hasCrmChannelConnectionDelegate ||
     !hasCrmConversationDelegate ||
     !hasCrmMessageDelegate ||
     !hasCrmLeadCaptureDelegate ||
-    !hasLitografiaPaperRequestDelegate
+    !hasLitografiaPaperRequestDelegate ||
+    !hasInternalChatThreadDelegate ||
+    !hasInternalChatParticipantDelegate ||
+    !hasInternalChatMessageDelegate
   ) {
     prismaClient = undefined
   }

@@ -393,6 +393,12 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
         </div>
         <div className="flex flex-wrap gap-2">
           {!lead.convertedCliente ? <Button variant="outline" onClick={() => setConvertDialogOpen(true)}>Convertir a cliente</Button> : null}
+          <Button asChild variant="outline">
+            <Link href={`/dashboard/crm/agenda?leadId=${lead.id}`}>Agendar prospecto</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link href="/dashboard/chat">Chat global</Link>
+          </Button>
           <Button variant="outline" onClick={openCreateContactDialog}>Nuevo contacto</Button>
           <Button variant="outline" onClick={() => setActivityDialogOpen(true)}>Agregar nota</Button>
           <Button variant="outline" onClick={() => setOpportunityDialogOpen(true)}>Nueva oportunidad</Button>

@@ -9,11 +9,57 @@ import {
   parseTaskPriority,
   parseTaskStatus,
 } from '@/lib/crm'
+import {
+  appendTaskHistory,
+  canUserAccessWorkspace,
+  crmTaskInclude,
+  getAccessibleTaskWorkspace,
+  normalizeUserIdList,
+} from '@/lib/crm-task-workspaces'
 
 export const runtime = 'nodejs'
 
 interface RouteContext {
   params: Promise<{ id: string }>
+}
+
+export async function GET(_: Request, context: RouteContext) {
+  try {
+    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    if (!access.ok) return access.response
+
+    const { id } = await context.params
+    const current = await prisma.crmTask.findUnique({
+      where: { id },
+      include: crmTaskInclude,
+    })
+
+    if (!current || current.empresaId !== access.empresaId) {
+      return NextResponse.json({ error: 'Tarea no encontrada' }, { status: 404 })
+    }
+
+    if (current.workspaceId) {
+      const workspace = await getAccessibleTaskWorkspace(prisma, {
+        workspaceId: current.workspaceId,
+        empresaId: access.empresaId,
+        userId: access.userId,
+      })
+      if (!workspace) return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
+      if (!canUserAccessWorkspace(workspace, access.userId, 'edit')) {
+        return NextResponse.json({ error: 'No tienes permisos para editar tareas de este espacio.' }, { status: 403 })
+      }
+    }
+
+    if (current.sedeId) {
+      const denied = await assertCrmSedeAccess({ sedeId: current.sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.READ })
+      if (denied) return denied
+    }
+
+    return NextResponse.json({ success: true, data: current })
+  } catch (error) {
+    console.error('Error obteniendo tarea CRM:', error)
+    return NextResponse.json({ error: 'Error obteniendo tarea CRM' }, { status: 500 })
+  }
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -24,16 +70,19 @@ export async function PATCH(request: Request, context: RouteContext) {
     const { id } = await context.params
     const current = await prisma.crmTask.findUnique({
       where: { id },
-      include: {
-        assignedTo: { select: { id: true, name: true, email: true } },
-        createdBy: { select: { id: true, name: true, email: true } },
-        lead: { select: { id: true, nombre: true } },
-        opportunity: { select: { id: true, title: true, stage: true } },
-        cliente: { select: { id: true, nombre: true, documento: true } },
-      },
+      include: crmTaskInclude,
     })
     if (!current || current.empresaId !== access.empresaId) {
       return NextResponse.json({ error: 'Tarea no encontrada' }, { status: 404 })
+    }
+
+    if (current.workspaceId) {
+      const workspace = await getAccessibleTaskWorkspace(prisma, {
+        workspaceId: current.workspaceId,
+        empresaId: access.empresaId,
+        userId: access.userId,
+      })
+      if (!workspace) return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
     }
 
     if (current.sedeId) {
@@ -45,10 +94,13 @@ export async function PATCH(request: Request, context: RouteContext) {
     const title = normalizeString(body?.title)
     const description = normalizeString(body?.description)
     const assignedToUserId = normalizeString(body?.assignedToUserId)
+    const assignedToUserIds = normalizeUserIdList(body?.assignedToUserIds)
+    const workspaceId = normalizeString(body?.workspaceId)
     const explicitSedeId = normalizeString(body?.sedeId)
     const status = Object.prototype.hasOwnProperty.call(body ?? {}, 'status') ? parseTaskStatus(body?.status) : undefined
     const priority = Object.prototype.hasOwnProperty.call(body ?? {}, 'priority') ? parseTaskPriority(body?.priority) : undefined
     const dueAt = parseOptionalDate(body?.dueAt)
+    const archived = Object.prototype.hasOwnProperty.call(body ?? {}, 'archived') ? Boolean(body?.archived) : undefined
 
     if (Object.prototype.hasOwnProperty.call(body ?? {}, 'status') && !status) {
       return NextResponse.json({ error: 'status inválido' }, { status: 400 })
@@ -58,10 +110,36 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
     if (dueAt === undefined) return NextResponse.json({ error: 'dueAt inválido' }, { status: 400 })
 
-    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId') && assignedToUserId) {
-      const user = await prisma.user.findUnique({ where: { id: assignedToUserId }, select: { id: true, empresaId: true } })
-      if (!user || user.empresaId !== access.empresaId) {
-        return NextResponse.json({ error: 'assignedToUserId inválido' }, { status: 400 })
+    const nextWorkspace = Object.prototype.hasOwnProperty.call(body ?? {}, 'workspaceId')
+      ? (workspaceId
+          ? await getAccessibleTaskWorkspace(prisma, {
+              workspaceId,
+              empresaId: access.empresaId,
+              userId: access.userId,
+            })
+          : null)
+      : current.workspace
+
+    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'workspaceId') && workspaceId && !nextWorkspace) {
+      return NextResponse.json({ error: 'workspaceId inválido' }, { status: 400 })
+    }
+    if (nextWorkspace && !canUserAccessWorkspace(nextWorkspace, access.userId, 'edit')) {
+      return NextResponse.json({ error: 'No tienes permisos para mover o editar tareas en ese espacio.' }, { status: 403 })
+    }
+
+    const normalizedAssigneeIds = Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserIds')
+      ? assignedToUserIds
+      : Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId')
+        ? (assignedToUserId ? [assignedToUserId] : [])
+        : current.assignments.map((assignment) => assignment.userId)
+
+    if (normalizedAssigneeIds.length) {
+      const users = await prisma.user.findMany({
+        where: { id: { in: normalizedAssigneeIds }, empresaId: access.empresaId },
+        select: { id: true },
+      })
+      if (users.length !== normalizedAssigneeIds.length) {
+        return NextResponse.json({ error: 'assignedToUserIds inválido' }, { status: 400 })
       }
     }
 
@@ -77,22 +155,106 @@ export async function PATCH(request: Request, context: RouteContext) {
         data: {
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'title') ? { title: title || current.title } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'description') ? { description: description || null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'workspaceId') ? { workspaceId: workspaceId || null } : {}),
           ...(status ? { status } : {}),
           ...(priority ? { priority } : {}),
           ...(dueAt !== undefined ? { dueAt: dueAt ?? null } : {}),
-          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId') ? { assignedToUserId: assignedToUserId || null } : {}),
+          ...((Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId') || Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserIds')) ? { assignedToUserId: normalizedAssigneeIds[0] || null } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeId') ? { sedeId: explicitSedeId || null } : {}),
+          ...(archived !== undefined ? { archivedAt: archived ? new Date() : null } : {}),
           ...(nextStatus === 'DONE' ? { completedAt: current.completedAt ?? new Date() } : {}),
           ...(nextStatus !== 'DONE' ? { completedAt: null } : {}),
         },
-        include: {
-          assignedTo: { select: { id: true, name: true, email: true } },
-          createdBy: { select: { id: true, name: true, email: true } },
-          lead: { select: { id: true, nombre: true } },
-          opportunity: { select: { id: true, title: true, stage: true } },
-          cliente: { select: { id: true, nombre: true, documento: true } },
-        },
+        include: crmTaskInclude,
       })
+
+      if (Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId') || Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserIds')) {
+        await tx.crmTaskAssignment.deleteMany({ where: { taskId: current.id } })
+        if (normalizedAssigneeIds.length) {
+          await tx.crmTaskAssignment.createMany({
+            data: normalizedAssigneeIds.map((userId) => ({
+              empresaId: access.empresaId,
+              taskId: current.id,
+              userId,
+            })),
+          })
+        }
+      }
+
+      const historyWrites: Array<Promise<unknown>> = []
+      if (Object.prototype.hasOwnProperty.call(body ?? {}, 'title') || Object.prototype.hasOwnProperty.call(body ?? {}, 'description') || Object.prototype.hasOwnProperty.call(body ?? {}, 'workspaceId')) {
+        historyWrites.push(
+          appendTaskHistory(tx, {
+            empresaId: access.empresaId,
+            taskId: current.id,
+            actorUserId: access.userId,
+            type: 'UPDATED',
+            message: 'Se actualizaron los detalles de la tarea.',
+          }),
+        )
+      }
+      if (status && status !== current.status) {
+        historyWrites.push(
+          appendTaskHistory(tx, {
+            empresaId: access.empresaId,
+            taskId: current.id,
+            actorUserId: access.userId,
+            type: 'STATUS_CHANGED',
+            message: `Estado cambiado de ${current.status} a ${status}.`,
+          }),
+        )
+      }
+      if (priority && priority !== current.priority) {
+        historyWrites.push(
+          appendTaskHistory(tx, {
+            empresaId: access.empresaId,
+            taskId: current.id,
+            actorUserId: access.userId,
+            type: 'PRIORITY_CHANGED',
+            message: `Prioridad cambiada de ${current.priority} a ${priority}.`,
+          }),
+        )
+      }
+      if (dueAt !== undefined) {
+        const previous = current.dueAt?.toISOString() ?? null
+        const next = dueAt?.toISOString() ?? null
+        if (previous !== next) {
+          historyWrites.push(
+            appendTaskHistory(tx, {
+              empresaId: access.empresaId,
+              taskId: current.id,
+              actorUserId: access.userId,
+              type: 'DUE_DATE_CHANGED',
+              message: next ? 'Se actualizó la fecha de vencimiento.' : 'Se removió la fecha de vencimiento.',
+            }),
+          )
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId') || Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserIds')) {
+        historyWrites.push(
+          appendTaskHistory(tx, {
+            empresaId: access.empresaId,
+            taskId: current.id,
+            actorUserId: access.userId,
+            type: 'ASSIGNEES_CHANGED',
+            message: normalizedAssigneeIds.length ? 'Se actualizó la asignación de responsables.' : 'Se removieron los responsables asignados.',
+            metadata: { assignedToUserIds: normalizedAssigneeIds },
+          }),
+        )
+      }
+      if (archived !== undefined) {
+        historyWrites.push(
+          appendTaskHistory(tx, {
+            empresaId: access.empresaId,
+            taskId: current.id,
+            actorUserId: access.userId,
+            type: archived ? 'ARCHIVED' : 'RESTORED',
+            message: archived ? 'La tarea fue archivada.' : 'La tarea fue restaurada.',
+          }),
+        )
+      }
+
+      await Promise.all(historyWrites)
 
       if (nextStatus === 'DONE' && current.status !== 'DONE') {
         await tx.crmActivity.create({

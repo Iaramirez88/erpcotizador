@@ -55,6 +55,15 @@ function moduleForHref(href: string): string | null {
     case '/dashboard/clientes':
       return 'CLIENTES'
     case '/dashboard/crm':
+    case '/dashboard/crm/agenda':
+    case '/dashboard/crm/chatbot':
+    case '/dashboard/crm/integraciones':
+    case '/dashboard/crm/leads':
+    case '/dashboard/crm/oportunidades':
+    case '/dashboard/crm/tareas':
+    case '/dashboard/chat':
+      return 'CRM'
+    case '/dashboard/espacios-trabajo':
       return 'CRM'
     case '/dashboard/ordenes':
       return 'ORDENES'
@@ -176,6 +185,79 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h6m-6 4h8M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z" />
+      </svg>
+    ),
+  },
+  {
+    name: "Agenda CRM",
+    href: "/dashboard/crm/agenda",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 2v4M16 2v4M3 10h18M5 6h14a2 2 0 012 2v11a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2z" />
+      </svg>
+    ),
+  },
+  {
+    name: "Chatbot",
+    href: "/dashboard/crm/chatbot",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L6 20.75V17H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v9a2 2 0 01-2 2H9.75z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9h.01M12 9h.01M16 9h.01" />
+      </svg>
+    ),
+  },
+  {
+    name: "Canales e integraciones",
+    href: "/dashboard/crm/integraciones",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h8M12 8v8M4 7h4v4H4V7zm12 6h4v4h-4v-4zm0-10h4v4h-4V3zM4 17h4v4H4v-4z" />
+      </svg>
+    ),
+  },
+  {
+    name: "Leads",
+    href: "/dashboard/crm/leads",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M16 3.13a4 4 0 010 7.75M12 7a4 4 0 11-8 0 4 4 0 018 0zm6 14v-2a4 4 0 00-3-3.87" />
+      </svg>
+    ),
+  },
+  {
+    name: "Oportunidades",
+    href: "/dashboard/crm/oportunidades",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 19h16M7 16l4-4 3 3 5-7" />
+      </svg>
+    ),
+  },
+  {
+    name: "Tareas",
+    href: "/dashboard/crm/tareas",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 7h6m-6 4h6" />
+      </svg>
+    ),
+  },
+  {
+    name: "Espacios de trabajo",
+    href: "/dashboard/espacios-trabajo",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h10M4 17h16M18 10l2 2 4-4" />
+      </svg>
+    ),
+  },
+  {
+    name: "Chat global",
+    href: "/dashboard/chat",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h8M8 14h5M5 5h14a2 2 0 012 2v8a2 2 0 01-2 2H9l-4 4v-4H5a2 2 0 01-2-2V7a2 2 0 012-2z" />
       </svg>
     ),
   },
@@ -625,8 +707,21 @@ export default function Sidebar({ user }: SidebarProps) {
           get('/dashboard/remisiones'),
           get('/dashboard/pos'),
           get('/dashboard/clientes'),
-          get('/dashboard/crm'),
         ].filter(Boolean) as NavItem[],
+      },
+      {
+        title: 'CRM',
+        items: [
+          get('/dashboard/crm/agenda'),
+          get('/dashboard/crm/chatbot'),
+          get('/dashboard/crm/integraciones'),
+          get('/dashboard/crm/leads'),
+          get('/dashboard/crm/oportunidades'),
+        ].filter(Boolean) as NavItem[],
+      },
+      {
+        title: 'Productividad',
+        items: [get('/dashboard/espacios-trabajo'), get('/dashboard/crm/tareas')].filter(Boolean) as NavItem[],
       },
       {
         title: 'Operaciones',

@@ -94,6 +94,7 @@ type CrmConversationsClientProps = {
   initialProviderFilter?: ChannelProvider | null
   title?: string
   description?: string
+  hideHero?: boolean
 }
 
 const STATUS_OPTIONS: Array<'ALL' | ConversationStatus> = ['ALL', 'OPEN', 'PENDING', 'BOT_ACTIVE', 'HUMAN_ACTIVE', 'RESOLVED', 'SPAM']
@@ -475,55 +476,57 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
   return (
     <div className="space-y-6 pb-6">
-      <ErpPageHero
-        breadcrumbs={[
-          { label: 'Dashboard', href: '/dashboard' },
-          { label: 'CRM', href: '/dashboard/crm' },
-          props.initialProviderFilter === 'WEB_CHATBOT'
-            ? { label: 'Panel chatbot' }
-            : { label: 'Conversaciones' },
-        ]}
-        eyebrow="CRM Omnicanal"
-        title={props.title || 'Bandeja de conversaciones'}
-        description={props.description || 'Opera el inbox de pruebas, asigna hilos a asesores, simula inbound y convierte conversaciones en oportunidades sin salir del CRM.'}
-        actions={
-          <>
-            <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/85 px-4 py-2 text-sm text-slate-600">
-              <div className="grid gap-0.5">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Tiempo real</span>
-                <span>{liveMode ? `Activo · ${formatDate(lastRefreshAt, locale, 'sin sincronizar')}` : 'Pausado'}</span>
+      {props.hideHero ? null : (
+        <ErpPageHero
+          breadcrumbs={[
+            { label: 'Dashboard', href: '/dashboard' },
+            { label: 'CRM', href: '/dashboard/crm' },
+            props.initialProviderFilter === 'WEB_CHATBOT'
+              ? { label: 'Panel chatbot' }
+              : { label: 'Conversaciones' },
+          ]}
+          eyebrow="CRM Omnicanal"
+          title={props.title || 'Bandeja de conversaciones'}
+          description={props.description || 'Opera el inbox de pruebas, asigna hilos a asesores, simula inbound y convierte conversaciones en oportunidades sin salir del CRM.'}
+          actions={
+            <>
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/85 px-4 py-2 text-sm text-slate-600">
+                <div className="grid gap-0.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Tiempo real</span>
+                  <span>{liveMode ? `Activo · ${formatDate(lastRefreshAt, locale, 'sin sincronizar')}` : 'Pausado'}</span>
+                </div>
+                <Switch checked={liveMode} onCheckedChange={setLiveMode} />
               </div>
-              <Switch checked={liveMode} onCheckedChange={setLiveMode} />
-            </div>
-            <Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85" onClick={() => void Promise.all([loadConversations(), loadMeta()])}>
-              Refrescar
-            </Button>
-            <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
-              <Link href="/dashboard/crm/integraciones">Canales e iframe</Link>
-            </Button>
-            {providerFilter === 'WEB_CHATBOT' ? (
-              <Button asChild variant="outline" className="rounded-2xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
-                <Link href="/dashboard/crm/conversations">Ver inbox completo</Link>
+              <Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85" onClick={() => void Promise.all([loadConversations(), loadMeta()])}>
+                Refrescar
               </Button>
-            ) : (
-              <Button asChild variant="outline" className="rounded-2xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
-                <Link href="/dashboard/crm/chatbot">Panel chatbot</Link>
+              <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
+                <Link href="/dashboard/crm/integraciones">Canales e iframe</Link>
               </Button>
-            )}
-            <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
-              <Link href="/dashboard/notificaciones">Notificaciones</Link>
-            </Button>
-            <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => setSimulatorOpen(true)}>
-              Simular inbound
-            </Button>
-          </>
-        }
-        stats={[
-          { label: 'Conversaciones abiertas', value: stats.openCount, hint: 'Hilos activos sin cerrar', tone: 'sky' },
-          { label: 'Sin asignar', value: stats.unassignedCount, hint: 'Pendientes por tomar', tone: 'amber' },
-          { label: 'No leidas', value: stats.unreadCount, hint: 'Mensajes pendientes de revisar', tone: 'teal' },
-        ]}
-      />
+              {providerFilter === 'WEB_CHATBOT' ? (
+                <Button asChild variant="outline" className="rounded-2xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
+                  <Link href="/dashboard/crm/conversations">Ver inbox completo</Link>
+                </Button>
+              ) : (
+                <Button asChild variant="outline" className="rounded-2xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
+                  <Link href="/dashboard/crm/chatbot">Panel chatbot</Link>
+                </Button>
+              )}
+              <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
+                <Link href="/dashboard/notificaciones">Notificaciones</Link>
+              </Button>
+              <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => setSimulatorOpen(true)}>
+                Simular inbound
+              </Button>
+            </>
+          }
+          stats={[
+            { label: 'Conversaciones abiertas', value: stats.openCount, hint: 'Hilos activos sin cerrar', tone: 'sky' },
+            { label: 'Sin asignar', value: stats.unassignedCount, hint: 'Pendientes por tomar', tone: 'amber' },
+            { label: 'No leidas', value: stats.unreadCount, hint: 'Mensajes pendientes de revisar', tone: 'teal' },
+          ]}
+        />
+      )}
 
       <Card className="rounded-[26px] border-slate-200 bg-white/90 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.35)]">
         <CardContent className="grid gap-3 p-4 md:grid-cols-4 md:p-5">

@@ -27,6 +27,8 @@ type PapelTipo = "bond" | "propalcote" | "periodico" | "otro"
 type PrintRunMode = "4x1" | "4x4"
 type PrintInkKey = string
 
+const CUSTOM_PRINT_SIZE_KEY = "__CUSTOM_PRINT_SIZE__"
+
 const CUSTOM_DROPDOWN_KEYS = {
   transporte: "litografia_transporte",
   tirajeTiers: "litografia_tiraje_tiers",
@@ -158,6 +160,12 @@ function parseCopNumber(value: unknown): number {
   const digits = raw.replace(/[^0-9-]/g, "")
   const n = Math.trunc(parseFloat(digits) || 0)
   return Number.isFinite(n) ? n : 0
+}
+
+function parsePositiveCm(value: unknown): number | null {
+  const n = parseFloat(String(value ?? "").trim())
+  if (!Number.isFinite(n) || n <= 0) return null
+  return n
 }
 
 function formatCm(value: number | null | undefined) {
@@ -328,6 +336,8 @@ export type LitografiaMeta = {
   selectedMachineHeightCm?: string
   selectedMachineGapCm?: string
   selectedFinalSizeName?: string
+  customFormatoWidthCm?: string
+  customFormatoHeightCm?: string
   impositionShort?: string
   impositionSummary?: string
 }
@@ -376,6 +386,8 @@ export function LitografiaQuoteDialog(props: {
   const [pliegoW, setPliegoW] = useState("70")
   const [pliegoH, setPliegoH] = useState("100")
   const [formatoKey, setFormatoKey] = useState("")
+  const [customFormatoWidthCm, setCustomFormatoWidthCm] = useState("")
+  const [customFormatoHeightCm, setCustomFormatoHeightCm] = useState("")
 
   const [profiles, setProfiles] = useState<PrintProfile[]>([])
   const [papers, setPapers] = useState<PaperRate[]>([])
@@ -510,6 +522,8 @@ export function LitografiaQuoteDialog(props: {
       setCostoPliego(String(getDefaultCostoPliego("propalcote")))
       setPliegoW("70")
       setPliegoH("100")
+      setCustomFormatoWidthCm("")
+      setCustomFormatoHeightCm("")
       setCostoPapelUnidad("80")
       setSelectedPaperTipo("")
       setSelectedPaperGramaje("")
@@ -944,6 +958,8 @@ export function LitografiaQuoteDialog(props: {
       selectedMachineHeightCm: primaryPlanchaProfile ? String(primaryMachineHeight) : undefined,
       selectedMachineGapCm: primaryPlanchaProfile ? String(primaryMachineGap) : undefined,
       selectedFinalSizeName: selectedPreset?.nombre,
+      customFormatoWidthCm,
+      customFormatoHeightCm,
       impositionShort: currentImpositionSummary?.short,
       impositionSummary: currentImpositionSummary?.detail,
     }
@@ -980,6 +996,8 @@ export function LitografiaQuoteDialog(props: {
       }
     }
     setFormatoKey(meta.formatoKey ?? "")
+    setCustomFormatoWidthCm(String(meta.customFormatoWidthCm ?? ""))
+    setCustomFormatoHeightCm(String(meta.customFormatoHeightCm ?? ""))
     setColores(meta.colores ?? "1")
     setCostoPlanchaPorColor(meta.costoPlanchaPorColor ?? "")
     setCostoTintaPorColor(meta.costoTintaPorColor ?? "")
@@ -1098,9 +1116,42 @@ export function LitografiaQuoteDialog(props: {
     return activeSizes.map((s) => ({ key: s.key, nombre: s.nombre, widthCm: s.widthCm, heightCm: s.heightCm }))
   }, [activeSizes])
 
+  const customSizeOption = useMemo(() => {
+    const widthCm = parsePositiveCm(customFormatoWidthCm)
+    const heightCm = parsePositiveCm(customFormatoHeightCm)
+    if (widthCm == null || heightCm == null) return null
+    return {
+      key: CUSTOM_PRINT_SIZE_KEY,
+      nombre: "Tamaño personalizado",
+      widthCm,
+      heightCm,
+    }
+  }, [customFormatoWidthCm, customFormatoHeightCm])
+
+  const allSizeOptions = useMemo(() => {
+    return [
+      ...sizeOptions,
+      {
+        key: CUSTOM_PRINT_SIZE_KEY,
+        nombre: customSizeOption
+          ? `Tamaño personalizado (${formatCm(customSizeOption.widthCm)}×${formatCm(customSizeOption.heightCm)} cm)`
+          : "Tamaño personalizado",
+        widthCm: customSizeOption?.widthCm ?? 0,
+        heightCm: customSizeOption?.heightCm ?? 0,
+      },
+    ]
+  }, [sizeOptions, customSizeOption])
+
+  const resolveSizeOption = useCallback((key: string) => {
+    const normalizedKey = String(key || "").trim()
+    if (!normalizedKey) return null
+    if (normalizedKey === CUSTOM_PRINT_SIZE_KEY) return customSizeOption
+    return sizeOptions.find((p) => p.key === normalizedKey) || null
+  }, [customSizeOption, sizeOptions])
+
   const selectedPreset = useMemo(() => {
-    return sizeOptions.find((p) => p.key === formatoKey) || null
-  }, [formatoKey, sizeOptions])
+    return resolveSizeOption(formatoKey)
+  }, [formatoKey, resolveSizeOption])
 
   const activeProfiles = useMemo(() => profiles.filter((p) => p.activo), [profiles])
   const activePlanchaProfiles = useMemo(() => {
@@ -1301,9 +1352,10 @@ export function LitografiaQuoteDialog(props: {
   useEffect(() => {
     if (!props.open) return
     if (!sizeOptions.length) {
-      if (formatoKey) setFormatoKey("")
+      if (formatoKey && formatoKey !== CUSTOM_PRINT_SIZE_KEY) setFormatoKey("")
       return
     }
+    if (formatoKey === CUSTOM_PRINT_SIZE_KEY) return
     const exists = sizeOptions.some((p) => p.key === formatoKey)
     if (exists) return
     const first = sizeOptions[0]
@@ -1486,7 +1538,7 @@ export function LitografiaQuoteDialog(props: {
     if (runQty <= 0) return null
     const paper = papers.find((p) => p.id === String(part.paperId || "").trim()) || null
     if (!paper) return null
-    const preset = sizeOptions.find((s) => s.key === String(part.formatoKey || "").trim()) || null
+    const preset = resolveSizeOption(String(part.formatoKey || "").trim())
     if (!preset) return null
     const planchaProfile = profiles.find((p) => p.id === String(part.planchaProfileId || "").trim()) || null
 
@@ -1527,7 +1579,7 @@ export function LitografiaQuoteDialog(props: {
       piezasPorPliego: r.piezasPorPliego,
       pliegosNecesarios: r.pliegosNecesarios,
     }
-  }, [cantidad, papers, profiles, sizeOptions, sobranteMinimo])
+  }, [cantidad, papers, profiles, sobranteMinimo, resolveSizeOption])
 
   const editorialCoverSheetsPreview = useMemo(() => {
     if (!editorialEnabled) return null
@@ -1655,7 +1707,7 @@ export function LitografiaQuoteDialog(props: {
       const defaults = editorialSplitCalc
       if (!defaults) return null
 
-      const presetByKey = new Map(sizeOptions.map((s) => [s.key, s] as const))
+      const presetByKey = new Map(allSizeOptions.map((s) => [s.key, resolveSizeOption(s.key)] as const))
       const profileById = new Map(profiles.map((p) => [p.id, p] as const))
 
       const transporte = parseFloat(costoTransporte) || 0
@@ -1834,7 +1886,7 @@ export function LitografiaQuoteDialog(props: {
 
     if (papelPorPliego && selectedPreset) {
       const byPaperId = new Map(papers.map((p) => [p.id, p] as const))
-      const presetByKey = new Map(sizeOptions.map((s) => [s.key, s] as const))
+      const presetByKey = new Map(allSizeOptions.map((s) => [s.key, resolveSizeOption(s.key)] as const))
 
       const baseNoPaper = computeLitografia({
         cantidad: qtyForCompute,
@@ -1955,6 +2007,8 @@ export function LitografiaQuoteDialog(props: {
     profiles,
     finishes,
     sizeOptions,
+    allSizeOptions,
+    resolveSizeOption,
     tintas,
   ])
 
@@ -1970,7 +2024,7 @@ export function LitografiaQuoteDialog(props: {
       const defaults = editorialSplitCalc
       if (!defaults) return null
 
-      const presetByKey = new Map(sizeOptions.map((s) => [s.key, s] as const))
+      const presetByKey = new Map(allSizeOptions.map((s) => [s.key, resolveSizeOption(s.key)] as const))
       const profileById = new Map(profiles.map((p) => [p.id, p] as const))
 
       const transporte = parseFloat(costoTransporte) || 0
@@ -2133,7 +2187,7 @@ export function LitografiaQuoteDialog(props: {
 
     if (selectedPreset) {
       const byPaperId = new Map(papers.map((p) => [p.id, p] as const))
-      const presetByKey = new Map(sizeOptions.map((s) => [s.key, s] as const))
+      const presetByKey = new Map(allSizeOptions.map((s) => [s.key, resolveSizeOption(s.key)] as const))
 
       const baseNoPaper = computeLitografia({
         cantidad: qtyForCompute,
@@ -2237,6 +2291,8 @@ export function LitografiaQuoteDialog(props: {
     profiles,
     finishes,
     sizeOptions,
+    allSizeOptions,
+    resolveSizeOption,
     tintas,
   ])
 
@@ -2306,7 +2362,7 @@ export function LitografiaQuoteDialog(props: {
     const coverRequired = Boolean(editorialEnabled && (editorialSplitCalc?.coverPliegosPorUnidad ?? 0) > 0)
     const innerRequired = Boolean(editorialEnabled && (editorialSplitCalc?.innerPliegosPorUnidad ?? 0) > 0)
 
-    const presetByKey = new Map(sizeOptions.map((s) => [s.key, s] as const))
+    const presetByKey = new Map(allSizeOptions.map((s) => [s.key, resolveSizeOption(s.key)] as const))
     const coverPreset = coverRequired ? (presetByKey.get(String(editorialCover.formatoKey || "").trim()) || null) : null
     const innerPreset = innerRequired ? (presetByKey.get(String(editorialInner.formatoKey || "").trim()) || null) : null
     const missingEditorialFormato = (coverRequired && !coverPreset) || (innerRequired && !innerPreset)
@@ -2348,6 +2404,8 @@ export function LitografiaQuoteDialog(props: {
     formatoKey,
     selectedPreset,
     sizeOptions,
+    allSizeOptions,
+    resolveSizeOption,
     primaryPaperId,
     activePapers.length,
     selectedEditorialProductoKey,
@@ -2781,6 +2839,33 @@ export function LitografiaQuoteDialog(props: {
                             </div>
                             <div>
                               <Label className={requiredLabelClass(validation.missingFormato)}>{t('printshopQuote.fields.printSize')} (global)</Label>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <Button
+                                  type="button"
+                                  variant={editorialCover.formatoKey === CUSTOM_PRINT_SIZE_KEY ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => {
+                                    setEditorialCover((prev) => ({ ...prev, formatoKey: CUSTOM_PRINT_SIZE_KEY }))
+                                    setEditorialInner((prev) => ({ ...prev, formatoKey: CUSTOM_PRINT_SIZE_KEY }))
+                                  }}
+                                >
+                                  Usar tamaño personalizado
+                                </Button>
+                                {editorialCover.formatoKey === CUSTOM_PRINT_SIZE_KEY ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      const first = sizeOptions[0]?.key || ""
+                                      setEditorialCover((prev) => ({ ...prev, formatoKey: first }))
+                                      setEditorialInner((prev) => ({ ...prev, formatoKey: first }))
+                                    }}
+                                  >
+                                    Volver a tamaños predefinidos
+                                  </Button>
+                                ) : null}
+                              </div>
                               <select
                                 className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
                                 value={editorialCover.formatoKey}
@@ -2789,20 +2874,48 @@ export function LitografiaQuoteDialog(props: {
                                   setEditorialCover((prev) => ({ ...prev, formatoKey: next }))
                                   setEditorialInner((prev) => ({ ...prev, formatoKey: next }))
                                 }}
-                                disabled={!sizeOptions.length}
+                                disabled={!allSizeOptions.length}
                               >
                                 <option value="" disabled>
-                                  {sizeOptions.length ? t('printshopQuote.select.size') : t('printshopQuote.select.noSizesConfigured')}
+                                  {allSizeOptions.length ? t('printshopQuote.select.size') : t('printshopQuote.select.noSizesConfigured')}
                                 </option>
-                                {sizeOptions.map((p) => (
+                                {allSizeOptions.map((p) => (
                                   <option key={p.key} value={p.key}>
-                                    {p.nombre} ({p.widthCm}×{p.heightCm} cm)
+                                    {p.key === CUSTOM_PRINT_SIZE_KEY ? p.nombre : `${p.nombre} (${p.widthCm}×${p.heightCm} cm)`}
                                   </option>
                                 ))}
                               </select>
                               <p className={HELP_TEXT}>
                                 Determina cuántas piezas caben por pliego (imposición) y afecta los pliegos requeridos.
                               </p>
+                              {editorialCover.formatoKey === CUSTOM_PRINT_SIZE_KEY ? (
+                                <div className="mt-2 grid grid-cols-2 gap-2">
+                                  <div>
+                                    <Label>Ancho final (cm)</Label>
+                                    <Input
+                                      className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
+                                      type="number"
+                                      step="0.01"
+                                      min="0.01"
+                                      value={customFormatoWidthCm}
+                                      onChange={(e) => setCustomFormatoWidthCm(e.target.value)}
+                                      placeholder="21.6"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label>Alto final (cm)</Label>
+                                    <Input
+                                      className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
+                                      type="number"
+                                      step="0.01"
+                                      min="0.01"
+                                      value={customFormatoHeightCm}
+                                      onChange={(e) => setCustomFormatoHeightCm(e.target.value)}
+                                      placeholder="27.9"
+                                    />
+                                  </div>
+                                </div>
+                              ) : null}
                             </div>
 
                             {showAdvanced ? (
@@ -2835,7 +2948,7 @@ export function LitografiaQuoteDialog(props: {
                                 <p className="text-sm font-medium">Portada / Contraportada</p>
                                   <p className={HELP_TEXT}>
                                     {(() => {
-                                      const formato = sizeOptions.find((s) => s.key === String(editorialCover.formatoKey || "").trim())
+                                      const formato = resolveSizeOption(String(editorialCover.formatoKey || "").trim())
                                       const paper = papers.find((p) => p.id === String(editorialCover.paperId || "").trim())
                                       const pliegos = editorialSplitCalc?.coverPliegosPorUnidad ?? 0
                                       const caras = editorialSplitCalc?.coverPlanchas ?? 0
@@ -3199,7 +3312,7 @@ export function LitografiaQuoteDialog(props: {
                                 <p className="text-sm font-medium">Internas</p>
                                 <p className={HELP_TEXT}>
                                   {(() => {
-                                    const formato = sizeOptions.find((s) => s.key === String(editorialInner.formatoKey || "").trim())
+                                    const formato = resolveSizeOption(String(editorialInner.formatoKey || "").trim())
                                     const paper = papers.find((p) => p.id === String(editorialInner.paperId || "").trim())
                                     const pliegos = editorialSplitCalc?.innerPliegosPorUnidad ?? 0
                                     const caras = editorialSplitCalc?.innerPlanchas ?? 0
@@ -3594,18 +3707,38 @@ export function LitografiaQuoteDialog(props: {
 
                           <div>
                             <Label className={requiredLabelClass(validation.missingFormato)}>{t('printshopQuote.fields.printSize')}</Label>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                variant={formatoKey === CUSTOM_PRINT_SIZE_KEY ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setFormatoKey(CUSTOM_PRINT_SIZE_KEY)}
+                              >
+                                Usar tamaño personalizado
+                              </Button>
+                              {formatoKey === CUSTOM_PRINT_SIZE_KEY ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setFormatoKey(sizeOptions[0]?.key || "")}
+                                >
+                                  Volver a tamaños predefinidos
+                                </Button>
+                              ) : null}
+                            </div>
                             <select
                               className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
                               value={formatoKey}
                               onChange={(e) => setFormatoKey(e.target.value)}
-                              disabled={!sizeOptions.length}
+                              disabled={!allSizeOptions.length}
                             >
                               <option value="" disabled>
-                                {sizeOptions.length ? t('printshopQuote.select.size') : t('printshopQuote.select.noSizesConfigured')}
+                                {allSizeOptions.length ? t('printshopQuote.select.size') : t('printshopQuote.select.noSizesConfigured')}
                               </option>
-                              {sizeOptions.map((p) => (
+                              {allSizeOptions.map((p) => (
                                 <option key={p.key} value={p.key}>
-                                  {p.nombre} ({p.widthCm}×{p.heightCm} cm)
+                                  {p.key === CUSTOM_PRINT_SIZE_KEY ? p.nombre : `${p.nombre} (${p.widthCm}×${p.heightCm} cm)`}
                                 </option>
                               ))}
                             </select>
@@ -3617,6 +3750,34 @@ export function LitografiaQuoteDialog(props: {
                             <p className={HELP_TEXT}>
                               Este es el tamaño final que compra el cliente: carta, media carta, cuarto, octavo, medio pliego o pliego.
                             </p>
+                            {formatoKey === CUSTOM_PRINT_SIZE_KEY ? (
+                              <div className="mt-2 grid grid-cols-2 gap-2">
+                                <div>
+                                  <Label>Ancho final (cm)</Label>
+                                  <Input
+                                    className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
+                                    type="number"
+                                    step="0.01"
+                                    min="0.01"
+                                    value={customFormatoWidthCm}
+                                    onChange={(e) => setCustomFormatoWidthCm(e.target.value)}
+                                    placeholder="21.6"
+                                  />
+                                </div>
+                                <div>
+                                  <Label>Alto final (cm)</Label>
+                                  <Input
+                                    className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
+                                    type="number"
+                                    step="0.01"
+                                    min="0.01"
+                                    value={customFormatoHeightCm}
+                                    onChange={(e) => setCustomFormatoHeightCm(e.target.value)}
+                                    placeholder="27.9"
+                                  />
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
                         </div>
 
@@ -3813,9 +3974,9 @@ export function LitografiaQuoteDialog(props: {
                                             className={SELECT_COMPACT}
                                             value={row.formatoKey || formatoKey}
                                             onChange={(e) => updatePaperFormato(idx, e.target.value)}
-                                            disabled={!sizeOptions.length}
+                                            disabled={!allSizeOptions.length}
                                           >
-                                            {sizeOptions.map((s) => (
+                                            {allSizeOptions.map((s) => (
                                               <option key={s.key} value={s.key}>
                                                 {s.nombre}
                                               </option>

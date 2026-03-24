@@ -138,12 +138,12 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResp
   return (await res.json().catch(() => ({}))) as JsonResponse<T>
 }
 
-export function CrmDashboardClient() {
+export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportunities' | 'tasks' }) {
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = '—'
 
-  const [activeTab, setActiveTab] = useState<'leads' | 'opportunities' | 'tasks'>('leads')
+  const [activeTab, setActiveTab] = useState<'leads' | 'opportunities' | 'tasks'>(props?.initialTab ?? 'leads')
   const [opportunityView, setOpportunityView] = useState<'list' | 'pipeline'>('list')
   const [draggingOpportunityId, setDraggingOpportunityId] = useState<string | null>(null)
   const [dragTargetStage, setDragTargetStage] = useState<OpportunityStage | null>(null)
@@ -665,6 +665,12 @@ export function CrmDashboardClient() {
             <TabsTrigger value="tasks" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">Tareas</TabsTrigger>
           </TabsList>
           <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
+              <Link href="/dashboard/crm/agenda">Agenda CRM</Link>
+            </Button>
+            <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
+              <Link href="/dashboard/chat">Chat global</Link>
+            </Button>
             <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50/80 text-emerald-800 hover:bg-emerald-100">
               <Link href="/dashboard/crm/chatbot">Mensajes chatbot</Link>
             </Button>
@@ -715,6 +721,15 @@ export function CrmDashboardClient() {
                           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Tareas</p>
                           <p className="text-base font-semibold text-slate-900">{lead._count?.tasks ?? 0}</p>
                         </div>
+                        <Button
+                          variant="ghost"
+                          className="h-10 rounded-xl border border-slate-200 px-3 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                          asChild
+                        >
+                          <Link href={`/dashboard/crm/agenda?leadId=${lead.id}`}>
+                            Agendar
+                          </Link>
+                        </Button>
                         <Button
                           variant="ghost"
                           className="h-10 rounded-xl border border-slate-200 px-3 text-sky-700 hover:bg-sky-50 hover:text-sky-800"

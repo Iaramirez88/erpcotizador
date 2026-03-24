@@ -46,6 +46,14 @@ export async function GET(_: Request, context: RouteContext) {
       if (denied) return denied
     }
 
+    if (row.unreadCount > 0) {
+      await prisma.crmConversation.update({
+        where: { id: row.id },
+        data: { unreadCount: 0 },
+      })
+      row.unreadCount = 0
+    }
+
     return NextResponse.json({ success: true, data: row })
   } catch (error) {
     console.error('Error obteniendo conversación CRM:', error)
