@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -24,6 +24,11 @@ type PublicChatbotEmbedProps = {
   backgroundColor: string
   fontFamily: string
   customCss: string
+  floatingLauncherEnabled: boolean
+  launcherLabel: string
+  launcherIcon: string
+  launcherPosition: 'right' | 'left'
+  launcherSize: 'compact' | 'standard' | 'large'
   allowHumanHandoff: boolean
   nameLabel: string
   namePlaceholder: string
@@ -72,6 +77,49 @@ function buildWelcomeMessage(prompt: string): PublicChatbotMessage {
   }
 }
 
+function getLauncherPreviewIcon(icon: string) {
+  if (icon === 'sparkles') return '✦'
+  if (icon === 'message-circle') return '◔'
+  if (icon === 'bot') return '🤖'
+  return '◔'
+}
+
+function getLauncherMetrics(size: PublicChatbotEmbedProps['launcherSize']) {
+  if (size === 'compact') {
+    return {
+      buttonPadding: '0 16px',
+      buttonHeight: '56px',
+      buttonRadius: '999px',
+      buttonGap: '0',
+      iconSize: '20px',
+      labelVisible: false,
+      fontSize: '14px',
+    }
+  }
+
+  if (size === 'large') {
+    return {
+      buttonPadding: '0 24px',
+      buttonHeight: '66px',
+      buttonRadius: '999px',
+      buttonGap: '12px',
+      iconSize: '22px',
+      labelVisible: true,
+      fontSize: '15px',
+    }
+  }
+
+  return {
+    buttonPadding: '0 20px',
+    buttonHeight: '60px',
+    buttonRadius: '999px',
+    buttonGap: '10px',
+    iconSize: '20px',
+    labelVisible: true,
+    fontSize: '14px',
+  }
+}
+
 function extractEmail(value: string) {
   const match = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)
   return match?.[0]?.trim() || ''
@@ -111,6 +159,7 @@ function inferIdentityFromMessage(current: ChatIdentity, messageBody: string, ne
 }
 
 export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null)
   const [ready, setReady] = useState(false)
   const [sessionId, setSessionId] = useState('')
   const [identity, setIdentity] = useState<ChatIdentity>({ nombre: '', email: '', telefono: '', producto: '' })
@@ -119,8 +168,10 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
   const [syncing, setSyncing] = useState(false)
   const [connectionState, setConnectionState] = useState<'connecting' | 'online' | 'error'>('connecting')
   const [messages, setMessages] = useState<PublicChatbotMessage[]>([buildWelcomeMessage(props.prompt)])
+  const [panelOpen, setPanelOpen] = useState(!props.floatingLauncherEnabled)
 
   const accentStyle = useMemo(() => ({ ['--chat-accent' as string]: props.accentColor, ['--chat-background' as string]: props.backgroundColor, ['--chat-page-background' as string]: props.pageBackgroundColor, fontFamily: props.fontFamily }), [props.accentColor, props.backgroundColor, props.pageBackgroundColor, props.fontFamily])
+  const launcherMetrics = useMemo(() => getLauncherMetrics(props.launcherSize), [props.launcherSize])
   const latestAssistantPrompt = useMemo(() => {
     const assistantMessages = [...messages].reverse().find((item) => item.role === 'assistant' && item.meta?.nextField)
     return assistantMessages?.meta?.nextField || null
@@ -273,18 +324,99 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
     void sendMessage('Quiero hablar con un asesor humano.', true)
   }
 
+  function openPanel() {
+    setPanelOpen(true)
+  }
+
+  function closePanel() {
+    if (!props.floatingLauncherEnabled) return
+    setPanelOpen(false)
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const emitResize = () => {
+      const measuredHeight = rootRef.current?.scrollHeight
+      const fallbackHeight = props.floatingLauncherEnabled && !panelOpen
+        ? Number.parseInt(launcherMetrics.buttonHeight, 10) + 28
+        : 720
+      const nextHeight = Math.max(88, Math.ceil(measuredHeight || fallbackHeight))
+
+      window.parent?.postMessage({
+        type: 'sgd-chatbot-embed-resize',
+        channelId: props.channelId,
+        height: nextHeight,
+      }, '*')
+    }
+
+    const scheduleResize = () => {
+      window.requestAnimationFrame(() => {
+        emitResize()
+      })
+    }
+
+    scheduleResize()
+    const timeout = window.setTimeout(scheduleResize, 160)
+    window.addEventListener('resize', scheduleResize)
+
+    return () => {
+      window.clearTimeout(timeout)
+      window.removeEventListener('resize', scheduleResize)
+    }
+  }, [connectionState, launcherMetrics.buttonHeight, messages.length, panelOpen, props.channelId, props.floatingLauncherEnabled, sending, syncing])
+
   return (
-    <div className="sgd-chatbot-page min-h-screen p-3 text-slate-950" style={{ ...accentStyle, background: `radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 30%), linear-gradient(180deg, ${props.pageBackgroundColor} 0%, ${props.pageBackgroundColor} 45%, ${props.backgroundColor} 100%)` }}>
+    <div ref={rootRef} className="sgd-chatbot-page p-3 text-slate-950" style={{ ...accentStyle, minHeight: props.floatingLauncherEnabled && !panelOpen ? '96px' : '100vh', background: props.floatingLauncherEnabled && !panelOpen ? 'transparent' : `radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 30%), linear-gradient(180deg, ${props.pageBackgroundColor} 0%, ${props.pageBackgroundColor} 45%, ${props.backgroundColor} 100%)`, position: 'relative' }}>
       {props.customCss.trim() ? <style>{props.customCss}</style> : null}
-      <div className="sgd-chatbot-shell mx-auto flex h-[720px] max-h-[calc(100vh-24px)] max-w-[420px] flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_90px_-44px_rgba(15,23,42,0.42)]">
+      {props.floatingLauncherEnabled && !panelOpen ? (
+        <div style={{ minHeight: '80px', position: 'relative' }}>
+          <button
+            type="button"
+            onClick={openPanel}
+            style={{
+              position: 'absolute',
+              bottom: 12,
+              [props.launcherPosition]: 12,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: launcherMetrics.buttonGap,
+              minWidth: props.launcherSize === 'compact' ? launcherMetrics.buttonHeight : undefined,
+              height: launcherMetrics.buttonHeight,
+              padding: launcherMetrics.buttonPadding,
+              borderRadius: launcherMetrics.buttonRadius,
+              border: 0,
+              backgroundColor: props.accentColor,
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: launcherMetrics.fontSize,
+              boxShadow: '0 18px 40px rgba(15,23,42,.22)',
+              cursor: 'pointer',
+            }}
+          >
+            <span style={{ fontSize: launcherMetrics.iconSize, lineHeight: 1 }}>{getLauncherPreviewIcon(props.launcherIcon)}</span>
+            {launcherMetrics.labelVisible ? <span>{props.launcherLabel}</span> : null}
+          </button>
+        </div>
+      ) : null}
+
+      <div className="sgd-chatbot-shell mx-auto flex h-[720px] max-h-[calc(100vh-24px)] max-w-[420px] flex-col overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_90px_-44px_rgba(15,23,42,0.42)]" style={{ display: !panelOpen ? 'none' : 'flex' }}>
         <div className="sgd-chatbot-header border-b border-slate-100 px-5 py-4 text-white" style={{ background: `linear-gradient(135deg, #0f172a, ${props.accentColor})` }}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-100">Chatbot CRM</p>
               <h1 className="mt-1 text-xl font-semibold">{props.title}</h1>
             </div>
-            <div className="rounded-full bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-white/90">
-              {connectionState === 'online' ? 'En linea' : connectionState === 'error' ? 'Reconectando' : 'Conectando'}
+            <div className="flex items-center gap-2">
+              <div className="rounded-full bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-white/90">
+                {connectionState === 'online' ? 'En linea' : connectionState === 'error' ? 'Reconectando' : 'Conectando'}
+              </div>
+              {props.floatingLauncherEnabled ? (
+                <button type="button" onClick={closePanel} className="rounded-full bg-white/14 px-3 py-1 text-sm font-semibold text-white transition hover:bg-white/20">
+                  ×
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

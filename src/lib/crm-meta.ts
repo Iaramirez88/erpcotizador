@@ -142,6 +142,140 @@ export function getMetaPageAccessToken(settingsJson: unknown) {
   return normalizeString(settings.metaPageAccessToken)
 }
 
+export type MetaMessagingDispatchConfig = {
+  enabled: boolean
+  accessToken: string | null
+  apiVersion: string
+}
+
+export type MetaMessagingDispatchResult = {
+  providerMessageId: string | null
+  payloadJson: Prisma.InputJsonValue
+}
+
+export type MetaMediaAttachment = {
+  type: 'IMAGE' | 'AUDIO' | 'DOCUMENT'
+  url: string
+  filename?: string | null
+  caption?: string | null
+}
+
+export function getMetaMessagingDispatchConfig(settingsJson: unknown): MetaMessagingDispatchConfig {
+  const settings = parseJsonObject(settingsJson)
+  const accessToken = getMetaPageAccessToken(settingsJson)
+  const apiVersion = normalizeString(settings.metaApiVersion || settings.whatsappApiVersion || settings.apiVersion) || META_GRAPH_VERSION
+
+  return {
+    enabled: Boolean(accessToken),
+    accessToken: accessToken || null,
+    apiVersion,
+  }
+}
+
+export async function sendMetaTextMessage(args: {
+  config: MetaMessagingDispatchConfig
+  recipientId: string
+  bodyText: string
+  provider: CrmChannelProvider
+}) : Promise<MetaMessagingDispatchResult> {
+  if (!args.config.accessToken) {
+    throw new Error('El canal Meta no tiene page access token productivo.')
+  }
+
+  const response = await fetch(`https://graph.facebook.com/${args.config.apiVersion}/me/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${args.config.accessToken}`,
+    },
+    body: JSON.stringify({
+      recipient: { id: args.recipientId },
+      messaging_type: 'RESPONSE',
+      message: {
+        text: args.bodyText,
+      },
+    }),
+  })
+
+  const responseJson = await response.json().catch(() => ({})) as Record<string, unknown>
+  const recipientId = normalizeString(parseJsonObject(responseJson.recipient).recipient_id)
+  const messageId = normalizeString(parseJsonObject(responseJson.message_id).mid || responseJson.message_id)
+
+  if (!response.ok) {
+    const errorPayload = parseJsonObject(responseJson.error)
+    const errorMessage = normalizeString(errorPayload.message) || `Meta Send API respondió ${response.status}`
+    throw new Error(errorMessage)
+  }
+
+  return {
+    providerMessageId: messageId || null,
+    payloadJson: {
+      provider: args.provider,
+      response: responseJson,
+      request: {
+        recipientId: args.recipientId,
+        text: args.bodyText,
+      },
+      metaRecipientId: recipientId || args.recipientId,
+    } as Prisma.InputJsonValue,
+  }
+}
+
+export async function sendMetaMediaMessage(args: {
+  config: MetaMessagingDispatchConfig
+  recipientId: string
+  provider: CrmChannelProvider
+  attachment: MetaMediaAttachment
+}) : Promise<MetaMessagingDispatchResult> {
+  if (!args.config.accessToken) {
+    throw new Error('El canal Meta no tiene page access token productivo.')
+  }
+
+  const attachmentType = args.attachment.type === 'DOCUMENT' ? 'file' : args.attachment.type.toLowerCase()
+  const response = await fetch(`https://graph.facebook.com/${args.config.apiVersion}/me/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${args.config.accessToken}`,
+    },
+    body: JSON.stringify({
+      recipient: { id: args.recipientId },
+      messaging_type: 'RESPONSE',
+      message: {
+        attachment: {
+          type: attachmentType,
+          payload: {
+            url: args.attachment.url,
+            is_reusable: true,
+          },
+        },
+      },
+    }),
+  })
+
+  const responseJson = await response.json().catch(() => ({})) as Record<string, unknown>
+  const messageId = normalizeString(parseJsonObject(responseJson.message_id).mid || responseJson.message_id)
+
+  if (!response.ok) {
+    const errorPayload = parseJsonObject(responseJson.error)
+    const errorMessage = normalizeString(errorPayload.message) || `Meta Send API respondió ${response.status}`
+    throw new Error(errorMessage)
+  }
+
+  return {
+    providerMessageId: messageId || null,
+    payloadJson: {
+      provider: args.provider,
+      response: responseJson,
+      request: {
+        recipientId: args.recipientId,
+        type: args.attachment.type,
+        attachment: args.attachment,
+      },
+    } as Prisma.InputJsonValue,
+  }
+}
+
 async function fetchMetaPages(accessToken: string) {
   const json = await fetchMetaGraph<{ data?: Array<Record<string, unknown>> }>('/me/accounts', {
     fields: 'id,name,access_token,tasks,instagram_business_account{id,username,name},connected_instagram_account{id,username,name}',

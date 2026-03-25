@@ -37,6 +37,12 @@ type ConversationMessage = {
   messageType?: string
   status?: string
   bodyText?: string | null
+  attachmentsJson?: Array<{
+    type?: string | null
+    url?: string | null
+    name?: string | null
+    alt?: string | null
+  }> | null
   occurredAt: string
   sentByUser?: Assignee | null
 }
@@ -183,6 +189,9 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
   const [assigneeDraft, setAssigneeDraft] = useState('__none__')
   const [messageDraft, setMessageDraft] = useState('')
+  const [messageTypeDraft, setMessageTypeDraft] = useState<'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT'>('TEXT')
+  const [attachmentUrlDraft, setAttachmentUrlDraft] = useState('')
+  const [attachmentNameDraft, setAttachmentNameDraft] = useState('')
   const [opportunityForm, setOpportunityForm] = useState({
     title: '',
     description: '',
@@ -317,23 +326,40 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
   async function submitMessage() {
     if (!selectedConversation) return
-    if (!messageDraft.trim()) {
+    const requiresAttachment = messageTypeDraft === 'IMAGE' || messageTypeDraft === 'AUDIO' || messageTypeDraft === 'DOCUMENT'
+    if (messageTypeDraft === 'TEXT' && !messageDraft.trim()) {
       alert('Escribe un mensaje antes de enviar.')
+      return
+    }
+    if (requiresAttachment && !attachmentUrlDraft.trim()) {
+      alert('Debes indicar la URL del archivo multimedia.')
       return
     }
 
     setSending(true)
     try {
-      const json = await requestJson(`/api/crm/conversations/${selectedConversation.id}/messages`, {
+      const json = await requestJson<ConversationMessage>(`/api/crm/conversations/${selectedConversation.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bodyText: messageDraft }),
+        body: JSON.stringify({
+          bodyText: messageDraft,
+          messageType: messageTypeDraft,
+          attachments: requiresAttachment
+            ? [{ type: messageTypeDraft, url: attachmentUrlDraft, filename: attachmentNameDraft || null }]
+            : [],
+        }),
       })
       if (!json.success) {
+        if (json.data) {
+          await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
+        }
         alert(json.error || 'No se pudo registrar el mensaje.')
         return
       }
       setMessageDraft('')
+      setMessageTypeDraft('TEXT')
+      setAttachmentUrlDraft('')
+      setAttachmentNameDraft('')
       await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
     } finally {
       setSending(false)
@@ -473,6 +499,30 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       setSavingInterest(false)
     }
   }
+
+  const messagingWindowState = useMemo(() => {
+    if (!selectedConversation) return null
+    const provider = selectedConversation.channelConnection.provider
+    const needsWindow = provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX' || provider === 'FACEBOOK_PAGE' || provider === 'MESSENGER' || provider === 'INSTAGRAM_DM'
+    if (!needsWindow) return null
+
+    const latestInbound = selectedConversation.messages
+      .filter((message) => message.direction === 'INBOUND')
+      .map((message) => new Date(message.occurredAt))
+      .sort((left, right) => right.getTime() - left.getTime())[0] ?? null
+
+    if (!latestInbound) {
+      return { open: false, label: 'Sin inbound previo', hint: 'Aún no existe una ventana de respuesta abierta para este canal.' }
+    }
+
+    const expiresAt = latestInbound.getTime() + 24 * 60 * 60 * 1000
+    const open = Date.now() <= expiresAt
+    return {
+      open,
+      label: open ? 'Ventana 24h abierta' : 'Fuera de ventana 24h',
+      hint: `${open ? 'Último inbound' : 'La ventana cerró'}: ${formatDate(latestInbound.toISOString(), locale, naText)}`,
+    }
+  }, [locale, naText, selectedConversation])
 
   return (
     <div className="space-y-6 pb-6">
@@ -766,19 +816,71 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                             <div key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[88%] rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[88%] rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600' : 'mr-auto max-w-[88%] rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}>
                               <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-slate-500">
                                 <span>{message.direction}</span>
-                                <span>{formatDate(message.occurredAt, locale, naText)}</span>
+                                <div className="flex items-center gap-2">
+                                  {message.status ? <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{message.status}</span> : null}
+                                  <span>{formatDate(message.occurredAt, locale, naText)}</span>
+                                </div>
                               </div>
                               <p className="mt-2 whitespace-pre-wrap leading-6">{message.bodyText || 'Sin contenido textual'}</p>
+                              {Array.isArray(message.attachmentsJson) && message.attachmentsJson.length > 0 ? (
+                                <div className="mt-3 space-y-2">
+                                  {message.attachmentsJson.map((attachment, index) => (
+                                    <a
+                                      key={`${message.id}-${index}`}
+                                      href={attachment.url || '#'}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="block rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 text-xs text-sky-700 hover:underline"
+                                    >
+                                      {(attachment.type || 'archivo').toUpperCase()} · {attachment.name || attachment.url || 'Adjunto'}
+                                    </a>
+                                  ))}
+                                </div>
+                              ) : null}
                               {'sentByUser' in message && message.sentByUser ? <p className="mt-2 text-[11px] text-slate-500">{message.sentByUser.name || message.sentByUser.email}</p> : null}
                             </div>
                           ))}
                         </div>
                         <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
-                          <Label>Responder en modo pruebas</Label>
-                          <Textarea value={messageDraft} onChange={(e) => setMessageDraft(e.target.value)} rows={4} placeholder="Escribe una respuesta o nota saliente..." />
+                          <Label>Responder desde el inbox</Label>
+                          {messagingWindowState ? (
+                            <div className={messagingWindowState.open ? 'rounded-2xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs text-emerald-800' : 'rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-800'}>
+                              <span className="font-semibold">{messagingWindowState.label}:</span> {messagingWindowState.hint}
+                            </div>
+                          ) : null}
+                          <div className="grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+                            <div className="grid gap-2">
+                              <Label>Tipo</Label>
+                              <Select value={messageTypeDraft} onValueChange={(value) => setMessageTypeDraft(value as 'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT')}>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="TEXT">Texto</SelectItem>
+                                  <SelectItem value="IMAGE">Imagen</SelectItem>
+                                  <SelectItem value="AUDIO">Audio</SelectItem>
+                                  <SelectItem value="DOCUMENT">Documento</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>{messageTypeDraft === 'TEXT' ? 'Mensaje' : 'Texto o caption opcional'}</Label>
+                              <Textarea value={messageDraft} onChange={(e) => setMessageDraft(e.target.value)} rows={4} placeholder={messageTypeDraft === 'TEXT' ? 'Escribe una respuesta...' : 'Opcional para multimedia, especialmente en WhatsApp.'} />
+                            </div>
+                          </div>
+                          {messageTypeDraft !== 'TEXT' ? (
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div className="grid gap-2 sm:col-span-2">
+                                <Label>URL del archivo</Label>
+                                <Input value={attachmentUrlDraft} onChange={(e) => setAttachmentUrlDraft(e.target.value)} placeholder="https://..." />
+                              </div>
+                              <div className="grid gap-2 sm:col-span-2">
+                                <Label>Nombre visible</Label>
+                                <Input value={attachmentNameDraft} onChange={(e) => setAttachmentNameDraft(e.target.value)} placeholder="catalogo.pdf o imagen-promocion.jpg" />
+                              </div>
+                            </div>
+                          ) : null}
                           <div className="flex justify-end">
                             <Button className="rounded-xl" onClick={() => void submitMessage()} disabled={sending}>
-                              {sending ? 'Enviando...' : 'Registrar mensaje'}
+                              {sending ? 'Enviando...' : 'Enviar mensaje'}
                             </Button>
                           </div>
                         </div>

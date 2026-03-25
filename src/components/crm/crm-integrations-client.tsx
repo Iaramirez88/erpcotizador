@@ -18,6 +18,8 @@ import {
   buildChatbotSnippet,
   buildGmailAppsScriptSnippet,
   buildOutlookPayloadExample,
+  buildWebFormEmbedUrl,
+  buildWebFormIframeSnippet,
   buildWebFormSnippet,
   buildWebhookPayloadExample,
   getChannelProviderLabel,
@@ -90,6 +92,80 @@ type ReadinessItem = {
   hint: string
 }
 
+type WebFormBuilderState = Pick<ChannelFormState,
+  'publicEmbedEnabled'
+  | 'iframeHeight'
+  | 'allowedDomains'
+  | 'accentColor'
+  | 'pageBackgroundColor'
+  | 'backgroundColor'
+  | 'fontFamily'
+  | 'formTitle'
+  | 'formDescription'
+  | 'submitCtaLabel'
+  | 'formSuccessMessage'
+  | 'formCardRadius'
+  | 'formInputRadius'
+  | 'formFieldSpacing'
+  | 'formPadding'
+  | 'formFontSize'
+  | 'formLabelColor'
+  | 'formInputTextColor'
+  | 'formInputBackgroundColor'
+  | 'formInputBorderColor'
+  | 'formCtaColor'
+  | 'formCtaTextColor'
+  | 'showNameField'
+  | 'showEmailField'
+  | 'showPhoneField'
+  | 'showCompanyField'
+  | 'showCityField'
+  | 'showProductField'
+  | 'showMessageField'
+  | 'nameLabel'
+  | 'namePlaceholder'
+  | 'emailLabel'
+  | 'emailPlaceholder'
+  | 'phoneLabel'
+  | 'phonePlaceholder'
+  | 'companyLabel'
+  | 'companyPlaceholder'
+  | 'cityLabel'
+  | 'cityPlaceholder'
+  | 'productLabel'
+  | 'productPlaceholder'
+  | 'messageLabel'
+  | 'messagePlaceholder'
+>
+
+type ChatbotBuilderState = Pick<ChannelFormState,
+  'chatbotTitle'
+  | 'chatbotPrompt'
+  | 'assistantName'
+  | 'publicEmbedEnabled'
+  | 'iframeHeight'
+  | 'allowedDomains'
+  | 'accentColor'
+  | 'pageBackgroundColor'
+  | 'backgroundColor'
+  | 'fontFamily'
+  | 'floatingLauncherEnabled'
+  | 'launcherLabel'
+  | 'launcherIcon'
+  | 'launcherPosition'
+  | 'launcherSize'
+  | 'headerBadgeLabel'
+  | 'statusBadgeLabel'
+  | 'chatShellRadius'
+  | 'messageBubbleRadius'
+  | 'panelShadowPreset'
+  | 'showProductField'
+  | 'productLabel'
+  | 'productPlaceholder'
+  | 'messageLabel'
+  | 'messagePlaceholder'
+>
+
 function getInitialChannelForm() {
   return {
     templateKey: 'web-form',
@@ -112,7 +188,7 @@ function getInitialChannelForm() {
     allowedDomains: '',
     accentColor: '#1d4ed8',
     pageBackgroundColor: '#eef5ff',
-    backgroundColor: '#f8fbff',
+    backgroundColor: '#ffffff',
     fontFamily: 'ui-sans-serif, system-ui, sans-serif',
     floatingLauncherEnabled: true,
     launcherLabel: 'Abrir asesor virtual',
@@ -124,13 +200,38 @@ function getInitialChannelForm() {
     chatShellRadius: '30',
     messageBubbleRadius: '22',
     panelShadowPreset: 'medium' as PanelShadowPreset,
+    formTitle: 'Solicita tu cotización',
+    formDescription: 'Completa el formulario y nuestro equipo comercial te contactará.',
+    submitCtaLabel: 'Enviar solicitud',
+    formSuccessMessage: 'Gracias. Ya recibimos tu solicitud y la estamos enviando al CRM.',
+    formCardRadius: '28',
+    formInputRadius: '16',
+    formFieldSpacing: '14',
+    formPadding: '24',
+    formFontSize: '14',
+    formLabelColor: '#0f172a',
+    formInputTextColor: '#0f172a',
+    formInputBackgroundColor: '#ffffff',
+    formInputBorderColor: '#cbd5e1',
+    formCtaColor: '#1d4ed8',
+    formCtaTextColor: '#ffffff',
+    showNameField: true,
+    showEmailField: true,
+    showPhoneField: true,
+    showCompanyField: false,
+    showCityField: false,
     showProductField: true,
+    showMessageField: true,
     nameLabel: 'Nombre',
     namePlaceholder: 'Tu nombre',
     emailLabel: 'Correo',
     emailPlaceholder: 'tu@correo.com',
     phoneLabel: 'Teléfono o WhatsApp',
     phonePlaceholder: '300 000 0000',
+    companyLabel: 'Empresa',
+    companyPlaceholder: 'Nombre de la empresa',
+    cityLabel: 'Ciudad',
+    cityPlaceholder: 'Ciudad o sede',
     productLabel: 'Producto',
     productPlaceholder: '¿Qué producto necesitas?',
     messageLabel: 'Mensaje',
@@ -143,13 +244,13 @@ type ChannelFormState = ReturnType<typeof getInitialChannelForm>
 const CHANNEL_STATUS_OPTIONS: ChannelStatus[] = ['DRAFT', 'TESTING', 'ACTIVE', 'DISABLED', 'ERROR']
 
 const TEMPLATE_PRESETS: TemplatePreset[] = [
-  { key: 'web-form', name: 'Formulario Web', provider: 'WEB_FORM', description: 'Captura leads desde formularios embebidos y landings.', connectionModel: 'Script embebido', readiness: 'Operativo hoy', focus: 'Captura de formularios y campañas' },
+  { key: 'web-form', name: 'Formulario Web', provider: 'WEB_FORM', description: 'Captura leads desde un iframe profesional o desde formularios existentes en landings.', connectionModel: 'Iframe + script', readiness: 'Operativo hoy', focus: 'Captura de formularios y campañas' },
   { key: 'web-chatbot', name: 'Chatbot Web', provider: 'WEB_CHATBOT', description: 'Chat embebible por iframe con hilo en tiempo real dentro del CRM.', connectionModel: 'Iframe publico', readiness: 'Operativo hoy', focus: 'Conversación, handoff y lead capture' },
   { key: 'whatsapp-cloud', name: 'WhatsApp Cloud', provider: 'WHATSAPP_CLOUD', description: 'Webhook listo para pruebas y conexión oficial.', connectionModel: 'Webhook nativo', readiness: 'Demo avanzada', focus: 'Inbox y mensajes inbound' },
   { key: 'facebook-page', name: 'Facebook / Messenger', provider: 'FACEBOOK_PAGE', description: 'Inbox social vía webhook para mensajes de páginas Meta.', connectionModel: 'Webhook nativo', readiness: 'Demo avanzada', focus: 'Social inbox y conversaciones' },
   { key: 'instagram-dm', name: 'Instagram DM', provider: 'INSTAGRAM_DM', description: 'Captura mensajes de Instagram y llévalos al inbox del CRM.', connectionModel: 'Webhook nativo', readiness: 'Demo avanzada', focus: 'DMs y campañas de performance' },
-  { key: 'gmail-bridge', name: 'Gmail Inbox Bridge', provider: 'WEB_FORM', bridgeKind: 'GMAIL', description: 'Apps Script para prospectos que llegan al correo.', connectionModel: 'Bridge Apps Script', readiness: 'Demo guiada', focus: 'Correos de prospectos a CRM' },
-  { key: 'outlook-bridge', name: 'Outlook Inbox Bridge', provider: 'WEB_FORM', bridgeKind: 'OUTLOOK', description: 'Bridge demo para Power Automate y Microsoft 365.', connectionModel: 'Bridge Power Automate', readiness: 'Demo guiada', focus: 'Inbox comercial de Microsoft' },
+  { key: 'gmail-bridge', name: 'Gmail Inbox Bridge', provider: 'WEB_FORM', bridgeKind: 'GMAIL', description: 'Apps Script para empujar correos comerciales al inbox omnicanal.', connectionModel: 'Bridge Apps Script', readiness: 'Operativo hoy', focus: 'Correos de prospectos a CRM' },
+  { key: 'outlook-bridge', name: 'Outlook Inbox Bridge', provider: 'WEB_FORM', bridgeKind: 'OUTLOOK', description: 'Bridge operativo para Power Automate y Microsoft 365.', connectionModel: 'Bridge Power Automate', readiness: 'Operativo hoy', focus: 'Inbox comercial de Microsoft' },
   { key: 'tiktok-bridge', name: 'TikTok Lead Bridge', provider: 'WEB_FORM', bridgeKind: 'TIKTOK', description: 'Usa Make/Zapier o webhook para llevar leads al CRM.', connectionModel: 'Bridge automation', readiness: 'Demo guiada', focus: 'Lead Ads y formularios externos' },
   { key: 'youtube-bridge', name: 'YouTube Lead Bridge', provider: 'WEB_FORM', bridgeKind: 'YOUTUBE', description: 'Bridge para formularios, comentarios o capturas desde campañas.', connectionModel: 'Bridge automation', readiness: 'Demo guiada', focus: 'Captura desde video y campañas' },
 ]
@@ -181,13 +282,38 @@ const MANAGED_CHANNEL_SETTING_KEYS = new Set([
   'messageBubbleRadius',
   'panelShadowPreset',
   'chatbotCustomCss',
+  'formTitle',
+  'formDescription',
+  'submitCtaLabel',
+  'formSuccessMessage',
+  'formCardRadius',
+  'formInputRadius',
+  'formFieldSpacing',
+  'formPadding',
+  'formFontSize',
+  'formLabelColor',
+  'formInputTextColor',
+  'formInputBackgroundColor',
+  'formInputBorderColor',
+  'formCtaColor',
+  'formCtaTextColor',
+  'showNameField',
+  'showEmailField',
+  'showPhoneField',
+  'showCompanyField',
+  'showCityField',
   'showProductField',
+  'showMessageField',
   'nameLabel',
   'namePlaceholder',
   'emailLabel',
   'emailPlaceholder',
   'phoneLabel',
   'phonePlaceholder',
+  'companyLabel',
+  'companyPlaceholder',
+  'cityLabel',
+  'cityPlaceholder',
   'productLabel',
   'productPlaceholder',
   'messageLabel',
@@ -316,6 +442,10 @@ function getShowProductField(settingsJson: Record<string, unknown> | null | unde
   return settingsJson?.showProductField !== false
 }
 
+function getBooleanSetting(settingsJson: Record<string, unknown> | null | undefined, key: string, fallback = false) {
+  return typeof settingsJson?.[key] === 'boolean' ? settingsJson[key] as boolean : fallback
+}
+
 function getSettingText(settingsJson: Record<string, unknown> | null | undefined, key: string, fallback: string) {
   return typeof settingsJson?.[key] === 'string' ? settingsJson[key] as string : fallback
 }
@@ -334,6 +464,104 @@ function getPublicEmbedEnabled(settingsJson: Record<string, unknown> | null | un
 function normalizePixelValue(rawValue: string, fallback: string) {
   const digits = rawValue.replace(/[^0-9]/g, '')
   return digits || fallback
+}
+
+function renderWebFormPreview(builderState: WebFormBuilderState, options?: {
+  maxWidthClassName?: string
+  outerPaddingClassName?: string
+  titleClassName?: string
+  messageMinHeight?: number
+}) {
+  const maxWidthClassName = options?.maxWidthClassName ?? 'max-w-3xl'
+  const outerPaddingClassName = options?.outerPaddingClassName ?? 'p-5'
+  const titleClassName = options?.titleClassName ?? 'text-xl'
+  const messageMinHeight = options?.messageMinHeight ?? 120
+
+  return (
+    <div className="overflow-hidden rounded-[24px] border border-sky-200 shadow-sm" style={{ background: `radial-gradient(circle at top, rgba(14,165,233,.16), transparent 34%), linear-gradient(180deg, ${builderState.pageBackgroundColor} 0%, ${builderState.backgroundColor} 100%)` }}>
+      <div className={`mx-auto ${maxWidthClassName} ${outerPaddingClassName}`} style={{ fontFamily: builderState.fontFamily }}>
+        <div className="border border-slate-200 bg-white shadow-[0_28px_70px_-34px_rgba(15,23,42,.32)]" style={{ borderRadius: `${normalizePixelValue(builderState.formCardRadius, '28')}px`, padding: `${normalizePixelValue(builderState.formPadding, '24')}px`, backgroundColor: builderState.backgroundColor }}>
+          <div className="flex items-center gap-3">
+            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: builderState.accentColor, boxShadow: `0 0 0 6px ${builderState.accentColor}22` }} />
+            <div>
+              <p className={`${titleClassName} font-semibold text-slate-950`}>{builderState.formTitle}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-500">{builderState.formDescription}</p>
+            </div>
+          </div>
+          <div className="mt-5 grid" style={{ gap: `${normalizePixelValue(builderState.formFieldSpacing, '14')}px`, fontSize: `${normalizePixelValue(builderState.formFontSize, '14')}px` }}>
+            {builderState.showNameField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.nameLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.namePlaceholder}</div></div> : null}
+            <div className="grid gap-3 md:grid-cols-2">
+              {builderState.showEmailField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.emailLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.emailPlaceholder}</div></div> : null}
+              {builderState.showPhoneField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.phoneLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.phonePlaceholder}</div></div> : null}
+            </div>
+            {(builderState.showCompanyField || builderState.showCityField) ? <div className="grid gap-3 md:grid-cols-2">{builderState.showCompanyField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.companyLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.companyPlaceholder}</div></div> : null}{builderState.showCityField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.cityLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.cityPlaceholder}</div></div> : null}</div> : null}
+            {builderState.showProductField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.productLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.productPlaceholder}</div></div> : null}
+            {builderState.showMessageField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.messageLabel}</p><div className="px-4 py-3" style={{ minHeight: messageMinHeight, borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.messagePlaceholder}</div></div> : null}
+            <div className="px-4 py-3 text-center text-sm font-semibold" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, background: `linear-gradient(135deg, ${builderState.formCtaColor}, ${builderState.accentColor})`, color: builderState.formCtaTextColor }}>{builderState.submitCtaLabel}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
+  mode?: ChatbotPreviewMode
+  viewport?: ChatbotPreviewViewport
+  minHeight?: number
+}) {
+  const mode = options?.mode ?? 'expanded'
+  const viewport = options?.viewport ?? 'desktop'
+  const minHeight = options?.minHeight ?? (viewport === 'mobile' ? 500 : 420)
+  const launcherMetrics = getLauncherPreviewMetrics(builderState.launcherSize)
+  const panelShadow = getPanelShadowValue(builderState.panelShadowPreset)
+
+  return (
+    <div className="relative overflow-hidden rounded-[26px] border border-emerald-200 p-3 shadow-sm" style={{ background: `radial-gradient(circle at top, rgba(16,185,129,0.12), transparent 30%), linear-gradient(180deg, ${builderState.pageBackgroundColor} 0%, ${builderState.pageBackgroundColor} 55%, ${builderState.backgroundColor} 100%)`, minHeight }}>
+      <div className="flex h-full px-3 pb-20 pt-4" style={{ justifyContent: builderState.launcherPosition === 'left' ? 'flex-start' : 'flex-end' }}>
+        <div className="relative flex min-h-full w-full items-end" style={{ maxWidth: viewport === 'mobile' ? 340 : 420, fontFamily: builderState.fontFamily }}>
+          {mode === 'expanded' ? (
+            <div className="overflow-hidden border border-slate-200 bg-white" style={{ marginTop: 24, marginLeft: builderState.launcherPosition === 'left' ? 0 : 'auto', marginRight: builderState.launcherPosition === 'left' ? 'auto' : 0, borderRadius: `${normalizePixelValue(builderState.chatShellRadius, '30')}px`, boxShadow: panelShadow }}>
+              <div className="px-4 py-4 text-white" style={{ background: `linear-gradient(135deg, #0f172a, ${builderState.accentColor})` }}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-100">{builderState.headerBadgeLabel}</p>
+                    <p className="mt-1 text-base font-semibold">{builderState.chatbotTitle}</p>
+                  </div>
+                  <div className="rounded-full bg-white/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/90">{builderState.statusBadgeLabel}</div>
+                </div>
+              </div>
+              <div className="space-y-3 px-4 py-4" style={{ backgroundColor: builderState.backgroundColor }}>
+                <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>{builderState.chatbotPrompt}</div>
+                {builderState.showProductField ? <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>También puedo tomar producto y contexto inicial para enrutar mejor el lead.</div> : null}
+                <div className="ml-auto max-w-[78%] px-4 py-3 text-xs leading-5 text-white shadow-sm" style={{ backgroundColor: builderState.accentColor, borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>Hola, necesito ayuda para una nueva cotización.</div>
+                <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>Perfecto. Soy {builderState.assistantName} y te ayudo a capturar lo necesario.</div>
+              </div>
+              <div className="border-t border-slate-100 bg-white px-4 py-4">
+                <div className="grid gap-2">
+                  {builderState.showProductField ? <div className="rounded-2xl border border-slate-200 px-3 py-2 text-xs text-slate-400">{builderState.productLabel}: {builderState.productPlaceholder}</div> : null}
+                  <div className="rounded-2xl border border-slate-200 px-3 py-3 text-xs text-slate-400">{builderState.messageLabel}: {builderState.messagePlaceholder}</div>
+                  <div className="flex gap-2">
+                    <div className="flex-1 rounded-xl px-3 py-2 text-center text-xs font-semibold text-white" style={{ backgroundColor: builderState.accentColor }}>Responder</div>
+                    <div className="rounded-xl border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-600">Asesor humano</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {builderState.floatingLauncherEnabled ? (
+            <div className="absolute bottom-3 z-10" style={{ left: builderState.launcherPosition === 'left' ? 12 : undefined, right: builderState.launcherPosition === 'right' ? 12 : undefined, maxWidth: 'calc(100% - 24px)' }}>
+              <div className="flex max-w-full items-center justify-center whitespace-nowrap text-white shadow-[0_18px_44px_-26px_rgba(15,23,42,0.55)]" style={{ backgroundColor: builderState.accentColor, borderRadius: launcherMetrics.buttonRadius, padding: launcherMetrics.buttonPadding, height: launcherMetrics.buttonHeight, gap: mode === 'compact' ? '0' : launcherMetrics.buttonGap, minWidth: mode === 'compact' ? launcherMetrics.buttonHeight : undefined, fontSize: launcherMetrics.fontSize, fontWeight: 700 }}>
+                <span style={{ fontSize: launcherMetrics.iconSize, lineHeight: 1 }}>{getLauncherPreviewIcon(builderState.launcherIcon)}</span>
+                {mode !== 'compact' && launcherMetrics.labelVisible ? <span>{builderState.launcherLabel}</span> : null}
+              </div>
+            </div>
+          ) : <div className="absolute bottom-0 rounded-full border border-dashed border-slate-300 bg-white/80 px-3 py-2 text-[11px] font-semibold text-slate-500">Launcher flotante desactivado</div>}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function getPanelShadowValue(preset: PanelShadowPreset) {
@@ -396,7 +624,11 @@ function getLauncherPreviewMetrics(size: LauncherSize) {
 
 function getEndpoint(baseUrl: string, channel: ChannelConnection | null) {
   if (!channel) return ''
-  if (channel.provider === 'WEB_FORM') return `${baseUrl}/api/crm/captures/web-form`
+  if (channel.provider === 'WEB_FORM') {
+    const settings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
+    const bridgeKind = getBridgeKind(settings)
+    return bridgeKind && bridgeKind !== 'GENERIC' ? `${baseUrl}/api/crm/captures/bridge` : `${baseUrl}/api/crm/captures/web-form`
+  }
   if (channel.provider === 'WEB_CHATBOT') return `${baseUrl}/api/crm/captures/chatbot`
   return `${baseUrl}/api/crm/channels/${channel.id}/webhook`
 }
@@ -439,10 +671,13 @@ function getChannelReadiness(channel: ChannelConnection, baseUrl: string) {
   const token = getTokenFromSettings(settings)
   const bridgeKind = getBridgeKind(settings)
   const isChatbot = channel.provider === 'WEB_CHATBOT'
+  const isPublicWebForm = channel.provider === 'WEB_FORM' && bridgeKind === 'GENERIC'
   const isWebhook = channel.provider !== 'WEB_FORM' && channel.provider !== 'WEB_CHATBOT'
+  const isMeta = usesMetaProvider(channel.provider)
   const publicEmbed = getPublicEmbedEnabled(settings)
   const allowedDomains = getAllowedDomains(settings)
   const hasExternalId = Boolean(channel.externalAccountId || channel.externalPageId || channel.externalPhoneNumberId)
+  const hasMetaConnection = !isMeta || Boolean(settings?.metaAccessTokenEncrypted || settings?.metaConnectedAt)
   const hasWhatsAppCredentials = channel.provider !== 'WHATSAPP_CLOUD' && channel.provider !== 'WHATSAPP_SANDBOX'
     ? true
     : Boolean(getWhatsAppAccessToken(settings))
@@ -455,18 +690,97 @@ function getChannelReadiness(channel: ChannelConnection, baseUrl: string) {
 
   const demo: ReadinessItem[] = [
     { label: 'Listo para demo', done: channel.status === 'TESTING' || channel.status === 'ACTIVE', hint: 'El canal debe estar en TESTING o ACTIVE.' },
-    { label: 'Preview comercial', done: !isChatbot || Boolean(buildChatbotEmbedUrl(baseUrl, channel.id)), hint: 'Debe existir forma visible de mostrar la integración.' },
+    { label: 'Preview comercial', done: isChatbot ? Boolean(buildChatbotEmbedUrl(baseUrl, channel.id)) : isPublicWebForm ? Boolean(buildWebFormEmbedUrl(baseUrl, channel.id)) : true, hint: 'Debe existir forma visible de mostrar la integración.' },
     { label: 'Fuente de demo', done: !isWebhook || hasExternalId || bridgeKind !== 'GENERIC', hint: 'Webhook o IDs externos mínimos para una demo guiada.' },
   ]
 
   const production: ReadinessItem[] = [
     { label: 'Estado productivo', done: channel.status === 'ACTIVE', hint: 'Para producción el canal debe estar activo.' },
-    { label: 'Dominio endurecido', done: !isChatbot || !publicEmbed || Boolean(allowedDomains.trim()), hint: 'El chatbot debería restringirse por dominios.' },
+    { label: 'Dominio endurecido', done: (!isChatbot && !isPublicWebForm) || !publicEmbed || Boolean(allowedDomains.trim()), hint: 'Los embeds públicos deberían restringirse por dominios.' },
+    { label: 'Conexión Meta', done: hasMetaConnection, hint: 'WhatsApp, Messenger e Instagram deben quedar enlazados por OAuth real.' },
     { label: 'Identificadores externos', done: !isWebhook || hasExternalId, hint: 'Meta o proveedor externo debe quedar identificado.' },
     { label: 'Credenciales proveedor', done: hasWhatsAppCredentials, hint: 'WhatsApp Cloud requiere access token para enviar desde el inbox.' },
   ]
 
   return { configured, demo, production }
+}
+
+function getWebFormBuilderState(settingsJson: Record<string, unknown> | null | undefined): WebFormBuilderState {
+  return {
+    publicEmbedEnabled: getPublicEmbedEnabled(settingsJson),
+    iframeHeight: getIframeHeight(settingsJson),
+    allowedDomains: getAllowedDomains(settingsJson),
+    accentColor: getAccentColor(settingsJson),
+    pageBackgroundColor: getPageBackgroundColor(settingsJson),
+    backgroundColor: getBackgroundColor(settingsJson),
+    fontFamily: getFontFamily(settingsJson),
+    formTitle: getSettingText(settingsJson, 'formTitle', 'Solicita tu cotización'),
+    formDescription: getSettingText(settingsJson, 'formDescription', 'Completa el formulario y nuestro equipo comercial te contactará.'),
+    submitCtaLabel: getSettingText(settingsJson, 'submitCtaLabel', 'Enviar solicitud'),
+    formSuccessMessage: getSettingText(settingsJson, 'formSuccessMessage', 'Gracias. Ya recibimos tu solicitud y la estamos enviando al CRM.'),
+    formCardRadius: getSettingText(settingsJson, 'formCardRadius', '28'),
+    formInputRadius: getSettingText(settingsJson, 'formInputRadius', '16'),
+    formFieldSpacing: getSettingText(settingsJson, 'formFieldSpacing', '14'),
+    formPadding: getSettingText(settingsJson, 'formPadding', '24'),
+    formFontSize: getSettingText(settingsJson, 'formFontSize', '14'),
+    formLabelColor: getSettingText(settingsJson, 'formLabelColor', '#0f172a'),
+    formInputTextColor: getSettingText(settingsJson, 'formInputTextColor', '#0f172a'),
+    formInputBackgroundColor: getSettingText(settingsJson, 'formInputBackgroundColor', '#ffffff'),
+    formInputBorderColor: getSettingText(settingsJson, 'formInputBorderColor', '#cbd5e1'),
+    formCtaColor: getSettingText(settingsJson, 'formCtaColor', getAccentColor(settingsJson)),
+    formCtaTextColor: getSettingText(settingsJson, 'formCtaTextColor', '#ffffff'),
+    showNameField: getBooleanSetting(settingsJson, 'showNameField', true),
+    showEmailField: getBooleanSetting(settingsJson, 'showEmailField', true),
+    showPhoneField: getBooleanSetting(settingsJson, 'showPhoneField', true),
+    showCompanyField: getBooleanSetting(settingsJson, 'showCompanyField', false),
+    showCityField: getBooleanSetting(settingsJson, 'showCityField', false),
+    showProductField: getShowProductField(settingsJson),
+    showMessageField: getBooleanSetting(settingsJson, 'showMessageField', true),
+    nameLabel: getSettingText(settingsJson, 'nameLabel', 'Nombre'),
+    namePlaceholder: getSettingText(settingsJson, 'namePlaceholder', 'Tu nombre'),
+    emailLabel: getSettingText(settingsJson, 'emailLabel', 'Correo'),
+    emailPlaceholder: getSettingText(settingsJson, 'emailPlaceholder', 'tu@correo.com'),
+    phoneLabel: getSettingText(settingsJson, 'phoneLabel', 'Teléfono o WhatsApp'),
+    phonePlaceholder: getSettingText(settingsJson, 'phonePlaceholder', '300 000 0000'),
+    companyLabel: getSettingText(settingsJson, 'companyLabel', 'Empresa'),
+    companyPlaceholder: getSettingText(settingsJson, 'companyPlaceholder', 'Nombre de la empresa'),
+    cityLabel: getSettingText(settingsJson, 'cityLabel', 'Ciudad'),
+    cityPlaceholder: getSettingText(settingsJson, 'cityPlaceholder', 'Ciudad o sede'),
+    productLabel: getSettingText(settingsJson, 'productLabel', 'Producto'),
+    productPlaceholder: getSettingText(settingsJson, 'productPlaceholder', '¿Qué producto necesitas?'),
+    messageLabel: getSettingText(settingsJson, 'messageLabel', 'Mensaje'),
+    messagePlaceholder: getSettingText(settingsJson, 'messagePlaceholder', 'Cuéntanos qué necesitas y para cuándo.'),
+  }
+}
+
+function getChatbotBuilderState(settingsJson: Record<string, unknown> | null | undefined): ChatbotBuilderState {
+  return {
+    chatbotTitle: getChatbotTitle(settingsJson),
+    chatbotPrompt: getChatbotPrompt(settingsJson),
+    assistantName: getAssistantName(settingsJson),
+    publicEmbedEnabled: getPublicEmbedEnabled(settingsJson),
+    iframeHeight: getIframeHeight(settingsJson),
+    allowedDomains: getAllowedDomains(settingsJson),
+    accentColor: getAccentColor(settingsJson),
+    pageBackgroundColor: getPageBackgroundColor(settingsJson),
+    backgroundColor: getBackgroundColor(settingsJson),
+    fontFamily: getFontFamily(settingsJson),
+    floatingLauncherEnabled: getFloatingLauncherEnabled(settingsJson),
+    launcherLabel: getLauncherLabel(settingsJson),
+    launcherIcon: getLauncherIcon(settingsJson),
+    launcherPosition: getLauncherPosition(settingsJson),
+    launcherSize: getLauncherSize(settingsJson),
+    headerBadgeLabel: getHeaderBadgeLabel(settingsJson),
+    statusBadgeLabel: getStatusBadgeLabel(settingsJson),
+    chatShellRadius: getChatShellRadius(settingsJson),
+    messageBubbleRadius: getMessageBubbleRadius(settingsJson),
+    panelShadowPreset: getPanelShadowPreset(settingsJson),
+    showProductField: getShowProductField(settingsJson),
+    productLabel: getSettingText(settingsJson, 'productLabel', 'Producto'),
+    productPlaceholder: getSettingText(settingsJson, 'productPlaceholder', '¿Qué producto necesitas?'),
+    messageLabel: getSettingText(settingsJson, 'messageLabel', 'Mensaje'),
+    messagePlaceholder: getSettingText(settingsJson, 'messagePlaceholder', 'Cuéntanos qué necesitas y para cuándo.'),
+  }
 }
 
 export function CrmIntegrationsClient() {
@@ -484,6 +798,15 @@ export function CrmIntegrationsClient() {
   const [copiedKey, setCopiedKey] = useState('')
   const [activeAssetTab, setActiveAssetTab] = useState('overview')
   const [createForm, setCreateForm] = useState<ChannelFormState>(getInitialChannelForm())
+  const [chatbotBuilderDraft, setChatbotBuilderDraft] = useState<ChatbotBuilderState>(getChatbotBuilderState(null))
+  const [chatbotBuilderModalOpen, setChatbotBuilderModalOpen] = useState(false)
+  const [savingChatbotBuilder, setSavingChatbotBuilder] = useState(false)
+  const [chatbotBuilderPreviewMode, setChatbotBuilderPreviewMode] = useState<ChatbotPreviewMode>('expanded')
+  const [chatbotBuilderPreviewViewport, setChatbotBuilderPreviewViewport] = useState<ChatbotPreviewViewport>('desktop')
+  const [webFormBuilderDraft, setWebFormBuilderDraft] = useState<WebFormBuilderState>(getWebFormBuilderState(null))
+  const [webFormBuilderModalOpen, setWebFormBuilderModalOpen] = useState(false)
+  const [savingWebFormBuilder, setSavingWebFormBuilder] = useState(false)
+  const [metaSelectionDraft, setMetaSelectionDraft] = useState({ selectedPageId: '', selectedInstagramAccountId: '', selectedPhoneNumberId: '' })
   const [floatingPreviewOpen, setFloatingPreviewOpen] = useState(false)
   const [wizardChatPreviewMode, setWizardChatPreviewMode] = useState<ChatbotPreviewMode>('floating')
   const [wizardChatPreviewViewport, setWizardChatPreviewViewport] = useState<ChatbotPreviewViewport>('desktop')
@@ -536,6 +859,7 @@ export function CrmIntegrationsClient() {
   const createPreset = useMemo(() => TEMPLATE_PRESETS.find((item) => item.key === createForm.templateKey) ?? TEMPLATE_PRESETS[0], [createForm.templateKey])
   const createIsChatbot = createForm.provider === 'WEB_CHATBOT'
   const createIsBridge = createForm.provider === 'WEB_FORM' && createForm.bridgeKind !== 'GENERIC'
+  const createIsPublicWebForm = createForm.provider === 'WEB_FORM' && createForm.bridgeKind === 'GENERIC'
   const createUsesWebhook = createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' || createForm.provider === 'FACEBOOK_PAGE' || createForm.provider === 'MESSENGER' || createForm.provider === 'INSTAGRAM_DM'
   const wizardLauncherMetrics = useMemo(() => getLauncherPreviewMetrics(createForm.launcherSize), [createForm.launcherSize])
   const derivedChatbotCustomCss = useMemo(() => buildFriendlyChatbotCustomCss({ chatShellRadius: createForm.chatShellRadius, messageBubbleRadius: createForm.messageBubbleRadius, panelShadowPreset: createForm.panelShadowPreset }), [createForm.chatShellRadius, createForm.messageBubbleRadius, createForm.panelShadowPreset])
@@ -554,12 +878,43 @@ export function CrmIntegrationsClient() {
   const selectedToken = getTokenFromSettings(selectedSettings)
   const selectedBridgeKind = getBridgeKind(selectedSettings)
   const selectedChatbotEmbedUrl = selectedChannel?.provider === 'WEB_CHATBOT' ? buildChatbotEmbedUrl(baseUrl, selectedChannel.id) : ''
+  const selectedWebFormEmbedUrl = selectedChannel?.provider === 'WEB_FORM' && selectedBridgeKind === 'GENERIC' ? buildWebFormEmbedUrl(baseUrl, selectedChannel.id) : ''
   const selectedChatbotTitle = getChatbotTitle(selectedSettings)
   const selectedChatbotPrompt = getChatbotPrompt(selectedSettings)
   const selectedChatbotAssistant = getAssistantName(selectedSettings)
   const selectedChatbotAccent = getAccentColor(selectedSettings)
   const selectedReadiness = useMemo(() => selectedChannel ? getChannelReadiness(selectedChannel, baseUrl) : null, [baseUrl, selectedChannel])
   const selectedMeta = useMemo(() => getMetaConnectionState(selectedSettings), [selectedSettings])
+  const selectedIsChatbot = selectedChannel?.provider === 'WEB_CHATBOT'
+  const selectedIsPublicWebForm = selectedChannel?.provider === 'WEB_FORM' && selectedBridgeKind === 'GENERIC'
+
+  useEffect(() => {
+    setMetaSelectionDraft({
+      selectedPageId: selectedMeta.selectedPageId || selectedChannel?.externalPageId || '',
+      selectedInstagramAccountId: selectedMeta.selectedInstagramAccountId || selectedChannel?.externalAccountId || '',
+      selectedPhoneNumberId: selectedMeta.selectedPhoneNumberId || selectedChannel?.externalPhoneNumberId || '',
+    })
+  }, [selectedChannel?.externalAccountId, selectedChannel?.externalPageId, selectedChannel?.externalPhoneNumberId, selectedMeta.selectedInstagramAccountId, selectedMeta.selectedPageId, selectedMeta.selectedPhoneNumberId])
+
+  useEffect(() => {
+    setChatbotBuilderDraft(getChatbotBuilderState(selectedSettings))
+  }, [selectedChannelId, selectedSettings])
+
+  useEffect(() => {
+    if (!selectedIsChatbot) {
+      setChatbotBuilderModalOpen(false)
+    }
+  }, [selectedIsChatbot])
+
+  useEffect(() => {
+    setWebFormBuilderDraft(getWebFormBuilderState(selectedSettings))
+  }, [selectedChannelId, selectedSettings])
+
+  useEffect(() => {
+    if (!selectedIsPublicWebForm) {
+      setWebFormBuilderModalOpen(false)
+    }
+  }, [selectedIsPublicWebForm])
 
   const snippets = useMemo(() => {
     if (!selectedChannel || !baseUrl) return null
@@ -572,6 +927,12 @@ export function CrmIntegrationsClient() {
         token,
         selector: getFormSelector(selectedSettings),
       }),
+      webFormIframe: buildWebFormIframeSnippet({
+        baseUrl,
+        channelId: selectedChannel.id,
+        height: getIframeHeight(selectedSettings),
+      }),
+      webFormEmbedUrl: buildWebFormEmbedUrl(baseUrl, selectedChannel.id),
       chatbot: buildChatbotSnippet({
         baseUrl,
         channelId: selectedChannel.id,
@@ -590,6 +951,7 @@ export function CrmIntegrationsClient() {
         baseUrl,
         channelId: selectedChannel.id,
         height: getIframeHeight(selectedSettings),
+        floatingLauncherEnabled: getFloatingLauncherEnabled(selectedSettings),
       }),
       chatbotEmbedUrl: buildChatbotEmbedUrl(baseUrl, selectedChannel.id),
       gmail: buildGmailAppsScriptSnippet({
@@ -597,7 +959,7 @@ export function CrmIntegrationsClient() {
         channelId: selectedChannel.id,
         token,
       }),
-      outlook: buildOutlookPayloadExample(selectedChannel.id, token),
+      outlook: buildOutlookPayloadExample(baseUrl, selectedChannel.id, token),
       webhook: buildWebhookPayloadExample(selectedChannel.provider),
     }
   }, [baseUrl, selectedChannel, selectedSettings, selectedToken])
@@ -612,7 +974,7 @@ export function CrmIntegrationsClient() {
       provider: preset.provider,
       bridgeKind: preset.bridgeKind ?? 'GENERIC',
       testingToken: prev.testingToken || makeDemoToken(),
-      publicEmbedEnabled: preset.provider === 'WEB_CHATBOT',
+      publicEmbedEnabled: preset.provider === 'WEB_CHATBOT' || (preset.provider === 'WEB_FORM' && !preset.bridgeKind),
     }))
     setWizardStep('config')
   }
@@ -665,13 +1027,38 @@ export function CrmIntegrationsClient() {
       chatShellRadius: getChatShellRadius(settings),
       messageBubbleRadius: getMessageBubbleRadius(settings),
       panelShadowPreset: getPanelShadowPreset(settings),
+      formTitle: getSettingText(settings, 'formTitle', 'Solicita tu cotización'),
+      formDescription: getSettingText(settings, 'formDescription', 'Completa el formulario y nuestro equipo comercial te contactará.'),
+      submitCtaLabel: getSettingText(settings, 'submitCtaLabel', 'Enviar solicitud'),
+      formSuccessMessage: getSettingText(settings, 'formSuccessMessage', 'Gracias. Ya recibimos tu solicitud y la estamos enviando al CRM.'),
+      formCardRadius: getSettingText(settings, 'formCardRadius', '28'),
+      formInputRadius: getSettingText(settings, 'formInputRadius', '16'),
+      formFieldSpacing: getSettingText(settings, 'formFieldSpacing', '14'),
+      formPadding: getSettingText(settings, 'formPadding', '24'),
+      formFontSize: getSettingText(settings, 'formFontSize', '14'),
+      formLabelColor: getSettingText(settings, 'formLabelColor', '#0f172a'),
+      formInputTextColor: getSettingText(settings, 'formInputTextColor', '#0f172a'),
+      formInputBackgroundColor: getSettingText(settings, 'formInputBackgroundColor', '#ffffff'),
+      formInputBorderColor: getSettingText(settings, 'formInputBorderColor', '#cbd5e1'),
+      formCtaColor: getSettingText(settings, 'formCtaColor', getAccentColor(settings)),
+      formCtaTextColor: getSettingText(settings, 'formCtaTextColor', '#ffffff'),
+      showNameField: getBooleanSetting(settings, 'showNameField', true),
+      showEmailField: getBooleanSetting(settings, 'showEmailField', true),
+      showPhoneField: getBooleanSetting(settings, 'showPhoneField', true),
+      showCompanyField: getBooleanSetting(settings, 'showCompanyField', false),
+      showCityField: getBooleanSetting(settings, 'showCityField', false),
       showProductField: getShowProductField(settings),
+      showMessageField: getBooleanSetting(settings, 'showMessageField', true),
       nameLabel: getSettingText(settings, 'nameLabel', 'Nombre'),
       namePlaceholder: getSettingText(settings, 'namePlaceholder', 'Tu nombre'),
       emailLabel: getSettingText(settings, 'emailLabel', 'Correo'),
       emailPlaceholder: getSettingText(settings, 'emailPlaceholder', 'tu@correo.com'),
       phoneLabel: getSettingText(settings, 'phoneLabel', 'Teléfono o WhatsApp'),
       phonePlaceholder: getSettingText(settings, 'phonePlaceholder', '300 000 0000'),
+      companyLabel: getSettingText(settings, 'companyLabel', 'Empresa'),
+      companyPlaceholder: getSettingText(settings, 'companyPlaceholder', 'Nombre de la empresa'),
+      cityLabel: getSettingText(settings, 'cityLabel', 'Ciudad'),
+      cityPlaceholder: getSettingText(settings, 'cityPlaceholder', 'Ciudad o sede'),
       productLabel: getSettingText(settings, 'productLabel', 'Producto'),
       productPlaceholder: getSettingText(settings, 'productPlaceholder', '¿Qué producto necesitas?'),
       messageLabel: getSettingText(settings, 'messageLabel', 'Mensaje'),
@@ -689,10 +1076,14 @@ export function CrmIntegrationsClient() {
     setCopiedKey(key)
   }
 
-  async function syncMeta(channelId: string) {
+  async function syncMeta(channelId: string, selection?: { externalAccountId?: string; externalPageId?: string; externalPhoneNumberId?: string }) {
     setUpdatingChannelId(channelId)
     try {
-      const json = await requestJson<ChannelConnection>(`/api/crm/channels/${channelId}/meta/sync`, { method: 'POST' })
+      const json = await requestJson<ChannelConnection>(`/api/crm/channels/${channelId}/meta/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(selection ?? {}),
+      })
       if (!json.success) {
         alert(json.error || 'No se pudo sincronizar Meta.')
         return
@@ -702,6 +1093,19 @@ export function CrmIntegrationsClient() {
     } finally {
       setUpdatingChannelId(null)
     }
+  }
+
+  async function applyMetaSelection(channel: ChannelConnection) {
+    const selection = channel.provider === 'WHATSAPP_CLOUD' || channel.provider === 'WHATSAPP_SANDBOX'
+      ? { externalPhoneNumberId: metaSelectionDraft.selectedPhoneNumberId }
+      : channel.provider === 'INSTAGRAM_DM'
+        ? {
+            externalPageId: metaSelectionDraft.selectedPageId,
+            externalAccountId: metaSelectionDraft.selectedInstagramAccountId,
+          }
+        : { externalPageId: metaSelectionDraft.selectedPageId }
+
+    await syncMeta(channel.id, selection)
   }
 
   async function disconnectMeta(channelId: string) {
@@ -754,13 +1158,38 @@ export function CrmIntegrationsClient() {
         messageBubbleRadius: normalizePixelValue(createForm.messageBubbleRadius, '22'),
         panelShadowPreset: createForm.panelShadowPreset,
         chatbotCustomCss: derivedChatbotCustomCss,
+        formTitle: createForm.formTitle,
+        formDescription: createForm.formDescription,
+        submitCtaLabel: createForm.submitCtaLabel,
+        formSuccessMessage: createForm.formSuccessMessage,
+        formCardRadius: normalizePixelValue(createForm.formCardRadius, '28'),
+        formInputRadius: normalizePixelValue(createForm.formInputRadius, '16'),
+        formFieldSpacing: normalizePixelValue(createForm.formFieldSpacing, '14'),
+        formPadding: normalizePixelValue(createForm.formPadding, '24'),
+        formFontSize: normalizePixelValue(createForm.formFontSize, '14'),
+        formLabelColor: createForm.formLabelColor,
+        formInputTextColor: createForm.formInputTextColor,
+        formInputBackgroundColor: createForm.formInputBackgroundColor,
+        formInputBorderColor: createForm.formInputBorderColor,
+        formCtaColor: createForm.formCtaColor,
+        formCtaTextColor: createForm.formCtaTextColor,
+        showNameField: createForm.showNameField,
+        showEmailField: createForm.showEmailField,
+        showPhoneField: createForm.showPhoneField,
+        showCompanyField: createForm.showCompanyField,
+        showCityField: createForm.showCityField,
         showProductField: createForm.showProductField,
+        showMessageField: createForm.showMessageField,
         nameLabel: createForm.nameLabel,
         namePlaceholder: createForm.namePlaceholder,
         emailLabel: createForm.emailLabel,
         emailPlaceholder: createForm.emailPlaceholder,
         phoneLabel: createForm.phoneLabel,
         phonePlaceholder: createForm.phonePlaceholder,
+        companyLabel: createForm.companyLabel,
+        companyPlaceholder: createForm.companyPlaceholder,
+        cityLabel: createForm.cityLabel,
+        cityPlaceholder: createForm.cityPlaceholder,
         productLabel: createForm.productLabel,
         productPlaceholder: createForm.productPlaceholder,
         messageLabel: createForm.messageLabel,
@@ -794,7 +1223,7 @@ export function CrmIntegrationsClient() {
       setWizardStep('template')
       setWizardChatPreviewMode('floating')
       setWizardChatPreviewViewport('desktop')
-      setActiveAssetTab(json.data.provider === 'WEB_CHATBOT' ? 'chatbot' : 'overview')
+      setActiveAssetTab(json.data.provider === 'WEB_CHATBOT' ? 'chatbot' : json.data.provider === 'WEB_FORM' ? 'form' : 'overview')
       setCreateForm(getInitialChannelForm())
       await loadChannels()
       setSelectedChannelId(json.data.id)
@@ -836,6 +1265,76 @@ export function CrmIntegrationsClient() {
     }
   }
 
+  async function saveSelectedChatbotBuilder() {
+    if (!selectedChannel || !selectedIsChatbot) return
+
+    setSavingChatbotBuilder(true)
+    try {
+      const mergedSettings = {
+        ...(selectedSettings ?? {}),
+        ...chatbotBuilderDraft,
+        iframeHeight: normalizePixelValue(chatbotBuilderDraft.iframeHeight, '720'),
+        chatShellRadius: normalizePixelValue(chatbotBuilderDraft.chatShellRadius, '30'),
+        messageBubbleRadius: normalizePixelValue(chatbotBuilderDraft.messageBubbleRadius, '22'),
+        chatbotCustomCss: buildFriendlyChatbotCustomCss({
+          chatShellRadius: chatbotBuilderDraft.chatShellRadius,
+          messageBubbleRadius: chatbotBuilderDraft.messageBubbleRadius,
+          panelShadowPreset: chatbotBuilderDraft.panelShadowPreset,
+        }),
+      }
+
+      const json = await requestJson<ChannelConnection>(`/api/crm/channels/${selectedChannel.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settingsJson: mergedSettings }),
+      })
+
+      if (!json.success || !json.data) {
+        alert(json.error || 'No se pudo guardar el constructor del chatbot.')
+        return
+      }
+
+      await loadChannels()
+      setSelectedChannelId(json.data.id)
+    } finally {
+      setSavingChatbotBuilder(false)
+    }
+  }
+
+  async function saveSelectedWebFormBuilder() {
+    if (!selectedChannel || !selectedIsPublicWebForm) return
+
+    setSavingWebFormBuilder(true)
+    try {
+      const mergedSettings = {
+        ...(selectedSettings ?? {}),
+        ...webFormBuilderDraft,
+        iframeHeight: normalizePixelValue(webFormBuilderDraft.iframeHeight, '840'),
+        formCardRadius: normalizePixelValue(webFormBuilderDraft.formCardRadius, '28'),
+        formInputRadius: normalizePixelValue(webFormBuilderDraft.formInputRadius, '16'),
+        formFieldSpacing: normalizePixelValue(webFormBuilderDraft.formFieldSpacing, '14'),
+        formPadding: normalizePixelValue(webFormBuilderDraft.formPadding, '24'),
+        formFontSize: normalizePixelValue(webFormBuilderDraft.formFontSize, '14'),
+      }
+
+      const json = await requestJson<ChannelConnection>(`/api/crm/channels/${selectedChannel.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settingsJson: mergedSettings }),
+      })
+
+      if (!json.success || !json.data) {
+        alert(json.error || 'No se pudo guardar el constructor del formulario.')
+        return
+      }
+
+      await loadChannels()
+      setSelectedChannelId(json.data.id)
+    } finally {
+      setSavingWebFormBuilder(false)
+    }
+  }
+
   const wizardPreview = useMemo(() => {
     const endpointPreview = createForm.provider === 'WEB_CHATBOT'
       ? `${baseUrl || 'https://tu-dominio.com'}/chatbot/<canal>`
@@ -850,14 +1349,14 @@ export function CrmIntegrationsClient() {
     ]
 
     const demo = [
-      { label: 'Demo navegable', done: createForm.provider !== 'WEB_CHATBOT' || createForm.publicEmbedEnabled, hint: 'El chatbot debe poder abrirse en el iframe.' },
+      { label: 'Demo navegable', done: (createForm.provider !== 'WEB_CHATBOT' && !createIsPublicWebForm) || createForm.publicEmbedEnabled, hint: 'El canal embebible debe poder abrirse en iframe.' },
       { label: 'Fuente visible', done: createForm.provider !== 'WEB_FORM' || Boolean(createForm.formSelector || createForm.bridgeKind), hint: 'Origen del lead definido.' },
-      { label: 'Mensaje comercial', done: createForm.provider !== 'WEB_CHATBOT' || Boolean(createForm.chatbotPrompt.trim()), hint: 'Prompt inicial presentable.' },
+      { label: 'Mensaje comercial', done: createForm.provider === 'WEB_CHATBOT' ? Boolean(createForm.chatbotPrompt.trim()) : createIsPublicWebForm ? Boolean(createForm.formTitle.trim() && createForm.submitCtaLabel.trim()) : true, hint: 'Texto presentable para el usuario final.' },
     ]
 
     const production = [
       { label: 'Estado ACTIVE', done: createForm.status === 'ACTIVE', hint: 'Solo necesario para producción.' },
-      { label: 'Restricciones', done: createForm.provider !== 'WEB_CHATBOT' || !createForm.publicEmbedEnabled || Boolean(createForm.allowedDomains.trim()), hint: 'Dominios permitidos sugeridos.' },
+      { label: 'Restricciones', done: (!createIsPublicWebForm && createForm.provider !== 'WEB_CHATBOT') || !createForm.publicEmbedEnabled || Boolean(createForm.allowedDomains.trim()), hint: 'Dominios permitidos sugeridos.' },
       { label: 'IDs externos', done: !createUsesWebhook || Boolean(createForm.externalAccountId.trim() || createForm.externalPageId.trim()), hint: 'Meta o proveedor identificado.' },
     ]
 
@@ -866,9 +1365,9 @@ export function CrmIntegrationsClient() {
       configured,
       demo,
       production,
-      iframeUrl: createForm.provider === 'WEB_CHATBOT' ? `${baseUrl || 'https://tu-dominio.com'}/chatbot/<canal-generado>` : '',
+      iframeUrl: createForm.provider === 'WEB_CHATBOT' ? `${baseUrl || 'https://tu-dominio.com'}/chatbot/<canal-generado>` : createIsPublicWebForm ? `${baseUrl || 'https://tu-dominio.com'}/form/<canal-generado>` : '',
     }
-  }, [baseUrl, createForm, createUsesWebhook])
+  }, [baseUrl, createForm, createIsPublicWebForm, createUsesWebhook])
 
   const selectedAssetTabs = useMemo(() => {
     if (!selectedChannel) return ['overview']
@@ -897,7 +1396,7 @@ export function CrmIntegrationsClient() {
         ]}
         eyebrow="CRM Omnicanal"
         title="Centro de integraciones y captura de leads"
-        description="Activa canales, genera scripts para formularios y chatbot, y monta bridges demo para correo y redes sin duplicar módulos del ERP. Todo termina en leads, conversaciones y oportunidades del CRM existente."
+        description="Activa canales, genera scripts para formularios y chatbot, y monta bridges operativos para correo y redes sin duplicar módulos del ERP. Todo termina en leads, conversaciones y oportunidades del CRM existente."
         actions={
           <>
             <Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85" onClick={() => void loadChannels()}>
@@ -1047,34 +1546,52 @@ export function CrmIntegrationsClient() {
 
                     {selectedChannel.provider === 'WEB_CHATBOT' && selectedChatbotEmbedUrl ? (
                       <div className="mt-5 rounded-2xl border border-emerald-200 bg-white/85 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Iframe vinculado</p>
-                        <p className="mt-2 break-all text-sm font-medium text-slate-900">{selectedChatbotEmbedUrl}</p>
-                        <div className="mt-4 overflow-hidden rounded-[24px] border border-emerald-200 shadow-sm" style={{ backgroundColor: getBackgroundColor(selectedSettings) }}>
-                          <div className="flex items-center justify-between border-b border-emerald-100 px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-emerald-800">
-                            <span>{selectedChatbotTitle}</span>
-                            <span>{selectedChatbotAssistant}</span>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Preview del chatbot real</p>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">Este preview representa el iframe y el launcher con la configuración actual del canal.</p>
                           </div>
-                          <div className="space-y-3 p-4" style={{ backgroundColor: getBackgroundColor(selectedSettings) }}>
-                            <div className="max-w-[78%] rounded-2xl rounded-tl-md bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
-                              {selectedChatbotPrompt}
-                            </div>
-                            <div className="ml-auto max-w-[72%] rounded-2xl rounded-tr-md px-3 py-2 text-sm text-white shadow-sm" style={{ backgroundColor: selectedChatbotAccent }}>
-                              Hola, quiero una cotizacion para un proyecto nuevo.
-                            </div>
-                            <div className="max-w-[82%] rounded-2xl rounded-tl-md bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
-                              Perfecto. Te tomo los datos y el equipo comercial sigue el hilo desde el inbox CRM.
-                            </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button className="rounded-xl" onClick={() => setChatbotBuilderModalOpen(true)}>
+                              Editar constructor
+                            </Button>
+                            <Button className="rounded-xl" variant="outline" onClick={() => void copyText('preview-chatbot-url', selectedChatbotEmbedUrl)}>
+                              {copiedKey === 'preview-chatbot-url' ? 'Copiado' : 'Copiar URL'}
+                            </Button>
+                            <Button asChild className="rounded-xl" variant="outline"><Link href={selectedChatbotEmbedUrl}>Abrir demo</Link></Button>
                           </div>
                         </div>
+                        <div className="mt-4">
+                          {renderChatbotPreview(chatbotBuilderDraft, { mode: 'expanded', viewport: 'desktop', minHeight: 360 })}
+                        </div>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <Button className="rounded-xl" onClick={() => void copyText('preview-chatbot-url', selectedChatbotEmbedUrl)}>
-                            {copiedKey === 'preview-chatbot-url' ? 'Copiado' : 'Copiar URL'}
-                          </Button>
                           <Button className="rounded-xl" variant="outline" onClick={() => void copyText('preview-chatbot-iframe', snippets?.chatbotIframe || '')}>
                             {copiedKey === 'preview-chatbot-iframe' ? 'Copiado' : 'Copiar iframe'}
                           </Button>
                           <Button asChild className="rounded-xl" variant="outline"><Link href="/dashboard/crm/chatbot">Ver panel chatbot</Link></Button>
-                          <Button asChild className="rounded-xl" variant="outline"><Link href={selectedChatbotEmbedUrl}>Abrir demo</Link></Button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {selectedIsPublicWebForm && selectedWebFormEmbedUrl ? (
+                      <div className="mt-5 rounded-2xl border border-sky-200 bg-white/85 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">Preview del formulario web real</p>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">Este preview se construye con la configuración actual del canal y refleja cómo se verá el iframe embebido.</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button className="rounded-xl" onClick={() => setWebFormBuilderModalOpen(true)}>
+                              Editar constructor
+                            </Button>
+                            <Button className="rounded-xl" variant="outline" onClick={() => void copyText('preview-web-form-url', selectedWebFormEmbedUrl)}>
+                              {copiedKey === 'preview-web-form-url' ? 'Copiado' : 'Copiar URL'}
+                            </Button>
+                            <Button asChild className="rounded-xl" variant="outline"><Link href={selectedWebFormEmbedUrl}>Abrir demo</Link></Button>
+                          </div>
+                        </div>
+                        <div className="mt-4">
+                          {renderWebFormPreview(webFormBuilderDraft)}
                         </div>
                       </div>
                     ) : null}
@@ -1137,6 +1654,69 @@ export function CrmIntegrationsClient() {
                             <p><span className="font-semibold text-slate-900">Conectado:</span> {formatDate(selectedMeta.connectedAt)}</p>
                             <p><span className="font-semibold text-slate-900">Última sincronización:</span> {formatDate(selectedMeta.lastSyncAt)}</p>
                             <p><span className="font-semibold text-slate-900">Expira token:</span> {formatDate(selectedMeta.tokenExpiresAt)}</p>
+                            {selectedChannel.provider === 'WHATSAPP_CLOUD' || selectedChannel.provider === 'WHATSAPP_SANDBOX' ? (
+                              <div className="grid gap-2 rounded-2xl border border-sky-200 bg-white/70 p-3">
+                                <Label>Número sincronizado</Label>
+                                <Select value={metaSelectionDraft.selectedPhoneNumberId || '__none__'} onValueChange={(value) => setMetaSelectionDraft((current) => ({ ...current, selectedPhoneNumberId: value === '__none__' ? '' : value }))}>
+                                  <SelectTrigger className="h-10 rounded-xl bg-white"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__none__">Selecciona un número</SelectItem>
+                                    {selectedMeta.whatsappAssets.map((item) => (
+                                      <SelectItem key={item.phoneNumberId} value={item.phoneNumberId}>
+                                        {item.displayPhoneNumber || item.phoneNumberId} · {item.wabaName}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Button className="rounded-xl" variant="outline" onClick={() => void applyMetaSelection(selectedChannel)} disabled={updatingChannelId === selectedChannel.id || !metaSelectionDraft.selectedPhoneNumberId}>
+                                  Aplicar número activo
+                                </Button>
+                              </div>
+                            ) : null}
+                            {selectedChannel.provider === 'FACEBOOK_PAGE' || selectedChannel.provider === 'MESSENGER' ? (
+                              <div className="grid gap-2 rounded-2xl border border-sky-200 bg-white/70 p-3">
+                                <Label>Página sincronizada</Label>
+                                <Select value={metaSelectionDraft.selectedPageId || '__none__'} onValueChange={(value) => setMetaSelectionDraft((current) => ({ ...current, selectedPageId: value === '__none__' ? '' : value }))}>
+                                  <SelectTrigger className="h-10 rounded-xl bg-white"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__none__">Selecciona una página</SelectItem>
+                                    {selectedMeta.pages.map((item) => (
+                                      <SelectItem key={item.pageId} value={item.pageId}>{item.pageName}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Button className="rounded-xl" variant="outline" onClick={() => void applyMetaSelection(selectedChannel)} disabled={updatingChannelId === selectedChannel.id || !metaSelectionDraft.selectedPageId}>
+                                  Aplicar página activa
+                                </Button>
+                              </div>
+                            ) : null}
+                            {selectedChannel.provider === 'INSTAGRAM_DM' ? (
+                              <div className="grid gap-2 rounded-2xl border border-sky-200 bg-white/70 p-3">
+                                <Label>Cuenta de Instagram sincronizada</Label>
+                                <Select value={metaSelectionDraft.selectedInstagramAccountId || '__none__'} onValueChange={(value) => {
+                                  const nextValue = value === '__none__' ? '' : value
+                                  const relatedPage = selectedMeta.pages.find((item) => item.instagramAccountId === nextValue)
+                                  setMetaSelectionDraft((current) => ({
+                                    ...current,
+                                    selectedInstagramAccountId: nextValue,
+                                    selectedPageId: relatedPage?.pageId || current.selectedPageId,
+                                  }))
+                                }}>
+                                  <SelectTrigger className="h-10 rounded-xl bg-white"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="__none__">Selecciona una cuenta</SelectItem>
+                                    {selectedMeta.pages.filter((item) => item.instagramAccountId).map((item) => (
+                                      <SelectItem key={item.instagramAccountId} value={item.instagramAccountId || item.pageId}>
+                                        @{item.instagramUsername || item.instagramName || item.instagramAccountId}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Button className="rounded-xl" variant="outline" onClick={() => void applyMetaSelection(selectedChannel)} disabled={updatingChannelId === selectedChannel.id || !metaSelectionDraft.selectedInstagramAccountId}>
+                                  Aplicar cuenta activa
+                                </Button>
+                              </div>
+                            ) : null}
                             {selectedChannel.provider === 'WHATSAPP_CLOUD' || selectedChannel.provider === 'WHATSAPP_SANDBOX' ? (
                               <p><span className="font-semibold text-slate-900">Número activo:</span> {selectedMeta.whatsappAssets.find((item) => item.phoneNumberId === selectedChannel.externalPhoneNumberId)?.displayPhoneNumber || selectedChannel.externalPhoneNumberId || 'Sin número asociado'}</p>
                             ) : null}
@@ -1218,7 +1798,7 @@ export function CrmIntegrationsClient() {
                       </div>
                       <div className="rounded-3xl border border-sky-200 bg-sky-50/80 p-4 text-sm text-sky-900">
                         <p className="font-semibold">Meta / WhatsApp / Instagram</p>
-                        <p className="mt-2 leading-6">Ahora puedes conectar Meta directamente desde el CRM por OAuth real. El sistema sincroniza páginas, cuentas de Instagram y assets de WhatsApp para dejar el canal listo sobre el mismo inbox comercial.</p>
+                        <p className="mt-2 leading-6">Ahora puedes conectar Meta directamente desde el CRM por OAuth real, elegir el activo exacto del canal y operar WhatsApp, Messenger e Instagram sobre el mismo inbox comercial.</p>
                       </div>
                     </div>
 
@@ -1245,20 +1825,174 @@ export function CrmIntegrationsClient() {
                   </TabsContent>
 
                   <TabsContent value="form" className="space-y-4">
-                    <ErpSectionHeading title="Snippet para formulario web" description="Pega este script en tu sitio y enlázalo al formulario indicado por selector." />
-                    <Textarea value={snippets.webForm} readOnly rows={18} className="font-mono text-xs" />
-                    <div className="flex flex-wrap gap-2">
-                      <Button className="rounded-xl" onClick={() => void copyText('snippet-web-form', snippets.webForm)}>
-                        {copiedKey === 'snippet-web-form' ? 'Snippet copiado' : 'Copiar snippet'}
-                      </Button>
-                      <Button variant="outline" className="rounded-xl" onClick={() => void copyText('token-form', selectedToken)} disabled={!selectedToken}>
-                        Copiar token
-                      </Button>
-                    </div>
+                    <ErpSectionHeading title="Formulario web embebible" description="Modo recomendado: URL pública e iframe listo para pegar, con fallback legacy por selector." />
+                    {selectedIsPublicWebForm ? (
+                      <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+                        <Card className="rounded-3xl border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fbff)]">
+                          <CardHeader>
+                            <CardTitle className="text-base">Constructor visual en modal</CardTitle>
+                            <CardDescription>Abre un espacio dedicado para editar el formulario sin perderte en la pantalla principal. Cada cambio se refleja en tiempo real.</CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                              <p className="text-sm font-semibold text-slate-900">Qué vas a editar</p>
+                              <p className="mt-1 text-sm leading-6 text-slate-600">Texto comercial, colores, radios, espaciados, campos visibles, labels, placeholders y dominios del iframe.</p>
+                            </div>
+                            <div className="grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Campos activos</p>
+                                <p className="mt-2 font-medium text-slate-900">{[
+                                  webFormBuilderDraft.showNameField && 'Nombre',
+                                  webFormBuilderDraft.showEmailField && 'Correo',
+                                  webFormBuilderDraft.showPhoneField && 'Teléfono',
+                                  webFormBuilderDraft.showCompanyField && 'Empresa',
+                                  webFormBuilderDraft.showCityField && 'Ciudad',
+                                  webFormBuilderDraft.showProductField && 'Producto',
+                                  webFormBuilderDraft.showMessageField && 'Mensaje',
+                                ].filter(Boolean).join(' · ') || 'Sin campos visibles'}</p>
+                              </div>
+                              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Presentación</p>
+                                <p className="mt-2 font-medium text-slate-900">{normalizePixelValue(webFormBuilderDraft.formFontSize, '14')}px · radio {normalizePixelValue(webFormBuilderDraft.formInputRadius, '16')}px · gap {normalizePixelValue(webFormBuilderDraft.formFieldSpacing, '14')}px</p>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Button className="rounded-xl" onClick={() => setWebFormBuilderModalOpen(true)}>
+                                Abrir editor del formulario
+                              </Button>
+                              <Button variant="outline" className="rounded-xl" onClick={() => void copyText('form-builder-url', selectedWebFormEmbedUrl || snippets.webFormEmbedUrl)}>
+                                {copiedKey === 'form-builder-url' ? 'Copiado' : 'Copiar URL pública'}
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card className="rounded-3xl border-sky-200 bg-sky-50/40">
+                          <CardHeader>
+                            <CardTitle className="text-base">Preview del canal</CardTitle>
+                            <CardDescription>Vista rápida del iframe actual. Para editar, usa el modal dedicado.</CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            {renderWebFormPreview(webFormBuilderDraft, { maxWidthClassName: 'max-w-xl', outerPaddingClassName: 'p-4', titleClassName: 'text-lg', messageMinHeight: 112 })}
+                          </CardContent>
+                        </Card>
+                      </div>
+                    ) : null}
+                    {selectedBridgeKind === 'GENERIC' ? (
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <Card className="rounded-3xl border-slate-200">
+                          <CardHeader>
+                            <CardTitle className="text-base">URL pública del formulario</CardTitle>
+                            <CardDescription>Ábrela directamente o úsala como fuente del iframe.</CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            <Textarea value={selectedWebFormEmbedUrl || snippets.webFormEmbedUrl} readOnly rows={3} className="font-mono text-xs" />
+                            <div className="flex flex-wrap gap-2">
+                              <Button className="rounded-xl" onClick={() => void copyText('form-url', selectedWebFormEmbedUrl || snippets.webFormEmbedUrl)}>
+                                {copiedKey === 'form-url' ? 'Copiado' : 'Copiar URL'}
+                              </Button>
+                              <Button asChild variant="outline" className="rounded-xl">
+                                <Link href={selectedWebFormEmbedUrl || snippets.webFormEmbedUrl}>Abrir demo</Link>
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                        <Card className="rounded-3xl border-slate-200">
+                          <CardHeader>
+                            <CardTitle className="text-base">Iframe listo para pegar</CardTitle>
+                            <CardDescription>Embed recomendado para integrarlo en cualquier sitio web.</CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            <Textarea value={snippets.webFormIframe} readOnly rows={9} className="font-mono text-xs" />
+                            <Button className="rounded-xl" onClick={() => void copyText('snippet-web-form-iframe', snippets.webFormIframe)}>
+                              {copiedKey === 'snippet-web-form-iframe' ? 'Iframe copiado' : 'Copiar iframe'}
+                            </Button>
+                          </CardContent>
+                        </Card>
+                        <Card className="rounded-3xl border-slate-200 lg:col-span-2">
+                          <CardHeader>
+                            <CardTitle className="text-base">Snippet legacy por selector</CardTitle>
+                            <CardDescription>Úsalo si el cliente ya tiene su propio formulario en el DOM.</CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            <Textarea value={snippets.webForm} readOnly rows={16} className="font-mono text-xs" />
+                            <div className="flex flex-wrap gap-2">
+                              <Button className="rounded-xl" onClick={() => void copyText('snippet-web-form', snippets.webForm)}>
+                                {copiedKey === 'snippet-web-form' ? 'Snippet copiado' : 'Copiar snippet'}
+                              </Button>
+                              <Button variant="outline" className="rounded-xl" onClick={() => void copyText('token-form', selectedToken)} disabled={!selectedToken}>
+                                Copiar token
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    ) : (
+                      <Card className="rounded-3xl border-slate-200">
+                        <CardHeader>
+                          <CardTitle className="text-base">Snippet para integración manual</CardTitle>
+                          <CardDescription>Este canal usa bridge externo y no expone formulario público por iframe.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <Textarea value={snippets.webForm} readOnly rows={18} className="font-mono text-xs" />
+                          <div className="flex flex-wrap gap-2">
+                            <Button className="rounded-xl" onClick={() => void copyText('snippet-web-form', snippets.webForm)}>
+                              {copiedKey === 'snippet-web-form' ? 'Snippet copiado' : 'Copiar snippet'}
+                            </Button>
+                            <Button variant="outline" className="rounded-xl" onClick={() => void copyText('token-form', selectedToken)} disabled={!selectedToken}>
+                              Copiar token
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
                   </TabsContent>
 
                   <TabsContent value="chatbot" className="space-y-4">
                     <ErpSectionHeading title="Chatbot embebible por iframe" description="Demo funcional para insertar en un sitio web y ver mensajes entrar al inbox del CRM casi en tiempo real." />
+                    <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+                      <Card className="rounded-3xl border-slate-200 bg-[linear-gradient(180deg,#fff,#f6fffb)]">
+                        <CardHeader>
+                          <CardTitle className="text-base">Constructor visual en modal</CardTitle>
+                          <CardDescription>Abre un editor dedicado para ajustar el chatbot sin perder el contexto de integración.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                            <p className="text-sm font-semibold text-slate-900">Qué vas a editar</p>
+                            <p className="mt-1 text-sm leading-6 text-slate-600">Título, nombre del asistente, prompt, colores, launcher, dominios, radios, sombra y campos iniciales del composer.</p>
+                          </div>
+                          <div className="grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Asistente</p>
+                              <p className="mt-2 font-medium text-slate-900">{chatbotBuilderDraft.assistantName} · {chatbotBuilderDraft.statusBadgeLabel}</p>
+                            </div>
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Launcher</p>
+                              <p className="mt-2 font-medium text-slate-900">{chatbotBuilderDraft.floatingLauncherEnabled ? `${chatbotBuilderDraft.launcherPosition} · ${chatbotBuilderDraft.launcherSize}` : 'Desactivado'}</p>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button className="rounded-xl" onClick={() => setChatbotBuilderModalOpen(true)}>
+                              Abrir editor del chatbot
+                            </Button>
+                            <Button variant="outline" className="rounded-xl" onClick={() => void copyText('chatbot-builder-url', snippets.chatbotEmbedUrl)}>
+                              {copiedKey === 'chatbot-builder-url' ? 'Copiado' : 'Copiar URL pública'}
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card className="rounded-3xl border-emerald-200 bg-emerald-50/40">
+                        <CardHeader>
+                          <CardTitle className="text-base">Preview del canal</CardTitle>
+                          <CardDescription>Vista rápida del iframe actual. Para editar, usa el modal dedicado.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          {renderChatbotPreview(chatbotBuilderDraft, { mode: 'expanded', viewport: 'desktop', minHeight: 360 })}
+                        </CardContent>
+                      </Card>
+                    </div>
+
                     <div className="grid gap-4 lg:grid-cols-2">
                       <Card className="rounded-3xl border-slate-200">
                         <CardHeader>
@@ -1377,12 +2111,12 @@ export function CrmIntegrationsClient() {
                   </TabsContent>
 
                   <TabsContent value="bridge" className="space-y-4">
-                    <ErpSectionHeading title="Bridges de correo y adquisición" description="Assets demo para Gmail, Outlook y otras fuentes que aún no tengan integración nativa." />
+                    <ErpSectionHeading title="Bridges de correo y adquisición" description="Snippets y payloads listos para Gmail, Outlook y otras fuentes sin integración nativa." />
                     <div className="grid gap-4 xl:grid-cols-2">
                       <Card className="rounded-3xl border-amber-200 bg-amber-50/60">
                         <CardHeader>
                           <CardTitle className="text-base">Google Apps Script para Gmail</CardTitle>
-                          <CardDescription>Etiqueta prospectos en Gmail y empújalos a este canal CRM.</CardDescription>
+                          <CardDescription>Etiqueta correos de prospectos en Gmail y envíalos directo al inbox omnicanal.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                           <Textarea value={snippets.gmail} readOnly rows={16} className="font-mono text-xs" />
@@ -1393,8 +2127,8 @@ export function CrmIntegrationsClient() {
                       </Card>
                       <Card className="rounded-3xl border-sky-200 bg-sky-50/60">
                         <CardHeader>
-                          <CardTitle className="text-base">Body demo para Outlook / Power Automate</CardTitle>
-                          <CardDescription>Úsalo en una acción HTTP después de detectar correos de prospectos.</CardDescription>
+                          <CardTitle className="text-base">Payload para Outlook / Power Automate</CardTitle>
+                          <CardDescription>Úsalo en una acción HTTP hacia el bridge CRM después de detectar correos de prospectos.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                           <Textarea value={snippets.outlook} readOnly rows={16} className="font-mono text-xs" />
@@ -1422,6 +2156,194 @@ export function CrmIntegrationsClient() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={chatbotBuilderModalOpen} onOpenChange={setChatbotBuilderModalOpen}>
+        <DialogContent className="h-[92vh] max-h-[92vh] max-w-7xl overflow-hidden rounded-[30px] border-emerald-200 bg-white/98 p-0 shadow-[0_28px_80px_-42px_rgba(16,185,129,0.28)]">
+          <div className="grid h-full min-h-0 gap-0 xl:grid-cols-[0.95fr_1.05fr]">
+            <div className="min-h-0 overflow-y-auto border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,.16),transparent_30%),linear-gradient(180deg,#f6fffb,#ffffff)] p-6 xl:border-b-0 xl:border-r">
+              <DialogHeader>
+                <DialogTitle>Editor visual del chatbot</DialogTitle>
+                <DialogDescription>Configura el iframe y el launcher desde un modal dedicado. Cada cambio se refleja en el preview en tiempo real.</DialogDescription>
+              </DialogHeader>
+
+              <div className="mt-5 space-y-4 pr-1">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-2 md:col-span-2"><Label>Título del chatbot</Label><Input value={chatbotBuilderDraft.chatbotTitle} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, chatbotTitle: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2 md:col-span-2"><Label>Nombre del asistente</Label><Input value={chatbotBuilderDraft.assistantName} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, assistantName: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2 md:col-span-2"><Label>Prompt inicial</Label><Textarea value={chatbotBuilderDraft.chatbotPrompt} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, chatbotPrompt: e.target.value }))} rows={4} className="rounded-2xl" /></div>
+                  <div className="grid gap-2"><Label>Altura iframe</Label><Input value={chatbotBuilderDraft.iframeHeight} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, iframeHeight: normalizePixelValue(e.target.value, '720') }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Fuente CSS</Label><Input value={chatbotBuilderDraft.fontFamily} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, fontFamily: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2 md:col-span-2"><Label>Dominios permitidos</Label><Textarea value={chatbotBuilderDraft.allowedDomains} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, allowedDomains: e.target.value }))} rows={2} className="rounded-2xl" placeholder="cliente.com, demo.cliente.com" /></div>
+                </div>
+
+                <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
+                  <div className="grid gap-2"><Label>Color acento</Label><Input value={chatbotBuilderDraft.accentColor} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, accentColor: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Fondo general</Label><Input value={chatbotBuilderDraft.pageBackgroundColor} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, pageBackgroundColor: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Fondo interno</Label><Input value={chatbotBuilderDraft.backgroundColor} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, backgroundColor: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Etiqueta superior</Label><Input value={chatbotBuilderDraft.headerBadgeLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, headerBadgeLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Estado del asistente</Label><Input value={chatbotBuilderDraft.statusBadgeLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, statusBadgeLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Radio del panel</Label><Input value={chatbotBuilderDraft.chatShellRadius} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, chatShellRadius: normalizePixelValue(e.target.value, '30') }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Radio de burbujas</Label><Input value={chatbotBuilderDraft.messageBubbleRadius} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messageBubbleRadius: normalizePixelValue(e.target.value, '22') }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Sombra del panel</Label><Select value={chatbotBuilderDraft.panelShadowPreset} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, panelShadowPreset: value as PanelShadowPreset }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="soft">Suave</SelectItem><SelectItem value="medium">Media</SelectItem><SelectItem value="strong">Fuerte</SelectItem></SelectContent></Select></div>
+                </div>
+
+                <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
+                  <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Launcher flotante</p>
+                      <p className="text-xs text-slate-500">Activa o desactiva el botón flotante</p>
+                    </div>
+                    <Switch checked={chatbotBuilderDraft.floatingLauncherEnabled} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, floatingLauncherEnabled: checked }))} />
+                  </div>
+                  <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Solicitar producto</p>
+                      <p className="text-xs text-slate-500">Muestra el campo rápido en el composer</p>
+                    </div>
+                    <Switch checked={chatbotBuilderDraft.showProductField} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, showProductField: checked }))} />
+                  </div>
+                  <div className="grid gap-2"><Label>Texto launcher</Label><Input value={chatbotBuilderDraft.launcherLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, launcherLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Icono launcher</Label><Select value={chatbotBuilderDraft.launcherIcon} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherIcon: value }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bot">bot</SelectItem><SelectItem value="message-circle">message-circle</SelectItem><SelectItem value="sparkles">sparkles</SelectItem></SelectContent></Select></div>
+                  <div className="grid gap-2"><Label>Posición launcher</Label><Select value={chatbotBuilderDraft.launcherPosition} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherPosition: value as LauncherPosition }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="right">Derecha</SelectItem><SelectItem value="left">Izquierda</SelectItem></SelectContent></Select></div>
+                  <div className="grid gap-2"><Label>Tamaño launcher</Label><Select value={chatbotBuilderDraft.launcherSize} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherSize: value as LauncherSize }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="compact">Compacto</SelectItem><SelectItem value="standard">Estándar</SelectItem><SelectItem value="large">Grande</SelectItem></SelectContent></Select></div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-2"><Label>Label producto</Label><Input value={chatbotBuilderDraft.productLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, productLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Placeholder producto</Label><Input value={chatbotBuilderDraft.productPlaceholder} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, productPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2 md:col-span-2"><Label>Label mensaje</Label><Input value={chatbotBuilderDraft.messageLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messageLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2 md:col-span-2"><Label>Placeholder mensaje</Label><Input value={chatbotBuilderDraft.messagePlaceholder} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messagePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex min-h-0 flex-col overflow-hidden bg-[linear-gradient(180deg,#ffffff,#f6fffb)] p-6">
+              <div className="rounded-[26px] border border-emerald-200 bg-emerald-50/70 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Preview en vivo</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">Puedes alternar entre launcher compacto, launcher visible o panel abierto, y también entre desktop y mobile.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[{ value: 'floating', label: 'Launcher' }, { value: 'compact', label: 'Compacto' }, { value: 'expanded', label: 'Abierto' }].map((mode) => (
+                      <button key={mode.value} type="button" onClick={() => setChatbotBuilderPreviewMode(mode.value as ChatbotPreviewMode)} className={chatbotBuilderPreviewMode === mode.value ? 'rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600'}>{mode.label}</button>
+                    ))}
+                    {[{ value: 'desktop', label: 'Desktop' }, { value: 'mobile', label: 'Mobile' }].map((viewport) => (
+                      <button key={viewport.value} type="button" onClick={() => setChatbotBuilderPreviewViewport(viewport.value as ChatbotPreviewViewport)} className={chatbotBuilderPreviewViewport === viewport.value ? 'rounded-full border border-sky-300 bg-sky-100 px-3 py-1 text-[11px] font-semibold text-sky-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600'}>{viewport.label}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
+                {renderChatbotPreview(chatbotBuilderDraft, { mode: chatbotBuilderPreviewMode, viewport: chatbotBuilderPreviewViewport })}
+              </div>
+              <DialogFooter className="mt-5 border-t border-slate-100 pt-5">
+                <Button variant="outline" className="rounded-xl" onClick={() => setChatbotBuilderDraft(getChatbotBuilderState(selectedSettings))} disabled={savingChatbotBuilder}>
+                  Revertir
+                </Button>
+                <Button variant="outline" className="rounded-xl" onClick={() => setChatbotBuilderModalOpen(false)} disabled={savingChatbotBuilder}>
+                  Cerrar
+                </Button>
+                <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => void saveSelectedChatbotBuilder()} disabled={savingChatbotBuilder}>
+                  {savingChatbotBuilder ? 'Guardando...' : 'Guardar constructor'}
+                </Button>
+              </DialogFooter>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={webFormBuilderModalOpen} onOpenChange={setWebFormBuilderModalOpen}>
+        <DialogContent className="h-[92vh] max-h-[92vh] max-w-7xl overflow-hidden rounded-[30px] border-sky-200 bg-white/98 p-0 shadow-[0_28px_80px_-42px_rgba(14,165,233,0.35)]">
+          <div className="grid h-full min-h-0 gap-0 xl:grid-cols-[0.95fr_1.05fr]">
+            <div className="min-h-0 overflow-y-auto border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,.18),transparent_30%),linear-gradient(180deg,#f8fbff,#ffffff)] p-6 xl:border-b-0 xl:border-r">
+              <DialogHeader>
+                <DialogTitle>Editor visual del formulario web</DialogTitle>
+                <DialogDescription>El usuario edita en un modal dedicado y cada ajuste se refleja al instante en el preview del iframe.</DialogDescription>
+              </DialogHeader>
+
+              <div className="mt-5 space-y-4 pr-1">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-2 md:col-span-2"><Label>Título</Label><Input value={webFormBuilderDraft.formTitle} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formTitle: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2 md:col-span-2"><Label>Descripción</Label><Textarea value={webFormBuilderDraft.formDescription} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formDescription: e.target.value }))} rows={3} className="rounded-2xl" /></div>
+                  <div className="grid gap-2"><Label>CTA</Label><Input value={webFormBuilderDraft.submitCtaLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, submitCtaLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Altura iframe</Label><Input value={webFormBuilderDraft.iframeHeight} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, iframeHeight: normalizePixelValue(e.target.value, '840') }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2 md:col-span-2"><Label>Mensaje de éxito</Label><Textarea value={webFormBuilderDraft.formSuccessMessage} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formSuccessMessage: e.target.value }))} rows={2} className="rounded-2xl" /></div>
+                  <div className="grid gap-2 md:col-span-2"><Label>Dominios permitidos</Label><Textarea value={webFormBuilderDraft.allowedDomains} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, allowedDomains: e.target.value }))} rows={2} className="rounded-2xl" placeholder="cliente.com, demo.cliente.com" /></div>
+                </div>
+
+                <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
+                  <div className="grid gap-2"><Label>Color acento</Label><Input value={webFormBuilderDraft.accentColor} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, accentColor: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Color CTA</Label><Input value={webFormBuilderDraft.formCtaColor} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formCtaColor: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Fondo general</Label><Input value={webFormBuilderDraft.pageBackgroundColor} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, pageBackgroundColor: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Fondo interno</Label><Input value={webFormBuilderDraft.backgroundColor} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, backgroundColor: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Radio tarjeta</Label><Input value={webFormBuilderDraft.formCardRadius} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formCardRadius: normalizePixelValue(e.target.value, '28') }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Radio inputs</Label><Input value={webFormBuilderDraft.formInputRadius} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formInputRadius: normalizePixelValue(e.target.value, '16') }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Espaciado</Label><Input value={webFormBuilderDraft.formFieldSpacing} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formFieldSpacing: normalizePixelValue(e.target.value, '14') }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Padding interno</Label><Input value={webFormBuilderDraft.formPadding} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formPadding: normalizePixelValue(e.target.value, '24') }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Tamaño fuente</Label><Input value={webFormBuilderDraft.formFontSize} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formFontSize: normalizePixelValue(e.target.value, '14') }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Fuente CSS</Label><Input value={webFormBuilderDraft.fontFamily} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, fontFamily: e.target.value }))} className="h-11 rounded-xl" /></div>
+                </div>
+
+                <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2 xl:grid-cols-3">
+                  {[
+                    { key: 'showNameField', label: 'Nombre' },
+                    { key: 'showEmailField', label: 'Correo' },
+                    { key: 'showPhoneField', label: 'Teléfono' },
+                    { key: 'showCompanyField', label: 'Empresa' },
+                    { key: 'showCityField', label: 'Ciudad' },
+                    { key: 'showProductField', label: 'Producto' },
+                    { key: 'showMessageField', label: 'Mensaje' },
+                  ].map((field) => (
+                    <div key={field.key} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                      <span className="text-sm font-medium text-slate-900">{field.label}</span>
+                      <Switch checked={Boolean(webFormBuilderDraft[field.key as keyof WebFormBuilderState])} onCheckedChange={(checked) => setWebFormBuilderDraft((current) => ({ ...current, [field.key]: checked }))} />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-2"><Label>Label nombre</Label><Input value={webFormBuilderDraft.nameLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, nameLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Placeholder nombre</Label><Input value={webFormBuilderDraft.namePlaceholder} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, namePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Label correo</Label><Input value={webFormBuilderDraft.emailLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, emailLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Placeholder correo</Label><Input value={webFormBuilderDraft.emailPlaceholder} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, emailPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Label teléfono</Label><Input value={webFormBuilderDraft.phoneLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, phoneLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Placeholder teléfono</Label><Input value={webFormBuilderDraft.phonePlaceholder} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, phonePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Label empresa</Label><Input value={webFormBuilderDraft.companyLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, companyLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Placeholder empresa</Label><Input value={webFormBuilderDraft.companyPlaceholder} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, companyPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Label ciudad</Label><Input value={webFormBuilderDraft.cityLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, cityLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Placeholder ciudad</Label><Input value={webFormBuilderDraft.cityPlaceholder} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, cityPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Label producto</Label><Input value={webFormBuilderDraft.productLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, productLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2"><Label>Placeholder producto</Label><Input value={webFormBuilderDraft.productPlaceholder} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, productPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2 md:col-span-2"><Label>Label mensaje</Label><Input value={webFormBuilderDraft.messageLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, messageLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-2 md:col-span-2"><Label>Placeholder mensaje</Label><Input value={webFormBuilderDraft.messagePlaceholder} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, messagePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex min-h-0 flex-col overflow-hidden bg-[linear-gradient(180deg,#ffffff,#f8fbff)] p-6">
+              <div className="rounded-[26px] border border-sky-200 bg-sky-50/70 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">Preview en vivo</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">Lo que ves aquí es la versión real que quedará disponible en la URL pública y en el iframe del canal.</p>
+              </div>
+              <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
+                {renderWebFormPreview(webFormBuilderDraft, { maxWidthClassName: 'max-w-2xl', outerPaddingClassName: 'p-4', titleClassName: 'text-lg', messageMinHeight: 112 })}
+              </div>
+              <DialogFooter className="mt-5 border-t border-slate-100 pt-5">
+                <Button variant="outline" className="rounded-xl" onClick={() => setWebFormBuilderDraft(getWebFormBuilderState(selectedSettings))} disabled={savingWebFormBuilder}>
+                  Revertir
+                </Button>
+                <Button variant="outline" className="rounded-xl" onClick={() => setWebFormBuilderModalOpen(false)} disabled={savingWebFormBuilder}>
+                  Cerrar
+                </Button>
+                <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => void saveSelectedWebFormBuilder()} disabled={savingWebFormBuilder}>
+                  {savingWebFormBuilder ? 'Guardando...' : 'Guardar constructor'}
+                </Button>
+              </DialogFooter>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="h-[92vh] max-h-[92vh] max-w-5xl overflow-hidden rounded-[30px] border-slate-200 bg-white/98 p-0 shadow-[0_28px_80px_-42px_rgba(15,23,42,0.45)]">
@@ -1594,6 +2516,56 @@ export function CrmIntegrationsClient() {
                         </div>
                       </div>
                     ) : null}
+                    {createIsPublicWebForm ? (
+                      <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-3">
+                        <p className="text-[11px] uppercase tracking-[0.14em] text-sky-700">Iframe visible al crear</p>
+                        <p className="mt-2 text-sm leading-6 text-sky-900">{wizardPreview.iframeUrl}</p>
+                        <div className="mt-3 flex gap-2">
+                          {[
+                            { value: 'desktop', label: 'Desktop' },
+                            { value: 'mobile', label: 'Mobile' },
+                          ].map((viewport) => (
+                            <button
+                              key={viewport.value}
+                              type="button"
+                              onClick={() => setWizardChatPreviewViewport(viewport.value as ChatbotPreviewViewport)}
+                              className={wizardChatPreviewViewport === viewport.value ? 'rounded-full border border-sky-300 bg-sky-100 px-3 py-1 text-[11px] font-semibold text-sky-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600'}
+                            >
+                              {viewport.label}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="mt-4 overflow-hidden rounded-[26px] border border-sky-200 p-4 shadow-sm" style={{ background: `radial-gradient(circle at top, rgba(14,165,233,0.16), transparent 34%), linear-gradient(180deg, ${createForm.pageBackgroundColor} 0%, ${createForm.backgroundColor} 100%)` }}>
+                          <div className="mx-auto" style={{ maxWidth: wizardChatPreviewViewport === 'mobile' ? 340 : 620, fontFamily: createForm.fontFamily }}>
+                            <div className="border border-slate-200 bg-white shadow-[0_28px_70px_-34px_rgba(15,23,42,.32)]" style={{ borderRadius: `${normalizePixelValue(createForm.formCardRadius, '28')}px`, padding: `${normalizePixelValue(createForm.formPadding, '24')}px`, backgroundColor: createForm.backgroundColor }}>
+                              <div className="flex items-center gap-3">
+                                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: createForm.accentColor, boxShadow: `0 0 0 6px ${createForm.accentColor}22` }} />
+                                <div>
+                                  <p className="text-lg font-semibold text-slate-950">{createForm.formTitle}</p>
+                                  <p className="mt-1 text-sm leading-6 text-slate-500">{createForm.formDescription}</p>
+                                </div>
+                              </div>
+                              <div className="mt-5 grid" style={{ gap: `${normalizePixelValue(createForm.formFieldSpacing, '14')}px`, fontSize: `${normalizePixelValue(createForm.formFontSize, '14')}px` }}>
+                                {createForm.showNameField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: createForm.formLabelColor }}>{createForm.nameLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, border: `1px solid ${createForm.formInputBorderColor}`, backgroundColor: createForm.formInputBackgroundColor, color: createForm.formInputTextColor }}>{createForm.namePlaceholder}</div></div> : null}
+                                <div className="grid gap-3 md:grid-cols-2">
+                                  {createForm.showEmailField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: createForm.formLabelColor }}>{createForm.emailLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, border: `1px solid ${createForm.formInputBorderColor}`, backgroundColor: createForm.formInputBackgroundColor, color: createForm.formInputTextColor }}>{createForm.emailPlaceholder}</div></div> : null}
+                                  {createForm.showPhoneField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: createForm.formLabelColor }}>{createForm.phoneLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, border: `1px solid ${createForm.formInputBorderColor}`, backgroundColor: createForm.formInputBackgroundColor, color: createForm.formInputTextColor }}>{createForm.phonePlaceholder}</div></div> : null}
+                                </div>
+                                {(createForm.showCompanyField || createForm.showCityField) ? <div className="grid gap-3 md:grid-cols-2">{createForm.showCompanyField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: createForm.formLabelColor }}>{createForm.companyLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, border: `1px solid ${createForm.formInputBorderColor}`, backgroundColor: createForm.formInputBackgroundColor, color: createForm.formInputTextColor }}>{createForm.companyPlaceholder}</div></div> : null}{createForm.showCityField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: createForm.formLabelColor }}>{createForm.cityLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, border: `1px solid ${createForm.formInputBorderColor}`, backgroundColor: createForm.formInputBackgroundColor, color: createForm.formInputTextColor }}>{createForm.cityPlaceholder}</div></div> : null}</div> : null}
+                                {createForm.showProductField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: createForm.formLabelColor }}>{createForm.productLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, border: `1px solid ${createForm.formInputBorderColor}`, backgroundColor: createForm.formInputBackgroundColor, color: createForm.formInputTextColor }}>{createForm.productPlaceholder}</div></div> : null}
+                                {createForm.showMessageField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: createForm.formLabelColor }}>{createForm.messageLabel}</p><div className="px-4 py-3" style={{ minHeight: 112, borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, border: `1px solid ${createForm.formInputBorderColor}`, backgroundColor: createForm.formInputBackgroundColor, color: createForm.formInputTextColor }}>{createForm.messagePlaceholder}</div></div> : null}
+                                <div className="px-4 py-3 text-center text-sm font-semibold" style={{ borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, background: `linear-gradient(135deg, ${createForm.formCtaColor}, ${createForm.accentColor})`, color: createForm.formCtaTextColor }}>{createForm.submitCtaLabel}</div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid gap-2 text-[11px] text-slate-600 sm:grid-cols-3">
+                          <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2"><p className="font-semibold text-slate-900">Campos activos</p><p className="mt-1">{[createForm.showNameField && 'Nombre', createForm.showEmailField && 'Correo', createForm.showPhoneField && 'Teléfono', createForm.showCompanyField && 'Empresa', createForm.showCityField && 'Ciudad', createForm.showProductField && 'Producto', createForm.showMessageField && 'Mensaje'].filter(Boolean).join(' · ')}</p></div>
+                          <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2"><p className="font-semibold text-slate-900">Tipografía</p><p className="mt-1">{normalizePixelValue(createForm.formFontSize, '14')}px · {createForm.fontFamily}</p></div>
+                          <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2"><p className="font-semibold text-slate-900">Forma</p><p className="mt-1">Radio {normalizePixelValue(createForm.formInputRadius, '16')}px · Gap {normalizePixelValue(createForm.formFieldSpacing, '14')}px</p></div>
+                        </div>
+                      </div>
+                    ) : null}
                     {[{ title: 'Configurado', items: wizardPreview.configured }, { title: 'Demo', items: wizardPreview.demo }, { title: 'Producción', items: wizardPreview.production }].map((group) => (
                       <div key={group.title}>
                         <p className="text-sm font-semibold text-slate-900">{group.title}</p>
@@ -1663,11 +2635,11 @@ export function CrmIntegrationsClient() {
                       <div className="rounded-2xl border border-sky-200 bg-sky-50/80 p-4 text-sm text-sky-900 md:col-span-2">
                         <p className="font-semibold">Conexión Meta en esta versión</p>
                         <p className="mt-2 leading-6">
-                          Este canal ya soporta webhook inbound y, en WhatsApp Cloud, también envío saliente por Graph API.
-                          La autorización automática con ventana de Meta, callback OAuth e intercambio de tokens aún no está implementada en este módulo.
+                          Este canal ya soporta OAuth real con Meta, callback seguro, sincronización de páginas, cuentas de Instagram y assets de WhatsApp.
+                          Además, el inbox puede operar salida productiva en WhatsApp Cloud y salida básica por Meta Send API en Messenger e Instagram cuando el canal ya quedó sincronizado.
                         </p>
                         <p className="mt-2 leading-6">
-                          Por ahora la activación se hace con credenciales manuales: Account ID, Page ID o Phone Number ID, token de verificación y, para WhatsApp Cloud, Access Token.
+                          Si el cliente todavía no autoriza OAuth, puedes seguir cargando manualmente Account ID, Page ID o Phone Number ID, token de verificación y, para WhatsApp Cloud, Access Token.
                         </p>
                       </div>
                     ) : null}
@@ -1707,8 +2679,9 @@ export function CrmIntegrationsClient() {
 
                 {!createIsBridge && createForm.provider === 'WEB_FORM' ? (
                   <div className="grid gap-2 md:col-span-2">
-                    <Label>Selector del formulario</Label>
-                    <Input value={createForm.formSelector} onChange={(e) => setCreateForm((prev) => ({ ...prev, formSelector: e.target.value }))} className="h-11 rounded-xl" />
+                    <Label>Selector del formulario legacy</Label>
+                    <Input value={createForm.formSelector} onChange={(e) => setCreateForm((prev) => ({ ...prev, formSelector: e.target.value }))} className="h-11 rounded-xl" placeholder="#lead-form" />
+                    <p className="text-xs leading-5 text-slate-500">Se conserva para sitios que ya tienen su propio formulario. El modo recomendado ahora es iframe público hospedado por SGDigital.</p>
                   </div>
                 ) : null}
 
@@ -1726,6 +2699,194 @@ export function CrmIntegrationsClient() {
                       </SelectContent>
                     </Select>
                   </div>
+                ) : null}
+
+                {createIsPublicWebForm ? (
+                  <>
+                    <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">Publicar formulario por iframe</p>
+                        <p className="text-xs text-slate-500">Genera una URL pública y un iframe listo para pegar en el sitio del cliente.</p>
+                      </div>
+                      <Switch checked={createForm.publicEmbedEnabled} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, publicEmbedEnabled: checked }))} />
+                    </div>
+                    <div className="grid gap-2 md:col-span-2">
+                      <Label>Título del formulario</Label>
+                      <Input value={createForm.formTitle} onChange={(e) => setCreateForm((prev) => ({ ...prev, formTitle: e.target.value }))} className="h-11 rounded-xl" />
+                    </div>
+                    <div className="grid gap-2 md:col-span-2">
+                      <Label>Descripción comercial</Label>
+                      <Textarea value={createForm.formDescription} onChange={(e) => setCreateForm((prev) => ({ ...prev, formDescription: e.target.value }))} rows={3} className="rounded-2xl" />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Altura del iframe</Label>
+                      <Input value={createForm.iframeHeight} onChange={(e) => setCreateForm((prev) => ({ ...prev, iframeHeight: normalizePixelValue(e.target.value, '840') }))} className="h-11 rounded-xl" placeholder="840" />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Texto del CTA</Label>
+                      <Input value={createForm.submitCtaLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, submitCtaLabel: e.target.value }))} className="h-11 rounded-xl" />
+                    </div>
+                    <div className="grid gap-2 md:col-span-2">
+                      <Label>Mensaje de éxito</Label>
+                      <Textarea value={createForm.formSuccessMessage} onChange={(e) => setCreateForm((prev) => ({ ...prev, formSuccessMessage: e.target.value }))} rows={2} className="rounded-2xl" />
+                    </div>
+                    <div className="grid gap-2 md:col-span-2">
+                      <Label>Dominios permitidos</Label>
+                      <Textarea value={createForm.allowedDomains} onChange={(e) => setCreateForm((prev) => ({ ...prev, allowedDomains: e.target.value }))} rows={3} className="rounded-2xl" placeholder="cliente.com, demo.cliente.com" />
+                    </div>
+                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:col-span-2 md:grid-cols-2">
+                      <div className="md:col-span-2">
+                        <p className="text-sm font-semibold text-slate-900">Estilo visual del formulario</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">Ajusta look, radios, spacing, tipografía y CTA sin escribir código.</p>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Color de acento</Label>
+                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <input type="color" value={createForm.accentColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, accentColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar color de acento" />
+                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.accentColor }} />
+                          <Input value={createForm.accentColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, accentColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Color CTA</Label>
+                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <input type="color" value={createForm.formCtaColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formCtaColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar color CTA" />
+                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.formCtaColor }} />
+                          <Input value={createForm.formCtaColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formCtaColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Fondo general</Label>
+                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <input type="color" value={createForm.pageBackgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, pageBackgroundColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar fondo general" />
+                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.pageBackgroundColor }} />
+                          <Input value={createForm.pageBackgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, pageBackgroundColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Fondo interno</Label>
+                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <input type="color" value={createForm.backgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, backgroundColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar fondo interno" />
+                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.backgroundColor }} />
+                          <Input value={createForm.backgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, backgroundColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Color labels</Label>
+                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <input type="color" value={createForm.formLabelColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formLabelColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar color labels" />
+                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.formLabelColor }} />
+                          <Input value={createForm.formLabelColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formLabelColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Color borde inputs</Label>
+                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <input type="color" value={createForm.formInputBorderColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formInputBorderColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar borde inputs" />
+                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.formInputBorderColor }} />
+                          <Input value={createForm.formInputBorderColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formInputBorderColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Fondo inputs</Label>
+                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <input type="color" value={createForm.formInputBackgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formInputBackgroundColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar fondo inputs" />
+                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.formInputBackgroundColor }} />
+                          <Input value={createForm.formInputBackgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formInputBackgroundColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Texto inputs</Label>
+                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <input type="color" value={createForm.formInputTextColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formInputTextColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar texto inputs" />
+                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.formInputTextColor }} />
+                          <Input value={createForm.formInputTextColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formInputTextColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Texto CTA</Label>
+                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <input type="color" value={createForm.formCtaTextColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formCtaTextColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar texto CTA" />
+                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.formCtaTextColor }} />
+                          <Input value={createForm.formCtaTextColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formCtaTextColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Fuente CSS</Label>
+                        <Input value={createForm.fontFamily} onChange={(e) => setCreateForm((prev) => ({ ...prev, fontFamily: e.target.value }))} className="h-11 rounded-xl" />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Tamaño base</Label>
+                        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <Input value={createForm.formFontSize} onChange={(e) => setCreateForm((prev) => ({ ...prev, formFontSize: normalizePixelValue(e.target.value, '14') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
+                          <span className="text-xs font-medium text-slate-500">px</span>
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Radio tarjeta</Label>
+                        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <Input value={createForm.formCardRadius} onChange={(e) => setCreateForm((prev) => ({ ...prev, formCardRadius: normalizePixelValue(e.target.value, '28') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
+                          <span className="text-xs font-medium text-slate-500">px</span>
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Radio inputs</Label>
+                        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <Input value={createForm.formInputRadius} onChange={(e) => setCreateForm((prev) => ({ ...prev, formInputRadius: normalizePixelValue(e.target.value, '16') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
+                          <span className="text-xs font-medium text-slate-500">px</span>
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Espaciado entre campos</Label>
+                        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <Input value={createForm.formFieldSpacing} onChange={(e) => setCreateForm((prev) => ({ ...prev, formFieldSpacing: normalizePixelValue(e.target.value, '14') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
+                          <span className="text-xs font-medium text-slate-500">px</span>
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Padding interno</Label>
+                        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <Input value={createForm.formPadding} onChange={(e) => setCreateForm((prev) => ({ ...prev, formPadding: normalizePixelValue(e.target.value, '24') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
+                          <span className="text-xs font-medium text-slate-500">px</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:col-span-2 md:grid-cols-2 xl:grid-cols-3">
+                      {[
+                        { key: 'showNameField', label: 'Nombre' },
+                        { key: 'showEmailField', label: 'Correo' },
+                        { key: 'showPhoneField', label: 'Teléfono' },
+                        { key: 'showCompanyField', label: 'Empresa' },
+                        { key: 'showCityField', label: 'Ciudad' },
+                        { key: 'showProductField', label: 'Producto' },
+                        { key: 'showMessageField', label: 'Mensaje' },
+                      ].map((field) => (
+                        <div key={field.key} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{field.label}</p>
+                            <p className="text-xs text-slate-500">Mostrar en el formulario</p>
+                          </div>
+                          <Switch checked={Boolean(createForm[field.key as keyof ChannelFormState])} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, [field.key]: checked }))} />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid gap-3 md:col-span-2 md:grid-cols-2">
+                      <div className="grid gap-2"><Label>Label nombre</Label><Input value={createForm.nameLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, nameLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Placeholder nombre</Label><Input value={createForm.namePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, namePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Label correo</Label><Input value={createForm.emailLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, emailLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Placeholder correo</Label><Input value={createForm.emailPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, emailPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Label teléfono</Label><Input value={createForm.phoneLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, phoneLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Placeholder teléfono</Label><Input value={createForm.phonePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, phonePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Label empresa</Label><Input value={createForm.companyLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, companyLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Placeholder empresa</Label><Input value={createForm.companyPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, companyPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Label ciudad</Label><Input value={createForm.cityLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, cityLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Placeholder ciudad</Label><Input value={createForm.cityPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, cityPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Label producto</Label><Input value={createForm.productLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, productLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Placeholder producto</Label><Input value={createForm.productPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, productPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Label mensaje</Label><Input value={createForm.messageLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, messageLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Placeholder mensaje</Label><Input value={createForm.messagePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, messagePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                    </div>
+                  </>
                 ) : null}
 
                 {createIsChatbot ? (
@@ -1959,6 +3120,13 @@ export function CrmIntegrationsClient() {
                             <p className="text-[11px] uppercase tracking-[0.14em] text-emerald-700">Iframe del chatbot</p>
                             <p className="mt-2 break-all text-sm font-semibold text-emerald-900">{wizardPreview.iframeUrl}</p>
                             <p className="mt-2 text-xs text-emerald-800">Se habilita automáticamente al crear el canal y luego también queda visible en la vista previa lateral del canal.</p>
+                          </div>
+                        ) : null}
+                        {createIsPublicWebForm ? (
+                          <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-3 sm:col-span-2">
+                            <p className="text-[11px] uppercase tracking-[0.14em] text-sky-700">Iframe del formulario</p>
+                            <p className="mt-2 break-all text-sm font-semibold text-sky-900">{wizardPreview.iframeUrl}</p>
+                            <p className="mt-2 text-xs text-sky-800">Quedará disponible al crear el canal para copiar la URL pública o el iframe desde la pestaña Formulario.</p>
                           </div>
                         ) : null}
                       </div>

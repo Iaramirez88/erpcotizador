@@ -16,6 +16,12 @@ type WebFormSnippetArgs = {
   selector?: string
 }
 
+type WebFormIframeArgs = {
+  baseUrl: string
+  channelId: string
+  height?: string
+}
+
 type ChatbotSnippetArgs = {
   baseUrl: string
   channelId: string
@@ -35,6 +41,7 @@ type ChatbotIframeArgs = {
   baseUrl: string
   channelId: string
   height?: string
+  floatingLauncherEnabled?: boolean
 }
 
 type GmailSnippetArgs = {
@@ -99,6 +106,7 @@ export function buildWebFormSnippet(args: WebFormSnippetArgs) {
       telefono: data.get('telefono') || data.get('phone') || '',
       empresaNombre: data.get('empresa') || data.get('company') || '',
       ciudad: data.get('ciudad') || '',
+      producto: data.get('producto') || data.get('product') || '',
       mensaje: data.get('mensaje') || data.get('message') || '',
       landingPageUrl: window.location.href,
       referrerUrl: document.referrer || '',
@@ -142,6 +150,23 @@ export function buildWebFormSnippet(args: WebFormSnippetArgs) {
   });
 })();
 </script>`
+}
+
+export function buildWebFormEmbedUrl(baseUrl: string, channelId: string) {
+  return `${baseUrl}/form/${channelId}`
+}
+
+export function buildWebFormIframeSnippet(args: WebFormIframeArgs) {
+  const height = (args.height || '840').replace(/[^0-9]/g, '') || '840'
+  const src = buildWebFormEmbedUrl(args.baseUrl, args.channelId)
+
+  return `<iframe
+  src="${src}"
+  title="Formulario CRM SGDigital"
+  loading="lazy"
+  style="width:100%;min-height:${height}px;border:0;border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.16);background:#ffffff;"
+  referrerpolicy="strict-origin-when-cross-origin"
+></iframe>`
 }
 
 export function buildChatbotSnippet(args: ChatbotSnippetArgs) {
@@ -244,21 +269,58 @@ export function buildChatbotEmbedUrl(baseUrl: string, channelId: string) {
 
 export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   const height = (args.height || '720').replace(/[^0-9]/g, '') || '720'
+  const collapsedHeight = args.floatingLauncherEnabled ? '108' : height
   const src = buildChatbotEmbedUrl(args.baseUrl, args.channelId)
+  const iframeId = `sgd-chatbot-iframe-${args.channelId}`
 
   return `<iframe
+  id="${iframeId}"
   src="${src}"
   title="Chatbot CRM SGDigital"
   loading="lazy"
-  style="width:100%;max-width:420px;height:${height}px;border:0;border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.16);background:#ffffff;"
+  style="width:100%;max-width:420px;height:${collapsedHeight}px;border:0;border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.16);background:transparent;overflow:hidden;transition:height .28s ease, box-shadow .28s ease;"
   referrerpolicy="strict-origin-when-cross-origin"
-></iframe>`
+></iframe>
+<script>
+(function () {
+  const iframe = document.getElementById('${iframeId}');
+  if (!iframe) return;
+
+  const channelId = '${args.channelId}';
+  const defaultHeight = ${height};
+  const collapsedHeight = ${collapsedHeight};
+
+  function applyHeight(nextHeight) {
+    const safeHeight = Math.max(collapsedHeight, Math.min(Number(nextHeight) || defaultHeight, defaultHeight));
+    iframe.style.height = safeHeight + 'px';
+    iframe.style.background = safeHeight <= collapsedHeight + 4 ? 'transparent' : '#ffffff';
+    iframe.style.boxShadow = safeHeight <= collapsedHeight + 4
+      ? 'none'
+      : '0 24px 60px rgba(15,23,42,.16)';
+  }
+
+  function handleMessage(event) {
+    if (event.source !== iframe.contentWindow) return;
+    const data = event.data || {};
+    if (data.type !== 'sgd-chatbot-embed-resize') return;
+    if (data.channelId !== channelId) return;
+    applyHeight(data.height);
+  }
+
+  window.addEventListener('message', handleMessage);
+  iframe.addEventListener('load', function () {
+    window.setTimeout(function () {
+      applyHeight(collapsedHeight);
+    }, 180);
+  });
+})();
+</script>`
 }
 
 export function buildGmailAppsScriptSnippet(args: GmailSnippetArgs) {
   const labelName = args.labelName || 'CRM/Prospectos'
   return `function forwardLeadsToCrm() {
-  const endpoint = '${args.baseUrl}/api/crm/captures/web-form';
+  const endpoint = '${args.baseUrl}/api/crm/captures/bridge';
   const channelId = '${args.channelId}';
   const token = '${args.token}';
   const label = GmailApp.getUserLabelByName('${labelName}');
@@ -272,12 +334,11 @@ export function buildGmailAppsScriptSnippet(args: GmailSnippetArgs) {
     const payload = {
       channelId,
       token,
-      nombre: message.getFrom(),
-      email: message.getReplyTo() || message.getFrom(),
-      mensaje: message.getPlainBody().slice(0, 5000),
-      empresaNombre: '',
-      ciudad: '',
-      landingPageUrl: 'gmail://inbox',
+      fromName: message.getFrom(),
+      fromAddress: message.getReplyTo() || message.getFrom(),
+      message: message.getPlainBody().slice(0, 5000),
+      subject: message.getSubject(),
+      eventAt: new Date().toISOString(),
       payload: {
         subject: message.getSubject(),
         threadId: thread.getId(),
@@ -298,16 +359,19 @@ export function buildGmailAppsScriptSnippet(args: GmailSnippetArgs) {
 }`
 }
 
-export function buildOutlookPayloadExample(channelId: string, token: string) {
+export function buildOutlookPayloadExample(baseUrl: string, channelId: string, token: string) {
   return JSON.stringify({
+    endpoint: `${baseUrl}/api/crm/captures/bridge`,
     channelId,
     token,
-    nombre: '{{from.displayName}}',
-    email: '{{from.address}}',
+    fromName: '{{from.displayName}}',
+    fromAddress: '{{from.address}}',
     telefono: '',
     empresaNombre: '',
     ciudad: '',
-    mensaje: '{{bodyPreview}}',
+    message: '{{bodyPreview}}',
+    subject: '{{subject}}',
+    eventAt: '{{receivedDateTime}}',
     payload: {
       subject: '{{subject}}',
       messageId: '{{id}}',

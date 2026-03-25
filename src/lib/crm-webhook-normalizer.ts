@@ -30,8 +30,19 @@ export type WebhookInboundMapping = {
   sourceLabel: string
 }
 
+export type WebhookMessageStatusUpdate = {
+  eventAt: Date
+  providerMessageId: string | null
+  externalThreadId: string | null
+  status: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED'
+  rawPayloadJson: Prisma.InputJsonValue
+  errorMessage: string | null
+  applyToConversationBefore?: boolean
+}
+
 export type NormalizedWebhookPayload = {
   events: NormalizedWebhookInboundEvent[]
+  statusUpdates: WebhookMessageStatusUpdate[]
   ignoredReason: string | null
 }
 
@@ -81,10 +92,11 @@ function normalizeWhatsAppMetaPayload(provider: CrmChannelProvider, body: Record
   const object = normalizeString(body.object).toLowerCase()
   const entries = Array.isArray(body.entry) ? body.entry : []
   if (provider !== 'WHATSAPP_CLOUD' && provider !== 'WHATSAPP_SANDBOX' && object !== 'whatsapp_business_account') {
-    return { events: [], ignoredReason: null }
+    return { events: [], statusUpdates: [], ignoredReason: null }
   }
 
   const events: NormalizedWebhookInboundEvent[] = []
+  const statusUpdates: WebhookMessageStatusUpdate[] = []
   let ignoredReason: string | null = null
 
   for (const entryValue of entries) {
@@ -96,10 +108,29 @@ function normalizeWhatsAppMetaPayload(provider: CrmChannelProvider, body: Record
       const value = parseJsonObject(change.value)
       const contacts = Array.isArray(value.contacts) ? value.contacts.map((item) => parseJsonObject(item)) : []
       const messages = Array.isArray(value.messages) ? value.messages.map((item) => parseJsonObject(item)) : []
-      const statuses = Array.isArray(value.statuses) ? value.statuses : []
+      const statuses = Array.isArray(value.statuses) ? value.statuses.map((item) => parseJsonObject(item)) : []
 
       if (!messages.length && statuses.length) {
         ignoredReason = 'Evento recibido solo con estados de entrega o lectura.'
+      }
+
+      for (const statusRow of statuses) {
+        const normalizedStatus = normalizeWhatsAppStatus(statusRow)
+        if (!normalizedStatus) continue
+        statusUpdates.push({
+          eventAt: normalizedStatus.eventAt,
+          providerMessageId: normalizedStatus.providerMessageId,
+          externalThreadId: normalizedStatus.externalThreadId,
+          status: normalizedStatus.status,
+          rawPayloadJson: {
+            object: body.object ?? null,
+            entry,
+            change,
+            value,
+            status: statusRow,
+          } as Prisma.InputJsonValue,
+          errorMessage: normalizedStatus.errorMessage,
+        })
       }
 
       for (const message of messages) {
@@ -146,7 +177,7 @@ function normalizeWhatsAppMetaPayload(provider: CrmChannelProvider, body: Record
     }
   }
 
-  return { events, ignoredReason }
+  return { events, statusUpdates, ignoredReason }
 }
 
 function normalizeMessengerMetaPayload(provider: CrmChannelProvider, body: Record<string, unknown>): NormalizedWebhookPayload {
@@ -154,10 +185,11 @@ function normalizeMessengerMetaPayload(provider: CrmChannelProvider, body: Recor
   const entries = Array.isArray(body.entry) ? body.entry : []
   const isMetaMessagingProvider = provider === 'MESSENGER' || provider === 'FACEBOOK_PAGE' || provider === 'INSTAGRAM_DM'
   if (!isMetaMessagingProvider && object !== 'page' && object !== 'instagram') {
-    return { events: [], ignoredReason: null }
+    return { events: [], statusUpdates: [], ignoredReason: null }
   }
 
   const events: NormalizedWebhookInboundEvent[] = []
+  const statusUpdates: WebhookMessageStatusUpdate[] = []
   let ignoredReason: string | null = null
 
   for (const entryValue of entries) {
@@ -170,7 +202,36 @@ function normalizeMessengerMetaPayload(provider: CrmChannelProvider, body: Recor
       const recipient = parseJsonObject(messaging.recipient)
       const message = parseJsonObject(messaging.message)
       const postback = parseJsonObject(messaging.postback)
+      const delivery = parseJsonObject(messaging.delivery)
+      const read = parseJsonObject(messaging.read)
       const isEcho = Boolean(message.is_echo)
+      const senderId = normalizeString(sender.id)
+      const recipientId = normalizeString(recipient.id)
+
+      const deliveryMids = Array.isArray(delivery.mids) ? delivery.mids.map((item) => normalizeString(item)).filter(Boolean) : []
+      const deliveryEventAt = parseMaybeDate(delivery.watermark || messaging.timestamp || entry.time)
+      for (const mid of deliveryMids) {
+        statusUpdates.push({
+          eventAt: deliveryEventAt,
+          providerMessageId: mid,
+          externalThreadId: senderId || recipientId || null,
+          status: 'DELIVERED',
+          rawPayloadJson: { object: body.object ?? null, entry, messaging, delivery } as Prisma.InputJsonValue,
+          errorMessage: null,
+        })
+      }
+
+      if (Object.keys(read).length > 0) {
+        statusUpdates.push({
+          eventAt: parseMaybeDate(read.watermark || messaging.timestamp || entry.time),
+          providerMessageId: null,
+          externalThreadId: senderId || recipientId || null,
+          status: 'READ',
+          rawPayloadJson: { object: body.object ?? null, entry, messaging, read } as Prisma.InputJsonValue,
+          errorMessage: null,
+          applyToConversationBefore: true,
+        })
+      }
 
       if (isEcho) {
         ignoredReason = 'Evento echo saliente ignorado.'
@@ -178,7 +239,6 @@ function normalizeMessengerMetaPayload(provider: CrmChannelProvider, body: Recor
       }
 
       const normalized = normalizeMetaMessagingEvent(message, postback)
-      const senderId = normalizeString(sender.id)
       const eventAt = parseMaybeDate(messaging.timestamp || entry.time)
 
       if (!senderId && !normalized.providerMessageId) continue
@@ -223,7 +283,7 @@ function normalizeMessengerMetaPayload(provider: CrmChannelProvider, body: Recor
     }
   }
 
-  return { events, ignoredReason }
+  return { events, statusUpdates, ignoredReason }
 }
 
 function normalizeSimplifiedPayload(provider: CrmChannelProvider, body: Record<string, unknown>): NormalizedWebhookPayload {
@@ -244,7 +304,7 @@ function normalizeSimplifiedPayload(provider: CrmChannelProvider, body: Record<s
   const messageText = normalizeString(body.message || body.text || payload.message || payload.text || payload.body)
 
   if (!externalThreadId && !phone && !email && !providerMessageId) {
-    return { events: [], ignoredReason: 'Webhook sin identificador conversacional.' }
+    return { events: [], statusUpdates: [], ignoredReason: 'Webhook sin identificador conversacional.' }
   }
 
   return {
@@ -279,7 +339,36 @@ function normalizeSimplifiedPayload(provider: CrmChannelProvider, body: Record<s
         } as Prisma.InputJsonValue,
       },
     ],
+    statusUpdates: [],
     ignoredReason: null,
+  }
+}
+
+function normalizeWhatsAppStatus(statusRow: JsonObject): {
+  eventAt: Date
+  providerMessageId: string | null
+  externalThreadId: string | null
+  status: 'SENT' | 'DELIVERED' | 'READ' | 'FAILED'
+  errorMessage: string | null
+} | null {
+  const rawStatus = normalizeString(statusRow.status).toLowerCase()
+  const providerMessageId = normalizeString(statusRow.id)
+  const externalThreadId = normalizeString(statusRow.recipient_id)
+  const eventAt = parseMaybeDate(statusRow.timestamp)
+  const errors = Array.isArray(statusRow.errors) ? statusRow.errors.map((item) => parseJsonObject(item)) : []
+  const errorMessage = normalizeString(errors[0]?.title || errors[0]?.message)
+
+  switch (rawStatus) {
+    case 'sent':
+      return { eventAt, providerMessageId: providerMessageId || null, externalThreadId: externalThreadId || null, status: 'SENT', errorMessage: null }
+    case 'delivered':
+      return { eventAt, providerMessageId: providerMessageId || null, externalThreadId: externalThreadId || null, status: 'DELIVERED', errorMessage: null }
+    case 'read':
+      return { eventAt, providerMessageId: providerMessageId || null, externalThreadId: externalThreadId || null, status: 'READ', errorMessage: null }
+    case 'failed':
+      return { eventAt, providerMessageId: providerMessageId || null, externalThreadId: externalThreadId || null, status: 'FAILED', errorMessage: errorMessage || 'WhatsApp reportó fallo de entrega.' }
+    default:
+      return null
   }
 }
 

@@ -1,10 +1,97 @@
 import { NextResponse } from 'next/server'
+import { Prisma, type CrmMessageStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createInboundArtifacts, getConnectionToken } from '@/lib/crm-omnichannel'
 import { normalizeString } from '@/lib/crm'
 import { getWebhookInboundMapping, normalizeWebhookInboundPayload } from '@/lib/crm-webhook-normalizer'
 
 export const runtime = 'nodejs'
+
+const MESSAGE_STATUS_RANK: Record<CrmMessageStatus, number> = {
+  RECEIVED: 10,
+  QUEUED: 20,
+  SENT: 30,
+  DELIVERED: 40,
+  READ: 50,
+  FAILED: 5,
+}
+
+function shouldAdvanceMessageStatus(current: CrmMessageStatus, next: CrmMessageStatus) {
+  if (current === 'READ') return false
+  if (current === 'FAILED' && next !== 'READ') return false
+  return MESSAGE_STATUS_RANK[next] > MESSAGE_STATUS_RANK[current]
+}
+
+async function applyMessageStatusUpdate(args: {
+  client: Prisma.TransactionClient
+  channelId: string
+  update: ReturnType<typeof normalizeWebhookInboundPayload>['statusUpdates'][number]
+}) {
+  let affected = 0
+
+  if (args.update.providerMessageId) {
+    const rows = await args.client.crmMessage.findMany({
+      where: {
+        providerMessageId: args.update.providerMessageId,
+        conversation: { channelConnectionId: args.channelId },
+      },
+      select: { id: true, status: true },
+    })
+
+    for (const row of rows) {
+      if (!shouldAdvanceMessageStatus(row.status, args.update.status)) continue
+      await args.client.crmMessage.update({
+        where: { id: row.id },
+        data: {
+          status: args.update.status,
+          payloadJson: {
+            statusWebhook: args.update.rawPayloadJson,
+            errorMessage: args.update.errorMessage,
+          },
+        },
+      })
+      affected += 1
+    }
+  }
+
+  if (!affected && args.update.applyToConversationBefore && args.update.externalThreadId) {
+    const conversation = await args.client.crmConversation.findFirst({
+      where: {
+        channelConnectionId: args.channelId,
+        externalThreadId: args.update.externalThreadId,
+      },
+      select: { id: true },
+    })
+
+    if (!conversation) return 0
+
+    const rows = await args.client.crmMessage.findMany({
+      where: {
+        conversationId: conversation.id,
+        direction: 'OUTBOUND',
+        occurredAt: { lte: args.update.eventAt },
+      },
+      select: { id: true, status: true },
+    })
+
+    for (const row of rows) {
+      if (!shouldAdvanceMessageStatus(row.status, args.update.status)) continue
+      await args.client.crmMessage.update({
+        where: { id: row.id },
+        data: {
+          status: args.update.status,
+          payloadJson: {
+            statusWebhook: args.update.rawPayloadJson,
+            errorMessage: args.update.errorMessage,
+          },
+        },
+      })
+      affected += 1
+    }
+  }
+
+  return affected
+}
 
 type RouteContext = {
   params: Promise<{ id: string }>
@@ -66,9 +153,12 @@ export async function POST(request: Request, context: RouteContext) {
 
     const normalized = normalizeWebhookInboundPayload({ provider: channel.provider, body })
     const mapping = getWebhookInboundMapping(channel.provider)
-    const latestEventAt = normalized.events.at(-1)?.eventAt ?? new Date()
+    const latestEventAt = [
+      ...normalized.events.map((item) => item.eventAt),
+      ...normalized.statusUpdates.map((item) => item.eventAt),
+    ].sort((left, right) => left.getTime() - right.getTime()).at(-1) ?? new Date()
 
-    if (!normalized.events.length) {
+    if (!normalized.events.length && !normalized.statusUpdates.length) {
       await prisma.crmChannelConnection.update({
         where: { id: channel.id },
         data: { lastWebhookAt: latestEventAt, lastErrorAt: null, lastErrorMessage: null },
@@ -85,6 +175,15 @@ export async function POST(request: Request, context: RouteContext) {
 
     const results = await prisma.$transaction(async (tx) => {
       const processed = [] as Array<Awaited<ReturnType<typeof createInboundArtifacts>>>
+      let processedStatuses = 0
+
+      for (const update of normalized.statusUpdates) {
+        processedStatuses += await applyMessageStatusUpdate({
+          client: tx,
+          channelId: channel.id,
+          update,
+        })
+      }
 
       for (const event of normalized.events) {
         const artifacts = await createInboundArtifacts({
@@ -124,20 +223,21 @@ export async function POST(request: Request, context: RouteContext) {
         data: { lastWebhookAt: latestEventAt, lastErrorAt: null, lastErrorMessage: null },
       })
 
-      return processed
+      return { processed, processedStatuses }
     })
 
-    const first = results[0]
+    const first = results.processed[0]
 
     return NextResponse.json({
       success: true,
-      processed: results.length,
+      processed: results.processed.length,
+      processedStatuses: results.processedStatuses,
       data: {
         leadId: first?.lead.id ?? null,
         conversationId: first?.conversation.id ?? null,
         messageId: first?.message.id ?? null,
         captureId: first?.capture.id ?? null,
-        records: results.map((result) => ({
+        records: results.processed.map((result) => ({
           leadId: result.lead.id,
           conversationId: result.conversation.id,
           messageId: result.message.id,

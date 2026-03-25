@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createInboundArtifacts, getConnectionToken, parseJsonObject } from '@/lib/crm-omnichannel'
 import { normalizeString } from '@/lib/crm'
+import { extractHostFromUrl, getPublicWebFormSettings, isPublicWebFormDomainAllowed } from '@/lib/crm-public-web-form'
 
 export const runtime = 'nodejs'
 
@@ -29,17 +30,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Canal no disponible para capturas' }, { status: 409 })
     }
 
-    const expectedToken = getConnectionToken(channel.settingsJson, channel.verifyToken)
-    if (expectedToken && providedToken !== expectedToken) {
-      return NextResponse.json({ error: 'Token inválido para captura web' }, { status: 403 })
-    }
-
     const eventAt = new Date()
     const payload = parseJsonObject(body?.payload)
     const nombre = normalizeString(body?.nombre || payload.nombre || payload.name)
     const email = normalizeString(body?.email || payload.email).toLowerCase()
     const phone = normalizeString(body?.telefono || body?.celular || payload.telefono || payload.celular || payload.phone)
-    const messageText = normalizeString(body?.mensaje || body?.message || payload.mensaje || payload.message)
+    const product = normalizeString(body?.producto || body?.product || payload.producto || payload.product)
+    const baseMessageText = normalizeString(body?.mensaje || body?.message || payload.mensaje || payload.message)
     const empresaNombre = normalizeString(body?.empresaNombre || payload.empresaNombre || payload.company)
     const ciudad = normalizeString(body?.ciudad || payload.ciudad || payload.city)
     const document = normalizeString(body?.documento || payload.documento)
@@ -50,6 +47,20 @@ export async function POST(request: Request) {
     const utmCampaign = normalizeString(body?.utmCampaign || payload.utmCampaign)
     const utmContent = normalizeString(body?.utmContent || payload.utmContent)
     const utmTerm = normalizeString(body?.utmTerm || payload.utmTerm)
+    const messageText = [product ? `Producto: ${product}` : '', baseMessageText]
+      .filter(Boolean)
+      .join('\n\n')
+
+    const expectedToken = getConnectionToken(channel.settingsJson, channel.verifyToken)
+    const publicSettings = getPublicWebFormSettings(channel.settingsJson)
+    const candidateHost = extractHostFromUrl(referrerUrl || landingPageUrl)
+    const publicEmbedAllowed = publicSettings.publicEmbedEnabled && isPublicWebFormDomainAllowed({
+      allowedDomains: publicSettings.allowedDomains,
+      candidateHost,
+    })
+    if (expectedToken && providedToken !== expectedToken && !publicEmbedAllowed) {
+      return NextResponse.json({ error: 'Token inválido para captura web' }, { status: 403 })
+    }
 
     if (!nombre && !email && !phone) {
       return NextResponse.json({ error: 'Se requiere al menos nombre, email o teléfono' }, { status: 400 })
@@ -94,6 +105,7 @@ export async function POST(request: Request) {
           empresaNombre,
           ciudad,
           document,
+          product,
           messageText,
           utmSource,
           utmMedium,
