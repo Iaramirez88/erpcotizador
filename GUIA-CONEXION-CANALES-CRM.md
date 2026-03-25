@@ -744,3 +744,6 @@ La base actual ya soporta de forma real:
 6. Bridges reutilizables para TikTok y YouTube.
 
 Y todo termina sobre la misma base multiempresa del CRM, sin crear modulos paralelos para cada canal.
+
+
+docker compose -f docker-compose.prod.yml run --rm migrate npx prisma migrate resolve --rolled-back 20260325120000_add_crm_plan_tier

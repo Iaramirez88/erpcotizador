@@ -1,5 +1,6 @@
 "use client"
 
+import { BookOpen, ChevronDown, ChevronUp, Layers3, Package2, Sparkles } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useI18n } from "@/components/providers/i18n-provider"
 import { Button } from "@/components/ui/button"
@@ -453,6 +454,7 @@ export function LitografiaQuoteDialog(props: {
   const [attemptedSubmit, setAttemptedSubmit] = useState(false)
 
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [showRunQtyDetails, setShowRunQtyDetails] = useState(false)
 
   const [customFields, setCustomFields] = useState<CustomField[]>([])
 
@@ -489,6 +491,7 @@ export function LitografiaQuoteDialog(props: {
     }
 
     setShowAdvanced(false)
+    setShowRunQtyDetails(false)
 
     const prev = prevQuoteModeRef.current
     if (prev !== quoteMode) {
@@ -1593,6 +1596,32 @@ export function LitografiaQuoteDialog(props: {
     return computeEditorialSheetsPreview(editorialInner, pliegos)
   }, [editorialEnabled, editorialSplitCalc?.innerPliegosPorUnidad, computeEditorialSheetsPreview, editorialInner])
 
+  const editorialCoverPreset = useMemo(
+    () => resolveSizeOption(String(editorialCover.formatoKey || "").trim()),
+    [editorialCover.formatoKey, resolveSizeOption]
+  )
+
+  const editorialInnerPreset = useMemo(
+    () => resolveSizeOption(String(editorialInner.formatoKey || "").trim()),
+    [editorialInner.formatoKey, resolveSizeOption]
+  )
+
+  const editorialCoverPaper = useMemo(
+    () => papers.find((p) => p.id === String(editorialCover.paperId || "").trim()) || null,
+    [editorialCover.paperId, papers]
+  )
+
+  const editorialInnerPaper = useMemo(
+    () => papers.find((p) => p.id === String(editorialInner.paperId || "").trim()) || null,
+    [editorialInner.paperId, papers]
+  )
+
+  const editorialTotalCustomerPages = useMemo(() => {
+    const innerPages = Math.max(0, Math.trunc(parseFloat(editorialTotalPaginas) || 0))
+    const coverPages = Math.max(0, Math.trunc(parseFloat(editorialPaginasPortadaContraportada) || 0))
+    return innerPages + coverPages
+  }, [editorialPaginasPortadaContraportada, editorialTotalPaginas])
+
   useEffect(() => {
     if (!props.open) return
     if (!selectedEditorialProductoKey) return
@@ -2622,7 +2651,7 @@ export function LitografiaQuoteDialog(props: {
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className="max-w-5xl p-0">
+      <DialogContent className="w-[96vw] max-w-[1700px] p-0">
         <LitografiaPaperRequestDialog
           open={paperRequestOpen}
           onOpenChange={setPaperRequestOpen}
@@ -2662,7 +2691,7 @@ export function LitografiaQuoteDialog(props: {
                 </TabsTrigger>
               </TabsList>
             </Tabs>
-            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)] gap-4">
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,8fr)_minmax(360px,4fr)] gap-4">
               <Card className={BOX_BLUR}>
                 <CardHeader>
                   <CardTitle>{t('printshopQuote.sections.parameters')}</CardTitle>
@@ -2671,21 +2700,6 @@ export function LitografiaQuoteDialog(props: {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2">
-                    <div className="mt-2">
-                      <Label>{t('printshopQuote.fields.nameRef')}</Label>
-                      <Input
-                        className={INPUT_COMPACT}
-                        value={titulo}
-                        onChange={(e) => setTitulo(e.target.value)}
-                        placeholder={t('printshopQuote.placeholders.nameRef')}
-                      />
-                      <p className={HELP_TEXT}>
-                        Identifica el ítem en la cotización.
-                      </p>
-                    </div>
-                  </div>
-
                   <div className="sm:col-span-2 flex items-center justify-end">
                     <Button
                       type="button"
@@ -2697,11 +2711,34 @@ export function LitografiaQuoteDialog(props: {
                     </Button>
                   </div>
 
-                  {
-                    <>
-                      <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                          <Label className={requiredLabelClass(validation.missingCantidad)}>{t('printshopQuote.fields.runQty')}</Label>
+                          <Label>{t('printshopQuote.fields.nameRef')}</Label>
+                          <Input
+                            className={INPUT_COMPACT}
+                            value={titulo}
+                            onChange={(e) => setTitulo(e.target.value)}
+                            placeholder={t('printshopQuote.placeholders.nameRef')}
+                          />
+                          <p className={HELP_TEXT}>
+                            Identifica el ítem en la cotización.
+                          </p>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <Label className={requiredLabelClass(validation.missingCantidad)}>{t('printshopQuote.fields.runQty')}</Label>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 text-[10px] text-muted-foreground"
+                              onClick={() => setShowRunQtyDetails((value) => !value)}
+                            >
+                              {showRunQtyDetails ? 'Ocultar detalle' : 'Ver detalle'}
+                              {showRunQtyDetails ? <ChevronUp className="ml-1 h-3 w-3" /> : <ChevronDown className="ml-1 h-3 w-3" />}
+                            </Button>
+                          </div>
                           <Input
                             className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingCantidad)}`}
                             type="number"
@@ -2709,56 +2746,60 @@ export function LitografiaQuoteDialog(props: {
                             value={cantidad}
                             onChange={(e) => setCantidad(e.target.value)}
                           />
-                          {runQtyHelp?.line1 ? (
-                            <p className={HELP_TEXT}>
-                              {runQtyHelp.line1}
-                            </p>
-                          ) : null}
-                          {runQtyHelp?.line2 ? (
-                            <p className={HELP_TEXT}>
-                              {runQtyHelp.line2}
-                            </p>
-                          ) : null}
-                          {runQtyHelp?.line3 ? (
-                            <p className={HELP_TEXT}>
-                              {runQtyHelp.line3}
-                            </p>
-                          ) : null}
-                          <p className={HELP_TEXT}>
-                            Este valor es la cantidad final que verá el cliente en la cotización, no las hojas que se le piden al impresor.
-                          </p>
-                          {!editorialEnabled ? (
-                            (isAdmin ? calc : fallbackCalc) && (isAdmin ? calc : fallbackCalc)!.papelModo === "pliego" ? (
-                              <p className={HELP_TEXT}>
-                                Internamente se imprimen {(isAdmin ? calc : fallbackCalc)!.hojasMaquinaNecesarias ?? "—"} hojas de máquina para entregar {Math.max(0, Math.trunc(parseFloat(cantidad) || 0))} piezas al cliente; eso consume {(isAdmin ? calc : fallbackCalc)!.pliegosNecesarios ?? "—"} pliegos de papel ({(isAdmin ? calc : fallbackCalc)!.piezasPorPliego ?? "—"} pzas finales/hoja).
-                              </p>
-                            ) : (
-                              <p className={HELP_TEXT}>
-                                El papel requerido se calcula aparte según tamaño + papel (pliegos = ⌈(piezas + sobrante) / pzasPorPliego⌉).
-                              </p>
-                            )
-                          ) : (
-                            editorialCoverSheetsPreview || editorialInnerSheetsPreview ? (
-                              <>
+                          {showRunQtyDetails ? (
+                            <div className="mt-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+                              {runQtyHelp?.line1 ? (
                                 <p className={HELP_TEXT}>
-                                  Papel requerido (pliegos) no cambia el tiraje: se deduce por imposición.
+                                  {runQtyHelp.line1}
                                 </p>
-                                {editorialInnerSheetsPreview ? (
-                                  <p className={HELP_TEXT}>
-                                    Internas: piezas = tiraje ({editorialInnerSheetsPreview.runQty}) × pliegos/unidad ({editorialInnerSheetsPreview.pliegosPorUnidad}) = {editorialInnerSheetsPreview.qtyForCompute}. Pliegos = ⌈(piezas + sobrante {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobranteFinal || 0))}) / {editorialInnerSheetsPreview.piezasPorPliego ?? "—"}⌉ = {editorialInnerSheetsPreview.pliegosNecesarios ?? "—"}.
-                                  </p>
-                                ) : null}
-                                {editorialCoverSheetsPreview ? (
-                                  <p className={HELP_TEXT}>
-                                    Portada: piezas = tiraje ({editorialCoverSheetsPreview.runQty}) × pliegos/unidad ({editorialCoverSheetsPreview.pliegosPorUnidad}) = {editorialCoverSheetsPreview.qtyForCompute}. Pliegos = ⌈(piezas + sobrante {Math.max(0, Math.trunc(editorialCoverSheetsPreview.sobranteFinal || 0))}) / {editorialCoverSheetsPreview.piezasPorPliego ?? "—"}⌉ = {editorialCoverSheetsPreview.pliegosNecesarios ?? "—"}.
-                                  </p>
-                                ) : null}
+                              ) : null}
+                              {runQtyHelp?.line2 ? (
                                 <p className={HELP_TEXT}>
-                                  Total pliegos = portada {editorialCoverSheetsPreview?.pliegosNecesarios ?? 0} + internas {editorialInnerSheetsPreview?.pliegosNecesarios ?? 0}.
+                                  {runQtyHelp.line2}
                                 </p>
-                              </>
-                            ) : null
-                          )}
+                              ) : null}
+                              {runQtyHelp?.line3 ? (
+                                <p className={HELP_TEXT}>
+                                  {runQtyHelp.line3}
+                                </p>
+                              ) : null}
+                              <p className={HELP_TEXT}>
+                                Este valor es la cantidad final que verá el cliente en la cotización, no las hojas que se le piden al impresor.
+                              </p>
+                              {!editorialEnabled ? (
+                                (isAdmin ? calc : fallbackCalc) && (isAdmin ? calc : fallbackCalc)!.papelModo === "pliego" ? (
+                                  <p className={HELP_TEXT}>
+                                    Internamente se imprimen {(isAdmin ? calc : fallbackCalc)!.hojasMaquinaNecesarias ?? "—"} hojas de máquina para entregar {Math.max(0, Math.trunc(parseFloat(cantidad) || 0))} piezas al cliente; eso consume {(isAdmin ? calc : fallbackCalc)!.pliegosNecesarios ?? "—"} pliegos de papel ({(isAdmin ? calc : fallbackCalc)!.piezasPorPliego ?? "—"} pzas finales/hoja).
+                                  </p>
+                                ) : (
+                                  <p className={HELP_TEXT}>
+                                    El papel requerido se calcula aparte según tamaño + papel (pliegos = ⌈(piezas + sobrante) / pzasPorPliego⌉).
+                                  </p>
+                                )
+                              ) : (
+                                editorialCoverSheetsPreview || editorialInnerSheetsPreview ? (
+                                  <>
+                                    <p className={HELP_TEXT}>
+                                      Papel requerido (pliegos) no cambia el tiraje: se deduce por imposición.
+                                    </p>
+                                    {editorialInnerSheetsPreview ? (
+                                      <p className={HELP_TEXT}>
+                                        Internas: piezas = tiraje ({editorialInnerSheetsPreview.runQty}) × pliegos/unidad ({editorialInnerSheetsPreview.pliegosPorUnidad}) = {editorialInnerSheetsPreview.qtyForCompute}. Pliegos = ⌈(piezas + sobrante {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobranteFinal || 0))}) / {editorialInnerSheetsPreview.piezasPorPliego ?? "—"}⌉ = {editorialInnerSheetsPreview.pliegosNecesarios ?? "—"}.
+                                      </p>
+                                    ) : null}
+                                    {editorialCoverSheetsPreview ? (
+                                      <p className={HELP_TEXT}>
+                                        Portada: piezas = tiraje ({editorialCoverSheetsPreview.runQty}) × pliegos/unidad ({editorialCoverSheetsPreview.pliegosPorUnidad}) = {editorialCoverSheetsPreview.qtyForCompute}. Pliegos = ⌈(piezas + sobrante {Math.max(0, Math.trunc(editorialCoverSheetsPreview.sobranteFinal || 0))}) / {editorialCoverSheetsPreview.piezasPorPliego ?? "—"}⌉ = {editorialCoverSheetsPreview.pliegosNecesarios ?? "—"}.
+                                      </p>
+                                    ) : null}
+                                    <p className={HELP_TEXT}>
+                                      Total pliegos = portada {editorialCoverSheetsPreview?.pliegosNecesarios ?? 0} + internas {editorialInnerSheetsPreview?.pliegosNecesarios ?? 0}.
+                                    </p>
+                                  </>
+                                ) : null
+                              )}
+                            </div>
+                          ) : null}
                         </div>
 
                         {!editorialMode ? (
@@ -2810,7 +2851,7 @@ export function LitografiaQuoteDialog(props: {
                         ) : null}
                       </div>
 
-                      {editorialMode ? (
+                      {editorialMode && (
                         <div className="sm:col-span-2">
                           <Label className={requiredLabelClass(validation.missingEditorialTemplate)}>Libros / Cartillas / Revistas</Label>
                           <SearchableNativeSelect
@@ -2830,8 +2871,170 @@ export function LitografiaQuoteDialog(props: {
                             </p>
                           ) : null}
 
-                          {editorialEnabled ? (
-                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {editorialEnabled && (
+                          <div className="mt-3 space-y-4">
+                            <div className="rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-4">
+                              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                <div>
+                                  <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                                    <Sparkles className="h-3.5 w-3.5" />
+                                    Guía rápida editorial
+                                  </div>
+                                  <h3 className="mt-3 text-base font-semibold text-slate-950">
+                                    {selectedEditorialOption?.label || "Producto editorial"}
+                                  </h3>
+                                  <p className="mt-1 text-sm text-slate-600">
+                                    Primero define la estructura global del libro o cartilla. Después ajustas portada e internas con una referencia visual ya calculada.
+                                  </p>
+                                </div>
+                                {selectedEditorialOption ? (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditorialTotalPaginas(String(selectedEditorialOption.totalPaginas || 32))
+                                      setEditorialPaginasPortadaContraportada(String(selectedEditorialOption.paginasPortadaContraportada || 0))
+                                      setEditorialCartasPorPlancha(String(selectedEditorialOption.cartasPorPlancha || 2))
+                                      setEditorialPaginasPorPliego(String(selectedEditorialOption.paginasPorPliego || 4))
+                                    }}
+                                  >
+                                    Usar valores sugeridos
+                                  </Button>
+                                ) : null}
+                              </div>
+
+                              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+                                <div className="rounded-lg border border-sky-100 bg-white p-3 shadow-sm">
+                                  <div className="flex items-center gap-2 text-sky-700">
+                                    <BookOpen className="h-4 w-4" />
+                                    <p className="text-xs font-semibold uppercase tracking-[0.14em]">Producto</p>
+                                  </div>
+                                  <p className="mt-2 text-sm font-semibold text-slate-950">{selectedEditorialOption?.label || "Sin plantilla"}</p>
+                                  <p className="mt-1 text-xs text-slate-600">Plantilla base para libros, cartillas o revistas.</p>
+                                </div>
+                                <div className="rounded-lg border border-sky-100 bg-white p-3 shadow-sm">
+                                  <div className="flex items-center gap-2 text-sky-700">
+                                    <Package2 className="h-4 w-4" />
+                                    <p className="text-xs font-semibold uppercase tracking-[0.14em]">Tiraje</p>
+                                  </div>
+                                  <p className="mt-2 text-sm font-semibold text-slate-950">{Math.max(0, Math.trunc(parseFloat(cantidad) || 0))} unidades</p>
+                                  <p className="mt-1 text-xs text-slate-600">Cantidad final que recibirá el cliente.</p>
+                                </div>
+                                <div className="rounded-lg border border-sky-100 bg-white p-3 shadow-sm">
+                                  <div className="flex items-center gap-2 text-sky-700">
+                                    <Layers3 className="h-4 w-4" />
+                                    <p className="text-xs font-semibold uppercase tracking-[0.14em]">Páginas</p>
+                                  </div>
+                                  <p className="mt-2 text-sm font-semibold text-slate-950">{editorialTotalCustomerPages} páginas totales</p>
+                                  <p className="mt-1 text-xs text-slate-600">Portada {Math.max(0, Math.trunc(parseFloat(editorialPaginasPortadaContraportada) || 0))} + internas {Math.max(0, Math.trunc(parseFloat(editorialTotalPaginas) || 0))}.</p>
+                                </div>
+                                <div className="rounded-lg border border-sky-100 bg-white p-3 shadow-sm">
+                                  <div className="flex items-center gap-2 text-sky-700">
+                                    <Sparkles className="h-4 w-4" />
+                                    <p className="text-xs font-semibold uppercase tracking-[0.14em]">Imposición</p>
+                                  </div>
+                                  <p className="mt-2 text-sm font-semibold text-slate-950">{Math.max(1, Math.trunc(parseFloat(editorialPaginasPorPliego) || 0))} páginas por pliego</p>
+                                  <p className="mt-1 text-xs text-slate-600">Portada {editorialSplitCalc?.coverPliegosPorUnidad ?? 0} e internas {editorialSplitCalc?.innerPliegosPorUnidad ?? 0} por unidad.</p>
+                                </div>
+                              </div>
+
+                              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                                <div>
+                                  <Label>Páginas internas</Label>
+                                  <Input
+                                    className={INPUT_COMPACT}
+                                    type="number"
+                                    step="1"
+                                    min={1}
+                                    value={editorialTotalPaginas}
+                                    onChange={(e) => setEditorialTotalPaginas(e.target.value)}
+                                  />
+                                  <p className={HELP_TEXT}>Solo internas, sin portada ni contraportada.</p>
+                                </div>
+                                <div>
+                                  <Label>Portada + contraportada</Label>
+                                  <Input
+                                    className={INPUT_COMPACT}
+                                    type="number"
+                                    step="1"
+                                    min={0}
+                                    value={editorialPaginasPortadaContraportada}
+                                    onChange={(e) => setEditorialPaginasPortadaContraportada(e.target.value)}
+                                  />
+                                  <p className={HELP_TEXT}>Normalmente 2 o 4 páginas según el proyecto.</p>
+                                </div>
+                                <div>
+                                  <Label>Páginas por pliego</Label>
+                                  <Input
+                                    className={INPUT_COMPACT}
+                                    type="number"
+                                    step="1"
+                                    min={1}
+                                    value={editorialPaginasPorPliego}
+                                    onChange={(e) => setEditorialPaginasPorPliego(e.target.value)}
+                                  />
+                                  <p className={HELP_TEXT}>Ejemplo común: cuarto = 4 páginas por pliego.</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {(editorialCoverPreset && editorialCoverPaper) || (editorialInnerPreset && editorialInnerPaper) ? (
+                              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                                {editorialCoverPreset && editorialCoverPaper ? (
+                                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                    <div className="mb-3 flex items-start justify-between gap-3">
+                                      <div>
+                                        <p className="text-sm font-semibold text-slate-950">Guía visual de portada</p>
+                                        <p className="text-xs text-slate-600">Visualiza papel base, hoja activa e imposición antes de tocar costos.</p>
+                                      </div>
+                                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+                                        Portada
+                                      </span>
+                                    </div>
+                                    <LitografiaCutGuide
+                                      parentWidthCm={editorialCoverPaper.pliegoWidthCm}
+                                      parentHeightCm={editorialCoverPaper.pliegoHeightCm}
+                                      finalWidthCm={editorialCoverPreset.widthCm}
+                                      finalHeightCm={editorialCoverPreset.heightCm}
+                                      finalLabel={`${editorialCoverPreset.nombre} ${formatCm(editorialCoverPreset.widthCm)}x${formatCm(editorialCoverPreset.heightCm)} cm`}
+                                      printSheetLabel={profiles.find((p) => p.id === editorialCover.planchaProfileId)?.nombre}
+                                      runQty={Math.max(0, Math.trunc(parseFloat(cantidad) || 0))}
+                                      extraQty={Math.max(0, Math.trunc(parseFloat(String(editorialCover.sobranteMinimo || sobranteMinimo)) || 0))}
+                                      machineWidthCm={Number(profiles.find((p) => p.id === editorialCover.planchaProfileId)?.anchoUtilCm) || 0}
+                                      machineHeightCm={Number(profiles.find((p) => p.id === editorialCover.planchaProfileId)?.altoUtilCm) || 0}
+                                    />
+                                  </div>
+                                ) : null}
+                                {editorialInnerPreset && editorialInnerPaper ? (
+                                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                    <div className="mb-3 flex items-start justify-between gap-3">
+                                      <div>
+                                        <p className="text-sm font-semibold text-slate-950">Guía visual de internas</p>
+                                        <p className="text-xs text-slate-600">Entiende piezas, pliegos y papel real de internas antes de ajustar perfiles.</p>
+                                      </div>
+                                      <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                                        Internas
+                                      </span>
+                                    </div>
+                                    <LitografiaCutGuide
+                                      parentWidthCm={editorialInnerPaper.pliegoWidthCm}
+                                      parentHeightCm={editorialInnerPaper.pliegoHeightCm}
+                                      finalWidthCm={editorialInnerPreset.widthCm}
+                                      finalHeightCm={editorialInnerPreset.heightCm}
+                                      finalLabel={`${editorialInnerPreset.nombre} ${formatCm(editorialInnerPreset.widthCm)}x${formatCm(editorialInnerPreset.heightCm)} cm`}
+                                      printSheetLabel={profiles.find((p) => p.id === editorialInner.planchaProfileId)?.nombre}
+                                      runQty={Math.max(0, Math.trunc(parseFloat(cantidad) || 0))}
+                                      extraQty={Math.max(0, Math.trunc(parseFloat(String(editorialInner.sobranteMinimo || sobranteMinimo)) || 0))}
+                                      machineWidthCm={Number(profiles.find((p) => p.id === editorialInner.planchaProfileId)?.anchoUtilCm) || 0}
+                                      machineHeightCm={Number(profiles.find((p) => p.id === editorialInner.planchaProfileId)?.altoUtilCm) || 0}
+                                    />
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="sm:col-span-2">
                               <p className="text-xs text-muted-foreground">
                                 Estructura editorial. Abajo configuras costos por Portada e Internas.
@@ -2920,18 +3123,11 @@ export function LitografiaQuoteDialog(props: {
 
                             {showAdvanced ? (
                               <>
-                                <div>
-                                  <Label>Páginas por pliego (según tamaño de impresión)</Label>
-                                  <Input
-                                    className={INPUT_COMPACT}
-                                    type="number"
-                                    step="1"
-                                    min={1}
-                                    value={editorialPaginasPorPliego}
-                                    onChange={(e) => setEditorialPaginasPorPliego(e.target.value)}
-                                  />
-                                  <p className={HELP_TEXT}>
-                                    Cuántas páginas caben en 1 pliego para ese tamaño (ej. medio pliego ≈ 2, cuarto ≈ 4).
+                                <div className="rounded-md border border-dashed border-sky-200 bg-sky-50/60 p-3">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">Imposición global</p>
+                                  <p className="mt-2 text-sm font-medium text-slate-900">{Math.max(1, Math.trunc(parseFloat(editorialPaginasPorPliego) || 0))} páginas por pliego</p>
+                                  <p className="mt-1 text-[11px] text-slate-600">
+                                    Este dato se configura arriba en la guía rápida para evitar duplicidad y mantener la estructura editorial visible.
                                   </p>
                                 </div>
                                 <div className="sm:col-span-2">
@@ -3006,16 +3202,11 @@ export function LitografiaQuoteDialog(props: {
 
                                   <div>
                                     <Label>Portada + contraportada (páginas)</Label>
-                                    <Input
-                                      className={INPUT_COMPACT}
-                                      type="number"
-                                      step="1"
-                                      min={0}
-                                      value={editorialPaginasPortadaContraportada}
-                                      onChange={(e) => setEditorialPaginasPortadaContraportada(e.target.value)}
-                                    />
+                                    <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-900">
+                                      {Math.max(0, Math.trunc(parseFloat(editorialPaginasPortadaContraportada) || 0))} páginas
+                                    </div>
                                     <p className={HELP_TEXT}>
-                                      Pliegos/unidad = ⌈páginas / páginasPorPliego⌉.
+                                      Defínelas arriba en la guía rápida. Aquí solo ves su efecto en portada y contraportada.
                                     </p>
                                     {editorialCoverSheetsPreview ? (
                                       <p className={HELP_TEXT}>
@@ -3370,16 +3561,11 @@ export function LitografiaQuoteDialog(props: {
 
                                   <div>
                                     <Label>Páginas internas</Label>
-                                    <Input
-                                      className={INPUT_COMPACT}
-                                      type="number"
-                                      step="1"
-                                      min={1}
-                                      value={editorialTotalPaginas}
-                                      onChange={(e) => setEditorialTotalPaginas(e.target.value)}
-                                    />
+                                    <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-900">
+                                      {Math.max(0, Math.trunc(parseFloat(editorialTotalPaginas) || 0))} páginas
+                                    </div>
                                     <p className={HELP_TEXT}>
-                                      Solo internas (sin portada/contraportada). Pliegos/unidad = ⌈páginas / páginasPorPliego⌉.
+                                      Defínelas arriba en la guía rápida. Aquí ves su impacto sobre pliegos y papel de internas.
                                     </p>
                                     {editorialInnerSheetsPreview ? (
                                       <p className={HELP_TEXT}>
@@ -3678,9 +3864,10 @@ export function LitografiaQuoteDialog(props: {
                               </div>
                             </div>
                           </div>
-                          ) : null}
+                            </div>
+                          )}
                         </div>
-                      ) : null}
+                      )}
 
                       {!editorialMode ? (
                       <div className="sm:col-span-2">
@@ -4478,10 +4665,8 @@ export function LitografiaQuoteDialog(props: {
                             )}
                           </div>
                         </div>
-                      ) : null}
-                    </>
-                  }
-                </CardContent>
+                          ) : null}
+                        </CardContent>
               </Card>
 
               <div className="space-y-4">
