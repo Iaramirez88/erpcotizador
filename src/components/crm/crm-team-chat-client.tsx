@@ -83,7 +83,10 @@ function threadTitle(thread: ThreadSummary | ThreadDetail | null) {
   if ('participants' in thread && Array.isArray(thread.participants)) {
     return thread.participants.find(Boolean)?.user.name || thread.participants.find(Boolean)?.user.email || 'Chat directo'
   }
-  return thread.counterpart?.name || thread.counterpart?.email || 'Chat directo'
+  if ('counterpart' in thread) {
+    return thread.counterpart?.name || thread.counterpart?.email || 'Chat directo'
+  }
+  return 'Chat directo'
 }
 
 function renderAttachments(attachments: ChatAttachment[] | undefined) {
