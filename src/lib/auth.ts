@@ -11,11 +11,13 @@
 import type { NextAuthConfig } from "next-auth"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import CredentialsProvider from "next-auth/providers/credentials"
+import GoogleProvider from "next-auth/providers/google"
 import bcrypt from "bcryptjs"
 import { prisma } from "./prisma"
 import type { JWT } from "next-auth/jwt"
 import type { Session, User } from "next-auth"
 import { coerceEffectiveUserRole } from "@/lib/super-admin"
+import { requireEmpresaIdForUser } from "@/lib/rbac"
 
 const ONE_HOUR = 60 * 60
 const ONE_DAY = 24 * ONE_HOUR
@@ -125,7 +127,16 @@ export const authOptions: NextAuthConfig = {
           remember,
         }
       }
-    })
+    }),
+    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+      ? [
+          GoogleProvider({
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            allowDangerousEmailAccountLinking: true,
+          }),
+        ]
+      : []),
   ],
 
   // Configuración de páginas personalizadas
@@ -231,11 +242,24 @@ export const authOptions: NextAuthConfig = {
   },
 
   events: {
-    async signIn({ user }) {
+    async signIn({ user, account }) {
       const userId = user?.id
       if (!userId) return
       try {
-        await prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } })
+        const isGoogleSignIn = account?.provider === 'google'
+        const data: { lastLoginAt: Date; emailVerified?: Date; role?: 'ADMIN' | 'USER' } = {
+          lastLoginAt: new Date(),
+        }
+
+        if (isGoogleSignIn) {
+          data.emailVerified = new Date()
+          if (user.email && coerceEffectiveUserRole({ email: user.email, role: 'USER' }) === 'ADMIN') {
+            data.role = 'ADMIN'
+          }
+        }
+
+        await prisma.user.update({ where: { id: userId }, data })
+        await requireEmpresaIdForUser(userId)
       } catch {
         // no-op
       }

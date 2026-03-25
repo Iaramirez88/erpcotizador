@@ -1,0 +1,135 @@
+export type DashboardNavDefinition = {
+  name: string
+  href: string
+}
+
+export function moduleForDashboardHref(href: string): string | null {
+  switch (href) {
+    case '/dashboard':
+      return 'DASHBOARD'
+    case '/dashboard/reportes':
+      return 'REPORTES'
+    case '/dashboard/contabilidad':
+    case '/dashboard/contabilidad/plan-de-cuentas':
+    case '/dashboard/contabilidad/centros-de-costo':
+    case '/dashboard/contabilidad/reglas':
+    case '/dashboard/contabilidad/asientos':
+    case '/dashboard/contabilidad/tesoreria':
+      return 'CONTABILIDAD'
+    case '/dashboard/cotizador':
+      return 'COTIZADOR'
+    case '/dashboard/cotizaciones':
+      return 'COTIZACIONES'
+    case '/dashboard/remisiones':
+      return 'REMISIONES'
+    case '/dashboard/pos':
+      return 'POS'
+    case '/dashboard/clientes':
+      return 'CLIENTES'
+    case '/dashboard/crm':
+    case '/dashboard/crm/agenda':
+    case '/dashboard/crm/chatbot':
+    case '/dashboard/crm/integraciones':
+    case '/dashboard/crm/leads':
+    case '/dashboard/crm/oportunidades':
+    case '/dashboard/crm/tareas':
+    case '/dashboard/chat':
+    case '/dashboard/espacios-trabajo':
+      return 'CRM'
+    case '/dashboard/ordenes':
+      return 'ORDENES'
+    case '/dashboard/litografia':
+      return 'COTIZADOR'
+    case '/dashboard/escaneos':
+      return 'ESCANEOS'
+    case '/dashboard/materiales':
+    case '/dashboard/terminados':
+      return 'MATERIALES'
+    case '/dashboard/inventario':
+    case '/dashboard/inventario/traslados':
+    case '/dashboard/bodegas':
+      return 'INVENTARIO'
+    case '/dashboard/compras':
+      return 'COMPRAS'
+    case '/dashboard/proveedores':
+      return 'PROVEEDORES'
+    case '/dashboard/configuracion/sedes':
+    case '/dashboard/configuracion/usuarios':
+    case '/dashboard/configuracion/permisos':
+    case '/dashboard/configuracion/empresa':
+    case '/dashboard/configuracion/plan':
+    case '/dashboard/configuracion/desperdicios':
+    case '/dashboard/configuracion/super-admin/modulos-por-plan':
+    case '/dashboard/configuracion/super-admin/empresas':
+    case '/dashboard/configuracion/super-admin/usuarios':
+      return 'CONFIG'
+    default:
+      return null
+  }
+}
+
+export function moduleForDashboardPath(pathname: string): string | null {
+  if (pathname.startsWith('/dashboard/configuracion/plan')) return null
+  if (pathname === '/dashboard') return 'DASHBOARD'
+  if (pathname.startsWith('/dashboard/reportes')) return 'REPORTES'
+  if (pathname.startsWith('/dashboard/contabilidad')) return 'CONTABILIDAD'
+  if (pathname.startsWith('/dashboard/cotizador')) return 'COTIZADOR'
+  if (pathname.startsWith('/dashboard/cotizaciones')) return 'COTIZACIONES'
+  if (pathname.startsWith('/dashboard/clientes')) return 'CLIENTES'
+  if (pathname.startsWith('/dashboard/remisiones')) return 'REMISIONES'
+  if (pathname.startsWith('/dashboard/pos')) return 'POS'
+  if (pathname.startsWith('/dashboard/ordenes')) return 'ORDENES'
+  if (pathname.startsWith('/dashboard/litografia')) return 'COTIZADOR'
+  if (pathname.startsWith('/dashboard/escaneos')) return 'ESCANEOS'
+  if (pathname.startsWith('/dashboard/materiales') || pathname.startsWith('/dashboard/terminados')) return 'MATERIALES'
+  if (pathname.startsWith('/dashboard/inventario') || pathname.startsWith('/dashboard/bodegas')) return 'INVENTARIO'
+  if (pathname.startsWith('/dashboard/compras')) return 'COMPRAS'
+  if (pathname.startsWith('/dashboard/proveedores')) return 'PROVEEDORES'
+  if (
+    pathname.startsWith('/dashboard/crm') ||
+    pathname.startsWith('/dashboard/chat') ||
+    pathname.startsWith('/dashboard/espacios-trabajo')
+  ) {
+    return 'CRM'
+  }
+  if (pathname.startsWith('/dashboard/configuracion')) return 'CONFIG'
+  return null
+}
+
+export function buildDashboardNavDefinitions(t: (key: string) => string): DashboardNavDefinition[] {
+  return [
+    { name: t('nav.dashboard'), href: '/dashboard' },
+    { name: t('nav.reports'), href: '/dashboard/reportes' },
+    { name: t('nav.accounting'), href: '/dashboard/contabilidad' },
+    { name: t('nav.quote'), href: '/dashboard/cotizador' },
+    { name: t('nav.quotes'), href: '/dashboard/cotizaciones' },
+    { name: t('nav.deliveries'), href: '/dashboard/remisiones' },
+    { name: t('nav.billing'), href: '/dashboard/pos' },
+    { name: t('nav.clients'), href: '/dashboard/clientes' },
+    { name: t('nav.crm'), href: '/dashboard/crm' },
+    { name: 'Agenda CRM', href: '/dashboard/crm/agenda' },
+    { name: 'Chatbot', href: '/dashboard/crm/chatbot' },
+    { name: 'Canales e integraciones', href: '/dashboard/crm/integraciones' },
+    { name: 'Leads', href: '/dashboard/crm/leads' },
+    { name: 'Oportunidades', href: '/dashboard/crm/oportunidades' },
+    { name: 'Tareas', href: '/dashboard/crm/tareas' },
+    { name: 'Espacios de trabajo', href: '/dashboard/espacios-trabajo' },
+    { name: 'Chat global', href: '/dashboard/chat' },
+    { name: t('nav.orders'), href: '/dashboard/ordenes' },
+    { name: t('nav.printshop'), href: '/dashboard/litografia' },
+    { name: t('nav.scans'), href: '/dashboard/escaneos' },
+    { name: t('nav.finishes'), href: '/dashboard/terminados' },
+    { name: t('nav.products'), href: '/dashboard/materiales' },
+    { name: t('nav.inventory'), href: '/dashboard/inventario' },
+    { name: t('nav.transfers'), href: '/dashboard/inventario/traslados' },
+    { name: t('nav.purchases'), href: '/dashboard/compras' },
+    { name: t('nav.suppliers'), href: '/dashboard/proveedores' },
+    { name: t('nav.waste'), href: '/dashboard/configuracion/desperdicios' },
+    { name: t('nav.branches'), href: '/dashboard/configuracion/sedes' },
+    { name: t('nav.users'), href: '/dashboard/configuracion/usuarios' },
+    { name: t('nav.permissions'), href: '/dashboard/configuracion/permisos' },
+    { name: t('nav.company'), href: '/dashboard/configuracion/empresa' },
+    { name: t('nav.plan'), href: '/dashboard/configuracion/plan' },
+    { name: 'Super Admin', href: '/dashboard/configuracion/super-admin/modulos-por-plan' },
+  ]
+}

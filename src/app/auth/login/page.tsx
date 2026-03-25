@@ -7,8 +7,8 @@
 
 "use client"
 
-import { useState } from "react"
-import { signIn } from "next-auth/react"
+import { useEffect, useState } from "react"
+import { getProviders, signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -25,12 +25,52 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const [needsVerification, setNeedsVerification] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
+  const [googleEnabled, setGoogleEnabled] = useState(false)
   
   const [formData, setFormData] = useState({
     email: "",
     password: ""
   })
   const [showPassword, setShowPassword] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadProviders() {
+      try {
+        const providers = await getProviders()
+        if (!cancelled) {
+          setGoogleEnabled(Boolean(providers?.google))
+        }
+      } catch {
+        if (!cancelled) {
+          setGoogleEnabled(false)
+        }
+      }
+    }
+
+    void loadProviders()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleGoogleSignIn = async () => {
+    if (!googleEnabled) {
+      setError('Google no está configurado todavía en este entorno. Faltan GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET, o el callback OAuth no coincide.')
+      return
+    }
+
+    setIsLoading(true)
+    setError("")
+    try {
+      await signIn('google', { callbackUrl: '/dashboard' })
+    } catch {
+      setError('No se pudo iniciar el acceso con Google.')
+      setIsLoading(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -96,6 +136,29 @@ export default function LoginPage() {
                 )}
               </div>
             )}
+
+            {googleEnabled ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={isLoading}
+                onClick={() => void handleGoogleSignIn()}
+              >
+                <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="#EA4335" d="M12 10.2v3.9h5.4c-.2 1.2-.9 2.3-1.9 3l3.1 2.4c1.8-1.7 2.9-4.1 2.9-7 0-.7-.1-1.4-.2-2H12z"/>
+                  <path fill="#34A853" d="M12 22c2.6 0 4.8-.9 6.4-2.5l-3.1-2.4c-.9.6-2 .9-3.3.9-2.5 0-4.6-1.7-5.4-4H3.4v2.5A10 10 0 0 0 12 22z"/>
+                  <path fill="#4A90E2" d="M6.6 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V7.5H3.4A10 10 0 0 0 2 12c0 1.6.4 3.1 1.4 4.5L6.6 14z"/>
+                  <path fill="#FBBC05" d="M12 6c1.4 0 2.7.5 3.6 1.4l2.7-2.7C16.8 3.3 14.6 2 12 2A10 10 0 0 0 3.4 7.5L6.6 10c.8-2.3 2.9-4 5.4-4z"/>
+                </svg>
+                Continuar con Google
+              </Button>
+            ) : null}
+
+            <div className="relative text-center text-xs text-muted-foreground">
+              <span className="bg-white px-2">o entra con tu correo y contrasena</span>
+              <div className="absolute inset-x-0 top-1/2 -z-10 h-px -translate-y-1/2 bg-slate-200" />
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="email" className="sr-only">{t('auth.fields.email')}</Label>

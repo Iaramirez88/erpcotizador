@@ -9,13 +9,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-type PlanTier = 'BASIC' | 'MEDIO' | 'INTERMEDIO' | 'FULL'
+type PlanTier = 'CRM' | 'BASIC' | 'MEDIO' | 'INTERMEDIO' | 'FULL'
 
 type ModuleKey =
   | 'DASHBOARD'
   | 'COTIZADOR'
   | 'COTIZACIONES'
   | 'CLIENTES'
+  | 'CRM'
   | 'MATERIALES'
   | 'INVENTARIO'
   | 'REMISIONES'
@@ -48,6 +49,8 @@ function titleForModule(moduleKey: ModuleKey): string {
       return 'Cotizaciones'
     case 'CLIENTES':
       return 'Clientes'
+    case 'CRM':
+      return 'CRM'
     case 'MATERIALES':
       return 'Materiales / Terminados'
     case 'INVENTARIO':
@@ -243,6 +246,7 @@ export default function SuperAdminPlanModulesClient() {
                   <SelectValue placeholder="Selecciona" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="CRM">CRM</SelectItem>
                   <SelectItem value="BASIC">BASIC</SelectItem>
                   <SelectItem value="MEDIO">MEDIO</SelectItem>
                   <SelectItem value="INTERMEDIO">INTERMEDIO</SelectItem>

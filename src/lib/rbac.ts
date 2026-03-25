@@ -3,6 +3,12 @@ import type { Empresa, Sede } from '@prisma/client'
 import { AccessLevel, ModuleKey, SedeRole, UserRole } from '@prisma/client'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 
+const PERSONAL_TRIAL_DAYS = 7
+
+function addTrialWindow(startedAt: Date) {
+  return new Date(startedAt.getTime() + PERSONAL_TRIAL_DAYS * 24 * 60 * 60 * 1000)
+}
+
 function maxAccess(a: AccessLevel, b: AccessLevel): AccessLevel {
   const order: Record<AccessLevel, number> = {
     NONE: 0,
@@ -63,17 +69,22 @@ export async function requireEmpresaIdForUser(userId: string): Promise<string> {
       ? existing
       : await tx.empresa.create({
           data: {
+            planOwnerUserId: user.id,
             nombre: personalNombre,
             nit: personalNit,
             email: normalizedEmail || null,
             planTier: 'BASIC',
             billingCycle: 'MONTHLY',
             planValidUntil: null,
+            trialTier: 'INTERMEDIO',
+            trialStartedAt: new Date(),
+            trialValidUntil: addTrialWindow(new Date()),
           },
           select: { id: true },
         })
 
     await tx.user.update({ where: { id: user.id }, data: { empresaId: empresa.id }, select: { id: true } })
+    await tx.empresa.updateMany({ where: { id: empresa.id, planOwnerUserId: null }, data: { planOwnerUserId: user.id } })
     return empresa.id
   })
 
@@ -107,10 +118,8 @@ export async function ensureDefaultSedeForEmpresa(empresaId: string, userId: str
     const roleFromGlobal: SedeRole =
       globalLevel === 'ADMIN' ? 'ADMIN' : globalLevel === 'WRITE' ? 'MEMBER' : globalLevel === 'READ' ? 'READER' : 'READER'
 
-    // Política: usuarios nuevos entran con permisos básicos (solo lectura) por defecto.
-    // El único caso que se auto-eleva es el super-admin del sistema.
     const isSystemSuperAdmin = isSuperAdminEmail(user?.email)
-    const roleForNewMembership: SedeRole = isSystemSuperAdmin ? 'ADMIN' : roleFromGlobal
+    const roleForNewMembership: SedeRole = isSystemSuperAdmin ? 'ADMIN' : (roleFromGlobal === 'ADMIN' ? 'ADMIN' : 'ADMIN')
 
     await prisma.sedeMembership.create({
       data: {

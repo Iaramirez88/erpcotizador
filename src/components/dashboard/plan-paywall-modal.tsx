@@ -12,8 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-
-type PlanTier = 'BASIC' | 'MEDIO' | 'INTERMEDIO' | 'FULL'
+import type { PlanTier } from '@/lib/plans'
 
 type PlanPaywall = {
   show: boolean
@@ -29,6 +28,8 @@ type TrialInfo = {
   isExpired: boolean
   daysLeft: number | null
 }
+
+type TrialNoticeMode = 'intro' | 'last-day' | 'expired' | 'generic' | null
 
 type EffectiveInfo =
   | {
@@ -65,6 +66,43 @@ export default function PlanPaywallModal() {
   const [isStartingTrial, setIsStartingTrial] = useState(false)
   const [companyCode, setCompanyCode] = useState('')
   const [isClaimingCode, setIsClaimingCode] = useState(false)
+  const [noticeMode, setNoticeMode] = useState<TrialNoticeMode>(null)
+
+  function resolveClientVisibility(nextReason: PlanPaywall['reason'], nextTrial: TrialInfo | null, serverOpen: boolean) {
+    if (nextReason === 'TRIAL_EXPIRED') {
+      setNoticeMode('expired')
+      return true
+    }
+
+    if (nextReason === 'TRIAL_ACTIVE') {
+      const startedAt = nextTrial?.startedAt ?? 'unknown'
+      const validUntil = nextTrial?.validUntil ?? 'unknown'
+      const daysLeft = nextTrial?.daysLeft ?? null
+
+      if (daysLeft !== null && daysLeft <= 1) {
+        const lastDayKey = `sg_trial_last_day_seen:${validUntil}`
+        const alreadySeen = window.localStorage.getItem(lastDayKey) === '1'
+        setNoticeMode('last-day')
+        if (!alreadySeen) {
+          window.localStorage.setItem(lastDayKey, '1')
+          return true
+        }
+        return false
+      }
+
+      const introKey = `sg_trial_intro_seen:${startedAt}`
+      const alreadySeen = window.localStorage.getItem(introKey) === '1'
+      setNoticeMode('intro')
+      if (!alreadySeen) {
+        window.localStorage.setItem(introKey, '1')
+        return true
+      }
+      return false
+    }
+
+    setNoticeMode(nextReason === 'PERSONAL_NO_PLAN' ? 'generic' : null)
+    return serverOpen
+  }
 
   async function load() {
     setIsLoading(true)
@@ -85,7 +123,7 @@ export default function PlanPaywallModal() {
       setTrial(tr)
       setReason(pw?.reason ?? 'NONE')
       setBlocking(Boolean(pw?.blocking))
-      setOpen(Boolean(pw?.show))
+      setOpen(resolveClientVisibility(pw?.reason ?? 'NONE', tr, Boolean(pw?.show)))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error inesperado')
       setOpen(false)
@@ -105,16 +143,20 @@ export default function PlanPaywallModal() {
   }, [reason, trial?.startedAt])
 
   const title = useMemo(() => {
-    if (reason === 'TRIAL_ACTIVE') return 'Prueba gratis activa'
+    if (reason === 'TRIAL_ACTIVE' && noticeMode === 'last-day') return 'Tu prueba termina pronto'
+    if (reason === 'TRIAL_ACTIVE') return 'Tu prueba ya esta activa'
     if (reason === 'TRIAL_EXPIRED') return 'Tu prueba terminó'
     if (reason === 'PERSONAL_NO_PLAN') return 'Activa tu prueba gratis'
     return 'Plan'
-  }, [reason])
+  }, [noticeMode, reason])
 
   const description = useMemo(() => {
     if (reason === 'TRIAL_ACTIVE') {
       const days = trial?.daysLeft
-      return days ? `Te quedan ${days} día(s) de Intermedio.` : 'Tu prueba Intermedio está activa.'
+      if (noticeMode === 'last-day') {
+        return 'Te queda 1 dia de prueba. Elige ahora el plan con el que quieres continuar para no perder acceso.'
+      }
+      return days ? `Tu cuenta tiene ${days} dia(s) de prueba activa en Intermedio.` : 'Tu prueba Intermedio esta activa.'
     }
     if (reason === 'TRIAL_EXPIRED') {
       return 'Para seguir usando las funciones, elige un plan y realiza el pago.'
@@ -123,7 +165,7 @@ export default function PlanPaywallModal() {
       return 'Puedes activar 7 días gratis del plan Intermedio o elegir un plan.'
     }
     return 'Gestiona tu plan.'
-  }, [reason, trial?.daysLeft])
+  }, [noticeMode, reason, trial?.daysLeft])
 
   async function startTrial() {
     setIsStartingTrial(true)
@@ -230,6 +272,10 @@ export default function PlanPaywallModal() {
           {canStartTrial ? (
             <Button onClick={startTrial} disabled={isStartingTrial || isLoading}>
               Activar prueba 7 días
+            </Button>
+          ) : reason === 'TRIAL_ACTIVE' && noticeMode === 'last-day' ? (
+            <Button onClick={goToPlans} disabled={isLoading}>
+              Elegir plan
             </Button>
           ) : blocking ? (
             <Button onClick={goToPlans} disabled={isLoading}>

@@ -16,7 +16,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { Activity, BarChart3, Goal, Sparkles, Target, TrendingUp } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import { Activity, BarChart3, Bot, Facebook, Globe, Goal, Instagram, Mail, MessageCircle, Sparkles, Target, TrendingUp } from 'lucide-react'
 import { ErpPageHero, ErpSectionHeading } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -379,6 +380,75 @@ function getProviderChartColor(provider: CrmChannelProvider) {
       return '#f97316'
     default:
       return '#64748b'
+  }
+}
+
+function getTemplatePresetIcon(preset: TemplatePreset): LucideIcon {
+  if (preset.provider === 'WHATSAPP_CLOUD' || preset.provider === 'WHATSAPP_SANDBOX') return MessageCircle
+  if (preset.provider === 'INSTAGRAM_DM') return Instagram
+  if (preset.provider === 'FACEBOOK_PAGE' || preset.provider === 'MESSENGER') return Facebook
+  if (preset.provider === 'WEB_CHATBOT') return Bot
+  if (preset.bridgeKind === 'GMAIL' || preset.bridgeKind === 'OUTLOOK') return Mail
+  return Globe
+}
+
+function getTemplatePresetSurface(preset: TemplatePreset) {
+  if (preset.provider === 'WHATSAPP_CLOUD' || preset.provider === 'WHATSAPP_SANDBOX') {
+    return {
+      card: 'border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.92),rgba(255,255,255,0.98))]',
+      selected: 'border-emerald-300 bg-emerald-50/90 ring-2 ring-emerald-200',
+      iconWrap: 'border-emerald-200 bg-emerald-100 text-emerald-700',
+      pill: 'bg-emerald-100 text-emerald-700',
+      accent: 'text-emerald-800',
+    }
+  }
+
+  if (preset.provider === 'INSTAGRAM_DM') {
+    return {
+      card: 'border-fuchsia-200 bg-[linear-gradient(180deg,rgba(253,244,255,0.92),rgba(255,255,255,0.98))]',
+      selected: 'border-fuchsia-300 bg-fuchsia-50/90 ring-2 ring-fuchsia-200',
+      iconWrap: 'border-fuchsia-200 bg-fuchsia-100 text-fuchsia-700',
+      pill: 'bg-fuchsia-100 text-fuchsia-700',
+      accent: 'text-fuchsia-800',
+    }
+  }
+
+  if (preset.provider === 'FACEBOOK_PAGE' || preset.provider === 'MESSENGER') {
+    return {
+      card: 'border-blue-200 bg-[linear-gradient(180deg,rgba(239,246,255,0.92),rgba(255,255,255,0.98))]',
+      selected: 'border-blue-300 bg-blue-50/90 ring-2 ring-blue-200',
+      iconWrap: 'border-blue-200 bg-blue-100 text-blue-700',
+      pill: 'bg-blue-100 text-blue-700',
+      accent: 'text-blue-800',
+    }
+  }
+
+  if (preset.provider === 'WEB_CHATBOT') {
+    return {
+      card: 'border-violet-200 bg-[linear-gradient(180deg,rgba(245,243,255,0.92),rgba(255,255,255,0.98))]',
+      selected: 'border-violet-300 bg-violet-50/90 ring-2 ring-violet-200',
+      iconWrap: 'border-violet-200 bg-violet-100 text-violet-700',
+      pill: 'bg-violet-100 text-violet-700',
+      accent: 'text-violet-800',
+    }
+  }
+
+  if (preset.bridgeKind === 'GMAIL' || preset.bridgeKind === 'OUTLOOK') {
+    return {
+      card: 'border-amber-200 bg-[linear-gradient(180deg,rgba(255,251,235,0.92),rgba(255,255,255,0.98))]',
+      selected: 'border-amber-300 bg-amber-50/90 ring-2 ring-amber-200',
+      iconWrap: 'border-amber-200 bg-amber-100 text-amber-700',
+      pill: 'bg-amber-100 text-amber-700',
+      accent: 'text-amber-800',
+    }
+  }
+
+  return {
+    card: 'border-sky-200 bg-[linear-gradient(180deg,rgba(240,249,255,0.92),rgba(255,255,255,0.98))]',
+    selected: 'border-sky-300 bg-sky-50/90 ring-2 ring-sky-200',
+    iconWrap: 'border-sky-200 bg-sky-100 text-sky-700',
+    pill: 'bg-sky-100 text-sky-700',
+    accent: 'text-sky-800',
   }
 }
 
@@ -1651,7 +1721,7 @@ export function CrmIntegrationsClient() {
               </div>
 
               <div className="mt-5 grid gap-3 md:grid-cols-3">
-                <div className="rounded-[22px] border border-white/80 bg-white/85 p-4 shadow-sm backdrop-blur">
+                <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex items-center justify-between text-slate-500">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">Activación</span>
                     <Target className="h-4 w-4 text-sky-500" />
@@ -1659,7 +1729,7 @@ export function CrmIntegrationsClient() {
                   <p className="mt-3 text-3xl font-semibold text-slate-950">{channelAnalytics.scorecards.activationRate}%</p>
                   <p className="mt-1 text-sm text-slate-600">Canales activos o en testing sobre el total.</p>
                 </div>
-                <div className="rounded-[22px] border border-white/80 bg-white/85 p-4 shadow-sm backdrop-blur">
+                <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex items-center justify-between text-slate-500">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">Producción</span>
                     <Goal className="h-4 w-4 text-emerald-500" />
@@ -1667,37 +1737,37 @@ export function CrmIntegrationsClient() {
                   <p className="mt-3 text-3xl font-semibold text-slate-950">{channelAnalytics.scorecards.productionRate}%</p>
                   <p className="mt-1 text-sm text-slate-600">Canales listos para salir a operación real.</p>
                 </div>
-                <div className="rounded-[22px] border border-white/80 bg-slate-950 p-4 text-white shadow-[0_24px_50px_-34px_rgba(15,23,42,0.7)]">
-                  <div className="flex items-center justify-between text-slate-300">
+                <div className="rounded-[22px] border border-cyan-200 bg-[linear-gradient(135deg,#0f172a,#0b4a6f)] p-4 text-white shadow-[0_24px_50px_-34px_rgba(15,23,42,0.7)]">
+                  <div className="flex items-center justify-between text-cyan-100">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">Momentum</span>
                     <TrendingUp className="h-4 w-4 text-cyan-300" />
                   </div>
                   <p className="mt-3 text-3xl font-semibold">{formatCompactNumber(stats.captures + stats.conversations)}</p>
-                  <p className="mt-1 text-sm text-slate-300">Interacciones totales trazadas desde integraciones.</p>
+                  <p className="mt-1 text-sm text-cyan-50/90">Interacciones totales trazadas desde integraciones.</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
           <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-            <Card className="rounded-[30px] border-slate-200 bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(15,23,42,0.92))] text-white shadow-[0_28px_80px_-46px_rgba(15,23,42,0.9)]">
+            <Card className="rounded-[30px] border-slate-200 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] text-slate-950 shadow-[0_28px_80px_-46px_rgba(15,23,42,0.22)]">
               <CardHeader className="pb-4">
-                <CardTitle className="text-white">Metas configurables</CardTitle>
-                <CardDescription className="text-slate-300">Puedes sobreescribir los objetivos sugeridos y el progreso se recalcula al instante.</CardDescription>
+                <CardTitle className="text-slate-950">Metas configurables</CardTitle>
+                <CardDescription className="text-slate-600">Puedes sobreescribir los objetivos sugeridos y el progreso se recalcula al instante.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-3">
                   <div className="grid gap-2">
-                    <Label className="text-slate-200">Meta de canales operativos</Label>
-                    <Input value={goalTargets.operational} onChange={(event) => setGoalTargets((current) => ({ ...current, operational: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.operational)} className="rounded-2xl border-white/10 bg-white/10 text-white placeholder:text-slate-400" />
+                    <Label className="text-sm font-medium text-slate-700">Meta de canales operativos</Label>
+                    <Input value={goalTargets.operational} onChange={(event) => setGoalTargets((current) => ({ ...current, operational: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.operational)} className="rounded-2xl border-slate-300 bg-white text-slate-950 placeholder:text-slate-500" />
                   </div>
                   <div className="grid gap-2">
-                    <Label className="text-slate-200">Meta de capturas</Label>
-                    <Input value={goalTargets.captures} onChange={(event) => setGoalTargets((current) => ({ ...current, captures: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.captures)} className="rounded-2xl border-white/10 bg-white/10 text-white placeholder:text-slate-400" />
+                    <Label className="text-sm font-medium text-slate-700">Meta de capturas</Label>
+                    <Input value={goalTargets.captures} onChange={(event) => setGoalTargets((current) => ({ ...current, captures: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.captures)} className="rounded-2xl border-slate-300 bg-white text-slate-950 placeholder:text-slate-500" />
                   </div>
                   <div className="grid gap-2">
-                    <Label className="text-slate-200">Meta de conversaciones</Label>
-                    <Input value={goalTargets.conversations} onChange={(event) => setGoalTargets((current) => ({ ...current, conversations: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.conversations)} className="rounded-2xl border-white/10 bg-white/10 text-white placeholder:text-slate-400" />
+                    <Label className="text-sm font-medium text-slate-700">Meta de conversaciones</Label>
+                    <Input value={goalTargets.conversations} onChange={(event) => setGoalTargets((current) => ({ ...current, conversations: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.conversations)} className="rounded-2xl border-slate-300 bg-white text-slate-950 placeholder:text-slate-500" />
                   </div>
                 </div>
 
@@ -1705,11 +1775,11 @@ export function CrmIntegrationsClient() {
                   {channelAnalytics.goals.map((goal) => {
                     const Icon = goal.icon
                     return (
-                      <div key={goal.label} className="rounded-[24px] border border-white/10 bg-white/5 p-4 backdrop-blur">
+                      <div key={goal.label} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="space-y-1">
-                            <p className="text-sm font-semibold text-white">{goal.label}</p>
-                            <p className="text-sm text-slate-300">{goal.caption}</p>
+                            <p className="text-sm font-semibold text-slate-950">{goal.label}</p>
+                            <p className="text-sm text-slate-600">{goal.caption}</p>
                           </div>
                           <div className={`rounded-2xl bg-gradient-to-br ${goal.accent} p-3 text-white shadow-lg`}>
                             <Icon className="h-5 w-5" />
@@ -1717,15 +1787,15 @@ export function CrmIntegrationsClient() {
                         </div>
                         <div className="mt-4 flex items-end justify-between gap-3">
                           <div>
-                            <p className="text-2xl font-semibold text-white">{formatCompactNumber(goal.value)}</p>
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Meta {formatCompactNumber(goal.target)}</p>
+                            <p className="text-2xl font-semibold text-slate-950">{formatCompactNumber(goal.value)}</p>
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Meta {formatCompactNumber(goal.target)}</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-2xl font-semibold text-white">{goal.progress}%</p>
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Cumplido</p>
+                            <p className="text-2xl font-semibold text-slate-950">{goal.progress}%</p>
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Cumplido</p>
                           </div>
                         </div>
-                        <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-white/10">
+                        <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-slate-200">
                           <div className={`h-full rounded-full bg-gradient-to-r ${goal.accent} transition-all duration-700`} style={{ width: `${goal.progress}%` }} />
                         </div>
                       </div>
@@ -1896,20 +1966,20 @@ export function CrmIntegrationsClient() {
               ) : (
                 <Card className="rounded-[30px] border-slate-200 bg-white/95 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.34)]">
                   <CardHeader>
-                    <CardTitle>Dashboard colapsado</CardTitle>
-                    <CardDescription>Expandelo cuando quieras revisar gráficos, tendencias y distribución por canal.</CardDescription>
+                    <CardTitle className="text-slate-950">Dashboard colapsado</CardTitle>
+                    <CardDescription className="text-slate-600">Expándelo cuando quieras revisar gráficos, tendencias y distribución por canal.</CardDescription>
                   </CardHeader>
                   <CardContent className="grid gap-3 md:grid-cols-3">
-                    <div className="rounded-[22px] border border-slate-100 bg-slate-50/85 p-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Configurados</p>
+                    <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">Configurados</p>
                       <p className="mt-2 text-3xl font-semibold text-slate-950">{channelAnalytics.scorecards.configured}</p>
                     </div>
-                    <div className="rounded-[22px] border border-slate-100 bg-slate-50/85 p-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Demo-ready</p>
+                    <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">Demo-ready</p>
                       <p className="mt-2 text-3xl font-semibold text-slate-950">{channelAnalytics.scorecards.demo}</p>
                     </div>
-                    <div className="rounded-[22px] border border-slate-100 bg-slate-50/85 p-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Go-live</p>
+                    <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">Go-live</p>
                       <p className="mt-2 text-3xl font-semibold text-slate-950">{channelAnalytics.scorecards.production}</p>
                     </div>
                   </CardContent>
@@ -2879,19 +2949,39 @@ export function CrmIntegrationsClient() {
               {wizardStep === 'template' ? (
                 <div className="mt-5 space-y-3 pr-1">
                   {TEMPLATE_PRESETS.map((preset) => (
-                    <button
-                      key={preset.key}
-                      type="button"
-                      onClick={() => applyTemplate(preset.key)}
-                      className={createForm.templateKey === preset.key ? 'rounded-3xl border border-sky-300 bg-sky-50/80 p-4 text-left shadow-sm ring-2 ring-sky-200' : 'rounded-3xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-shadow hover:shadow-md'}
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-slate-950">{preset.name}</p>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">{preset.connectionModel}</span>
-                      </div>
-                      <p className="mt-1 text-sm leading-6 text-slate-500">{preset.description}</p>
-                      <p className="mt-2 text-xs font-medium text-slate-600">{preset.focus}</p>
-                    </button>
+                    (() => {
+                      const Icon = getTemplatePresetIcon(preset)
+                      const surface = getTemplatePresetSurface(preset)
+                      const selected = createForm.templateKey === preset.key
+
+                      return (
+                        <button
+                          key={preset.key}
+                          type="button"
+                          onClick={() => applyTemplate(preset.key)}
+                          className={selected
+                            ? `rounded-[26px] p-3.5 text-left shadow-sm transition-shadow ${surface.card} ${surface.selected}`
+                            : `rounded-[26px] p-3.5 text-left shadow-sm transition-shadow hover:shadow-md ${surface.card}`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${surface.iconWrap}`}>
+                              <Icon className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-[15px] font-semibold leading-5 text-slate-950">{preset.name}</p>
+                                <span className={`rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] ${surface.pill}`}>{preset.connectionModel}</span>
+                              </div>
+                              <p className="mt-1.5 text-[13px] leading-5 text-slate-600">{preset.description}</p>
+                              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                <span className={`text-[11px] font-semibold ${surface.accent}`}>{preset.focus}</span>
+                                <span className="text-[11px] text-slate-500">{preset.readiness}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })()
                   ))}
                 </div>
               ) : (

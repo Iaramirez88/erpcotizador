@@ -19,6 +19,12 @@ import { checkPlanLimit } from "@/lib/plan-limits"
 import { renderEmail, renderEmailCode } from "@/lib/email-template"
 import { Prisma } from "@prisma/client"
 
+const PERSONAL_TRIAL_DAYS = 7
+
+function addTrialWindow(startedAt: Date) {
+  return new Date(startedAt.getTime() + PERSONAL_TRIAL_DAYS * 24 * 60 * 60 * 1000)
+}
+
 function parseEmpresaIdFromEmpCode(code: string): string | null {
   const raw = code.trim()
   if (!raw) return null
@@ -34,6 +40,7 @@ async function createPersonalEmpresa(args: { nombre: string; email: string }) {
   for (let attempt = 0; attempt < 12; attempt++) {
     try {
       const nit = `PERS-${randomDigits(10)}`
+      const now = new Date()
       const created = await prisma.empresa.create({
         data: {
           nombre: args.nombre.trim() || 'Cuenta personal',
@@ -41,6 +48,9 @@ async function createPersonalEmpresa(args: { nombre: string; email: string }) {
           email: args.email,
           workspaceCode: generateWorkspaceCode(),
           registrationCodeHash: null,
+          trialTier: 'INTERMEDIO',
+          trialStartedAt: now,
+          trialValidUntil: addTrialWindow(now),
         },
         select: { id: true, nombre: true, registrationCodeHash: true },
       })
@@ -194,7 +204,7 @@ export async function POST(request: Request) {
         })
         if (!existing?.id) {
           await prisma.sedeMembership.create({
-            data: { sedeId: sede.id, userId: user.id, role: 'READER' },
+            data: { sedeId: sede.id, userId: user.id, role: 'ADMIN' },
           })
         }
 

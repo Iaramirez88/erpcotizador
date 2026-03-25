@@ -21,16 +21,29 @@ export const ALL_MODULE_KEYS: ModuleKey[] = [
   'CONFIG',
 ]
 
-export const ALL_PLAN_TIERS: PlanTier[] = ['BASIC', 'MEDIO', 'INTERMEDIO', 'FULL']
+export const ALL_PLAN_TIERS: PlanTier[] = ['CRM', 'BASIC', 'MEDIO', 'INTERMEDIO', 'FULL']
+
+const DEFAULT_ENABLED_MODULES: Record<PlanTier, ModuleKey[]> = {
+  CRM: ['DASHBOARD', 'CRM', 'NOTIFICACIONES', 'CONFIG'],
+  BASIC: ['DASHBOARD', 'COTIZADOR', 'COTIZACIONES', 'CLIENTES', 'MATERIALES', 'REMISIONES', 'ORDENES', 'ESCANEOS', 'REPORTES', 'NOTIFICACIONES', 'CONFIG'],
+  MEDIO: ['DASHBOARD', 'COTIZADOR', 'COTIZACIONES', 'CLIENTES', 'MATERIALES', 'INVENTARIO', 'REMISIONES', 'POS', 'PROVEEDORES', 'COMPRAS', 'ORDENES', 'ESCANEOS', 'REPORTES', 'NOTIFICACIONES', 'CONFIG'],
+  INTERMEDIO: ['DASHBOARD', 'COTIZADOR', 'COTIZACIONES', 'CLIENTES', 'MATERIALES', 'INVENTARIO', 'REMISIONES', 'POS', 'PROVEEDORES', 'COMPRAS', 'ORDENES', 'ESCANEOS', 'REPORTES', 'CONTABILIDAD', 'NOTIFICACIONES', 'CONFIG'],
+  FULL: [...ALL_MODULE_KEYS],
+}
+
+export function getDefaultEnabledModulesForPlan(planTier: PlanTier): ModuleKey[] {
+  return [...(DEFAULT_ENABLED_MODULES[planTier] ?? ALL_MODULE_KEYS)]
+}
 
 export async function ensurePlanModuleDefaults(): Promise<void> {
   try {
     await prisma.$transaction(async (tx) => {
       for (const planTier of ALL_PLAN_TIERS) {
         for (const moduleKey of ALL_MODULE_KEYS) {
+          const enabled = getDefaultEnabledModulesForPlan(planTier).includes(moduleKey)
           await tx.planModuleSetting.upsert({
             where: { planTier_module: { planTier, module: moduleKey } },
-            create: { planTier, module: moduleKey, enabled: true },
+            create: { planTier, module: moduleKey, enabled },
             update: {},
             select: { id: true },
           })
@@ -82,12 +95,11 @@ export async function getEnabledModulesForPlan(planTier: PlanTier): Promise<Modu
     })
 
     if (!rows.length) {
-      // Sin configuración: asumir todos habilitados.
-      return [...ALL_MODULE_KEYS]
+      return getDefaultEnabledModulesForPlan(planTier)
     }
 
     return rows.map((r) => r.module)
   } catch {
-    return [...ALL_MODULE_KEYS]
+    return getDefaultEnabledModulesForPlan(planTier)
   }
 }

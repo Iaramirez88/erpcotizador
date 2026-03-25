@@ -8,6 +8,11 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatCOP, getPlanPriceCOP, type BillingCycle, type PlanInfo, type PlanTier } from "@/lib/plans"
 
+type ComparisonFeature = {
+  label: string
+  availability: Record<PlanTier, boolean | string>
+}
+
 type PlanDetails = {
   tagline: string
   forWho: string
@@ -16,6 +21,15 @@ type PlanDetails = {
 }
 
 const PLAN_DETAILS: Record<PlanTier, PlanDetails> = {
+  CRM: {
+    tagline: 'CRM comercial dedicado',
+    forWho: 'Para equipos que solo necesitan CRM y chat omnicanal.',
+    incluye: [
+      { title: 'CRM comercial', items: ['Leads', 'Oportunidades', 'Agenda', 'Tareas', 'Inbox omnicanal', 'Chat global interno'] },
+      { title: 'Operación mínima', items: ['Dashboard', 'Configuración básica', 'Notificaciones'] },
+    ],
+    alcance: ['CRM y chat global', 'Sin ERP operativo', 'Mensual fijo'],
+  },
   BASIC: {
     tagline: '“Ideal para comenzar”',
     forWho: 'Para emprendedores y equipos pequeños.',
@@ -28,6 +42,15 @@ const PLAN_DETAILS: Record<PlanTier, PlanDetails> = {
       { title: '🛠 Preferencias', items: ['Mi perfil', 'Notificaciones'] },
     ],
     alcance: ['1 sede', '2 usuarios', '500 clientes', '300 cotizaciones / mes', 'Litografía, Escaneos y Terminados sin límite'],
+  },
+  MEDIO: {
+    tagline: 'Operacion estable y escalable',
+    forWho: 'Para empresas que ya necesitan POS, inventario y compras sin llegar a full.',
+    incluye: [
+      { title: 'Incluye todo el Básico +', items: ['Inventario', 'POS', 'Compras', 'Traslados', 'Proveedores ampliados'] },
+      { title: 'Capacidad', items: ['3 sedes', '5 usuarios', '2.500 clientes', '1.500 cotizaciones / mes'] },
+    ],
+    alcance: ['3 sedes', '5 usuarios', '2.500 clientes', '1.500 cotizaciones / mes'],
   },
   INTERMEDIO: {
     tagline: '“Control real de la empresa”',
@@ -49,6 +72,7 @@ const PLAN_DETAILS: Record<PlanTier, PlanDetails> = {
     incluye: [
       { title: 'Incluye todo +', items: [] },
       { title: '⚙️ Gestión', items: ['Permisos', 'Empresa', 'Plan', 'Usuarios ilimitados', 'Sedes ilimitadas'] },
+      { title: 'CRM', items: ['CRM omnicanal completo', 'Agenda', 'Tareas', 'Integraciones', 'Chat global'] },
       { title: '🛠 Preferencias', items: ['Personalizar menú', 'Configuración', 'Ayuda'] },
       { title: '📊 Centro de Control', items: ['KPIs por sede', 'Reportes avanzados'] },
       { title: '💰 Comercial', items: ['Todo ilimitado'] },
@@ -58,6 +82,45 @@ const PLAN_DETAILS: Record<PlanTier, PlanDetails> = {
     alcance: ['Sedes ilimitadas', 'Usuarios ilimitados', 'Clientes ilimitados', 'Cotizaciones ilimitadas'],
   },
 }
+
+const PLAN_COMPARISON: ComparisonFeature[] = [
+  {
+    label: 'Dashboard y configuracion basica',
+    availability: { CRM: true, BASIC: true, MEDIO: true, INTERMEDIO: true, FULL: true },
+  },
+  {
+    label: 'Cotizador, cotizaciones y remisiones',
+    availability: { CRM: false, BASIC: true, MEDIO: true, INTERMEDIO: true, FULL: true },
+  },
+  {
+    label: 'Inventario, compras y proveedores',
+    availability: { CRM: false, BASIC: false, MEDIO: true, INTERMEDIO: true, FULL: true },
+  },
+  {
+    label: 'POS y facturacion',
+    availability: { CRM: false, BASIC: false, MEDIO: true, INTERMEDIO: true, FULL: true },
+  },
+  {
+    label: 'Contabilidad',
+    availability: { CRM: false, BASIC: false, MEDIO: false, INTERMEDIO: true, FULL: true },
+  },
+  {
+    label: 'CRM omnicanal',
+    availability: { CRM: true, BASIC: false, MEDIO: false, INTERMEDIO: false, FULL: true },
+  },
+  {
+    label: 'Agenda, tareas y chat global',
+    availability: { CRM: true, BASIC: false, MEDIO: false, INTERMEDIO: false, FULL: true },
+  },
+  {
+    label: 'Sedes',
+    availability: { CRM: '1', BASIC: '1', MEDIO: '3', INTERMEDIO: '6', FULL: 'Ilimitadas' },
+  },
+  {
+    label: 'Usuarios',
+    availability: { CRM: '3', BASIC: '2', MEDIO: '5', INTERMEDIO: '10', FULL: 'Ilimitados' },
+  },
+]
 
 type PlanApiResponse =
   | {
@@ -220,9 +283,16 @@ export default function PlanPage() {
   }, [])
 
   const sortedPlans = useMemo(() => {
-    const order: PlanTier[] = ["BASIC", "INTERMEDIO", "FULL"]
+    const order: PlanTier[] = ["CRM", "BASIC", "MEDIO", "INTERMEDIO", "FULL"]
     return [...all].sort((a, b) => order.indexOf(a.tier) - order.indexOf(b.tier))
   }, [all])
+
+  const comparisonPlans = useMemo(() => sortedPlans.filter((plan) => plan.tier in PLAN_DETAILS), [sortedPlans])
+
+  function renderAvailability(value: boolean | string) {
+    if (typeof value === 'string') return <span className="font-medium text-slate-800">{value}</span>
+    return value ? <span className="font-semibold text-emerald-600">✓</span> : <span className="font-semibold text-rose-600">✕</span>
+  }
 
   async function startPayment(tier: PlanTier) {
     setIsPaying(true)
@@ -481,6 +551,37 @@ export default function PlanPage() {
           )
         })}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Diferencias entre planes</CardTitle>
+          <CardDescription>Comparativo rapido de funcionalidades, capacidad y CRM.</CardDescription>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="min-w-[920px] w-full text-sm">
+            <thead>
+              <tr className="border-b">
+                <th className="px-3 py-2 text-left font-semibold text-slate-900">Funcionalidad</th>
+                {comparisonPlans.map((plan) => (
+                  <th key={plan.tier} className="px-3 py-2 text-center font-semibold text-slate-900">{plan.nombre}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {PLAN_COMPARISON.map((feature) => (
+                <tr key={feature.label} className="border-b last:border-b-0">
+                  <td className="px-3 py-2 text-slate-700">{feature.label}</td>
+                  {comparisonPlans.map((plan) => (
+                    <td key={`${feature.label}-${plan.tier}`} className="px-3 py-2 text-center">
+                      {renderAvailability(feature.availability[plan.tier])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
     </div>
   )
 }

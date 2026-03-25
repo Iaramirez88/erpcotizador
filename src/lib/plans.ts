@@ -1,6 +1,6 @@
-export type PlanTier = 'BASIC' | 'INTERMEDIO' | 'FULL'
+import type { BillingCycle, PlanTier } from '@prisma/client'
 
-export type BillingCycle = 'MONTHLY' | 'YEARLY'
+export type { BillingCycle, PlanTier }
 
 export type PlanInfo = {
   tier: PlanTier
@@ -11,15 +11,27 @@ export type PlanInfo = {
 
 export const PLANES: PlanInfo[] = [
   {
+    tier: 'CRM',
+    nombre: 'CRM',
+    descripcion: 'Plan especializado solo para CRM omnicanal, agenda comercial, leads, oportunidades, tareas y chat global del equipo.',
+    precioMensualCOP: 150000,
+  },
+  {
     tier: 'BASIC',
     nombre: 'Básico',
     descripcion: 'Ideal para comenzar. Incluye 100 reportes, 100 remisiones, 100 órdenes de trabajo, 50 proveedores, 500 clientes, 200 productos, 1 sede, 2 usuarios, 300 cotizaciones/mes. Sin límite en Litografía, Escaneos y Terminados.',
     precioMensualCOP: 750000,
   },
   {
+    tier: 'MEDIO',
+    nombre: 'Medio',
+    descripcion: 'Escala la operación comercial y logística con más capacidad de usuarios, sedes y volumen mensual, sin incluir CRM omnicanal.',
+    precioMensualCOP: 1200000,
+  },
+  {
     tier: 'INTERMEDIO',
     nombre: 'Intermedio',
-    descripcion: 'Todo ilimitado excepto: 6 sedes, 10 usuarios, 8.000 clientes, 5.000 cotizaciones/mes.',
+    descripcion: 'Todo ilimitado excepto: 6 sedes, 10 usuarios, 8.000 clientes y 5.000 cotizaciones por mes. CRM solo disponible en Full o CRM.',
     precioMensualCOP: 1650000,
   },
   {

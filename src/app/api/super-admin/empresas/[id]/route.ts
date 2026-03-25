@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import type { BillingCycle, PlanTier } from '@prisma/client'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
-
-type PlanTier = 'BASIC' | 'MEDIO' | 'INTERMEDIO' | 'FULL'
-type BillingCycle = 'MONTHLY' | 'YEARLY'
 
 export const runtime = 'nodejs'
 
@@ -22,7 +20,7 @@ function normalizeNullableString(value: unknown): string | null {
 }
 
 function isPlanTier(value: unknown): value is PlanTier {
-  return value === 'BASIC' || value === 'MEDIO' || value === 'INTERMEDIO' || value === 'FULL'
+  return value === 'CRM' || value === 'BASIC' || value === 'MEDIO' || value === 'INTERMEDIO' || value === 'FULL'
 }
 
 function isBillingCycle(value: unknown): value is BillingCycle {

@@ -342,6 +342,29 @@ Uso:
 3. Verifica que entre una conversacion al inbox CRM.
 4. Revisa que el canal muestre Ultimo webhook.
 
+### 8.7 Minimo vital para dejarlo viable
+
+Del lado del sistema SGDigital debe quedar listo esto:
+
+1. APP_URL o NEXTAUTH_URL publico y estable.
+2. META_APP_ID y META_APP_SECRET configurados en el entorno.
+3. Callback OAuth accesible en /api/crm/channels/{channelId}/meta/callback.
+4. Webhook del canal accesible en /api/crm/channels/{channelId}/webhook.
+5. Canal creado en CRM con provider WhatsApp Cloud, token de verificacion y estado TESTING o ACTIVE.
+6. Si van a enviar desde el inbox, access token y Phone Number ID reales guardados o sincronizados desde Meta.
+
+Del lado del cliente, lo minimo viable es esto:
+
+1. Tener un Business Manager con permisos sobre WhatsApp.
+2. Tener un numero dado de alta en WhatsApp Business Platform.
+3. Autorizar el login Conectar con Meta desde una cuenta con acceso al activo correcto.
+4. Elegir el Phone Number ID correcto dentro del CRM.
+5. Configurar en Meta el callback URL exacto y el verify token del canal.
+6. Suscribirse al evento de mensajes para que entren inbound al inbox.
+7. Hacer una prueba real enviando un mensaje al numero y confirmar que el hilo aparece en el CRM.
+
+Si eso no se cumple, el canal puede quedar creado pero no operativo para conversacion real.
+
 ## 9. WhatsApp Sandbox
 
 Funciona con la misma base operativa del webhook social, pero orientado a pruebas.

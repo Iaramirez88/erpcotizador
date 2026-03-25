@@ -336,6 +336,7 @@ enum UserRole {
 // ============================================
 
 enum PlanTier {
+  CRM
   BASIC
   MEDIO
   INTERMEDIO

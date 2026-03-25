@@ -23,8 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-
-type PlanTier = 'BASIC' | 'MEDIO' | 'INTERMEDIO' | 'FULL'
+import type { PlanTier } from '@/lib/plans'
 
 type BillingCycle = 'MONTHLY' | 'YEARLY'
 

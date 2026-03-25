@@ -14,6 +14,7 @@ import { useUiStore } from "@/lib/ui-store"
 import { NavSettingsDialog, type NavSettingsItem } from "@/components/dashboard/nav-settings-dialog"
 import Image from "next/image"
 import { useI18n } from "@/components/providers/i18n-provider"
+import { buildDashboardNavDefinitions } from "@/lib/dashboard-navigation"
 
 interface SidebarProps {
   user: {
@@ -490,6 +491,7 @@ export default function Sidebar({ user }: SidebarProps) {
   const { t } = useI18n()
 
   const moduleNavigation = useMemo(() => buildModuleNavigation(t), [t])
+  const dashboardNavDefinitions = useMemo(() => buildDashboardNavDefinitions(t), [t])
   const preferenceNavigation = useMemo(() => buildPreferenceNavigation(t), [t])
 
   const allowedModules = useMemo(() => {
@@ -662,7 +664,7 @@ export default function Sidebar({ user }: SidebarProps) {
   }, [enabledModules])
 
   const navSettingsItems: NavSettingsItem[] = useMemo(() => {
-    const base = moduleNavigation
+    const base = dashboardNavDefinitions
       .filter((it) => {
         const moduleKey = moduleForHref(it.href)
         if (!moduleKey) return true
@@ -680,7 +682,7 @@ export default function Sidebar({ user }: SidebarProps) {
       })
       .map((it) => ({ name: it.name, href: it.href }))
     return base
-  }, [canManageBilling, user?.role, allowedModules, moduleNavigation])
+  }, [canManageBilling, user?.role, allowedModules, dashboardNavDefinitions])
 
   async function saveNav(next: Record<string, boolean>) {
     setNavPrefs(next)

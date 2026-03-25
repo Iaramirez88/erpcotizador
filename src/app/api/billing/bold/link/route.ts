@@ -16,7 +16,7 @@ type Body = {
 }
 
 function isPlanTier(value: unknown): value is PlanTier {
-  return value === 'BASIC' || value === 'MEDIO' || value === 'INTERMEDIO' || value === 'FULL'
+  return value === 'CRM' || value === 'BASIC' || value === 'MEDIO' || value === 'INTERMEDIO' || value === 'FULL'
 }
 
 function isBillingCycle(value: unknown): value is BillingCycle {

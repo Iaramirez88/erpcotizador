@@ -16,6 +16,7 @@ import { NavSettingsDialog } from "@/components/dashboard/nav-settings-dialog"
 import { useTour } from "@/components/tour/tour-provider"
 import NotificationsBell from "@/components/dashboard/notifications-bell"
 import { useI18n } from "@/components/providers/i18n-provider"
+import { buildDashboardNavDefinitions, moduleForDashboardHref } from "@/lib/dashboard-navigation"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,57 +35,12 @@ interface HeaderProps {
   }
 }
 
-function moduleForHref(href: string): string | null {
-  switch (href) {
-    case '/dashboard':
-      return 'DASHBOARD'
-    case '/dashboard/reportes':
-      return 'REPORTES'
-    case '/dashboard/contabilidad':
-      return 'CONTABILIDAD'
-    case '/dashboard/cotizador':
-      return 'COTIZADOR'
-    case '/dashboard/cotizaciones':
-      return 'COTIZACIONES'
-    case '/dashboard/remisiones':
-      return 'REMISIONES'
-    case '/dashboard/pos':
-      return 'POS'
-    case '/dashboard/clientes':
-      return 'CLIENTES'
-    case '/dashboard/ordenes':
-      return 'ORDENES'
-    case '/dashboard/litografia':
-      return 'COTIZADOR'
-    case '/dashboard/escaneos':
-      return 'ESCANEOS'
-    case '/dashboard/materiales':
-      return 'MATERIALES'
-    case '/dashboard/terminados':
-      return 'MATERIALES'
-    case '/dashboard/inventario':
-    case '/dashboard/inventario/traslados':
-      return 'INVENTARIO'
-    case '/dashboard/compras':
-      return 'COMPRAS'
-    case '/dashboard/proveedores':
-      return 'PROVEEDORES'
-    case '/dashboard/configuracion/desperdicios':
-    case '/dashboard/configuracion/sedes':
-    case '/dashboard/configuracion/usuarios':
-    case '/dashboard/configuracion/permisos':
-    case '/dashboard/configuracion/empresa':
-    case '/dashboard/configuracion/plan':
-      return 'CONFIG'
-    default:
-      return null
-  }
-}
-
 export default function Header({ user }: HeaderProps) {
   const { t, language, setLanguage } = useI18n()
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const [planName, setPlanName] = useState<string>("")
+  const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null)
+  const [trialBadgeVisible, setTrialBadgeVisible] = useState(false)
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
   const [canManageBilling, setCanManageBilling] = useState(() => user.role === 'ADMIN')
   const toggleMobileNav = useUiStore((s) => s.toggleMobileNav)
@@ -114,9 +70,17 @@ export default function Header({ user }: HeaderProps) {
     async function load() {
       try {
         const res = await fetch('/api/plan')
-        const json = (await res.json().catch(() => null)) as { current?: { nombre?: string } } | null
+        const json = (await res.json().catch(() => null)) as {
+          current?: { nombre?: string }
+          effective?: { trial?: { isActive?: boolean; daysLeft?: number | null } | null } | null
+        } | null
         if (!cancelled && typeof json?.current?.nombre === 'string') {
           setPlanName(json.current.nombre)
+        }
+        if (!cancelled) {
+          const daysLeft = typeof json?.effective?.trial?.daysLeft === 'number' ? json.effective.trial.daysLeft : null
+          setTrialDaysLeft(daysLeft)
+          setTrialBadgeVisible(Boolean(json?.effective?.trial?.isActive && daysLeft !== null))
         }
       } catch {
         // ignore
@@ -161,39 +125,20 @@ export default function Header({ user }: HeaderProps) {
   }, [])
 
   const navItems = useMemo(() => {
-    const base = [
-      { name: t('nav.dashboard'), href: '/dashboard' },
-      { name: t('nav.reports'), href: '/dashboard/reportes' },
-      { name: t('nav.accounting'), href: '/dashboard/contabilidad' },
-      { name: t('nav.quote'), href: '/dashboard/cotizador' },
-      { name: t('nav.quotes'), href: '/dashboard/cotizaciones' },
-      { name: t('nav.billing'), href: '/dashboard/pos' },
-      { name: t('nav.deliveries'), href: '/dashboard/remisiones' },
-      { name: t('nav.clients'), href: '/dashboard/clientes' },
-      { name: t('nav.orders'), href: '/dashboard/ordenes' },
-      { name: t('nav.printshop'), href: '/dashboard/litografia' },
-      { name: t('nav.scans'), href: '/dashboard/escaneos' },
-      { name: t('nav.products'), href: '/dashboard/materiales' },
-      { name: t('nav.finishes'), href: '/dashboard/terminados' },
-      { name: t('nav.inventory'), href: '/dashboard/inventario' },
-      { name: t('nav.transfers'), href: '/dashboard/inventario/traslados' },
-      { name: t('nav.purchases'), href: '/dashboard/compras' },
-      { name: t('nav.suppliers'), href: '/dashboard/proveedores' },
-      { name: t('nav.waste'), href: '/dashboard/configuracion/desperdicios' },
-      { name: t('nav.branches'), href: '/dashboard/configuracion/sedes' },
-      { name: t('nav.users'), href: '/dashboard/configuracion/usuarios' },
-      { name: t('nav.permissions'), href: '/dashboard/configuracion/permisos' },
-      { name: t('nav.company'), href: '/dashboard/configuracion/empresa' },
-      ...(canManageBilling ? [{ name: t('nav.plan'), href: '/dashboard/configuracion/plan' }] : []),
-    ]
+    const base = buildDashboardNavDefinitions(t)
     const withRbacGate = base.filter((it) => {
-      const moduleKey = moduleForHref(it.href)
+      const moduleKey = moduleForDashboardHref(it.href)
       if (!moduleKey) return true
       if (!allowedModules) return true
       return allowedModules.has(moduleKey)
     })
-    return withRbacGate
-  }, [canManageBilling, t, allowedModules])
+    const withBillingGate = withRbacGate.filter((it) => (it.href === '/dashboard/configuracion/plan' ? canManageBilling : true))
+    return withBillingGate.filter((it) => {
+      const isSuperAdminRoute = it.href === '/dashboard/configuracion/super-admin/modulos-por-plan'
+      if (!isSuperAdminRoute) return true
+      return user.role === 'ADMIN'
+    })
+  }, [canManageBilling, t, allowedModules, user.role])
 
   async function saveNav(next: Record<string, boolean>) {
     setNavPrefs(next)
@@ -319,6 +264,11 @@ export default function Header({ user }: HeaderProps) {
                 {user.role?.toLowerCase()}
                 {planName ? ` · Plan: ${planName}` : ''}
               </p>
+              {trialBadgeVisible && trialDaysLeft !== null ? (
+                <p className="text-[10px] leading-4 text-red-600">
+                  {trialDaysLeft <= 1 ? 'Tu prueba termina manana' : `Prueba: ${trialDaysLeft} dia(s) restantes`}
+                </p>
+              ) : null}
             </div>
             
             <Button
