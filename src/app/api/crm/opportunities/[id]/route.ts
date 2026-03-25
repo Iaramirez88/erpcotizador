@@ -82,11 +82,15 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (Object.prototype.hasOwnProperty.call(body ?? {}, 'stage') && !stage) {
       return NextResponse.json({ error: 'stage inválido' }, { status: 400 })
     }
-    if (expectedValue === undefined) return NextResponse.json({ error: 'expectedValue inválido' }, { status: 400 })
-    if (probabilityPct === undefined || (probabilityPct !== null && (probabilityPct < 0 || probabilityPct > 100))) {
+    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'expectedValue') && expectedValue === undefined) {
+      return NextResponse.json({ error: 'expectedValue inválido' }, { status: 400 })
+    }
+    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'probabilityPct') && (probabilityPct === undefined || (probabilityPct !== null && (probabilityPct < 0 || probabilityPct > 100)))) {
       return NextResponse.json({ error: 'probabilityPct inválido (0..100)' }, { status: 400 })
     }
-    if (expectedCloseAt === undefined) return NextResponse.json({ error: 'expectedCloseAt inválido' }, { status: 400 })
+    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'expectedCloseAt') && expectedCloseAt === undefined) {
+      return NextResponse.json({ error: 'expectedCloseAt inválido' }, { status: 400 })
+    }
 
     if (Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId') && assignedToUserId) {
       const user = await prisma.user.findUnique({ where: { id: assignedToUserId }, select: { id: true, empresaId: true } })

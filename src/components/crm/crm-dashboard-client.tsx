@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { ArrowUpRight, CalendarClock, CircleDot, GripVertical, Sparkles, UserRound } from 'lucide-react'
 import { useI18n } from '@/components/providers/i18n-provider'
 
 type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'LOST' | 'CONVERTED'
@@ -133,6 +134,31 @@ function withAlpha(color: string | null | undefined, alphaHex: string, fallback:
   return fallback
 }
 
+function getInitials(value: string | null | undefined) {
+  const source = (value || '').trim()
+  if (!source) return 'CRM'
+  const parts = source.split(/\s+/).filter(Boolean)
+  return parts.slice(0, 2).map((item) => item[0]?.toUpperCase() || '').join('') || 'CRM'
+}
+
+function getDaysToCloseLabel(value: string | null | undefined, locale: string) {
+  if (!value) return 'Sin fecha de cierre'
+  const target = new Date(value)
+  if (Number.isNaN(target.getTime())) return formatDate(value, locale, 'Sin fecha')
+  const now = new Date()
+  const diffDays = Math.ceil((target.getTime() - now.getTime()) / 86400000)
+  if (diffDays < 0) return `Vencida hace ${Math.abs(diffDays)} d`
+  if (diffDays === 0) return 'Cierra hoy'
+  if (diffDays === 1) return 'Cierra mañana'
+  return `Cierra en ${diffDays} d`
+}
+
+function getProbabilitySurface(probabilityPct: number) {
+  if (probabilityPct >= 75) return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  if (probabilityPct >= 45) return 'bg-amber-50 text-amber-700 border-amber-200'
+  return 'bg-slate-100 text-slate-700 border-slate-200'
+}
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
   const res = await fetch(url, init)
   return (await res.json().catch(() => ({}))) as JsonResponse<T>
@@ -142,11 +168,14 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = '—'
+  const opportunityOrderStorageKey = 'crm-opportunity-stage-order'
 
   const [activeTab, setActiveTab] = useState<'leads' | 'opportunities' | 'tasks'>(props?.initialTab ?? 'leads')
   const [opportunityView, setOpportunityView] = useState<'list' | 'pipeline'>('list')
   const [draggingOpportunityId, setDraggingOpportunityId] = useState<string | null>(null)
+  const [draggingOpportunityStage, setDraggingOpportunityStage] = useState<OpportunityStage | null>(null)
   const [dragTargetStage, setDragTargetStage] = useState<OpportunityStage | null>(null)
+  const [dragTargetOpportunityId, setDragTargetOpportunityId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [leadStatusFilter, setLeadStatusFilter] = useState<'ALL' | LeadStatus>('ALL')
@@ -169,6 +198,10 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
   const [savingTask, setSavingTask] = useState(false)
   const [savingStages, setSavingStages] = useState(false)
   const [stageDrafts, setStageDrafts] = useState<StageSetting[]>(DEFAULT_STAGE_SETTINGS)
+  const [opportunityDealOpen, setOpportunityDealOpen] = useState(false)
+  const [opportunityDealLoading, setOpportunityDealLoading] = useState(false)
+  const [activeOpportunityDetail, setActiveOpportunityDetail] = useState<OpportunityDetail | null>(null)
+  const [stageManualOrder, setStageManualOrder] = useState<Partial<Record<OpportunityStage, string[]>>>({})
 
   const [leadForm, setLeadForm] = useState({
     nombre: '',
@@ -246,6 +279,22 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
     void loadData()
   }, [loadData])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = window.localStorage.getItem(opportunityOrderStorageKey)
+    if (!stored) return
+    try {
+      setStageManualOrder(JSON.parse(stored) as Partial<Record<OpportunityStage, string[]>>)
+    } catch {
+      window.localStorage.removeItem(opportunityOrderStorageKey)
+    }
+  }, [opportunityOrderStorageKey])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(opportunityOrderStorageKey, JSON.stringify(stageManualOrder))
+  }, [opportunityOrderStorageKey, stageManualOrder])
+
   const stats = useMemo(() => {
     const activeLeads = leads.filter((lead) => lead.status !== 'CONVERTED' && lead.status !== 'LOST').length
     const pipelineValue = opportunities.reduce((sum, row) => sum + (row.expectedValue || 0), 0)
@@ -262,11 +311,39 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
 
   const opportunitiesByStage = useMemo(() => {
     return stageSettings.map((stage) => {
-      const items = opportunities.filter((row) => row.stage === stage.key)
+      const manualIds = stageManualOrder[stage.key] || []
+      const items = opportunities
+        .filter((row) => row.stage === stage.key)
+        .sort((left, right) => {
+          const leftManualIndex = manualIds.indexOf(left.id)
+          const rightManualIndex = manualIds.indexOf(right.id)
+          if (leftManualIndex >= 0 || rightManualIndex >= 0) {
+            if (leftManualIndex < 0) return 1
+            if (rightManualIndex < 0) return -1
+            if (leftManualIndex !== rightManualIndex) return leftManualIndex - rightManualIndex
+          }
+          const leftClose = left.expectedCloseAt ? new Date(left.expectedCloseAt).getTime() : Number.MAX_SAFE_INTEGER
+          const rightClose = right.expectedCloseAt ? new Date(right.expectedCloseAt).getTime() : Number.MAX_SAFE_INTEGER
+          if (leftClose !== rightClose) return leftClose - rightClose
+          return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+        })
       const total = items.reduce((sum, row) => sum + (row.expectedValue || 0), 0)
       return { ...stage, items, total }
     })
-  }, [opportunities, stageSettings])
+  }, [opportunities, stageManualOrder, stageSettings])
+
+  const pipelineSummary = useMemo(() => {
+    const openRows = opportunities.filter((row) => row.stage !== 'WON' && row.stage !== 'LOST')
+    const weightedValue = openRows.reduce((sum, row) => sum + ((row.expectedValue || 0) * (row.probabilityPct || 0) / 100), 0)
+    const overdueCount = openRows.filter((row) => row.expectedCloseAt && new Date(row.expectedCloseAt).getTime() < Date.now()).length
+    const quotedCount = openRows.filter((row) => Boolean(row.cotizacion?.id)).length
+    return {
+      openCount: openRows.length,
+      weightedValue,
+      overdueCount,
+      quotedCount,
+    }
+  }, [opportunities])
 
   function resetLeadForm() {
     setLeadForm({ nombre: '', empresaNombre: '', email: '', telefono: '', ciudad: '', source: 'OTRO', status: 'NEW', notes: '' })
@@ -471,9 +548,52 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
     })
     if (!json.success) {
       alert(json.error || 'No se pudo actualizar la etapa de la oportunidad.')
-      return
+      return false
     }
     await loadData()
+    return true
+  }
+
+  function getStageOrderedIds(stage: OpportunityStage, currentOrder: Partial<Record<OpportunityStage, string[]>>) {
+    const stageIds = opportunities.filter((row) => row.stage === stage).map((row) => row.id)
+    const manualIds = currentOrder[stage] || []
+    return [
+      ...manualIds.filter((id) => stageIds.includes(id)),
+      ...stageIds.filter((id) => !manualIds.includes(id)),
+    ]
+  }
+
+  function reorderOpportunityCards(opportunityId: string, targetStage: OpportunityStage, beforeOpportunityId?: string | null) {
+    const current = opportunities.find((row) => row.id === opportunityId)
+    if (!current) return
+    const sourceStage = draggingOpportunityStage || current.stage
+    if (beforeOpportunityId === opportunityId) return
+
+    setStageManualOrder((previous) => {
+      const next = { ...previous }
+      const sourceIds = getStageOrderedIds(sourceStage, previous).filter((id) => id !== opportunityId)
+      const targetIdsBase = (sourceStage === targetStage ? sourceIds : getStageOrderedIds(targetStage, previous)).filter((id) => id !== opportunityId)
+      const insertionIndex = beforeOpportunityId ? targetIdsBase.indexOf(beforeOpportunityId) : -1
+      if (insertionIndex >= 0) targetIdsBase.splice(insertionIndex, 0, opportunityId)
+      else targetIdsBase.push(opportunityId)
+      next[sourceStage] = sourceIds
+      next[targetStage] = targetIdsBase
+      return next
+    })
+  }
+
+  async function openOpportunityDealPanel(opportunity: Opportunity) {
+    setOpportunityDealOpen(true)
+    setOpportunityDealLoading(true)
+    setActiveOpportunityDetail({ ...opportunity, description: '' })
+    try {
+      const json = await requestJson<OpportunityDetail>(`/api/crm/opportunities/${opportunity.id}`)
+      if (json.success && json.data) {
+        setActiveOpportunityDetail(json.data)
+      }
+    } finally {
+      setOpportunityDealLoading(false)
+    }
   }
 
   async function submitTask() {
@@ -542,24 +662,36 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
     await loadData()
   }
 
-  function handleOpportunityDragStart(opportunityId: string) {
+  function handleOpportunityDragStart(opportunityId: string, event?: React.DragEvent<HTMLDivElement>) {
+    const current = opportunities.find((row) => row.id === opportunityId)
+    if (event?.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('text/plain', opportunityId)
+    }
     setDraggingOpportunityId(opportunityId)
+    setDraggingOpportunityStage(current?.stage ?? null)
   }
 
   function handleOpportunityDragEnd() {
     setDraggingOpportunityId(null)
+    setDraggingOpportunityStage(null)
     setDragTargetStage(null)
+    setDragTargetOpportunityId(null)
   }
 
-  async function handleOpportunityDrop(stage: OpportunityStage) {
+  async function handleOpportunityDrop(stage: OpportunityStage, beforeOpportunityId?: string | null) {
     if (!draggingOpportunityId) return
 
     const current = opportunities.find((row) => row.id === draggingOpportunityId)
+    reorderOpportunityCards(draggingOpportunityId, stage, beforeOpportunityId)
     setDraggingOpportunityId(null)
+    setDraggingOpportunityStage(null)
     setDragTargetStage(null)
+    setDragTargetOpportunityId(null)
     if (!current || current.stage === stage) return
 
-    await updateOpportunityStage(draggingOpportunityId, stage)
+    const success = await updateOpportunityStage(draggingOpportunityId, stage)
+    if (!success) await loadData()
   }
 
   return (
@@ -757,82 +889,192 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
           </div>
 
           {opportunityView === 'pipeline' ? (
-            <div className="grid gap-4 xl:grid-cols-3 2xl:grid-cols-6">
-              {opportunitiesByStage.map((column) => (
-                <Card
-                  key={column.key}
-                  className={`overflow-hidden rounded-[26px] border-slate-200 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)] ${dragTargetStage === column.key ? 'ring-2 ring-sky-400' : ''}`}
-                  onDragOver={(event) => {
-                    event.preventDefault()
-                    if (draggingOpportunityId) setDragTargetStage(column.key)
-                  }}
-                  onDragLeave={() => {
-                    if (dragTargetStage === column.key) setDragTargetStage(null)
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault()
-                    void handleOpportunityDrop(column.key)
-                  }}
-                >
-                  <CardHeader className="border-b border-slate-100 pb-4" style={{ background: `linear-gradient(180deg, ${withAlpha(column.color, '18', 'rgba(148,163,184,0.12)')}, rgba(255,255,255,0.96))` }}>
-                    <div className="flex items-center justify-between gap-3">
-                      <CardTitle className="text-base text-slate-900">{column.label}</CardTitle>
-                      <span className="rounded-full bg-white/85 px-2.5 py-1 text-xs font-semibold text-slate-600">{column.items.length}</span>
-                    </div>
-                    <CardDescription>{formatMoney(column.total, locale)} proyectado</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3 p-4">
-                    {column.items.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-muted-foreground">Sin movimientos.</p> : null}
-                    {column.items.map((row) => (
-                      <div
-                        key={row.id}
-                        className={row.id === draggingOpportunityId ? 'rounded-3xl border border-dashed border-sky-300 bg-sky-50/60 p-4 opacity-70' : 'rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-md'}
-                        draggable
-                        onDragStart={() => handleOpportunityDragStart(row.id)}
-                        onDragEnd={handleOpportunityDragEnd}
-                      >
-                        <div className="space-y-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="font-semibold leading-tight text-slate-900">{row.title}</p>
-                              <p className="mt-1 text-sm text-slate-500">{row.lead?.nombre || row.cliente?.nombre || 'Sin relación'}</p>
+            <div className="space-y-4">
+              <Card className="rounded-[26px] border-slate-200 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
+                <CardContent className="grid gap-3 p-4 md:grid-cols-4 md:p-5">
+                  <div className="rounded-2xl border border-slate-200 bg-white/85 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Oportunidades abiertas</p>
+                    <p className="mt-2 text-3xl font-semibold text-slate-950">{pipelineSummary.openCount}</p>
+                    <p className="mt-1 text-xs text-slate-500">Negocios en movimiento dentro del embudo.</p>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Valor ponderado</p>
+                    <p className="mt-2 text-3xl font-semibold text-emerald-950">{formatMoney(pipelineSummary.weightedValue, locale)}</p>
+                    <p className="mt-1 text-xs text-emerald-700/80">Proyección ajustada por probabilidad de cierre.</p>
+                  </div>
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/75 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Cierres vencidos</p>
+                    <p className="mt-2 text-3xl font-semibold text-amber-950">{pipelineSummary.overdueCount}</p>
+                    <p className="mt-1 text-xs text-amber-700/80">Oportunidades que requieren reacción inmediata.</p>
+                  </div>
+                  <div className="rounded-2xl border border-sky-200 bg-sky-50/75 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">Con cotización</p>
+                    <p className="mt-2 text-3xl font-semibold text-sky-950">{pipelineSummary.quotedCount}</p>
+                    <p className="mt-1 text-xs text-sky-700/80">Negocios con propuesta formal vinculada.</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid grid-flow-col auto-cols-[minmax(280px,1fr)] gap-4 overflow-x-auto pb-2">
+                  {opportunitiesByStage.map((column) => (
+                    <Card
+                      key={column.key}
+                      className={`min-w-0 overflow-hidden rounded-[24px] border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)] transition-all ${dragTargetStage === column.key ? 'ring-2 ring-sky-400 shadow-[0_24px_50px_-30px_rgba(14,165,233,0.35)]' : ''}`}
+                      onDragOver={(event) => {
+                        event.preventDefault()
+                        if (draggingOpportunityId) {
+                          setDragTargetStage(column.key)
+                          setDragTargetOpportunityId(null)
+                        }
+                      }}
+                      onDragLeave={() => {
+                        if (dragTargetStage === column.key) {
+                          setDragTargetStage(null)
+                          setDragTargetOpportunityId(null)
+                        }
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault()
+                        void handleOpportunityDrop(column.key, null)
+                      }}
+                    >
+                      <CardHeader className="border-b border-slate-100 px-4 pb-3 pt-4" style={{ background: `linear-gradient(180deg, ${withAlpha(column.color, '16', 'rgba(148,163,184,0.12)')}, rgba(255,255,255,0.98))` }}>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1.5">
+                            <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                              <CircleDot className="h-3.5 w-3.5" style={{ color: column.color || '#64748b' }} />
+                              {column.label}
                             </div>
-                            <span className="rounded-full px-2.5 py-1 text-xs font-semibold" style={{ backgroundColor: withAlpha(column.color, '18', '#e2e8f0'), color: column.color || '#475569' }}>
-                              {row.probabilityPct}%
-                            </span>
+                            <CardDescription>{formatMoney(column.total, locale)} proyectado</CardDescription>
                           </div>
-                          <div className="grid gap-2 text-xs text-slate-500">
-                            <div className="flex items-center justify-between">
-                              <span>Cierre estimado</span>
-                              <span>{formatDate(row.expectedCloseAt, locale, 'Sin fecha')}</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span>Valor</span>
-                              <span className="font-semibold text-slate-900">{formatMoney(row.expectedValue, locale)}</span>
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 pt-1">
-                            {row.cotizacion ? (
-                              <Button asChild variant="ghost" className="h-8 rounded-full px-3 text-sky-700 hover:bg-sky-50 hover:text-sky-800">
-                                <Link href={`/dashboard/cotizador?id=${row.cotizacion.id}`}>{row.cotizacion.numero}</Link>
-                              </Button>
-                            ) : row.cliente ? (
-                              <Button asChild variant="ghost" className="h-8 rounded-full px-3 text-sky-700 hover:bg-sky-50 hover:text-sky-800">
-                                <Link href={`/dashboard/cotizador?crmOpportunityId=${row.id}&clienteId=${row.cliente.id}&opportunityTitle=${encodeURIComponent(row.title)}`}>
-                                  Cotizar
-                                </Link>
-                              </Button>
-                            ) : null}
-                            <Button variant="ghost" className="h-8 rounded-full px-3 text-slate-600 hover:bg-slate-100 hover:text-slate-900" onClick={() => void openEditOpportunityDialog(row)}>
-                              Editar
-                            </Button>
+                          <div className="rounded-2xl bg-white/85 px-3 py-1.5 text-right shadow-sm">
+                            <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Deals</p>
+                            <p className="text-base font-semibold text-slate-900">{column.items.length}</p>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              ))}
+                        {dragTargetStage === column.key ? (
+                          <div className="mt-2 rounded-2xl border border-dashed border-sky-300 bg-sky-50/80 px-3 py-2 text-xs font-medium text-sky-700">
+                            Suelta aquí para mover la oportunidad a {column.label.toLowerCase()}.
+                          </div>
+                        ) : null}
+                      </CardHeader>
+                      <CardContent className="space-y-2.5 p-3">
+                        {column.items.length === 0 ? (
+                          <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
+                            <p className="text-sm font-medium text-slate-600">Sin oportunidades en esta etapa</p>
+                            <p className="mt-1 text-xs text-slate-500">Arrastra una tarjeta hasta aquí para actualizar el pipeline.</p>
+                          </div>
+                        ) : null}
+                        {column.items.map((row) => {
+                          const relationName = row.cliente?.nombre || row.lead?.nombre || 'Sin relación'
+                          const assigneeName = row.assignedTo?.name || row.assignedTo?.email || 'Sin responsable'
+                          const quoteLabel = row.cotizacion?.numero || 'Sin cotización'
+                          return (
+                            <div
+                              key={row.id}
+                              className={row.id === draggingOpportunityId
+                                ? 'rounded-[22px] border border-dashed border-sky-300 bg-sky-50/70 p-3.5 opacity-75'
+                                : 'rounded-[22px] border border-slate-200 bg-white p-3.5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md'}
+                              draggable
+                              onClick={() => void openOpportunityDealPanel(row)}
+                              onDragStart={(event) => handleOpportunityDragStart(row.id, event)}
+                              onDragEnd={handleOpportunityDragEnd}
+                              onDragOver={(event) => {
+                                event.preventDefault()
+                                if (draggingOpportunityId) {
+                                  setDragTargetStage(column.key)
+                                  setDragTargetOpportunityId(row.id)
+                                }
+                              }}
+                              onDrop={(event) => {
+                                event.preventDefault()
+                                void handleOpportunityDrop(column.key, row.id)
+                              }}
+                            >
+                              <div className="space-y-3">
+                                {dragTargetStage === column.key && dragTargetOpportunityId === row.id && draggingOpportunityId !== row.id ? (
+                                  <div className="rounded-full border border-dashed border-sky-300 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">
+                                    Insertar antes de esta tarjeta
+                                  </div>
+                                ) : null}
+                                <div className="flex items-start gap-3">
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-[11px] font-semibold text-white shadow-sm">
+                                    {getInitials(relationName)}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold leading-tight text-slate-950">{row.title}</p>
+                                        <p className="mt-0.5 truncate text-xs text-slate-500">{relationName}</p>
+                                      </div>
+                                      <div className="flex items-center gap-1 text-slate-400">
+                                        <GripVertical className="h-4 w-4" />
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                    <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Valor</p>
+                                    <p className="mt-1 text-sm font-semibold text-slate-950">{formatMoney(row.expectedValue, locale)}</p>
+                                  </div>
+                                  <div className={`rounded-xl border px-3 py-2 ${getProbabilitySurface(row.probabilityPct)}`}>
+                                    <p className="text-[11px] uppercase tracking-[0.14em]">Probabilidad</p>
+                                    <p className="mt-1 text-sm font-semibold">{row.probabilityPct}%</p>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap gap-1.5 text-[11px] text-slate-600">
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
+                                    <CalendarClock className="h-3.5 w-3.5 text-slate-400" />
+                                    {getDaysToCloseLabel(row.expectedCloseAt, locale)}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
+                                    <UserRound className="h-3.5 w-3.5 text-slate-400" />
+                                    {assigneeName}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
+                                    <Sparkles className="h-3.5 w-3.5 text-slate-400" />
+                                    {row._count?.tasks ?? 0} tareas · {row._count?.activities ?? 0} actividades
+                                  </span>
+                                </div>
+
+                                <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2 text-[11px] text-slate-600">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span className="truncate">{quoteLabel}</span>
+                                    <span className="truncate text-slate-400">Actualizada {formatDate(row.updatedAt, locale, naText)}</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                  {row.cotizacion ? (
+                                    <Button asChild variant="ghost" className="h-8 rounded-full border border-sky-200 px-3 text-xs text-sky-700 hover:bg-sky-50 hover:text-sky-800" onClick={(event) => event.stopPropagation()}>
+                                      <Link href={`/dashboard/cotizador?id=${row.cotizacion.id}`}>
+                                        Ver cotización
+                                        <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
+                                      </Link>
+                                    </Button>
+                                  ) : row.cliente ? (
+                                    <Button asChild variant="ghost" className="h-8 rounded-full border border-sky-200 px-3 text-xs text-sky-700 hover:bg-sky-50 hover:text-sky-800" onClick={(event) => event.stopPropagation()}>
+                                      <Link href={`/dashboard/cotizador?crmOpportunityId=${row.id}&clienteId=${row.cliente.id}&opportunityTitle=${encodeURIComponent(row.title)}`}>
+                                        Crear cotización
+                                        <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
+                                      </Link>
+                                    </Button>
+                                  ) : null}
+                                  <Button variant="ghost" className="h-8 rounded-full border border-slate-200 px-3 text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-900" onClick={(event) => { event.stopPropagation(); void openEditOpportunityDialog(row) }}>
+                                    Editar deal
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </CardContent>
+                    </Card>
+                  ))}
+              </div>
             </div>
           ) : null}
 
@@ -930,6 +1172,106 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={opportunityDealOpen} onOpenChange={setOpportunityDealOpen}>
+        <DialogContent className="ml-auto h-[100vh] max-h-[100vh] w-full max-w-2xl rounded-none rounded-l-[30px] border-l border-slate-200 bg-white/98 p-0 shadow-[0_28px_80px_-30px_rgba(15,23,42,0.38)] sm:max-w-2xl">
+          <div className="flex h-full min-h-0 flex-col">
+            <DialogHeader className="border-b border-slate-100 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-6 py-5">
+              <DialogTitle>Deal en foco</DialogTitle>
+              <DialogDescription>Consulta el contexto completo del negocio sin abandonar el pipeline.</DialogDescription>
+            </DialogHeader>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              {opportunityDealLoading && !activeOpportunityDetail ? <p className="text-sm text-slate-500">Cargando deal...</p> : null}
+              {activeOpportunityDetail ? (
+                <div className="space-y-5">
+                  <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] p-5 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-2xl font-semibold text-slate-950">{activeOpportunityDetail.title}</span>
+                          <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ backgroundColor: `${getStageColor(activeOpportunityDetail.stage) || '#64748b'}22`, color: getStageColor(activeOpportunityDetail.stage) || '#475569' }}>
+                            {getStageLabel(activeOpportunityDetail.stage)}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-sm text-slate-600">{activeOpportunityDetail.cliente?.nombre || activeOpportunityDetail.lead?.nombre || 'Sin relación principal'}</p>
+                      </div>
+                      <div className={`rounded-2xl border px-3 py-2 ${getProbabilitySurface(activeOpportunityDetail.probabilityPct)}`}>
+                        <p className="text-[11px] uppercase tracking-[0.14em]">Probabilidad</p>
+                        <p className="mt-1 text-base font-semibold">{activeOpportunityDetail.probabilityPct}%</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid gap-3 md:grid-cols-2">
+                      <div className="rounded-2xl bg-slate-50 p-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Valor esperado</p>
+                        <p className="mt-2 text-2xl font-semibold text-slate-950">{formatMoney(activeOpportunityDetail.expectedValue, locale)}</p>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 p-4">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Cierre estimado</p>
+                        <p className="mt-2 text-base font-semibold text-slate-950">{formatDate(activeOpportunityDetail.expectedCloseAt, locale, 'Sin fecha')}</p>
+                        <p className="mt-1 text-xs text-slate-500">{getDaysToCloseLabel(activeOpportunityDetail.expectedCloseAt, locale)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-[24px] border border-slate-200 bg-white p-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Relación comercial</p>
+                      <div className="mt-3 space-y-2 text-sm text-slate-700">
+                        <p><span className="font-semibold text-slate-950">Lead:</span> {activeOpportunityDetail.lead?.nombre || 'No asociado'}</p>
+                        <p><span className="font-semibold text-slate-950">Cliente:</span> {activeOpportunityDetail.cliente?.nombre || 'No convertido'}</p>
+                        <p><span className="font-semibold text-slate-950">Responsable:</span> {activeOpportunityDetail.assignedTo?.name || activeOpportunityDetail.assignedTo?.email || 'Sin asignar'}</p>
+                      </div>
+                    </div>
+                    <div className="rounded-[24px] border border-slate-200 bg-white p-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Actividad vinculada</p>
+                      <div className="mt-3 space-y-2 text-sm text-slate-700">
+                        <p><span className="font-semibold text-slate-950">Tareas:</span> {activeOpportunityDetail._count?.tasks ?? 0}</p>
+                        <p><span className="font-semibold text-slate-950">Actividades:</span> {activeOpportunityDetail._count?.activities ?? 0}</p>
+                        <p><span className="font-semibold text-slate-950">Actualización:</span> {formatDate(activeOpportunityDetail.updatedAt, locale, naText)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[24px] border border-slate-200 bg-white p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Descripción del deal</p>
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{activeOpportunityDetail.description?.trim() || 'Todavía no hay una descripción detallada para este deal.'}</p>
+                  </div>
+
+                  <div className="rounded-[24px] border border-slate-200 bg-white p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Cotización</p>
+                    {activeOpportunityDetail.cotizacion ? (
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-slate-50 p-4">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-950">{activeOpportunityDetail.cotizacion.numero}</p>
+                          <p className="mt-1 text-sm text-slate-600">Estado {activeOpportunityDetail.cotizacion.estado} · Total {formatMoney(activeOpportunityDetail.cotizacion.total, locale)}</p>
+                        </div>
+                        <Button asChild className="rounded-xl">
+                          <Link href={`/dashboard/cotizador?id=${activeOpportunityDetail.cotizacion.id}`}>Abrir cotización</Link>
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm text-slate-600">Este deal aún no tiene cotización enlazada.</p>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 px-6 py-4">
+              {activeOpportunityDetail ? (
+                <Button variant="outline" className="rounded-xl" onClick={() => void openEditOpportunityDialog(activeOpportunityDetail)}>
+                  Editar deal
+                </Button>
+              ) : null}
+              <Button variant="outline" className="rounded-xl" onClick={() => setOpportunityDealOpen(false)}>
+                Cerrar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={leadDialogOpen} onOpenChange={setLeadDialogOpen}>
         <DialogContent className="max-w-lg">
