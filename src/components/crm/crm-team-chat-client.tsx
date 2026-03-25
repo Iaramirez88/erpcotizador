@@ -80,9 +80,10 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResp
 function threadTitle(thread: ThreadSummary | ThreadDetail | null) {
   if (!thread) return 'Chat interno'
   if (thread.type === 'GROUP') return thread.title || 'Grupo interno'
-  return 'counterpart' in thread
-    ? thread.counterpart?.name || thread.counterpart?.email || 'Chat directo'
-    : thread.participants.find(Boolean)?.user.name || thread.participants.find(Boolean)?.user.email || 'Chat directo'
+  if ('participants' in thread && Array.isArray(thread.participants)) {
+    return thread.participants.find(Boolean)?.user.name || thread.participants.find(Boolean)?.user.email || 'Chat directo'
+  }
+  return thread.counterpart?.name || thread.counterpart?.email || 'Chat directo'
 }
 
 function renderAttachments(attachments: ChatAttachment[] | undefined) {
