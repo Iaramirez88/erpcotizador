@@ -175,7 +175,6 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [assigning, setAssigning] = useState(false)
   const [sending, setSending] = useState(false)
   const [resolving, setResolving] = useState(false)
-  const [creatingOpportunity, setCreatingOpportunity] = useState(false)
   const [simulatorOpen, setSimulatorOpen] = useState(false)
   const [simulating, setSimulating] = useState(false)
   const [liveMode, setLiveMode] = useState(true)
@@ -192,14 +191,6 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [messageTypeDraft, setMessageTypeDraft] = useState<'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT'>('TEXT')
   const [attachmentUrlDraft, setAttachmentUrlDraft] = useState('')
   const [attachmentNameDraft, setAttachmentNameDraft] = useState('')
-  const [opportunityForm, setOpportunityForm] = useState({
-    title: '',
-    description: '',
-    stage: 'NEW' as OpportunityStage,
-    expectedValue: '',
-    probabilityPct: '0',
-    expectedCloseAt: '',
-  })
   const [simulateForm, setSimulateForm] = useState({
     channelConnectionId: '',
     nombre: '',
@@ -255,12 +246,6 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       const row = json.success && json.data ? json.data : null
       setSelectedConversation(row)
       setAssigneeDraft(row?.assignedTo?.id || '__none__')
-      if (row) {
-        setOpportunityForm((prev) => ({
-          ...prev,
-          title: prev.title || `Oportunidad ${row.contactDisplayName || row.contactPhone || row.contactEmail || ''}`.trim(),
-        }))
-      }
     } finally {
       setDetailLoading(false)
     }
@@ -378,25 +363,6 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
     } finally {
       setResolving(false)
-    }
-  }
-
-  async function createOpportunityFromConversation() {
-    if (!selectedConversation) return
-    setCreatingOpportunity(true)
-    try {
-      const json = await requestJson(`/api/crm/conversations/${selectedConversation.id}/create-opportunity`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(opportunityForm),
-      })
-      if (!json.success) {
-        alert(json.error || 'No se pudo crear la oportunidad desde la conversación.')
-        return
-      }
-      await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
-    } finally {
-      setCreatingOpportunity(false)
     }
   }
 
@@ -710,11 +676,6 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                         <Link href={`/dashboard/crm/leads/${selectedConversation.lead.id}`}>Abrir lead</Link>
                       </Button>
                     ) : null}
-                    {!selectedConversation.opportunity ? (
-                      <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void createOpportunityFromConversation()} disabled={creatingOpportunity}>
-                        {creatingOpportunity ? 'Creando...' : 'Crear oportunidad'}
-                      </Button>
-                    ) : null}
                     <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void resolveConversation()} disabled={resolving || selectedConversation.status === 'RESOLVED'}>
                       {resolving ? 'Resolviendo...' : 'Resolver'}
                     </Button>
@@ -774,8 +735,17 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                       <CardContent className="space-y-3 text-sm text-slate-600">
                         <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
                           <p className="font-medium text-slate-900">Panel actual de prospectos y mensajes</p>
-                          <p className="mt-1 leading-6">Este mismo detalle es el panel operativo del chatbot: aquí ves lo consignado, respondes, asignas y conviertes a oportunidad.</p>
+                          <p className="mt-1 leading-6">Este detalle sirve para operar el hilo, responder y dejar contexto. El paso a pipeline ahora se hace unicamente desde Editar lead.</p>
                         </div>
+                        {selectedConversation.lead ? (
+                          <Button asChild variant="outline" className="w-full rounded-xl border-slate-200 bg-white">
+                            <Link href="/dashboard/crm">Ir a editar lead y pasar a pipeline</Link>
+                          </Button>
+                        ) : (
+                          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-xs text-slate-500">
+                            Esta conversación aun no tiene lead asociado para moverla al pipeline desde el flujo oficial.
+                          </div>
+                        )}
                         <Button asChild variant="outline" className="w-full rounded-xl border-slate-200 bg-white">
                           <Link href="/dashboard/notificaciones">Abrir centro de notificaciones</Link>
                         </Button>
@@ -972,53 +942,6 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                         </div>
                       </CardContent>
                     </Card>
-
-                    {!selectedConversation.opportunity ? (
-                      <Card className="rounded-3xl border-slate-200 bg-white/85">
-                        <CardHeader>
-                          <CardTitle className="text-base">Crear oportunidad</CardTitle>
-                          <CardDescription>Convierte el hilo en negocio activo cuando ya haya intención comercial clara.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="grid gap-3">
-                          <div className="grid gap-2">
-                            <Label>Título</Label>
-                            <Input value={opportunityForm.title} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, title: e.target.value }))} />
-                          </div>
-                          <div className="grid gap-2 sm:grid-cols-3">
-                            <div className="grid gap-2">
-                              <Label>Etapa</Label>
-                              <Select value={opportunityForm.stage} onValueChange={(value) => setOpportunityForm((prev) => ({ ...prev, stage: value as OpportunityStage }))}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  {['NEW', 'QUALIFIED', 'PROPOSAL', 'NEGOTIATION', 'WON', 'LOST'].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="grid gap-2">
-                              <Label>Valor esperado</Label>
-                              <Input value={opportunityForm.expectedValue} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, expectedValue: e.target.value }))} placeholder="1500000" />
-                            </div>
-                            <div className="grid gap-2">
-                              <Label>Probabilidad %</Label>
-                              <Input value={opportunityForm.probabilityPct} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, probabilityPct: e.target.value }))} />
-                            </div>
-                          </div>
-                          <div className="grid gap-2">
-                            <Label>Cierre estimado</Label>
-                            <Input type="date" value={opportunityForm.expectedCloseAt} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, expectedCloseAt: e.target.value }))} />
-                          </div>
-                          <div className="grid gap-2">
-                            <Label>Descripción</Label>
-                            <Textarea value={opportunityForm.description} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, description: e.target.value }))} rows={3} />
-                          </div>
-                          <div className="flex justify-end">
-                            <Button className="rounded-xl" onClick={() => void createOpportunityFromConversation()} disabled={creatingOpportunity}>
-                              {creatingOpportunity ? 'Creando...' : 'Crear oportunidad'}
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ) : null}
                   </div>
                 </div>
               </>

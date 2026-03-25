@@ -128,6 +128,24 @@ function formatDate(value: string | null | undefined, locale: string, fallback: 
   }
 }
 
+function summarizeOpportunityNeed(notes: string | null | undefined) {
+  const normalized = (notes || '').replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+  const firstChunk = normalized.split(/[.!?]/).map((item) => item.trim()).find(Boolean) || normalized
+  return firstChunk.slice(0, 72).trim()
+}
+
+function buildOpportunityTitleFromLead(args: { nombre: string; empresaNombre?: string | null; notes?: string | null }) {
+  const nombre = args.nombre.trim()
+  const empresa = (args.empresaNombre || '').trim()
+  const need = summarizeOpportunityNeed(args.notes)
+
+  if (empresa && need) return `${empresa} · ${need}`
+  if (empresa) return `Oportunidad ${empresa}`
+  if (need) return nombre ? `${nombre} · ${need}` : need
+  return nombre ? `Oportunidad ${nombre}` : 'Nueva oportunidad'
+}
+
 function withAlpha(color: string | null | undefined, alphaHex: string, fallback: string) {
   const raw = typeof color === 'string' ? color.trim() : ''
   if (/^#[0-9a-fA-F]{6}$/.test(raw)) return `${raw}${alphaHex}`
@@ -377,6 +395,19 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
     setLeadDialogOpen(true)
   }
 
+  function openCreateOpportunityForLead(args: { leadId: string; leadName: string; companyName?: string | null; notes?: string | null }) {
+    setEditingOpportunityId(null)
+    resetOpportunityForm()
+    setOpportunityForm((current) => ({
+      ...current,
+      leadId: args.leadId,
+      title: buildOpportunityTitleFromLead({ nombre: args.leadName, empresaNombre: args.companyName, notes: args.notes }),
+    }))
+    setOpportunityDialogOpen(true)
+    setActiveTab('opportunities')
+    setOpportunityView('pipeline')
+  }
+
   async function openEditLeadDialog(lead: Lead) {
     const json = await requestJson<LeadDetail>(`/api/crm/leads/${lead.id}`)
     if (!json.success || !json.data) {
@@ -486,7 +517,7 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
     setTaskStatusFilter('ALL')
   }
 
-  async function submitLead() {
+  async function submitLead(options?: { openOpportunityAfterSave?: boolean }) {
     if (!leadForm.nombre.trim()) {
       alert('El nombre del lead es requerido.')
       return
@@ -495,6 +526,11 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
     setSavingLead(true)
     try {
       const isEditing = Boolean(editingLeadId)
+      const leadDraft = {
+        nombre: leadForm.nombre,
+        empresaNombre: leadForm.empresaNombre,
+        notes: leadForm.notes,
+      }
       const json = await requestJson<Lead>(isEditing ? `/api/crm/leads/${editingLeadId}` : '/api/crm/leads', {
         method: isEditing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -504,10 +540,21 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
         alert(json.error || (isEditing ? 'No se pudo actualizar el lead.' : 'No se pudo crear el lead.'))
         return
       }
+
+      const savedLead = json.data
       setLeadDialogOpen(false)
       setEditingLeadId(null)
       resetLeadForm()
       await loadData()
+
+      if (options?.openOpportunityAfterSave && savedLead?.id) {
+        openCreateOpportunityForLead({
+          leadId: savedLead.id,
+          leadName: leadDraft.nombre,
+          companyName: leadDraft.empresaNombre,
+          notes: leadDraft.notes,
+        })
+      }
     } finally {
       setSavingLead(false)
     }
@@ -813,7 +860,6 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
               <Link href="/dashboard/crm/conversations">Inbox omnicanal</Link>
             </Button>
             <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={openCreateLeadDialog}>Nuevo lead</Button>
-            <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={openCreateOpportunityDialog}>Nueva oportunidad</Button>
             <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={openCreateTaskDialog}>Nueva tarea</Button>
           </div>
         </div>
@@ -1277,7 +1323,7 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingLeadId ? 'Editar lead' : 'Nuevo lead'}</DialogTitle>
-            <DialogDescription>{editingLeadId ? 'Actualiza la información comercial del prospecto.' : 'Registra un prospecto para iniciar el seguimiento comercial.'}</DialogDescription>
+            <DialogDescription>{editingLeadId ? 'Actualiza la información comercial del prospecto y, si aplica, envíalo directo al pipeline desde aquí.' : 'Registra un prospecto para iniciar el seguimiento comercial.'}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
@@ -1331,6 +1377,11 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setLeadDialogOpen(false); setEditingLeadId(null); resetLeadForm() }}>Cancelar</Button>
+            {editingLeadId ? (
+              <Button variant="outline" onClick={() => void submitLead({ openOpportunityAfterSave: true })} disabled={savingLead}>
+                {savingLead ? 'Guardando...' : 'Guardar y pasar a pipeline'}
+              </Button>
+            ) : null}
             <Button onClick={() => void submitLead()} disabled={savingLead}>{savingLead ? 'Guardando...' : editingLeadId ? 'Guardar cambios' : 'Crear lead'}</Button>
           </DialogFooter>
         </DialogContent>

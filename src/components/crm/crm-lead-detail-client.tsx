@@ -161,7 +161,6 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
   const [stageSettings, setStageSettings] = useState<StageSetting[]>(DEFAULT_STAGE_SETTINGS)
 
   const [activityDialogOpen, setActivityDialogOpen] = useState(false)
-  const [opportunityDialogOpen, setOpportunityDialogOpen] = useState(false)
   const [taskDialogOpen, setTaskDialogOpen] = useState(false)
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [contactDialogOpen, setContactDialogOpen] = useState(false)
@@ -169,7 +168,6 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
 
   const [saving, setSaving] = useState(false)
   const [activityForm, setActivityForm] = useState({ summary: '', details: '' })
-  const [opportunityForm, setOpportunityForm] = useState({ title: '', description: '', stage: 'NEW' as OpportunityStage, expectedValue: '', probabilityPct: '0', expectedCloseAt: '' })
   const [taskForm, setTaskForm] = useState({ title: '', description: '', priority: 'NORMAL' as TaskPriority, dueAt: '' })
   const [convertForm, setConvertForm] = useState({ tipoDocumento: 'NIT', documento: '', nombre: '', email: '', telefono: '', celular: '', direccion: '', ciudad: '' })
   const [contactForm, setContactForm] = useState({ nombre: '', email: '', telefono: '', celular: '', cargo: '', notes: '', isPrimary: false })
@@ -241,30 +239,6 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
       }
       setActivityDialogOpen(false)
       setActivityForm({ summary: '', details: '' })
-      await loadData()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function createOpportunity() {
-    if (!opportunityForm.title.trim()) {
-      alert('El título es requerido.')
-      return
-    }
-    setSaving(true)
-    try {
-      const json = await requestJson(`/api/crm/opportunities`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...opportunityForm, leadId }),
-      })
-      if (!json.success) {
-        alert(json.error || 'No se pudo crear la oportunidad.')
-        return
-      }
-      setOpportunityDialogOpen(false)
-      setOpportunityForm({ title: '', description: '', stage: stageSettings[0]?.key ?? 'NEW', expectedValue: '', probabilityPct: '0', expectedCloseAt: '' })
       await loadData()
     } finally {
       setSaving(false)
@@ -394,6 +368,9 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
         <div className="flex flex-wrap gap-2">
           {!lead.convertedCliente ? <Button variant="outline" onClick={() => setConvertDialogOpen(true)}>Convertir a cliente</Button> : null}
           <Button asChild variant="outline">
+            <Link href="/dashboard/crm">Editar lead</Link>
+          </Button>
+          <Button asChild variant="outline">
             <Link href={`/dashboard/crm/agenda?leadId=${lead.id}`}>Agendar prospecto</Link>
           </Button>
           <Button asChild variant="outline">
@@ -401,7 +378,6 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
           </Button>
           <Button variant="outline" onClick={openCreateContactDialog}>Nuevo contacto</Button>
           <Button variant="outline" onClick={() => setActivityDialogOpen(true)}>Agregar nota</Button>
-          <Button variant="outline" onClick={() => setOpportunityDialogOpen(true)}>Nueva oportunidad</Button>
           <Button onClick={() => setTaskDialogOpen(true)}>Nueva tarea</Button>
         </div>
       </div>
@@ -596,52 +572,6 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setActivityDialogOpen(false)}>Cancelar</Button>
             <Button onClick={() => void createActivity()} disabled={saving}>{saving ? 'Guardando...' : 'Guardar nota'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={opportunityDialogOpen} onOpenChange={setOpportunityDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Nueva oportunidad</DialogTitle>
-            <DialogDescription>Crea una oportunidad asociada a este lead.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-2">
-              <Label>Título</Label>
-              <Input value={opportunityForm.title} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, title: e.target.value }))} />
-            </div>
-            <div className="grid gap-2 sm:grid-cols-3">
-              <div className="grid gap-2 sm:col-span-1">
-                <Label>Etapa</Label>
-                <Select value={opportunityForm.stage} onValueChange={(value) => setOpportunityForm((prev) => ({ ...prev, stage: value as OpportunityStage }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {stageSettings.map((item) => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-2">
-                <Label>Valor esperado</Label>
-                <Input value={opportunityForm.expectedValue} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, expectedValue: e.target.value }))} placeholder="1000000" />
-              </div>
-              <div className="grid gap-2">
-                <Label>Probabilidad %</Label>
-                <Input value={opportunityForm.probabilityPct} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, probabilityPct: e.target.value }))} placeholder="50" />
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label>Cierre estimado</Label>
-              <Input type="date" value={opportunityForm.expectedCloseAt} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, expectedCloseAt: e.target.value }))} />
-            </div>
-            <div className="grid gap-2">
-              <Label>Descripción</Label>
-              <Textarea value={opportunityForm.description} onChange={(e) => setOpportunityForm((prev) => ({ ...prev, description: e.target.value }))} rows={4} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpportunityDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={() => void createOpportunity()} disabled={saving}>{saving ? 'Guardando...' : 'Crear oportunidad'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
