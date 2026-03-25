@@ -102,6 +102,8 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .erp-shell {
@@ -117,11 +119,11 @@ body {
 }
 
 .erp-shell .sgd-card {
-  border-radius: 1.6rem;
+  border-radius: 1.15rem;
   border-color: color-mix(in srgb, #cbd5e1 72%, white);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.92));
-  box-shadow: 0 20px 40px -32px rgba(15, 23, 42, 0.35);
+  box-shadow: 0 16px 32px -28px rgba(15, 23, 42, 0.28);
   backdrop-filter: blur(10px);
 }
 
@@ -130,11 +132,11 @@ body {
 .erp-shell .sgd-textarea,
 .erp-shell .sgd-select-trigger,
 .erp-shell select {
-  border-radius: 1rem;
+  border-radius: 0.8rem;
 }
 
 .erp-shell .sgd-button {
-  box-shadow: 0 14px 28px -22px rgba(15, 23, 42, 0.35);
+  box-shadow: 0 10px 20px -18px rgba(15, 23, 42, 0.28);
 }
 
 .erp-shell .sgd-button:hover {
@@ -147,7 +149,7 @@ body {
 .erp-shell select {
   border-color: color-mix(in srgb, #cbd5e1 72%, white);
   background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 10px 24px -24px rgba(15, 23, 42, 0.28);
+  box-shadow: 0 8px 18px -22px rgba(15, 23, 42, 0.24);
 }
 
 .erp-shell .sgd-input:focus-visible,
@@ -155,37 +157,37 @@ body {
 .erp-shell .sgd-select-trigger:focus,
 .erp-shell select:focus {
   box-shadow:
-    0 0 0 4px rgba(37, 99, 235, 0.08),
-    0 14px 28px -24px rgba(15, 23, 42, 0.35);
+    0 0 0 3px rgba(37, 99, 235, 0.08),
+    0 10px 22px -22px rgba(15, 23, 42, 0.28);
 }
 
 .erp-shell .sgd-tabs-list {
   height: auto;
-  border-radius: 1rem;
+  border-radius: 0.8rem;
   border: 1px solid color-mix(in srgb, #cbd5e1 72%, white);
   background: rgba(248, 250, 252, 0.82);
-  padding: 0.3rem;
+  padding: 0.2rem;
 }
 
 .erp-shell .sgd-tabs-trigger {
-  border-radius: 0.85rem;
+  border-radius: 0.7rem;
   color: #64748b;
 }
 
 .erp-shell .sgd-tabs-trigger[data-state="active"] {
   background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 12px 26px -24px rgba(15, 23, 42, 0.45);
+  box-shadow: 0 10px 20px -22px rgba(15, 23, 42, 0.35);
 }
 
 .sgd-select-content {
   border-color: color-mix(in srgb, #cbd5e1 70%, white);
   background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 22px 40px -28px rgba(15, 23, 42, 0.32);
+  box-shadow: 0 18px 32px -24px rgba(15, 23, 42, 0.28);
   backdrop-filter: blur(14px);
 }
 
 .sgd-select-item {
-  border-radius: 0.8rem;
+  border-radius: 0.65rem;
 }
 
 @keyframes sgd-skeleton-shimmer {

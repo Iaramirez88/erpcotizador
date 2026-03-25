@@ -14,6 +14,9 @@ import {
   canUserAccessWorkspace,
   crmTaskInclude,
   getAccessibleTaskWorkspace,
+  normalizeTaskAttachments,
+  normalizeTaskColorHex,
+  normalizeTaskCustomFields,
   normalizeUserIdList,
 } from '@/lib/crm-task-workspaces'
 
@@ -102,6 +105,9 @@ export async function POST(request: Request) {
     const status = parseTaskStatus(body?.status) ?? 'OPEN'
     const priority = parseTaskPriority(body?.priority) ?? 'NORMAL'
     const dueAt = parseOptionalDate(body?.dueAt)
+    const attachmentsJson = normalizeTaskAttachments(body?.attachmentsJson)
+    const customFieldsJson = normalizeTaskCustomFields(body?.customFieldsJson)
+    const colorHex = normalizeTaskColorHex(body?.colorHex)
 
     if (!title) return NextResponse.json({ error: 'title es requerido' }, { status: 400 })
     if (!workspaceId && !leadId && !opportunityId && !clienteId) {
@@ -170,8 +176,11 @@ export async function POST(request: Request) {
           workspaceId: workspaceId || null,
           title,
           description: description || null,
+          colorHex,
           status,
           priority,
+          attachmentsJson,
+          customFieldsJson,
           dueAt: dueAt ?? null,
           leadId: leadId || opportunity?.leadId || null,
           opportunityId: opportunityId || null,
@@ -200,6 +209,8 @@ export async function POST(request: Request) {
         metadata: {
           workspaceId: workspace?.id ?? null,
           assignedToUserIds: normalizedAssigneeIds,
+          attachmentsCount: attachmentsJson.length,
+          customFieldsCount: customFieldsJson.length,
         },
       })
 

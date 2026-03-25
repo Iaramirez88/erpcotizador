@@ -43,21 +43,21 @@ export function ErpPageHero({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,116,144,0.18),_transparent_32%),linear-gradient(135deg,_#fffdf8_0%,_#f8fbff_48%,_#f2f7f4_100%)] shadow-[0_24px_60px_-36px_rgba(15,23,42,0.35)]",
+        "overflow-hidden rounded-[22px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,116,144,0.18),_transparent_32%),linear-gradient(135deg,_#fffdf8_0%,_#f8fbff_48%,_#f2f7f4_100%)] shadow-[0_18px_40px_-30px_rgba(15,23,42,0.3)]",
         className,
       )}
     >
-      <div className="grid gap-6 p-6 lg:grid-cols-[1.2fr_0.8fr] lg:p-8">
-        <div className="space-y-4">
+      <div className="grid gap-4 p-5 lg:grid-cols-[1.2fr_0.8fr] lg:p-6">
+        <div className="space-y-3">
           {breadcrumbs.length ? <ErpBreadcrumbs items={breadcrumbs} /> : null}
           {eyebrow ? (
-            <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700 backdrop-blur">
+            <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700 backdrop-blur">
               {eyebrow}
             </div>
           ) : null}
-          <div className="space-y-2">
-            <h1 className="max-w-3xl text-3xl font-semibold tracking-tight text-slate-950 lg:text-4xl">{title}</h1>
-            {description ? <p className="max-w-3xl text-sm leading-6 text-slate-600 lg:text-base">{description}</p> : null}
+          <div className="space-y-1.5">
+            <h1 className="max-w-3xl text-2xl font-semibold tracking-tight text-slate-950 lg:text-3xl">{title}</h1>
+            {description ? <p className="max-w-3xl text-sm leading-5 text-slate-600">{description}</p> : null}
           </div>
           {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
         </div>
@@ -68,13 +68,13 @@ export function ErpPageHero({
               <div
                 key={stat.label}
                 className={cn(
-                  "rounded-3xl border p-5 shadow-sm backdrop-blur",
+                  "rounded-2xl border p-4 shadow-sm backdrop-blur",
                   toneClassName[stat.tone ?? "neutral"],
                 )}
               >
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{stat.label}</p>
-                <div className="mt-4 text-3xl font-semibold">{stat.value}</div>
-                {stat.hint ? <p className="mt-2 text-sm text-slate-500">{stat.hint}</p> : null}
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{stat.label}</p>
+                <div className="mt-2.5 text-2xl font-semibold">{stat.value}</div>
+                {stat.hint ? <p className="mt-1.5 text-xs text-slate-500">{stat.hint}</p> : null}
               </div>
             ))}
           </div>
@@ -88,17 +88,17 @@ export function ErpBreadcrumbs({ items, className }: { items: ErpBreadcrumbItem[
   if (!items.length) return null
 
   return (
-    <nav aria-label="Breadcrumb" className={cn('flex flex-wrap items-center gap-2 text-sm text-slate-500', className)}>
+    <nav aria-label="Breadcrumb" className={cn('flex flex-wrap items-center gap-1.5 text-xs text-slate-500', className)}>
       {items.map((item, index) => {
         const isLast = index === items.length - 1
         return (
           <div key={`${String(item.label)}-${index}`} className="inline-flex items-center gap-2">
             {item.href && !isLast ? (
-              <Link href={item.href} className="rounded-full px-2 py-1 transition-colors hover:bg-white/80 hover:text-slate-900">
+              <Link href={item.href} className="rounded-full px-2 py-0.5 transition-colors hover:bg-white/80 hover:text-slate-900">
                 {item.label}
               </Link>
             ) : (
-              <span className={cn('rounded-full px-2 py-1', isLast ? 'bg-white/80 font-semibold text-slate-900' : '')}>{item.label}</span>
+              <span className={cn('rounded-full px-2 py-0.5', isLast ? 'bg-white/80 font-semibold text-slate-900' : '')}>{item.label}</span>
             )}
             {!isLast ? <span className="text-slate-300">/</span> : null}
           </div>
@@ -117,10 +117,10 @@ type ErpSectionHeadingProps = {
 
 export function ErpSectionHeading({ title, description, actions, className }: ErpSectionHeadingProps) {
   return (
-    <div className={cn("flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between", className)}>
+    <div className={cn("flex flex-col gap-2.5 lg:flex-row lg:items-end lg:justify-between", className)}>
       <div>
-        <h2 className="text-xl font-semibold text-slate-950">{title}</h2>
-        {description ? <p className="text-sm text-slate-500">{description}</p> : null}
+        <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
+        {description ? <p className="text-sm leading-5 text-slate-500">{description}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap gap-2 text-sm">{actions}</div> : null}
     </div>

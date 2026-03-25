@@ -14,6 +14,9 @@ import {
   canUserAccessWorkspace,
   crmTaskInclude,
   getAccessibleTaskWorkspace,
+  normalizeTaskAttachments,
+  normalizeTaskColorHex,
+  normalizeTaskCustomFields,
   normalizeUserIdList,
 } from '@/lib/crm-task-workspaces'
 
@@ -45,8 +48,8 @@ export async function GET(_: Request, context: RouteContext) {
         userId: access.userId,
       })
       if (!workspace) return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
-      if (!canUserAccessWorkspace(workspace, access.userId, 'edit')) {
-        return NextResponse.json({ error: 'No tienes permisos para editar tareas de este espacio.' }, { status: 403 })
+      if (!canUserAccessWorkspace(workspace, access.userId, 'view')) {
+        return NextResponse.json({ error: 'No tienes permisos para ver tareas de este espacio.' }, { status: 403 })
       }
     }
 
@@ -101,6 +104,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     const priority = Object.prototype.hasOwnProperty.call(body ?? {}, 'priority') ? parseTaskPriority(body?.priority) : undefined
     const dueAt = parseOptionalDate(body?.dueAt)
     const archived = Object.prototype.hasOwnProperty.call(body ?? {}, 'archived') ? Boolean(body?.archived) : undefined
+    const attachmentsJson = Object.prototype.hasOwnProperty.call(body ?? {}, 'attachmentsJson') ? normalizeTaskAttachments(body?.attachmentsJson) : undefined
+    const customFieldsJson = Object.prototype.hasOwnProperty.call(body ?? {}, 'customFieldsJson') ? normalizeTaskCustomFields(body?.customFieldsJson) : undefined
+    const colorHex = Object.prototype.hasOwnProperty.call(body ?? {}, 'colorHex') ? normalizeTaskColorHex(body?.colorHex) : undefined
 
     if (Object.prototype.hasOwnProperty.call(body ?? {}, 'status') && !status) {
       return NextResponse.json({ error: 'status inválido' }, { status: 400 })
@@ -108,7 +114,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (Object.prototype.hasOwnProperty.call(body ?? {}, 'priority') && !priority) {
       return NextResponse.json({ error: 'priority inválido' }, { status: 400 })
     }
-    if (dueAt === undefined) return NextResponse.json({ error: 'dueAt inválido' }, { status: 400 })
+    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'dueAt') && dueAt === undefined) {
+      return NextResponse.json({ error: 'dueAt inválido' }, { status: 400 })
+    }
 
     const nextWorkspace = Object.prototype.hasOwnProperty.call(body ?? {}, 'workspaceId')
       ? (workspaceId
@@ -156,8 +164,11 @@ export async function PATCH(request: Request, context: RouteContext) {
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'title') ? { title: title || current.title } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'description') ? { description: description || null } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'workspaceId') ? { workspaceId: workspaceId || null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'colorHex') ? { colorHex } : {}),
           ...(status ? { status } : {}),
           ...(priority ? { priority } : {}),
+          ...(attachmentsJson ? { attachmentsJson } : {}),
+          ...(customFieldsJson ? { customFieldsJson } : {}),
           ...(dueAt !== undefined ? { dueAt: dueAt ?? null } : {}),
           ...((Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId') || Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserIds')) ? { assignedToUserId: normalizedAssigneeIds[0] || null } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeId') ? { sedeId: explicitSedeId || null } : {}),
@@ -190,6 +201,30 @@ export async function PATCH(request: Request, context: RouteContext) {
             actorUserId: access.userId,
             type: 'UPDATED',
             message: 'Se actualizaron los detalles de la tarea.',
+          }),
+        )
+      }
+      if (Object.prototype.hasOwnProperty.call(body ?? {}, 'attachmentsJson')) {
+        historyWrites.push(
+          appendTaskHistory(tx, {
+            empresaId: access.empresaId,
+            taskId: current.id,
+            actorUserId: access.userId,
+            type: 'ATTACHMENTS_CHANGED',
+            message: attachmentsJson?.length ? 'Se actualizaron los adjuntos de la tarea.' : 'Se removieron los adjuntos de la tarea.',
+            metadata: { attachmentsCount: attachmentsJson?.length ?? 0 },
+          }),
+        )
+      }
+      if (Object.prototype.hasOwnProperty.call(body ?? {}, 'customFieldsJson')) {
+        historyWrites.push(
+          appendTaskHistory(tx, {
+            empresaId: access.empresaId,
+            taskId: current.id,
+            actorUserId: access.userId,
+            type: 'CUSTOM_FIELDS_CHANGED',
+            message: customFieldsJson?.length ? 'Se actualizaron los campos personalizados.' : 'Se removieron los campos personalizados.',
+            metadata: { customFieldsCount: customFieldsJson?.length ?? 0 },
           }),
         )
       }

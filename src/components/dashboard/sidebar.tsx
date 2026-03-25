@@ -808,39 +808,39 @@ export default function Sidebar({ user }: SidebarProps) {
         className={cn(
           "flex flex-col border-r border-white/10 bg-[linear-gradient(180deg,#0f172a_0%,#111827_52%,#101a2d_100%)] text-slate-100 shadow-[18px_0_40px_-32px_rgba(15,23,42,0.75)]",
           "fixed inset-y-0 left-0 z-50 md:static",
-          sidebarCollapsed ? "w-20" : "w-72 md:w-64",
+          sidebarCollapsed ? "w-18" : "w-68 md:w-60",
           "transform transition-transform md:translate-x-0",
           mobileNavOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
         {/* Logo */}
-        <div className="border-b border-white/10 p-4">
+        <div className="border-b border-white/10 p-3">
           <div className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "space-x-3")}>
-            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl bg-[linear-gradient(135deg,#0f766e_0%,#2563eb_100%)] text-lg font-bold text-primary-foreground shadow-[0_16px_30px_-18px_rgba(37,99,235,0.7)]">
+            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-[linear-gradient(135deg,#0f766e_0%,#2563eb_100%)] text-base font-bold text-primary-foreground shadow-[0_12px_24px_-18px_rgba(37,99,235,0.7)]">
               {empresa?.logo ? (
-                <Image src={empresa.logo} alt={empresa.nombre} width={40} height={40} className="h-10 w-10 object-contain" />
+                <Image src={empresa.logo} alt={empresa.nombre} width={36} height={36} className="h-9 w-9 object-contain" />
               ) : (
                 <span>{empresaInitials}</span>
               )}
             </div>
             {!sidebarCollapsed ? (
               <div>
-                <h1 className="text-xl font-bold text-slate-50">{empresa?.nombre ?? 'SGDigital'}</h1>
-                <p className="text-xs text-slate-400">Cotizador Pro</p>
+                <h1 className="text-base font-bold leading-5 text-slate-50">{empresa?.nombre ?? 'SGDigital'}</h1>
+                <p className="text-[11px] text-slate-400">Cotizador Pro</p>
               </div>
             ) : null}
 
             <button
               type="button"
               className={cn(
-                "ml-auto hidden h-9 w-9 items-center justify-center rounded-xl border border-white/10 text-slate-200 hover:bg-white/10 md:inline-flex",
+                "ml-auto hidden h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-slate-200 hover:bg-white/10 md:inline-flex",
                 sidebarCollapsed ? "ml-0" : ""
               )}
               onClick={toggleSidebarCollapsed}
               title={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
               aria-label={sidebarCollapsed ? "Expandir menú" : "Colapsar menú"}
             >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -853,7 +853,7 @@ export default function Sidebar({ user }: SidebarProps) {
         </div>
 
         {/* Navigation */}
-        <nav className={cn("flex-1 p-3 space-y-1 overflow-y-auto", sidebarCollapsed ? "px-2" : "px-3")}>
+        <nav className={cn("flex-1 p-2.5 space-y-0.5 overflow-y-auto", sidebarCollapsed ? "px-1.5" : "px-2.5")}>
           {sections.map((section) => {
             const visibleItems = section.items.filter((it) => visibleHrefs.has(it.href))
             if (!visibleItems.length) return null
@@ -877,8 +877,8 @@ export default function Sidebar({ user }: SidebarProps) {
                             }
                           }}
                           className={cn(
-                            "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
-                            isActive ? "bg-white/14 text-white shadow-[0_16px_24px_-20px_rgba(148,163,184,0.45)]" : "text-slate-200 hover:bg-white/8",
+                            "flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors",
+                            isActive ? "bg-white/14 text-white shadow-[0_12px_18px_-18px_rgba(148,163,184,0.45)]" : "text-slate-200 hover:bg-white/8",
                             isBlocked ? "opacity-60 cursor-not-allowed" : ""
                           )}
                           title={item.name}
@@ -886,7 +886,7 @@ export default function Sidebar({ user }: SidebarProps) {
                           <div className={cn("flex items-center", "justify-center w-full")}> 
                             {item.icon}
                             {isBlocked && (
-                              <Lock className="ml-2 w-4 h-4 text-slate-400" />
+                              <Lock className="ml-1.5 h-3.5 w-3.5 text-slate-400" />
                             )}
                           </div>
                         </Link>
@@ -910,7 +910,7 @@ export default function Sidebar({ user }: SidebarProps) {
             return (
               <div
                 key={section.title}
-                className={cn("space-y-1", "pt-2")}
+                className={cn("space-y-0.5", "pt-1.5")}
               >
                 <button
                   type="button"
@@ -921,12 +921,12 @@ export default function Sidebar({ user }: SidebarProps) {
                     })
                   }}
                   className={cn(
-                    "w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors text-slate-200 hover:bg-white/8"
+                    "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors text-slate-200 hover:bg-white/8"
                   )}
                 >
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{section.title}</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{section.title}</span>
                   <svg
-                    className={cn("h-4 w-4 transition-transform text-slate-400", isOpen ? "rotate-180" : "")}
+                    className={cn("h-3.5 w-3.5 transition-transform text-slate-400", isOpen ? "rotate-180" : "")}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -942,7 +942,7 @@ export default function Sidebar({ user }: SidebarProps) {
                     isOpen ? "max-h-[900px] opacity-100 translate-y-0" : "max-h-0 opacity-0 -translate-y-1 pointer-events-none"
                   )}
                 >
-                  <div className="space-y-1 pt-1">
+                  <div className="space-y-0.5 pt-0.5">
                     {visibleItems.map((item) => {
                       const isActive = isNavActive(item.href)
                       const isBlocked = isPersonal && blockedModules.has(item.href)
@@ -958,20 +958,20 @@ export default function Sidebar({ user }: SidebarProps) {
                               }
                             }}
                             className={cn(
-                              "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
-                              isActive ? "bg-white/14 text-white shadow-[0_16px_24px_-20px_rgba(148,163,184,0.45)]" : "text-slate-200 hover:bg-white/8",
+                              "flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors",
+                              isActive ? "bg-white/14 text-white shadow-[0_12px_18px_-18px_rgba(148,163,184,0.45)]" : "text-slate-200 hover:bg-white/8",
                               isBlocked ? "opacity-60 cursor-not-allowed" : ""
                             )}
                           >
-                            <div className="flex items-center space-x-3">
+                            <div className="flex items-center space-x-2.5">
                               {item.icon}
-                              <span className="text-sm font-medium">{item.name}</span>
+                              <span className="text-[13px] font-medium leading-4">{item.name}</span>
                               {isBlocked && (
-                                <Lock className="ml-2 w-4 h-4 text-slate-400" />
+                                <Lock className="ml-1.5 h-3.5 w-3.5 text-slate-400" />
                               )}
                             </div>
                             {item.badge ? (
-                              <span className="px-2 py-1 text-xs font-medium bg-slate-800 text-slate-200 rounded">{item.badge}</span>
+                              <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-medium text-slate-200">{item.badge}</span>
                             ) : null}
                           </Link>
                           {isBlocked && (
@@ -992,7 +992,7 @@ export default function Sidebar({ user }: SidebarProps) {
 
           {/* Preferencias */}
           <div
-            className={cn("space-y-1", sidebarCollapsed ? "" : "pt-3")}
+            className={cn("space-y-0.5", sidebarCollapsed ? "" : "pt-2")}
           >
             {sidebarCollapsed ? (
               <>
@@ -1004,7 +1004,7 @@ export default function Sidebar({ user }: SidebarProps) {
                       href={item.href}
                       onClick={() => setMobileNavOpen(false)}
                       className={cn(
-                        "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
+                        "flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors",
                         isActive ? "bg-slate-800/60 text-white" : "text-slate-200 hover:bg-slate-800/40"
                       )}
                       title={item.name}
@@ -1028,13 +1028,13 @@ export default function Sidebar({ user }: SidebarProps) {
                     })
                   }}
                   className={cn(
-                    "w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors text-slate-200 hover:bg-white/8"
+                    "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors text-slate-200 hover:bg-white/8"
                   )}
                 >
-                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{t('sidebar.preferences')}</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{t('sidebar.preferences')}</span>
                   <svg
                     className={cn(
-                      "h-4 w-4 transition-transform text-slate-400",
+                      "h-3.5 w-3.5 transition-transform text-slate-400",
                       effectiveOpenSection === "Preferencias" ? "rotate-180" : ""
                     )}
                     fill="none"
@@ -1054,7 +1054,7 @@ export default function Sidebar({ user }: SidebarProps) {
                       : "max-h-0 opacity-0 -translate-y-1 pointer-events-none"
                   )}
                 >
-                  <div className="space-y-1 pt-1">
+                  <div className="space-y-0.5 pt-0.5">
                     {preferenceNavigation.map((item) => {
                       const isActive = isNavActive(item.href)
                       return (
@@ -1066,13 +1066,13 @@ export default function Sidebar({ user }: SidebarProps) {
                             setOpenSectionTitle(activeSectionTitle ?? null)
                           }}
                           className={cn(
-                            "flex items-center justify-between px-3 py-2 rounded-lg transition-colors",
-                            isActive ? "bg-white/14 text-white shadow-[0_16px_24px_-20px_rgba(148,163,184,0.45)]" : "text-slate-200 hover:bg-white/8"
+                            "flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors",
+                            isActive ? "bg-white/14 text-white shadow-[0_12px_18px_-18px_rgba(148,163,184,0.45)]" : "text-slate-200 hover:bg-white/8"
                           )}
                         >
-                          <div className="flex items-center space-x-3">
+                          <div className="flex items-center space-x-2.5">
                             {item.icon}
-                            <span className="text-sm font-medium">{item.name}</span>
+                            <span className="text-[13px] font-medium leading-4">{item.name}</span>
                           </div>
                         </Link>
                       )
@@ -1087,11 +1087,11 @@ export default function Sidebar({ user }: SidebarProps) {
                               type="button"
                               onClick={() => open()}
                               className={cn(
-                                "w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors text-slate-200 hover:bg-white/8"
+                                "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors text-slate-200 hover:bg-white/8"
                               )}
                             >
-                              <div className="flex items-center space-x-3">
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <div className="flex items-center space-x-2.5">
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
@@ -1099,7 +1099,7 @@ export default function Sidebar({ user }: SidebarProps) {
                                     d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
                                   />
                                 </svg>
-                                <span className="font-medium">{t('header.customizeMenu')}</span>
+                                <span className="text-[13px] font-medium leading-4">{t('header.customizeMenu')}</span>
                               </div>
                             </button>
                           )}
@@ -1114,25 +1114,25 @@ export default function Sidebar({ user }: SidebarProps) {
         </nav>
 
         {/* User Info + Cambiar contraseña */}
-        <div className={cn("border-t border-white/10 p-4", sidebarCollapsed ? "px-2" : "px-4")}>
-          <div className={cn("flex items-center space-x-3", sidebarCollapsed ? "justify-center" : "")}>
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 font-medium text-slate-100">
+        <div className={cn("border-t border-white/10 p-3", sidebarCollapsed ? "px-1.5" : "px-3")}>
+          <div className={cn("flex items-center space-x-2.5", sidebarCollapsed ? "justify-center" : "") }>
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-[13px] font-medium text-slate-100">
               {user.name?.charAt(0).toUpperCase()}
             </div>
             {!sidebarCollapsed ? (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-100 truncate">{user.name}</p>
-                <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                <p className="truncate text-[13px] font-medium leading-4 text-slate-100">{user.name}</p>
+                <p className="truncate text-[11px] leading-4 text-slate-400">{user.email}</p>
               </div>
             ) : null}
           </div>
 
           {!sidebarCollapsed ? (
-            <div className="mt-4">
+            <div className="mt-2.5">
               <Link
                 href="/auth/change-password"
                 onClick={() => setMobileNavOpen(false)}
-                className="text-xs text-sky-300 hover:underline font-medium"
+                className="text-[11px] font-medium text-sky-300 hover:underline"
               >
                 Cambiar contraseña
               </Link>

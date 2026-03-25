@@ -7,6 +7,7 @@
 "use client"
 
 import Link from "next/link"
+import Image from 'next/image'
 import { useEffect, useMemo, useState } from "react"
 import { signOut } from "next-auth/react"
 import { Button } from "@/components/ui/button"
@@ -204,10 +205,10 @@ export default function Header({ user }: HeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/60 bg-white/72 px-3 py-3 shadow-[0_14px_34px_-28px_rgba(15,23,42,0.35)] backdrop-blur-xl sm:px-4 lg:px-6">
+    <header className="sticky top-0 z-50 border-b border-white/60 bg-white/72 px-2.5 py-2 shadow-[0_10px_24px_-22px_rgba(15,23,42,0.3)] backdrop-blur-xl sm:px-3 lg:px-4">
       <div className="mx-auto flex w-full max-w-[1680px] items-center justify-between">
         {/* Breadcrumb / Title */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <Button
             variant="ghost"
             size="icon"
@@ -216,22 +217,22 @@ export default function Header({ user }: HeaderProps) {
             aria-label={t('header.openMenu')}
             type="button"
           >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="h-4.5 w-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </Button>
 
-          <h2 className="text-base font-semibold text-slate-900 sm:text-lg">{t('header.controlPanel')}</h2>
+          <h2 className="text-sm font-semibold text-slate-900 sm:text-base">{t('header.controlPanel')}</h2>
         </div>
 
         {/* Actions */}
-        <div className="flex items-center space-x-2 sm:space-x-4">
+        <div className="flex items-center space-x-1.5 sm:space-x-2.5">
           <NotificationsBell onUnreadCountChange={setUnreadCount} />
 
           {/* Más opciones */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" type="button" className="relative bg-white/80">
+              <Button variant="outline" size="sm" type="button" className="relative h-8 bg-white/80 px-2.5">
                 {t('common.more')}
               </Button>
             </DropdownMenuTrigger>
@@ -302,19 +303,19 @@ export default function Header({ user }: HeaderProps) {
           </DropdownMenu>
 
           {/* User Menu */}
-          <div className="flex items-center space-x-3">
-            <div className="relative h-9 w-9 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm">
+          <div className="flex items-center space-x-2">
+            <div className="relative h-8 w-8 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm">
               {user.image ? (
-                <img src={user.image} alt={user.name ?? 'Usuario'} className="h-full w-full object-cover" />
+                <Image src={user.image} alt={user.name ?? 'Usuario'} fill className="object-cover" sizes="32px" unoptimized />
               ) : (
-                <div className="grid h-full w-full place-items-center bg-slate-100 text-xs font-semibold text-slate-700">
+                <div className="grid h-full w-full place-items-center bg-slate-100 text-[11px] font-semibold text-slate-700">
                   {initials}
                 </div>
               )}
             </div>
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-medium text-slate-900">{user.name}</p>
-              <p className="text-xs capitalize text-slate-500">
+              <p className="text-[13px] font-medium leading-4 text-slate-900">{user.name}</p>
+              <p className="text-[11px] capitalize leading-4 text-slate-500">
                 {user.role?.toLowerCase()}
                 {planName ? ` · Plan: ${planName}` : ''}
               </p>
@@ -324,6 +325,7 @@ export default function Header({ user }: HeaderProps) {
               variant="outline"
               size="sm"
               onClick={() => signOut({ callbackUrl: "/auth/login" })}
+              className="h-8 px-2.5"
             >
               {t('header.signOut')}
             </Button>

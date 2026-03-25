@@ -3,6 +3,96 @@ import { Prisma, type PrismaClient } from '@prisma/client'
 type DbClient = PrismaClient | Prisma.TransactionClient
 export type WorkspaceMemberRole = 'VIEWER' | 'EDITOR' | 'MANAGER'
 export type WorkspaceCapability = 'view' | 'edit' | 'manage'
+export type TaskAttachmentType = 'image' | 'audio' | 'video' | 'document'
+export type TaskCustomFieldType = 'TEXT' | 'FILE'
+
+export type TaskAttachment = {
+  id: string
+  name: string
+  url: string
+  type: TaskAttachmentType
+  mimeType: string | null
+  sizeBytes: number | null
+  uploadedAt: string
+}
+
+export type TaskCustomField = {
+  id: string
+  label: string
+  type: TaskCustomFieldType
+  textValue: string | null
+  file: TaskAttachment | null
+}
+
+const TASK_ATTACHMENT_TYPES: TaskAttachmentType[] = ['image', 'audio', 'video', 'document']
+
+function normalizeString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function normalizeTaskAttachment(value: unknown, index: number): TaskAttachment | null {
+  if (!isRecord(value)) return null
+  const name = normalizeString(value.name)
+  const url = normalizeString(value.url)
+  const rawType = normalizeString(value.type).toLowerCase() as TaskAttachmentType
+  if (!name || !url || !TASK_ATTACHMENT_TYPES.includes(rawType)) return null
+
+  const uploadedAtRaw = normalizeString(value.uploadedAt)
+  const uploadedAt = uploadedAtRaw && !Number.isNaN(new Date(uploadedAtRaw).getTime()) ? new Date(uploadedAtRaw).toISOString() : new Date().toISOString()
+  const sizeBytes = typeof value.sizeBytes === 'number' && Number.isFinite(value.sizeBytes) ? value.sizeBytes : null
+
+  return {
+    id: normalizeString(value.id) || `attachment-${index + 1}`,
+    name,
+    url,
+    type: rawType,
+    mimeType: normalizeString(value.mimeType) || null,
+    sizeBytes,
+    uploadedAt,
+  }
+}
+
+export function normalizeTaskAttachments(value: unknown): TaskAttachment[] {
+  if (!Array.isArray(value)) return []
+  const attachments = value
+    .map((item, index) => normalizeTaskAttachment(item, index))
+    .filter((item): item is TaskAttachment => Boolean(item))
+  return attachments
+}
+
+export function normalizeTaskCustomFields(value: unknown): TaskCustomField[] {
+  if (!Array.isArray(value)) return []
+
+  const fields: TaskCustomField[] = []
+  value.forEach((item, index) => {
+    if (!isRecord(item)) return
+    const label = normalizeString(item.label)
+    const rawType = normalizeString(item.type).toUpperCase() as TaskCustomFieldType
+    if (!label || (rawType !== 'TEXT' && rawType !== 'FILE')) return
+
+    const field: TaskCustomField = {
+      id: normalizeString(item.id) || `field-${index + 1}`,
+      label,
+      type: rawType,
+      textValue: rawType === 'TEXT' ? normalizeString(item.textValue || item.value) || null : null,
+      file: rawType === 'FILE' ? normalizeTaskAttachment(item.file || item.value, index) : null,
+    }
+
+    fields.push(field)
+  })
+
+  return fields
+}
+
+export function normalizeTaskColorHex(value: unknown): string | null {
+  const raw = normalizeString(value)
+  if (!raw) return null
+  return /^#([0-9a-fA-F]{6})$/.test(raw) ? raw.toUpperCase() : null
+}
 
 export const crmTaskWorkspaceInclude = {
   createdBy: { select: { id: true, name: true, email: true } },

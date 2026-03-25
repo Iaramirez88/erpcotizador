@@ -1679,6 +1679,7 @@ enum CrmActivityType {
 
 enum CrmTaskStatus {
   OPEN
+  IN_PROGRESS
   DONE
   CANCELED
 }
@@ -1708,6 +1709,8 @@ enum CrmTaskHistoryType {
   DUE_DATE_CHANGED
   ASSIGNEES_CHANGED
   NOTE_ADDED
+  ATTACHMENTS_CHANGED
+  CUSTOM_FIELDS_CHANGED
   ARCHIVED
   RESTORED
 }
@@ -1989,8 +1992,11 @@ model CrmTask {
 
   title       String
   description String? @db.Text
+  colorHex    String?
   status      CrmTaskStatus @default(OPEN)
   priority    CrmTaskPriority @default(NORMAL)
+  attachmentsJson Json @default("[]")
+  customFieldsJson Json @default("[]")
   dueAt       DateTime?
   completedAt DateTime?
   archivedAt  DateTime?
