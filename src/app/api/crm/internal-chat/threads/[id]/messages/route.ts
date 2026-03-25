@@ -19,23 +19,23 @@ type ChatAttachment = {
 
 function mapAttachments(value: unknown): ChatAttachment[] {
   if (!Array.isArray(value)) return []
-  return value
-    .map((item) => {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) return null
-      const row = item as Record<string, unknown>
-      const name = typeof row.name === 'string' ? row.name.trim() : ''
-      const url = typeof row.url === 'string' ? row.url.trim() : ''
-      const type = row.type === 'image' ? 'image' : row.type === 'document' ? 'document' : null
-      if (!name || !url || !type) return null
-      return {
-        name,
-        url,
-        type,
-        mimeType: typeof row.mimeType === 'string' ? row.mimeType : null,
-        sizeBytes: typeof row.sizeBytes === 'number' && Number.isFinite(row.sizeBytes) ? row.sizeBytes : null,
-      } satisfies ChatAttachment
+  const attachments: ChatAttachment[] = []
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+    const row = item as Record<string, unknown>
+    const name = typeof row.name === 'string' ? row.name.trim() : ''
+    const url = typeof row.url === 'string' ? row.url.trim() : ''
+    const type = row.type === 'image' ? 'image' : row.type === 'document' ? 'document' : null
+    if (!name || !url || !type) continue
+    attachments.push({
+      name,
+      url,
+      type,
+      mimeType: typeof row.mimeType === 'string' ? row.mimeType : null,
+      sizeBytes: typeof row.sizeBytes === 'number' && Number.isFinite(row.sizeBytes) ? row.sizeBytes : null,
     })
-    .filter((item): item is ChatAttachment => Boolean(item))
+  }
+  return attachments
 }
 
 export async function POST(request: Request, context: RouteContext) {
