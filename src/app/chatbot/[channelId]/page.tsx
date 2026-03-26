@@ -62,6 +62,8 @@ export default async function PublicChatbotPage(props: PageProps) {
       productPlaceholder={settings.productPlaceholder}
       messageLabel={settings.messageLabel}
       messagePlaceholder={settings.messagePlaceholder}
+      quickActions={settings.quickActions}
+      flowStages={settings.flowStages}
       allowHumanHandoff={settings.allowHumanHandoff}
     />
   )

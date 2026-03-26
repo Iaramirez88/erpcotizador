@@ -306,9 +306,8 @@ export default function ProductosPage() {
     const loadMe = async () => {
       try {
         const res = await fetch('/api/me', { cache: 'no-store' })
-        const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { role?: string } } | null
-        const role = String(json?.data?.role ?? '')
-        if (!cancelled) setIsAdmin(role === 'ADMIN')
+        const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { canManageCustomProductRequests?: boolean; role?: string } } | null
+        if (!cancelled) setIsAdmin(Boolean(json?.data?.canManageCustomProductRequests))
       } catch {
         if (!cancelled) setIsAdmin(false)
       }

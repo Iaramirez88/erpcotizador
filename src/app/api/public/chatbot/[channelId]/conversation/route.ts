@@ -81,7 +81,16 @@ export async function GET(request: Request, context: RouteContext) {
           author: message.sentByUser?.name || message.sentByUser?.email || null,
           attachments: Array.isArray(message.attachmentsJson) ? message.attachmentsJson : [],
           meta: message.payloadJson && typeof message.payloadJson === 'object' && !Array.isArray(message.payloadJson)
-            ? { nextField: typeof message.payloadJson.chatFlowNextField === 'string' ? message.payloadJson.chatFlowNextField : null }
+            ? {
+                nextField: typeof message.payloadJson.chatFlowNextField === 'string' ? message.payloadJson.chatFlowNextField : null,
+                stageId: typeof message.payloadJson.chatFlowStageId === 'string' ? message.payloadJson.chatFlowStageId : null,
+                quickActionIds: Array.isArray(message.payloadJson.chatQuickActionIds)
+                  ? message.payloadJson.chatQuickActionIds.filter((item): item is string => typeof item === 'string')
+                  : [],
+                responseOptionIds: Array.isArray(message.payloadJson.chatFlowResponseOptionIds)
+                  ? message.payloadJson.chatFlowResponseOptionIds.filter((item): item is string => typeof item === 'string')
+                  : [],
+              }
             : undefined,
         })),
       },

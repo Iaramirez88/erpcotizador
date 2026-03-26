@@ -187,15 +187,20 @@ export function buildChatbotSnippet(args: ChatbotSnippetArgs) {
       : launcherIcon === 'bot'
         ? '&#129302;'
         : '&#128172;'
-  const launcherAnchorStyle = launcherPosition === 'left' ? 'left:24px;' : 'right:24px;'
-  const panelAnchorStyle = launcherPosition === 'left' ? 'left:24px;' : 'right:24px;'
+  const launcherOffset = '60px'
+  const panelOffset = '148px'
+  const launcherAnchorStyle = launcherPosition === 'left' ? `left:${launcherOffset};` : `right:${launcherOffset};`
+  const panelAnchorStyle = launcherPosition === 'left' ? `left:${launcherOffset};` : `right:${launcherOffset};`
   const panelTransformOrigin = launcherPosition === 'left' ? 'bottom left' : 'bottom right'
   const launcherLabelMarkup = launcherSize === 'compact' ? '' : `<span>${launcherLabel}</span>`
+  const backdropZIndex = 2147483645
+  const panelZIndex = 2147483646
+  const launcherZIndex = 2147483647
   const launcherButtonStyle = launcherSize === 'compact'
-    ? `position:fixed;bottom:24px;${launcherAnchorStyle}z-index:99999;border:none;border-radius:999px;width:58px;height:58px;background:${accentColor};color:#fff;font:700 14px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0;backdrop-filter:blur(14px);`
+    ? `position:fixed;bottom:${launcherOffset};${launcherAnchorStyle}z-index:${launcherZIndex};border:none;border-radius:999px;width:58px;height:58px;background:${accentColor};color:#fff;font:700 14px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0;backdrop-filter:blur(14px);`
     : launcherSize === 'large'
-      ? `position:fixed;bottom:24px;${launcherAnchorStyle}z-index:99999;border:none;border-radius:999px;padding:0 24px;height:66px;background:${accentColor};color:#fff;font:700 15px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;display:flex;align-items:center;gap:12px;backdrop-filter:blur(14px);`
-      : `position:fixed;bottom:24px;${launcherAnchorStyle}z-index:99999;border:none;border-radius:999px;padding:0 20px;height:60px;background:${accentColor};color:#fff;font:700 14px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;display:flex;align-items:center;gap:10px;backdrop-filter:blur(14px);`
+      ? `position:fixed;bottom:${launcherOffset};${launcherAnchorStyle}z-index:${launcherZIndex};border:none;border-radius:999px;padding:0 24px;height:66px;background:${accentColor};color:#fff;font:700 15px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;display:flex;align-items:center;gap:12px;backdrop-filter:blur(14px);`
+      : `position:fixed;bottom:${launcherOffset};${launcherAnchorStyle}z-index:${launcherZIndex};border:none;border-radius:999px;padding:0 20px;height:60px;background:${accentColor};color:#fff;font:700 14px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;display:flex;align-items:center;gap:10px;backdrop-filter:blur(14px);`
 
   return `<script>
 (function () {
@@ -217,16 +222,16 @@ export function buildChatbotSnippet(args: ChatbotSnippetArgs) {
 
   const style = document.createElement('style');
   style.id = styleId;
-  style.textContent = '\n    @keyframes sgd-chatbot-launcher-in {\n      from { opacity: 0; transform: translateY(24px) scale(.82); }\n      to { opacity: 1; transform: translateY(0) scale(1); }\n    }\n    @keyframes sgd-chatbot-launcher-pulse {\n      0%, 100% { box-shadow: 0 18px 40px rgba(15,23,42,.22); }\n      50% { box-shadow: 0 22px 52px rgba(15,23,42,.30); }\n    }\n    #'+launcherId+' {\n      opacity: 0;\n      transform: translateY(24px) scale(.82);\n      transition: transform .28s ease, box-shadow .28s ease, filter .28s ease;\n      animation: sgd-chatbot-launcher-in .55s cubic-bezier(.22,1,.36,1) forwards, sgd-chatbot-launcher-pulse 3.8s ease-in-out .75s infinite;\n    }\n    #'+launcherId+':hover {\n      transform: translateY(-2px) scale(1.02);\n      filter: saturate(1.05);\n    }\n    #'+backdropId+' {\n      opacity: 0;\n      pointer-events: none;\n      transition: opacity .26s ease;\n    }\n    #'+backdropId+'.is-open {\n      opacity: 1;\n      pointer-events: auto;\n    }\n    #'+panelId+' {\n      opacity: 0;\n      transform: translateY(18px) scale(.92);\n      transform-origin: ${panelTransformOrigin};\n      pointer-events: none;\n      transition: opacity .28s ease, transform .34s cubic-bezier(.22,1,.36,1);\n    }\n    #'+panelId+'.is-open {\n      opacity: 1;\n      transform: translateY(0) scale(1);\n      pointer-events: auto;\n    }\n    #'+panelId+'.is-closing {\n      opacity: 0;\n      transform: translateY(16px) scale(.94);\n      pointer-events: none;\n    }';
+  style.textContent = '\n    @keyframes sgd-chatbot-launcher-in {\n      from { opacity: 0; transform: translateY(24px) scale(.82); }\n      to { opacity: 1; transform: translateY(0) scale(1); }\n    }\n    @keyframes sgd-chatbot-launcher-pulse {\n      0%, 100% { box-shadow: 0 18px 40px rgba(15,23,42,.22); }\n      50% { box-shadow: 0 22px 52px rgba(15,23,42,.30); }\n    }\n    #'+launcherId+' {\n      opacity: 0;\n      transform: translateY(24px) scale(.82);\n      transition: transform .28s ease, box-shadow .28s ease, filter .28s ease;\n      animation: sgd-chatbot-launcher-in .55s cubic-bezier(.22,1,.36,1) forwards, sgd-chatbot-launcher-pulse 3.8s ease-in-out .75s infinite;\n      position: fixed !important;\n      z-index: ${launcherZIndex} !important;\n      isolation: isolate;\n    }\n    #'+launcherId+':hover {\n      transform: translateY(-2px) scale(1.02);\n      filter: saturate(1.05);\n    }\n    #'+backdropId+' {\n      opacity: 0;\n      pointer-events: none;\n      transition: opacity .26s ease;\n      position: fixed !important;\n      z-index: ${backdropZIndex} !important;\n      isolation: isolate;\n    }\n    #'+backdropId+'.is-open {\n      opacity: 1;\n      pointer-events: auto;\n    }\n    #'+panelId+' {\n      opacity: 0;\n      transform: translateY(18px) scale(.92);\n      transform-origin: ${panelTransformOrigin};\n      pointer-events: none;\n      transition: opacity .28s ease, transform .34s cubic-bezier(.22,1,.36,1);\n      position: fixed !important;\n      z-index: ${panelZIndex} !important;\n      isolation: isolate;\n    }\n    #'+panelId+'.is-open {\n      opacity: 1;\n      transform: translateY(0) scale(1);\n      pointer-events: auto;\n    }\n    #'+panelId+'.is-closing {\n      opacity: 0;\n      transform: translateY(16px) scale(.94);\n      pointer-events: none;\n    }';
   const customCss = ${JSON.stringify(customCss)};
   if (customCss) style.textContent += '\n' + customCss;
   if (!document.getElementById(styleId)) document.head.appendChild(style);
 
   const button = createNode('button', '${launcherButtonStyle}', '<span style="font-size:${launcherSize === 'large' ? '20px' : '16px'};line-height:1;">${iconMarkup}</span>${launcherLabelMarkup}');
   button.id = launcherId;
-  const backdrop = createNode('div', 'position:fixed;inset:0;z-index:99997;background:linear-gradient(180deg,rgba(15,23,42,.08),rgba(15,23,42,.18));backdrop-filter:blur(3px);', '');
+  const backdrop = createNode('div', 'position:fixed;inset:0;z-index:${backdropZIndex};background:linear-gradient(180deg,rgba(15,23,42,.08),rgba(15,23,42,.18));backdrop-filter:blur(3px);', '');
   backdrop.id = backdropId;
-  const panel = createNode('div', 'position:fixed;bottom:96px;${panelAnchorStyle}z-index:99998;width:min(420px,calc(100vw - 24px));height:min(760px,calc(100vh - 120px));border:1px solid rgba(148,163,184,.28);border-radius:24px;background:${backgroundColor};overflow:hidden;box-shadow:0 24px 80px rgba(15,23,42,.28);font:14px sans-serif;color:#0f172a;', '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(226,232,240,1);background:linear-gradient(135deg,#0f172a,${accentColor});color:#fff;"><div><div style="font-weight:700;font-size:16px;">${title}</div><div style="font-size:12px;opacity:.9;margin-top:4px;">${prompt}</div></div><button type="button" id="sgd-chatbot-close" style="border:none;background:rgba(255,255,255,.14);color:#fff;width:34px;height:34px;border-radius:999px;cursor:pointer;font-size:18px;transition:transform .2s ease, background .2s ease;">×</button></div><iframe src="'+iframeUrl+'" title="${title}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" style="display:block;width:100%;height:calc(100% - 68px);border:0;background:${backgroundColor};"></iframe>');
+  const panel = createNode('div', 'position:fixed;bottom:${panelOffset};${panelAnchorStyle}z-index:${panelZIndex};width:min(420px,calc(100vw - 32px));height:min(760px,calc(100vh - 180px));border:1px solid rgba(148,163,184,.28);border-radius:24px;background:${backgroundColor};overflow:hidden;box-shadow:0 24px 80px rgba(15,23,42,.28);font:14px sans-serif;color:#0f172a;', '<div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(226,232,240,1);background:linear-gradient(135deg,#0f172a,${accentColor});color:#fff;"><div><div style="font-weight:700;font-size:16px;">${title}</div><div style="font-size:12px;opacity:.9;margin-top:4px;">${prompt}</div></div><button type="button" id="sgd-chatbot-close" style="border:none;background:rgba(255,255,255,.14);color:#fff;width:34px;height:34px;border-radius:999px;cursor:pointer;font-size:18px;transition:transform .2s ease, background .2s ease;">×</button></div><iframe src="'+iframeUrl+'" title="${title}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" style="display:block;width:100%;height:calc(100% - 68px);border:0;background:${backgroundColor};"></iframe>');
   panel.id = panelId;
 
   function openPanel() {
@@ -272,13 +277,16 @@ export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   const collapsedHeight = args.floatingLauncherEnabled ? '108' : height
   const src = buildChatbotEmbedUrl(args.baseUrl, args.channelId)
   const iframeId = `sgd-chatbot-iframe-${args.channelId}`
+  const floatingStyle = args.floatingLauncherEnabled
+    ? 'position:fixed;bottom:60px;right:60px;z-index:2147483647;width:min(420px,calc(100vw - 32px));max-width:min(420px,calc(100vw - 32px));isolation:isolate;'
+    : 'width:100%;max-width:420px;'
 
   return `<iframe
   id="${iframeId}"
   src="${src}"
   title="Chatbot CRM SGDigital"
   loading="lazy"
-  style="width:100%;max-width:420px;height:${collapsedHeight}px;border:0;border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.16);background:transparent;overflow:hidden;transition:height .28s ease, box-shadow .28s ease;"
+  style="${floatingStyle}height:${collapsedHeight}px;border:0;border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.16);background:transparent;overflow:hidden;transition:height .28s ease, box-shadow .28s ease;"
   referrerpolicy="strict-origin-when-cross-origin"
 ></iframe>
 <script>

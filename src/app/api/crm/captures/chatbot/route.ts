@@ -3,6 +3,18 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createInboundArtifacts, getConnectionToken, parseJsonObject } from '@/lib/crm-omnichannel'
 import { normalizeString } from '@/lib/crm'
+import {
+  findChatbotFlowResponseOption,
+  findChatbotQuickAction,
+  findChatbotFlowStage,
+  getStageQuickActions,
+  getStageResponseOptions,
+  matchChatbotFlowResponseOption,
+  type ChatbotFlowNextField,
+  type ChatbotFlowResponseOption,
+  type ChatbotFlowStage,
+  type ChatbotQuickAction,
+} from '@/lib/crm-chatbot-flow'
 import { extractHostFromUrl, getPublicChatbotSettings, getRequestHost, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
 
 export const runtime = 'nodejs'
@@ -11,14 +23,25 @@ type MaterialMatch = {
   id: string
   nombre: string
   imagenUrl: string | null
+  categoria: string | null
+  proveedor: string | null
   precioM2: number | null
   precioMetro: number | null
   precioUnidad: number | null
   stockActual: number
+  stockMinimo: number
   unidadMedida: string
 }
 
-type ChatFlowNextField = 'name' | 'email' | 'phone' | 'product' | 'quantity' | null
+type CatalogInsight = {
+  primary: MaterialMatch | null
+  alternatives: MaterialMatch[]
+  catalog: MaterialMatch[]
+  query: string
+  catalogIntent: boolean
+}
+
+type ChatFlowNextField = Exclude<ChatbotFlowNextField, 'none'> | null
 
 function splitSearchTerms(value: string) {
   return Array.from(
@@ -62,6 +85,121 @@ function formatMaterialPrice(material: MaterialMatch) {
     return `${formatMoney(material.precioM2)} por m2`
   }
   return 'Precio a confirmar con asesor'
+}
+
+function formatMaterialStock(material: MaterialMatch) {
+  if (material.stockActual <= 0) return `Sin stock ahora mismo (${material.unidadMedida})`
+  if (material.stockActual <= material.stockMinimo) return `Stock bajo: ${material.stockActual} ${material.unidadMedida}`
+  return `Stock disponible: ${material.stockActual} ${material.unidadMedida}`
+}
+
+function isCatalogIntent(messageText: string, requestedProduct: string) {
+  const source = normalizeString(requestedProduct || messageText).toLowerCase()
+  if (!source) return false
+  return [
+    /\bcatal(ogo|ago)\b/i,
+    /\bque\s+(productos|servicios|manejan|tienen|ofrecen)\b/i,
+    /\b(stock|inventario|disponible|disponibilidad)\b/i,
+    /\bmu[eé]strame\b.*\b(productos|catalogo|inventario)\b/i,
+  ].some((pattern) => pattern.test(source))
+}
+
+function dedupeMaterials(items: MaterialMatch[]) {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false
+    seen.add(item.id)
+    return true
+  })
+}
+
+function formatCatalogLines(items: MaterialMatch[]) {
+  return items.map((item) => {
+    const context = [item.categoria, item.proveedor].filter(Boolean).join(' · ')
+    return `- ${item.nombre}: ${formatMaterialStock(item)}${context ? ` · ${context}` : ''} · ${formatMaterialPrice(item)}`
+  }).join('\n')
+}
+
+async function resolveCatalogInsight(args: {
+  tx: Prisma.TransactionClient
+  empresaId: string
+  requestedProduct: string
+  messageText: string
+}) {
+  const catalogIntent = isCatalogIntent(args.messageText, args.requestedProduct)
+  const materialSearchText = args.requestedProduct || args.messageText
+  const materialTerms = splitSearchTerms(materialSearchText)
+
+  const materialCandidates = materialSearchText
+    ? await args.tx.material.findMany({
+        where: {
+          empresaId: args.empresaId,
+          activo: true,
+          OR: materialTerms.length > 0
+            ? materialTerms.flatMap((term) => ([
+                { nombre: { contains: term, mode: 'insensitive' as const } },
+                { categoria: { contains: term, mode: 'insensitive' as const } },
+                { proveedor: { contains: term, mode: 'insensitive' as const } },
+              ]))
+            : [{ nombre: { contains: materialSearchText, mode: 'insensitive' as const } }],
+        },
+        select: {
+          id: true,
+          nombre: true,
+          imagenUrl: true,
+          categoria: true,
+          proveedor: true,
+          precioM2: true,
+          precioMetro: true,
+          precioUnidad: true,
+          stockActual: true,
+          stockMinimo: true,
+          unidadMedida: true,
+        },
+        take: 8,
+      })
+    : []
+
+  const rankedMatches = dedupeMaterials(
+    materialCandidates
+      .map((item) => ({ item, score: scoreMaterialMatch(item, materialSearchText) }))
+      .sort((left, right) => right.score - left.score)
+      .filter((entry) => entry.score > 0)
+      .map((entry) => entry.item),
+  )
+
+  const catalog = catalogIntent
+    ? await args.tx.material.findMany({
+        where: {
+          empresaId: args.empresaId,
+          activo: true,
+          stockActual: { gt: 0 },
+        },
+        select: {
+          id: true,
+          nombre: true,
+          imagenUrl: true,
+          categoria: true,
+          proveedor: true,
+          precioM2: true,
+          precioMetro: true,
+          precioUnidad: true,
+          stockActual: true,
+          stockMinimo: true,
+          unidadMedida: true,
+        },
+        orderBy: [{ stockActual: 'desc' }, { updatedAt: 'desc' }],
+        take: 5,
+      })
+    : []
+
+  return {
+    primary: rankedMatches[0] ?? null,
+    alternatives: rankedMatches.slice(1, 4),
+    catalog: dedupeMaterials(catalog),
+    query: materialSearchText,
+    catalogIntent,
+  } satisfies CatalogInsight
 }
 
 function extractEmail(value: string) {
@@ -116,8 +254,77 @@ function getNextChatField(args: { nombre: string; email: string; phone: string; 
   return null
 }
 
+function resolveChatStage(args: {
+  currentStageId: string
+  flowStages: ChatbotFlowStage[]
+  quickActions: ChatbotQuickAction[]
+  quickActionId: string
+  matchedResponseOption: ChatbotFlowResponseOption | null
+  requestedProduct: string
+  requestHuman: boolean
+  leadQualified: boolean
+  catalogIntent: boolean
+  nextField: ChatFlowNextField
+}) {
+  if (args.matchedResponseOption) {
+    return findChatbotFlowStage(args.flowStages, args.matchedResponseOption.targetStageId)
+      ?? findChatbotFlowStage(args.flowStages, args.currentStageId)
+      ?? args.flowStages[0]
+      ?? null
+  }
+
+  const selectedQuickAction = findChatbotQuickAction(args.quickActions, args.quickActionId)
+
+  if (args.requestHuman || selectedQuickAction?.kind === 'human') {
+    return findChatbotFlowStage(args.flowStages, 'handoff') ?? args.flowStages.at(-1) ?? null
+  }
+
+  if (args.leadQualified) {
+    return findChatbotFlowStage(args.flowStages, 'handoff')
+      ?? findChatbotFlowStage(args.flowStages, 'qualification')
+      ?? args.flowStages[0]
+      ?? null
+  }
+
+  if (selectedQuickAction?.kind === 'catalog' || selectedQuickAction?.kind === 'stock' || args.catalogIntent || args.requestedProduct) {
+    return findChatbotFlowStage(args.flowStages, 'catalog')
+      ?? findChatbotFlowStage(args.flowStages, args.currentStageId)
+      ?? args.flowStages[0]
+      ?? null
+  }
+
+  if (args.nextField === 'name') {
+    return findChatbotFlowStage(args.flowStages, 'welcome')
+      ?? findChatbotFlowStage(args.flowStages, args.currentStageId)
+      ?? args.flowStages[0]
+      ?? null
+  }
+
+  if (args.nextField) {
+    return findChatbotFlowStage(args.flowStages, 'qualification')
+      ?? findChatbotFlowStage(args.flowStages, args.currentStageId)
+      ?? args.flowStages[0]
+      ?? null
+  }
+
+  return findChatbotFlowStage(args.flowStages, args.currentStageId)
+    ?? findChatbotFlowStage(args.flowStages, 'qualification')
+    ?? args.flowStages[0]
+    ?? null
+}
+
+function decorateAssistantReply(baseBody: string, stage: ChatbotFlowStage | null, currentStageId: string, quickActionId: string) {
+  if (!stage?.prompt.trim()) return baseBody
+  const normalizedBody = normalizeString(baseBody).toLowerCase()
+  const normalizedPrompt = normalizeString(stage.prompt).toLowerCase()
+  if (normalizedPrompt && normalizedBody.includes(normalizedPrompt)) return baseBody
+  if (!quickActionId && currentStageId === stage.id) return baseBody
+  return `${stage.prompt}\n\n${baseBody}`
+}
+
 function buildAssistantReply(args: {
-  material: MaterialMatch | null
+  insight: CatalogInsight
+  messageText: string
   requestedProduct: string
   requestHuman: boolean
   leadQualified: boolean
@@ -126,9 +333,34 @@ function buildAssistantReply(args: {
   phone: string
   quantity: number | null
   showProductField: boolean
+  currentStageId: string
+  quickActionId: string
+  responseOptionId: string
+  flowStages: ChatbotFlowStage[]
+  quickActions: ChatbotQuickAction[]
 }) {
+  const currentStage = findChatbotFlowStage(args.flowStages, args.currentStageId) ?? args.flowStages[0] ?? null
+  const matchedResponseOption = findChatbotFlowResponseOption(currentStage, args.responseOptionId)
+    ?? matchChatbotFlowResponseOption(currentStage, args.messageText)
+
   if (args.requestHuman) {
-    return { body: 'Listo. Ya registramos tu solicitud para que un asesor humano continúe la conversación desde el CRM.', nextField: null as ChatFlowNextField }
+    const handoffStage = resolveChatStage({
+      currentStageId: args.currentStageId,
+      flowStages: args.flowStages,
+      quickActions: args.quickActions,
+      quickActionId: args.quickActionId,
+      matchedResponseOption,
+      requestedProduct: args.requestedProduct,
+      requestHuman: true,
+      leadQualified: args.leadQualified,
+      catalogIntent: args.insight.catalogIntent,
+      nextField: null,
+    })
+    return {
+      body: decorateAssistantReply('Listo. Ya registramos tu solicitud para que un asesor humano continúe la conversación desde el CRM.', handoffStage, args.currentStageId, args.quickActionId),
+      nextField: null as ChatFlowNextField,
+      stage: handoffStage,
+    }
   }
 
   const nextField = getNextChatField({
@@ -140,59 +372,114 @@ function buildAssistantReply(args: {
     showProductField: args.showProductField,
   })
 
+  const nextStage = resolveChatStage({
+    currentStageId: args.currentStageId,
+    flowStages: args.flowStages,
+    quickActions: args.quickActions,
+    quickActionId: args.quickActionId,
+    matchedResponseOption,
+    requestedProduct: args.requestedProduct,
+    requestHuman: false,
+    leadQualified: args.leadQualified,
+    catalogIntent: args.insight.catalogIntent,
+    nextField,
+  })
+
+  if (matchedResponseOption) {
+    const stageField = nextStage?.nextField === 'none' ? null : nextStage?.nextField || null
+    return {
+      body: decorateAssistantReply(matchedResponseOption.assistantReply || nextStage?.prompt || 'Perfecto. Continuemos con la siguiente etapa.', nextStage, args.currentStageId, args.quickActionId),
+      nextField: stageField as ChatFlowNextField,
+      stage: nextStage,
+    }
+  }
+
   if (nextField === 'name') {
-    return { body: 'Hola. Gracias por escribirnos. Me gustaría que me dijeras tu nombre para continuar.', nextField }
+    return { body: decorateAssistantReply('Hola. Gracias por escribirnos. Me gustaría que me dijeras tu nombre para continuar.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
   }
 
   if (nextField === 'email') {
-    return { body: `Mucho gusto${args.nombre ? `, ${args.nombre}` : ''}. Ahora me gustaría que me dejaras tu correo para enviarte la información comercial.`, nextField }
+    return { body: decorateAssistantReply(`Mucho gusto${args.nombre ? `, ${args.nombre}` : ''}. Ahora me gustaría que me dejaras tu correo para enviarte la información comercial.`, nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
   }
 
   if (nextField === 'phone') {
-    return { body: 'Perfecto. Si gustas, déjame también un teléfono o WhatsApp para que el centro de ventas pueda comunicarse contigo más rápido. Si prefieres, también puedes escribirme de una vez el producto que te interesa.', nextField }
+    return { body: decorateAssistantReply('Perfecto. Si gustas, déjame también un teléfono o WhatsApp para que el centro de ventas pueda comunicarse contigo más rápido. Si prefieres, también puedes escribirme de una vez el producto que te interesa.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
   }
 
   if (nextField === 'product') {
-    return { body: 'Gracias. Ahora cuéntame qué producto o servicio te interesa para revisar inventario y precio de referencia.', nextField }
+    return { body: decorateAssistantReply('Gracias. Ahora cuéntame qué producto o servicio te interesa para revisar inventario y precio de referencia.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
   }
 
-  if (args.material) {
-    const stockLabel = `${args.material.stockActual} ${args.material.unidadMedida}`
+  if (args.insight.catalogIntent && args.insight.catalog.length > 0 && !args.requestedProduct) {
+    return {
+      body: decorateAssistantReply([
+        'Claro. Estos son algunos productos con inventario activo en este momento:',
+        formatCatalogLines(args.insight.catalog.slice(0, 3)),
+        'Si alguno te interesa, respóndeme con el nombre del producto y la cantidad aproximada que necesitas.',
+      ].join('\n'), nextStage, args.currentStageId, args.quickActionId),
+      nextField: 'product' as ChatFlowNextField,
+      stage: nextStage,
+    }
+  }
+
+  if (args.insight.primary) {
+    const stockLabel = formatMaterialStock(args.insight.primary)
+    const alternativesLabel = args.insight.alternatives.length
+      ? ` También te puedo mostrar alternativas como ${args.insight.alternatives.map((item) => item.nombre).join(', ')}.`
+      : ''
     if (nextField === 'quantity') {
       return {
-        body: [
-          `Encontré ${args.material.nombre} en inventario.`,
-          `Precio de referencia: ${formatMaterialPrice(args.material)}.`,
-          `Disponibilidad actual: ${stockLabel}.`,
+        body: decorateAssistantReply([
+          `Encontré ${args.insight.primary.nombre} en catálogo.`,
+          `Precio de referencia: ${formatMaterialPrice(args.insight.primary)}.`,
+          `${stockLabel}.`,
           'Ahora dime qué cantidad necesitas para dejar la solicitud lista.',
-        ].join(' '),
+          alternativesLabel.trim(),
+        ].join(' '), nextStage, args.currentStageId, args.quickActionId),
         nextField,
+        stage: nextStage,
       }
     }
 
     return {
-      body: [
-        `Encontré ${args.material.nombre} en inventario.`,
-        `Precio de referencia: ${formatMaterialPrice(args.material)}.`,
-        `Disponibilidad actual: ${stockLabel}.`,
+      body: decorateAssistantReply([
+        `Encontré ${args.insight.primary.nombre} en catálogo.`,
+        `Precio de referencia: ${formatMaterialPrice(args.insight.primary)}.`,
+        `${stockLabel}.`,
         args.leadQualified
           ? `Perfecto. Tomo ${args.quantity || 'la cantidad solicitada'} como referencia y tu lead quedó marcado como calificado. El centro de ventas puede continuar el seguimiento.`
           : 'Con esto ya dejamos la conversación encaminada para seguimiento comercial.',
-      ].join(' '),
+        alternativesLabel.trim(),
+      ].join(' '), nextStage, args.currentStageId, args.quickActionId),
       nextField: null as ChatFlowNextField,
+      stage: nextStage,
+    }
+  }
+
+  if (args.requestedProduct && args.insight.alternatives.length > 0) {
+    return {
+      body: decorateAssistantReply([
+        `No encontré una coincidencia exacta para ${args.requestedProduct}, pero estas referencias cercanas sí existen en catálogo:`,
+        formatCatalogLines(args.insight.alternatives),
+        'Respóndeme con la que más se parece o con cantidad, medida o referencia para afinar la búsqueda.',
+      ].join('\n'), nextStage, args.currentStageId, args.quickActionId),
+      nextField: 'quantity' as ChatFlowNextField,
+      stage: nextStage,
     }
   }
 
   if (args.requestedProduct) {
     return {
-      body: `Recibí tu consulta por ${args.requestedProduct}. No encontré una coincidencia exacta en inventario, pero la conversación quedó registrada para validarla con el equipo comercial. Si puedes, responde con cantidad, medida o referencia.`,
+      body: decorateAssistantReply(`Recibí tu consulta por ${args.requestedProduct}. No encontré una coincidencia exacta en inventario, pero la conversación quedó registrada para validarla con el equipo comercial. Si puedes, responde con cantidad, medida o referencia.`, nextStage, args.currentStageId, args.quickActionId),
       nextField: 'quantity' as ChatFlowNextField,
+      stage: nextStage,
     }
   }
 
   return {
-    body: 'Recibí tu mensaje y ya quedó registrado en el CRM. Si me indicas el producto o servicio de interés, puedo buscar una referencia disponible y seguir guiándote.',
+    body: decorateAssistantReply('Recibí tu mensaje y ya quedó registrado en el CRM. Si me indicas el producto o servicio de interés, puedo buscar una referencia disponible y seguir guiándote.', nextStage, args.currentStageId, args.quickActionId),
     nextField: args.showProductField ? 'product' : null,
+    stage: nextStage,
   }
 }
 
@@ -240,6 +527,9 @@ export async function POST(request: Request) {
     const landingPageUrl = normalizeString(body?.landingPageUrl || payload.landingPageUrl || payload.pageUrl)
     const referrerUrl = normalizeString(body?.referrerUrl || payload.referrerUrl)
     const requestHuman = Boolean(body?.requestHuman || payload.requestHuman)
+    const quickActionId = normalizeString(body?.quickActionId || payload.quickActionId)
+    const responseOptionId = normalizeString(body?.responseOptionId || payload.responseOptionId)
+    const currentStageId = normalizeString(body?.currentStageId || payload.currentStageId)
 
     if (publicEmbedEnabled) {
       const requestHost = await getRequestHost()
@@ -250,38 +540,16 @@ export async function POST(request: Request) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      const flowStages = settings.flowStages
+      const quickActions = settings.quickActions
       const resolvedIdentity = resolveChatIdentity({ nombre, email, phone, requestedProduct, messageText, expectedField })
       const effectiveProduct = resolvedIdentity.requestedProduct
-      const materialSearchText = effectiveProduct || messageText
-      const materialTerms = splitSearchTerms(materialSearchText)
-      const materialCandidates = materialSearchText
-        ? await tx.material.findMany({
-            where: {
-              empresaId: channel.empresaId,
-              activo: true,
-              OR: materialTerms.length > 0
-                ? materialTerms.map((term) => ({
-                    nombre: { contains: term, mode: 'insensitive' },
-                  }))
-                : [{ nombre: { contains: materialSearchText, mode: 'insensitive' } }],
-            },
-            select: {
-              id: true,
-              nombre: true,
-              imagenUrl: true,
-              precioM2: true,
-              precioMetro: true,
-              precioUnidad: true,
-              stockActual: true,
-              unidadMedida: true,
-            },
-            take: 6,
-          })
-        : []
-
-      const matchedMaterial = materialCandidates
-        .map((item) => ({ item, score: scoreMaterialMatch(item, materialSearchText) }))
-        .sort((left, right) => right.score - left.score)[0]?.item ?? null
+      const catalogInsight = await resolveCatalogInsight({
+        tx,
+        empresaId: channel.empresaId,
+        requestedProduct: effectiveProduct,
+        messageText,
+      })
 
       const artifacts = await createInboundArtifacts({
         client: tx,
@@ -336,7 +604,8 @@ export async function POST(request: Request) {
       const leadQualified = Boolean((resolvedIdentity.email || resolvedIdentity.phone) && effectiveProduct && resolvedIdentity.quantity)
 
       const assistantReply = buildAssistantReply({
-        material: matchedMaterial,
+        insight: catalogInsight,
+        messageText,
         requestedProduct: effectiveProduct,
         requestHuman,
         leadQualified,
@@ -345,7 +614,15 @@ export async function POST(request: Request) {
         phone: resolvedIdentity.phone,
         quantity: resolvedIdentity.quantity,
         showProductField: settings.showProductField,
+        currentStageId,
+        quickActionId,
+        responseOptionId,
+        flowStages,
+        quickActions,
       })
+
+      const stageQuickActions = getStageQuickActions(assistantReply.stage, quickActions)
+      const stageResponseOptions = getStageResponseOptions(assistantReply.stage)
 
       await tx.crmMessage.create({
         data: {
@@ -360,14 +637,20 @@ export async function POST(request: Request) {
           payloadJson: {
             provider: 'WEB_CHATBOT',
             dispatch: 'guided-chatbot-autoreply',
-            matchedMaterialId: matchedMaterial?.id || null,
+            matchedMaterialId: catalogInsight.primary?.id || null,
+            alternativeMaterialIds: catalogInsight.alternatives.map((item) => item.id),
+            catalogIntent: catalogInsight.catalogIntent,
             requestedProduct: effectiveProduct,
             chatFlowNextField: assistantReply.nextField,
+            chatFlowStageId: assistantReply.stage?.id || null,
+            chatQuickActionIds: stageQuickActions.map((item) => item.id),
+            chatFlowResponseOptionIds: stageResponseOptions.map((item) => item.id),
             quantity: resolvedIdentity.quantity,
           },
-          attachmentsJson: matchedMaterial?.imagenUrl
-            ? [{ type: 'image', url: matchedMaterial.imagenUrl, alt: matchedMaterial.nombre }]
-            : [],
+          attachmentsJson: [catalogInsight.primary, ...catalogInsight.alternatives]
+            .filter((item): item is MaterialMatch => Boolean(item?.imagenUrl))
+            .slice(0, 3)
+            .map((item) => ({ type: 'image', url: item.imagenUrl, alt: item.nombre })),
           occurredAt: new Date(),
         },
       })
@@ -396,7 +679,7 @@ export async function POST(request: Request) {
           empresaId: channel.empresaId,
           sedeId: channel.sedeId,
           type: 'OTHER',
-          summary: matchedMaterial ? 'Respuesta automática del chatbot con inventario' : 'Respuesta automática del chatbot',
+          summary: catalogInsight.primary || catalogInsight.catalogIntent ? 'Respuesta automática del chatbot con catálogo e inventario' : 'Respuesta automática del chatbot',
           details: assistantReply.body,
           leadId: artifacts.lead.id,
           occurredAt: new Date(),

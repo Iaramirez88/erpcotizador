@@ -29,6 +29,17 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  getDefaultChatbotFlowStages,
+  getDefaultChatbotQuickActions,
+  normalizeChatbotFlowStages,
+  normalizeChatbotQuickActions,
+  type ChatbotFlowNextField,
+  type ChatbotFlowResponseMatchMode,
+  type ChatbotFlowResponseOption,
+  type ChatbotFlowStage,
+  type ChatbotQuickAction,
+} from '@/lib/crm-chatbot-flow'
+import {
   buildChatbotEmbedUrl,
   buildChatbotIframeSnippet,
   buildChatbotSnippet,
@@ -102,6 +113,23 @@ type CrmWorkspaceView = 'operations' | 'metrics'
 type LauncherPosition = 'right' | 'left'
 type LauncherSize = 'compact' | 'standard' | 'large'
 type PanelShadowPreset = 'soft' | 'medium' | 'strong'
+type ChatbotBuilderSection = 'brand' | 'flow' | 'launcher' | 'copy'
+
+type ChatbotCanvasNode = {
+  stage: ChatbotFlowStage
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+type ChatbotCanvasConnection = {
+  id: string
+  fromStageId: string
+  toStageId: string
+  label: string
+  path: string
+}
 
 type ChannelGoalTargets = {
   operational: string
@@ -187,7 +215,11 @@ type ChatbotBuilderState = Pick<ChannelFormState,
   | 'productPlaceholder'
   | 'messageLabel'
   | 'messagePlaceholder'
+  | 'quickActions'
+  | 'flowStages'
 >
+
+type ChatbotFlowStageId = ChannelFormState['flowStages'][number]['id']
 
 function getInitialChannelForm() {
   return {
@@ -244,6 +276,8 @@ function getInitialChannelForm() {
     showCompanyField: false,
     showCityField: false,
     showProductField: true,
+    quickActions: getDefaultChatbotQuickActions(),
+    flowStages: getDefaultChatbotFlowStages(),
     showMessageField: true,
     nameLabel: 'Nombre',
     namePlaceholder: 'Tu nombre',
@@ -341,6 +375,8 @@ const MANAGED_CHANNEL_SETTING_KEYS = new Set([
   'productPlaceholder',
   'messageLabel',
   'messagePlaceholder',
+  'quickActions',
+  'flowStages',
   'allowHumanHandoff',
 ])
 
@@ -633,6 +669,11 @@ function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
   const minHeight = options?.minHeight ?? (viewport === 'mobile' ? 500 : 420)
   const launcherMetrics = getLauncherPreviewMetrics(builderState.launcherSize)
   const panelShadow = getPanelShadowValue(builderState.panelShadowPreset)
+  const previewOffset = 60
+  const welcomeStage = builderState.flowStages.find((item) => item.id === 'welcome') ?? builderState.flowStages[0] ?? null
+  const catalogStage = builderState.flowStages.find((item) => item.id === 'catalog') ?? builderState.flowStages[1] ?? welcomeStage
+  const welcomeActions = builderState.quickActions.filter((item) => welcomeStage?.quickActionIds.includes(item.id) && item.enabled)
+  const welcomeResponses = welcomeStage?.responseOptions ?? []
 
   return (
     <div className="relative overflow-hidden rounded-[26px] border border-emerald-200 p-3 shadow-sm" style={{ background: `radial-gradient(circle at top, rgba(16,185,129,0.12), transparent 30%), linear-gradient(180deg, ${builderState.pageBackgroundColor} 0%, ${builderState.pageBackgroundColor} 55%, ${builderState.backgroundColor} 100%)`, minHeight }}>
@@ -650,13 +691,45 @@ function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
                 </div>
               </div>
               <div className="space-y-3 px-4 py-4" style={{ backgroundColor: builderState.backgroundColor }}>
-                <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>{builderState.chatbotPrompt}</div>
+                {welcomeStage ? (
+                  <div className="rounded-[20px] border border-slate-200 bg-slate-50/80 px-4 py-3 shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Etapa activa</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-900">{welcomeStage.title}</p>
+                      </div>
+                      <div className={`rounded-full bg-gradient-to-r ${getFlowStageAccent(welcomeStage.id)} px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white`}>{getFlowStageNextFieldLabel(welcomeStage.nextField)}</div>
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-slate-600">{welcomeStage.description}</p>
+                  </div>
+                ) : null}
+                <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>{welcomeStage?.prompt || builderState.chatbotPrompt}</div>
+                {welcomeResponses.length ? (
+                  <div className="flex max-w-[92%] flex-wrap gap-2">
+                    {welcomeResponses.map((option) => (
+                      <div key={option.id} className="rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] font-semibold text-violet-900 shadow-sm">
+                        <div>{option.label}</div>
+                        <div className="mt-0.5 text-[10px] font-medium opacity-75">Salta a {builderState.flowStages.find((stage) => stage.id === option.targetStageId)?.title || option.targetStageId}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {builderState.showProductField ? <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>También puedo tomar producto y contexto inicial para enrutar mejor el lead.</div> : null}
                 <div className="ml-auto max-w-[78%] px-4 py-3 text-xs leading-5 text-white shadow-sm" style={{ backgroundColor: builderState.accentColor, borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>Hola, necesito ayuda para una nueva cotización.</div>
-                <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>Perfecto. Soy {builderState.assistantName} y te ayudo a capturar lo necesario.</div>
+                <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>{catalogStage?.prompt || `Perfecto. Soy ${builderState.assistantName} y te ayudo a capturar lo necesario.`}</div>
               </div>
               <div className="border-t border-slate-100 bg-white px-4 py-4">
                 <div className="grid gap-2">
+                  {welcomeActions.length ? (
+                    <div className="flex flex-wrap gap-2">
+                      {welcomeActions.map((action) => (
+                        <div key={action.id} className={`rounded-2xl border px-3 py-2 text-[11px] font-semibold shadow-sm ${getQuickActionTone(action.kind)}`}>
+                          <div>{action.label}</div>
+                          <div className="mt-0.5 text-[10px] font-medium opacity-80">{action.kind === 'catalog' ? 'Explora catálogo' : action.kind === 'stock' ? 'Consulta inventario' : action.kind === 'human' ? 'Escala al equipo' : 'Acción rápida'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   {builderState.showProductField ? <div className="rounded-2xl border border-slate-200 px-3 py-2 text-xs text-slate-400">{builderState.productLabel}: {builderState.productPlaceholder}</div> : null}
                   <div className="rounded-2xl border border-slate-200 px-3 py-3 text-xs text-slate-400">{builderState.messageLabel}: {builderState.messagePlaceholder}</div>
                   <div className="flex gap-2">
@@ -669,7 +742,7 @@ function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
           ) : null}
 
           {builderState.floatingLauncherEnabled ? (
-            <div className="absolute bottom-3 z-10" style={{ left: builderState.launcherPosition === 'left' ? 12 : undefined, right: builderState.launcherPosition === 'right' ? 12 : undefined, maxWidth: 'calc(100% - 24px)' }}>
+            <div className="absolute z-10" style={{ bottom: previewOffset, left: builderState.launcherPosition === 'left' ? previewOffset : undefined, right: builderState.launcherPosition === 'right' ? previewOffset : undefined, maxWidth: `calc(100% - ${previewOffset * 2}px)` }}>
               <div className="flex max-w-full items-center justify-center whitespace-nowrap text-white shadow-[0_18px_44px_-26px_rgba(15,23,42,0.55)]" style={{ backgroundColor: builderState.accentColor, borderRadius: launcherMetrics.buttonRadius, padding: launcherMetrics.buttonPadding, height: launcherMetrics.buttonHeight, gap: mode === 'compact' ? '0' : launcherMetrics.buttonGap, minWidth: mode === 'compact' ? launcherMetrics.buttonHeight : undefined, fontSize: launcherMetrics.fontSize, fontWeight: 700 }}>
                 <span style={{ fontSize: launcherMetrics.iconSize, lineHeight: 1 }}>{getLauncherPreviewIcon(builderState.launcherIcon)}</span>
                 {mode !== 'compact' && launcherMetrics.labelVisible ? <span>{builderState.launcherLabel}</span> : null}
@@ -748,6 +821,7 @@ function getEndpoint(baseUrl: string, channel: ChannelConnection | null) {
     return bridgeKind && bridgeKind !== 'GENERIC' ? `${baseUrl}/api/crm/captures/bridge` : `${baseUrl}/api/crm/captures/web-form`
   }
   if (channel.provider === 'WEB_CHATBOT') return `${baseUrl}/api/crm/captures/chatbot`
+  if (usesMetaProvider(channel.provider)) return `${baseUrl}/api/webhooks/meta`
   return `${baseUrl}/api/crm/channels/${channel.id}/webhook`
 }
 
@@ -898,6 +972,107 @@ function getChatbotBuilderState(settingsJson: Record<string, unknown> | null | u
     productPlaceholder: getSettingText(settingsJson, 'productPlaceholder', '¿Qué producto necesitas?'),
     messageLabel: getSettingText(settingsJson, 'messageLabel', 'Mensaje'),
     messagePlaceholder: getSettingText(settingsJson, 'messagePlaceholder', 'Cuéntanos qué necesitas y para cuándo.'),
+    quickActions: normalizeChatbotQuickActions(settingsJson?.quickActions),
+    flowStages: normalizeChatbotFlowStages(settingsJson?.flowStages),
+  }
+}
+
+function getFlowStageAccent(stageId: string) {
+  if (stageId === 'welcome') return 'from-sky-500 to-cyan-400'
+  if (stageId === 'catalog') return 'from-emerald-500 to-lime-400'
+  if (stageId === 'qualification') return 'from-amber-500 to-orange-400'
+  return 'from-slate-700 to-slate-500'
+}
+
+function getFlowStageNextFieldLabel(nextField: ChatbotFlowNextField) {
+  if (nextField === 'name') return 'Pide nombre'
+  if (nextField === 'email') return 'Pide correo'
+  if (nextField === 'phone') return 'Pide teléfono'
+  if (nextField === 'product') return 'Pide producto'
+  if (nextField === 'quantity') return 'Pide cantidad'
+  return 'Cierre / handoff'
+}
+
+function getQuickActionTone(kind: ChatbotQuickAction['kind']) {
+  if (kind === 'catalog') return 'border-emerald-200 bg-emerald-50 text-emerald-800'
+  if (kind === 'stock') return 'border-sky-200 bg-sky-50 text-sky-800'
+  if (kind === 'human') return 'border-amber-200 bg-amber-50 text-amber-900'
+  return 'border-slate-200 bg-slate-50 text-slate-700'
+}
+
+const PROTECTED_CHATBOT_STAGE_IDS = new Set(['welcome', 'catalog', 'qualification', 'handoff'])
+
+function createChatbotStageId(stages: ChatbotFlowStage[]) {
+  let index = stages.length + 1
+  let candidate = `stage-${index}`
+  while (stages.some((stage) => stage.id === candidate)) {
+    index += 1
+    candidate = `stage-${index}`
+  }
+  return candidate
+}
+
+function getResponseMatchModeLabel(mode: ChatbotFlowResponseMatchMode) {
+  return mode === 'exact' ? 'Coincidencia exacta' : 'Coincidencia por palabras'
+}
+
+function buildChatbotCanvasModel(stages: ChatbotFlowStage[]) {
+  const nodeWidth = 268
+  const nodeHeight = 152
+  const colGap = 110
+  const rowGap = 72
+  const padding = 24
+  const nodes: ChatbotCanvasNode[] = stages.map((stage, index) => {
+    const row = Math.floor(index / 2)
+    const isRightColumn = index % 2 === 1
+    const x = padding + (isRightColumn ? nodeWidth + colGap : 0)
+    const y = padding + row * (nodeHeight + rowGap)
+    return { stage, x, y, width: nodeWidth, height: nodeHeight }
+  })
+
+  const nodeMap = new Map(nodes.map((node) => [node.stage.id, node]))
+  const connections: ChatbotCanvasConnection[] = []
+
+  nodes.forEach((node) => {
+    node.stage.responseOptions.forEach((option, optionIndex) => {
+      const targetNode = nodeMap.get(option.targetStageId)
+      if (!targetNode) return
+
+      const startX = node.x + node.width
+      const startY = node.y + 56 + Math.min(optionIndex, 3) * 18
+      const endX = targetNode.x
+      const endY = targetNode.y + targetNode.height / 2
+
+      if (node.stage.id === targetNode.stage.id) {
+        const loopX = startX + 44
+        const loopY = startY - 32
+        connections.push({
+          id: `${node.stage.id}-${option.id}`,
+          fromStageId: node.stage.id,
+          toStageId: targetNode.stage.id,
+          label: option.label,
+          path: `M ${startX} ${startY} C ${loopX} ${startY}, ${loopX} ${loopY}, ${startX - 10} ${loopY} C ${startX - 54} ${loopY}, ${startX - 54} ${startY + 28}, ${startX} ${startY + 28}`,
+        })
+        return
+      }
+
+      const delta = Math.max(60, Math.abs(endX - startX) / 2)
+      connections.push({
+        id: `${node.stage.id}-${option.id}`,
+        fromStageId: node.stage.id,
+        toStageId: targetNode.stage.id,
+        label: option.label,
+        path: `M ${startX} ${startY} C ${startX + delta} ${startY}, ${endX - delta} ${endY}, ${endX} ${endY}`,
+      })
+    })
+  })
+
+  const maxY = nodes.length ? Math.max(...nodes.map((node) => node.y + node.height)) : 0
+  return {
+    width: padding * 2 + nodeWidth * 2 + colGap,
+    height: maxY + padding,
+    nodes,
+    connections,
   }
 }
 
@@ -924,6 +1099,8 @@ export function CrmIntegrationsClient() {
   const [savingChatbotBuilder, setSavingChatbotBuilder] = useState(false)
   const [chatbotBuilderPreviewMode, setChatbotBuilderPreviewMode] = useState<ChatbotPreviewMode>('expanded')
   const [chatbotBuilderPreviewViewport, setChatbotBuilderPreviewViewport] = useState<ChatbotPreviewViewport>('desktop')
+  const [chatbotBuilderSection, setChatbotBuilderSection] = useState<ChatbotBuilderSection>('flow')
+  const [selectedChatbotStageId, setSelectedChatbotStageId] = useState<ChatbotFlowStageId>('welcome')
   const [webFormBuilderDraft, setWebFormBuilderDraft] = useState<WebFormBuilderState>(getWebFormBuilderState(null))
   const [webFormBuilderModalOpen, setWebFormBuilderModalOpen] = useState(false)
   const [savingWebFormBuilder, setSavingWebFormBuilder] = useState(false)
@@ -1155,6 +1332,8 @@ export function CrmIntegrationsClient() {
   const selectedMeta = useMemo(() => getMetaConnectionState(selectedSettings), [selectedSettings])
   const selectedIsChatbot = selectedChannel?.provider === 'WEB_CHATBOT'
   const selectedIsPublicWebForm = selectedChannel?.provider === 'WEB_FORM' && selectedBridgeKind === 'GENERIC'
+  const selectedChatbotFlowStage = useMemo(() => chatbotBuilderDraft.flowStages.find((item) => item.id === selectedChatbotStageId) ?? chatbotBuilderDraft.flowStages[0] ?? null, [chatbotBuilderDraft.flowStages, selectedChatbotStageId])
+  const chatbotCanvasModel = useMemo(() => buildChatbotCanvasModel(chatbotBuilderDraft.flowStages), [chatbotBuilderDraft.flowStages])
 
   useEffect(() => {
     setMetaSelectionDraft({
@@ -1167,6 +1346,10 @@ export function CrmIntegrationsClient() {
   useEffect(() => {
     setChatbotBuilderDraft(getChatbotBuilderState(selectedSettings))
   }, [selectedChannelId, selectedSettings])
+
+  useEffect(() => {
+    setSelectedChatbotStageId((current) => chatbotBuilderDraft.flowStages.some((item) => item.id === current) ? current : chatbotBuilderDraft.flowStages[0]?.id ?? 'welcome')
+  }, [chatbotBuilderDraft.flowStages])
 
   useEffect(() => {
     if (!selectedIsChatbot) {
@@ -1316,6 +1499,8 @@ export function CrmIntegrationsClient() {
       showCompanyField: getBooleanSetting(settings, 'showCompanyField', false),
       showCityField: getBooleanSetting(settings, 'showCityField', false),
       showProductField: getShowProductField(settings),
+      quickActions: normalizeChatbotQuickActions(settings?.quickActions),
+      flowStages: normalizeChatbotFlowStages(settings?.flowStages),
       showMessageField: getBooleanSetting(settings, 'showMessageField', true),
       nameLabel: getSettingText(settings, 'nameLabel', 'Nombre'),
       namePlaceholder: getSettingText(settings, 'namePlaceholder', 'Tu nombre'),
@@ -1447,6 +1632,8 @@ export function CrmIntegrationsClient() {
         showCompanyField: createForm.showCompanyField,
         showCityField: createForm.showCityField,
         showProductField: createForm.showProductField,
+        quickActions: createForm.quickActions,
+        flowStages: createForm.flowStages,
         showMessageField: createForm.showMessageField,
         nameLabel: createForm.nameLabel,
         namePlaceholder: createForm.namePlaceholder,
@@ -1533,6 +1720,143 @@ export function CrmIntegrationsClient() {
     }
   }
 
+  function updateChatbotStage(stageId: ChatbotFlowStageId, patch: Partial<ChatbotFlowStage>) {
+    setChatbotBuilderDraft((current) => ({
+      ...current,
+      flowStages: current.flowStages.map((stage) => stage.id === stageId ? { ...stage, ...patch } : stage),
+    }))
+  }
+
+  function addChatbotStage() {
+    const nextStageId = createChatbotStageId(chatbotBuilderDraft.flowStages)
+    setChatbotBuilderDraft((current) => ({
+      ...current,
+      flowStages: [
+        ...current.flowStages,
+        {
+          id: nextStageId,
+          title: 'Nueva etapa',
+          description: 'Define qué objetivo cumple esta etapa dentro del flujo.',
+          prompt: 'Escribe aquí la pregunta o mensaje que activará esta etapa.',
+          nextField: 'none',
+          quickActionIds: [],
+          responseOptions: [],
+        },
+      ],
+    }))
+    setSelectedChatbotStageId(nextStageId)
+  }
+
+  function deleteChatbotStage(stageId: ChatbotFlowStageId) {
+    if (PROTECTED_CHATBOT_STAGE_IDS.has(stageId)) return
+
+    const fallbackStageId = chatbotBuilderDraft.flowStages.find((stage) => stage.id !== stageId)?.id ?? 'welcome'
+    setChatbotBuilderDraft((current) => ({
+      ...current,
+      flowStages: current.flowStages
+        .filter((stage) => stage.id !== stageId)
+        .map((stage) => ({
+          ...stage,
+          responseOptions: stage.responseOptions.map((option) => option.targetStageId === stageId ? { ...option, targetStageId: fallbackStageId } : option),
+        })),
+    }))
+    setSelectedChatbotStageId(fallbackStageId)
+  }
+
+  function moveChatbotStage(stageId: ChatbotFlowStageId, direction: -1 | 1) {
+    setChatbotBuilderDraft((current) => {
+      const index = current.flowStages.findIndex((stage) => stage.id === stageId)
+      const nextIndex = index + direction
+      if (index < 0 || nextIndex < 0 || nextIndex >= current.flowStages.length) return current
+      const stages = [...current.flowStages]
+      const [stage] = stages.splice(index, 1)
+      stages.splice(nextIndex, 0, stage)
+      return { ...current, flowStages: stages }
+    })
+  }
+
+  function toggleChatbotStageQuickAction(stageId: ChatbotFlowStageId, actionId: string, enabled: boolean) {
+    setChatbotBuilderDraft((current) => ({
+      ...current,
+      flowStages: current.flowStages.map((stage) => {
+        if (stage.id !== stageId) return stage
+        return {
+          ...stage,
+          quickActionIds: enabled
+            ? Array.from(new Set([...stage.quickActionIds, actionId]))
+            : stage.quickActionIds.filter((item) => item !== actionId),
+        }
+      }),
+    }))
+  }
+
+  function addChatbotResponseOption(stageId: ChatbotFlowStageId) {
+    const selectedStage = chatbotBuilderDraft.flowStages.find((stage) => stage.id === stageId)
+    if (!selectedStage) return
+
+    let nextOptionIndex = selectedStage.responseOptions.length + 1
+    let nextOptionId = `${stageId}-option-${nextOptionIndex}`
+    while (selectedStage.responseOptions.some((option) => option.id === nextOptionId)) {
+      nextOptionIndex += 1
+      nextOptionId = `${stageId}-option-${nextOptionIndex}`
+    }
+
+    setChatbotBuilderDraft((current) => ({
+      ...current,
+      flowStages: current.flowStages.map((stage) => {
+        if (stage.id !== stageId) return stage
+        return {
+          ...stage,
+          responseOptions: [
+            ...stage.responseOptions,
+            {
+              id: nextOptionId,
+              label: 'Nueva respuesta',
+              userMessage: 'Quiero continuar por esta ruta.',
+              assistantReply: 'Perfecto. Continúo por esta ruta del flujo.',
+              matchMode: 'contains',
+              matchValue: 'continuar, seguir, siguiente',
+              targetStageId: stage.id,
+            },
+          ],
+        }
+      }),
+    }))
+  }
+
+  function updateChatbotResponseOption(stageId: ChatbotFlowStageId, optionId: string, patch: Partial<ChatbotFlowResponseOption>) {
+    setChatbotBuilderDraft((current) => ({
+      ...current,
+      flowStages: current.flowStages.map((stage) => {
+        if (stage.id !== stageId) return stage
+        return {
+          ...stage,
+          responseOptions: stage.responseOptions.map((option) => option.id === optionId ? { ...option, ...patch } : option),
+        }
+      }),
+    }))
+  }
+
+  function removeChatbotResponseOption(stageId: ChatbotFlowStageId, optionId: string) {
+    setChatbotBuilderDraft((current) => ({
+      ...current,
+      flowStages: current.flowStages.map((stage) => {
+        if (stage.id !== stageId) return stage
+        return {
+          ...stage,
+          responseOptions: stage.responseOptions.filter((option) => option.id !== optionId),
+        }
+      }),
+    }))
+  }
+
+  function updateChatbotQuickAction(actionId: string, patch: Partial<ChatbotQuickAction>) {
+    setChatbotBuilderDraft((current) => ({
+      ...current,
+      quickActions: current.quickActions.map((action) => action.id === actionId ? { ...action, ...patch } : action),
+    }))
+  }
+
   async function saveSelectedChatbotBuilder() {
     if (!selectedChannel || !selectedIsChatbot) return
 
@@ -1608,6 +1932,8 @@ export function CrmIntegrationsClient() {
       ? `${baseUrl || 'https://tu-dominio.com'}/chatbot/<canal>`
       : createForm.provider === 'WEB_FORM'
         ? `${baseUrl || 'https://tu-dominio.com'}/api/crm/captures/web-form`
+        : usesMetaProvider(createForm.provider)
+          ? `${baseUrl || 'https://tu-dominio.com'}/api/webhooks/meta`
         : `${baseUrl || 'https://tu-dominio.com'}/api/crm/channels/<canal>/webhook`
 
     const configured = [
@@ -2740,53 +3066,289 @@ export function CrmIntegrationsClient() {
               </DialogHeader>
 
               <div className="mt-5 space-y-4 pr-1">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="grid gap-2 md:col-span-2"><Label>Título del chatbot</Label><Input value={chatbotBuilderDraft.chatbotTitle} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, chatbotTitle: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2 md:col-span-2"><Label>Nombre del asistente</Label><Input value={chatbotBuilderDraft.assistantName} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, assistantName: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2 md:col-span-2"><Label>Prompt inicial</Label><Textarea value={chatbotBuilderDraft.chatbotPrompt} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, chatbotPrompt: e.target.value }))} rows={4} className="rounded-2xl" /></div>
-                  <div className="grid gap-2"><Label>Altura iframe</Label><Input value={chatbotBuilderDraft.iframeHeight} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, iframeHeight: normalizePixelValue(e.target.value, '720') }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Fuente CSS</Label><Input value={chatbotBuilderDraft.fontFamily} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, fontFamily: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2 md:col-span-2"><Label>Dominios permitidos</Label><Textarea value={chatbotBuilderDraft.allowedDomains} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, allowedDomains: e.target.value }))} rows={2} className="rounded-2xl" placeholder="cliente.com, demo.cliente.com" /></div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: 'flow', label: 'Flujo' },
+                    { value: 'brand', label: 'Marca' },
+                    { value: 'launcher', label: 'Launcher' },
+                    { value: 'copy', label: 'Copy' },
+                  ].map((section) => (
+                    <button
+                      key={section.value}
+                      type="button"
+                      onClick={() => setChatbotBuilderSection(section.value as ChatbotBuilderSection)}
+                      className={chatbotBuilderSection === section.value ? 'rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600'}
+                    >
+                      {section.label}
+                    </button>
+                  ))}
                 </div>
 
-                <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
-                  <div className="grid gap-2"><Label>Color acento</Label><Input value={chatbotBuilderDraft.accentColor} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, accentColor: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Fondo general</Label><Input value={chatbotBuilderDraft.pageBackgroundColor} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, pageBackgroundColor: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Fondo interno</Label><Input value={chatbotBuilderDraft.backgroundColor} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, backgroundColor: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Etiqueta superior</Label><Input value={chatbotBuilderDraft.headerBadgeLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, headerBadgeLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Estado del asistente</Label><Input value={chatbotBuilderDraft.statusBadgeLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, statusBadgeLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Radio del panel</Label><Input value={chatbotBuilderDraft.chatShellRadius} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, chatShellRadius: normalizePixelValue(e.target.value, '30') }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Radio de burbujas</Label><Input value={chatbotBuilderDraft.messageBubbleRadius} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messageBubbleRadius: normalizePixelValue(e.target.value, '22') }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Sombra del panel</Label><Select value={chatbotBuilderDraft.panelShadowPreset} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, panelShadowPreset: value as PanelShadowPreset }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="soft">Suave</SelectItem><SelectItem value="medium">Media</SelectItem><SelectItem value="strong">Fuerte</SelectItem></SelectContent></Select></div>
-                </div>
+                {chatbotBuilderSection === 'flow' ? (
+                  <div className="space-y-4">
+                    <div className="rounded-[24px] border border-slate-200 bg-white/80 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">Canvas del flujo</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">Vista tipo nodos para entender de inmediato cómo una respuesta lleva a otra etapa.</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-semibold text-violet-800">Rama por respuesta</span>
+                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-800">Nodo activo</span>
+                        </div>
+                      </div>
 
-                <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
-                  <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Launcher flotante</p>
-                      <p className="text-xs text-slate-500">Activa o desactiva el botón flotante</p>
+                      <div className="mt-4 overflow-auto rounded-[22px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,.08),transparent_28%),linear-gradient(180deg,#f8fffc,#ffffff)] p-3">
+                        <div className="relative" style={{ width: chatbotCanvasModel.width, height: chatbotCanvasModel.height }}>
+                          <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${chatbotCanvasModel.width} ${chatbotCanvasModel.height}`} fill="none">
+                            {chatbotCanvasModel.connections.map((connection) => {
+                              const isSelected = connection.fromStageId === selectedChatbotStageId
+                              return (
+                                <g key={connection.id}>
+                                  <path d={connection.path} stroke={isSelected ? '#7c3aed' : '#94a3b8'} strokeWidth={isSelected ? 2.5 : 1.6} strokeDasharray={isSelected ? '0' : '6 6'} strokeLinecap="round" />
+                                </g>
+                              )
+                            })}
+                          </svg>
+
+                          {chatbotCanvasModel.nodes.map((node, index) => {
+                            const isSelected = node.stage.id === selectedChatbotStageId
+                            return (
+                              <button
+                                key={node.stage.id}
+                                type="button"
+                                onClick={() => setSelectedChatbotStageId(node.stage.id as ChatbotFlowStageId)}
+                                className={isSelected ? 'absolute rounded-[24px] border border-emerald-300 bg-emerald-50/95 p-4 text-left shadow-[0_18px_46px_-28px_rgba(16,185,129,.45)]' : 'absolute rounded-[24px] border border-slate-200 bg-white/95 p-4 text-left shadow-[0_16px_40px_-30px_rgba(15,23,42,.24)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(15,23,42,.28)]'}
+                                style={{ left: node.x, top: node.y, width: node.width, minHeight: node.height }}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Nodo {index + 1}</p>
+                                    <p className="mt-1 text-sm font-semibold text-slate-900">{node.stage.title}</p>
+                                  </div>
+                                  <span className={`rounded-full bg-gradient-to-r ${getFlowStageAccent(node.stage.id)} px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white`}>
+                                    {getFlowStageNextFieldLabel(node.stage.nextField)}
+                                  </span>
+                                </div>
+                                <p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-600">{node.stage.prompt}</p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-700">{node.stage.responseOptions.length} ramas</span>
+                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-700">{node.stage.quickActionIds.length} quick actions</span>
+                                </div>
+                                {node.stage.responseOptions.length ? (
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    {node.stage.responseOptions.slice(0, 3).map((option) => (
+                                      <span key={option.id} className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-semibold text-violet-800">
+                                        {option.label}
+                                      </span>
+                                    ))}
+                                    {node.stage.responseOptions.length > 3 ? <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600">+{node.stage.responseOptions.length - 3}</span> : null}
+                                  </div>
+                                ) : null}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
                     </div>
-                    <Switch checked={chatbotBuilderDraft.floatingLauncherEnabled} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, floatingLauncherEnabled: checked }))} />
-                  </div>
-                  <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Solicitar producto</p>
-                      <p className="text-xs text-slate-500">Muestra el campo rápido en el composer</p>
-                    </div>
-                    <Switch checked={chatbotBuilderDraft.showProductField} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, showProductField: checked }))} />
-                  </div>
-                  <div className="grid gap-2"><Label>Texto launcher</Label><Input value={chatbotBuilderDraft.launcherLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, launcherLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Icono launcher</Label><Select value={chatbotBuilderDraft.launcherIcon} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherIcon: value }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bot">bot</SelectItem><SelectItem value="message-circle">message-circle</SelectItem><SelectItem value="sparkles">sparkles</SelectItem></SelectContent></Select></div>
-                  <div className="grid gap-2"><Label>Posición launcher</Label><Select value={chatbotBuilderDraft.launcherPosition} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherPosition: value as LauncherPosition }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="right">Derecha</SelectItem><SelectItem value="left">Izquierda</SelectItem></SelectContent></Select></div>
-                  <div className="grid gap-2"><Label>Tamaño launcher</Label><Select value={chatbotBuilderDraft.launcherSize} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherSize: value as LauncherSize }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="compact">Compacto</SelectItem><SelectItem value="standard">Estándar</SelectItem><SelectItem value="large">Grande</SelectItem></SelectContent></Select></div>
-                </div>
 
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="grid gap-2"><Label>Label producto</Label><Input value={chatbotBuilderDraft.productLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, productLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Placeholder producto</Label><Input value={chatbotBuilderDraft.productPlaceholder} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, productPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2 md:col-span-2"><Label>Label mensaje</Label><Input value={chatbotBuilderDraft.messageLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messageLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2 md:col-span-2"><Label>Placeholder mensaje</Label><Input value={chatbotBuilderDraft.messagePlaceholder} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messagePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                </div>
+                    <div className="rounded-[24px] border border-slate-200 bg-white/80 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">Lista estructurada de etapas</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">Además del canvas, aquí puedes reordenar nodos, revisar ramas y crear etapas nuevas.</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button type="button" variant="outline" className="h-8 rounded-xl px-3 text-xs" onClick={addChatbotStage}>Agregar etapa</Button>
+                          <div className="rounded-full bg-slate-950 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">SendPulse-style</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-3">
+                        {chatbotBuilderDraft.flowStages.map((stage, index) => {
+                          const stageActions = chatbotBuilderDraft.quickActions.filter((action) => stage.quickActionIds.includes(action.id) && action.enabled)
+                          return (
+                            <div
+                              key={stage.id}
+                              onClick={() => setSelectedChatbotStageId(stage.id as ChatbotFlowStageId)}
+                              className={selectedChatbotStageId === stage.id ? 'cursor-pointer rounded-[24px] border border-emerald-300 bg-emerald-50/80 p-4 text-left shadow-sm' : 'cursor-pointer rounded-[24px] border border-slate-200 bg-white p-4 text-left'}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault()
+                                  setSelectedChatbotStageId(stage.id as ChatbotFlowStageId)
+                                }
+                              }}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Etapa {index + 1}</p>
+                                  <p className="mt-1 text-sm font-semibold text-slate-900">{stage.title}</p>
+                                </div>
+                                <div className={`rounded-full bg-gradient-to-r ${getFlowStageAccent(stage.id)} px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white`}>{getFlowStageNextFieldLabel(stage.nextField)}</div>
+                              </div>
+                              <p className="mt-2 text-xs leading-5 text-slate-600">{stage.description}</p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {stageActions.map((action) => <span key={action.id} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-700">{action.label}</span>)}
+                                {stage.responseOptions.map((option) => <span key={option.id} className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-semibold text-violet-800">{option.label}</span>)}
+                              </div>
+                              <div className="mt-3 flex gap-2">
+                                <Button type="button" variant="outline" className="h-8 rounded-xl px-3 text-xs" onClick={(event) => { event.stopPropagation(); moveChatbotStage(stage.id as ChatbotFlowStageId, -1) }} disabled={index === 0}>Subir</Button>
+                                <Button type="button" variant="outline" className="h-8 rounded-xl px-3 text-xs" onClick={(event) => { event.stopPropagation(); moveChatbotStage(stage.id as ChatbotFlowStageId, 1) }} disabled={index === chatbotBuilderDraft.flowStages.length - 1}>Bajar</Button>
+                                {!PROTECTED_CHATBOT_STAGE_IDS.has(stage.id) ? <Button type="button" variant="outline" className="h-8 rounded-xl border-rose-200 px-3 text-xs text-rose-700" onClick={(event) => { event.stopPropagation(); deleteChatbotStage(stage.id as ChatbotFlowStageId) }}>Eliminar</Button> : null}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {selectedChatbotFlowStage ? (
+                      <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">Editor de etapa</p>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">Ajusta la pregunta, el objetivo, las ramas posibles y las acciones visibles en esta etapa.</p>
+                          </div>
+                          <div className={`rounded-full bg-gradient-to-r ${getFlowStageAccent(selectedChatbotFlowStage.id)} px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white`}>{selectedChatbotFlowStage.title}</div>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          <div className="grid gap-2"><Label>Título</Label><Input value={selectedChatbotFlowStage.title} onChange={(e) => updateChatbotStage(selectedChatbotFlowStage.id as ChatbotFlowStageId, { title: e.target.value })} className="h-11 rounded-xl" /></div>
+                          <div className="grid gap-2"><Label>Siguiente paso esperado</Label><Select value={selectedChatbotFlowStage.nextField} onValueChange={(value) => updateChatbotStage(selectedChatbotFlowStage.id as ChatbotFlowStageId, { nextField: value as ChatbotFlowNextField })}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="name">Nombre</SelectItem><SelectItem value="email">Correo</SelectItem><SelectItem value="phone">Teléfono</SelectItem><SelectItem value="product">Producto</SelectItem><SelectItem value="quantity">Cantidad</SelectItem><SelectItem value="none">Cierre</SelectItem></SelectContent></Select></div>
+                          <div className="grid gap-2 md:col-span-2"><Label>Descripción operativa</Label><Textarea value={selectedChatbotFlowStage.description} onChange={(e) => updateChatbotStage(selectedChatbotFlowStage.id as ChatbotFlowStageId, { description: e.target.value })} rows={2} className="rounded-2xl" /></div>
+                          <div className="grid gap-2 md:col-span-2"><Label>Prompt de etapa</Label><Textarea value={selectedChatbotFlowStage.prompt} onChange={(e) => updateChatbotStage(selectedChatbotFlowStage.id as ChatbotFlowStageId, { prompt: e.target.value })} rows={4} className="rounded-2xl" /></div>
+                        </div>
+
+                        <div className="mt-4 grid gap-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Respuestas que abren ramas</p>
+                              <p className="mt-1 text-xs leading-5 text-slate-500">Cada respuesta puede mostrarse como botón y también activar una rama si el usuario escribe palabras similares.</p>
+                            </div>
+                            <Button type="button" variant="outline" className="h-8 rounded-xl px-3 text-xs" onClick={() => addChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId)}>Agregar respuesta</Button>
+                          </div>
+
+                          {selectedChatbotFlowStage.responseOptions.length ? selectedChatbotFlowStage.responseOptions.map((option) => (
+                            <div key={option.id} className="rounded-[22px] border border-violet-200 bg-white p-4">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900">{option.label}</p>
+                                  <p className="text-xs text-slate-500">ID técnico: {option.id}</p>
+                                </div>
+                                <Button type="button" variant="outline" className="h-8 rounded-xl border-rose-200 px-3 text-xs text-rose-700" onClick={() => removeChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId, option.id)}>Eliminar</Button>
+                              </div>
+                              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                <div className="grid gap-2"><Label>Etiqueta visible</Label><Input value={option.label} onChange={(e) => updateChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId, option.id, { label: e.target.value })} className="h-11 rounded-xl" /></div>
+                                <div className="grid gap-2"><Label>Mensaje que enviará</Label><Input value={option.userMessage} onChange={(e) => updateChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId, option.id, { userMessage: e.target.value })} className="h-11 rounded-xl" /></div>
+                                <div className="grid gap-2"><Label>Cómo hace match</Label><Select value={option.matchMode} onValueChange={(value) => updateChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId, option.id, { matchMode: value as ChatbotFlowResponseMatchMode })}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="contains">Contiene palabras</SelectItem><SelectItem value="exact">Coincidencia exacta</SelectItem></SelectContent></Select></div>
+                                <div className="grid gap-2"><Label>Etapa destino</Label><Select value={option.targetStageId} onValueChange={(value) => updateChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId, option.id, { targetStageId: value })}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent>{chatbotBuilderDraft.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}</SelectContent></Select></div>
+                                <div className="grid gap-2 md:col-span-2"><Label>Palabras o frases que disparan esta rama</Label><Textarea value={option.matchValue} onChange={(e) => updateChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId, option.id, { matchValue: e.target.value })} rows={2} className="rounded-2xl" placeholder="Ej: cotizar, precio, necesito comprar" /></div>
+                                <div className="grid gap-2 md:col-span-2"><Label>Respuesta del bot al tomar esta rama</Label><Textarea value={option.assistantReply} onChange={(e) => updateChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId, option.id, { assistantReply: e.target.value })} rows={3} className="rounded-2xl" /></div>
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-semibold text-violet-800">{getResponseMatchModeLabel(option.matchMode)}</span>
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-700">Destino: {chatbotBuilderDraft.flowStages.find((stage) => stage.id === option.targetStageId)?.title || option.targetStageId}</span>
+                              </div>
+                            </div>
+                          )) : <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-5 text-sm text-slate-500">Esta etapa todavía no tiene respuestas guiadas. Agrégalas para construir ramas concretas como en SendPulse.</div>}
+                        </div>
+
+                        <div className="mt-4 grid gap-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Botones rápidos visibles</p>
+                          {chatbotBuilderDraft.quickActions.map((action) => (
+                            <div key={action.id} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">{action.label}</p>
+                                <p className="text-xs text-slate-500">{action.message}</p>
+                              </div>
+                              <Switch checked={selectedChatbotFlowStage.quickActionIds.includes(action.id) && action.enabled} onCheckedChange={(checked) => toggleChatbotStageQuickAction(selectedChatbotFlowStage.id as ChatbotFlowStageId, action.id, checked)} disabled={!action.enabled} />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="rounded-[24px] border border-slate-200 bg-white/80 p-4">
+                      <p className="text-sm font-semibold text-slate-900">Biblioteca de quick actions</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">Define la etiqueta y el mensaje que cada botón enviará al flujo automático.</p>
+                      <div className="mt-4 grid gap-3">
+                        {chatbotBuilderDraft.quickActions.map((action) => (
+                          <div key={action.id} className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">{action.kind === 'human' ? 'Escalamiento humano' : action.kind === 'stock' ? 'Consulta de stock' : action.kind === 'catalog' ? 'Explorar catálogo' : 'Mensaje libre'}</p>
+                                <p className="text-xs text-slate-500">ID técnico: {action.id}</p>
+                              </div>
+                              <Switch checked={action.enabled} onCheckedChange={(checked) => updateChatbotQuickAction(action.id, { enabled: checked })} />
+                            </div>
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              <div className="grid gap-2"><Label>Etiqueta</Label><Input value={action.label} onChange={(e) => updateChatbotQuickAction(action.id, { label: e.target.value })} className="h-11 rounded-xl" /></div>
+                              <div className="grid gap-2"><Label>Mensaje que envía</Label><Input value={action.message} onChange={(e) => updateChatbotQuickAction(action.id, { message: e.target.value })} className="h-11 rounded-xl" /></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {chatbotBuilderSection === 'brand' ? (
+                  <>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="grid gap-2 md:col-span-2"><Label>Título del chatbot</Label><Input value={chatbotBuilderDraft.chatbotTitle} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, chatbotTitle: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2 md:col-span-2"><Label>Nombre del asistente</Label><Input value={chatbotBuilderDraft.assistantName} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, assistantName: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2 md:col-span-2"><Label>Prompt inicial legacy</Label><Textarea value={chatbotBuilderDraft.chatbotPrompt} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, chatbotPrompt: e.target.value }))} rows={3} className="rounded-2xl" /></div>
+                      <div className="grid gap-2"><Label>Altura iframe</Label><Input value={chatbotBuilderDraft.iframeHeight} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, iframeHeight: normalizePixelValue(e.target.value, '720') }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Fuente CSS</Label><Input value={chatbotBuilderDraft.fontFamily} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, fontFamily: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2 md:col-span-2"><Label>Dominios permitidos</Label><Textarea value={chatbotBuilderDraft.allowedDomains} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, allowedDomains: e.target.value }))} rows={2} className="rounded-2xl" placeholder="cliente.com, demo.cliente.com" /></div>
+                    </div>
+
+                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
+                      <div className="grid gap-2"><Label>Color acento</Label><Input value={chatbotBuilderDraft.accentColor} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, accentColor: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Fondo general</Label><Input value={chatbotBuilderDraft.pageBackgroundColor} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, pageBackgroundColor: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Fondo interno</Label><Input value={chatbotBuilderDraft.backgroundColor} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, backgroundColor: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Etiqueta superior</Label><Input value={chatbotBuilderDraft.headerBadgeLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, headerBadgeLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Estado del asistente</Label><Input value={chatbotBuilderDraft.statusBadgeLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, statusBadgeLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Radio del panel</Label><Input value={chatbotBuilderDraft.chatShellRadius} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, chatShellRadius: normalizePixelValue(e.target.value, '30') }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Radio de burbujas</Label><Input value={chatbotBuilderDraft.messageBubbleRadius} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messageBubbleRadius: normalizePixelValue(e.target.value, '22') }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Sombra del panel</Label><Select value={chatbotBuilderDraft.panelShadowPreset} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, panelShadowPreset: value as PanelShadowPreset }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="soft">Suave</SelectItem><SelectItem value="medium">Media</SelectItem><SelectItem value="strong">Fuerte</SelectItem></SelectContent></Select></div>
+                    </div>
+                  </>
+                ) : null}
+
+                {chatbotBuilderSection === 'launcher' ? (
+                  <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
+                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">Launcher flotante</p>
+                        <p className="text-xs text-slate-500">Activa o desactiva el botón flotante</p>
+                      </div>
+                      <Switch checked={chatbotBuilderDraft.floatingLauncherEnabled} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, floatingLauncherEnabled: checked }))} />
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">Solicitar producto</p>
+                        <p className="text-xs text-slate-500">Muestra el campo rápido en el composer</p>
+                      </div>
+                      <Switch checked={chatbotBuilderDraft.showProductField} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, showProductField: checked }))} />
+                    </div>
+                    <div className="grid gap-2"><Label>Texto launcher</Label><Input value={chatbotBuilderDraft.launcherLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, launcherLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                    <div className="grid gap-2"><Label>Icono launcher</Label><Select value={chatbotBuilderDraft.launcherIcon} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherIcon: value }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bot">bot</SelectItem><SelectItem value="message-circle">message-circle</SelectItem><SelectItem value="sparkles">sparkles</SelectItem></SelectContent></Select></div>
+                    <div className="grid gap-2"><Label>Posición launcher</Label><Select value={chatbotBuilderDraft.launcherPosition} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherPosition: value as LauncherPosition }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="right">Derecha</SelectItem><SelectItem value="left">Izquierda</SelectItem></SelectContent></Select></div>
+                    <div className="grid gap-2"><Label>Tamaño launcher</Label><Select value={chatbotBuilderDraft.launcherSize} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherSize: value as LauncherSize }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="compact">Compacto</SelectItem><SelectItem value="standard">Estándar</SelectItem><SelectItem value="large">Grande</SelectItem></SelectContent></Select></div>
+                  </div>
+                ) : null}
+
+                {chatbotBuilderSection === 'copy' ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-2"><Label>Label producto</Label><Input value={chatbotBuilderDraft.productLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, productLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                    <div className="grid gap-2"><Label>Placeholder producto</Label><Input value={chatbotBuilderDraft.productPlaceholder} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, productPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                    <div className="grid gap-2 md:col-span-2"><Label>Label mensaje</Label><Input value={chatbotBuilderDraft.messageLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messageLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                    <div className="grid gap-2 md:col-span-2"><Label>Placeholder mensaje</Label><Input value={chatbotBuilderDraft.messagePlaceholder} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messagePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -3081,7 +3643,7 @@ export function CrmIntegrationsClient() {
                                 ) : null}
 
                                 {createForm.floatingLauncherEnabled ? (
-                                  <div className="sgd-preview-launcher absolute bottom-3 z-10" style={{ left: createForm.launcherPosition === 'left' ? 12 : undefined, right: createForm.launcherPosition === 'right' ? 12 : undefined, maxWidth: 'calc(100% - 24px)' }}>
+                                  <div className="sgd-preview-launcher absolute z-10" style={{ bottom: 60, left: createForm.launcherPosition === 'left' ? 60 : undefined, right: createForm.launcherPosition === 'right' ? 60 : undefined, maxWidth: 'calc(100% - 120px)' }}>
                                     <div className="flex max-w-full items-center justify-center whitespace-nowrap text-white shadow-[0_18px_44px_-26px_rgba(15,23,42,0.55)]" style={{ backgroundColor: createForm.accentColor, borderRadius: wizardLauncherMetrics.buttonRadius, padding: wizardLauncherMetrics.buttonPadding, height: wizardLauncherMetrics.buttonHeight, gap: wizardChatPreviewMode === 'compact' ? '0' : wizardLauncherMetrics.buttonGap, minWidth: wizardChatPreviewMode === 'compact' ? wizardLauncherMetrics.buttonHeight : undefined, fontSize: wizardLauncherMetrics.fontSize, fontWeight: 700 }}>
                                       <span style={{ fontSize: wizardLauncherMetrics.iconSize, lineHeight: 1 }}>{getLauncherPreviewIcon(createForm.launcherIcon)}</span>
                                       {wizardChatPreviewMode !== 'compact' && wizardLauncherMetrics.labelVisible ? <span>{createForm.launcherLabel}</span> : null}

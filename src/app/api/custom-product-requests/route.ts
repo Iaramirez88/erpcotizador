@@ -56,10 +56,11 @@ export async function GET(req: NextRequest) {
 
     const empresaId = access.empresaId
 
-    const me = await prisma.user.findUnique({
-      where: { id: access.userId },
+    const myMembership = await prisma.sedeMembership.findUnique({
+      where: { sedeId_userId: { sedeId: access.sedeId, userId: access.userId } },
       select: { role: true },
     })
+    const canManageRequests = myMembership?.role === 'ADMIN' || myMembership?.role === 'MANAGER'
 
     const { searchParams } = new URL(req.url)
     const statusRaw = asString(searchParams.get('status')).trim().toUpperCase()
@@ -68,7 +69,7 @@ export async function GET(req: NextRequest) {
     const where: Prisma.CustomProductRequestWhereInput = { empresaId }
     if (status) where.status = status
 
-    if (me?.role !== 'ADMIN') {
+    if (!canManageRequests) {
       where.createdByUserId = access.userId
       where.sedeId = access.sedeId
     }
@@ -166,7 +167,7 @@ export async function POST(req: NextRequest) {
 
       // Notificar a ADMINs de la sede (opcional, pero útil para que respondan rápido)
       const adminMemberships = await tx.sedeMembership.findMany({
-        where: { sedeId: access.sedeId, user: { role: 'ADMIN' } },
+        where: { sedeId: access.sedeId, role: { in: ['ADMIN', 'MANAGER'] } },
         select: { userId: true },
       })
       const adminIds = Array.from(new Set(adminMemberships.map((m) => m.userId))).filter(Boolean)

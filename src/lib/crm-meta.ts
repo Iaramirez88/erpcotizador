@@ -64,9 +64,9 @@ function requireMetaEnv() {
   return { appId, appSecret, appUrl }
 }
 
-function getRedirectUri(channelId: string) {
+export function getMetaOAuthRedirectUri() {
   const { appUrl } = requireMetaEnv()
-  return `${appUrl}/api/crm/channels/${channelId}/meta/callback`
+  return `${appUrl}/api/oauth/meta/callback`
 }
 
 async function fetchMetaGraph<T>(path: string, params: Record<string, string>, accessToken: string) {
@@ -83,9 +83,9 @@ async function fetchMetaGraph<T>(path: string, params: Record<string, string>, a
   return json
 }
 
-export function buildMetaOAuthUrl(args: { channelId: string; state: string }) {
+export function buildMetaOAuthUrl(args: { state: string }) {
   const { appId } = requireMetaEnv()
-  const redirectUri = getRedirectUri(args.channelId)
+  const redirectUri = getMetaOAuthRedirectUri()
   const search = new URLSearchParams({
     client_id: appId,
     redirect_uri: redirectUri,
@@ -96,15 +96,15 @@ export function buildMetaOAuthUrl(args: { channelId: string; state: string }) {
   return `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth?${search.toString()}`
 }
 
-export async function exchangeMetaCode(channelId: string, code: string) {
+export async function exchangeMetaCode(args: { code: string; redirectUri?: string }) {
   const { appId, appSecret } = requireMetaEnv()
-  const redirectUri = getRedirectUri(channelId)
+  const redirectUri = args.redirectUri || getMetaOAuthRedirectUri()
 
   const shortUrl = new URL(`https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token`)
   shortUrl.searchParams.set('client_id', appId)
   shortUrl.searchParams.set('client_secret', appSecret)
   shortUrl.searchParams.set('redirect_uri', redirectUri)
-  shortUrl.searchParams.set('code', code)
+  shortUrl.searchParams.set('code', args.code)
 
   const shortResponse = await fetch(shortUrl, { cache: 'no-store' })
   const shortJson = await shortResponse.json().catch(() => ({})) as MetaTokenResponse & { error?: { message?: string } }

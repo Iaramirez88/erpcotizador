@@ -18,12 +18,13 @@ export async function POST(request: Request, context: RouteContext) {
     const access = await requireApiAccess(ModuleKey.MATERIALES, 'WRITE')
     if (!access.ok) return access.response
 
-    const me = await prisma.user.findUnique({
-      where: { id: access.userId },
+    const myMembership = await prisma.sedeMembership.findUnique({
+      where: { sedeId_userId: { sedeId: access.sedeId, userId: access.userId } },
       select: { role: true },
     })
+    const canManageRequests = myMembership?.role === 'ADMIN' || myMembership?.role === 'MANAGER'
 
-    if (me?.role !== 'ADMIN') {
+    if (!canManageRequests) {
       return NextResponse.json({ success: false, error: 'Prohibido' }, { status: 403 })
     }
 

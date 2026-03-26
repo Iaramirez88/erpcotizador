@@ -41,10 +41,18 @@ export async function GET() {
   // Para UI: incluir acceso efectivo (por sede) a CONFIG
   let configAccess: AccessLevel = 'NONE'
   let ordersAccess: AccessLevel = 'NONE'
+  let materialsAccess: AccessLevel = 'NONE'
+  let canManageCustomProductRequests = false
   try {
     const sede = await getActiveSedeForUser(userId)
     configAccess = await getEffectiveAccess({ userId, sedeId: sede.id, module: ModuleKey.CONFIG })
     ordersAccess = await getEffectiveAccess({ userId, sedeId: sede.id, module: ModuleKey.ORDENES })
+    materialsAccess = await getEffectiveAccess({ userId, sedeId: sede.id, module: ModuleKey.MATERIALES })
+    const membership = await prisma.sedeMembership.findUnique({
+      where: { sedeId_userId: { sedeId: sede.id, userId } },
+      select: { role: true },
+    })
+    canManageCustomProductRequests = membership?.role === 'ADMIN' || membership?.role === 'MANAGER'
   } catch {
     // si algo falla (sede no resuelta, etc), dejamos NONE
   }
@@ -63,9 +71,10 @@ export async function GET() {
     data: user
       ? {
           ...user,
-          access: { config: configAccess, orders: ordersAccess },
+          access: { config: configAccess, orders: ordersAccess, materials: materialsAccess },
           canConfigWrite,
           canDeleteOrders,
+          canManageCustomProductRequests,
           empresaId,
           isPlanOwner,
           canManageBilling,

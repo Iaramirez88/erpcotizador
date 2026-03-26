@@ -101,11 +101,11 @@ Haz esto siempre, sin importar el canal:
 |---|---|---|---|
 | Formulario Web | Formulario Web | /api/crm/captures/web-form | Iframe hospedado o script legacy |
 | Chatbot Web | Chatbot Web | /api/crm/captures/chatbot | Iframe o widget |
-| WhatsApp Cloud | WhatsApp Cloud | /api/crm/channels/{channelId}/webhook | Meta OAuth o credenciales/manual |
-| WhatsApp Sandbox | WhatsApp Cloud o sandbox interno | /api/crm/channels/{channelId}/webhook | Testing / webhook |
-| Facebook Page | Facebook / Messenger | /api/crm/channels/{channelId}/webhook | Meta OAuth |
-| Messenger | Facebook / Messenger | /api/crm/channels/{channelId}/webhook | Meta OAuth |
-| Instagram DM | Instagram DM | /api/crm/channels/{channelId}/webhook | Meta OAuth |
+| WhatsApp Cloud | WhatsApp Cloud | /api/webhooks/meta | Meta OAuth o credenciales/manual |
+| WhatsApp Sandbox | WhatsApp Cloud o sandbox interno | /api/webhooks/meta | Testing / webhook |
+| Facebook Page | Facebook / Messenger | /api/webhooks/meta | Meta OAuth |
+| Messenger | Facebook / Messenger | /api/webhooks/meta | Meta OAuth |
+| Instagram DM | Instagram DM | /api/webhooks/meta | Meta OAuth |
 | Gmail | Gmail Inbox Bridge | /api/crm/captures/bridge | Apps Script |
 | Outlook | Outlook Inbox Bridge | /api/crm/captures/bridge | Power Automate |
 | TikTok | TikTok Lead Bridge | /api/crm/captures/bridge | Make, Zapier, n8n o backend propio |
@@ -280,7 +280,7 @@ Este canal no solo recibe el lead. Tambien puede:
 
 ## 8. WhatsApp Cloud
 
-Este canal usa el webhook omnicanal y puede apoyarse en Meta para dejar IDs y assets reales sincronizados.
+Este canal usa el webhook global de Meta y puede apoyarse en OAuth para dejar IDs y assets reales sincronizados.
 
 ### 8.1 Como crearlo
 
@@ -313,27 +313,42 @@ Tambien puedes operar con:
 
 1. Business Account ID.
 2. Phone Number ID.
-3. Token de verificacion.
+3. Token de verificacion del canal para pruebas internas si aplica.
 4. Access Token Cloud API.
 
 Esto sirve sobre todo para ambientes de prueba o cuando el cliente te entrega las credenciales directamente.
 
 ### 8.4 Webhook real
 
-- GET /api/crm/channels/{channelId}/webhook
-- POST /api/crm/channels/{channelId}/webhook
+- GET /api/webhooks/meta
+- POST /api/webhooks/meta
 
 Uso:
 
-1. GET para verificacion inicial del proveedor.
-2. POST para eventos inbound.
+1. GET para verificacion inicial del webhook en Meta.
+2. POST para eventos inbound de WhatsApp, Messenger, Facebook e Instagram.
+3. El canal destino ya no se determina por la URL sino por los IDs externos sincronizados en el CRM.
 
 ### 8.5 Que debes configurar en Meta
 
-1. Webhook callback URL apuntando al canal exacto.
-2. Verify token igual al token del canal.
+1. Webhook callback URL apuntando a /api/webhooks/meta.
+2. Verify token igual a META_WEBHOOK_VERIFY_TOKEN si definiste token global en entorno.
 3. Suscripcion a eventos de mensajes.
 4. Numero correcto vinculado al canal.
+
+### 8.5.1 OAuth real de Meta
+
+El flujo OAuth ya no usa el webhook como redirect URI.
+
+1. Inicio del flujo desde el boton Conectar con Meta del canal.
+2. Callback OAuth global en /api/oauth/meta/callback.
+3. La app valida el state firmado.
+4. Luego sincroniza pages, cuentas de Instagram o phone numbers segun el proveedor.
+
+Esto separa correctamente:
+
+1. OAuth para autorizacion y sync de assets.
+2. Webhook para recepcion de eventos.
 
 ### 8.6 Verificacion minima
 
@@ -348,10 +363,11 @@ Del lado del sistema SGDigital debe quedar listo esto:
 
 1. APP_URL o NEXTAUTH_URL publico y estable.
 2. META_APP_ID y META_APP_SECRET configurados en el entorno.
-3. Callback OAuth accesible en /api/crm/channels/{channelId}/meta/callback.
-4. Webhook del canal accesible en /api/crm/channels/{channelId}/webhook.
-5. Canal creado en CRM con provider WhatsApp Cloud, token de verificacion y estado TESTING o ACTIVE.
-6. Si van a enviar desde el inbox, access token y Phone Number ID reales guardados o sincronizados desde Meta.
+3. Callback OAuth accesible en /api/oauth/meta/callback.
+4. Webhook global accesible en /api/webhooks/meta.
+5. META_WEBHOOK_VERIFY_TOKEN definido en entorno si quieres desacoplar la verificacion de los tokens por canal.
+6. Canal creado en CRM con provider WhatsApp Cloud y estado TESTING o ACTIVE.
+7. Si van a enviar desde el inbox, access token y Phone Number ID reales guardados o sincronizados desde Meta.
 
 Del lado del cliente, lo minimo viable es esto:
 
@@ -359,7 +375,7 @@ Del lado del cliente, lo minimo viable es esto:
 2. Tener un numero dado de alta en WhatsApp Business Platform.
 3. Autorizar el login Conectar con Meta desde una cuenta con acceso al activo correcto.
 4. Elegir el Phone Number ID correcto dentro del CRM.
-5. Configurar en Meta el callback URL exacto y el verify token del canal.
+5. Configurar en Meta el callback URL global del webhook y el verify token configurado para la app.
 6. Suscribirse al evento de mensajes para que entren inbound al inbox.
 7. Hacer una prueba real enviando un mensaje al numero y confirmar que el hilo aparece en el CRM.
 
@@ -367,7 +383,7 @@ Si eso no se cumple, el canal puede quedar creado pero no operativo para convers
 
 ## 9. WhatsApp Sandbox
 
-Funciona con la misma base operativa del webhook social, pero orientado a pruebas.
+Funciona con la misma base operativa del webhook global de Meta, pero orientado a pruebas.
 
 ### 9.1 Como crearlo
 
@@ -379,7 +395,7 @@ Funciona con la misma base operativa del webhook social, pero orientado a prueba
 
 ### 9.2 Endpoint
 
-- /api/crm/channels/{channelId}/webhook
+- /api/webhooks/meta
 
 ### 9.3 Recomendacion
 
@@ -414,7 +430,9 @@ Este canal mete mensajes de pagina de Facebook al inbox omnicanal.
 
 ### 10.3 Endpoint
 
-- /api/crm/channels/{channelId}/webhook
+- /api/webhooks/meta
+
+El Page ID sincronizado en el canal es lo que permite enrutar los eventos al inbox correcto.
 
 ### 10.4 Verificacion minima
 
@@ -442,7 +460,9 @@ Messenger comparte la misma base de conexion Meta, pero debes tratarlo como cana
 
 ### 11.3 Endpoint
 
-- /api/crm/channels/{channelId}/webhook
+- /api/webhooks/meta
+
+La resolucion del canal ya no depende del channelId en la URL sino del Page ID sincronizado.
 
 ### 11.4 Verificacion minima
 
@@ -472,7 +492,9 @@ Este canal usa el mismo ecosistema Meta, pero el activo importante es la cuenta 
 
 ### 12.3 Endpoint
 
-- /api/crm/channels/{channelId}/webhook
+- /api/webhooks/meta
+
+La resolucion del canal se hace por los IDs externos sincronizados de Instagram y pagina asociada.
 
 ### 12.4 Verificacion minima
 
@@ -663,11 +685,13 @@ Significa que:
 
 1. El token enviado no coincide con el del canal.
 2. O no estas enviando el header esperado.
+3. En Meta, el verify token configurado en la app no coincide con META_WEBHOOK_VERIFY_TOKEN o con el fallback encontrado en canales.
 
 Que hacer:
 
 1. Copia otra vez el token desde el canal.
 2. Revisa si el proveedor lo manda por header o en body.
+3. Si estas verificando Meta, confirma el valor configurado en entorno y el valor pegado en la consola de Meta.
 
 ### 18.2 Error 409 Canal no disponible
 
@@ -738,12 +762,23 @@ La base actual ya soporta de forma real:
 
 1. Formularios web.
 2. Chatbot web.
-3. Webhook omnicanal para WhatsApp, Messenger, Facebook e Instagram.
+3. Webhook global de Meta para WhatsApp, Messenger, Facebook e Instagram.
 4. Bridge Gmail.
 5. Bridge Outlook.
 6. Bridges reutilizables para TikTok y YouTube.
 
 Y todo termina sobre la misma base multiempresa del CRM, sin crear modulos paralelos para cada canal.
+
+### 21.1 Cambio importante en Meta
+
+Desde esta version, Meta queda separado en dos flujos:
+
+1. OAuth: /api/oauth/meta/callback
+2. Webhook: /api/webhooks/meta
+
+Eso significa que el webhook ya no debe usarse como redirect URI de OAuth.
+
+Tambien significa que puedes definir META_WEBHOOK_VERIFY_TOKEN en entorno para que la verificacion inicial del webhook quede desacoplada de los tokens por canal.
 
 
 docker compose -f docker-compose.prod.yml run --rm migrate npx prisma migrate resolve --rolled-back 20260325120000_add_crm_plan_tier

@@ -1,4 +1,10 @@
 import { headers } from 'next/headers'
+import {
+  type ChatbotFlowStage,
+  type ChatbotQuickAction,
+  normalizeChatbotFlowStages,
+  normalizeChatbotQuickActions,
+} from '@/lib/crm-chatbot-flow'
 
 export type PublicChatbotSettings = {
   chatbotTitle: string
@@ -27,6 +33,8 @@ export type PublicChatbotSettings = {
   productPlaceholder: string
   messageLabel: string
   messagePlaceholder: string
+  quickActions: ChatbotQuickAction[]
+  flowStages: ChatbotFlowStage[]
   allowedDomains: string[]
 }
 
@@ -78,6 +86,8 @@ export function getPublicChatbotSettings(settingsJson: unknown): PublicChatbotSe
     productPlaceholder: typeof settings.productPlaceholder === 'string' && settings.productPlaceholder.trim() ? settings.productPlaceholder.trim() : 'Ej: mugs, flyers, etiquetas',
     messageLabel: typeof settings.messageLabel === 'string' && settings.messageLabel.trim() ? settings.messageLabel.trim() : 'Mensaje',
     messagePlaceholder: typeof settings.messagePlaceholder === 'string' && settings.messagePlaceholder.trim() ? settings.messagePlaceholder.trim() : 'Cuéntanos qué necesitas y en qué cantidad.',
+    quickActions: normalizeChatbotQuickActions(settings.quickActions),
+    flowStages: normalizeChatbotFlowStages(settings.flowStages),
     allowedDomains,
   }
 }

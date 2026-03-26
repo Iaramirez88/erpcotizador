@@ -3,6 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  findChatbotFlowStage,
+  findChatbotFlowResponseOption,
+  getStageResponseOptions,
+  getStageQuickActions,
+  type ChatbotFlowStage,
+  type ChatbotFlowResponseOption,
+  type ChatbotQuickAction,
+} from '@/lib/crm-chatbot-flow'
 
 type PublicChatbotMessage = {
   id: string
@@ -11,7 +20,7 @@ type PublicChatbotMessage = {
   at: string
   author?: string | null
   attachments?: Array<{ type?: string | null; url?: string | null; alt?: string | null }>
-  meta?: { nextField?: string | null }
+  meta?: { nextField?: string | null; stageId?: string | null; quickActionIds?: string[]; responseOptionIds?: string[] }
 }
 
 type PublicChatbotEmbedProps = {
@@ -41,6 +50,8 @@ type PublicChatbotEmbedProps = {
   productPlaceholder: string
   messageLabel: string
   messagePlaceholder: string
+  quickActions: ChatbotQuickAction[]
+  flowStages: ChatbotFlowStage[]
 }
 
 type ChatIdentity = {
@@ -68,12 +79,26 @@ function nowIso() {
   return new Date().toISOString()
 }
 
-function buildWelcomeMessage(prompt: string): PublicChatbotMessage {
+function buildWelcomeMessage(prompt: string, stage: ChatbotFlowStage | null, quickActions: ChatbotQuickAction[]): PublicChatbotMessage {
   return {
     id: 'welcome',
     role: 'assistant',
-    body: prompt,
+    body: stage?.prompt || prompt,
     at: nowIso(),
+    meta: {
+      nextField: stage?.nextField === 'none' ? null : stage?.nextField || 'name',
+      stageId: stage?.id || null,
+      quickActionIds: getStageQuickActions(stage, quickActions).map((item) => item.id),
+      responseOptionIds: getStageResponseOptions(stage).map((item) => item.id),
+    },
+  }
+}
+
+function getResponseOptionVisual() {
+  return {
+    className: 'border-violet-200 bg-violet-50 text-violet-900 hover:border-violet-300 hover:bg-violet-100',
+    badge: 'Paso guiado',
+    icon: '↳',
   }
 }
 
@@ -158,8 +183,71 @@ function inferIdentityFromMessage(current: ChatIdentity, messageBody: string, ne
   }
 }
 
+function getQuickActionVisual(kind: ChatbotQuickAction['kind']) {
+  if (kind === 'catalog') {
+    return {
+      badge: 'Catalogo',
+      icon: '▦',
+      className: 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100',
+    }
+  }
+  if (kind === 'stock') {
+    return {
+      badge: 'Stock',
+      icon: '◒',
+      className: 'border-sky-200 bg-sky-50 text-sky-800 hover:border-sky-300 hover:bg-sky-100',
+    }
+  }
+  if (kind === 'human') {
+    return {
+      badge: 'Asesor',
+      icon: '✦',
+      className: 'border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-300 hover:bg-amber-100',
+    }
+  }
+  return {
+    badge: 'Accion',
+    icon: '•',
+    className: 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-slate-100',
+  }
+}
+
+function getStageTheme(stageId: string | null | undefined, accentColor: string) {
+  if (stageId === 'catalog') {
+    return {
+      chip: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+      panel: 'border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,.95),rgba(255,255,255,.98))]',
+      halo: 'rgba(16,185,129,.18)',
+      label: 'Catálogo y stock',
+    }
+  }
+  if (stageId === 'qualification') {
+    return {
+      chip: 'border-sky-200 bg-sky-50 text-sky-800',
+      panel: 'border-sky-200 bg-[linear-gradient(180deg,rgba(239,246,255,.95),rgba(255,255,255,.98))]',
+      halo: 'rgba(14,165,233,.18)',
+      label: 'Calificación',
+    }
+  }
+  if (stageId === 'handoff') {
+    return {
+      chip: 'border-amber-200 bg-amber-50 text-amber-900',
+      panel: 'border-amber-200 bg-[linear-gradient(180deg,rgba(255,251,235,.95),rgba(255,255,255,.98))]',
+      halo: 'rgba(245,158,11,.18)',
+      label: 'Escalamiento',
+    }
+  }
+  return {
+    chip: 'border-violet-200 bg-violet-50 text-violet-800',
+    panel: 'border-violet-200 bg-[linear-gradient(180deg,rgba(245,243,255,.95),rgba(255,255,255,.98))]',
+    halo: `${accentColor}22`,
+    label: 'Descubrimiento',
+  }
+}
+
 export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const initialStage = useMemo(() => findChatbotFlowStage(props.flowStages, 'welcome') ?? props.flowStages[0] ?? null, [props.flowStages])
   const [ready, setReady] = useState(false)
   const [sessionId, setSessionId] = useState('')
   const [identity, setIdentity] = useState<ChatIdentity>({ nombre: '', email: '', telefono: '', producto: '' })
@@ -167,7 +255,7 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
   const [sending, setSending] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [connectionState, setConnectionState] = useState<'connecting' | 'online' | 'error'>('connecting')
-  const [messages, setMessages] = useState<PublicChatbotMessage[]>([buildWelcomeMessage(props.prompt)])
+  const [messages, setMessages] = useState<PublicChatbotMessage[]>([buildWelcomeMessage(props.prompt, initialStage, props.quickActions)])
   const [panelOpen, setPanelOpen] = useState(!props.floatingLauncherEnabled)
 
   const accentStyle = useMemo(() => ({ ['--chat-accent' as string]: props.accentColor, ['--chat-background' as string]: props.backgroundColor, ['--chat-page-background' as string]: props.pageBackgroundColor, fontFamily: props.fontFamily }), [props.accentColor, props.backgroundColor, props.pageBackgroundColor, props.fontFamily])
@@ -176,6 +264,27 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
     const assistantMessages = [...messages].reverse().find((item) => item.role === 'assistant' && item.meta?.nextField)
     return assistantMessages?.meta?.nextField || null
   }, [messages])
+  const activeAssistantMeta = useMemo(() => [...messages].reverse().find((item) => item.role === 'assistant' && item.meta)?.meta, [messages])
+  const activeStage = useMemo(() => findChatbotFlowStage(props.flowStages, activeAssistantMeta?.stageId || initialStage?.id || null) ?? initialStage, [activeAssistantMeta?.stageId, initialStage, props.flowStages])
+  const activeStageTheme = useMemo(() => getStageTheme(activeStage?.id, props.accentColor), [activeStage?.id, props.accentColor])
+  const activeQuickActions = useMemo(() => {
+    const ids = Array.isArray(activeAssistantMeta?.quickActionIds) ? activeAssistantMeta.quickActionIds : []
+    if (ids.length) {
+      return ids
+        .map((actionId) => props.quickActions.find((item) => item.id === actionId && item.enabled))
+        .filter((item): item is ChatbotQuickAction => Boolean(item))
+    }
+    return getStageQuickActions(activeStage, props.quickActions)
+  }, [activeAssistantMeta?.quickActionIds, activeStage, props.quickActions])
+  const activeResponseOptions = useMemo(() => {
+    const ids = Array.isArray(activeAssistantMeta?.responseOptionIds) ? activeAssistantMeta.responseOptionIds : []
+    if (ids.length) {
+      return ids
+        .map((optionId) => findChatbotFlowResponseOption(activeStage, optionId))
+        .filter((item): item is ChatbotFlowResponseOption => Boolean(item))
+    }
+    return getStageResponseOptions(activeStage)
+  }, [activeAssistantMeta?.responseOptionIds, activeStage])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -231,7 +340,7 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
         ? json.data?.messages.filter((item) => item.body)
         : []
 
-      setMessages(serverMessages.length > 0 ? [buildWelcomeMessage(props.prompt), ...serverMessages] : [buildWelcomeMessage(props.prompt)])
+      setMessages(serverMessages.length > 0 ? [buildWelcomeMessage(props.prompt, initialStage, props.quickActions), ...serverMessages] : [buildWelcomeMessage(props.prompt, initialStage, props.quickActions)])
       setConnectionState('online')
     } catch (error) {
       console.error(error)
@@ -239,7 +348,7 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
     } finally {
       setSyncing(false)
     }
-  }, [props.channelId, props.prompt, sessionId])
+  }, [initialStage, props.channelId, props.prompt, props.quickActions, sessionId])
 
   useEffect(() => {
     if (!ready || !sessionId) return
@@ -252,7 +361,7 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
     return () => window.clearInterval(interval)
   }, [ready, sessionId, syncConversation])
 
-  async function sendMessage(messageBody: string, requestHuman = false) {
+  async function sendMessage(messageBody: string, requestHuman = false, overrides?: { quickActionId?: string; responseOptionId?: string; currentStageId?: string }) {
     const trimmedMessage = messageBody.trim()
     if (!trimmedMessage || sending || !sessionId) return
 
@@ -289,7 +398,13 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
             source: 'iframe-chatbot',
             userAgent: navigator.userAgent,
             chatFlowNextField: latestAssistantPrompt,
+            quickActionId: overrides?.quickActionId || null,
+            responseOptionId: overrides?.responseOptionId || null,
+            currentStageId: overrides?.currentStageId || activeStage?.id || null,
           },
+          quickActionId: overrides?.quickActionId || undefined,
+          responseOptionId: overrides?.responseOptionId || undefined,
+          currentStageId: overrides?.currentStageId || activeStage?.id || undefined,
         }),
       })
 
@@ -322,6 +437,24 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
 
   function requestHumanSupport() {
     void sendMessage('Quiero hablar con un asesor humano.', true)
+  }
+
+  function triggerQuickAction(action: ChatbotQuickAction) {
+    const currentStageId = activeStage?.id || initialStage?.id || ''
+    if (action.kind === 'human') {
+      void sendMessage(action.message, true, { quickActionId: action.id, currentStageId })
+      return
+    }
+    void sendMessage(action.message, false, { quickActionId: action.id, currentStageId })
+  }
+
+  function triggerResponseOption(option: ChatbotFlowResponseOption) {
+    const currentStageId = activeStage?.id || initialStage?.id || ''
+    const shouldRequestHuman = option.targetStageId === 'handoff'
+    void sendMessage(option.userMessage || option.label, shouldRequestHuman, {
+      responseOptionId: option.id,
+      currentStageId,
+    })
   }
 
   function openPanel() {
@@ -439,6 +572,76 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
 
         <div className="sgd-chatbot-composer border-t border-slate-100 bg-white px-4 py-4">
           <div className="grid gap-3">
+            {activeStage ? (
+              <div className={`rounded-[24px] border px-4 py-3 shadow-sm ${activeStageTheme.panel}`} style={{ boxShadow: `0 16px 40px -28px ${activeStageTheme.halo}` }}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Etapa activa</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{activeStage.title}</p>
+                  </div>
+                  <div className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${activeStageTheme.chip}`}>
+                    {activeStageTheme.label}
+                  </div>
+                  <div className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white" style={{ backgroundColor: props.accentColor }}>
+                    {activeStage.nextField === 'none' ? 'Cierre' : `Siguiente: ${activeStage.nextField}`}
+                  </div>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-slate-600">{activeStage.description}</p>
+              </div>
+            ) : null}
+            {activeResponseOptions.length ? (
+              <div className="grid gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Respuestas guiadas</p>
+                <div className="flex flex-wrap gap-2">
+                  {activeResponseOptions.map((option) => {
+                    const visual = getResponseOptionVisual()
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => triggerResponseOption(option)}
+                        disabled={sending || !ready}
+                        className={`rounded-2xl border px-3 py-2 text-left text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${visual.className}`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/80 text-[13px] shadow-sm">{visual.icon}</span>
+                          <span className="flex flex-col">
+                            <span>{option.label}</span>
+                            <span className="text-[10px] font-medium opacity-80">{visual.badge}</span>
+                          </span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : null}
+            {activeQuickActions.length ? (
+              <div className="flex flex-wrap gap-2">
+                {activeQuickActions.map((action) => (
+                  (() => {
+                    const visual = getQuickActionVisual(action.kind)
+                    return (
+                  <button
+                    key={action.id}
+                    type="button"
+                    onClick={() => triggerQuickAction(action)}
+                    disabled={sending || !ready}
+                    className={`rounded-2xl border px-3 py-2 text-left text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${visual.className}`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/80 text-[13px] shadow-sm">{visual.icon}</span>
+                      <span className="flex flex-col">
+                        <span>{action.label}</span>
+                        <span className="text-[10px] font-medium opacity-80">{visual.badge}</span>
+                      </span>
+                    </span>
+                  </button>
+                    )
+                  })()
+                ))}
+              </div>
+            ) : null}
             <div className="grid gap-1.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{props.messageLabel}</p>
               <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} placeholder={props.messagePlaceholder} className="rounded-2xl border-slate-200" />
