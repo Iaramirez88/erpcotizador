@@ -24,8 +24,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowUpRight, CalendarClock, CircleDot, GripVertical, Sparkles, UserRound } from 'lucide-react'
+import { ArrowUpRight, Bot, CalendarClock, CircleDot, FileText, GripVertical, Mail, MessageCircle, PhoneCall, Sparkles, UserRound } from 'lucide-react'
 import { useI18n } from '@/components/providers/i18n-provider'
+import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
 
 type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'LOST' | 'CONVERTED'
 type LeadSource = 'WEB' | 'REFERIDO' | 'WHATSAPP' | 'LLAMADA' | 'IMPORT' | 'OTRO'
@@ -48,6 +49,8 @@ type Lead = {
   telefono?: string | null
   status: LeadStatus
   source: LeadSource
+  originKey?: CrmOriginKey
+  originLabel?: string
   ciudad?: string | null
   lastActivityAt?: string | null
   createdAt: string
@@ -64,7 +67,9 @@ type Opportunity = {
   probabilityPct: number
   expectedCloseAt?: string | null
   updatedAt: string
-  lead?: { id: string; nombre: string; status: LeadStatus } | null
+  originKey?: CrmOriginKey
+  originLabel?: string
+  lead?: { id: string; nombre: string; status: LeadStatus; source?: LeadSource } | null
   cliente?: { id: string; nombre: string; documento: string } | null
   cotizacion?: { id: string; numero: string; estado: string; total: number } | null
   assignedTo?: { id: string; name?: string | null; email?: string | null } | null
@@ -77,13 +82,15 @@ type Task = {
   description?: string | null
   status: TaskStatus
   priority: TaskPriority
+  originKey?: CrmOriginKey | null
+  originLabel?: string | null
   dueAt?: string | null
   completedAt?: string | null
   createdAt: string
   leadId?: string | null
   opportunityId?: string | null
   assignedTo?: { id: string; name?: string | null; email?: string | null } | null
-  lead?: { id: string; nombre: string } | null
+  lead?: { id: string; nombre: string; source?: LeadSource; originKey?: CrmOriginKey | null; originLabel?: string | null } | null
   opportunity?: { id: string; title: string; stage: OpportunityStage } | null
 }
 
@@ -157,6 +164,41 @@ function getInitials(value: string | null | undefined) {
   if (!source) return 'CRM'
   const parts = source.split(/\s+/).filter(Boolean)
   return parts.slice(0, 2).map((item) => item[0]?.toUpperCase() || '').join('') || 'CRM'
+}
+
+function getLeadSourceFallbackMeta(source: LeadSource) {
+  return getCrmOriginMeta({ source })
+}
+
+function getOriginTone(originKey: CrmOriginKey) {
+  if (originKey === 'EMAIL_GMAIL' || originKey === 'EMAIL_OUTLOOK') return 'bg-amber-100 text-amber-800'
+  if (originKey === 'CHATBOT_WEB') return 'bg-emerald-100 text-emerald-800'
+  if (originKey === 'FORM_WEB') return 'bg-sky-100 text-sky-800'
+  if (originKey === 'WHATSAPP') return 'bg-green-100 text-green-800'
+  if (originKey === 'LEAD_TIKTOK' || originKey === 'LEAD_YOUTUBE' || originKey === 'MESSENGER_FACEBOOK' || originKey === 'INSTAGRAM_DM') return 'bg-fuchsia-100 text-fuchsia-800'
+  if (originKey === 'PHONE_CALL') return 'bg-orange-100 text-orange-800'
+  if (originKey === 'REFERRAL') return 'bg-violet-100 text-violet-800'
+  if (originKey === 'IMPORT') return 'bg-slate-200 text-slate-800'
+  return 'bg-slate-100 text-slate-700'
+}
+
+function OriginBadge({ originKey, label }: { originKey: CrmOriginKey; label: string }) {
+  const Icon = originKey === 'EMAIL_GMAIL' || originKey === 'EMAIL_OUTLOOK'
+    ? Mail
+    : originKey === 'FORM_WEB'
+      ? FileText
+      : originKey === 'CHATBOT_WEB'
+        ? Bot
+        : originKey === 'PHONE_CALL'
+          ? PhoneCall
+          : MessageCircle
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${getOriginTone(originKey)}`}>
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </span>
+  )
 }
 
 function getDaysToCloseLabel(value: string | null | undefined, locale: string) {
@@ -319,6 +361,16 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
     const openTasks = tasks.filter((task) => task.status === 'OPEN').length
     return { activeLeads, pipelineValue, openTasks }
   }, [leads, opportunities, tasks])
+
+  const topOrigins = useMemo(() => {
+    const counts = new Map<string, { label: string; count: number }>()
+    leads.forEach((lead) => {
+      const origin = lead.originKey && lead.originLabel ? { key: lead.originKey, label: lead.originLabel } : getLeadSourceFallbackMeta(lead.source)
+      const current = counts.get(origin.key)
+      counts.set(origin.key, { label: origin.label, count: (current?.count || 0) + 1 })
+    })
+    return Array.from(counts.values()).sort((left, right) => right.count - left.count).slice(0, 3)
+  }, [leads])
 
   const stageMap = useMemo(() => {
     return new Map(stageSettings.map((stage) => [stage.key, stage]))
@@ -794,6 +846,13 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
               <p className="mt-3 text-3xl font-semibold text-amber-950">{stats.openTasks}</p>
               <p className="mt-1 text-xs leading-5 text-amber-700/80">Pendientes que requieren acción del equipo.</p>
             </div>
+            <div className="sm:col-span-3 min-w-0 rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Origen principal de leads</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {topOrigins.length === 0 ? <span className="text-xs text-slate-500">Sin datos de origen aún.</span> : null}
+                {topOrigins.map((item) => <span key={item.label} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">{item.label} · {item.count}</span>)}
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -874,51 +933,54 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
               <div className="space-y-3">
                 {loading ? <p className="text-sm text-muted-foreground">Cargando...</p> : null}
                 {!loading && leads.length === 0 ? <p className="text-sm text-muted-foreground">No hay leads para mostrar.</p> : null}
-                {leads.map((lead) => (
-                  <div key={lead.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Link href={`/dashboard/crm/leads/${lead.id}`} className="text-lg font-semibold text-sky-700 hover:text-sky-800 hover:underline">
-                            {lead.nombre}
-                          </Link>
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">{lead.status}</span>
-                          <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-sky-700">{lead.source}</span>
+                {leads.map((lead) => {
+                  const origin = lead.originKey && lead.originLabel ? { key: lead.originKey, label: lead.originLabel } : getLeadSourceFallbackMeta(lead.source)
+                  return (
+                    <div key={lead.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Link href={`/dashboard/crm/leads/${lead.id}`} className="text-lg font-semibold text-sky-700 hover:text-sky-800 hover:underline">
+                              {lead.nombre}
+                            </Link>
+                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">{lead.status}</span>
+                            <OriginBadge originKey={origin.key} label={origin.label} />
+                          </div>
+                          <div className="grid gap-1 text-sm text-slate-600 md:grid-cols-2">
+                            <p>{lead.empresaNombre || 'Sin empresa'} · {lead.email || lead.telefono || lead.ciudad || naText}</p>
+                            <p>Última actividad: {formatDate(lead.lastActivityAt || lead.createdAt, locale, naText)}</p>
+                          </div>
                         </div>
-                        <div className="grid gap-1 text-sm text-slate-600 md:grid-cols-2">
-                          <p>{lead.empresaNombre || 'Sin empresa'} · {lead.email || lead.telefono || lead.ciudad || naText}</p>
-                          <p>Última actividad: {formatDate(lead.lastActivityAt || lead.createdAt, locale, naText)}</p>
+                        <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 lg:flex-nowrap">
+                          <div className="grid min-w-[132px] grid-cols-[auto_1fr] items-center gap-x-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Oportunidades</p>
+                            <p className="text-base font-semibold text-slate-900">{lead._count?.opportunities ?? 0}</p>
+                          </div>
+                          <div className="grid min-w-[108px] grid-cols-[auto_1fr] items-center gap-x-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Tareas</p>
+                            <p className="text-base font-semibold text-slate-900">{lead._count?.tasks ?? 0}</p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            className="h-10 rounded-xl border border-slate-200 px-3 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                            asChild
+                          >
+                            <Link href={`/dashboard/crm/agenda?leadId=${lead.id}`}>
+                              Agendar
+                            </Link>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            className="h-10 rounded-xl border border-slate-200 px-3 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
+                            onClick={() => void openEditLeadDialog(lead)}
+                          >
+                            Editar lead
+                          </Button>
                         </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 lg:flex-nowrap">
-                        <div className="grid min-w-[132px] grid-cols-[auto_1fr] items-center gap-x-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Oportunidades</p>
-                          <p className="text-base font-semibold text-slate-900">{lead._count?.opportunities ?? 0}</p>
-                        </div>
-                        <div className="grid min-w-[108px] grid-cols-[auto_1fr] items-center gap-x-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Tareas</p>
-                          <p className="text-base font-semibold text-slate-900">{lead._count?.tasks ?? 0}</p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          className="h-10 rounded-xl border border-slate-200 px-3 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
-                          asChild
-                        >
-                          <Link href={`/dashboard/crm/agenda?leadId=${lead.id}`}>
-                            Agendar
-                          </Link>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          className="h-10 rounded-xl border border-slate-200 px-3 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
-                          onClick={() => void openEditLeadDialog(lead)}
-                        >
-                          Editar lead
-                        </Button>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </CardContent>
           </Card>
@@ -976,7 +1038,6 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
                       onDragLeave={() => {
                         if (dragTargetStage === column.key) {
                           setDragTargetStage(null)
-                          setDragTargetOpportunityId(null)
                         }
                       }}
                       onDrop={(event) => {
@@ -1015,6 +1076,11 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
                           const relationName = row.cliente?.nombre || row.lead?.nombre || 'Sin relación'
                           const assigneeName = row.assignedTo?.name || row.assignedTo?.email || 'Sin responsable'
                           const quoteLabel = row.cotizacion?.numero || 'Sin cotización'
+                          const origin = row.originKey && row.originLabel
+                            ? { key: row.originKey, label: row.originLabel }
+                            : row.lead?.source
+                              ? getLeadSourceFallbackMeta(row.lead.source)
+                              : null
                           return (
                             <div
                               key={row.id}
@@ -1072,6 +1138,7 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
                                 </div>
 
                                 <div className="flex flex-wrap gap-1.5 text-[11px] text-slate-600">
+                                  {origin ? <OriginBadge originKey={origin.key} label={origin.label} /> : null}
                                   <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
                                     <CalendarClock className="h-3.5 w-3.5 text-slate-400" />
                                     {getDaysToCloseLabel(row.expectedCloseAt, locale)}
@@ -1134,8 +1201,13 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
                 <div className="space-y-3">
                   {loading ? <p className="text-sm text-muted-foreground">Cargando...</p> : null}
                   {!loading && opportunities.length === 0 ? <p className="text-sm text-muted-foreground">No hay oportunidades para mostrar.</p> : null}
-                  {opportunities.map((row) => (
-                    <div key={row.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
+                  {opportunities.map((row) => {
+                    const origin = row.originKey && row.originLabel
+                      ? { key: row.originKey, label: row.originLabel }
+                      : row.lead?.source
+                        ? getLeadSourceFallbackMeta(row.lead.source)
+                        : null
+                    return <div key={row.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
@@ -1143,6 +1215,7 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
                             <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ backgroundColor: `${getStageColor(row.stage) || '#f59e0b'}22`, color: getStageColor(row.stage) || '#b45309' }}>
                               {getStageLabel(row.stage)}
                             </span>
+                            {origin ? <OriginBadge originKey={origin.key} label={origin.label} /> : null}
                           </div>
                           <p className="text-sm text-slate-600">{row.lead?.nombre || row.cliente?.nombre || 'Sin relación'} · cierre estimado {formatDate(row.expectedCloseAt, locale, 'Sin fecha')}</p>
                           <div className="flex flex-wrap gap-4 text-xs text-slate-500">
@@ -1170,7 +1243,7 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
                         </div>
                       </div>
                     </div>
-                  ))}
+                  })}
                 </div>
               </CardContent>
             </Card>
@@ -1187,32 +1260,42 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
               <div className="space-y-3">
                 {loading ? <p className="text-sm text-muted-foreground">Cargando...</p> : null}
                 {!loading && tasks.length === 0 ? <p className="text-sm text-muted-foreground">No hay tareas para mostrar.</p> : null}
-                {tasks.map((task) => (
-                  <div key={task.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-lg font-semibold text-slate-900">{task.title}</span>
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">{task.status}</span>
-                          <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-violet-700">{task.priority}</span>
+                {tasks.map((task) => {
+                  const origin = task.originKey && task.originLabel
+                    ? { key: task.originKey, label: task.originLabel }
+                    : task.lead?.originKey && task.lead?.originLabel
+                      ? { key: task.lead.originKey, label: task.lead.originLabel }
+                      : task.lead?.source
+                        ? getLeadSourceFallbackMeta(task.lead.source)
+                        : null
+                  return (
+                    <div key={task.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-lg font-semibold text-slate-900">{task.title}</span>
+                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">{task.status}</span>
+                            <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-violet-700">{task.priority}</span>
+                            {origin ? <OriginBadge originKey={origin.key} label={origin.label} /> : null}
+                          </div>
+                          <p className="text-sm text-slate-600">{task.opportunity?.title || task.lead?.nombre || 'Sin relación'} · vence {formatDate(task.dueAt, locale, 'Sin fecha')}</p>
                         </div>
-                        <p className="text-sm text-slate-600">{task.opportunity?.title || task.lead?.nombre || 'Sin relación'} · vence {formatDate(task.dueAt, locale, 'Sin fecha')}</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {task.status !== 'DONE' ? (
-                          <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void completeTask(task.id)}>Marcar hecha</Button>
-                        ) : null}
-                        {task.status === 'DONE' ? (
-                          <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void updateTaskStatus(task.id, 'OPEN')}>Reabrir</Button>
-                        ) : null}
-                        {task.status !== 'CANCELED' ? (
-                          <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void updateTaskStatus(task.id, 'CANCELED')}>Cancelar</Button>
-                        ) : null}
-                        <Button variant="ghost" className="rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEditTaskDialog(task)}>Editar</Button>
+                        <div className="flex flex-wrap gap-2">
+                          {task.status !== 'DONE' ? (
+                            <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void completeTask(task.id)}>Marcar hecha</Button>
+                          ) : null}
+                          {task.status === 'DONE' ? (
+                            <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void updateTaskStatus(task.id, 'OPEN')}>Reabrir</Button>
+                          ) : null}
+                          {task.status !== 'CANCELED' ? (
+                            <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void updateTaskStatus(task.id, 'CANCELED')}>Cancelar</Button>
+                          ) : null}
+                          <Button variant="ghost" className="rounded-xl text-slate-600 hover:bg-slate-100 hover:text-slate-900" onClick={() => openEditTaskDialog(task)}>Editar</Button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </CardContent>
           </Card>
@@ -1239,6 +1322,7 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
                           <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ backgroundColor: `${getStageColor(activeOpportunityDetail.stage) || '#64748b'}22`, color: getStageColor(activeOpportunityDetail.stage) || '#475569' }}>
                             {getStageLabel(activeOpportunityDetail.stage)}
                           </span>
+                          {activeOpportunityDetail.originKey && activeOpportunityDetail.originLabel ? <OriginBadge originKey={activeOpportunityDetail.originKey} label={activeOpportunityDetail.originLabel} /> : null}
                         </div>
                         <p className="mt-2 text-sm text-slate-600">{activeOpportunityDetail.cliente?.nombre || activeOpportunityDetail.lead?.nombre || 'Sin relación principal'}</p>
                       </div>

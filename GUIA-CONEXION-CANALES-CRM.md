@@ -521,6 +521,7 @@ Este canal ya esta listo para operar via bridge real hacia el CRM.
 1. Selecciona el canal.
 2. Ve a la pestaña Bridges.
 3. Copia el script de Google Apps Script.
+https://script.google.com/home/?hl=es-419
 4. En tu cuenta de Google, abre Apps Script.
 5. Crea un proyecto nuevo.
 6. Pega el script.

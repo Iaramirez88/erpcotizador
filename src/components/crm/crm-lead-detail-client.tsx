@@ -23,7 +23,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Bot, FileText, Mail, MessageCircle, PhoneCall } from 'lucide-react'
 import { useI18n } from '@/components/providers/i18n-provider'
+import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
 
 type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'LOST' | 'CONVERTED'
 type OpportunityStage = 'NEW' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON' | 'LOST'
@@ -59,6 +61,8 @@ type LeadDetail = {
   ciudad?: string | null
   notes?: string | null
   source: string
+  originKey?: CrmOriginKey
+  originLabel?: string
   status: LeadStatus
   createdAt: string
   lastActivityAt?: string | null
@@ -121,6 +125,37 @@ const DEFAULT_STAGE_SETTINGS: StageSetting[] = [
   { key: 'WON', label: 'Ganada', color: '#16a34a', sortOrder: 50 },
   { key: 'LOST', label: 'Perdida', color: '#dc2626', sortOrder: 60 },
 ]
+
+function getOriginTone(originKey: CrmOriginKey) {
+  if (originKey === 'EMAIL_GMAIL' || originKey === 'EMAIL_OUTLOOK') return 'bg-amber-100 text-amber-800'
+  if (originKey === 'CHATBOT_WEB') return 'bg-emerald-100 text-emerald-800'
+  if (originKey === 'FORM_WEB') return 'bg-sky-100 text-sky-800'
+  if (originKey === 'WHATSAPP') return 'bg-green-100 text-green-800'
+  if (originKey === 'LEAD_TIKTOK' || originKey === 'LEAD_YOUTUBE' || originKey === 'MESSENGER_FACEBOOK' || originKey === 'INSTAGRAM_DM') return 'bg-fuchsia-100 text-fuchsia-800'
+  if (originKey === 'PHONE_CALL') return 'bg-orange-100 text-orange-800'
+  if (originKey === 'REFERRAL') return 'bg-violet-100 text-violet-800'
+  if (originKey === 'IMPORT') return 'bg-slate-200 text-slate-800'
+  return 'bg-slate-100 text-slate-700'
+}
+
+function OriginBadge({ originKey, label }: { originKey: CrmOriginKey; label: string }) {
+  const Icon = originKey === 'EMAIL_GMAIL' || originKey === 'EMAIL_OUTLOOK'
+    ? Mail
+    : originKey === 'FORM_WEB'
+      ? FileText
+      : originKey === 'CHATBOT_WEB'
+        ? Bot
+        : originKey === 'PHONE_CALL'
+          ? PhoneCall
+          : MessageCircle
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${getOriginTone(originKey)}`}>
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </span>
+  )
+}
 const TASK_PRIORITY_OPTIONS: TaskPriority[] = ['LOW', 'NORMAL', 'HIGH']
 
 function formatDate(value: string | null | undefined, locale: string, fallback: string) {
@@ -395,7 +430,13 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
             </div>
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Fuente</p>
-              <p className="mt-1 text-sm">{lead.source}</p>
+              {lead.originKey && lead.originLabel ? (
+                <div className="mt-1">
+                  <OriginBadge originKey={lead.originKey} label={lead.originLabel} />
+                </div>
+              ) : (
+                <p className="mt-1 text-sm">{getCrmOriginMeta({ source: lead.source }).label}</p>
+              )}
             </div>
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Documento</p>

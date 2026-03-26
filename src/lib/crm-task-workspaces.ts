@@ -123,7 +123,22 @@ export const crmTaskInclude = {
     orderBy: [{ createdAt: 'asc' as const }],
   },
   createdBy: { select: { id: true, name: true, email: true } },
-  lead: { select: { id: true, nombre: true } },
+  lead: {
+    select: {
+      id: true,
+      nombre: true,
+      source: true,
+      conversations: {
+        orderBy: [{ lastMessageAt: 'desc' as const }, { createdAt: 'desc' as const }],
+        take: 1,
+        select: {
+          channelConnection: {
+            select: { provider: true, settingsJson: true },
+          },
+        },
+      },
+    },
+  },
   opportunity: { select: { id: true, title: true, stage: true } },
   cliente: { select: { id: true, nombre: true, documento: true } },
   history: {

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Bot, FileText, Mail, MessageCircle, PhoneCall } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,11 +13,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useI18n } from '@/components/providers/i18n-provider'
+import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
 
 type ConversationStatus = 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM'
 type MessageDirection = 'INBOUND' | 'OUTBOUND' | 'SYSTEM'
 type ChannelProvider = 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'FACEBOOK_PAGE' | 'MESSENGER' | 'WEB_FORM' | 'WEB_CHATBOT' | 'INSTAGRAM_DM'
+type BridgeKind = 'GENERIC' | 'GMAIL' | 'OUTLOOK' | 'TIKTOK' | 'YOUTUBE'
 type OpportunityStage = 'NEW' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON' | 'LOST'
+type OriginFilter = 'ALL' | 'EMAIL' | 'FORM' | 'CHATBOT' | 'WHATSAPP' | 'SOCIAL' | 'PHONE' | 'REFERRAL' | 'IMPORT'
 
 type Assignee = {
   id: string
@@ -29,6 +33,7 @@ type Channel = {
   name: string
   provider: ChannelProvider
   status: string
+  bridgeKind?: BridgeKind | null
 }
 
 type ConversationMessage = {
@@ -139,6 +144,79 @@ function formatRelativeChannel(provider: ChannelProvider) {
   }
 }
 
+function getConversationOrigin(channel: Channel) {
+  return getCrmOriginMeta({ provider: channel.provider, bridgeKind: channel.bridgeKind })
+}
+
+function getOriginTone(originKey: CrmOriginKey) {
+  if (originKey === 'EMAIL_GMAIL' || originKey === 'EMAIL_OUTLOOK') return 'bg-amber-100 text-amber-800'
+  if (originKey === 'CHATBOT_WEB') return 'bg-emerald-100 text-emerald-800'
+  if (originKey === 'FORM_WEB') return 'bg-sky-100 text-sky-800'
+  if (originKey === 'WHATSAPP') return 'bg-green-100 text-green-800'
+  if (originKey === 'LEAD_TIKTOK' || originKey === 'LEAD_YOUTUBE' || originKey === 'MESSENGER_FACEBOOK' || originKey === 'INSTAGRAM_DM') return 'bg-fuchsia-100 text-fuchsia-800'
+  if (originKey === 'PHONE_CALL') return 'bg-orange-100 text-orange-800'
+  if (originKey === 'REFERRAL') return 'bg-violet-100 text-violet-800'
+  if (originKey === 'IMPORT') return 'bg-slate-200 text-slate-800'
+  return 'bg-slate-100 text-slate-700'
+}
+
+function getOriginFilterGroup(originKey: CrmOriginKey): OriginFilter {
+  if (originKey === 'EMAIL_GMAIL' || originKey === 'EMAIL_OUTLOOK') return 'EMAIL'
+  if (originKey === 'FORM_WEB') return 'FORM'
+  if (originKey === 'CHATBOT_WEB') return 'CHATBOT'
+  if (originKey === 'WHATSAPP') return 'WHATSAPP'
+  if (originKey === 'LEAD_TIKTOK' || originKey === 'LEAD_YOUTUBE' || originKey === 'MESSENGER_FACEBOOK' || originKey === 'INSTAGRAM_DM') return 'SOCIAL'
+  if (originKey === 'PHONE_CALL') return 'PHONE'
+  if (originKey === 'REFERRAL') return 'REFERRAL'
+  if (originKey === 'IMPORT') return 'IMPORT'
+  return 'ALL'
+}
+
+function OriginChip({ originKey, label }: { originKey: CrmOriginKey; label: string }) {
+  const Icon = originKey === 'EMAIL_GMAIL' || originKey === 'EMAIL_OUTLOOK'
+    ? Mail
+    : originKey === 'FORM_WEB'
+      ? FileText
+      : originKey === 'CHATBOT_WEB'
+        ? Bot
+        : originKey === 'PHONE_CALL'
+          ? PhoneCall
+          : MessageCircle
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${getOriginTone(originKey)}`}>
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </span>
+  )
+}
+
+function formatConversationEntrySource(channel: Channel) {
+  if (channel.provider === 'WEB_FORM') {
+    if (channel.bridgeKind === 'GMAIL') return 'Correo Gmail'
+    if (channel.bridgeKind === 'OUTLOOK') return 'Correo Outlook'
+    if (channel.bridgeKind === 'TIKTOK') return 'Lead TikTok'
+    if (channel.bridgeKind === 'YOUTUBE') return 'Lead YouTube'
+    return 'Formulario web'
+  }
+
+  if (channel.provider === 'WEB_CHATBOT') return 'Chatbot web'
+  return formatRelativeChannel(channel.provider)
+}
+
+function formatConversationEntryTone(channel: Channel) {
+  if (channel.provider === 'WEB_FORM' && (channel.bridgeKind === 'GMAIL' || channel.bridgeKind === 'OUTLOOK')) {
+    return 'bg-amber-100 text-amber-800'
+  }
+  if (channel.provider === 'WEB_CHATBOT') {
+    return 'bg-emerald-100 text-emerald-800'
+  }
+  if (channel.provider === 'WEB_FORM') {
+    return 'bg-sky-100 text-sky-800'
+  }
+  return 'bg-slate-100 text-slate-700'
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 }
@@ -175,6 +253,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [assignedFilter, setAssignedFilter] = useState<'ALL' | string>('ALL')
   const [channelFilter, setChannelFilter] = useState<'ALL' | string>('ALL')
   const [providerFilter, setProviderFilter] = useState<'ALL' | ChannelProvider>(props.initialProviderFilter ?? 'ALL')
+  const [originFilter, setOriginFilter] = useState<OriginFilter>('ALL')
   const [conversations, setConversations] = useState<ConversationListItem[]>([])
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null)
@@ -298,6 +377,15 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     const unreadCount = conversations.reduce((sum, item) => sum + (item.unreadCount || 0), 0)
     return { openCount, unassignedCount, unreadCount }
   }, [conversations])
+
+  const visibleConversations = useMemo(() => {
+    if (originFilter === 'ALL') return conversations
+    return conversations.filter((item) => getOriginFilterGroup(getConversationOrigin(item.channelConnection).key) === originFilter)
+  }, [conversations, originFilter])
+
+  useEffect(() => {
+    setSelectedConversationId((current) => current && visibleConversations.some((item) => item.id === current) ? current : visibleConversations[0]?.id ?? null)
+  }, [visibleConversations])
 
   async function submitAssign() {
     if (!selectedConversation) return
@@ -554,7 +642,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       )}
 
       <Card className="rounded-[26px] border-slate-200 bg-white/90 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.35)]">
-        <CardContent className="grid gap-3 p-4 md:grid-cols-4 md:p-5">
+        <CardContent className="grid gap-3 p-4 md:grid-cols-5 md:p-5">
           <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 md:col-span-2">
             <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Buscar</Label>
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nombre, telefono, email o mensaje..." className="h-11 rounded-xl border-slate-200 bg-white" />
@@ -575,6 +663,23 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
               <SelectContent>
                 <SelectItem value="ALL">Todos</SelectItem>
                 {assignees.map((item) => <SelectItem key={item.id} value={item.id}>{item.name || item.email || item.id}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+            <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Origen</Label>
+            <Select value={originFilter} onValueChange={(value) => setOriginFilter(value as OriginFilter)}>
+              <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos</SelectItem>
+                <SelectItem value="EMAIL">Correo</SelectItem>
+                <SelectItem value="FORM">Formulario</SelectItem>
+                <SelectItem value="CHATBOT">Chatbot</SelectItem>
+                <SelectItem value="WHATSAPP">WhatsApp</SelectItem>
+                <SelectItem value="SOCIAL">Social</SelectItem>
+                <SelectItem value="PHONE">Llamada</SelectItem>
+                <SelectItem value="REFERRAL">Referido</SelectItem>
+                <SelectItem value="IMPORT">Importado</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -615,15 +720,16 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
           <CardHeader className="border-b border-slate-100 pb-5">
-            <CardTitle className="text-xl">Conversaciones ({conversations.length})</CardTitle>
+            <CardTitle className="text-xl">Conversaciones ({visibleConversations.length})</CardTitle>
             <CardDescription>Hilos omnicanal con prioridad comercial y acceso rápido al lead.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 p-4 md:p-5">
             {loading ? <p className="text-sm text-muted-foreground">Cargando conversaciones...</p> : null}
-            {!loading && conversations.length === 0 ? <p className="text-sm text-muted-foreground">No hay conversaciones para mostrar.</p> : null}
-            {conversations.map((item) => {
+            {!loading && visibleConversations.length === 0 ? <p className="text-sm text-muted-foreground">No hay conversaciones para mostrar.</p> : null}
+            {visibleConversations.map((item) => {
               const isActive = item.id === selectedConversationId
               const preview = item.messages?.[0]?.bodyText || item.sourceCampaign || item.contactEmail || item.contactPhone || naText
+              const origin = getConversationOrigin(item.channelConnection)
               return (
                 <button
                   key={item.id}
@@ -635,7 +741,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-slate-900">{item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || 'Contacto sin nombre'}</span>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{formatRelativeChannel(item.channelConnection.provider)}</span>
+                        <OriginChip originKey={origin.key} label={origin.label} />
                       </div>
                       <p className="line-clamp-2 text-sm text-slate-600">{preview}</p>
                     </div>
@@ -674,7 +780,11 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                       {selectedConversation.contactPhone || naText} · {selectedConversation.contactEmail || naText} · {selectedConversation.channelConnection.name}
                     </p>
                     <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-                      <span>Canal: {formatRelativeChannel(selectedConversation.channelConnection.provider)}</span>
+                      <span className="inline-flex items-center gap-2">
+                        <span>Origen:</span>
+                        <OriginChip originKey={getConversationOrigin(selectedConversation.channelConnection).key} label={getConversationOrigin(selectedConversation.channelConnection).label} />
+                      </span>
+                      <span>Canal: {selectedConversation.channelConnection.name}</span>
                       <span>Último mensaje: {formatDate(selectedConversation.lastMessageAt, locale, naText)}</span>
                       <span>Capturas: {selectedConversation.captures.length}</span>
                     </div>

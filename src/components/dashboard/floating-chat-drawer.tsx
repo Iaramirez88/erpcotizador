@@ -58,6 +58,7 @@ type InternalThreadDetail = {
 type ConversationStatus = 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM'
 type MessageDirection = 'INBOUND' | 'OUTBOUND' | 'SYSTEM'
 type ChannelProvider = 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'FACEBOOK_PAGE' | 'MESSENGER' | 'WEB_FORM' | 'WEB_CHATBOT' | 'INSTAGRAM_DM'
+type BridgeKind = 'GENERIC' | 'GMAIL' | 'OUTLOOK' | 'TIKTOK' | 'YOUTUBE'
 
 type ConversationMessage = {
   id: string
@@ -78,7 +79,7 @@ type ConversationListItem = {
   assignedTo?: { id: string; name?: string | null; email?: string | null } | null
   lead?: { id: string; nombre: string } | null
   cliente?: { id: string; nombre: string; documento: string } | null
-  channelConnection: { id: string; name: string; provider: ChannelProvider; status: string }
+  channelConnection: { id: string; name: string; provider: ChannelProvider; status: string; bridgeKind?: BridgeKind | null }
   messages?: ConversationMessage[]
 }
 
@@ -126,6 +127,11 @@ function formatChannel(provider: ChannelProvider) {
     default:
       return provider
   }
+}
+
+function shouldHideFromGlobalChat(conversation: Pick<ConversationListItem, 'channelConnection'>) {
+  return conversation.channelConnection.provider === 'WEB_FORM'
+    && (conversation.channelConnection.bridgeKind === 'GMAIL' || conversation.channelConnection.bridgeKind === 'OUTLOOK')
 }
 
 function formatThreadName(thread: InternalThreadSummary | InternalThreadDetail | null) {
@@ -233,10 +239,11 @@ export default function FloatingChatDrawer() {
       setCurrentUserId(meRes.data?.id ?? null)
       setTeamUsers(Array.isArray(usersRes.data) ? usersRes.data : [])
       const nextConversations = Array.isArray(conversationsRes.data) ? conversationsRes.data : []
+      const nextVisibleConversations = nextConversations.filter((item) => !shouldHideFromGlobalChat(item))
       const nextThreads = Array.isArray(threadsRes.data) ? threadsRes.data : []
       setCrmConversations(nextConversations)
       setTeamThreads(nextThreads)
-      setSelectedConversationId((current) => current && nextConversations.some((item) => item.id === current) ? current : nextConversations[0]?.id ?? null)
+      setSelectedConversationId((current) => current && nextVisibleConversations.some((item) => item.id === current) ? current : nextVisibleConversations[0]?.id ?? null)
       setSelectedThreadId((current) => current && nextThreads.some((item) => item.id === current) ? current : nextThreads[0]?.id ?? null)
     } finally {
       setLoading(false)
@@ -312,15 +319,17 @@ export default function FloatingChatDrawer() {
       .slice(0, 10)
   }, [currentUserId, search, teamUsers])
 
+  const visibleCrmConversations = useMemo(() => crmConversations.filter((item) => !shouldHideFromGlobalChat(item)), [crmConversations])
+
   const filteredConversations = useMemo(() => {
     const term = search.trim().toLowerCase()
-    return crmConversations.filter((item) => {
+    return visibleCrmConversations.filter((item) => {
       if (!term) return true
       const name = item.contactDisplayName?.toLowerCase() ?? item.lead?.nombre?.toLowerCase() ?? item.cliente?.nombre?.toLowerCase() ?? ''
       const preview = item.messages?.[0]?.bodyText?.toLowerCase() ?? ''
       return name.includes(term) || preview.includes(term)
     })
-  }, [crmConversations, search])
+  }, [search, visibleCrmConversations])
 
   const directThreads = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -356,7 +365,7 @@ export default function FloatingChatDrawer() {
   }, [currentUserId, groupSearch, teamUsers])
 
   const unreadAlerts = useMemo<InboxAlert[]>(() => {
-    const crmAlerts = crmConversations
+    const crmAlerts = visibleCrmConversations
       .filter((item) => item.unreadCount > 0)
       .map((item) => ({
         id: item.id,
@@ -381,7 +390,7 @@ export default function FloatingChatDrawer() {
       }))
 
     return [...crmAlerts, ...teamAlerts].sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
-  }, [crmConversations, teamThreads])
+  }, [teamThreads, visibleCrmConversations])
 
   const unreadTotal = useMemo(() => unreadAlerts.reduce((sum, item) => sum + item.unreadCount, 0), [unreadAlerts])
 

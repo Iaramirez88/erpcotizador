@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { Bot, FileText, Mail, MessageCircle, PhoneCall } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
 
 type TaskStatus = 'OPEN' | 'DONE' | 'CANCELED'
 type TaskPriority = 'LOW' | 'NORMAL' | 'HIGH'
@@ -20,13 +22,15 @@ type Task = {
   description?: string | null
   status: TaskStatus
   priority: TaskPriority
+  originKey?: CrmOriginKey | null
+  originLabel?: string | null
   dueAt?: string | null
   assignedTo?: { id: string; name?: string | null; email?: string | null } | null
-  lead?: { id: string; nombre: string } | null
+  lead?: { id: string; nombre: string; source?: string | null; originKey?: CrmOriginKey | null; originLabel?: string | null } | null
   cliente?: { id: string; nombre: string; documento: string } | null
 }
 
-type LeadOption = { id: string; nombre: string; empresaNombre?: string | null; email?: string | null; telefono?: string | null }
+type LeadOption = { id: string; nombre: string; empresaNombre?: string | null; email?: string | null; telefono?: string | null; source?: string | null; originKey?: CrmOriginKey | null; originLabel?: string | null }
 type ClienteOption = { id: string; nombre: string; documento: string; email?: string | null; telefono?: string | null }
 type Assignee = { id: string; name?: string | null; email?: string | null }
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
@@ -54,6 +58,37 @@ function formatMonth(value: Date) {
 async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
   const response = await fetch(url, init)
   return (await response.json().catch(() => ({}))) as JsonResponse<T>
+}
+
+function getOriginTone(originKey: CrmOriginKey) {
+  if (originKey === 'EMAIL_GMAIL' || originKey === 'EMAIL_OUTLOOK') return 'bg-amber-100 text-amber-800'
+  if (originKey === 'CHATBOT_WEB') return 'bg-emerald-100 text-emerald-800'
+  if (originKey === 'FORM_WEB') return 'bg-sky-100 text-sky-800'
+  if (originKey === 'WHATSAPP') return 'bg-green-100 text-green-800'
+  if (originKey === 'LEAD_TIKTOK' || originKey === 'LEAD_YOUTUBE' || originKey === 'MESSENGER_FACEBOOK' || originKey === 'INSTAGRAM_DM') return 'bg-fuchsia-100 text-fuchsia-800'
+  if (originKey === 'PHONE_CALL') return 'bg-orange-100 text-orange-800'
+  if (originKey === 'REFERRAL') return 'bg-violet-100 text-violet-800'
+  if (originKey === 'IMPORT') return 'bg-slate-200 text-slate-800'
+  return 'bg-slate-100 text-slate-700'
+}
+
+function OriginBadge({ originKey, label }: { originKey: CrmOriginKey; label: string }) {
+  const Icon = originKey === 'EMAIL_GMAIL' || originKey === 'EMAIL_OUTLOOK'
+    ? Mail
+    : originKey === 'FORM_WEB'
+      ? FileText
+      : originKey === 'CHATBOT_WEB'
+        ? Bot
+        : originKey === 'PHONE_CALL'
+          ? PhoneCall
+          : MessageCircle
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${getOriginTone(originKey)}`}>
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </span>
+  )
 }
 
 export function CrmAgendaClient() {
@@ -307,6 +342,20 @@ export function CrmAgendaClient() {
                   <div key={task.id} className="rounded-2xl border border-slate-200 bg-white p-4">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div>
+                        {(() => {
+                          const origin = task.originKey && task.originLabel
+                            ? { key: task.originKey, label: task.originLabel }
+                            : task.lead?.originKey && task.lead?.originLabel
+                              ? { key: task.lead.originKey, label: task.lead.originLabel }
+                              : task.lead?.source
+                                ? getCrmOriginMeta({ source: task.lead.source })
+                                : null
+                          return (
+                            <div className="mb-2 flex flex-wrap gap-2">
+                              {origin ? <OriginBadge originKey={origin.key} label={origin.label} /> : null}
+                            </div>
+                          )
+                        })()}
                         <p className="font-semibold text-slate-950">{task.title}</p>
                         <p className="mt-1 text-sm text-slate-600">{task.description || 'Sin descripción adicional.'}</p>
                         <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
@@ -415,6 +464,7 @@ export function CrmAgendaClient() {
                 <div key={lead.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
                   <div>
                     <p className="font-medium text-slate-950">{lead.nombre}</p>
+                    {lead.originKey && lead.originLabel ? <div className="mt-1"><OriginBadge originKey={lead.originKey} label={lead.originLabel} /></div> : lead.source ? <div className="mt-1"><OriginBadge originKey={getCrmOriginMeta({ source: lead.source }).key} label={getCrmOriginMeta({ source: lead.source }).label} /></div> : null}
                     <p className="text-sm text-slate-500">{lead.empresaNombre || lead.email || lead.telefono || 'Sin datos adicionales'}</p>
                   </div>
                   <Button variant="outline" className="rounded-xl" onClick={() => setTaskForm((current) => ({ ...current, relationType: 'lead', relationId: lead.id }))}>

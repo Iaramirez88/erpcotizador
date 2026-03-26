@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
+import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 import {
   assertCrmSedeAccess,
   normalizeString,
@@ -80,7 +81,33 @@ export async function GET(request: Request) {
       include: crmTaskInclude,
     })
 
-    return NextResponse.json({ success: true, data: rows })
+    const data = rows.map((row) => {
+      const latestConversation = row.lead?.conversations[0]
+      const origin = row.lead
+        ? getCrmOriginMeta({
+            provider: latestConversation?.channelConnection.provider,
+            bridgeKind: getBridgeKindFromSettings(latestConversation?.channelConnection.settingsJson),
+            source: row.lead.source,
+          })
+        : null
+
+      return {
+        ...row,
+        originKey: origin?.key ?? null,
+        originLabel: origin?.label ?? null,
+        lead: row.lead
+          ? {
+              id: row.lead.id,
+              nombre: row.lead.nombre,
+              source: row.lead.source,
+              originKey: origin?.key ?? null,
+              originLabel: origin?.label ?? null,
+            }
+          : null,
+      }
+    })
+
+    return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('Error listando tareas CRM:', error)
     return NextResponse.json({ error: 'Error listando tareas CRM' }, { status: 500 })

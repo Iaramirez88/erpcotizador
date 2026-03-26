@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
-import { assertCrmSedeAccess } from '@/lib/crm'
+import { assertCrmSedeAccess, normalizeString } from '@/lib/crm'
 
 export const runtime = 'nodejs'
 
@@ -10,11 +10,16 @@ type RouteContext = {
   params: Promise<{ id: string }>
 }
 
+function getBridgeKind(settingsJson: unknown) {
+  if (!settingsJson || typeof settingsJson !== 'object' || Array.isArray(settingsJson)) return null
+  return normalizeString((settingsJson as Record<string, unknown>).bridgeKind).toUpperCase() || null
+}
+
 async function getConversation(id: string, empresaId: string) {
   return prisma.crmConversation.findUnique({
     where: { id },
     include: {
-      channelConnection: { select: { id: true, name: true, provider: true, status: true } },
+      channelConnection: { select: { id: true, name: true, provider: true, status: true, settingsJson: true } },
       assignedTo: { select: { id: true, name: true, email: true } },
       lead: { select: { id: true, nombre: true, status: true, email: true, telefono: true, celular: true } },
       cliente: { select: { id: true, nombre: true, documento: true, email: true, telefono: true, celular: true } },
@@ -54,7 +59,18 @@ export async function GET(_: Request, context: RouteContext) {
       row.unreadCount = 0
     }
 
-    return NextResponse.json({ success: true, data: row })
+    const data = {
+      ...row,
+      channelConnection: {
+        id: row.channelConnection.id,
+        name: row.channelConnection.name,
+        provider: row.channelConnection.provider,
+        status: row.channelConnection.status,
+        bridgeKind: getBridgeKind(row.channelConnection.settingsJson),
+      },
+    }
+
+    return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('Error obteniendo conversación CRM:', error)
     return NextResponse.json({ error: 'Error obteniendo conversación CRM' }, { status: 500 })

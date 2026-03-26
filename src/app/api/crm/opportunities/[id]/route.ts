@@ -10,6 +10,7 @@ import {
   parseOptionalInt,
   parseOpportunityStage,
 } from '@/lib/crm'
+import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 
 export const runtime = 'nodejs'
 
@@ -22,7 +23,23 @@ async function getOpportunity(id: string, empresaId: string) {
     where: { id },
     include: {
       sede: { select: { id: true, nombre: true, codigo: true } },
-      lead: { select: { id: true, nombre: true, status: true } },
+      lead: {
+        select: {
+          id: true,
+          nombre: true,
+          status: true,
+          source: true,
+          conversations: {
+            orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
+            take: 1,
+            select: {
+              channelConnection: {
+                select: { provider: true, settingsJson: true },
+              },
+            },
+          },
+        },
+      },
       cliente: { select: { id: true, nombre: true, documento: true } },
       assignedTo: { select: { id: true, name: true, email: true } },
       createdBy: { select: { id: true, name: true, email: true } },
@@ -46,7 +63,29 @@ export async function GET(_: Request, context: RouteContext) {
       if (denied) return denied
     }
 
-    return NextResponse.json({ success: true, data: row })
+    const latestConversation = row.lead?.conversations[0]
+    const origin = getCrmOriginMeta({
+      provider: latestConversation?.channelConnection.provider,
+      bridgeKind: getBridgeKindFromSettings(latestConversation?.channelConnection.settingsJson),
+      source: row.lead?.source,
+    })
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...row,
+        originKey: origin.key,
+        originLabel: origin.label,
+        lead: row.lead
+          ? {
+              id: row.lead.id,
+              nombre: row.lead.nombre,
+              status: row.lead.status,
+              source: row.lead.source,
+            }
+          : null,
+      },
+    })
   } catch (error) {
     console.error('Error obteniendo oportunidad CRM:', error)
     return NextResponse.json({ error: 'Error obteniendo oportunidad CRM' }, { status: 500 })

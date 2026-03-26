@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { AccessLevel, CrmLeadSource, CrmLeadStatus, ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
+import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 import { requireSedeAccess } from '@/lib/rbac'
 
 export const runtime = 'nodejs'
@@ -84,11 +85,35 @@ export async function GET(request: Request) {
         ownerUser: { select: { id: true, name: true, email: true } },
         createdBy: { select: { id: true, name: true, email: true } },
         convertedCliente: { select: { id: true, nombre: true, documento: true } },
+        conversations: {
+          orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
+          take: 1,
+          select: {
+            channelConnection: {
+              select: { provider: true, settingsJson: true },
+            },
+          },
+        },
         _count: { select: { opportunities: true, activities: true, tasks: true } },
       },
     })
 
-    return NextResponse.json({ success: true, data: leads })
+    const data = leads.map((lead) => {
+      const latestConversation = lead.conversations[0]
+      const origin = getCrmOriginMeta({
+        provider: latestConversation?.channelConnection.provider,
+        bridgeKind: getBridgeKindFromSettings(latestConversation?.channelConnection.settingsJson),
+        source: lead.source,
+      })
+
+      return {
+        ...lead,
+        originKey: origin.key,
+        originLabel: origin.label,
+      }
+    })
+
+    return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('Error al listar leads CRM:', error)
     return NextResponse.json({ error: 'Error al listar leads CRM' }, { status: 500 })

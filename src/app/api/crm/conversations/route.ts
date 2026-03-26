@@ -6,6 +6,11 @@ import { assertCrmSedeAccess, normalizeString, parseConversationStatus } from '@
 
 export const runtime = 'nodejs'
 
+function getBridgeKind(settingsJson: unknown) {
+  if (!settingsJson || typeof settingsJson !== 'object' || Array.isArray(settingsJson)) return null
+  return normalizeString((settingsJson as Record<string, unknown>).bridgeKind).toUpperCase() || null
+}
+
 export async function GET(request: Request) {
   try {
     const access = await requireApiAccess(ModuleKey.CRM, 'READ')
@@ -48,7 +53,7 @@ export async function GET(request: Request) {
       },
       orderBy: [{ lastMessageAt: 'desc' }, { createdAt: 'desc' }],
       include: {
-        channelConnection: { select: { id: true, name: true, provider: true, status: true } },
+        channelConnection: { select: { id: true, name: true, provider: true, status: true, settingsJson: true } },
         assignedTo: { select: { id: true, name: true, email: true } },
         lead: { select: { id: true, nombre: true, status: true } },
         cliente: { select: { id: true, nombre: true, documento: true } },
@@ -70,7 +75,18 @@ export async function GET(request: Request) {
       },
     })
 
-    return NextResponse.json({ success: true, data: rows })
+    const data = rows.map((row) => ({
+      ...row,
+      channelConnection: {
+        id: row.channelConnection.id,
+        name: row.channelConnection.name,
+        provider: row.channelConnection.provider,
+        status: row.channelConnection.status,
+        bridgeKind: getBridgeKind(row.channelConnection.settingsJson),
+      },
+    }))
+
+    return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('Error listando conversaciones CRM:', error)
     return NextResponse.json({ error: 'Error listando conversaciones CRM' }, { status: 500 })
