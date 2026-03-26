@@ -533,9 +533,10 @@ Este canal ya esta listo para operar via bridge real hacia el CRM.
 
 1. Lee hilos con la etiqueta.
 2. Toma el ultimo mensaje.
-3. Construye payload con remitente, correo, asunto y cuerpo.
-4. Lo envia al bridge del CRM.
-5. Remueve la etiqueta para no reprocesar el hilo.
+3. Normaliza el correo del remitente para enviar una direccion limpia.
+4. Construye payload con remitente, correo, asunto y cuerpo.
+5. Lo envia al bridge del CRM.
+6. Marca el mensaje como procesado y solo remueve la etiqueta si el CRM responde OK.
 
 ### 13.4 Endpoint real
 
@@ -558,6 +559,7 @@ Este canal ya esta listo para operar via bridge real hacia el CRM.
 1. Marca un correo con la etiqueta del bridge.
 2. Ejecuta el trigger o corre manualmente el Apps Script.
 3. Verifica que aparezca una conversacion en el inbox.
+4. Si el CRM responde error, revisa el log del Apps Script antes de volver a ejecutar.
 4. Revisa que la actividad quede como ingreso de Gmail.
 
 ## 14. Outlook Inbox Bridge

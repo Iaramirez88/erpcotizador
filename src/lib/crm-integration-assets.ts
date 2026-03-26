@@ -327,7 +327,20 @@ export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
 
 export function buildGmailAppsScriptSnippet(args: GmailSnippetArgs) {
   const labelName = args.labelName || 'CRM/Prospectos'
-  return `function forwardLeadsToCrm() {
+  return `function extractEmail(value) {
+  const match = String(value || '').match(/<([^>]+)>/);
+  return match ? match[1].trim().toLowerCase() : String(value || '').trim().toLowerCase();
+}
+
+function wasProcessed(messageId) {
+  return PropertiesService.getScriptProperties().getProperty('crm_processed_' + messageId) === '1';
+}
+
+function markProcessed(messageId) {
+  PropertiesService.getScriptProperties().setProperty('crm_processed_' + messageId, '1');
+}
+
+function forwardLeadsToCrm() {
   const endpoint = '${args.baseUrl}/api/crm/captures/bridge';
   const channelId = '${args.channelId}';
   const token = '${args.token}';
@@ -339,22 +352,27 @@ export function buildGmailAppsScriptSnippet(args: GmailSnippetArgs) {
     const message = thread.getMessages().pop();
     if (!message) return;
 
+    const messageId = message.getId();
+    if (wasProcessed(messageId)) return;
+
+    const fromRaw = message.getReplyTo() || message.getFrom();
+
     const payload = {
       channelId,
       token,
       fromName: message.getFrom(),
-      fromAddress: message.getReplyTo() || message.getFrom(),
+      fromAddress: extractEmail(fromRaw),
       message: message.getPlainBody().slice(0, 5000),
       subject: message.getSubject(),
-      eventAt: new Date().toISOString(),
+      eventAt: message.getDate().toISOString(),
       payload: {
         subject: message.getSubject(),
         threadId: thread.getId(),
-        messageId: message.getId(),
+        messageId,
       },
     };
 
-    UrlFetchApp.fetch(endpoint, {
+    const response = UrlFetchApp.fetch(endpoint, {
       method: 'post',
       contentType: 'application/json',
       headers: { 'x-crm-channel-token': token },
@@ -362,7 +380,14 @@ export function buildGmailAppsScriptSnippet(args: GmailSnippetArgs) {
       muteHttpExceptions: true,
     });
 
-    thread.removeLabel(label);
+    const status = response.getResponseCode();
+    if (status >= 200 && status < 300) {
+      markProcessed(messageId);
+      thread.removeLabel(label);
+      return;
+    }
+
+    Logger.log('CRM Gmail Bridge error %s: %s', status, response.getContentText());
   });
 }`
 }

@@ -1931,7 +1931,7 @@ export function CrmIntegrationsClient() {
     const endpointPreview = createForm.provider === 'WEB_CHATBOT'
       ? `${baseUrl || 'https://tu-dominio.com'}/chatbot/<canal>`
       : createForm.provider === 'WEB_FORM'
-        ? `${baseUrl || 'https://tu-dominio.com'}/api/crm/captures/web-form`
+          ? `${baseUrl || 'https://tu-dominio.com'}${createIsBridge ? '/api/crm/captures/bridge' : '/api/crm/captures/web-form'}`
         : usesMetaProvider(createForm.provider)
           ? `${baseUrl || 'https://tu-dominio.com'}/api/webhooks/meta`
         : `${baseUrl || 'https://tu-dominio.com'}/api/crm/channels/<canal>/webhook`
