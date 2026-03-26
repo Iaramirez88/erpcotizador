@@ -109,6 +109,44 @@ function computePiecesPerSheet(pliegoW: number, pliegoH: number, piezaW: number,
   }
 }
 
+function resolveMachineSheetWithinParent(parentW: number, parentH: number, machineW: number, machineH: number) {
+  const normalizedParentW = Number(parentW) || 0
+  const normalizedParentH = Number(parentH) || 0
+  const normalizedMachineW = Number(machineW) || 0
+  const normalizedMachineH = Number(machineH) || 0
+
+  if (normalizedParentW <= 0 || normalizedParentH <= 0) {
+    return {
+      width: 0,
+      height: 0,
+      orientation: "normal" as const,
+    }
+  }
+
+  if (normalizedMachineW <= 0 || normalizedMachineH <= 0) {
+    return {
+      width: normalizedParentW,
+      height: normalizedParentH,
+      orientation: "normal" as const,
+    }
+  }
+
+  const direct = {
+    width: Math.min(normalizedParentW, normalizedMachineW),
+    height: Math.min(normalizedParentH, normalizedMachineH),
+    orientation: "normal" as const,
+  }
+  const rotated = {
+    width: Math.min(normalizedParentW, normalizedMachineH),
+    height: Math.min(normalizedParentH, normalizedMachineW),
+    orientation: "girada" as const,
+  }
+
+  const directArea = direct.width * direct.height
+  const rotatedArea = rotated.width * rotated.height
+  return rotatedArea > directArea ? rotated : direct
+}
+
 export function computeLitografia(params: LitografiaParams): LitografiaResult {
   const qty = clampNumber(Number(params.cantidad) || 0, 1, 1_000_000_000)
   const k = clampNumber(Number(params.colores) || 1, 1, 12)
@@ -148,8 +186,9 @@ export function computeLitografia(params: LitografiaParams): LitografiaResult {
 
   let papel = 0
   if (requestedPapelModo === "pliego" && costoPliego > 0 && pliegoW > 0 && pliegoH > 0 && formatoW > 0 && formatoH > 0) {
-    const hojaMaquinaW = maquinaW > 0 ? Math.min(pliegoW, maquinaW) : pliegoW
-    const hojaMaquinaH = maquinaH > 0 ? Math.min(pliegoH, maquinaH) : pliegoH
+    const machineSheet = resolveMachineSheetWithinParent(pliegoW, pliegoH, maquinaW, maquinaH)
+    const hojaMaquinaW = machineSheet.width || pliegoW
+    const hojaMaquinaH = machineSheet.height || pliegoH
     const corteLayout = computePiecesPerSheet(pliegoW, pliegoH, hojaMaquinaW, hojaMaquinaH, 0)
     const layout = computePiecesPerSheet(hojaMaquinaW, hojaMaquinaH, formatoW, formatoH, maquinaSeparacion)
     if (layout.total >= 1 && corteLayout.total >= 1) {

@@ -66,11 +66,35 @@ function buildPieceRects(args: {
   return rects
 }
 
+function resolveMachineSheetWithinParent(parentWidth: number, parentHeight: number, machineWidth: number, machineHeight: number) {
+  const safeParentWidth = safePositive(parentWidth)
+  const safeParentHeight = safePositive(parentHeight)
+  const safeMachineWidth = safePositive(machineWidth, safeParentWidth)
+  const safeMachineHeight = safePositive(machineHeight, safeParentHeight)
+
+  const direct = {
+    width: Math.min(safeParentWidth, safeMachineWidth),
+    height: Math.min(safeParentHeight, safeMachineHeight),
+  }
+  const rotated = {
+    width: Math.min(safeParentWidth, safeMachineHeight),
+    height: Math.min(safeParentHeight, safeMachineWidth),
+  }
+
+  return (rotated.width * rotated.height) > (direct.width * direct.height) ? rotated : direct
+}
+
 export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewProps) {
   const sheetWidth = safePositive(props.sheetWidthCm)
   const sheetHeight = safePositive(props.sheetHeightCm)
-  const machineSheetWidth = Math.min(sheetWidth, safePositive(props.machineSheetWidthCm ?? props.utilWidthCm, sheetWidth))
-  const machineSheetHeight = Math.min(sheetHeight, safePositive(props.machineSheetHeightCm ?? props.utilHeightCm, sheetHeight))
+  const machineSheet = resolveMachineSheetWithinParent(
+    sheetWidth,
+    sheetHeight,
+    props.machineSheetWidthCm ?? props.utilWidthCm,
+    props.machineSheetHeightCm ?? props.utilHeightCm,
+  )
+  const machineSheetWidth = machineSheet.width
+  const machineSheetHeight = machineSheet.height
   const machineSheetsAcross = Math.max(0, Math.trunc(props.machineSheetsAcross ?? 0))
   const machineSheetsDown = Math.max(0, Math.trunc(props.machineSheetsDown ?? 0))
   const utilWidth = Math.min(sheetWidth, safePositive(props.utilWidthCm, sheetWidth))

@@ -60,6 +60,33 @@ function computeLayout(sheetWidth: number, sheetHeight: number, pieceWidth: numb
   } as const
 }
 
+function resolveMachineSheetWithinParent(parentWidth: number, parentHeight: number, machineWidth: number, machineHeight: number) {
+  if (parentWidth <= 0 || parentHeight <= 0) {
+    return {
+      width: 0,
+      height: 0,
+    }
+  }
+
+  if (machineWidth <= 0 || machineHeight <= 0) {
+    return {
+      width: parentWidth,
+      height: parentHeight,
+    }
+  }
+
+  const direct = {
+    width: Math.min(parentWidth, machineWidth),
+    height: Math.min(parentHeight, machineHeight),
+  }
+  const rotated = {
+    width: Math.min(parentWidth, machineHeight),
+    height: Math.min(parentHeight, machineWidth),
+  }
+
+  return (rotated.width * rotated.height) > (direct.width * direct.height) ? rotated : direct
+}
+
 function sameCut(aWidth: number, aHeight: number, bWidth: number, bHeight: number) {
   const [aw, ah] = normalizeCut(aWidth, aHeight)
   const [bw, bh] = normalizeCut(bWidth, bHeight)
@@ -137,8 +164,9 @@ export function LitografiaCutGuide(props: LitografiaCutGuideProps) {
 
   if (parentWidth <= 0 || parentHeight <= 0 || finalWidth <= 0 || finalHeight <= 0) return null
 
-  const activeCutWidth = machineWidth > 0 ? Math.min(parentWidth, machineWidth) : parentWidth
-  const activeCutHeight = machineHeight > 0 ? Math.min(parentHeight, machineHeight) : parentHeight
+  const machineSheet = resolveMachineSheetWithinParent(parentWidth, parentHeight, machineWidth, machineHeight)
+  const activeCutWidth = machineSheet.width || parentWidth
+  const activeCutHeight = machineSheet.height || parentHeight
   const activeCutLabel = getCutLabel(activeCutWidth, activeCutHeight, parentWidth, parentHeight)
   const activePrintSheetLabel = String(props.printSheetLabel || "").trim() || activeCutLabel
   const parentToCut = computeLayout(parentWidth, parentHeight, activeCutWidth, activeCutHeight, 0)
