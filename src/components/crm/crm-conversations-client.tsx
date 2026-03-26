@@ -74,6 +74,7 @@ type ConversationDetail = ConversationListItem & {
     utmSource?: string | null
     utmMedium?: string | null
     utmCampaign?: string | null
+    normalizedDataJson?: Record<string, unknown> | null
     createdAt: string
   }>
 }
@@ -136,6 +137,14 @@ function formatRelativeChannel(provider: ChannelProvider) {
     default:
       return provider
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
+function pickString(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 function formatMoney(value: number | null | undefined, locale: string) {
@@ -759,15 +768,53 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                       <CardContent className="space-y-3">
                         {selectedConversation.captures.length === 0 ? <p className="text-sm text-muted-foreground">Sin capturas registradas.</p> : null}
                         {selectedConversation.captures.map((capture) => (
-                          <div key={capture.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-slate-900">{capture.captureType}</span>
-                              <span className="text-xs text-slate-500">{formatDate(capture.createdAt, locale, naText)}</span>
-                            </div>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {capture.utmSource || 'sin utm_source'} · {capture.utmMedium || 'sin utm_medium'} · {capture.utmCampaign || 'sin campaña'}
-                            </p>
-                          </div>
+                          (() => {
+                            const normalized = asRecord(capture.normalizedDataJson)
+                            const detectedName = pickString(normalized?.aiName) || pickString(normalized?.fromName)
+                            const detectedEmail = pickString(normalized?.aiEmail) || pickString(normalized?.fromAddress)
+                            const detectedPhone = pickString(normalized?.aiPhone) || pickString(normalized?.phone)
+                            const detectedCompany = pickString(normalized?.aiCompany) || pickString(normalized?.empresaNombre)
+                            const detectedCity = pickString(normalized?.aiCity) || pickString(normalized?.ciudad)
+                            const detectedRequest = pickString(normalized?.aiRequestSummary) || pickString(normalized?.messageText)
+                            const detectedProduct = pickString(normalized?.aiProductOrService)
+                            const autoCategory = pickString(normalized?.autoCategory)
+                            const autoLeadStatus = pickString(normalized?.autoLeadStatusApplied) || pickString(normalized?.autoLeadStatus)
+                            const autoOpportunityId = pickString(normalized?.autoOpportunityId)
+                            const autoTaskId = pickString(normalized?.autoTaskId)
+
+                            return (
+                              <div key={capture.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-medium text-slate-900">{capture.captureType}</span>
+                                  <span className="text-xs text-slate-500">{formatDate(capture.createdAt, locale, naText)}</span>
+                                </div>
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {capture.utmSource || 'sin utm_source'} · {capture.utmMedium || 'sin utm_medium'} · {capture.utmCampaign || 'sin campaña'}
+                                </p>
+                                {detectedName || detectedEmail || detectedPhone || detectedCompany || detectedCity || detectedRequest ? (
+                                  <div className="mt-3 grid gap-2 rounded-2xl border border-slate-200 bg-white/80 p-3 text-xs text-slate-600">
+                                    <p className="font-semibold text-slate-900">Desglose detectado</p>
+                                    {detectedName ? <p><span className="font-medium text-slate-900">Nombre:</span> {detectedName}</p> : null}
+                                    {detectedEmail ? <p><span className="font-medium text-slate-900">Correo:</span> {detectedEmail}</p> : null}
+                                    {detectedPhone ? <p><span className="font-medium text-slate-900">Teléfono:</span> {detectedPhone}</p> : null}
+                                    {detectedCompany ? <p><span className="font-medium text-slate-900">Empresa:</span> {detectedCompany}</p> : null}
+                                    {detectedCity ? <p><span className="font-medium text-slate-900">Ciudad:</span> {detectedCity}</p> : null}
+                                    {detectedProduct ? <p><span className="font-medium text-slate-900">Producto/servicio:</span> {detectedProduct}</p> : null}
+                                    {detectedRequest ? <p className="leading-5"><span className="font-medium text-slate-900">Solicitud:</span> {detectedRequest}</p> : null}
+                                  </div>
+                                ) : null}
+                                {autoCategory || autoLeadStatus || autoOpportunityId || autoTaskId ? (
+                                  <div className="mt-3 grid gap-2 rounded-2xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900">
+                                    <p className="font-semibold">Automatización comercial</p>
+                                    {autoCategory ? <p><span className="font-medium">Clasificación:</span> {autoCategory}</p> : null}
+                                    {autoLeadStatus ? <p><span className="font-medium">Estado lead:</span> {autoLeadStatus}</p> : null}
+                                    {autoOpportunityId ? <p><span className="font-medium">Oportunidad:</span> creada/vinculada</p> : null}
+                                    {autoTaskId ? <p><span className="font-medium">Tarea:</span> creada/vinculada</p> : null}
+                                  </div>
+                                ) : null}
+                              </div>
+                            )
+                          })()
                         ))}
                       </CardContent>
                     </Card>

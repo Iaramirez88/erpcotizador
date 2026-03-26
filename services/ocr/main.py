@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import re
 import time
@@ -1626,6 +1627,357 @@ def validate_invoice_rules(structured: Dict[str, Any]) -> List[Dict[str, Any]]:
     return issues
 
 
+def extract_email_candidates(text: str) -> List[str]:
+    if not text:
+        return []
+    seen: List[str] = []
+    for match in re.findall(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", text, flags=re.IGNORECASE):
+        value = str(match).strip().lower()
+        if value and value not in seen:
+            seen.append(value)
+    return seen
+
+
+def normalize_phone_co(value: str) -> Optional[str]:
+    digits = re.sub(r"\D", "", value or "")
+    if not digits:
+        return None
+    if len(digits) >= 12 and digits.startswith("57"):
+        digits = digits[-10:]
+    if len(digits) < 7:
+        return None
+    return digits
+
+
+def extract_phone_candidates(text: str) -> List[str]:
+    if not text:
+        return []
+    seen: List[str] = []
+    pattern = re.compile(r"(?:\+?57\s*)?(?:\(?\d{3}\)?[\s\-.]*)?\d{3}[\s\-.]*\d{4}")
+    for raw in pattern.findall(text):
+        normalized = normalize_phone_co(str(raw))
+        if normalized and normalized not in seen:
+            seen.append(normalized)
+    return seen
+
+
+def extract_labeled_value(text: str, labels: List[str]) -> Optional[str]:
+    if not text:
+        return None
+    joined = "|".join(re.escape(label) for label in labels)
+    pattern = re.compile(rf"(?im)^(?:{joined})\s*[:\-]\s*(.+)$")
+    match = pattern.search(text)
+    if not match:
+        return None
+    value = re.split(r"\s{2,}|[|•]", str(match.group(1)).strip())[0].strip()
+    return value or None
+
+
+def infer_request_summary(text: str, subject: str = "") -> Optional[str]:
+    candidates: List[str] = []
+    labeled = extract_labeled_value(text, ["solicitud", "requerimiento", "mensaje", "necesidad", "detalle"])
+    if labeled:
+        candidates.append(labeled)
+
+    raw_sentences = [part.strip() for part in re.split(r"[\n\r]+|(?<=[\.!?])\s+", text or "") if part.strip()]
+    interesting_tokens = ("cotiz", "presupuesto", "necesito", "requier", "quiero", "solicito", "busco", "pedido", "orden")
+    for sentence in raw_sentences:
+        normalized = normalize_text_for_match(sentence)
+        if any(token in normalized for token in interesting_tokens):
+            candidates.append(sentence)
+            break
+
+    if subject:
+        candidates.append(subject.strip())
+
+    for item in candidates:
+        cleaned = re.sub(r"\s+", " ", item).strip(" .:-")
+        if len(cleaned) >= 8:
+            return cleaned[:280]
+    return None
+
+
+def infer_product_or_service(text: str, subject: str = "") -> Optional[str]:
+    combined = "\n".join(part for part in [subject, text] if part).strip()
+    if not combined:
+        return None
+    patterns = [
+        r"(?i)(?:cotizar|cotización|cotizacion|necesito|requiero|quiero|busco)\s+(?:una|un|unos|unas|el|la|de)?\s*([^\.\n\r,;:]{4,120})",
+        r"(?i)(?:servicio|producto)\s+de\s+([^\.\n\r,;:]{4,120})",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, combined)
+        if match:
+            value = re.sub(r"\s+", " ", str(match.group(1)).strip())
+            if value:
+                return value[:120]
+    return None
+
+
+def infer_request_intent(text: str, subject: str = "") -> Optional[str]:
+    normalized = normalize_text_for_match(f"{subject}\n{text}")
+    if any(token in normalized for token in ["cotiz", "presupuesto", "quote"]):
+        return "QUOTE_REQUEST"
+    if any(token in normalized for token in ["comprar", "pedido", "orden", "ordenar"]):
+        return "PURCHASE_INTENT"
+    if any(token in normalized for token in ["informacion", "información", "asesoria", "asesoría", "consulta"]):
+        return "INFORMATION_REQUEST"
+    return None
+
+
+def heuristic_extract_email_lead(extracted_text: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    metadata = metadata or {}
+    subject = str(metadata.get("subject") or "").strip()
+    from_name = str(metadata.get("fromName") or "").strip()
+    from_address = str(metadata.get("fromAddress") or "").strip().lower()
+    fallback_phone = normalize_phone_co(str(metadata.get("phone") or ""))
+    fallback_company = str(metadata.get("company") or "").strip()
+    fallback_city = str(metadata.get("city") or "").strip()
+
+    email_candidates = extract_email_candidates(extracted_text)
+    phone_candidates = extract_phone_candidates(extracted_text)
+    name = extract_labeled_value(extracted_text, ["nombre", "nombre completo", "contacto", "cliente", "prospecto"])
+    company = extract_labeled_value(extracted_text, ["empresa", "compañia", "compania", "negocio", "razón social", "razon social"])
+    city = extract_labeled_value(extracted_text, ["ciudad", "municipio", "ubicación", "ubicacion"])
+    document = extract_labeled_value(extracted_text, ["nit", "cc", "cedula", "cédula", "documento"])
+    summary = infer_request_summary(extracted_text, subject)
+    product = infer_product_or_service(extracted_text, subject)
+    intent = infer_request_intent(extracted_text, subject)
+
+    if not name and from_name and "@" not in from_name:
+        name = from_name
+
+    return {
+        "contact": {
+            "name": name or None,
+            "email": email_candidates[0] if email_candidates else (from_address or None),
+            "phone": phone_candidates[0] if phone_candidates else fallback_phone,
+            "company": company or (fallback_company or None),
+            "city": city or (fallback_city or None),
+            "document": document or None,
+        },
+        "request": {
+            "summary": summary,
+            "intent": intent,
+            "productOrService": product,
+            "urgency": "HIGH" if "urgente" in normalize_text_for_match(extracted_text) else None,
+        },
+        "fieldConfidences": {
+            "contact.name": 0.65 if name else 0.0,
+            "contact.email": 0.9 if email_candidates else (0.75 if from_address else 0.0),
+            "contact.phone": 0.85 if phone_candidates else (0.6 if fallback_phone else 0.0),
+            "contact.company": 0.65 if company else (0.45 if fallback_company else 0.0),
+            "contact.city": 0.65 if city else (0.45 if fallback_city else 0.0),
+            "contact.document": 0.6 if document else 0.0,
+            "request.summary": 0.55 if summary else 0.0,
+            "request.productOrService": 0.5 if product else 0.0,
+        },
+    }
+
+
+async def llm_extract_email_lead(extracted_text: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    if not LLM_BASE_URL:
+        return {"llmUsed": False, "structured": None, "fieldConfidences": {}, "warnings": ["LLM_BASE_URL no configurado"]}
+
+    base = LLM_BASE_URL.rstrip("/")
+    url = f"{base}/chat/completions"
+
+    system = (
+        "Eres un extractor de leads comerciales desde correos en español. "
+        "Devuelve SOLO JSON válido. "
+        "Reglas: (1) No inventes datos; usa null si no hay evidencia clara. "
+        "(2) request.summary debe ser una cita breve o fragmento muy cercano al texto real, no una paráfrasis libre. "
+        "(3) Si un dato viene solo en metadata del remitente, puedes usarlo. "
+        "(4) Devuelve fieldConfidences con valores entre 0 y 1."
+    )
+
+    user = {
+        "language": "es",
+        "channel": "email",
+        "email": {
+            "subject": str((metadata or {}).get("subject") or ""),
+            "fromName": str((metadata or {}).get("fromName") or ""),
+            "fromAddress": str((metadata or {}).get("fromAddress") or ""),
+            "bodyText": extracted_text,
+        },
+        "output_schema": {
+            "contact": {
+                "name": "string|null",
+                "email": "string|null",
+                "phone": "string|null",
+                "company": "string|null",
+                "city": "string|null",
+                "document": "string|null",
+            },
+            "request": {
+                "summary": "string|null",
+                "intent": "QUOTE_REQUEST|PURCHASE_INTENT|INFORMATION_REQUEST|null",
+                "productOrService": "string|null",
+                "urgency": "HIGH|NORMAL|LOW|null",
+            },
+            "evidence": {
+                "contact": {},
+                "request": {},
+            },
+            "fieldConfidences": "object<string, number 0..1>",
+        },
+    }
+
+    payload = {
+        "model": LLM_MODEL,
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": str(user)},
+        ],
+    }
+
+    headers = {"Content-Type": "application/json"}
+    if LLM_API_KEY:
+        headers["Authorization"] = f"Bearer {LLM_API_KEY}"
+
+    async with httpx.AsyncClient(timeout=45) as client:
+        r = await client.post(url, json=payload, headers=headers)
+        if r.status_code >= 400:
+            raise HTTPException(status_code=500, detail=f"LLM error {r.status_code}: {r.text}")
+        data = r.json()
+
+    content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    try:
+        structured = json.loads(content)
+    except Exception:
+        return {"llmUsed": True, "structured": None, "fieldConfidences": {}, "warnings": ["LLM devolvió JSON inválido"]}
+
+    return {
+        "llmUsed": True,
+        "structured": structured,
+        "fieldConfidences": structured.get("fieldConfidences", {}) if isinstance(structured, dict) else {},
+        "warnings": [],
+    }
+
+
+def build_email_lead_evidence_snippets(extracted_text: str, structured: Dict[str, Any]) -> Dict[str, str]:
+    snippets: Dict[str, str] = {}
+    for path in (
+        "contact.name",
+        "contact.email",
+        "contact.phone",
+        "contact.company",
+        "contact.city",
+        "contact.document",
+        "request.summary",
+        "request.productOrService",
+    ):
+        value = _get_by_path(structured, path)
+        if value is None:
+            continue
+        snippet = _find_snippet(extracted_text, str(value))
+        if snippet:
+            snippets[path] = snippet
+    return snippets
+
+
+def enforce_no_hallucination_email_lead(
+    extracted_text: str,
+    structured: Optional[Dict[str, Any]],
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[Dict[str, Any]], Dict[str, float], List[str]]:
+    if not isinstance(structured, dict):
+        return structured, {}, []
+
+    metadata = metadata or {}
+    warnings: List[str] = []
+    confs: Dict[str, float] = {}
+    text_norm = normalize_text_for_match(extracted_text or "")
+
+    def _value_in_text(path: str, value: str) -> bool:
+        if path == "contact.phone":
+            digits = normalize_phone_co(value)
+            if not digits:
+                return False
+            all_digits = re.sub(r"\D", "", extracted_text or "")
+            return digits in all_digits
+        return normalize_text_for_match(value) in text_norm
+
+    def _value_matches_metadata(path: str, value: str) -> bool:
+        allowed_map = {
+            "contact.name": str(metadata.get("fromName") or ""),
+            "contact.email": str(metadata.get("fromAddress") or ""),
+            "contact.phone": str(metadata.get("phone") or ""),
+            "contact.company": str(metadata.get("company") or ""),
+            "contact.city": str(metadata.get("city") or ""),
+            "request.summary": str(metadata.get("subject") or ""),
+        }
+        allowed = allowed_map.get(path) or ""
+        if not allowed:
+            return False
+        if path == "contact.phone":
+            return normalize_phone_co(value or "") == normalize_phone_co(allowed)
+        return normalize_text_for_match(value) == normalize_text_for_match(allowed)
+
+    def check_field(path: str, value: Optional[str]):
+        if value is None:
+            confs[path] = 0.0
+            return None
+        raw = str(value).strip()
+        if not raw:
+            confs[path] = 0.0
+            return None
+        in_text = _value_in_text(path, raw)
+        in_metadata = _value_matches_metadata(path, raw)
+        if not in_text and not in_metadata:
+            warnings.append(f"Sin evidencia textual ni metadata para {path}; se anuló")
+            confs[path] = 0.2
+            return None
+        confs[path] = 0.85 if in_text else 0.7
+        return raw
+
+    contact = structured.get("contact") if isinstance(structured.get("contact"), dict) else {}
+    request = structured.get("request") if isinstance(structured.get("request"), dict) else {}
+
+    contact["name"] = check_field("contact.name", contact.get("name"))
+    contact["email"] = check_field("contact.email", contact.get("email"))
+    contact["phone"] = check_field("contact.phone", contact.get("phone"))
+    contact["company"] = check_field("contact.company", contact.get("company"))
+    contact["city"] = check_field("contact.city", contact.get("city"))
+    contact["document"] = check_field("contact.document", contact.get("document"))
+    request["summary"] = check_field("request.summary", request.get("summary"))
+    request["productOrService"] = check_field("request.productOrService", request.get("productOrService"))
+
+    if not request.get("intent"):
+        request["intent"] = infer_request_intent(extracted_text, str(metadata.get("subject") or ""))
+
+    structured["contact"] = contact
+    structured["request"] = request
+    return structured, confs, warnings
+
+
+def compute_text_capture_percent(field_confs: Dict[str, float], structured: Optional[Dict[str, Any]] = None) -> int:
+    if not isinstance(structured, dict):
+        return 0
+
+    def is_present(value: Any) -> bool:
+        if value is None:
+            return False
+        return bool(str(value).strip())
+
+    contact = structured.get("contact") if isinstance(structured.get("contact"), dict) else {}
+    request = structured.get("request") if isinstance(structured.get("request"), dict) else {}
+    fields = [
+        contact.get("name"),
+        contact.get("email"),
+        contact.get("phone"),
+        request.get("summary"),
+        request.get("productOrService"),
+    ]
+    completeness = sum(1 for field in fields if is_present(field)) / max(1, len(fields))
+    conf_vals = [float(v) for v in (field_confs or {}).values() if v is not None]
+    confidence = (sum(conf_vals) / len(conf_vals)) if conf_vals else 0.0
+    score = int(round(((completeness * 0.65) + (confidence * 0.35)) * 100.0))
+    return max(0, min(100, score))
+
+
 async def llm_extract_invoice(extracted_text: str, layout_hint: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if not LLM_BASE_URL:
         return {"llmUsed": False, "structured": None, "fieldConfidences": {}, "warnings": ["LLM_BASE_URL no configurado"]}
@@ -2144,5 +2496,62 @@ async def analyze(
             },
             "ocrDiagnostics": ocr_diagnostics,
             "validations": validations,
+        },
+    }
+
+
+@app.post("/extract-email-lead")
+async def extract_email_lead(
+    request: Request,
+    x_api_key: Optional[str] = Header(None),
+):
+    _require_api_key(x_api_key)
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Body JSON inválido")
+
+    extracted_text = str(body.get("text") or body.get("bodyText") or "").strip()
+    metadata = {
+        "subject": str(body.get("subject") or "").strip(),
+        "fromName": str(body.get("fromName") or "").strip(),
+        "fromAddress": str(body.get("fromAddress") or "").strip().lower(),
+        "phone": str(body.get("phone") or "").strip(),
+        "company": str(body.get("company") or "").strip(),
+        "city": str(body.get("city") or "").strip(),
+    }
+    if not extracted_text and not metadata["subject"]:
+        raise HTTPException(status_code=400, detail="Se requiere texto o subject para extraer el lead")
+
+    llm_enabled = str(body.get("use_llm", "true")).lower() not in ("0", "false", "no")
+    llm = (
+        await llm_extract_email_lead(extracted_text, metadata=metadata)
+        if llm_enabled
+        else {"llmUsed": False, "structured": None, "fieldConfidences": {}, "warnings": ["LLM deshabilitado"]}
+    )
+    structured = llm.get("structured") if isinstance(llm, dict) else None
+
+    if not isinstance(structured, dict):
+        structured = heuristic_extract_email_lead(extracted_text, metadata=metadata)
+
+    structured, field_confs, warnings = enforce_no_hallucination_email_lead(extracted_text, structured, metadata=metadata)
+    evidence_snippets = build_email_lead_evidence_snippets(extracted_text, structured) if isinstance(structured, dict) else {}
+    capture_percent = compute_text_capture_percent(field_confs, structured)
+
+    return {
+        "capturePercent": capture_percent,
+        "extractedData": {
+            "contact": (structured or {}).get("contact") if isinstance(structured, dict) else {},
+            "request": (structured or {}).get("request") if isinstance(structured, dict) else {},
+            "semantic": {
+                "llmUsed": llm.get("llmUsed") if isinstance(llm, dict) else False,
+                "structured": structured,
+                "fieldConfidences": field_confs,
+                "evidenceSnippets": evidence_snippets,
+                "warnings": (llm.get("warnings") if isinstance(llm, dict) else []) + warnings,
+            },
         },
     }
