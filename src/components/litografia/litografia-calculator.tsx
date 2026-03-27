@@ -174,6 +174,28 @@ function getDefaultCostoPliego(tipo: PapelTipo) {
   }
 }
 
+function normalizeFinishText(value: string | null | undefined) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+}
+
+function isTroqueladaFinish(finish: Pick<FinishOption, "key" | "nombre">) {
+  const normalized = normalizeFinishText(`${finish.key} ${finish.nombre}`)
+  return normalized.includes("troquelada") || normalized.includes("troquelar")
+}
+
+function toFinishKey(value: string) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+/, "")
+    .replace(/_+$/, "")
+}
+
 function getSizeDisplayName(sizes: Array<{ key: string; nombre: string }>, key: string) {
   return sizes.find((s) => s.key === key)?.nombre || key
 }
@@ -312,6 +334,9 @@ export function LitografiaCalculator() {
   const [newTroqueladoNombre, setNewTroqueladoNombre] = useState("")
   const [newTroqueladoValor, setNewTroqueladoValor] = useState("0")
 
+  const [newTroqueladaNombre, setNewTroqueladaNombre] = useState("")
+  const [newTroqueladaValor, setNewTroqueladaValor] = useState("0")
+
   const [newCorteNombre, setNewCorteNombre] = useState("")
   const [newCorteValor, setNewCorteValor] = useState("0")
 
@@ -337,12 +362,14 @@ export function LitografiaCalculator() {
   const [specialAcabadosSearch, setSpecialAcabadosSearch] = useState("")
   const [plastificadosSearch, setPlastificadosSearch] = useState("")
   const [troqueladosSearch, setTroqueladosSearch] = useState("")
+  const [troqueladasSearch, setTroqueladasSearch] = useState("")
   const [cortesSearch, setCortesSearch] = useState("")
   const [flyerRatesSearch, setFlyerRatesSearch] = useState("")
   const [papersPage, setPapersPage] = useState(0)
   const [finishesPage, setFinishesPage] = useState(0)
   const [plastificadosPage, setPlastificadosPage] = useState(0)
   const [troqueladosPage, setTroqueladosPage] = useState(0)
+  const [troqueladasPage, setTroqueladasPage] = useState(0)
   const [cortesPage, setCortesPage] = useState(0)
   const [specialFinishesPage, setSpecialFinishesPage] = useState(0)
   const [sizesPage, setSizesPage] = useState(0)
@@ -413,7 +440,14 @@ export function LitografiaCalculator() {
 
   const acabadosFinishes = useMemo(() => finishes.filter((f) => !f.especial && getGrupo(f) === "ACABADO"), [finishes])
   const plastificadosFinishes = useMemo(() => finishes.filter((f) => !f.especial && getGrupo(f) === "PLASTIFICADO"), [finishes])
-  const troqueladosFinishes = useMemo(() => finishes.filter((f) => !f.especial && getGrupo(f) === "TROQUELADO"), [finishes])
+  const troqueladosFinishes = useMemo(
+    () => finishes.filter((f) => !f.especial && getGrupo(f) === "TROQUELADO" && !isTroqueladaFinish(f)),
+    [finishes]
+  )
+  const troqueladasFinishes = useMemo(
+    () => finishes.filter((f) => !f.especial && getGrupo(f) === "TROQUELADO" && isTroqueladaFinish(f)),
+    [finishes]
+  )
   const cortesFinishes = useMemo(() => finishes.filter((f) => !f.especial && getGrupo(f) === "CORTE"), [finishes])
   const specialFinishes = useMemo(() => finishes.filter((f) => getGrupo(f) === "ACABADO" && Boolean(f.especial)), [finishes])
 
@@ -779,7 +813,7 @@ export function LitografiaCalculator() {
     await createCustomDropdown({ nombre, key, descripcion: null, seedItems })
   }
 
-  const createFinishInGroup = async (grupo: "ACABADO" | "PLASTIFICADO" | "TROQUELADO" | "CORTE", args: { nombre: string; valor: number }) => {
+  const createFinishInGroup = async (grupo: "ACABADO" | "PLASTIFICADO" | "TROQUELADO" | "CORTE", args: { nombre: string; valor: number; key?: string }) => {
     setConfigError(null)
     const nombre = args.nombre.trim()
     const valor = args.valor
@@ -787,7 +821,7 @@ export function LitografiaCalculator() {
     const res = await fetch("/api/litografia/acabados", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre, valor: Number.isFinite(valor) ? valor : 0, activo: true, especial: false, grupo }),
+      body: JSON.stringify({ nombre, key: args.key, valor: Number.isFinite(valor) ? valor : 0, activo: true, especial: false, grupo }),
     })
     const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
     if (!res.ok || env.ok !== true) throw new Error(getApiErrorMessage(env, "No se pudo crear"))
@@ -828,6 +862,20 @@ export function LitografiaCalculator() {
       setNewTroqueladoValor("0")
     } catch (e) {
       setConfigError(e instanceof Error ? e.message : "No se pudo crear el troquelado")
+    }
+  }
+
+  const createTroquelada = async () => {
+    try {
+      const nombre = newTroqueladaNombre.trim()
+      const valor = parseFloat(newTroqueladaValor)
+      const keyBase = toFinishKey(nombre)
+      const key = keyBase ? `troquelada_${keyBase}` : "troquelada"
+      await createFinishInGroup("TROQUELADO", { nombre, valor: Number.isFinite(valor) ? valor : 0, key })
+      setNewTroqueladaNombre("")
+      setNewTroqueladaValor("0")
+    } catch (e) {
+      setConfigError(e instanceof Error ? e.message : "No se pudo crear la troquelada")
     }
   }
 
@@ -1440,8 +1488,8 @@ export function LitografiaCalculator() {
       cantidad: parseFloat(cantidad) || 0,
       colores: parseFloat(colores) || 1,
       desperdicioPct: parseFloat(desperdicioPct) || 0,
-      costoPlanchaPorColor: parseFloat(costoPlanchaPorColor) || 0,
-      costoTintaPorColor: parseFloat(costoTintaPorColor) || 0,
+      costoPlanchaPorColor: Number(selectedPlanchaProfile?.costoPlanchaPorColor) || parseFloat(costoPlanchaPorColor) || 0,
+      costoTintaPorColor: Number(selectedTintaProfile?.costoTintaPorColor) || parseFloat(costoTintaPorColor) || 0,
       costoPapelUnidad: parseFloat(costoPapelUnidad) || 0,
       papelModo: usePliego ? "pliego" : "unidad",
       papelTipo,
@@ -1476,6 +1524,7 @@ export function LitografiaCalculator() {
     formatoH,
     selectedPreset,
     selectedPlanchaProfile,
+    selectedTintaProfile,
     selectedFinish,
     costoCorte,
     costoAcabados,
@@ -1537,6 +1586,10 @@ export function LitografiaCalculator() {
   }, [troqueladosSearch])
 
   useEffect(() => {
+    setTroqueladasPage(0)
+  }, [troqueladasSearch])
+
+  useEffect(() => {
     setCortesPage(0)
   }, [cortesSearch])
 
@@ -1589,6 +1642,13 @@ export function LitografiaCalculator() {
     return base.filter((f) => f.nombre.toLowerCase().includes(q))
   }, [troqueladosFinishes, troqueladosSearch])
 
+  const troqueladasList = useMemo(() => {
+    const base = troqueladasFinishes
+    const q = troqueladasSearch.trim().toLowerCase()
+    if (!q) return base
+    return base.filter((f) => f.nombre.toLowerCase().includes(q))
+  }, [troqueladasFinishes, troqueladasSearch])
+
   const cortesList = useMemo(() => {
     const base = cortesFinishes
     const q = cortesSearch.trim().toLowerCase()
@@ -1625,6 +1685,11 @@ export function LitografiaCalculator() {
     const start = troqueladosPage * PAGE_SIZE
     return troqueladosList.slice(start, start + PAGE_SIZE)
   }, [troqueladosList, troqueladosPage, PAGE_SIZE])
+
+  const pagedTroqueladas = useMemo(() => {
+    const start = troqueladasPage * PAGE_SIZE
+    return troqueladasList.slice(start, start + PAGE_SIZE)
+  }, [troqueladasList, troqueladasPage, PAGE_SIZE])
 
   const pagedCortes = useMemo(() => {
     const start = cortesPage * PAGE_SIZE
@@ -4328,23 +4393,28 @@ export function LitografiaCalculator() {
               <summary className="relative cursor-pointer list-none [&::-webkit-details-marker]:hidden [&::marker]:content-['']">
                 <ChevronRight className="absolute left-2.5 top-4 h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
                 <CardHeader className="pl-8">
-                  <CardTitle>Troquel / Troquelado</CardTitle>
-                  <CardDescription>Opciones para el módulo Troquelado del cotizador.</CardDescription>
+                  <CardTitle>Troquel y Troquelada</CardTitle>
+                  <CardDescription>Configura por separado el costo del troquel y el valor de troquelar el material.</CardDescription>
                 </CardHeader>
               </summary>
               <CardContent className="space-y-4">
+                <div className="space-y-4 rounded-md border p-4">
+                  <div>
+                    <h4 className="font-medium">Troquel</h4>
+                    <p className="text-xs text-muted-foreground">Valor de fabricar el troquel.</p>
+                  </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                   <div>
                     <Label>Nombre</Label>
-                    <Input className={INPUT_COMPACT} value={newTroqueladoNombre} onChange={(e) => setNewTroqueladoNombre(e.target.value)} placeholder="Ej: Troquel estándar" />
+                    <Input className={INPUT_COMPACT} value={newTroqueladoNombre} onChange={(e) => setNewTroqueladoNombre(e.target.value)} placeholder="Ej: Troquel carpeta" />
                   </div>
                   <div>
                     <Label>Valor</Label>
-                    <MoneyInput className={INPUT_COMPACT} type="number" step="1" min="0" value={newTroqueladoValor} onChange={(e) => setNewTroqueladoValor(e.target.value)} placeholder="Ej: 25000" />
+                    <MoneyInput className={INPUT_COMPACT} type="number" step="1" min="0" value={newTroqueladoValor} onChange={(e) => setNewTroqueladoValor(e.target.value)} placeholder="Ej: 90000" />
                   </div>
                   <div>
                     <Button type="button" onClick={createTroquelado} disabled={!newTroqueladoNombre.trim()}>
-                      Agregar troquelado
+                      Agregar troquel
                     </Button>
                   </div>
                 </div>
@@ -4362,7 +4432,7 @@ export function LitografiaCalculator() {
                 <div className="space-y-2">
                   {finishesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
                   {troqueladosList.length === 0 && !finishesLoading ? (
-                    <p className="text-sm text-muted-foreground">{troqueladosFinishes.length > 0 && troqueladosSearch.trim() ? "Sin resultados." : "No hay troquelados."}</p>
+                    <p className="text-sm text-muted-foreground">{troqueladosFinishes.length > 0 && troqueladosSearch.trim() ? "Sin resultados." : "No hay troqueles."}</p>
                   ) : null}
 
                   {pagedTroquelados.map((f) => (
@@ -4499,6 +4569,183 @@ export function LitografiaCalculator() {
                       </div>
                     </div>
                   ) : null}
+                </div>
+
+                </div>
+
+                <div className="space-y-4 rounded-md border p-4">
+                  <div>
+                    <h4 className="font-medium">Troquelada</h4>
+                    <p className="text-xs text-muted-foreground">Valor de pasar el material por el troquel ya fabricado.</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                    <div>
+                      <Label>Nombre</Label>
+                      <Input className={INPUT_COMPACT} value={newTroqueladaNombre} onChange={(e) => setNewTroqueladaNombre(e.target.value)} placeholder="Ej: Troquelada carpeta" />
+                    </div>
+                    <div>
+                      <Label>Valor</Label>
+                      <MoneyInput className={INPUT_COMPACT} type="number" step="1" min="0" value={newTroqueladaValor} onChange={(e) => setNewTroqueladaValor(e.target.value)} placeholder="Ej: 25000" />
+                    </div>
+                    <div>
+                      <Button type="button" onClick={createTroquelada} disabled={!newTroqueladaNombre.trim()}>
+                        Agregar troquelada
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label>Buscar</Label>
+                    <Input
+                      className={INPUT_COMPACT}
+                      value={troqueladasSearch}
+                      onChange={(e) => setTroqueladasSearch(e.target.value)}
+                      placeholder="Buscar por nombre…"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    {finishesLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
+                    {troqueladasList.length === 0 && !finishesLoading ? (
+                      <p className="text-sm text-muted-foreground">{troqueladasFinishes.length > 0 && troqueladasSearch.trim() ? "Sin resultados." : "No hay troqueladas."}</p>
+                    ) : null}
+
+                    {pagedTroqueladas.map((f) => (
+                      <div key={f.id} className="rounded-md border p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{f.nombre}</p>
+                            <p className="text-xs text-muted-foreground">Valor: {formatCurrency(f.valor || 0)}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button type="button" variant={f.activo ? "outline" : "default"} onClick={() => patchFinish(f.id, { activo: !f.activo })}>
+                              {f.activo ? "Desactivar" : "Activar"}
+                            </Button>
+                            <Button type="button" variant="ghost" className="text-red-600" onClick={() => deleteFinish(f.id)}>
+                              Eliminar
+                            </Button>
+                          </div>
+                        </div>
+
+                        {(() => {
+                          const draft = finishEdits[f.id]
+                          const draftNombre = draft?.nombre ?? f.nombre
+                          const draftValor = draft?.valor ?? String(f.valor ?? 0)
+                          const parsedDraftValor = parseFloat(draftValor)
+
+                          const isNombreDirty = draft?.nombre !== undefined && draftNombre.trim() !== f.nombre
+                          const isValorDirty =
+                            draft?.valor !== undefined &&
+                            Number.isFinite(parsedDraftValor) &&
+                            parsedDraftValor >= 0 &&
+                            parsedDraftValor !== (f.valor ?? 0)
+
+                          const hasDraft = Boolean(draft)
+                          const canSave = (isNombreDirty || isValorDirty) && (!draftValor.trim() || (Number.isFinite(parsedDraftValor) && parsedDraftValor >= 0))
+
+                          return (
+                            <>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                                <div className="md:col-span-2">
+                                  <Label className="text-xs">Nombre</Label>
+                                  <Input
+                                    className={INPUT_COMPACT}
+                                    value={draftNombre}
+                                    onChange={(e) => {
+                                      const v = e.target.value
+                                      setFinishEdits((prev) => ({
+                                        ...prev,
+                                        [f.id]: { nombre: v, valor: prev[f.id]?.valor ?? String(f.valor ?? 0) },
+                                      }))
+                                    }}
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Valor</Label>
+                                  <MoneyInput
+                                    className={INPUT_COMPACT}
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    value={draftValor}
+                                    onChange={(e) => {
+                                      const v = e.target.value
+                                      setFinishEdits((prev) => ({
+                                        ...prev,
+                                        [f.id]: { nombre: prev[f.id]?.nombre ?? f.nombre, valor: v },
+                                      }))
+                                    }}
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    setFinishEdits((prev) => {
+                                      const next = { ...prev }
+                                      delete next[f.id]
+                                      return next
+                                    })
+                                  }
+                                  disabled={!hasDraft}
+                                >
+                                  Cancelar
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => {
+                                    const patch: Partial<FinishOption> = {}
+                                    const nombre = draftNombre.trim()
+                                    if (nombre && nombre !== f.nombre) patch.nombre = nombre
+                                    if (Number.isFinite(parsedDraftValor) && parsedDraftValor >= 0 && parsedDraftValor !== (f.valor ?? 0)) patch.valor = parsedDraftValor
+                                    if (Object.keys(patch).length === 0) return
+                                    void patchFinish(f.id, patch)
+                                    setFinishEdits((prev) => {
+                                      const next = { ...prev }
+                                      delete next[f.id]
+                                      return next
+                                    })
+                                  }}
+                                  disabled={!canSave}
+                                >
+                                  Guardar
+                                </Button>
+                              </div>
+                            </>
+                          )
+                        })()}
+                      </div>
+                    ))}
+
+                    {troqueladasList.length > 0 ? (
+                      <div className="flex items-center justify-between gap-2 pt-1">
+                        <p className="text-xs text-muted-foreground">
+                          Mostrando {troqueladasPage * PAGE_SIZE + 1}-{Math.min(troqueladasList.length, (troqueladasPage + 1) * PAGE_SIZE)} de {troqueladasList.length}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button type="button" variant="outline" size="sm" onClick={() => setTroqueladasPage((p) => Math.max(0, p - 1))} disabled={troqueladasPage <= 0}>
+                            Anterior
+                          </Button>
+                          <p className="text-xs">Página {troqueladasPage + 1} / {Math.max(1, Math.ceil(troqueladasList.length / PAGE_SIZE))}</p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setTroqueladasPage((p) => Math.min(Math.ceil(troqueladasList.length / PAGE_SIZE) - 1, p + 1))}
+                            disabled={troqueladasPage >= Math.ceil(troqueladasList.length / PAGE_SIZE) - 1}
+                          >
+                            Siguiente
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </CardContent>
             </details>

@@ -6,7 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { TabsContent } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { TemplateEditorTabs } from '@/components/dashboard/template-editor-tabs'
 import type { CotizacionPdfData } from '@/lib/pdf-template'
 import {
   CotizacionFontFamily,
@@ -66,6 +68,7 @@ function SectionCard({ title, defaultOpen = false, contentClassName, children }:
 export default function PlantillaCotizacionPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [activeEditorTab, setActiveEditorTab] = useState<'page' | 'colors' | 'typography' | 'header' | 'content' | 'extras'>('page')
   const [settings, setSettings] = useState<CotizacionTemplateSettings>(DEFAULT_COTIZACION_TEMPLATE)
   const [templateMeta, setTemplateMeta] = useState<{ scope?: string; canEdit?: boolean }>({})
   const [defaultSettings, setDefaultSettings] = useState<CotizacionTemplateSettings>(DEFAULT_COTIZACION_TEMPLATE)
@@ -622,6 +625,21 @@ export default function PlantillaCotizacionPage() {
             </div>
           </SectionCard>
 
+          <TemplateEditorTabs
+            value={activeEditorTab}
+            onValueChange={setActiveEditorTab}
+            tabs={[
+              { value: 'page', label: 'Página' },
+              { value: 'colors', label: 'Colores' },
+              { value: 'typography', label: 'Texto' },
+              { value: 'header', label: 'Encabezado' },
+              { value: 'content', label: 'Contenido' },
+              { value: 'extras', label: 'Extras' },
+            ]}
+            listClassName="grid w-full grid-cols-3 xl:grid-cols-6"
+          >
+
+            <TabsContent value="page" className="space-y-4">
           <SectionCard title="Hoja" defaultOpen contentClassName="pt-0 grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="space-y-2">
                 <Label>Tamaño</Label>
@@ -996,7 +1014,9 @@ export default function PlantillaCotizacionPage() {
                 <p className="text-xs text-gray-500">Recomendado: PNG/JPG liviano. La imagen se ajusta a toda la página.</p>
               </div>
           </SectionCard>
+            </TabsContent>
 
+            <TabsContent value="colors" className="space-y-4">
           <SectionCard title="Colores" contentClassName="pt-0 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Color principal</Label>
@@ -1153,7 +1173,9 @@ export default function PlantillaCotizacionPage() {
                 </div>
               </div>
           </SectionCard>
+            </TabsContent>
 
+            <TabsContent value="typography" className="space-y-4">
           <SectionCard title="Tipografía" contentClassName="pt-0 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Fuente</Label>
@@ -1203,7 +1225,9 @@ export default function PlantillaCotizacionPage() {
                 />
               </div>
           </SectionCard>
+            </TabsContent>
 
+            <TabsContent value="header" className="space-y-4">
           <SectionCard title="Encabezado y pie (2 secciones)" contentClassName="pt-0 grid grid-cols-1 gap-4">
               <div className="space-y-2">
                 <Label>Logo</Label>
@@ -1453,421 +1477,428 @@ export default function PlantillaCotizacionPage() {
                 </p>
               </div>
           </SectionCard>
+            </TabsContent>
 
-          <SectionCard title="Contenido (vista previa)" contentClassName="pt-0 grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Cliente (nombre)</Label>
-                <Input value={mockClienteNombre} onChange={(e) => setMockClienteNombre(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Cliente (empresa)</Label>
-                <Input value={mockClienteEmpresa} onChange={(e) => setMockClienteEmpresa(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Cliente (email)</Label>
-                <Input value={mockClienteEmail} onChange={(e) => setMockClienteEmail(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Cliente (teléfono)</Label>
-                <Input value={mockClienteTelefono} onChange={(e) => setMockClienteTelefono(e.target.value)} />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label>Observaciones</Label>
-                <Textarea value={mockObservaciones} onChange={(e) => setMockObservaciones(e.target.value)} rows={3} />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label>Notas</Label>
-                <Textarea value={mockNotas} onChange={(e) => setMockNotas(e.target.value)} rows={2} />
-              </div>
-          </SectionCard>
+            <TabsContent value="content" className="space-y-4">
+              <SectionCard title="Contenido (vista previa)" contentClassName="pt-0 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Cliente (nombre)</Label>
+                  <Input value={mockClienteNombre} onChange={(e) => setMockClienteNombre(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Cliente (empresa)</Label>
+                  <Input value={mockClienteEmpresa} onChange={(e) => setMockClienteEmpresa(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Cliente (email)</Label>
+                  <Input value={mockClienteEmail} onChange={(e) => setMockClienteEmail(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Cliente (teléfono)</Label>
+                  <Input value={mockClienteTelefono} onChange={(e) => setMockClienteTelefono(e.target.value)} />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Observaciones</Label>
+                  <Textarea value={mockObservaciones} onChange={(e) => setMockObservaciones(e.target.value)} rows={3} />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Notas</Label>
+                  <Textarea value={mockNotas} onChange={(e) => setMockNotas(e.target.value)} rows={2} />
+                </div>
+              </SectionCard>
 
-          <SectionCard title="Moneda" contentClassName="pt-0 grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Locale (ej. es-MX, es-CO)</Label>
-                <Input
-                  value={settings.currency.locale}
-                  onChange={(e) => setSettings((s) => ({ ...s, currency: { ...s.currency, locale: e.target.value } }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Moneda</Label>
-                <select
-                  className="px-3 py-2 border rounded-md w-full"
-                  value={settings.currency.currency}
-                  onChange={(e) => {
-                    const nextCurrency = e.target.value
-                    const preset = CURRENCY_PRESETS.find((p) => p.currency === nextCurrency)
-                    setSettings((s) => ({
-                      ...s,
-                      currency: {
-                        ...s.currency,
-                        currency: nextCurrency,
-                        locale: preset?.locale ?? s.currency.locale,
-                      },
-                    }))
-                  }}
-                >
-                  {CURRENCY_PRESETS.map((p) => (
-                    <option key={p.currency} value={p.currency}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500">Al cambiar moneda se sugiere un locale compatible (editable).</p>
-              </div>
-          </SectionCard>
-
-          <SectionCard title="Marca de agua" contentClassName="pt-0 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={settings.watermark.enabled}
-                  onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, enabled: e.target.checked } }))}
-                />
-                Activar
-              </label>
-              <div className="space-y-2">
-                <Label>Tipo</Label>
-                <select
-                  className="px-3 py-2 border rounded-md w-full"
-                  value={settings.watermark.mode}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      watermark: { ...s.watermark, mode: e.target.value as 'text' | 'image' },
-                    }))
-                  }
-                >
-                  <option value="text">Texto</option>
-                  <option value="image">Imagen / Logo</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Texto</Label>
-                <Input value={settings.watermark.text} onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, text: e.target.value } }))} />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Tamaño relativo (0.2 - 1)</Label>
-                <Input
-                  type="number"
-                  min={0.2}
-                  max={1}
-                  step={0.05}
-                  value={settings.watermark.scale}
-                  onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, scale: Number(e.target.value) } }))}
-                />
-                <p className="text-xs text-gray-500">0.8 = 80% centrado</p>
-              </div>
-
-              <div className="space-y-2 md:col-span-2">
-                <Label>Imagen de marca de agua (opcional)</Label>
-                <div className="flex flex-col gap-2">
-                  <label className="flex items-center gap-2 text-sm">
+              <SectionCard title="Campos visibles" contentClassName="pt-0 grid grid-cols-1 md:grid-cols-2 gap-3">
+                {(
+                  [
+                    ['showVendedor', 'Mostrar vendedor'],
+                    ['showClienteEmail', 'Mostrar email del cliente'],
+                    ['showClienteTelefono', 'Mostrar teléfono del cliente'],
+                    ['showClienteEmpresa', 'Mostrar empresa del cliente'],
+                    ['showEstado', 'Mostrar estado'],
+                    ['showObservaciones', 'Mostrar observaciones'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <label key={key} className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
-                      checked={settings.watermark.useLogo}
+                      checked={settings.toggles[key]}
                       onChange={(e) =>
                         setSettings((s) => ({
                           ...s,
-                          watermark: { ...s.watermark, mode: 'image', useLogo: e.target.checked, enabled: true },
+                          toggles: { ...s.toggles, [key]: e.target.checked },
                         }))
                       }
                     />
-                    Usar el logo del encabezado como marca de agua
+                    {label}
                   </label>
+                ))}
+              </SectionCard>
 
-                  <input
-                    id="watermarkImageUpload"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => void onWatermarkImageFileChange(e.target.files?.[0] ?? null)}
-                  />
-
-                  <div className="flex items-center gap-2">
-                    <Button asChild type="button" variant="outline">
-                      <label htmlFor="watermarkImageUpload" className="cursor-pointer">
-                        Subir imagen de marca de agua
-                      </label>
-                    </Button>
-                    {settings.watermark.imageUrl ? (
-                      <span className="text-xs text-muted-foreground">Imagen cargada</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">Sin imagen</span>
-                    )}
+              <SectionCard title="Bloques (Vendedor / Cliente / Observaciones)" contentClassName="pt-0 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Vendedor: lado</Label>
+                    <select
+                      className="px-3 py-2 border rounded-md w-full"
+                      value={settings.blocks.vendedor.side}
+                      onChange={(e) =>
+                        setSettings((s) => ({
+                          ...s,
+                          blocks: {
+                            ...s.blocks,
+                            vendedor: { ...s.blocks.vendedor, side: e.target.value as 'left' | 'right' },
+                          },
+                        }))
+                      }
+                    >
+                      <option value="left">Izquierdo</option>
+                      <option value="right">Derecho</option>
+                    </select>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-gray-500">URL o Data URL (marca de agua)</Label>
-                      <Input
-                        placeholder="https://... o data:image/..."
-                        value={settings.watermark.imageUrl ?? ''}
-                        onChange={(e) =>
-                          setSettings((s) => ({
-                            ...s,
-                            watermark: { ...s.watermark, mode: 'image', imageUrl: e.target.value, enabled: true, useLogo: false },
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="flex items-end gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() =>
-                          setSettings((s) => ({
-                            ...s,
-                            watermark: { ...s.watermark, imageUrl: undefined, useLogo: false },
-                          }))
-                        }
-                      >
-                        Quitar imagen
-                      </Button>
-                    </div>
+                  <div className="space-y-2">
+                    <Label>Vendedor: ancho</Label>
+                    <select
+                      className="px-3 py-2 border rounded-md w-full"
+                      value={settings.blocks.vendedor.widthPct}
+                      onChange={(e) =>
+                        setSettings((s) => ({
+                          ...s,
+                          blocks: {
+                            ...s.blocks,
+                            vendedor: { ...s.blocks.vendedor, widthPct: Number(e.target.value) as 25 | 50 | 75 | 100 },
+                          },
+                        }))
+                      }
+                    >
+                      <option value={25}>25%</option>
+                      <option value={50}>50%</option>
+                      <option value={75}>75%</option>
+                      <option value={100}>100%</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Vendedor: teléfono (override)</Label>
+                    <Input
+                      value={settings.blocks.vendedor.telefonoOverride ?? ''}
+                      onChange={(e) =>
+                        setSettings((s) => ({
+                          ...s,
+                          blocks: {
+                            ...s.blocks,
+                            vendedor: { ...s.blocks.vendedor, telefonoOverride: e.target.value },
+                          },
+                        }))
+                      }
+                      placeholder="Ej: 300 000 0000"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Vendedor: cargo (override)</Label>
+                    <Input
+                      value={settings.blocks.vendedor.cargoOverride ?? ''}
+                      onChange={(e) =>
+                        setSettings((s) => ({
+                          ...s,
+                          blocks: {
+                            ...s.blocks,
+                            vendedor: { ...s.blocks.vendedor, cargoOverride: e.target.value },
+                          },
+                        }))
+                      }
+                      placeholder="Ej: Asesor comercial"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Cliente: lado</Label>
+                    <select
+                      className="px-3 py-2 border rounded-md w-full"
+                      value={settings.blocks.cliente.side}
+                      onChange={(e) =>
+                        setSettings((s) => ({
+                          ...s,
+                          blocks: {
+                            ...s.blocks,
+                            cliente: { ...s.blocks.cliente, side: e.target.value as 'left' | 'right' },
+                          },
+                        }))
+                      }
+                    >
+                      <option value="left">Izquierdo</option>
+                      <option value="right">Derecho</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Cliente: ancho</Label>
+                    <select
+                      className="px-3 py-2 border rounded-md w-full"
+                      value={settings.blocks.cliente.widthPct}
+                      onChange={(e) =>
+                        setSettings((s) => ({
+                          ...s,
+                          blocks: {
+                            ...s.blocks,
+                            cliente: { ...s.blocks.cliente, widthPct: Number(e.target.value) as 25 | 50 | 75 | 100 },
+                          },
+                        }))
+                      }
+                    >
+                      <option value={25}>25%</option>
+                      <option value={50}>50%</option>
+                      <option value={75}>75%</option>
+                      <option value={100}>100%</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Observaciones: lado</Label>
+                    <select
+                      className="px-3 py-2 border rounded-md w-full"
+                      value={settings.blocks.observaciones.side}
+                      onChange={(e) =>
+                        setSettings((s) => ({
+                          ...s,
+                          blocks: {
+                            ...s.blocks,
+                            observaciones: { ...s.blocks.observaciones, side: e.target.value as 'left' | 'right' },
+                          },
+                        }))
+                      }
+                    >
+                      <option value="left">Izquierdo</option>
+                      <option value="right">Derecho</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Observaciones: ancho</Label>
+                    <select
+                      className="px-3 py-2 border rounded-md w-full"
+                      value={settings.blocks.observaciones.widthPct}
+                      onChange={(e) =>
+                        setSettings((s) => ({
+                          ...s,
+                          blocks: {
+                            ...s.blocks,
+                            observaciones: {
+                              ...s.blocks.observaciones,
+                              widthPct: Number(e.target.value) as 25 | 50 | 75 | 100,
+                            },
+                          },
+                        }))
+                      }
+                    >
+                      <option value={25}>25%</option>
+                      <option value={50}>50%</option>
+                      <option value={75}>75%</option>
+                      <option value={100}>100%</option>
+                    </select>
                   </div>
                 </div>
-              </div>
+              </SectionCard>
+            </TabsContent>
 
-              <div className="space-y-2">
-                <Label>Opacidad (0 - 0.25)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={0.25}
-                  step={0.01}
-                  value={settings.watermark.opacity}
-                  onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, opacity: Number(e.target.value) } }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Tamaño</Label>
-                <Input
-                  type="number"
-                  min={24}
-                  max={120}
-                  value={settings.watermark.fontSize}
-                  onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, fontSize: Number(e.target.value) } }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Rotación (grados)</Label>
-                <Input
-                  type="number"
-                  min={-90}
-                  max={90}
-                  value={settings.watermark.rotateDeg}
-                  onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, rotateDeg: Number(e.target.value) } }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Color</Label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="color"
-                    value={settings.watermark.color}
-                    onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, color: e.target.value } }))}
+            <TabsContent value="extras" className="space-y-4">
+              <SectionCard title="Moneda" contentClassName="pt-0 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Locale (ej. es-MX, es-CO)</Label>
+                  <Input
+                    value={settings.currency.locale}
+                    onChange={(e) => setSettings((s) => ({ ...s, currency: { ...s.currency, locale: e.target.value } }))}
                   />
-                  <Input value={settings.watermark.color} onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, color: e.target.value } }))} />
                 </div>
-              </div>
-          </SectionCard>
+                <div className="space-y-2">
+                  <Label>Moneda</Label>
+                  <select
+                    className="px-3 py-2 border rounded-md w-full"
+                    value={settings.currency.currency}
+                    onChange={(e) => {
+                      const nextCurrency = e.target.value
+                      const preset = CURRENCY_PRESETS.find((p) => p.currency === nextCurrency)
+                      setSettings((s) => ({
+                        ...s,
+                        currency: {
+                          ...s.currency,
+                          currency: nextCurrency,
+                          locale: preset?.locale ?? s.currency.locale,
+                        },
+                      }))
+                    }}
+                  >
+                    {CURRENCY_PRESETS.map((p) => (
+                      <option key={p.currency} value={p.currency}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500">Al cambiar moneda se sugiere un locale compatible (editable).</p>
+                </div>
+              </SectionCard>
 
-          <SectionCard title="Campos visibles" contentClassName="pt-0 grid grid-cols-1 md:grid-cols-2 gap-3">
-              {(
-                [
-                  ['showVendedor', 'Mostrar vendedor'],
-                  ['showClienteEmail', 'Mostrar email del cliente'],
-                  ['showClienteTelefono', 'Mostrar teléfono del cliente'],
-                  ['showClienteEmpresa', 'Mostrar empresa del cliente'],
-                  ['showEstado', 'Mostrar estado'],
-                  ['showObservaciones', 'Mostrar observaciones'],
-                ] as const
-              ).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 text-sm">
+              <SectionCard title="Marca de agua" contentClassName="pt-0 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
-                    checked={settings.toggles[key]}
+                    checked={settings.watermark.enabled}
+                    onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, enabled: e.target.checked } }))}
+                  />
+                  Activar
+                </label>
+                <div className="space-y-2">
+                  <Label>Tipo</Label>
+                  <select
+                    className="px-3 py-2 border rounded-md w-full"
+                    value={settings.watermark.mode}
                     onChange={(e) =>
                       setSettings((s) => ({
                         ...s,
-                        toggles: { ...s.toggles, [key]: e.target.checked },
+                        watermark: { ...s.watermark, mode: e.target.value as 'text' | 'image' },
                       }))
                     }
+                  >
+                    <option value="text">Texto</option>
+                    <option value="image">Imagen / Logo</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Texto</Label>
+                  <Input value={settings.watermark.text} onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, text: e.target.value } }))} />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Tamaño relativo (0.2 - 1)</Label>
+                  <Input
+                    type="number"
+                    min={0.2}
+                    max={1}
+                    step={0.05}
+                    value={settings.watermark.scale}
+                    onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, scale: Number(e.target.value) } }))}
                   />
-                  {label}
-                </label>
-              ))}
-          </SectionCard>
+                  <p className="text-xs text-gray-500">0.8 = 80% centrado</p>
+                </div>
 
-          <SectionCard title="Bloques (Vendedor / Cliente / Observaciones)" contentClassName="pt-0 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Vendedor: lado</Label>
-                <select
-                  className="px-3 py-2 border rounded-md w-full"
-                  value={settings.blocks.vendedor.side}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      blocks: {
-                        ...s.blocks,
-                        vendedor: { ...s.blocks.vendedor, side: e.target.value as 'left' | 'right' },
-                      },
-                    }))
-                  }
-                >
-                  <option value="left">Izquierdo</option>
-                  <option value="right">Derecho</option>
-                </select>
-              </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Imagen de marca de agua (opcional)</Label>
+                  <div className="flex flex-col gap-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={settings.watermark.useLogo}
+                        onChange={(e) =>
+                          setSettings((s) => ({
+                            ...s,
+                            watermark: { ...s.watermark, mode: 'image', useLogo: e.target.checked, enabled: true },
+                          }))
+                        }
+                      />
+                      Usar el logo del encabezado como marca de agua
+                    </label>
 
-              <div className="space-y-2">
-                <Label>Vendedor: ancho</Label>
-                <select
-                  className="px-3 py-2 border rounded-md w-full"
-                  value={settings.blocks.vendedor.widthPct}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      blocks: {
-                        ...s.blocks,
-                        vendedor: { ...s.blocks.vendedor, widthPct: Number(e.target.value) as 25 | 50 | 75 | 100 },
-                      },
-                    }))
-                  }
-                >
-                  <option value={25}>25%</option>
-                  <option value={50}>50%</option>
-                  <option value={75}>75%</option>
-                  <option value={100}>100%</option>
-                </select>
-              </div>
+                    <input
+                      id="watermarkImageUpload"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => void onWatermarkImageFileChange(e.target.files?.[0] ?? null)}
+                    />
 
-              <div className="space-y-2">
-                <Label>Vendedor: teléfono (override)</Label>
-                <Input
-                  value={settings.blocks.vendedor.telefonoOverride ?? ''}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      blocks: {
-                        ...s.blocks,
-                        vendedor: { ...s.blocks.vendedor, telefonoOverride: e.target.value },
-                      },
-                    }))
-                  }
-                  placeholder="Ej: 300 000 0000"
-                />
-              </div>
+                    <div className="flex items-center gap-2">
+                      <Button asChild type="button" variant="outline">
+                        <label htmlFor="watermarkImageUpload" className="cursor-pointer">
+                          Subir imagen de marca de agua
+                        </label>
+                      </Button>
+                      {settings.watermark.imageUrl ? (
+                        <span className="text-xs text-muted-foreground">Imagen cargada</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Sin imagen</span>
+                      )}
+                    </div>
 
-              <div className="space-y-2">
-                <Label>Vendedor: cargo (override)</Label>
-                <Input
-                  value={settings.blocks.vendedor.cargoOverride ?? ''}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      blocks: {
-                        ...s.blocks,
-                        vendedor: { ...s.blocks.vendedor, cargoOverride: e.target.value },
-                      },
-                    }))
-                  }
-                  placeholder="Ej: Asesor comercial"
-                />
-              </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-500">URL o Data URL (marca de agua)</Label>
+                        <Input
+                          placeholder="https://... o data:image/..."
+                          value={settings.watermark.imageUrl ?? ''}
+                          onChange={(e) =>
+                            setSettings((s) => ({
+                              ...s,
+                              watermark: { ...s.watermark, mode: 'image', imageUrl: e.target.value, enabled: true, useLogo: false },
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="flex items-end gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() =>
+                            setSettings((s) => ({
+                              ...s,
+                              watermark: { ...s.watermark, imageUrl: undefined, useLogo: false },
+                            }))
+                          }
+                        >
+                          Quitar imagen
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-              <div className="space-y-2">
-                <Label>Cliente: lado</Label>
-                <select
-                  className="px-3 py-2 border rounded-md w-full"
-                  value={settings.blocks.cliente.side}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      blocks: {
-                        ...s.blocks,
-                        cliente: { ...s.blocks.cliente, side: e.target.value as 'left' | 'right' },
-                      },
-                    }))
-                  }
-                >
-                  <option value="left">Izquierdo</option>
-                  <option value="right">Derecho</option>
-                </select>
-              </div>
+                <div className="space-y-2">
+                  <Label>Opacidad (0 - 0.25)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={0.25}
+                    step={0.01}
+                    value={settings.watermark.opacity}
+                    onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, opacity: Number(e.target.value) } }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tamaño</Label>
+                  <Input
+                    type="number"
+                    min={24}
+                    max={120}
+                    value={settings.watermark.fontSize}
+                    onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, fontSize: Number(e.target.value) } }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Rotación (grados)</Label>
+                  <Input
+                    type="number"
+                    min={-90}
+                    max={90}
+                    value={settings.watermark.rotateDeg}
+                    onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, rotateDeg: Number(e.target.value) } }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Color</Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={settings.watermark.color}
+                      onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, color: e.target.value } }))}
+                    />
+                    <Input value={settings.watermark.color} onChange={(e) => setSettings((s) => ({ ...s, watermark: { ...s.watermark, color: e.target.value } }))} />
+                  </div>
+                </div>
+              </SectionCard>
+            </TabsContent>
+          </TemplateEditorTabs>
 
-              <div className="space-y-2">
-                <Label>Cliente: ancho</Label>
-                <select
-                  className="px-3 py-2 border rounded-md w-full"
-                  value={settings.blocks.cliente.widthPct}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      blocks: {
-                        ...s.blocks,
-                        cliente: { ...s.blocks.cliente, widthPct: Number(e.target.value) as 25 | 50 | 75 | 100 },
-                      },
-                    }))
-                  }
-                >
-                  <option value={25}>25%</option>
-                  <option value={50}>50%</option>
-                  <option value={75}>75%</option>
-                  <option value={100}>100%</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Observaciones: lado</Label>
-                <select
-                  className="px-3 py-2 border rounded-md w-full"
-                  value={settings.blocks.observaciones.side}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      blocks: {
-                        ...s.blocks,
-                        observaciones: { ...s.blocks.observaciones, side: e.target.value as 'left' | 'right' },
-                      },
-                    }))
-                  }
-                >
-                  <option value="left">Izquierdo</option>
-                  <option value="right">Derecho</option>
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Observaciones: ancho</Label>
-                <select
-                  className="px-3 py-2 border rounded-md w-full"
-                  value={settings.blocks.observaciones.widthPct}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      blocks: {
-                        ...s.blocks,
-                        observaciones: {
-                          ...s.blocks.observaciones,
-                          widthPct: Number(e.target.value) as 25 | 50 | 75 | 100,
-                        },
-                      },
-                    }))
-                  }
-                >
-                  <option value={25}>25%</option>
-                  <option value={50}>50%</option>
-                  <option value={75}>75%</option>
-                  <option value={100}>100%</option>
-                </select>
-              </div>
-            </div>
-          </SectionCard>
         </div>
 
         <div className="lg:sticky lg:top-4 self-start">

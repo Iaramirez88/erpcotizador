@@ -9,6 +9,8 @@
 
 'use client'
 
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -185,6 +187,7 @@ type InvoiceDetail = {
   id: string
   numero: string
   status: string
+  empresaId?: string
   clienteNombre: string
   clienteDocumento: string | null
   ivaPct: number
@@ -300,6 +303,7 @@ type ClientePickerItem = {
 export default function PosPage() {
   const { t, language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
+  const searchParams = useSearchParams()
 
   const dianSteps = useMemo(() => getDianSteps(t), [t])
   const dianDocTypes = useMemo(() => getDianDocTypes(t), [t])
@@ -370,6 +374,21 @@ export default function PosPage() {
   >('factura_venta')
   const [dianConfigTab, setDianConfigTab] = useState<'rangos' | 'comprador' | 'productos'>('rangos')
   const [dianPlantillaTab, setDianPlantillaTab] = useState<'factura_venta'>('factura_venta')
+
+  useEffect(() => {
+    const requestedTab = searchParams?.get('tab')
+    const requestedDianTab = searchParams?.get('dianTab')
+
+    if (requestedTab === 'dian') {
+      setActiveTab('dian')
+    } else if (requestedTab === 'interna') {
+      setActiveTab('interna')
+    }
+
+    if (requestedDianTab === 'crear' || requestedDianTab === 'historico' || requestedDianTab === 'configuracion' || requestedDianTab === 'plantillas') {
+      setDianMainTab(requestedDianTab)
+    }
+  }, [searchParams])
 
   type DianSettings = {
     numeracion?: Array<{
@@ -1696,6 +1715,31 @@ export default function PosPage() {
     }
   }
 
+  async function downloadInvoicePdf(invoiceId: string, numero: string) {
+    try {
+      const res = await fetch(`/api/pos/facturas/${invoiceId}/pdf?download=1`)
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(json.error || t('pos.errors.downloadInvoicePdfFailed'))
+      }
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `Factura-${numero}.pdf`
+      document.body.appendChild(anchor)
+      anchor.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(anchor)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('pos.errors.downloadInvoicePdfFailed'))
+    }
+  }
+
+  function openInvoicePdf(invoiceId: string) {
+    window.open(`/api/pos/facturas/${invoiceId}/pdf`, '_blank', 'noopener,noreferrer')
+  }
+
   async function anular(invoiceId: string) {
     const ok = window.confirm(t('pos.confirm.voidInvoice'))
     if (!ok) return
@@ -1855,6 +1899,9 @@ export default function PosPage() {
             <Button onClick={() => void loadAll()} variant="secondary" disabled={isLoading}>
               {t('pos.actions.refresh')}
             </Button>
+            <Button variant="outline" asChild>
+              <Link href="/dashboard/pos/plantilla">{t('pos.actions.template')}</Link>
+            </Button>
             <Button variant="outline" onClick={exportExcel} disabled={isLoading}>
               <Download className="mr-2 h-4 w-4" />
               {t('pos.actions.exportExcel')}
@@ -1943,6 +1990,12 @@ export default function PosPage() {
                             <div className="flex gap-2">
                               <Button type="button" size="sm" variant="outline" onClick={() => void openDetail(inv.id)}>
                                 {t('pos.actions.view')}
+                              </Button>
+                              <Button type="button" size="sm" variant="outline" onClick={() => openInvoicePdf(inv.id)}>
+                                {t('pos.actions.print')}
+                              </Button>
+                              <Button type="button" size="sm" variant="outline" onClick={() => void downloadInvoicePdf(inv.id, inv.numero)}>
+                                {t('pos.actions.downloadPdf')}
                               </Button>
                               {inv.status === 'DRAFT' ? (
                                 <Button type="button" size="sm" onClick={() => void finalizar(inv.id)} disabled={finalizeSubmitting}>
@@ -3728,6 +3781,16 @@ export default function PosPage() {
             {detail && detail.status === 'DRAFT' ? (
               <Button type="button" onClick={() => void finalizar(detail.id)} disabled={finalizeSubmitting || detailLoading}>
                 {finalizeSubmitting ? t('pos.actions.finalizing') : t('pos.actions.finalize')}
+              </Button>
+            ) : null}
+            {detail ? (
+              <Button type="button" variant="outline" onClick={() => openInvoicePdf(detail.id)}>
+                {t('pos.actions.print')}
+              </Button>
+            ) : null}
+            {detail ? (
+              <Button type="button" variant="outline" onClick={() => void downloadInvoicePdf(detail.id, detail.numero)}>
+                {t('pos.actions.downloadPdf')}
               </Button>
             ) : null}
             <Button type="button" variant="outline" onClick={() => setDetailOpen(false)}>

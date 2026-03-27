@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Bot, FileText, Mail, MessageCircle, PhoneCall } from 'lucide-react'
+import { CrmLinkedFilesPanel } from '@/components/crm/crm-linked-files-panel'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
 
@@ -526,6 +527,13 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
         </Card>
 
         <div className="space-y-4">
+          <CrmLinkedFilesPanel
+            entityType="LEAD"
+            entityId={lead.id}
+            title="Repositorio del lead"
+            emptyLabel="Aún no hay archivos de biblioteca vinculados a este lead."
+          />
+
           <Card>
             <CardHeader>
               <CardTitle>Contactos</CardTitle>

@@ -38,6 +38,8 @@ function moduleForHref(href: string): string | null {
       return 'DASHBOARD'
     case '/dashboard/reportes':
       return 'REPORTES'
+    case '/dashboard/plantillas':
+      return 'DASHBOARD'
     case '/dashboard/contabilidad':
     case '/dashboard/contabilidad/plan-de-cuentas':
     case '/dashboard/contabilidad/centros-de-costo':
@@ -58,6 +60,7 @@ function moduleForHref(href: string): string | null {
     case '/dashboard/crm':
     case '/dashboard/crm/agenda':
     case '/dashboard/crm/chatbot':
+    case '/dashboard/crm/archivos':
     case '/dashboard/crm/integraciones':
     case '/dashboard/crm/leads':
     case '/dashboard/crm/oportunidades':
@@ -116,6 +119,16 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    ),
+  },
+  {
+    name: t('nav.templates'),
+    href: "/dashboard/plantillas",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 3h10a2 2 0 012 2v14a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 8h8M8 12h8M8 16h5" />
       </svg>
     ),
   },
@@ -205,6 +218,15 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L6 20.75V17H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v9a2 2 0 01-2 2H9.75z" />
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9h.01M12 9h.01M16 9h.01" />
+      </svg>
+    ),
+  },
+  {
+    name: "Administrador de archivos",
+    href: "/dashboard/crm/archivos",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7zm5 5h8m-8 4h5" />
       </svg>
     ),
   },
@@ -699,7 +721,7 @@ export default function Sidebar({ user }: SidebarProps) {
     return [
       {
         title: 'Centro de Control',
-        items: [get('/dashboard'), get('/dashboard/reportes'), get('/dashboard/contabilidad')].filter(Boolean) as NavItem[],
+        items: [get('/dashboard'), get('/dashboard/reportes'), get('/dashboard/plantillas'), get('/dashboard/contabilidad')].filter(Boolean) as NavItem[],
       },
       {
         title: 'Comercial',
@@ -716,6 +738,7 @@ export default function Sidebar({ user }: SidebarProps) {
         items: [
           get('/dashboard/crm/agenda'),
           get('/dashboard/crm/chatbot'),
+          get('/dashboard/crm/archivos'),
           get('/dashboard/crm/integraciones'),
           get('/dashboard/crm/leads'),
           get('/dashboard/crm/oportunidades'),

@@ -9,6 +9,8 @@ export function moduleForDashboardHref(href: string): string | null {
       return 'DASHBOARD'
     case '/dashboard/reportes':
       return 'REPORTES'
+    case '/dashboard/plantillas':
+      return 'DASHBOARD'
     case '/dashboard/contabilidad':
     case '/dashboard/contabilidad/plan-de-cuentas':
     case '/dashboard/contabilidad/centros-de-costo':
@@ -28,6 +30,7 @@ export function moduleForDashboardHref(href: string): string | null {
       return 'CLIENTES'
     case '/dashboard/crm':
     case '/dashboard/crm/agenda':
+    case '/dashboard/crm/archivos':
     case '/dashboard/crm/chatbot':
     case '/dashboard/crm/integraciones':
     case '/dashboard/crm/leads':
@@ -71,6 +74,7 @@ export function moduleForDashboardHref(href: string): string | null {
 export function moduleForDashboardPath(pathname: string): string | null {
   if (pathname.startsWith('/dashboard/configuracion/plan')) return null
   if (pathname === '/dashboard') return 'DASHBOARD'
+  if (pathname.startsWith('/dashboard/plantillas')) return 'DASHBOARD'
   if (pathname.startsWith('/dashboard/reportes')) return 'REPORTES'
   if (pathname.startsWith('/dashboard/contabilidad')) return 'CONTABILIDAD'
   if (pathname.startsWith('/dashboard/cotizador')) return 'COTIZADOR'
@@ -100,6 +104,7 @@ export function buildDashboardNavDefinitions(t: (key: string) => string): Dashbo
   return [
     { name: t('nav.dashboard'), href: '/dashboard' },
     { name: t('nav.reports'), href: '/dashboard/reportes' },
+    { name: t('nav.templates'), href: '/dashboard/plantillas' },
     { name: t('nav.accounting'), href: '/dashboard/contabilidad' },
     { name: t('nav.quote'), href: '/dashboard/cotizador' },
     { name: t('nav.quotes'), href: '/dashboard/cotizaciones' },
@@ -108,6 +113,7 @@ export function buildDashboardNavDefinitions(t: (key: string) => string): Dashbo
     { name: t('nav.clients'), href: '/dashboard/clientes' },
     { name: t('nav.crm'), href: '/dashboard/crm' },
     { name: 'Agenda CRM', href: '/dashboard/crm/agenda' },
+    { name: 'Administrador de archivos', href: '/dashboard/crm/archivos' },
     { name: 'Chatbot', href: '/dashboard/crm/chatbot' },
     { name: 'Canales e integraciones', href: '/dashboard/crm/integraciones' },
     { name: 'Leads', href: '/dashboard/crm/leads' },

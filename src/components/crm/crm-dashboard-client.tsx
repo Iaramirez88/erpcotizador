@@ -24,7 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { ArrowUpRight, Bot, CalendarClock, CircleDot, FileText, GripVertical, Mail, MessageCircle, PhoneCall, Sparkles, UserRound } from 'lucide-react'
+import { ArrowUpRight, Bot, CalendarClock, CircleDot, FileText, GripVertical, Mail, MessageCircle, PhoneCall, Plus, Sparkles, UserRound } from 'lucide-react'
+import { CrmLinkedFilesPanel } from '@/components/crm/crm-linked-files-panel'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
 
@@ -419,11 +420,11 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
     setLeadForm({ nombre: '', empresaNombre: '', email: '', telefono: '', ciudad: '', source: 'OTRO', status: 'NEW', notes: '' })
   }
 
-  function resetOpportunityForm() {
+  function resetOpportunityForm(stage?: OpportunityStage) {
     setOpportunityForm({
       title: '',
       description: '',
-      stage: stageSettings[0]?.key ?? 'NEW',
+      stage: stage ?? stageSettings[0]?.key ?? 'NEW',
       leadId: '',
       expectedValue: '',
       probabilityPct: '0',
@@ -482,9 +483,9 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
     setLeadDialogOpen(true)
   }
 
-  function openCreateOpportunityDialog() {
+  function openCreateOpportunityDialog(stage?: OpportunityStage) {
     setEditingOpportunityId(null)
-    resetOpportunityForm()
+    resetOpportunityForm(stage)
     setOpportunityDialogOpen(true)
   }
 
@@ -1054,9 +1055,20 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
                             </div>
                             <CardDescription>{formatMoney(column.total, locale)} proyectado</CardDescription>
                           </div>
-                          <div className="rounded-2xl bg-white/85 px-3 py-1.5 text-right shadow-sm">
-                            <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Deals</p>
-                            <p className="text-base font-semibold text-slate-900">{column.items.length}</p>
+                          <div className="flex items-start gap-2">
+                            <button
+                              type="button"
+                              className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:text-sky-700"
+                              onClick={() => openCreateOpportunityDialog(column.key)}
+                              title={`Nueva carta en ${column.label}`}
+                              aria-label={`Nueva carta en ${column.label}`}
+                            >
+                              <Plus className="h-5 w-5" />
+                            </button>
+                            <div className="rounded-2xl bg-white/85 px-3 py-1.5 text-right shadow-sm">
+                              <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Deals</p>
+                              <p className="text-base font-semibold text-slate-900">{column.items.length}</p>
+                            </div>
                           </div>
                         </div>
                         {dragTargetStage === column.key ? (
@@ -1066,6 +1078,14 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
                         ) : null}
                       </CardHeader>
                       <CardContent className="space-y-2.5 p-3">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-center gap-2 rounded-[18px] border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800"
+                          onClick={() => openCreateOpportunityDialog(column.key)}
+                        >
+                          <Plus className="h-4 w-4" />
+                          Agregar carta en {column.label.toLowerCase()}
+                        </button>
                         {column.items.length === 0 ? (
                           <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
                             <p className="text-sm font-medium text-slate-600">Sin oportunidades en esta etapa</p>
@@ -1385,6 +1405,13 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
                       <p className="mt-3 text-sm text-slate-600">Este deal aún no tiene cotización enlazada.</p>
                     )}
                   </div>
+
+                  <CrmLinkedFilesPanel
+                    entityType="OPPORTUNITY"
+                    entityId={activeOpportunityDetail.id}
+                    title="Repositorio del deal"
+                    emptyLabel="Todavía no hay archivos compartidos o vinculados a esta oportunidad."
+                  />
                 </div>
               ) : null}
             </div>

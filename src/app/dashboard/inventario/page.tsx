@@ -5,6 +5,7 @@
 
 "use client"
 
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,6 +24,7 @@ import { ErpPageHero } from "@/components/dashboard/erp-page-chrome"
 import { cn, formatUnidadMedidaLabel } from "@/lib/utils"
 import { useI18n } from "@/components/providers/i18n-provider"
 import { Download } from 'lucide-react'
+import { buildPurchaseOrderPrefillHref } from '@/lib/purchase-order-prefill'
 
 type Material = {
   id: string
@@ -85,6 +87,7 @@ function n(value: unknown, fallback = 0) {
 
 export default function InventarioPage() {
   const { t, language } = useI18n()
+  const router = useRouter()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = t('common.na')
 
@@ -255,6 +258,10 @@ export default function InventarioPage() {
   }, [defaultBodegaId, form.warehouseId, sedeWarehouseOptions])
 
   const activeMaterials = useMemo(() => materials.filter((m) => m.activo !== false), [materials])
+  const lowStockMaterials = useMemo(
+    () => activeMaterials.filter((material) => n(material.stockActual) <= n(material.stockMinimo)),
+    [activeMaterials]
+  )
 
   const selectedMaterial = useMemo(
     () => activeMaterials.find((m) => m.id === form.materialId) ?? null,
@@ -315,6 +322,37 @@ export default function InventarioPage() {
     const defaultMaterialId = activeMaterials[0]?.id ?? ""
     setForm((prev) => ({ ...prev, materialId: prev.materialId || defaultMaterialId }))
     setIsModalOpen(true)
+  }
+
+  function buildLowStockOrderHref(materialsToOrder: Material[]) {
+    const suppliers = Array.from(new Set(materialsToOrder.map((material) => String(material.proveedor || '').trim()).filter(Boolean)))
+
+    return buildPurchaseOrderPrefillHref({
+      mode: 'order',
+      source: 'inventory',
+      supplierName: suppliers.length === 1 ? suppliers[0] : undefined,
+      notes: [
+        suppliers.length > 1 ? t('inventory.lowStock.multiSupplierNote') : null,
+        ...materialsToOrder.map(
+          (material) =>
+            `${formatMaterialName(material.id, material.nombre)}: ${n(material.stockActual).toLocaleString(locale)} / ${n(material.stockMinimo).toLocaleString(locale)} ${formatUnidadMedidaLabel(material.unidadMedida)}`
+        ),
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      items: materialsToOrder.map((material) => ({
+        descripcion: formatMaterialName(material.id, material.nombre),
+        cantidad: Math.max(1, Math.ceil(n(material.stockMinimo) - n(material.stockActual))),
+        precioUnitario: 0,
+        descuento: 0,
+        iva: 0,
+      })),
+    })
+  }
+
+  function openLowStockOrder(materialsToOrder: Material[]) {
+    if (!materialsToOrder.length) return
+    router.push(buildLowStockOrderHref(materialsToOrder))
   }
 
   async function createProveedor() {
@@ -429,6 +467,9 @@ export default function InventarioPage() {
               <Download className="mr-2 h-4 w-4" />
               {t('inventory.actions.exportExcel')}
             </Button>
+            <Button variant="outline" onClick={() => openLowStockOrder(lowStockMaterials)} disabled={isLoading || lowStockMaterials.length === 0}>
+              {t('inventory.actions.lowStockOrder')}
+            </Button>
             <Button onClick={openModal} disabled={isLoading} data-tour="inventario-movimiento">
               {t('inventory.actions.registerMovement')}
             </Button>
@@ -482,6 +523,7 @@ export default function InventarioPage() {
                     <th className="py-2 pr-4">{t('inventory.stock.columns.minimum')}</th>
                     <th className="py-2 pr-4">{t('inventory.stock.columns.unit')}</th>
                     <th className="py-2 pr-4">{t('inventory.stock.columns.supplier')}</th>
+                    <th className="py-2 pr-4 text-right">{t('inventory.stock.columns.actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -512,6 +554,15 @@ export default function InventarioPage() {
                         <td className="py-2 pr-4 text-gray-700">{n(m.stockMinimo).toLocaleString(locale)}</td>
                         <td className="py-2 pr-4 text-gray-700">{formatUnidadMedidaLabel(m.unidadMedida)}</td>
                         <td className="py-2 pr-4 text-gray-700">{m.proveedor || naText}</td>
+                        <td className="py-2 pr-4 text-right">
+                          {low ? (
+                            <Button variant="outline" onClick={() => openLowStockOrder([m])}>
+                              {t('inventory.actions.lowStockOrder')}
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">{naText}</span>
+                          )}
+                        </td>
                       </tr>
                     )
                   })}

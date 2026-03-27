@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,7 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { TabsContent } from '@/components/ui/tabs'
+import { TemplateEditorTabs } from '@/components/dashboard/template-editor-tabs'
 import { useToast } from '@/hooks/use-toast'
 import {
   RemisionTemplateSettings,
@@ -76,14 +77,6 @@ const EJEMPLO_EMPRESA = {
 
 export default function PlantillaRemisionesPage() {
   const [activeTab, setActiveTab] = useState<'page' | 'colors' | 'typography' | 'header' | 'footer'>('page')
-  const [tabPending, setTabPending] = useState(false)
-  const tabTimerRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    return () => {
-      if (tabTimerRef.current) window.clearTimeout(tabTimerRef.current)
-    }
-  }, [])
 
   const { toast } = useToast()
   const [settings, setSettings] = useState<RemisionTemplateSettings>(DEFAULT_REMISION_TEMPLATE)
@@ -221,29 +214,18 @@ export default function PlantillaRemisionesPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Panel de configuración */}
         <div className="space-y-4">
-          <Tabs
+          <TemplateEditorTabs
             value={activeTab}
-            onValueChange={(v) => {
-              const next = (v || 'page') as typeof activeTab
-              if (next === activeTab) return
-              setTabPending(true)
-              setActiveTab(next)
-              if (tabTimerRef.current) window.clearTimeout(tabTimerRef.current)
-              tabTimerRef.current = window.setTimeout(() => setTabPending(false), 180)
-            }}
-            className="w-full"
+            onValueChange={setActiveTab}
+            tabs={[
+              { value: 'page', label: 'Página' },
+              { value: 'colors', label: 'Colores' },
+              { value: 'typography', label: 'Texto' },
+              { value: 'header', label: 'Encabezado' },
+              { value: 'footer', label: 'Pie' },
+            ]}
+            listClassName="grid w-full grid-cols-5"
           >
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="page">Página</TabsTrigger>
-              <TabsTrigger value="colors">Colores</TabsTrigger>
-              <TabsTrigger value="typography">Texto</TabsTrigger>
-              <TabsTrigger value="header">Encabezado</TabsTrigger>
-              <TabsTrigger value="footer">Pie</TabsTrigger>
-            </TabsList>
-
-            {tabPending ? (
-              <div className="mt-2 text-sm text-muted-foreground">Cargando…</div>
-            ) : null}
 
             {/* Configuración de página */}
             <TabsContent value="page" className="space-y-4">
@@ -786,7 +768,7 @@ export default function PlantillaRemisionesPage() {
                 </CardContent>
               </Card>
             </TabsContent>
-          </Tabs>
+          </TemplateEditorTabs>
 
           {/* Secciones visibles */}
           <Card>

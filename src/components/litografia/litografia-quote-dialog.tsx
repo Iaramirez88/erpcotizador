@@ -187,6 +187,11 @@ function isTroquelLikeFinish(finish: Pick<FinishOption, "key" | "nombre">) {
   return normalizeFinishText(`${finish.key} ${finish.nombre}`).includes("troquel")
 }
 
+function isTroqueladaFinish(finish: Pick<FinishOption, "key" | "nombre">) {
+  const normalized = normalizeFinishText(`${finish.key} ${finish.nombre}`)
+  return normalized.includes("troquelada") || normalized.includes("troquelar")
+}
+
 function isCompaginadoFinish(finish: Pick<FinishOption, "key" | "nombre">) {
   return normalizeFinishText(`${finish.key} ${finish.nombre}`).includes("compagin")
 }
@@ -224,6 +229,8 @@ type EditorialPartState = {
   plastificadoQty: string
   troqueladoId: string
   troqueladoQty: string
+  troqueladaId?: string
+  troqueladaQty?: string
   corteId: string
   corteQty: string
   printInkFront: PrintInkKey
@@ -248,6 +255,8 @@ function createDefaultEditorialPart(): EditorialPartState {
     plastificadoQty: "1",
     troqueladoId: "",
     troqueladoQty: "1",
+    troqueladaId: "",
+    troqueladaQty: "1",
     corteId: "",
     corteQty: "1",
     printInkFront: "4",
@@ -303,6 +312,8 @@ export type LitografiaMeta = {
   selectedPlastificadoQty?: string
   selectedTroqueladoId?: string
   selectedTroqueladoQty?: string
+  selectedTroqueladaId?: string
+  selectedTroqueladaQty?: string
   selectedCorteId?: string
   selectedCorteQty?: string
   selectedPaperTipo: string
@@ -406,10 +417,12 @@ export function LitografiaQuoteDialog(props: {
 
   const [selectedPlastificadoId, setSelectedPlastificadoId] = useState<string>("")
   const [selectedTroqueladoId, setSelectedTroqueladoId] = useState<string>("")
+  const [selectedTroqueladaId, setSelectedTroqueladaId] = useState<string>("")
   const [selectedCorteId, setSelectedCorteId] = useState<string>("")
 
   const [selectedPlastificadoQty, setSelectedPlastificadoQty] = useState<string>("1")
   const [selectedTroqueladoQty, setSelectedTroqueladoQty] = useState<string>("1")
+  const [selectedTroqueladaQty, setSelectedTroqueladaQty] = useState<string>("1")
   const [selectedCorteQty, setSelectedCorteQty] = useState<string>("1")
 
   const [selectedPaperTipo, setSelectedPaperTipo] = useState<string>("")
@@ -536,9 +549,11 @@ export function LitografiaQuoteDialog(props: {
       setSpecialFinishRows([{ finishId: "", qty: "1" }])
       setSelectedPlastificadoId("")
       setSelectedTroqueladoId("")
+      setSelectedTroqueladaId("")
       setSelectedCorteId("")
       setSelectedPlastificadoQty("1")
       setSelectedTroqueladoQty("1")
+      setSelectedTroqueladaQty("1")
       setSelectedCorteQty("1")
       setSelectedTransporteKey("")
       setCostoTransporte("0")
@@ -837,17 +852,20 @@ export function LitografiaQuoteDialog(props: {
     const addSpecialFinishesCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : specialFinishesCost)
     const addPlastificadoCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : plastificadoCostTotal)
     const addTroqueladoCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : troqueladoCostTotal)
+    const addTroqueladaCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : troqueladaCostTotal)
     const addCorteCost = ignoreNormalExtras ? 0 : (isAdmin ? 0 : corteCostTotal)
 
-    const baseValue = computed.precioVenta ?? 0
-    const subtotalSinIva =
-      (baseValue * margenMultiplier) +
+    const baseValue = computed.costoProduccion ?? computed.precioVenta ?? 0
+    const subtotalAntesUtilidad =
+      baseValue +
       addFinishesCost +
       addSpecialFinishesCost +
       addPlastificadoCost +
       addTroqueladoCost +
+      addTroqueladaCost +
       addCorteCost +
       customFieldsTotal
+    const subtotalSinIva = subtotalAntesUtilidad * margenMultiplier
     const ivaValue = subtotalSinIva * (LITOGRAFIA_ITEM_IVA_PCT / 100)
     const subtotalConIva = subtotalSinIva + ivaValue
 
@@ -857,8 +875,10 @@ export function LitografiaQuoteDialog(props: {
       addSpecialFinishesCost,
       addPlastificadoCost,
       addTroqueladoCost,
+      addTroqueladaCost,
       addCorteCost,
       extras: customFieldsTotal,
+      subtotalAntesUtilidad,
       subtotalSinIva,
       ivaPct: LITOGRAFIA_ITEM_IVA_PCT,
       ivaValue,
@@ -928,6 +948,8 @@ export function LitografiaQuoteDialog(props: {
       selectedPlastificadoQty,
       selectedTroqueladoId,
       selectedTroqueladoQty,
+      selectedTroqueladaId,
+      selectedTroqueladaQty,
       selectedCorteId,
       selectedCorteQty,
       selectedPaperTipo,
@@ -1081,9 +1103,11 @@ export function LitografiaQuoteDialog(props: {
     setSelectedTransporteKey(String(meta.selectedTransporteKey || ""))
     setSelectedPlastificadoId(meta.selectedPlastificadoId ?? "")
     setSelectedTroqueladoId(meta.selectedTroqueladoId ?? "")
+    setSelectedTroqueladaId(meta.selectedTroqueladaId ?? "")
     setSelectedCorteId(meta.selectedCorteId ?? "")
     setSelectedPlastificadoQty(String(meta.selectedPlastificadoQty ?? "1"))
     setSelectedTroqueladoQty(String(meta.selectedTroqueladoQty ?? "1"))
+    setSelectedTroqueladaQty(String(meta.selectedTroqueladaQty ?? "1"))
     setSelectedCorteQty(String(meta.selectedCorteQty ?? "1"))
     setCostoCorte(meta.costoCorte ?? "0")
     setCostoAcabados(meta.costoAcabados ?? "0")
@@ -1182,7 +1206,11 @@ export function LitografiaQuoteDialog(props: {
     [finishes]
   )
   const activeTroquelados = useMemo(
-    () => finishes.filter((f) => f.activo && (getGrupo(f) === "TROQUELADO" || isTroquelLikeFinish(f))),
+    () => finishes.filter((f) => f.activo && (getGrupo(f) === "TROQUELADO" || isTroquelLikeFinish(f)) && !isTroqueladaFinish(f)),
+    [finishes]
+  )
+  const activeTroqueladas = useMemo(
+    () => finishes.filter((f) => f.activo && ((getGrupo(f) === "TROQUELADO" && isTroqueladaFinish(f)) || isTroqueladaFinish(f))),
     [finishes]
   )
   const activeCortes = useMemo(
@@ -1213,6 +1241,11 @@ export function LitografiaQuoteDialog(props: {
     return activeTroquelados.find((f) => f.id === selectedTroqueladoId) || null
   }, [activeTroquelados, selectedTroqueladoId])
 
+  const selectedTroquelada = useMemo(() => {
+    if (!selectedTroqueladaId) return null
+    return activeTroqueladas.find((f) => f.id === selectedTroqueladaId) || null
+  }, [activeTroqueladas, selectedTroqueladaId])
+
   const selectedCorte = useMemo(() => {
     if (!selectedCorteId) return null
     return activeCortes.find((f) => f.id === selectedCorteId) || null
@@ -1225,6 +1258,7 @@ export function LitografiaQuoteDialog(props: {
 
   const plastificadoCost = Number(selectedPlastificado?.valor) || 0
   const troqueladoCost = Number(selectedTroquelado?.valor) || 0
+  const troqueladaCost = Number(selectedTroquelada?.valor) || 0
   const corteCost = Number(selectedCorte?.valor) || 0
 
   const plastificadoQty = useMemo(() => {
@@ -1235,6 +1269,10 @@ export function LitografiaQuoteDialog(props: {
     const n = Math.trunc(parseFloat(String(selectedTroqueladoQty)) || 0)
     return Math.max(1, Number.isFinite(n) ? n : 1)
   }, [selectedTroqueladoQty])
+  const troqueladaQty = useMemo(() => {
+    const n = Math.trunc(parseFloat(String(selectedTroqueladaQty)) || 0)
+    return Math.max(1, Number.isFinite(n) ? n : 1)
+  }, [selectedTroqueladaQty])
   const corteQty = useMemo(() => {
     const n = Math.trunc(parseFloat(String(selectedCorteQty)) || 0)
     return Math.max(1, Number.isFinite(n) ? n : 1)
@@ -1242,6 +1280,7 @@ export function LitografiaQuoteDialog(props: {
 
   const plastificadoCostTotal = plastificadoCost * plastificadoQty
   const troqueladoCostTotal = troqueladoCost * troqueladoQty
+  const troqueladaCostTotal = troqueladaCost * troqueladaQty
   const corteCostTotal = corteCost * corteQty
 
   const selectedPlanchaProfiles = useMemo(() => {
@@ -1868,7 +1907,7 @@ export function LitografiaQuoteDialog(props: {
     const planchaCostForCompute = planchaCostConfigured
     const tintaCostForCompute = tintaCostConfigured
 
-    const addAcabadosExtras = selectedFinishesCost + specialFinishesCost + plastificadoCostTotal + troqueladoCostTotal
+    const addAcabadosExtras = selectedFinishesCost + specialFinishesCost + plastificadoCostTotal + troqueladoCostTotal + troqueladaCostTotal
     const addCorteExtra = corteCostTotal
 
     const base = computeLitografia({
@@ -2025,6 +2064,7 @@ export function LitografiaQuoteDialog(props: {
     specialFinishesCost,
     plastificadoCostTotal,
     troqueladoCostTotal,
+    troqueladaCostTotal,
     corteCostTotal,
     costoTransporte,
     paperRows,
@@ -2349,17 +2389,17 @@ export function LitografiaQuoteDialog(props: {
       : null
     const orientation = currentComputed.orientacionImpresion === "girada" ? "girado" : "normal"
     const short = arrangement && (currentComputed.piezasPorPliego ?? 0) > 0
-      ? `Cliente recibe ${formatoLabel}; impresión en ${primaryPlanchaProfile?.nombre ?? "Máquina"}: ${hojasMaquinaNecesarias || "—"} hojas, ${arrangement} = ${currentComputed.piezasPorPliego} pzas/hoja, ${currentComputed.pliegosNecesarios ?? "—"} pliegos base.`
-      : `Cliente recibe ${formatoLabel}; impresión en ${primaryPlanchaProfile?.nombre ?? "Máquina"}: ${hojasMaquinaNecesarias || "—"} hojas, ${currentComputed.piezasPorPliego ?? "—"} pzas/hoja, ${currentComputed.pliegosNecesarios ?? "—"} pliegos base.`
+      ? `Cliente recibe ${formatoLabel}; impresión en ${primaryPlanchaProfile?.nombre ?? "Máquina"}: ${currentComputed.piezasPorPliego} pzas por pliego base (${arrangement}, ${orientation}), ${currentComputed.pliegosNecesarios ?? "—"} pliegos.`
+      : `Cliente recibe ${formatoLabel}; impresión en ${primaryPlanchaProfile?.nombre ?? "Máquina"}: ${currentComputed.piezasPorPliego ?? "—"} pzas por pliego base, ${currentComputed.pliegosNecesarios ?? "—"} pliegos.`
     const detail = [
       `cliente recibe ${formatoLabel}`,
       `papel ${paperLabel}`,
       `impresión ${machineLabel}`,
-      hojasMaquinaPorPliego > 0 ? `del pliego salen ${hojasMaquinaPorPliego} hojas de máquina` : null,
+      hojasMaquinaPorPliego > 1 ? `del pliego salen ${hojasMaquinaPorPliego} hojas de máquina` : null,
       arrangement ? `imposición ${arrangement} (${orientation})` : null,
       `producción = tiraje cliente ${runQty} + sobrante ${sobrante} = ${piezas} piezas finales`,
-      `tiraje impresor = ⌈${piezas} / ${currentComputed.piezasPorPliego ?? "—"}⌉ = ${hojasMaquinaNecesarias || "—"} hojas de impresión`,
-      hojasMaquinaPorPliego > 0 ? `pliegos papel = ⌈${hojasMaquinaNecesarias || "—"} / ${hojasMaquinaPorPliego}⌉ = ${currentComputed.pliegosNecesarios ?? "—"}` : `pliegos papel = ${currentComputed.pliegosNecesarios ?? "—"}`,
+      `pliegos papel = ⌈${piezas} / ${currentComputed.piezasPorPliego ?? "—"}⌉ = ${currentComputed.pliegosNecesarios ?? "—"}`,
+      hojasMaquinaPorPliego > 1 ? `hojas de máquina referenciales = ${hojasMaquinaNecesarias || "—"}` : null,
     ].filter(Boolean).join(" • ")
 
     return {
@@ -2503,8 +2543,8 @@ export function LitografiaQuoteDialog(props: {
 
     return {
       line1: `Cliente recibe: ${formatoLabel}. Papel base: ${pliegoLabel}.`,
-      line2: `Impresión en: ${machineLabel}. Del pliego salen ${hojasMaquinaPorPliego || "—"} hojas de impresión.${arrangement ? ` En cada hoja: ${arrangement} (${orientation}) = ${pzasPorPliego} piezas finales.` : ` Piezas finales por hoja: ${pzasPorPliego || "—"}.`}`,
-      line3: `Cálculo interno: producción = tiraje cliente (${runQty}) + sobrante (${sobrante}) = ${piezas}; tiraje impresor = ⌈${piezas} / ${pzasPorPliego || "—"}⌉ = ${hojasMaquinaNecesarias || "—"} hojas; pliegos papel = ⌈${hojasMaquinaNecesarias || "—"} / ${hojasMaquinaPorPliego || "—"}⌉ = ${pliegos}.`,
+      line2: `Impresión en: ${machineLabel}. Aprovechamiento del pliego base: ${arrangement ? `${arrangement} (${orientation}) = ${pzasPorPliego} piezas finales por pliego.` : `${pzasPorPliego || "—"} piezas finales por pliego.`}`,
+      line3: `Cálculo interno: producción = tiraje cliente (${runQty}) + sobrante (${sobrante}) = ${piezas}; pliegos papel = ⌈${piezas} / ${pzasPorPliego || "—"}⌉ = ${pliegos}.${hojasMaquinaPorPliego > 1 ? ` Hojas de máquina referenciales: ${hojasMaquinaNecesarias || "—"}.` : ""}`,
     }
   }, [isAdmin, calc, fallbackCalc, cantidad, sobranteMinimo, selectedPreset, formatoKey, pliegoW, pliegoH, primaryPaper, primaryPlanchaProfile, primaryMachineWidth, primaryMachineHeight])
 
@@ -2533,6 +2573,7 @@ export function LitografiaQuoteDialog(props: {
         if (selectedFinishes.length) parts.push(`${t('printshopQuote.desc.finishes')} ${selectedFinishes.map((f) => f.nombre).join(", ")}`)
         if (selectedPlastificado) parts.push(`${t('printshopQuote.desc.lamination')} ${selectedPlastificado.nombre}`)
         if (selectedTroquelado) parts.push(`${t('printshopQuote.desc.dieCut')} ${selectedTroquelado.nombre}`)
+        if (selectedTroquelada) parts.push(`Troquelada ${selectedTroquelada.nombre}`)
         if (selectedCorte) parts.push(`${t('printshopQuote.desc.cut')} ${selectedCorte.nombre}`)
         if (selectedSpecialFinishNames.length) parts.push(`${t('printshopQuote.desc.specialFinishes')} ${selectedSpecialFinishNames.join(", ")}`)
       }
@@ -2566,7 +2607,7 @@ export function LitografiaQuoteDialog(props: {
     }
 
     return parts.join(" • ")
-  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, calc, papelTipo, primaryPaper, selectedFinishes, selectedSpecialFinishNames, selectedTransporteKey, selectedPlastificado, selectedTroquelado, selectedCorte, transporteOptions, t, editorialEnabled, editorialOptions, selectedEditorialProductoKey, currentImpositionSummary])
+  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, calc, papelTipo, primaryPaper, selectedFinishes, selectedSpecialFinishNames, selectedTransporteKey, selectedPlastificado, selectedTroquelado, selectedTroquelada, selectedCorte, transporteOptions, t, editorialEnabled, editorialOptions, selectedEditorialProductoKey, currentImpositionSummary])
 
 
   const buildDescripcion = () => {
@@ -4400,6 +4441,46 @@ export function LitografiaQuoteDialog(props: {
                             </div>
 
                             <div className="sm:col-span-2">
+                              <Label>Troquelada</Label>
+                              <div className="mt-2 flex items-center gap-2">
+                                <select
+                                  className={`${SELECT_COMPACT} mt-0`}
+                                  value={selectedTroqueladaId}
+                                  onChange={(e) => setSelectedTroqueladaId(e.target.value)}
+                                  disabled={!activeTroqueladas.length}
+                                >
+                                  <option value="">Sin troquelada</option>
+                                  {activeTroqueladas.map((f) => (
+                                    <option key={f.id} value={f.id}>
+                                      {f.nombre}
+                                    </option>
+                                  ))}
+                                </select>
+                                <Input
+                                  className={`${INPUT_COMPACT} w-24 shrink-0`}
+                                  type="number"
+                                  min={1}
+                                  step="1"
+                                  value={selectedTroqueladaQty}
+                                  onChange={(e) => setSelectedTroqueladaQty(e.target.value)}
+                                  placeholder={t('printshopQuote.placeholders.qtyShort')}
+                                />
+                              </div>
+                              {!activeTroqueladas.length ? (
+                                <p className={HELP_TEXT}>
+                                  Configura opciones de troquelada en Configuración.
+                                </p>
+                              ) : null}
+                              {selectedTroquelada ? (
+                                <p className={HELP_TEXT}>
+                                  Total = {formatCurrency(troqueladaCost)} × {troqueladaQty} = {formatCurrency(troqueladaCostTotal)}.
+                                </p>
+                              ) : (
+                                <p className={HELP_TEXT}>Opcional. Este valor corresponde a troquelar el material con un troquel existente.</p>
+                              )}
+                            </div>
+
+                            <div className="sm:col-span-2">
                               <Label>{t('printshopQuote.fields.cut')}</Label>
                               <div className="mt-2 flex items-center gap-2">
                                 <select
@@ -4695,7 +4776,7 @@ export function LitografiaQuoteDialog(props: {
                               <span className="font-medium">{fallbackCalc.pliegosNecesarios ?? "—"}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span>Hojas máquina</span>
+                              <span>Pliegos base</span>
                               <span className="font-medium">{fallbackCalc.hojasMaquinaNecesarias ?? "—"}</span>
                             </div>
                           </div>
@@ -4724,6 +4805,7 @@ export function LitografiaQuoteDialog(props: {
                                   {quote.addSpecialFinishesCost ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.specialFinishes')}</span><span className="font-medium">{formatCurrency(quote.addSpecialFinishesCost)}</span></div> : null}
                                   {quote.addPlastificadoCost ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.lamination')}{plastificadoQty > 1 ? ` (x${plastificadoQty})` : ""}</span><span className="font-medium">{formatCurrency(quote.addPlastificadoCost)}</span></div> : null}
                                   {quote.addTroqueladoCost ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.dieCut')}{troqueladoQty > 1 ? ` (x${troqueladoQty})` : ""}</span><span className="font-medium">{formatCurrency(quote.addTroqueladoCost)}</span></div> : null}
+                                  {quote.addTroqueladaCost ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">Troquelada{troqueladaQty > 1 ? ` (x${troqueladaQty})` : ""}</span><span className="font-medium">{formatCurrency(quote.addTroqueladaCost)}</span></div> : null}
                                   {quote.addCorteCost ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.cut')}{corteQty > 1 ? ` (x${corteQty})` : ""}</span><span className="font-medium">{formatCurrency(quote.addCorteCost)}</span></div> : null}
                                   {quote.extras ? <div className="flex justify-between mt-1"><span className="text-muted-foreground">{t('printshopQuote.breakdown.extraFields')}</span><span className="font-medium">{formatCurrency(quote.extras)}</span></div> : null}
                                   <div className="flex justify-between mt-2"><span className="text-muted-foreground">Precio ítem sin IVA</span><span className="font-medium">{formatCurrency(quote.subtotalSinIva)}</span></div>
@@ -4745,11 +4827,11 @@ export function LitografiaQuoteDialog(props: {
                                 <span className="font-medium">{Math.ceil(calc.qtyConDesperdicio)}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span>Piezas por hoja máquina</span>
+                                <span>Piezas por pliego base</span>
                                 <span className="font-medium">{calc.piezasPorPliego ?? "—"}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span>Hojas máquina requeridas</span>
+                                <span>Pliegos requeridos</span>
                                 <span className="font-medium">{calc.hojasMaquinaNecesarias ?? "—"}</span>
                               </div>
                               <div className="flex justify-between">

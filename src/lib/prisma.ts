@@ -55,6 +55,8 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasEmpresaTemplateVersionDelegate =
     typeof (prismaClient as any)?.empresaCotizacionTemplateVersion?.findMany === 'function'
   const hasCotizacionTemplateVersionDelegate = typeof (prismaClient as any)?.cotizacionTemplateVersion?.findMany === 'function'
+  const hasOrdenCompraTemplateDelegate = typeof (prismaClient as any)?.ordenCompraTemplate?.findUnique === 'function'
+  const hasPosInvoiceTemplateDelegate = typeof (prismaClient as any)?.posInvoiceTemplate?.findUnique === 'function'
   const hasCrmLeadDelegate = typeof (prismaClient as any)?.crmLead?.findMany === 'function'
   const hasCrmOpportunityDelegate = typeof (prismaClient as any)?.crmOpportunity?.findMany === 'function'
   const hasCrmStageSettingDelegate = typeof (prismaClient as any)?.crmStageSetting?.findMany === 'function'
@@ -85,6 +87,8 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasEmpresaTemplateDelegate ||
     !hasEmpresaTemplateVersionDelegate ||
     !hasCotizacionTemplateVersionDelegate ||
+    !hasOrdenCompraTemplateDelegate ||
+    !hasPosInvoiceTemplateDelegate ||
     !hasCrmLeadDelegate ||
     !hasCrmOpportunityDelegate ||
     !hasCrmStageSettingDelegate ||

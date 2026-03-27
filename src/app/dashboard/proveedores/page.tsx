@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ImportDialog } from '@/components/import/import-dialog'
@@ -9,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { useI18n } from '@/components/providers/i18n-provider'
+import { buildPurchaseOrderPrefillHref } from '@/lib/purchase-order-prefill'
 
 type Proveedor = {
   id: string
@@ -27,6 +29,7 @@ type Proveedor = {
 
 export default function ProveedoresPage() {
   const { t } = useI18n()
+  const router = useRouter()
   const naText = t('common.na')
 
   const [loading, setLoading] = useState(false)
@@ -110,6 +113,23 @@ export default function ProveedoresPage() {
     const url = new URL('/api/proveedores/export', window.location.origin)
     if (query) url.searchParams.set('search', query)
     window.location.href = url.toString()
+  }
+
+  function openSupplierOrder(proveedor: Proveedor) {
+    const notes = [proveedor.contacto ? `Contacto: ${proveedor.contacto}` : null, proveedor.email ? `Email: ${proveedor.email}` : null]
+      .filter(Boolean)
+      .join(' · ')
+
+    router.push(
+      buildPurchaseOrderPrefillHref({
+        mode: 'order',
+        source: 'supplier',
+        supplierName: proveedor.nombre,
+        supplierPhone: proveedor.telefono ?? undefined,
+        supplierAddress: proveedor.direccion ?? undefined,
+        notes: notes || undefined,
+      })
+    )
   }
 
   return (
@@ -214,6 +234,7 @@ export default function ProveedoresPage() {
                   <th className="py-2 text-left">{t('suppliers.table.columns.phone')}</th>
                   <th className="py-2 text-left">{t('suppliers.table.columns.email')}</th>
                   <th className="py-2 text-left">{t('suppliers.table.columns.address')}</th>
+                  <th className="py-2 text-right">{t('suppliers.table.columns.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -224,18 +245,23 @@ export default function ProveedoresPage() {
                     <td className="py-2">{p.telefono ?? naText}</td>
                     <td className="py-2">{p.email ?? naText}</td>
                     <td className="py-2">{p.direccion ?? naText}</td>
+                    <td className="py-2 text-right">
+                      <Button variant="outline" onClick={() => openSupplierOrder(p)}>
+                        {t('suppliers.actions.newOrder')}
+                      </Button>
+                    </td>
                   </tr>
                 ))}
                 {!loading && items.length === 0 && (
                   <tr>
-                    <td className="py-6 text-center text-muted-foreground" colSpan={5}>
+                    <td className="py-6 text-center text-muted-foreground" colSpan={6}>
                       {t('common.noResults')}
                     </td>
                   </tr>
                 )}
                 {loading && (
                   <tr>
-                    <td className="py-6 text-center text-muted-foreground" colSpan={5}>
+                    <td className="py-6 text-center text-muted-foreground" colSpan={6}>
                       {t('common.loading')}
                     </td>
                   </tr>

@@ -186,24 +186,25 @@ export function computeLitografia(params: LitografiaParams): LitografiaResult {
 
   let papel = 0
   if (requestedPapelModo === "pliego" && costoPliego > 0 && pliegoW > 0 && pliegoH > 0 && formatoW > 0 && formatoH > 0) {
-    const machineSheet = resolveMachineSheetWithinParent(pliegoW, pliegoH, maquinaW, maquinaH)
-    const hojaMaquinaW = machineSheet.width || pliegoW
-    const hojaMaquinaH = machineSheet.height || pliegoH
-    const corteLayout = computePiecesPerSheet(pliegoW, pliegoH, hojaMaquinaW, hojaMaquinaH, 0)
-    const layout = computePiecesPerSheet(hojaMaquinaW, hojaMaquinaH, formatoW, formatoH, maquinaSeparacion)
-    if (layout.total >= 1 && corteLayout.total >= 1) {
-      hojasMaquinaPorPliego = corteLayout.total
-      hojasMaquinaNecesarias = Math.ceil(qtyConDesperdicio / layout.total)
-      hojasMaquinaHorizontal = corteLayout.across
-      hojasMaquinaVertical = corteLayout.down
-      orientacionCorte = corteLayout.orientation
-      pliegoUtilWidthCm = hojaMaquinaW
-      pliegoUtilHeightCm = hojaMaquinaH
+    const layout = computePiecesPerSheet(pliegoW, pliegoH, formatoW, formatoH, maquinaSeparacion)
+    if (layout.total >= 1) {
+      const machineSheet = resolveMachineSheetWithinParent(pliegoW, pliegoH, maquinaW, maquinaH)
+      const hojaMaquinaW = machineSheet.width || pliegoW
+      const hojaMaquinaH = machineSheet.height || pliegoH
+      const corteLayout = computePiecesPerSheet(pliegoW, pliegoH, hojaMaquinaW, hojaMaquinaH, 0)
+
+      piezasPorPliego = layout.total
+      pliegosNecesarios = Math.ceil(qtyConDesperdicio / layout.total)
+      hojasMaquinaPorPliego = 1
+      hojasMaquinaNecesarias = pliegosNecesarios
+      hojasMaquinaHorizontal = corteLayout.total >= 1 ? corteLayout.across : 1
+      hojasMaquinaVertical = corteLayout.total >= 1 ? corteLayout.down : 1
+      orientacionCorte = corteLayout.total >= 1 ? corteLayout.orientation : "normal"
+      pliegoUtilWidthCm = pliegoW
+      pliegoUtilHeightCm = pliegoH
       piezasHorizontal = layout.across
       piezasVertical = layout.down
       orientacionImpresion = layout.orientation
-      piezasPorPliego = layout.total
-      pliegosNecesarios = Math.ceil(hojasMaquinaNecesarias / corteLayout.total)
       papel = pliegosNecesarios * costoPliego
     } else {
       papelModo = "unidad"

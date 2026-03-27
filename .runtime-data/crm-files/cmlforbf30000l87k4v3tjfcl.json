@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "entries": {
+    "ivan/1774573599415-8dcf1c-planta-electrica.jpg": {
+      "id": "4b60ca2b-76b4-4232-8fac-56a597101a04",
+      "kind": "file",
+      "createdAt": "2026-03-27T01:22:48.808Z",
+      "updatedAt": "2026-03-27T01:41:13.026Z",
+      "createdById": null,
+      "sharedWithUserIds": [],
+      "linkedEntities": {
+        "tasks": [],
+        "leads": [],
+        "opportunities": []
+      },
+      "auditTrail": []
+    },
+    "ivan/1774574797680-y76gxb-LOGO-BIOTRADE-JIGRANTU-HORIZONTAL.pdf": {
+      "id": "135ad254-3dc5-4145-ba8d-2d2a6733cdc8",
+      "kind": "file",
+      "createdAt": "2026-03-27T01:26:37.681Z",
+      "updatedAt": "2026-03-27T01:41:13.028Z",
+      "createdById": "cmlforbop0001l87ksl95stua",
+      "sharedWithUserIds": [],
+      "linkedEntities": {
+        "tasks": [],
+        "leads": [],
+        "opportunities": []
+      },
+      "auditTrail": []
+    },
+    "ivan": {
+      "id": "84c30363-8105-41c5-9c69-694417b441eb",
+      "kind": "folder",
+      "createdAt": "2026-03-27T01:36:06.778Z",
+      "updatedAt": "2026-03-27T01:41:13.020Z",
+      "createdById": null,
+      "sharedWithUserIds": [],
+      "linkedEntities": {
+        "tasks": [],
+        "leads": [],
+        "opportunities": []
+      },
+      "auditTrail": []
+    }
+  }
+}

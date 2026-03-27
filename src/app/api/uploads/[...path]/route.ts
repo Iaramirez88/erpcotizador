@@ -17,6 +17,42 @@ function contentTypeFromExt(ext: string): string {
       return 'image/gif'
     case '.svg':
       return 'image/svg+xml'
+    case '.pdf':
+      return 'application/pdf'
+    case '.txt':
+      return 'text/plain; charset=utf-8'
+    case '.csv':
+      return 'text/csv; charset=utf-8'
+    case '.json':
+      return 'application/json; charset=utf-8'
+    case '.mp3':
+      return 'audio/mpeg'
+    case '.wav':
+      return 'audio/wav'
+    case '.ogg':
+      return 'audio/ogg'
+    case '.m4a':
+      return 'audio/mp4'
+    case '.mp4':
+      return 'video/mp4'
+    case '.webm':
+      return 'video/webm'
+    case '.mov':
+      return 'video/quicktime'
+    case '.doc':
+      return 'application/msword'
+    case '.docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    case '.xls':
+      return 'application/vnd.ms-excel'
+    case '.xlsx':
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    case '.ppt':
+      return 'application/vnd.ms-powerpoint'
+    case '.pptx':
+      return 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    case '.zip':
+      return 'application/zip'
     default:
       return 'application/octet-stream'
   }
