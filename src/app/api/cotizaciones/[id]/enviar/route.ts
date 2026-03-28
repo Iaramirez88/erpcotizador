@@ -7,6 +7,7 @@ import CotizacionPDF from '@/lib/pdf-template';
 import { getReactPdfRenderer, pdfToBuffer } from '@/lib/react-pdf-node';
 import { requireEmpresaIdForUser } from '@/lib/rbac';
 import { applyOpportunityStageAutomation } from '@/lib/crm';
+import { getRequestBaseUrl } from '@/lib/app-url'
 
 export const runtime = 'nodejs';
 
@@ -46,7 +47,7 @@ export async function POST(
 
     const { id } = await context.params;
 
-    const origin = new URL(request.url).origin
+    const origin = getRequestBaseUrl(request) || new URL(request.url).origin
 
     const cotizacion = await prisma.cotizacion.findUnique({
       where: { id },
@@ -67,6 +68,13 @@ export async function POST(
     });
 
     if (!cotizacion) {
+      return NextResponse.json({ error: 'Cotización no encontrada' }, { status: 404 });
+    }
+
+    if (
+      cotizacion.cliente.empresaId !== access.empresaId ||
+      (cotizacion.sedeId && cotizacion.sedeId !== access.sedeId)
+    ) {
       return NextResponse.json({ error: 'Cotización no encontrada' }, { status: 404 });
     }
 

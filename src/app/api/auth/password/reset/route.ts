@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { randomToken, sha256Hex } from '@/lib/auth-tokens'
 import { sendEmail } from '@/lib/email'
 import { renderEmail, renderEmailLink } from '@/lib/email-template'
+import { getRequestBaseUrl } from '@/lib/app-url'
 
 type PasswordResetTokenDelegate = {
   deleteMany: (args: unknown) => unknown
@@ -81,7 +82,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const origin = new URL(request.url).origin
+    const origin = getRequestBaseUrl(request) || new URL(request.url).origin
     const resetUrl = `${origin}/auth/reset-password?token=${encodeURIComponent(token)}`
 
     const empresaNombre = (user.empresa?.nombre ?? '').trim()

@@ -23,8 +23,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
     const { id } = await context.params
 
-    const material = await prisma.material.findUnique({ where: { id }, select: { id: true } })
+    const material = await prisma.material.findUnique({ where: { id }, select: { id: true, empresaId: true } })
     if (!material) {
+      return NextResponse.json({ success: false, error: 'Material no encontrado' }, { status: 404 })
+    }
+    if (material.empresaId !== access.empresaId) {
       return NextResponse.json({ success: false, error: 'Material no encontrado' }, { status: 404 })
     }
 
@@ -76,7 +79,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     await prisma.$executeRaw`
       UPDATE "materiales"
       SET "imagenUrl" = ${publicUrl}
-      WHERE "id" = ${id}
+      WHERE "id" = ${id} AND "empresaId" = ${access.empresaId}
     `
 
     return NextResponse.json({ success: true, data: { imagenUrl: publicUrl } }, { status: 200 })

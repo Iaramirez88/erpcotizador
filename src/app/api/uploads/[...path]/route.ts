@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import path from 'path'
 import fs from 'fs/promises'
+import { AccessLevel, ModuleKey } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
+import { requireApiAccess } from '@/lib/api-rbac'
+import { assertCrmSedeAccess } from '@/lib/crm'
+import { canUserAccessWorkspace, getAccessibleTaskWorkspace } from '@/lib/crm-task-workspaces'
+import { getCrmFileItemByPath, getCrmFilesRootAbsolutePath } from '@/lib/crm-files'
 
 export const runtime = 'nodejs'
 
@@ -66,12 +72,95 @@ function isSafePathSegment(seg: string): boolean {
   return true
 }
 
+async function resolveProtectedUploadPath(parts: string[]) {
+  if (parts[0] === 'crm-tasks' && parts[1] && parts.length >= 3) {
+    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    if (!access.ok) return access.response
+
+    const task = await prisma.crmTask.findUnique({
+      where: { id: parts[1] },
+      include: { workspace: true },
+    })
+
+    if (!task || task.empresaId !== access.empresaId) {
+      return new NextResponse('Not found', { status: 404, headers: { 'X-SG-Uploads': 'api' } })
+    }
+
+    if (task.workspaceId) {
+      const workspace = await getAccessibleTaskWorkspace(prisma, {
+        workspaceId: task.workspaceId,
+        empresaId: access.empresaId,
+        userId: access.userId,
+      })
+      if (!workspace || !canUserAccessWorkspace(workspace, access.userId, 'view')) {
+        return new NextResponse('Forbidden', { status: 403, headers: { 'X-SG-Uploads': 'api' } })
+      }
+    }
+
+    if (task.sedeId) {
+      const denied = await assertCrmSedeAccess({ sedeId: task.sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.READ })
+      if (denied) return denied
+    }
+
+    return path.join(process.cwd(), 'public', 'uploads', ...parts)
+  }
+
+  if (parts[0] === 'internal-chat' && parts[1] && parts.length >= 3) {
+    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    if (!access.ok) return access.response
+
+    const thread = await prisma.internalChatThread.findUnique({
+      where: { id: parts[1] },
+      include: { participants: true },
+    })
+
+    if (!thread || thread.empresaId !== access.empresaId) {
+      return new NextResponse('Not found', { status: 404, headers: { 'X-SG-Uploads': 'api' } })
+    }
+
+    const canAccess = thread.participants.some((participant) => participant.userId === access.userId)
+    if (!canAccess) {
+      return new NextResponse('Forbidden', { status: 403, headers: { 'X-SG-Uploads': 'api' } })
+    }
+
+    return path.join(process.cwd(), 'public', 'uploads', ...parts)
+  }
+
+  if (parts[0] === 'crm-files' && parts[1] && parts.length >= 3) {
+    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    if (!access.ok) return access.response
+
+    const empresaId = parts[1]
+    if (empresaId !== access.empresaId) {
+      return new NextResponse('Not found', { status: 404, headers: { 'X-SG-Uploads': 'api' } })
+    }
+
+    const entryPath = parts.slice(2).join('/')
+    try {
+      const item = await getCrmFileItemByPath({ empresaId, entryPath, currentUserId: access.userId })
+      if (item.type === 'folder') {
+        return new NextResponse('Not found', { status: 404, headers: { 'X-SG-Uploads': 'api' } })
+      }
+    } catch {
+      return new NextResponse('Forbidden', { status: 403, headers: { 'X-SG-Uploads': 'api' } })
+    }
+
+    return path.join(getCrmFilesRootAbsolutePath(empresaId), ...parts.slice(2))
+  }
+
+  return null
+}
+
 async function serve(parts: string[]) {
   if (!Array.isArray(parts) || parts.length === 0 || !parts.every((p) => isSafePathSegment(p))) {
     return new NextResponse('Not found', { status: 404, headers: { 'X-SG-Uploads': 'api' } })
   }
 
-  const absPath = path.join(process.cwd(), 'public', 'uploads', ...parts)
+  const protectedPathOrResponse = await resolveProtectedUploadPath(parts)
+  if (protectedPathOrResponse instanceof NextResponse) return protectedPathOrResponse
+
+  const isProtected = typeof protectedPathOrResponse === 'string'
+  const absPath = protectedPathOrResponse || path.join(process.cwd(), 'public', 'uploads', ...parts)
 
   try {
     const bytes = await fs.readFile(absPath)
@@ -81,7 +170,7 @@ async function serve(parts: string[]) {
       status: 200,
       headers: {
         'Content-Type': contentTypeFromExt(ext),
-        'Cache-Control': 'public, max-age=31536000, immutable',
+        'Cache-Control': isProtected ? 'private, no-store' : 'public, max-age=31536000, immutable',
         'X-SG-Uploads': 'api',
       },
     })

@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
       Usuario: m.createdBy?.name ?? m.createdBy?.email ?? '',
     }))
 
-    const buffer = buildXlsxBuffer([{ name: 'Movimientos', rows }])
+    const buffer = await buildXlsxBuffer([{ name: 'Movimientos', rows }])
     const filename = `inventario-movimientos-${formatDateForFilename()}.xlsx`
 
     return new NextResponse(new Uint8Array(buffer), {

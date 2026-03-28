@@ -70,6 +70,7 @@ export async function GET(_request: Request, context: RouteContext) {
     if (!access.ok) return access.response
 
     const { id } = await context.params
+    const empresaId = access.empresaId
 
     const compra = await prisma.compra.findUnique({
       where: { id },
@@ -77,6 +78,7 @@ export async function GET(_request: Request, context: RouteContext) {
     })
 
     if (!compra) return NextResponse.json({ success: false, error: "No encontrado" }, { status: 404 })
+    if (compra.empresaId !== empresaId) return NextResponse.json({ success: false, error: "No encontrado" }, { status: 404 })
 
     return NextResponse.json({ success: true, data: compra })
   } catch (error) {
@@ -91,6 +93,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (!access.ok) return access.response
 
     const { id } = await context.params
+    const empresaId = access.empresaId
     const body = await request.json().catch(() => ({}))
     const itemsIn: CompraItemInput[] = Array.isArray(body?.items) ? body.items : []
     const items = itemsIn
@@ -115,6 +118,15 @@ export async function PATCH(request: Request, context: RouteContext) {
     const estadoParsed = body?.estado !== undefined ? parseEstadoCompra(body.estado) : undefined
     if (body?.estado !== undefined && !estadoParsed) {
       return NextResponse.json({ error: "Estado inválido. Usa BORRADOR, REGISTRADA o ANULADA" }, { status: 400 })
+    }
+
+    const compraExistente = await prisma.compra.findUnique({
+      where: { id },
+      select: { id: true, empresaId: true },
+    })
+
+    if (!compraExistente || compraExistente.empresaId !== empresaId) {
+      return NextResponse.json({ success: false, error: "No encontrado" }, { status: 404 })
     }
 
     const compra = await prisma.$transaction(async (tx) => {
@@ -187,6 +199,17 @@ export async function DELETE(_request: Request, context: RouteContext) {
     if (!access.ok) return access.response
 
     const { id } = await context.params
+    const empresaId = access.empresaId
+
+    const compra = await prisma.compra.findUnique({
+      where: { id },
+      select: { id: true, empresaId: true },
+    })
+
+    if (!compra || compra.empresaId !== empresaId) {
+      return NextResponse.json({ success: false, error: "No encontrado" }, { status: 404 })
+    }
+
     await prisma.compra.delete({ where: { id } })
 
     return NextResponse.json({ success: true })

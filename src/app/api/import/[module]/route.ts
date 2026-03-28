@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Buffer } from 'node:buffer'
 import { prisma } from '@/lib/prisma'
 import Papa from 'papaparse'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { ClienteSegmento, ModuleKey, TipoMaterial } from '@prisma/client'
 
@@ -12,6 +13,8 @@ type ImportModule = 'clientes' | 'proveedores' | 'materiales' | 'compras' | 'ord
 interface RouteContext {
   params: Promise<{ module: string }>
 }
+
+type ExcelLoadBuffer = Parameters<ExcelJS.Workbook['xlsx']['load']>[0]
 
 function asString(value: unknown) {
   return typeof value === 'string' ? value : value == null ? '' : String(value)
@@ -105,8 +108,19 @@ function isAllowedModule(m: string): m is ImportModule {
 function sniffExt(filename: string) {
   const lower = filename.toLowerCase()
   if (lower.endsWith('.csv')) return 'csv'
-  if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) return 'xlsx'
+  if (lower.endsWith('.xlsx')) return 'xlsx'
   return ''
+}
+
+function normalizeWorksheetValue(value: ExcelJS.CellValue | undefined): unknown {
+  if (value == null) return ''
+  if (typeof value === 'object') {
+    if ('text' in value && typeof value.text === 'string') return value.text
+    if ('result' in value) return value.result ?? ''
+    if ('formula' in value && 'result' in value) return value.result ?? ''
+    if (value instanceof Date) return value.toISOString()
+  }
+  return value
 }
 
 async function parseRows(file: File): Promise<{ rows: Record<string, unknown>[]; warnings: string[] }>
@@ -134,11 +148,38 @@ async function parseRows(file: File): Promise<{ rows: Record<string, unknown>[];
   }
 
   if (ext === 'xlsx') {
-    const wb = XLSX.read(buf, { type: 'buffer' })
-    const sheetName = wb.SheetNames[0]
-    if (!sheetName) return { rows: [], warnings: ['Archivo Excel sin hojas'] }
-    const ws = wb.Sheets[sheetName]
-    const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.load(buf as unknown as ExcelLoadBuffer)
+    const worksheet = workbook.worksheets[0]
+    if (!worksheet) return { rows: [], warnings: ['Archivo Excel sin hojas'] }
+
+    const headerRow = worksheet.getRow(1)
+    const headerValues = Array.isArray(headerRow.values)
+      ? (headerRow.values.slice(1) as ExcelJS.CellValue[])
+      : []
+    const headers = headerValues.map((value: ExcelJS.CellValue) =>
+      asString(normalizeWorksheetValue(value)).trim()
+    )
+
+    const json: Record<string, unknown>[] = []
+
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return
+
+      const record: Record<string, unknown> = {}
+      let hasContent = false
+
+      headers.forEach((header: string, index: number) => {
+        if (!header) return
+        const value = normalizeWorksheetValue(row.getCell(index + 1).value)
+        const normalizedValue = value == null ? '' : value
+        record[header] = normalizedValue
+        if (asString(normalizedValue).trim() !== '') hasContent = true
+      })
+
+      if (hasContent) json.push(record)
+    })
+
     return { rows: json, warnings }
   }
 

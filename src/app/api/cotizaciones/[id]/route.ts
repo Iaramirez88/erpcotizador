@@ -28,6 +28,7 @@ export async function GET(
     const cotizacion = await prisma.cotizacion.findFirst({
       where: {
         id,
+        cliente: { is: { empresaId: access.empresaId } },
         AND: [{ OR: [{ sedeId: access.sedeId }, { sedeId: null }] }],
       },
       include: {
@@ -70,6 +71,7 @@ export async function DELETE(
     const cotizacion = await prisma.cotizacion.findFirst({ 
       where: {
         id,
+        cliente: { is: { empresaId: access.empresaId } },
         AND: [{ OR: [{ sedeId: access.sedeId }, { sedeId: null }] }],
       },
       include: { orden: true }
@@ -131,8 +133,12 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Cliente e items son requeridos' }, { status: 400 })
     }
 
-    const existing = await prisma.cotizacion.findUnique({
-      where: { id },
+    const existing = await prisma.cotizacion.findFirst({
+      where: {
+        id,
+        cliente: { is: { empresaId: access.empresaId } },
+        AND: [{ OR: [{ sedeId: access.sedeId }, { sedeId: null }] }],
+      },
       select: {
         id: true,
         sedeId: true,
@@ -165,10 +171,6 @@ export async function PATCH(
     })
 
     if (!existing) {
-      return NextResponse.json({ success: false, error: 'Cotización no encontrada' }, { status: 404 })
-    }
-
-    if (existing.sedeId && existing.sedeId !== access.sedeId) {
       return NextResponse.json({ success: false, error: 'Cotización no encontrada' }, { status: 404 })
     }
 

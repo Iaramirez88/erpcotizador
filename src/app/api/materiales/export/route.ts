@@ -230,7 +230,7 @@ export async function GET(request: Request) {
       Creado: m.createdAt,
     }))
 
-    const buffer = buildXlsxBuffer([{ name: 'Materiales', rows }])
+    const buffer = await buildXlsxBuffer([{ name: 'Materiales', rows }])
     const filename = `productos-materiales-${formatDateForFilename()}.xlsx`
 
     return new NextResponse(new Uint8Array(buffer), {

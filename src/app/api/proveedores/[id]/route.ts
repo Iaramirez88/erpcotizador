@@ -22,8 +22,10 @@ export async function GET(_request: Request, context: RouteContext) {
     if (!access.ok) return access.response
 
     const { id } = await context.params
+    const empresaId = access.empresaId
     const proveedor = await prisma.proveedor.findUnique({ where: { id } })
     if (!proveedor) return NextResponse.json({ success: false, error: "No encontrado" }, { status: 404 })
+    if (proveedor.empresaId !== empresaId) return NextResponse.json({ success: false, error: "No encontrado" }, { status: 404 })
 
     return NextResponse.json({ success: true, data: proveedor })
   } catch (error) {
@@ -38,7 +40,17 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (!access.ok) return access.response
 
     const { id } = await context.params
+    const empresaId = access.empresaId
     const body = await request.json().catch(() => ({}))
+
+    const existing = await prisma.proveedor.findUnique({
+      where: { id },
+      select: { id: true, empresaId: true },
+    })
+
+    if (!existing || existing.empresaId !== empresaId) {
+      return NextResponse.json({ success: false, error: "No encontrado" }, { status: 404 })
+    }
 
     const proveedor = await prisma.proveedor.update({
       where: { id },
@@ -69,6 +81,16 @@ export async function DELETE(_request: Request, context: RouteContext) {
     if (!access.ok) return access.response
 
     const { id } = await context.params
+    const empresaId = access.empresaId
+
+    const existing = await prisma.proveedor.findUnique({
+      where: { id },
+      select: { id: true, empresaId: true },
+    })
+
+    if (!existing || existing.empresaId !== empresaId) {
+      return NextResponse.json({ success: false, error: "No encontrado" }, { status: 404 })
+    }
 
     await prisma.proveedor.delete({ where: { id } })
     return NextResponse.json({ success: true })

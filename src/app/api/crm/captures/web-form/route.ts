@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createInboundArtifacts, getConnectionToken, parseJsonObject } from '@/lib/crm-omnichannel'
 import { normalizeString } from '@/lib/crm'
-import { extractHostFromUrl, getPublicWebFormSettings, isPublicWebFormDomainAllowed } from '@/lib/crm-public-web-form'
+import { extractHostFromUrl, getPublicWebFormSettings, getReferrerHost, getRequestHost, isPublicWebFormDomainAllowed } from '@/lib/crm-public-web-form'
 
 export const runtime = 'nodejs'
 
@@ -53,7 +53,9 @@ export async function POST(request: Request) {
 
     const expectedToken = getConnectionToken(channel.settingsJson, channel.verifyToken)
     const publicSettings = getPublicWebFormSettings(channel.settingsJson)
-    const candidateHost = extractHostFromUrl(referrerUrl || landingPageUrl)
+    const requestHost = await getRequestHost()
+    const referrerHost = await getReferrerHost()
+    const candidateHost = referrerHost === requestHost ? extractHostFromUrl(referrerUrl || landingPageUrl) : referrerHost
     const publicEmbedAllowed = publicSettings.publicEmbedEnabled && isPublicWebFormDomainAllowed({
       allowedDomains: publicSettings.allowedDomains,
       candidateHost,

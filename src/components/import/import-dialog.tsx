@@ -197,7 +197,7 @@ export function ImportDialog({
               <Input
                 ref={inputRef}
                 type="file"
-                accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 onChange={(e) => {
                   const f = e.target.files?.[0] ?? null
                   setFile(f)

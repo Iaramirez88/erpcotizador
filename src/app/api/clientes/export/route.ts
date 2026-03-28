@@ -284,7 +284,7 @@ export async function GET(request: Request) {
       CostoAproxTotal: c.invoiceCost ?? 0,
     }))
 
-    const buffer = buildXlsxBuffer([{ name: 'Clientes', rows }])
+    const buffer = await buildXlsxBuffer([{ name: 'Clientes', rows }])
     const filename = `clientes-${formatDateForFilename()}.xlsx`
 
     return new NextResponse(new Uint8Array(buffer), {

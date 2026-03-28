@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createCotizacionShareToken } from '@/lib/share-token'
+import { getRequestBaseUrl } from '@/lib/app-url'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { ModuleKey } from '@prisma/client'
@@ -29,8 +30,12 @@ export async function POST(
   const token = createCotizacionShareToken({ cotizacionId: id, ttlSeconds, secret })
 
   try {
-    const before = await prisma.cotizacion.findUnique({
-      where: { id },
+    const before = await prisma.cotizacion.findFirst({
+      where: {
+        id,
+        cliente: { is: { empresaId: access.empresaId } },
+        AND: [{ OR: [{ sedeId: access.sedeId }, { sedeId: null }] }],
+      },
       select: {
         id: true,
         estado: true,
@@ -43,13 +48,6 @@ export async function POST(
     })
 
     if (!before) {
-      return NextResponse.json(
-        { success: false, error: 'Cotización no encontrada' },
-        { status: 404 }
-      )
-    }
-
-    if (before.sedeId && before.sedeId !== access.sedeId) {
       return NextResponse.json(
         { success: false, error: 'Cotización no encontrada' },
         { status: 404 }
@@ -119,10 +117,7 @@ export async function POST(
   }
 
   const baseUrlRaw =
-    process.env.APP_URL ||
-    process.env.NEXTAUTH_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.NEXT_PUBLIC_BASE_URL ||
+    getRequestBaseUrl(request) ||
     request.nextUrl.origin
   const baseUrl = String(baseUrlRaw || '').replace(/\/+$/, '')
 

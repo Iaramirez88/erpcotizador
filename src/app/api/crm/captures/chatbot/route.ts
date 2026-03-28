@@ -15,7 +15,7 @@ import {
   type ChatbotFlowStage,
   type ChatbotQuickAction,
 } from '@/lib/crm-chatbot-flow'
-import { extractHostFromUrl, getPublicChatbotSettings, getRequestHost, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
+import { extractHostFromUrl, getPublicChatbotSettings, getReferrerHost, getRequestHost, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
 
 export const runtime = 'nodejs'
 
@@ -533,7 +533,8 @@ export async function POST(request: Request) {
 
     if (publicEmbedEnabled) {
       const requestHost = await getRequestHost()
-      const embedHost = extractHostFromUrl(referrerUrl || landingPageUrl)
+      const referrerHost = await getReferrerHost()
+      const embedHost = referrerHost === requestHost ? extractHostFromUrl(referrerUrl || landingPageUrl) : referrerHost
       if (!isChatbotDomainAllowed({ allowedDomains: settings.allowedDomains, candidateHost: embedHost || requestHost, appHost: requestHost })) {
         return NextResponse.json({ error: 'Dominio no autorizado para este chatbot' }, { status: 403 })
       }

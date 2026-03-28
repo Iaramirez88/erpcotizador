@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { normalizeString } from '@/lib/crm'
-import { extractHostFromUrl, getPublicChatbotSettings, getRequestHost, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
+import { extractHostFromUrl, getPublicChatbotSettings, getReferrerHost, getRequestHost, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
 
 export const runtime = 'nodejs'
 
@@ -35,7 +35,8 @@ export async function GET(request: Request, context: RouteContext) {
     }
 
     const requestHost = await getRequestHost()
-    const parentHost = extractHostFromUrl(rawParentReferrer)
+    const referrerHost = await getReferrerHost()
+    const parentHost = referrerHost === requestHost ? extractHostFromUrl(rawParentReferrer) : referrerHost
     if (!isChatbotDomainAllowed({ allowedDomains: settings.allowedDomains, candidateHost: parentHost || requestHost, appHost: requestHost })) {
       return NextResponse.json({ error: 'Dominio no autorizado para este chatbot' }, { status: 403 })
     }

@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
       CotizacionNumero: o.cotizacion?.numero ?? '',
     }))
 
-    const buffer = buildXlsxBuffer([{ name: 'Ordenes', rows }])
+    const buffer = await buildXlsxBuffer([{ name: 'Ordenes', rows }])
     const filename = `ordenes-${formatDateForFilename()}.xlsx`
 
     return new NextResponse(new Uint8Array(buffer), {

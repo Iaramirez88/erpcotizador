@@ -46,8 +46,8 @@ export async function GET(
 
     const empresaId = access.empresaId
 
-    const cliente = await prisma.cliente.findUnique({
-      where: { id },
+    const cliente = await prisma.cliente.findFirst({
+      where: { id, empresaId },
       include: {
         sede: { select: { id: true, nombre: true } },
         cotizaciones: {
@@ -66,13 +66,6 @@ export async function GET(
     })
 
     if (!cliente) {
-      return NextResponse.json(
-        { error: "Cliente no encontrado" },
-        { status: 404 }
-      )
-    }
-
-    if (cliente.empresaId !== empresaId) {
       return NextResponse.json(
         { error: "Cliente no encontrado" },
         { status: 404 }
@@ -148,18 +141,11 @@ export async function PUT(
     const segmentoManual = hasSegmento ? normalizeSegmento(body.segmento) : null
 
     // Verificar si el cliente existe
-    const clienteExistente = await prisma.cliente.findUnique({
-      where: { id }
+    const clienteExistente = await prisma.cliente.findFirst({
+      where: { id, empresaId }
     })
 
     if (!clienteExistente) {
-      return NextResponse.json(
-        { error: "Cliente no encontrado" },
-        { status: 404 }
-      )
-    }
-
-    if (clienteExistente.empresaId !== empresaId) {
       return NextResponse.json(
         { error: "Cliente no encontrado" },
         { status: 404 }
@@ -226,8 +212,8 @@ export async function DELETE(
     const empresaId = access.empresaId
 
     // Verificar si el cliente tiene cotizaciones
-    const cliente = await prisma.cliente.findUnique({
-      where: { id },
+    const cliente = await prisma.cliente.findFirst({
+      where: { id, empresaId },
       include: {
         _count: {
           select: {
@@ -239,13 +225,6 @@ export async function DELETE(
     })
 
     if (!cliente) {
-      return NextResponse.json(
-        { error: "Cliente no encontrado" },
-        { status: 404 }
-      )
-    }
-
-    if (cliente.empresaId !== empresaId) {
       return NextResponse.json(
         { error: "Cliente no encontrado" },
         { status: 404 }

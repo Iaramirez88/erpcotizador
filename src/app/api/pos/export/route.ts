@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
       Creado: r.createdAt,
     }))
 
-    const buffer = buildXlsxBuffer([
+    const buffer = await buildXlsxBuffer([
       { name: 'Facturas', rows: invoiceRows },
       { name: 'Devoluciones', rows: returnRows },
     ])

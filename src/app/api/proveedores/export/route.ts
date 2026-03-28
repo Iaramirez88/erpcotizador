@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
       Creado: p.createdAt,
     }))
 
-    const buffer = buildXlsxBuffer([{ name: 'Proveedores', rows }])
+    const buffer = await buildXlsxBuffer([{ name: 'Proveedores', rows }])
     const filename = `proveedores-${formatDateForFilename()}.xlsx`
 
     return new NextResponse(new Uint8Array(buffer), {
