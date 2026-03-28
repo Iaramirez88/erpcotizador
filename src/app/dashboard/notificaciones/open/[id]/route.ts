@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { getRequestBaseUrl } from '@/lib/app-url'
 import { prisma } from '@/lib/prisma'
 import { normalizeNotificationActionUrl } from '@/lib/notifications'
 
@@ -30,5 +31,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   }
 
   const destination = normalizeNotificationActionUrl(notification?.actionUrl) ?? '/dashboard/notificaciones'
+  const baseUrl = getRequestBaseUrl(request)
+
+  if (baseUrl) {
+    return NextResponse.redirect(new URL(destination, `${baseUrl}/`))
+  }
+
   return NextResponse.redirect(new URL(destination, request.url))
 }

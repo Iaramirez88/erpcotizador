@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { ErpBreadcrumbs } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -32,7 +33,7 @@ import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
 type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'LOST' | 'CONVERTED'
 type LeadSource = 'WEB' | 'REFERIDO' | 'WHATSAPP' | 'LLAMADA' | 'IMPORT' | 'OTRO'
 type OpportunityStage = 'NEW' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON' | 'LOST'
-type TaskStatus = 'OPEN' | 'DONE' | 'CANCELED'
+type TaskStatus = 'OPEN' | 'IN_PROGRESS' | 'DONE' | 'CANCELED'
 type TaskPriority = 'LOW' | 'NORMAL' | 'HIGH'
 
 type StageSetting = {
@@ -226,6 +227,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResp
 }
 
 export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportunities' | 'tasks' }) {
+  const searchParams = useSearchParams()
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = '—'
@@ -294,6 +296,7 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
     opportunityId: '',
     dueAt: '',
   })
+  const requestedTaskId = searchParams?.get('taskId') || ''
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -339,6 +342,14 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
   useEffect(() => {
     void loadData()
   }, [loadData])
+
+  useEffect(() => {
+    if (!requestedTaskId || !tasks.length) return
+    const task = tasks.find((item) => item.id === requestedTaskId)
+    if (!task) return
+    setActiveTab('tasks')
+    openEditTaskDialog(task)
+  }, [requestedTaskId, tasks])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

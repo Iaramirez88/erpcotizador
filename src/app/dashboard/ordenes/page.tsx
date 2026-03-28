@@ -36,6 +36,7 @@ import {
   PencilLine,
   ListTodo,
   ExternalLink,
+  SquarePlus,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -168,6 +169,7 @@ export default function OrdenesPage() {
   const [responsables, setResponsables] = useState<ResponsableOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [creatingTask, setCreatingTask] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<string>('');
   const [canDeleteOrders, setCanDeleteOrders] = useState(false);
@@ -325,10 +327,28 @@ export default function OrdenesPage() {
   };
 
   const buildTaskHref = (orden: OrdenTrabajo) => {
-    if (!orden.tareaSeguimiento?.id) return '/dashboard/espacios-trabajo';
+    if (!orden.tareaSeguimiento?.id) return '/dashboard/crm/tareas';
     const params = new URLSearchParams({ taskId: orden.tareaSeguimiento.id });
-    if (orden.tareaSeguimiento.workspaceId) params.set('workspaceId', orden.tareaSeguimiento.workspaceId);
-    return `/dashboard/espacios-trabajo?${params.toString()}`;
+    return `/dashboard/crm/tareas?${params.toString()}`;
+  };
+
+  const crearTareaDesdeOrden = async (orden: OrdenTrabajo) => {
+    setCreatingTask(true);
+    try {
+      const res = await fetch(`/api/ordenes/${orden.id}/task`, { method: 'POST' });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.success) {
+        toast({ title: t('orders.task.create.error'), description: json?.error || undefined, variant: 'destructive' });
+        return;
+      }
+      toast({ title: t('orders.task.create.success') });
+      setEditingOrder(null);
+      await cargarOrdenes();
+    } catch {
+      toast({ title: t('orders.task.create.error'), variant: 'destructive' });
+    } finally {
+      setCreatingTask(false);
+    }
   };
 
   const getOrderDetails = (orden: OrdenTrabajo) => {
@@ -686,6 +706,24 @@ export default function OrdenesPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={closeEditDialog} disabled={saving}>Cancelar</Button>
+            {editingOrder && !editingOrder.tareaSeguimiento ? (
+              <Button
+                variant="outline"
+                onClick={() => void crearTareaDesdeOrden(editingOrder)}
+                disabled={saving || creatingTask || !editForm.assignedToUserId}
+              >
+                <SquarePlus className="mr-2 h-4 w-4" />
+                {creatingTask ? 'Creando...' : t('orders.actions.createTask')}
+              </Button>
+            ) : null}
+            {editingOrder?.tareaSeguimiento ? (
+              <Link href={buildTaskHref(editingOrder)}>
+                <Button variant="outline" disabled={saving || creatingTask}>
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  {t('orders.actions.openTask')}
+                </Button>
+              </Link>
+            ) : null}
             <Button onClick={() => void guardarOrden()} disabled={saving}>
               {saving ? 'Guardando...' : t('orders.actions.save')}
             </Button>

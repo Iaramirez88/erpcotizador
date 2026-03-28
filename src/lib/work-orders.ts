@@ -267,12 +267,6 @@ export async function ensureWorkOrderFromQuote(
       },
     })
 
-    await syncInternalTaskForWorkOrder(tx, {
-      ordenId: orden.id,
-      empresaId: args.empresaId,
-      actorUserId: args.createdById,
-    })
-
     return orden
   }
 
@@ -292,12 +286,6 @@ export async function ensureWorkOrderFromQuote(
       posInvoice: { select: { id: true, numero: true } },
       etapas: true,
     },
-  })
-
-  await syncInternalTaskForWorkOrder(tx, {
-    ordenId: orden.id,
-    empresaId: args.empresaId,
-    actorUserId: args.createdById,
   })
 
   return orden
@@ -437,12 +425,6 @@ export async function ensureWorkOrderFromInvoice(
       },
     })
 
-    await syncInternalTaskForWorkOrder(tx, {
-      ordenId: orden.id,
-      empresaId: args.empresaId,
-      actorUserId: args.createdById,
-    })
-
     return orden
   }
 
@@ -462,12 +444,6 @@ export async function ensureWorkOrderFromInvoice(
       posInvoice: { select: { id: true, numero: true } },
       etapas: true,
     },
-  })
-
-  await syncInternalTaskForWorkOrder(tx, {
-    ordenId: orden.id,
-    empresaId: args.empresaId,
-    actorUserId: args.createdById,
   })
 
   return orden

@@ -1,4 +1,4 @@
-import { CrmTaskPriority, CrmTaskStatus, EstadoOrden, Prisma, Prioridad } from '@prisma/client'
+import { CrmTaskPriority, CrmTaskStatus, Prisma, Prioridad } from '@prisma/client'
 import { appendTaskHistory } from '@/lib/crm-task-workspaces'
 
 type DbClient = Prisma.TransactionClient
@@ -11,13 +11,6 @@ function mapOrderPriorityToTaskPriority(priority?: Prioridad | null) {
   if (priority === 'ALTA') return CrmTaskPriority.HIGH
   if (priority === 'BAJA') return CrmTaskPriority.LOW
   return CrmTaskPriority.NORMAL
-}
-
-function mapOrderStatusToTaskStatus(status: EstadoOrden) {
-  if (status === 'PENDIENTE') return CrmTaskStatus.OPEN
-  if (status === 'ENTREGADA' || status === 'FACTURADO' || status === 'CERRADO' || status === 'LISTA_ENTREGA') return CrmTaskStatus.DONE
-  if (status === 'CANCELADA') return CrmTaskStatus.CANCELED
-  return CrmTaskStatus.IN_PROGRESS
 }
 
 function buildTaskTitle(numero: string, clienteNombre?: string | null) {
@@ -89,17 +82,12 @@ export async function syncInternalTaskForWorkOrder(
       fechaEntrega: true,
       assignedToUserId: true,
       cliente: { select: { nombre: true } },
-      tareaSeguimiento: {
-        select: {
-          id: true,
-          assignedToUserId: true,
-          status: true,
-        },
-      },
+      tareaSeguimiento: { select: { id: true } },
     },
   })
 
   if (!orden) return null
+  if (!orden.tareaSeguimiento) return null
 
   const title = buildTaskTitle(orden.numero, orden.cliente?.nombre)
   const description = buildTaskDescription({
@@ -107,46 +95,82 @@ export async function syncInternalTaskForWorkOrder(
     observaciones: orden.observaciones,
     itemsSnapshot: orden.itemsSnapshot,
   })
-  const taskStatus = mapOrderStatusToTaskStatus(orden.estado)
   const taskPriority = mapOrderPriorityToTaskPriority(orden.prioridad)
 
-  if (orden.tareaSeguimiento) {
-    const updated = await client.crmTask.update({
-      where: { id: orden.tareaSeguimiento.id },
-      data: {
-        sedeId: orden.sedeId ?? null,
-        clienteId: orden.clienteId,
-        title,
-        description,
-        dueAt: orden.fechaEntrega ?? null,
-        status: taskStatus,
-        priority: taskPriority,
-        assignedToUserId: orden.assignedToUserId ?? null,
-      },
-      select: { id: true },
-    })
+  const updated = await client.crmTask.update({
+    where: { id: orden.tareaSeguimiento.id },
+    data: {
+      sedeId: orden.sedeId ?? null,
+      clienteId: orden.clienteId,
+      title,
+      description,
+      dueAt: orden.fechaEntrega ?? null,
+      priority: taskPriority,
+      assignedToUserId: orden.assignedToUserId ?? null,
+    },
+    select: { id: true },
+  })
 
-    await syncTaskAssignments(client, {
-      empresaId: args.empresaId,
-      taskId: updated.id,
+  await syncTaskAssignments(client, {
+    empresaId: args.empresaId,
+    taskId: updated.id,
+    assignedToUserId: orden.assignedToUserId,
+  })
+
+  await appendTaskHistory(client, {
+    empresaId: args.empresaId,
+    taskId: updated.id,
+    actorUserId: args.actorUserId,
+    type: 'UPDATED',
+    message: `Datos sincronizados desde la orden ${orden.numero}.`,
+    metadata: {
+      ordenTrabajoId: orden.id,
       assignedToUserId: orden.assignedToUserId,
-    })
+    },
+  })
 
-    await appendTaskHistory(client, {
-      empresaId: args.empresaId,
-      taskId: updated.id,
-      actorUserId: args.actorUserId,
-      type: 'UPDATED',
-      message: `Sincronizada desde la orden ${orden.numero}.`,
-      metadata: {
-        ordenTrabajoId: orden.id,
-        assignedToUserId: orden.assignedToUserId,
-        estadoOrden: orden.estado,
-      },
-    })
+  return updated
+}
 
-    return updated
+export async function createInternalTaskForWorkOrder(
+  client: DbClient,
+  args: {
+    ordenId: string
+    empresaId: string
+    actorUserId: string
+  },
+) {
+  const orden = await client.ordenTrabajo.findUnique({
+    where: { id: args.ordenId },
+    select: {
+      id: true,
+      numero: true,
+      sedeId: true,
+      clienteId: true,
+      prioridad: true,
+      areaResponsable: true,
+      observaciones: true,
+      itemsSnapshot: true,
+      fechaEntrega: true,
+      assignedToUserId: true,
+      cliente: { select: { nombre: true } },
+      tareaSeguimiento: { select: { id: true } },
+    },
+  })
+
+  if (!orden) return null
+  if (orden.tareaSeguimiento) return orden.tareaSeguimiento
+  if (!orden.assignedToUserId) {
+    throw new Error('WORK_ORDER_TASK_ASSIGNEE_REQUIRED')
   }
+
+  const title = buildTaskTitle(orden.numero, orden.cliente?.nombre)
+  const description = buildTaskDescription({
+    areaResponsable: orden.areaResponsable,
+    observaciones: orden.observaciones,
+    itemsSnapshot: orden.itemsSnapshot,
+  })
+  const taskPriority = mapOrderPriorityToTaskPriority(orden.prioridad)
 
   const created = await client.crmTask.create({
     data: {
@@ -157,7 +181,7 @@ export async function syncInternalTaskForWorkOrder(
       title,
       description,
       dueAt: orden.fechaEntrega ?? null,
-      status: taskStatus,
+      status: CrmTaskStatus.OPEN,
       priority: taskPriority,
       assignedToUserId: orden.assignedToUserId ?? null,
       createdById: args.actorUserId,
@@ -177,11 +201,10 @@ export async function syncInternalTaskForWorkOrder(
     taskId: created.id,
     actorUserId: args.actorUserId,
     type: 'CREATED',
-    message: `Tarea creada automáticamente desde la orden ${orden.numero}.`,
+    message: `Tarea creada desde la orden ${orden.numero}.`,
     metadata: {
       ordenTrabajoId: orden.id,
       assignedToUserId: orden.assignedToUserId,
-      estadoOrden: orden.estado,
     },
   })
 
