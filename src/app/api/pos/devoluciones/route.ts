@@ -8,6 +8,7 @@ import {
   InventoryMovementSourceType,
   PosInvoiceStatus,
 } from '@prisma/client'
+import { reserveNextPosReturnNumber } from '@/lib/pos-numbering'
 
 export const runtime = 'nodejs'
 
@@ -71,11 +72,6 @@ async function resolveWarehouseId(
   })
 
   return any?.id ?? null
-}
-
-function formatPosNumber(prefix: string, seq: number): string {
-  const padded = String(seq).padStart(6, '0')
-  return `${prefix}-${padded}`
 }
 
 type ReturnItemInput = {
@@ -180,16 +176,8 @@ export async function POST(request: Request) {
             })
           : await resolveWarehouseId(tx, { empresaId, sedeId: access.sedeId, warehouseId: null })
 
-      const seq = await tx.posSequence.upsert({
-        where: { sedeId: access.sedeId },
-        create: { sedeId: access.sedeId, nextInvoiceNumber: 1, nextReturnNumber: 2 },
-        update: { nextReturnNumber: { increment: 1 } },
-        select: { nextReturnNumber: true },
-      })
-
-      const seqNumber = seq.nextReturnNumber - 1
       const prefix = `DEV${sede.codigo ? `-${sede.codigo}` : ''}`
-      const numero = formatPosNumber(prefix, seqNumber)
+      const numero = await reserveNextPosReturnNumber(tx, { sedeId: access.sedeId, prefix })
 
       const resolvedItems = await Promise.all(
         normalizedItems.map(async (it) => {

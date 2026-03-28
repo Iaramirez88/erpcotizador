@@ -1,4 +1,5 @@
 import { PosInvoiceStatus, Prisma } from '@prisma/client'
+import { reserveNextPosInvoiceNumber } from '@/lib/pos-numbering'
 
 function n(value: unknown): number {
   const num = typeof value === 'number' ? value : Number(value)
@@ -58,10 +59,6 @@ async function resolveWarehouseId(tx: Prisma.TransactionClient, args: { empresaI
   })
 
   return warehouse?.id ?? null
-}
-
-function formatPosNumber(prefix: string, seq: number) {
-  return `${prefix}-${String(seq).padStart(6, '0')}`
 }
 
 function groupItems(
@@ -163,16 +160,8 @@ export async function ensureInvoiceFromQuote(
   const createdBy = await tx.user.findUnique({ where: { id: args.createdById }, select: { id: true } })
   const warehouseId = await resolveWarehouseId(tx, { empresaId: args.empresaId, sedeId: args.sedeId })
 
-  const seq = await tx.posSequence.upsert({
-    where: { sedeId: args.sedeId },
-    create: { sedeId: args.sedeId, nextInvoiceNumber: 2, nextReturnNumber: 1 },
-    update: { nextInvoiceNumber: { increment: 1 } },
-    select: { nextInvoiceNumber: true },
-  })
-
-  const seqNumber = seq.nextInvoiceNumber - 1
   const prefix = `POS${sede.codigo ? `-${sede.codigo}` : ''}`
-  const numero = formatPosNumber(prefix, seqNumber)
+  const numero = await reserveNextPosInvoiceNumber(tx, { sedeId: args.sedeId, prefix })
 
   const grouped = groupItems(cotizacion.items)
   if (!grouped.length) throw new QuoteInvoiceError('NO_ITEMS')

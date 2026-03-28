@@ -10,6 +10,7 @@ import {
   InventoryMovementSourceType,
 } from '@prisma/client'
 import { ensureWorkOrderFromInvoice, resolveClienteIdForPosInvoice, WorkOrderClientResolutionError } from '@/lib/work-orders'
+import { reserveNextPosInvoiceNumber } from '@/lib/pos-numbering'
 
 export const runtime = 'nodejs'
 
@@ -75,11 +76,6 @@ async function resolveWarehouseId(tx: Prisma.TransactionClient, args: { empresaI
   return any?.id ?? null
 }
 
-function formatPosNumber(prefix: string, seq: number): string {
-  const padded = String(seq).padStart(6, '0')
-  return `${prefix}-${padded}`
-}
-
 type InvoiceItemInput = {
   materialId?: string | null
   descripcion?: string
@@ -126,11 +122,15 @@ function mapCreateInvoiceError(error: unknown) {
     const metaField = getPrismaErrorMetaField(error)
 
     if (error.code === 'P2002') {
-      if (metaField.includes('numero')) {
+      if (metaField.includes('numero') || metaField.includes('pos_invoices_numero')) {
         return NextResponse.json(
           { error: 'El consecutivo POS ya existe. Intenta crear la factura nuevamente.' },
           { status: 409 }
         )
+      }
+
+      if (metaField.includes('cotizacionId')) {
+        return NextResponse.json({ error: 'Esta cotización ya fue convertida a factura POS.' }, { status: 409 })
       }
 
       return NextResponse.json({ error: 'Ya existe un registro duplicado al crear la factura POS' }, { status: 409 })
@@ -258,16 +258,8 @@ export async function POST(request: Request) {
 
       const warehouseId = await resolveWarehouseId(tx, { empresaId, sedeId: access.sedeId, warehouseId: body?.warehouseId })
 
-      const seq = await tx.posSequence.upsert({
-        where: { sedeId: access.sedeId },
-        create: { sedeId: access.sedeId, nextInvoiceNumber: 2, nextReturnNumber: 1 },
-        update: { nextInvoiceNumber: { increment: 1 } },
-        select: { nextInvoiceNumber: true },
-      })
-
-      const seqNumber = seq.nextInvoiceNumber - 1
       const prefix = `POS${sede.codigo ? `-${sede.codigo}` : ''}`
-      const numero = formatPosNumber(prefix, seqNumber)
+      const numero = await reserveNextPosInvoiceNumber(tx, { sedeId: access.sedeId, prefix })
 
       const resolvedItems = await Promise.all(
         normalizedItems.map(async (it) => {
@@ -464,6 +456,9 @@ export async function POST(request: Request) {
       }
       if (error.message === 'PAYMENTS_TOTAL_MISMATCH') {
         return NextResponse.json({ error: 'La suma de pagos debe ser igual al total' }, { status: 400 })
+      }
+      if (error.message === 'POS_INVOICE_NUMBER_EXHAUSTED') {
+        return NextResponse.json({ error: 'No se pudo reservar un consecutivo POS único. Intenta nuevamente.' }, { status: 409 })
       }
     }
 
