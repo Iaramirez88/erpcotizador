@@ -1,5 +1,6 @@
 import { Prioridad, Prisma } from '@prisma/client'
 import { generarNumeroOrden } from '@/lib/utils'
+import { syncInternalTaskForWorkOrder } from '@/lib/work-order-task-sync'
 
 const WORK_ORDER_STAGES = [
   { nombre: 'Preproducción', secuencia: 1 },
@@ -255,7 +256,7 @@ export async function ensureWorkOrderFromQuote(
   }
 
   if (existing) {
-    return tx.ordenTrabajo.update({
+    const orden = await tx.ordenTrabajo.update({
       where: { id: existing.id },
       data: syncPayload,
       include: {
@@ -265,11 +266,19 @@ export async function ensureWorkOrderFromQuote(
         etapas: true,
       },
     })
+
+    await syncInternalTaskForWorkOrder(tx, {
+      ordenId: orden.id,
+      empresaId: args.empresaId,
+      actorUserId: args.createdById,
+    })
+
+    return orden
   }
 
   const numero = await getNextWorkOrderNumber(tx)
 
-  return tx.ordenTrabajo.create({
+  const orden = await tx.ordenTrabajo.create({
     data: {
       numero,
       ...createPayload,
@@ -284,6 +293,14 @@ export async function ensureWorkOrderFromQuote(
       etapas: true,
     },
   })
+
+  await syncInternalTaskForWorkOrder(tx, {
+    ordenId: orden.id,
+    empresaId: args.empresaId,
+    actorUserId: args.createdById,
+  })
+
+  return orden
 }
 
 export async function ensureWorkOrderFromInvoice(
@@ -409,7 +426,7 @@ export async function ensureWorkOrderFromInvoice(
   })
 
   if (existing) {
-    return tx.ordenTrabajo.update({
+    const orden = await tx.ordenTrabajo.update({
       where: { id: existing.id },
       data: syncPayload,
       include: {
@@ -419,11 +436,19 @@ export async function ensureWorkOrderFromInvoice(
         etapas: true,
       },
     })
+
+    await syncInternalTaskForWorkOrder(tx, {
+      ordenId: orden.id,
+      empresaId: args.empresaId,
+      actorUserId: args.createdById,
+    })
+
+    return orden
   }
 
   const numero = await getNextWorkOrderNumber(tx)
 
-  return tx.ordenTrabajo.create({
+  const orden = await tx.ordenTrabajo.create({
     data: {
       numero,
       ...createPayload,
@@ -438,4 +463,12 @@ export async function ensureWorkOrderFromInvoice(
       etapas: true,
     },
   })
+
+  await syncInternalTaskForWorkOrder(tx, {
+    ordenId: orden.id,
+    empresaId: args.empresaId,
+    actorUserId: args.createdById,
+  })
+
+  return orden
 }

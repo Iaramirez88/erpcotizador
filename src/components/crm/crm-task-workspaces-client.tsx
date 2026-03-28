@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -258,6 +259,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResp
 }
 
 export function CrmTaskWorkspacesClient() {
+  const searchParams = useSearchParams()
   const attachmentInputRef = useRef<HTMLInputElement | null>(null)
   const customFieldFileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -291,6 +293,8 @@ export function CrmTaskWorkspacesClient() {
   const [detailForm, setDetailForm] = useState({ id: '', title: '', description: '', dueAt: '', priority: 'NORMAL' as TaskPriority, status: 'OPEN' as TaskStatus, colorHex: '#1D4ED8', attachmentsJson: [] as TaskAttachment[], customFieldsJson: [] as TaskCustomField[], assignedToUserIds: [] as string[], archived: false })
   const [customFieldDraft, setCustomFieldDraft] = useState({ label: '', type: 'TEXT' as TaskCustomFieldType, textValue: '', file: null as TaskAttachment | null })
   const [workspaceSettingsForm, setWorkspaceSettingsForm] = useState({ id: '', name: '', description: '', ownerUserId: '', members: [] as Array<{ userId: string; role: WorkspaceRole }> })
+  const requestedTaskId = searchParams?.get('taskId') || ''
+  const requestedWorkspaceId = searchParams?.get('workspaceId') || ''
 
   const selectedWorkspace = useMemo(() => workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null, [selectedWorkspaceId, workspaces])
   const canEditTasks = Boolean(selectedWorkspace?.permissions?.canEditTasks)
@@ -329,6 +333,9 @@ export function CrmTaskWorkspacesClient() {
     const row = detailRes.success && detailRes.data ? normalizeTask(detailRes.data) : null
     setSelectedTask(row)
     if (row) {
+      if (row.workspace?.id && row.workspace.id !== selectedWorkspaceId) {
+        setSelectedWorkspaceId(row.workspace.id)
+      }
       setDetailForm({
         id: row.id,
         title: row.title,
@@ -349,6 +356,14 @@ export function CrmTaskWorkspacesClient() {
 
   useEffect(() => { void loadBase() }, [])
   useEffect(() => { void loadTasks(selectedWorkspaceId) }, [loadTasks, selectedWorkspaceId])
+
+  useEffect(() => {
+    if (!requestedTaskId) return
+    if (requestedWorkspaceId && requestedWorkspaceId !== selectedWorkspaceId) {
+      setSelectedWorkspaceId(requestedWorkspaceId)
+    }
+    void loadTaskDetail(requestedTaskId)
+  }, [requestedTaskId, requestedWorkspaceId, selectedWorkspaceId])
 
   useEffect(() => {
     if (!selectedWorkspace) return

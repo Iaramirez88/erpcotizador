@@ -34,6 +34,8 @@ import {
   UserRound,
   ClipboardList,
   PencilLine,
+  ListTodo,
+  ExternalLink,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -65,6 +67,12 @@ interface OrdenTrabajo {
   subtotal: number;
   iva: number;
   total: number;
+  tareaSeguimiento?: {
+    id: string;
+    title: string;
+    status: 'OPEN' | 'IN_PROGRESS' | 'DONE' | 'CANCELED';
+    workspaceId?: string | null;
+  } | null;
   assignedTo?: {
     id: string;
     name: string | null;
@@ -303,6 +311,26 @@ export default function OrdenesPage() {
     return orden.assignedTo?.name || orden.assignedTo?.email || orden.vendedor?.name || orden.vendedor?.email || t('orders.fields.unassigned');
   };
 
+  const getTaskStatusClasses = (status?: 'OPEN' | 'IN_PROGRESS' | 'DONE' | 'CANCELED' | null) => {
+    if (status === 'OPEN') return 'border-slate-200 bg-slate-100 text-slate-800';
+    if (status === 'IN_PROGRESS') return 'border-amber-200 bg-amber-100 text-amber-900';
+    if (status === 'DONE') return 'border-emerald-200 bg-emerald-100 text-emerald-800';
+    if (status === 'CANCELED') return 'border-rose-200 bg-rose-100 text-rose-800';
+    return 'border-slate-200 bg-slate-100 text-slate-600';
+  };
+
+  const getTaskStatusLabel = (status?: 'OPEN' | 'IN_PROGRESS' | 'DONE' | 'CANCELED' | null) => {
+    if (!status) return t('orders.fields.noTask');
+    return t(`orders.taskStatus.${status}`);
+  };
+
+  const buildTaskHref = (orden: OrdenTrabajo) => {
+    if (!orden.tareaSeguimiento?.id) return '/dashboard/espacios-trabajo';
+    const params = new URLSearchParams({ taskId: orden.tareaSeguimiento.id });
+    if (orden.tareaSeguimiento.workspaceId) params.set('workspaceId', orden.tareaSeguimiento.workspaceId);
+    return `/dashboard/espacios-trabajo?${params.toString()}`;
+  };
+
   const getOrderDetails = (orden: OrdenTrabajo) => {
     const notes = (orden.observaciones || '').trim();
     if (notes) return notes;
@@ -498,7 +526,7 @@ export default function OrdenesPage() {
                       )}
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1.05fr_1.4fr_0.95fr_0.95fr_0.7fr]">
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1.05fr_1.35fr_0.9fr_0.95fr_0.85fr_0.9fr]">
                       <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                         <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{t('orders.columns.client')}</p>
                         <p className="text-sm font-semibold text-slate-950">{orden.cliente.nombre || naText}</p>
@@ -526,6 +554,30 @@ export default function OrdenesPage() {
                         </p>
                         <p className="text-sm font-semibold text-slate-950">{formatDateTime(orden.fechaEntrega)}</p>
                         <p className="mt-1 text-xs text-slate-500">{t('orders.columns.createdAt')}: {formatDate(orden.createdAt)}</p>
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                        <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          <ListTodo className="h-4 w-4" />
+                          {t('orders.columns.internalTracking')}
+                        </p>
+                        {orden.tareaSeguimiento ? (
+                          <>
+                            <p className="truncate text-sm font-semibold text-slate-950">{orden.tareaSeguimiento.title}</p>
+                            <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getTaskStatusClasses(orden.tareaSeguimiento.status)}`}>
+                              {getTaskStatusLabel(orden.tareaSeguimiento.status)}
+                            </span>
+                            <div className="mt-3">
+                              <Link href={buildTaskHref(orden)}>
+                                <Button variant="outline" size="sm" className="h-8 rounded-xl px-3">
+                                  <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                                  {t('orders.actions.openTask')}
+                                </Button>
+                              </Link>
+                            </div>
+                          </>
+                        ) : (
+                          <p className="text-sm text-slate-500">{t('orders.fields.noTask')}</p>
+                        )}
                       </div>
                       <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                         <p className="mb-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{t('orders.columns.total')}</p>

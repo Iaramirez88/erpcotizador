@@ -75,6 +75,14 @@ export async function GET(request: NextRequest) {
         itemsSnapshot: true,
         createdAt: true,
         assignedAt: true,
+        tareaSeguimiento: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            workspaceId: true,
+          },
+        },
         assignedTo: {
           select: {
             id: true,

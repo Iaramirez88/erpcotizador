@@ -2057,6 +2057,9 @@ model CrmTask {
   clienteId String?
   cliente   Cliente? @relation("CrmTaskCliente", fields: [clienteId], references: [id], onDelete: SetNull)
 
+  ordenTrabajoId String?      @unique
+  ordenTrabajo   OrdenTrabajo? @relation("OrdenTrabajoTask", fields: [ordenTrabajoId], references: [id], onDelete: SetNull)
+
   assignedToUserId String?
   assignedTo       User?   @relation("CrmTaskAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   assignments      CrmTaskAssignment[]
@@ -2074,6 +2077,7 @@ model CrmTask {
   @@index([leadId])
   @@index([opportunityId])
   @@index([clienteId])
+  @@index([ordenTrabajoId])
   @@map("crm_tasks")
 }
 
@@ -3019,6 +3023,7 @@ model OrdenTrabajo {
   areaResponsable String? @db.VarChar(120)
   observaciones  String? @db.Text
   archivosDiseno Json? // URLs de archivos
+  tareaSeguimiento CrmTask? @relation("OrdenTrabajoTask")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

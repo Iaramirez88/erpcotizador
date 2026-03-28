@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireApiAccess } from '@/lib/api-rbac';
 import { EstadoOrden, ModuleKey, Prisma } from '@prisma/client';
+import { syncInternalTaskForWorkOrder } from '@/lib/work-order-task-sync';
 
 function normalizeOptionalString(value: unknown) {
   if (typeof value !== 'string') return null
@@ -40,6 +41,14 @@ export async function GET(
             id: true,
             name: true,
             email: true,
+          },
+        },
+        tareaSeguimiento: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            assignedToUserId: true,
           },
         },
         cotizacion: {
@@ -207,6 +216,12 @@ export async function PUT(
         },
       })
     }
+
+    await syncInternalTaskForWorkOrder(prisma, {
+      ordenId: before.id,
+      empresaId: access.empresaId,
+      actorUserId: access.userId,
+    })
 
     return NextResponse.json({ success: true, data: orden });
   } catch (error) {
