@@ -1,3 +1,10 @@
+DO $$
+BEGIN
+  CREATE TYPE "ProductCustomFieldType" AS ENUM ('TEXT', 'LONG_TEXT', 'NUMBER', 'BOOLEAN', 'DATE');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
 ALTER TABLE "materiales"
 ADD COLUMN "tipoNombre" TEXT,
 ADD COLUMN "extraFields" JSONB NOT NULL DEFAULT '{}';
