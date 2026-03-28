@@ -85,6 +85,8 @@ export async function POST(request: Request, context: RouteContext) {
             type: 'WARNING',
             title: `Solicitud rechazada: ${reqRow.nombre}`,
             body: decisionNote ? `Motivo: ${decisionNote}` : 'Un administrador rechazó tu solicitud de producto personalizado.',
+            actionUrl: '/dashboard/productos?notif=my-custom-requests',
+            actionLabel: 'Ver solicitud',
           },
         })
 
@@ -171,6 +173,8 @@ export async function POST(request: Request, context: RouteContext) {
           body: decisionNote
             ? `Comentario: ${decisionNote}`
             : 'Un administrador aprobó tu solicitud de producto personalizado. Ya puedes usar el material en el cotizador.',
+          actionUrl: '/dashboard/productos?notif=my-custom-requests',
+          actionLabel: 'Ver solicitud',
         },
       })
 

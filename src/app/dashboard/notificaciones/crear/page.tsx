@@ -10,6 +10,7 @@ import { isSuperAdminEmail } from '@/lib/super-admin'
 import { requireEmpresaIdForUser } from '@/lib/rbac'
 import { NotificationType, Prisma } from '@prisma/client'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { normalizeNotificationActionLabel, normalizeNotificationActionUrl } from '@/lib/notifications'
 
 export const runtime = 'nodejs'
 
@@ -94,6 +95,8 @@ export default async function CrearNotificacionPage() {
     const type = String(formData.get('type') ?? 'INFO') as NotificationType
     const title = String(formData.get('title') ?? '').trim()
     const body = String(formData.get('body') ?? '').trim()
+    const actionUrl = normalizeNotificationActionUrl(formData.get('actionUrl'))
+    const actionLabel = normalizeNotificationActionLabel(formData.get('actionLabel'))
     const sedeId = String(formData.get('sedeId') ?? '').trim()
     const userId = String(formData.get('userId') ?? '').trim()
     const publishAt = parsePublishAt(formData.get('publishAt') as string | null)
@@ -141,6 +144,8 @@ export default async function CrearNotificacionPage() {
       type,
       title,
       body: body || null,
+      actionUrl,
+      actionLabel,
       ...(publishAt ? { publishAt } : {}),
     }))
 
@@ -238,6 +243,17 @@ export default async function CrearNotificacionPage() {
               <div className="space-y-2 md:col-span-2">
                 <label className="text-sm font-medium">Mensaje</label>
                 <Textarea name="body" placeholder="Escribe el detalle (opcional)" rows={5} />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Link de destino</label>
+                <Input name="actionUrl" placeholder="/dashboard/productos?notif=custom-requests" />
+                <p className="text-xs text-muted-foreground">Usa una ruta interna para llevar al usuario directo al contexto.</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Texto del botón</label>
+                <Input name="actionLabel" placeholder="Ej: Revisar solicitud" />
               </div>
 
               <div className="space-y-2">

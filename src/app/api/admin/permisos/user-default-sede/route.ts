@@ -103,6 +103,8 @@ export async function PATCH(request: Request) {
         body: `Tu sede por defecto fue actualizada a ${sede.nombre}.`,
         sedeId: sede.id,
         empresaId,
+        actionUrl: '/dashboard/perfil',
+        actionLabel: 'Ver perfil',
       },
     })
   })

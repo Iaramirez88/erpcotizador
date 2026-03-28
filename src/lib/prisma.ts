@@ -45,6 +45,11 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
 
   const hasNotificationArchivedAt = runtimeModelHasField(prismaClient, 'Notification', 'archivedAt')
   const hasNotificationPublishAt = runtimeModelHasField(prismaClient, 'Notification', 'publishAt')
+  const hasMaterialRequiresWorkOrder = runtimeModelHasField(prismaClient, 'Material', 'requiresWorkOrder')
+  const hasPosInvoiceCotizacionId = runtimeModelHasField(prismaClient, 'PosInvoice', 'cotizacionId')
+  const hasOrdenTrabajoSourceType = runtimeModelHasField(prismaClient, 'OrdenTrabajo', 'sourceType')
+  const hasMaterialTipoNombre = runtimeModelHasField(prismaClient, 'Material', 'tipoNombre')
+  const hasMaterialExtraFields = runtimeModelHasField(prismaClient, 'Material', 'extraFields')
 
   const hasWorkspaceAccessRequestDelegate =
     typeof (prismaClient as any)?.workspaceAccessRequest?.findMany === 'function'
@@ -75,6 +80,9 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasInternalChatThreadDelegate = typeof (prismaClient as any)?.internalChatThread?.findMany === 'function'
   const hasInternalChatParticipantDelegate = typeof (prismaClient as any)?.internalChatParticipant?.findMany === 'function'
   const hasInternalChatMessageDelegate = typeof (prismaClient as any)?.internalChatMessage?.findMany === 'function'
+  const hasProductTypeOptionDelegate = typeof (prismaClient as any)?.productTypeOption?.findMany === 'function'
+  const hasProductCategoryOptionDelegate = typeof (prismaClient as any)?.productCategoryOption?.findMany === 'function'
+  const hasProductCustomFieldDefinitionDelegate = typeof (prismaClient as any)?.productCustomFieldDefinition?.findMany === 'function'
 
   if (
     !hasTrialTier ||
@@ -82,6 +90,11 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasPlanOwnerUserId ||
     !hasNotificationArchivedAt ||
     !hasNotificationPublishAt ||
+    !hasMaterialRequiresWorkOrder ||
+    !hasPosInvoiceCotizacionId ||
+    !hasOrdenTrabajoSourceType ||
+    !hasMaterialTipoNombre ||
+    !hasMaterialExtraFields ||
     !hasWorkspaceAccessRequestDelegate ||
     !hasHelpVideoDelegate ||
     !hasEmpresaTemplateDelegate ||
@@ -106,7 +119,10 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasLitografiaPaperRequestDelegate ||
     !hasInternalChatThreadDelegate ||
     !hasInternalChatParticipantDelegate ||
-    !hasInternalChatMessageDelegate
+    !hasInternalChatMessageDelegate ||
+    !hasProductTypeOptionDelegate ||
+    !hasProductCategoryOptionDelegate ||
+    !hasProductCustomFieldDefinitionDelegate
   ) {
     prismaClient = undefined
   }

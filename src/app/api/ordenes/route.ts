@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireApiAccess } from '@/lib/api-rbac';
 import { checkPlanLimit } from '@/lib/plan-limits';
-import { ModuleKey } from '@prisma/client';
+import { ModuleKey, Prioridad } from '@prisma/client';
+import { ensureInvoiceFromQuote, QuoteInvoiceError } from '@/lib/quote-invoicing';
+import { ensureWorkOrderFromInvoice, ensureWorkOrderFromQuote, WorkOrderClientResolutionError } from '@/lib/work-orders';
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,6 +22,7 @@ export async function GET(request: NextRequest) {
       where.OR = [
         { numero: { contains: busqueda, mode: 'insensitive' } },
         { cliente: { nombre: { contains: busqueda, mode: 'insensitive' } } },
+        { posInvoice: { numero: { contains: busqueda, mode: 'insensitive' } } },
       ];
     }
 
@@ -35,8 +38,12 @@ export async function GET(request: NextRequest) {
         estado: true,
         prioridad: true,
         fechaEntrega: true,
+        fechaInicio: true,
         total: true,
         observaciones: true,
+        sourceType: true,
+        sourceId: true,
+        itemsSnapshot: true,
         createdAt: true,
         assignedAt: true,
         assignedTo: {
@@ -72,6 +79,12 @@ export async function GET(request: NextRequest) {
             },
           },
         },
+        posInvoice: {
+          select: {
+            id: true,
+            numero: true,
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
@@ -95,97 +108,84 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(limit, { status: 402 });
     }
 
-    const { cotizacionId } = await request.json();
+    const { cotizacionId, invoiceId, priority } = await request.json();
 
-    if (!cotizacionId) {
+    if (!cotizacionId && !invoiceId) {
       return NextResponse.json(
-        { error: 'ID de cotización requerido' },
+        { error: 'Se requiere una cotización o una factura POS' },
         { status: 400 }
       );
     }
 
-    // Buscar la cotización
-    const cotizacion = await prisma.cotizacion.findFirst({
-      where: { id: cotizacionId, sedeId: access.sedeId },
-      include: {
-        items: true,
-      },
+    const normalizedPriority = typeof priority === 'string' && priority in Prioridad
+      ? (priority as Prioridad)
+      : Prioridad.NORMAL;
+
+    const orden = await prisma.$transaction(async (tx) => {
+      if (cotizacionId) {
+        const approved = await tx.cotizacion.updateMany({
+          where: {
+            id: cotizacionId,
+            OR: [{ sedeId: access.sedeId }, { sedeId: null }],
+          },
+          data: { estado: 'APROBADA', sedeId: access.sedeId },
+        });
+
+        if (approved.count === 0) {
+          throw new QuoteInvoiceError('COTIZACION_NOT_FOUND');
+        }
+
+        const invoice = await ensureInvoiceFromQuote(tx, {
+          cotizacionId,
+          empresaId: access.empresaId,
+          sedeId: access.sedeId,
+          createdById: access.userId,
+        });
+
+        return ensureWorkOrderFromQuote(tx, {
+          cotizacionId,
+          empresaId: access.empresaId,
+          sedeId: access.sedeId,
+          createdById: access.userId,
+          posInvoiceId: invoice.id,
+          priority: normalizedPriority,
+        });
+      }
+
+      return ensureWorkOrderFromInvoice(tx, {
+        invoiceId,
+        empresaId: access.empresaId,
+        sedeId: access.sedeId,
+        createdById: access.userId,
+        priority: normalizedPriority,
+      });
     });
 
-    if (!cotizacion) {
+    if (!orden) {
       return NextResponse.json(
-        { success: false, error: 'Cotización no encontrada' },
-        { status: 404 }
-      );
-    }
-
-    // Verificar si ya tiene una orden
-    const ordenExistente = await prisma.ordenTrabajo.findFirst({
-      where: {
-        cotizacion: {
-          id: cotizacion.id,
-        },
-      },
-    });
-
-    if (ordenExistente) {
-      return NextResponse.json(
-        { success: false, error: 'Esta cotización ya tiene una orden de trabajo' },
+        { success: false, error: 'Ningún ítem requiere orden de trabajo' },
         { status: 400 }
       );
     }
-
-    // Generar número de orden (ORD-00001)
-    const ultimaOrden = await prisma.ordenTrabajo.findFirst({
-      orderBy: { createdAt: 'desc' },
-      select: { numero: true },
-    });
-
-    let numeroOrden = 'ORD-00001';
-    if (ultimaOrden) {
-      const ultimoNumero = parseInt(ultimaOrden.numero.split('-')[1]);
-      numeroOrden = `ORD-${String(ultimoNumero + 1).padStart(5, '0')}`;
-    }
-
-    // Crear orden de trabajo con los datos de la cotización
-    const orden = await prisma.ordenTrabajo.create({
-      data: {
-        numero: numeroOrden,
-        sedeId: cotizacion.sedeId ?? access.sedeId,
-        clienteId: cotizacion.clienteId,
-        vendedorId: cotizacion.vendedorId,
-        cotizacionId: cotizacion.id,
-        subtotal: cotizacion.subtotal,
-        iva: cotizacion.iva,
-        total: cotizacion.total,
-        estado: 'PENDIENTE',
-      },
-      include: {
-        cliente: true,
-        vendedor: {
-          select: {
-            name: true,
-            email: true,
-          },
-        },
-        cotizacion: {
-          select: {
-            numero: true,
-          },
-        },
-      },
-    });
-
-    // Actualizar estado de la cotización
-    await prisma.cotizacion.update({
-      where: { id: cotizacionId },
-      data: {
-        estado: 'APROBADA',
-      },
-    });
 
     return NextResponse.json({ success: true, data: orden });
   } catch (error) {
+    if (error instanceof QuoteInvoiceError) {
+      if (error.message === 'COTIZACION_NOT_FOUND') {
+        return NextResponse.json({ success: false, error: 'Cotización no encontrada' }, { status: 404 });
+      }
+      if (error.message === 'NO_ITEMS') {
+        return NextResponse.json({ success: false, error: 'La cotización no tiene ítems válidos para facturar' }, { status: 400 });
+      }
+    }
+
+    if (error instanceof WorkOrderClientResolutionError) {
+      return NextResponse.json(
+        { success: false, error: 'La factura requiere una orden de trabajo, pero el cliente no pudo identificarse.' },
+        { status: 400 }
+      );
+    }
+
     console.error('Error:', error);
     return NextResponse.json(
       { error: 'Error al crear orden de trabajo' },

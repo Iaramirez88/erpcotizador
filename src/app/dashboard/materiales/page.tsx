@@ -6,6 +6,7 @@
 "use client"
 
 import { useCallback, useMemo, useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ImportDialog } from "@/components/import/import-dialog"
 import { Input } from "@/components/ui/input"
@@ -22,6 +23,12 @@ import {
 } from "@/components/ui/dialog"
 import { CustomProductRequestsAdminDialog } from "@/components/materiales/custom-product-requests-admin-dialog"
 import { CustomProductRequestsMyDialog } from "@/components/materiales/custom-product-requests-my-dialog"
+import {
+  ProductConfigDialog,
+  type ProductCategoryOption,
+  type ProductCustomFieldDefinition,
+  type ProductTypeOption,
+} from "@/components/materiales/product-config-dialog"
 import { formatCurrency, formatUnidadMedidaLabel } from "@/lib/utils"
 
 interface Material {
@@ -29,6 +36,7 @@ interface Material {
   externalId?: string | null
   nombre: string
   tipo: string
+  tipoNombre?: string | null
   categoria?: string | null
   imagenUrl?: string | null
   ancho?: number | null
@@ -44,6 +52,8 @@ interface Material {
   unidadMedida: string
   proveedor?: string | null
   observaciones?: string | null
+  extraFields?: Record<string, unknown> | null
+  requiresWorkOrder?: boolean
   activo: boolean
   createdAt: string
   stocks?: Array<{
@@ -115,7 +125,37 @@ const UNIDADES_MEDIDA = [
   { value: "unidad", label: "Unidad" },
 ]
 
+const CUSTOM_FIELD_TYPE_LABELS: Record<ProductCustomFieldDefinition['fieldType'], string> = {
+  TEXT: 'Texto corto',
+  LONG_TEXT: 'Texto largo',
+  NUMBER: 'Número',
+  BOOLEAN: 'Sí / No',
+  DATE: 'Fecha',
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function normalizeExtraFields(value: unknown): Record<string, string | boolean> {
+  if (!isRecord(value)) return {}
+
+  const entries = Object.entries(value).map(([key, fieldValue]) => {
+    if (typeof fieldValue === 'boolean') return [key, fieldValue] as const
+    if (fieldValue == null) return [key, ''] as const
+    return [key, String(fieldValue)] as const
+  })
+
+  return Object.fromEntries(entries)
+}
+
+function parseFieldOptions(field: ProductCustomFieldDefinition): string[] {
+  if (!Array.isArray(field.optionsJson)) return []
+  return field.optionsJson.map((item) => String(item).trim()).filter(Boolean)
+}
+
 export default function ProductosPage() {
+  const searchParams = useSearchParams()
   const [materiales, setMateriales] = useState<Material[]>([])
   const [bodegas, setBodegas] = useState<Bodega[]>([])
   const [bodegasFiltroList, setBodegasFiltroList] = useState<Bodega[]>([])
@@ -156,6 +196,17 @@ export default function ProductosPage() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [customRequestsOpen, setCustomRequestsOpen] = useState(false)
   const [myCustomRequestsOpen, setMyCustomRequestsOpen] = useState(false)
+  const [productConfigOpen, setProductConfigOpen] = useState(false)
+  const [typeOptions, setTypeOptions] = useState<ProductTypeOption[]>([])
+  const [categoryOptions, setCategoryOptions] = useState<ProductCategoryOption[]>([])
+  const [customFieldDefinitions, setCustomFieldDefinitions] = useState<ProductCustomFieldDefinition[]>([])
+
+  useEffect(() => {
+    if (!searchParams) return
+    const notif = searchParams.get('notif')
+    if (notif === 'custom-requests') setCustomRequestsOpen(true)
+    if (notif === 'my-custom-requests') setMyCustomRequestsOpen(true)
+  }, [searchParams])
 
   const [proveedorMatches, setProveedorMatches] = useState<ProveedorLite[]>([])
   const [proveedorLoading, setProveedorLoading] = useState(false)
@@ -169,6 +220,7 @@ export default function ProductosPage() {
     externalId: "",
     nombre: "",
     tipo: "VINILO",
+    tipoNombre: "Vinilo",
     categoria: "",
     imagenUrl: "",
     ancho: "",
@@ -186,10 +238,62 @@ export default function ProductosPage() {
     stockScope: 'warehouse' as 'warehouse' | 'allSedes',
     proveedor: "",
     observaciones: "",
+    extraFields: {} as Record<string, string | boolean>,
+    requiresWorkOrder: false,
     activo: true
   })
 
   const [quantityDiscounts, setQuantityDiscounts] = useState<Array<{ minQty: string; discountPct: string }>>([])
+
+  const baseTypeOptions = useMemo(() => TIPOS_MATERIAL, [])
+
+  const availableTypeOptions = useMemo(() => {
+    const custom = typeOptions.map((option) => ({
+      value: option.nombre,
+      label: option.nombre,
+      baseTipo: option.baseTipo,
+      source: 'custom' as const,
+    }))
+
+    const base = TIPOS_MATERIAL.filter(
+      (tipo) => !custom.some((option) => option.value.toLowerCase() === tipo.label.toLowerCase())
+    ).map((tipo) => ({
+      value: tipo.label,
+      label: tipo.label,
+      baseTipo: tipo.value,
+      source: 'base' as const,
+    }))
+
+    return [...custom, ...base]
+  }, [typeOptions])
+
+  const availableCategoryOptions = useMemo(() => {
+    return Array.from(new Set([...CATEGORIAS_SUGERIDAS, ...categoryOptions.map((option) => option.nombre)])).sort((a, b) =>
+      a.localeCompare(b, 'es')
+    )
+  }, [categoryOptions])
+
+  const fetchConfiguracion = useCallback(async () => {
+    try {
+      const res = await fetch('/api/materiales/configuracion', { cache: 'no-store' })
+      const json = (await res.json().catch(() => null)) as {
+        success?: boolean
+        data?: {
+          typeOptions?: ProductTypeOption[]
+          categoryOptions?: ProductCategoryOption[]
+          customFields?: ProductCustomFieldDefinition[]
+        }
+      } | null
+
+      if (!res.ok || !json?.success || !json.data) return
+
+      setTypeOptions(Array.isArray(json.data.typeOptions) ? json.data.typeOptions : [])
+      setCategoryOptions(Array.isArray(json.data.categoryOptions) ? json.data.categoryOptions : [])
+      setCustomFieldDefinitions(Array.isArray(json.data.customFields) ? json.data.customFields : [])
+    } catch {
+      // noop
+    }
+  }, [])
 
   const unidadCobro = useMemo(() => {
     const u = String(formData.unidadMedida || '').trim().toLowerCase()
@@ -197,6 +301,10 @@ export default function ProductosPage() {
     if (u === 'ml' || u === 'm' || u === 'metro') return 'ml'
     return 'unidad'
   }, [formData.unidadMedida])
+
+  useEffect(() => {
+    void fetchConfiguracion()
+  }, [fetchConfiguracion])
 
   const tipoProducto = useMemo(() => {
     return unidadCobro === 'unidad' ? 'FISICO' : 'METRAJE'
@@ -689,6 +797,12 @@ export default function ProductosPage() {
         },
         body: JSON.stringify({
           ...restForm,
+          extraFields: Object.fromEntries(
+            Object.entries(restForm.extraFields).filter(([, value]) => {
+              if (typeof value === 'boolean') return true
+              return String(value ?? '').trim().length > 0
+            })
+          ),
           stockScope,
           warehouseId: stockScope === 'warehouse' ? (warehouseId || undefined) : undefined,
           quantityDiscounts: quantityDiscounts
@@ -749,6 +863,7 @@ export default function ProductosPage() {
       externalId: "",
       nombre: `${material.nombre} (copia)`,
       tipo: material.tipo,
+      tipoNombre: material.tipoNombre ?? TIPOS_MATERIAL.find((item) => item.value === material.tipo)?.label ?? material.tipo,
       categoria: material.categoria ?? "",
       imagenUrl: material.imagenUrl ?? "",
       ancho: material.ancho?.toString() || "",
@@ -766,6 +881,8 @@ export default function ProductosPage() {
       stockScope: 'warehouse',
       proveedor: material.proveedor ?? "",
       observaciones: material.observaciones ?? "",
+      extraFields: normalizeExtraFields(material.extraFields),
+      requiresWorkOrder: Boolean(material.requiresWorkOrder),
       activo: material.activo,
     })
     setIsModalOpen(true)
@@ -777,6 +894,7 @@ export default function ProductosPage() {
       externalId: material.externalId ?? "",
       nombre: material.nombre,
       tipo: material.tipo,
+      tipoNombre: material.tipoNombre ?? TIPOS_MATERIAL.find((item) => item.value === material.tipo)?.label ?? material.tipo,
       categoria: material.categoria || "",
       imagenUrl: material.imagenUrl ?? "",
       ancho: material.ancho?.toString() || "",
@@ -794,6 +912,8 @@ export default function ProductosPage() {
       stockScope: 'warehouse',
       proveedor: material.proveedor || "",
       observaciones: material.observaciones || "",
+      extraFields: normalizeExtraFields(material.extraFields),
+      requiresWorkOrder: Boolean(material.requiresWorkOrder),
       activo: material.activo
     })
 
@@ -842,6 +962,7 @@ export default function ProductosPage() {
       externalId: "",
       nombre: "",
       tipo: "VINILO",
+      tipoNombre: "Vinilo",
       categoria: "",
       imagenUrl: "",
       ancho: "",
@@ -859,6 +980,8 @@ export default function ProductosPage() {
       stockScope: 'warehouse',
       proveedor: "",
       observaciones: "",
+      extraFields: {},
+      requiresWorkOrder: false,
       activo: true
     })
 
@@ -925,6 +1048,15 @@ export default function ProductosPage() {
     <div className="space-y-6">
       <CustomProductRequestsAdminDialog open={customRequestsOpen} onOpenChange={setCustomRequestsOpen} />
       <CustomProductRequestsMyDialog open={myCustomRequestsOpen} onOpenChange={setMyCustomRequestsOpen} />
+      <ProductConfigDialog
+        open={productConfigOpen}
+        onOpenChange={setProductConfigOpen}
+        baseTypeOptions={baseTypeOptions}
+        typeOptions={typeOptions}
+        categoryOptions={categoryOptions}
+        customFieldDefinitions={customFieldDefinitions}
+        onRefresh={fetchConfiguracion}
+      />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -936,7 +1068,7 @@ export default function ProductosPage() {
         <div className="flex items-center gap-2">
           {isAdmin ? (
             <Button variant="outline" type="button" onClick={() => setCustomRequestsOpen(true)}>
-              Solicitudes personalizados
+              Solicitudes de personalizados
             </Button>
           ) : null}
           <span data-tour="materiales-import">
@@ -950,6 +1082,9 @@ export default function ProductosPage() {
           </span>
           <Button variant="outline" onClick={() => setIsExportOpen(true)}>
             Exportar Excel
+          </Button>
+          <Button variant="outline" type="button" onClick={() => setProductConfigOpen(true)}>
+            Configurar catálogos
           </Button>
           <Button onClick={() => { resetForm(); setIsModalOpen(true) }} data-tour="materiales-new">
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1098,7 +1233,7 @@ export default function ProductosPage() {
                   onChange={(e) => setCategoriaFiltro(e.target.value)}
                 />
                 <datalist id="export-categorias-sugeridas">
-                  {CATEGORIAS_SUGERIDAS.map((c) => (
+                  {availableCategoryOptions.map((c) => (
                     <option key={c} value={c} />
                   ))}
                 </datalist>
@@ -1378,6 +1513,7 @@ export default function ProductosPage() {
               <div className="divide-y">
                 {materiales.map((material) => {
                 const tipoLabel = TIPOS_MATERIAL.find((t) => t.value === material.tipo)?.label || material.tipo
+                const tipoComercial = String(material.tipoNombre ?? '').trim()
                 const externalIdTrim = String(material.externalId ?? '').trim()
                 const materialNombreView = externalIdTrim ? `(${externalIdTrim}) ${material.nombre}` : material.nombre
                 const specs = [
@@ -1420,7 +1556,8 @@ export default function ProductosPage() {
                           ) : null}
                         </div>
                         <div className="text-xs text-muted-foreground truncate">
-                          {tipoLabel}
+                          {tipoComercial || tipoLabel}
+                          {tipoComercial && tipoComercial !== tipoLabel ? ` · Base: ${tipoLabel}` : ""}
                           {material.categoria ? ` • ${material.categoria}` : ""}
                           {specs ? ` • ${specs}` : ""}
                         </div>
@@ -1541,6 +1678,32 @@ export default function ProductosPage() {
 
               {/* Tipo */}
               <div>
+                <Label htmlFor="tipoNombre">Tipo comercial *</Label>
+                <select
+                  id="tipoNombre"
+                  value={formData.tipoNombre}
+                  onChange={(e) => {
+                    const next = e.target.value
+                    const match = availableTypeOptions.find((option) => option.value === next)
+                    setFormData({
+                      ...formData,
+                      tipoNombre: next,
+                      tipo: match?.baseTipo ?? formData.tipo,
+                    })
+                  }}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  required
+                >
+                  {availableTypeOptions.map((tipo) => (
+                    <option key={`${tipo.source}-${tipo.value}`} value={tipo.value}>{tipo.label}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Este es el nombre visible del producto dentro del catálogo.
+                </p>
+              </div>
+
+              <div>
                 <Label htmlFor="tipo">Tipo técnico *</Label>
                 <select
                   id="tipo"
@@ -1569,7 +1732,7 @@ export default function ProductosPage() {
                   list="categoria-sugeridas"
                 />
                 <datalist id="categoria-sugeridas">
-                  {CATEGORIAS_SUGERIDAS.map((c) => (
+                  {availableCategoryOptions.map((c) => (
                     <option key={c} value={c} />
                   ))}
                 </datalist>
@@ -1656,7 +1819,7 @@ export default function ProductosPage() {
                     placeholder="137"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    Recomendado para materiales que se cotizan por metraje.
+                    Recomendado para productos que se cotizan por metraje.
                   </p>
                 </div>
               ) : null}
@@ -1985,6 +2148,134 @@ export default function ProductosPage() {
                 )}
               </div>
 
+              {customFieldDefinitions.length > 0 ? (
+                <div className="col-span-2 border-t pt-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="font-medium">Campos extra</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Campos configurables para ampliar la ficha del producto.
+                      </p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setProductConfigOpen(true)}>
+                      Administrar campos
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {customFieldDefinitions.map((field) => {
+                      const value = formData.extraFields[field.key]
+                      const options = parseFieldOptions(field)
+                      const commonHelp = field.helpText ? (
+                        <p className="text-xs text-muted-foreground mt-1">{field.helpText}</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground mt-1">Tipo: {CUSTOM_FIELD_TYPE_LABELS[field.fieldType]}</p>
+                      )
+
+                      if (field.fieldType === 'BOOLEAN') {
+                        return (
+                          <div key={field.id} className="col-span-2">
+                            <label className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(value)}
+                                onChange={(e) =>
+                                  setFormData((prev) => ({
+                                    ...prev,
+                                    extraFields: {
+                                      ...prev.extraFields,
+                                      [field.key]: e.target.checked,
+                                    },
+                                  }))
+                                }
+                              />
+                              <span>{field.label}{field.required ? ' *' : ''}</span>
+                            </label>
+                            {commonHelp}
+                          </div>
+                        )
+                      }
+
+                      if (options.length > 0) {
+                        return (
+                          <div key={field.id}>
+                            <Label htmlFor={`extra-${field.key}`}>{field.label}{field.required ? ' *' : ''}</Label>
+                            <select
+                              id={`extra-${field.key}`}
+                              value={String(value ?? '')}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  extraFields: {
+                                    ...prev.extraFields,
+                                    [field.key]: e.target.value,
+                                  },
+                                }))
+                              }
+                              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                              required={field.required}
+                            >
+                              <option value="">Selecciona una opción</option>
+                              {options.map((option) => (
+                                <option key={option} value={option}>{option}</option>
+                              ))}
+                            </select>
+                            {commonHelp}
+                          </div>
+                        )
+                      }
+
+                      if (field.fieldType === 'LONG_TEXT') {
+                        return (
+                          <div key={field.id} className="col-span-2">
+                            <Label htmlFor={`extra-${field.key}`}>{field.label}{field.required ? ' *' : ''}</Label>
+                            <Textarea
+                              id={`extra-${field.key}`}
+                              value={String(value ?? '')}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  extraFields: {
+                                    ...prev.extraFields,
+                                    [field.key]: e.target.value,
+                                  },
+                                }))
+                              }
+                              rows={3}
+                              required={field.required}
+                            />
+                            {commonHelp}
+                          </div>
+                        )
+                      }
+
+                      return (
+                        <div key={field.id}>
+                          <Label htmlFor={`extra-${field.key}`}>{field.label}{field.required ? ' *' : ''}</Label>
+                          <Input
+                            id={`extra-${field.key}`}
+                            type={field.fieldType === 'NUMBER' ? 'number' : field.fieldType === 'DATE' ? 'date' : 'text'}
+                            step={field.fieldType === 'NUMBER' ? '0.01' : undefined}
+                            value={String(value ?? '')}
+                            onChange={(e) =>
+                              setFormData((prev) => ({
+                                ...prev,
+                                extraFields: {
+                                  ...prev.extraFields,
+                                  [field.key]: e.target.value,
+                                },
+                              }))
+                            }
+                            required={field.required}
+                          />
+                          {commonHelp}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
               {/* Observaciones */}
               <div className="col-span-2">
                 <Label htmlFor="observaciones">Observaciones</Label>
@@ -1998,6 +2289,18 @@ export default function ProductosPage() {
               </div>
 
               {/* Estado */}
+              <div className="col-span-2">
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.requiresWorkOrder}
+                    onChange={(e) => setFormData({ ...formData, requiresWorkOrder: e.target.checked })}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm">Este producto requiere orden de trabajo automática</span>
+                </label>
+              </div>
+
               <div className="col-span-2">
                 <label className="flex items-center space-x-2">
                   <input

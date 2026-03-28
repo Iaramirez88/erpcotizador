@@ -476,7 +476,7 @@ export default function InventarioPage() {
           </>
         }
         stats={[
-          { label: 'Materiales', value: activeMaterials.length, hint: 'Productos activos', tone: 'neutral' },
+          { label: 'Productos', value: activeMaterials.length, hint: 'Productos activos', tone: 'neutral' },
           { label: 'Movimientos', value: movements.length, hint: 'Últimos registros', tone: 'sky' },
           {
             label: 'Bodega',

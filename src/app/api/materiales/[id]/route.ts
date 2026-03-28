@@ -359,7 +359,9 @@ export async function PUT(
           externalId: externalIdValue,
           nombre: body.nombre,
           tipo: body.tipo,
+          tipoNombre: typeof body.tipoNombre === 'string' ? body.tipoNombre.trim() || null : null,
           categoria: body.categoria,
+          extraFields: body.extraFields && typeof body.extraFields === 'object' && !Array.isArray(body.extraFields) ? body.extraFields : {},
           imagenUrl: imagenUrlNorm || null,
           ancho: body.ancho ? parseFloat(body.ancho) : null,
           largo: body.largo ? parseFloat(body.largo) : null,
@@ -374,6 +376,7 @@ export async function PUT(
           unidadMedida: unidad,
           proveedor: body.proveedor,
           observaciones: body.observaciones,
+          requiresWorkOrder: body.requiresWorkOrder === true,
           activo: isActive
         },
         include: {
@@ -406,6 +409,8 @@ export async function PUT(
               type: 'INFO',
               title: `Costo actualizado: ${updated.nombre}`,
               body: `Costo de compra: ${beforeValue ?? '—'} → ${afterValue ?? '—'}`,
+              actionUrl: '/dashboard/productos',
+              actionLabel: 'Ver producto',
             })),
           })
         }

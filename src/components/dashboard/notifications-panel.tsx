@@ -2,14 +2,18 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { DEFAULT_NOTIFICATION_ACTION_LABEL } from '@/lib/notifications'
 
 type NotificationItem = {
   id: string
   type: string
   title: string
   body: string | null
+  actionUrl: string | null
+  actionLabel: string | null
   readAt: string | null
   createdAt: string
 }
@@ -84,7 +88,14 @@ export default function NotificationsPanel({ onUnreadCountChange }: Props) {
                   <CardTitle className="text-sm">{n.title}</CardTitle>
                 </CardHeader>
                 <CardContent className="pb-3 text-xs text-muted-foreground">
-                  {n.body || '—'}
+                  <div className="space-y-3">
+                    <div>{n.body || '—'}</div>
+                    {n.actionUrl ? (
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/dashboard/notificaciones/open/${n.id}`}>{n.actionLabel || DEFAULT_NOTIFICATION_ACTION_LABEL}</Link>
+                      </Button>
+                    ) : null}
+                  </div>
                 </CardContent>
               </Card>
             ))}

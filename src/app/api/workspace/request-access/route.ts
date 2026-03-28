@@ -101,7 +101,9 @@ export async function POST(req: Request) {
         empresaId: empresa.id,
         type: 'WARNING',
         title: 'Solicitud de acceso',
-        body: `${who} solicitó acceso a ${empresa.nombre}. Ve a Configuración → Usuarios para invitarlo o asignarle permisos.`,
+        body: `${who} solicitó acceso a ${empresa.nombre}.`,
+        actionUrl: '/dashboard/configuracion/usuarios',
+        actionLabel: 'Revisar solicitud',
       })),
       skipDuplicates: false,
     })

@@ -28,6 +28,10 @@ const MODULE_NOTES: Partial<Record<ImportModule, string>> = {
   materiales: 'Para “Código/ID externo (Caja)” puedes usar una columna llamada externalId o ID. Si el producto ya existe (mismo nombre), la importación llena el externalId sin duplicar.',
 }
 
+const MODULE_DISPLAY_NAMES: Partial<Record<ImportModule, string>> = {
+  materiales: 'productos',
+}
+
 const TEMPLATE_HEADERS: Record<ImportModule, string[]> = {
   clientes: ['nombre', 'tipoDocumento', 'documento', 'email', 'telefono', 'celular', 'direccion', 'ciudad', 'departamento', 'segmento'],
   proveedores: ['nombre', 'nit', 'telefono', 'direccion', 'email', 'contacto', 'ciudad', 'departamento', 'observaciones', 'activo'],
@@ -63,7 +67,7 @@ function downloadCsvTemplate(module: ImportModule) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `plantilla-${module}.csv`
+  a.download = `plantilla-${MODULE_DISPLAY_NAMES[module] ?? module}.csv`
   document.body.appendChild(a)
   a.click()
   a.remove()
@@ -90,6 +94,7 @@ export function ImportDialog({
 
   const headers = useMemo(() => TEMPLATE_HEADERS[module], [module])
   const note = MODULE_NOTES[module]
+  const moduleDisplayName = MODULE_DISPLAY_NAMES[module] ?? module
 
   const createdCount = typeof result?.created === 'number' ? result.created : null
   const didCreateRows = !dryRun && createdCount !== null && createdCount > 0
@@ -170,7 +175,7 @@ export function ImportDialog({
       >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{title ?? `Importar ${module}`}</DialogTitle>
+            <DialogTitle>{title ?? `Importar ${moduleDisplayName}`}</DialogTitle>
             <DialogDescription>
               Sube un archivo <span className="font-mono">.csv</span> o <span className="font-mono">.xlsx</span>. Puedes descargar una plantilla.
             </DialogDescription>

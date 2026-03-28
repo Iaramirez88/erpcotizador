@@ -63,6 +63,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
           type: 'INFO',
           title: `Te asignaron la remisión ${updated.numero}`,
           body: `Se te asignó la remisión ${updated.numero}.`,
+          actionUrl: '/dashboard/remisiones',
+          actionLabel: 'Ver remisiones',
         },
       })
     }

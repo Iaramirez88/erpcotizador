@@ -26,8 +26,11 @@ interface OrdenTrabajo {
   id: string;
   numero: string;
   createdAt: string;
+  fechaInicio?: string | null;
   fechaEntrega?: string;
   estado: string;
+  sourceType?: string | null;
+  itemsSnapshot?: Array<unknown> | null;
   subtotal: number;
   iva: number;
   total: number;
@@ -42,6 +45,9 @@ interface OrdenTrabajo {
       items: number;
     };
   };
+  posInvoice?: {
+    numero: string;
+  } | null;
 }
 
 export default function OrdenesPage() {
@@ -150,6 +156,21 @@ export default function OrdenesPage() {
 
   const getEstadoLabel = (estado: string) => {
     return t(`orders.status.${estado}`);
+  };
+
+  const getItemsCount = (orden: OrdenTrabajo) => {
+    if (orden.cotizacion?._count?.items != null) return orden.cotizacion._count.items;
+    return Array.isArray(orden.itemsSnapshot) ? orden.itemsSnapshot.length : 0;
+  };
+
+  const getSourceLabel = (orden: OrdenTrabajo) => {
+    if (orden.cotizacion?.numero) {
+      return `${t('orders.fromQuote')}: ${orden.cotizacion.numero}`;
+    }
+    if (orden.posInvoice?.numero) {
+      return `${t('orders.fromInvoice')}: ${orden.posInvoice.numero}`;
+    }
+    return null;
   };
 
   const borrarOrden = async (orden: OrdenTrabajo) => {
@@ -273,10 +294,8 @@ export default function OrdenesPage() {
                         {getEstadoIcon(orden.estado)}
                         {getEstadoLabel(orden.estado)}
                       </span>
-                      {orden.cotizacion && (
-                        <span className="text-xs text-gray-500">
-                          {t('orders.fromQuote')}: {orden.cotizacion.numero}
-                        </span>
+                      {getSourceLabel(orden) && (
+                        <span className="text-xs text-gray-500">{getSourceLabel(orden)}</span>
                       )}
                     </div>
 
@@ -294,7 +313,7 @@ export default function OrdenesPage() {
                       </div>
                       <div>
                         <span className="font-medium">{t('orders.columns.items')}:</span>
-                        <p className="text-gray-900">{orden.cotizacion?._count?.items ?? 0}</p>
+                        <p className="text-gray-900">{getItemsCount(orden)}</p>
                       </div>
                       <div>
                         <span className="font-medium">{t('orders.columns.total')}:</span>

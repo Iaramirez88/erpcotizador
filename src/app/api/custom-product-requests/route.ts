@@ -180,7 +180,9 @@ export async function POST(req: NextRequest) {
             sedeId: access.sedeId,
             type: 'INFO',
             title: 'Nueva solicitud de producto personalizado',
-            body: `${nombre}${externalId ? ` (${externalId})` : ''}. Revisa “Solicitudes personalizados”.`,
+            body: `${nombre}${externalId ? ` (${externalId})` : ''}.`,
+            actionUrl: '/dashboard/productos?notif=custom-requests',
+            actionLabel: 'Revisar solicitud',
           })),
         })
       }

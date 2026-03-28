@@ -88,6 +88,8 @@ export async function PATCH(request: Request) {
       body: `Tu rol en la sede ${sede.nombre} fue actualizado a ${role}.`,
       sedeId,
       empresaId,
+      actionUrl: '/dashboard/configuracion/permisos',
+      actionLabel: 'Ver permisos',
     },
   })
 

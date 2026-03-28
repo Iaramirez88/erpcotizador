@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import type { NotificationType } from '@prisma/client'
 import { Prisma } from '@prisma/client'
 import { getServerLanguage } from '@/lib/i18n/server'
@@ -10,10 +11,16 @@ import { translate } from '@/lib/i18n/messages'
 import Link from 'next/link'
 import { revalidatePath } from 'next/cache'
 import { isSuperAdminEmail } from '@/lib/super-admin'
-import { requireEmpresaIdForUser } from '@/lib/rbac'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { DEFAULT_NOTIFICATION_ACTION_LABEL } from '@/lib/notifications'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
+type PageProps = {
+  searchParams?: { [key: string]: string | string[] | undefined }
+}
 
 function badgeColor(type: NotificationType) {
   switch (type) {
@@ -28,7 +35,23 @@ function badgeColor(type: NotificationType) {
   }
 }
 
-export default async function NotificacionesPage() {
+function normalizeSearchParam(value: string | string[] | undefined): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function extractSelectedIds(formData: FormData): string[] {
+  return Array.from(
+    new Set(
+      formData
+        .getAll('ids')
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter(Boolean)
+    )
+  )
+}
+
+export default async function NotificacionesPage({ searchParams }: PageProps) {
   const language = await getServerLanguage()
   const t = (key: string, vars?: Record<string, string>) => translate(language, key, vars)
   const locale = language === 'en' ? 'en-US' : 'es-CO'
@@ -38,6 +61,7 @@ export default async function NotificacionesPage() {
 
   const userId = session.user.id
   const now = new Date()
+  const q = normalizeSearchParam(searchParams?.q)
 
   const requester = await prisma.user.findUnique({
     where: { id: userId },
@@ -63,11 +87,25 @@ export default async function NotificacionesPage() {
         type: 'INFO',
         title: t('notifications.seed.title'),
         body: t('notifications.seed.body'),
+        actionUrl: '/dashboard/notificaciones',
+        actionLabel: t('notifications.actions.open'),
       },
     })
   }
 
-  const listWhere: Prisma.NotificationWhereInput = { userId, archivedAt: null, publishAt: { lte: now } }
+  const listWhere: Prisma.NotificationWhereInput = {
+    userId,
+    archivedAt: null,
+    publishAt: { lte: now },
+    ...(q
+      ? {
+          OR: [
+            { title: { contains: q, mode: 'insensitive' } },
+            { body: { contains: q, mode: 'insensitive' } },
+          ],
+        }
+      : {}),
+  }
   const items = await prisma.notification.findMany({
     where: listWhere,
     orderBy: { createdAt: 'desc' },
@@ -77,6 +115,8 @@ export default async function NotificacionesPage() {
       type: true,
       title: true,
       body: true,
+      actionUrl: true,
+      actionLabel: true,
       readAt: true,
       createdAt: true,
     },
@@ -104,63 +144,63 @@ export default async function NotificacionesPage() {
     revalidatePath('/dashboard/notificaciones')
   }
 
-  async function archiveOne(formData: FormData) {
+  async function markSelectedRead(formData: FormData) {
     'use server'
     const session2 = await auth()
     if (!session2) return
 
-    const id = String(formData.get('id') ?? '')
-    if (!id) return
+    const ids = extractSelectedIds(formData)
+    if (ids.length === 0) return
 
-    const archiveWhere: Prisma.NotificationWhereInput = { id, userId: session2.user.id, archivedAt: null }
-    const archiveData: Prisma.NotificationUpdateManyMutationInput = { archivedAt: new Date() }
     await prisma.notification.updateMany({
-      where: archiveWhere,
-      data: archiveData,
+      where: {
+        id: { in: ids },
+        userId: session2.user.id,
+        readAt: null,
+        archivedAt: null,
+        publishAt: { lte: new Date() },
+      },
+      data: { readAt: new Date() },
     })
 
     revalidatePath('/dashboard/notificaciones')
   }
 
-  async function deleteOne(formData: FormData) {
+  async function archiveSelected(formData: FormData) {
     'use server'
     const session2 = await auth()
     if (!session2) return
 
-    const id = String(formData.get('id') ?? '')
-    if (!id) return
+    const ids = extractSelectedIds(formData)
+    if (ids.length === 0) return
 
-    const requesterId = session2.user.id
-    const requesterDb = await prisma.user.findUnique({
-      where: { id: requesterId },
-      select: {
-        id: true,
-        email: true,
-        globalAccess: { select: { level: true } },
-        sedeMemberships: { where: { role: 'ADMIN' }, select: { sedeId: true }, take: 1 },
+    await prisma.notification.updateMany({
+      where: {
+        id: { in: ids },
+        userId: session2.user.id,
+        archivedAt: null,
+      },
+      data: { archivedAt: new Date() },
+    })
+
+    revalidatePath('/dashboard/notificaciones')
+  }
+
+  async function deleteSelected(formData: FormData) {
+    'use server'
+    const session2 = await auth()
+    if (!session2) return
+
+    const ids = extractSelectedIds(formData)
+    if (ids.length === 0) return
+
+    await prisma.notification.deleteMany({
+      where: {
+        id: { in: ids },
+        userId: session2.user.id,
       },
     })
 
-    const requesterCanDelete =
-      session2.user.role === 'ADMIN' ||
-      isSuperAdminEmail(session2.user.email) ||
-      isSuperAdminEmail(requesterDb?.email) ||
-      requesterDb?.globalAccess?.level === 'ADMIN' ||
-      (requesterDb?.sedeMemberships?.length ?? 0) > 0
-
-    if (!requesterCanDelete) return
-
-    const empresaId = await requireEmpresaIdForUser(requesterId)
-    const notif = await prisma.notification.findUnique({
-      where: { id },
-      select: { id: true, userId: true, empresaId: true, user: { select: { empresaId: true } } },
-    })
-    if (!notif?.id) return
-
-    const notifEmpresaId = notif.empresaId ?? notif.user?.empresaId ?? null
-    if (notifEmpresaId && notifEmpresaId !== empresaId) return
-
-    await prisma.notification.delete({ where: { id } })
     revalidatePath('/dashboard/notificaciones')
   }
 
@@ -191,9 +231,31 @@ export default async function NotificacionesPage() {
         stats={[
           { label: 'Pendientes', value: unreadCount, hint: 'Sin leer', tone: 'amber' },
           { label: 'Visibles', value: items.length, hint: 'Listado actual', tone: 'neutral' },
+          { label: 'Filtro', value: q ? 'Activo' : 'Todos', hint: q || 'Sin búsqueda', tone: 'teal' },
           { label: 'Gestión', value: canManageNotifications ? 'Admin' : 'Lectura', hint: 'Nivel de acción', tone: 'sky' },
         ]}
       />
+
+      <Card>
+        <CardContent className="pt-6">
+          <form action="/dashboard/notificaciones" method="get" className="flex flex-col gap-3 md:flex-row md:items-center">
+            <Input
+              name="q"
+              defaultValue={q}
+              placeholder={t('notifications.searchPlaceholder')}
+              className="md:flex-1"
+            />
+            <div className="flex items-center gap-2">
+              <Button type="submit" variant="outline">{t('notifications.searchButton')}</Button>
+              {q ? (
+                <Button asChild variant="ghost">
+                  <Link href="/dashboard/notificaciones">{t('notifications.clearSearch')}</Link>
+                </Button>
+              ) : null}
+            </div>
+          </form>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4">
         {items.length === 0 ? (
@@ -202,45 +264,68 @@ export default async function NotificacionesPage() {
               <CardTitle className="text-base">{t('notifications.empty.title')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground">{t('notifications.empty.description')}</p>
+              <p className="text-sm text-muted-foreground">
+                {q ? t('notifications.emptyFiltered') : t('notifications.empty.description')}
+              </p>
             </CardContent>
           </Card>
         ) : (
-          items.map((n) => (
-            <Card key={n.id} className={n.readAt ? 'opacity-80' : ''}>
-              <CardHeader className="flex flex-row items-start justify-between gap-3">
-                <div>
-                  <CardTitle className="text-base">{n.title}</CardTitle>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <span className={`text-xs px-2 py-1 rounded ${badgeColor(n.type)}`}>{t(`notifications.type.${n.type}`)}</span>
-                    <span className="text-xs text-muted-foreground">{new Date(n.createdAt).toLocaleString(locale)}</span>
-                    {!n.readAt && <span className="text-xs font-medium">{t('notifications.unreadBadge')}</span>}
+          <form className="space-y-4">
+            <div className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-4 md:flex-row md:items-center md:justify-between">
+              <p className="text-sm text-muted-foreground">{t('notifications.selectionHint')}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="submit" formAction={markSelectedRead} variant="outline">
+                  {t('notifications.actions.markSelectedRead')}
+                </Button>
+                <Button type="submit" formAction={archiveSelected} variant="outline">
+                  {t('notifications.actions.archiveSelected')}
+                </Button>
+                <Button type="submit" formAction={deleteSelected} variant="destructive">
+                  {t('notifications.actions.deleteSelected')}
+                </Button>
+              </div>
+            </div>
+
+            {items.map((n) => (
+              <Card key={n.id} className={n.readAt ? 'opacity-80' : ''}>
+                <CardHeader className="flex flex-row items-start gap-3">
+                  <input
+                    type="checkbox"
+                    name="ids"
+                    value={n.id}
+                    className="mt-1 h-4 w-4 rounded border border-input"
+                    aria-label={`Seleccionar notificación ${n.title}`}
+                  />
+                  <div className="flex-1">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <CardTitle className="text-base">{n.title}</CardTitle>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <span className={`text-xs px-2 py-1 rounded ${badgeColor(n.type)}`}>{t(`notifications.type.${n.type}`)}</span>
+                          <span className="text-xs text-muted-foreground">{new Date(n.createdAt).toLocaleString(locale)}</span>
+                          {!n.readAt && <span className="text-xs font-medium">{t('notifications.unreadBadge')}</span>}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {n.actionUrl ? (
+                          <Button asChild size="sm">
+                            <Link href={`/dashboard/notificaciones/open/${n.id}`}>
+                              {n.actionLabel || DEFAULT_NOTIFICATION_ACTION_LABEL}
+                            </Link>
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <form action={archiveOne}>
-                    <input type="hidden" name="id" value={n.id} />
-                    <Button type="submit" variant="outline" size="sm">
-                      {t('notifications.actions.archive')}
-                    </Button>
-                  </form>
-                  {canManageNotifications && (
-                    <form action={deleteOne}>
-                      <input type="hidden" name="id" value={n.id} />
-                      <Button type="submit" variant="destructive" size="sm">
-                        {t('notifications.actions.delete')}
-                      </Button>
-                    </form>
-                  )}
-                </div>
-              </CardHeader>
-              {n.body && (
-                <CardContent>
-                  <p className="text-sm text-gray-700">{n.body}</p>
-                </CardContent>
-              )}
-            </Card>
-          ))
+                </CardHeader>
+                {n.body && (
+                  <CardContent>
+                    <p className="text-sm text-gray-700">{n.body}</p>
+                  </CardContent>
+                )}
+              </Card>
+            ))}
+          </form>
         )}
       </div>
     </div>

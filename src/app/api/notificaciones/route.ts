@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { normalizeNotificationActionLabel, normalizeNotificationActionUrl } from '@/lib/notifications'
 import { Prisma } from '@prisma/client'
 
 export const runtime = 'nodejs'
@@ -18,6 +19,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const unreadOnly = searchParams.get('unread') === 'true'
   const limit = normalizeLimit(searchParams.get('limit'))
+  const q = searchParams.get('q')?.trim() || ''
 
   const userId = session.user.id
   const now = new Date()
@@ -31,6 +33,8 @@ export async function GET(request: NextRequest) {
         type: 'INFO',
         title: 'Notificación de prueba',
         body: 'Aquí verás avisos del sistema: compras, órdenes, cotizaciones y alertas.',
+        actionUrl: '/dashboard/notificaciones',
+        actionLabel: 'Abrir centro',
       },
     })
   }
@@ -41,6 +45,12 @@ export async function GET(request: NextRequest) {
     publishAt: { lte: now },
   }
   if (unreadOnly) where.readAt = null
+  if (q) {
+    where.OR = [
+      { title: { contains: q, mode: 'insensitive' } },
+      { body: { contains: q, mode: 'insensitive' } },
+    ]
+  }
 
   const unreadCountWhere: Prisma.NotificationWhereInput = {
     userId,
@@ -59,6 +69,8 @@ export async function GET(request: NextRequest) {
         type: true,
         title: true,
         body: true,
+        actionUrl: true,
+        actionLabel: true,
         readAt: true,
         createdAt: true,
       },
@@ -76,7 +88,7 @@ export async function PATCH(request: NextRequest) {
   const userId = session.user.id
   const now = new Date()
   const body: unknown = await request.json().catch(() => ({}))
-  const { id, all } = (body ?? {}) as { id?: unknown; all?: unknown }
+  const { id, ids, all } = (body ?? {}) as { id?: unknown; ids?: unknown; all?: unknown }
 
   if (all === true) {
     const markAllWhere: Prisma.NotificationWhereInput = {
@@ -92,13 +104,19 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  if (typeof id !== 'string' || !id) {
-    return NextResponse.json({ error: 'id es requerido' }, { status: 400 })
+  const idList = Array.isArray(ids)
+    ? ids.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : typeof id === 'string' && id
+      ? [id]
+      : []
+
+  if (idList.length === 0) {
+    return NextResponse.json({ error: 'id o ids es requerido' }, { status: 400 })
   }
 
-  // Asegura que solo marque como leída una notificación del usuario.
+  // Asegura que solo marque como leídas notificaciones del usuario.
   const markOneWhere: Prisma.NotificationWhereInput = {
-    id,
+    id: { in: idList },
     userId,
     readAt: null,
     archivedAt: null,

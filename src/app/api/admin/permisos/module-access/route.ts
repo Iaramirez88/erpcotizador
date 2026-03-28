@@ -105,6 +105,8 @@ export async function PATCH(request: Request) {
       body: `Se ${enabled ? 'habilitó' : 'deshabilitó'} el módulo ${moduleKey} en la sede ${sede.nombre}.`,
       sedeId: sedeId,
       empresaId,
+      actionUrl: '/dashboard/configuracion/permisos',
+      actionLabel: 'Ver permisos',
     },
   })
 

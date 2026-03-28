@@ -413,6 +413,8 @@ export async function createInboundArtifacts(args: {
         empresaId: args.empresaId,
         sedeId: args.sedeId ?? null,
         userId: notificationUserId,
+        actionUrl: '/dashboard/crm',
+        actionLabel: 'Abrir CRM',
       },
     })
   }

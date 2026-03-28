@@ -619,6 +619,9 @@ model Empresa {
   crmLeadCaptures      CrmLeadCapture[]
   internalChatThreads  InternalChatThread[]
   internalChatMessages InternalChatMessage[]
+  productTypeOptions ProductTypeOption[]
+  productCategoryOptions ProductCategoryOption[]
+  productCustomFieldDefinitions ProductCustomFieldDefinition[]
   materiales     Material[]
   terminados     Terminado[]
   customProductRequests CustomProductRequest[]
@@ -1139,6 +1142,12 @@ model PosInvoice {
   warehouseId String?
   warehouse   InventoryWarehouse? @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
 
+  clienteId String?
+  cliente   Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+
+  cotizacionId String?     @unique
+  cotizacion   Cotizacion? @relation(fields: [cotizacionId], references: [id], onDelete: SetNull)
+
   clienteNombre    String
   clienteDocumento String?
 
@@ -1158,6 +1167,8 @@ model PosInvoice {
   // DIAN (documentos electrónicos)
   dianDocuments DianElectronicDocument[] @relation("DianDocPosInvoice")
 
+  ordenTrabajo OrdenTrabajo? @relation("PosInvoiceOrden")
+
   createdById String?
   createdBy   User?   @relation("PosInvoiceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
@@ -1166,6 +1177,7 @@ model PosInvoice {
 
   @@index([empresaId, createdAt])
   @@index([sedeId, createdAt])
+  @@index([clienteId])
   @@map("pos_invoices")
 }
 
@@ -1600,6 +1612,8 @@ model Notification {
   type  NotificationType @default(INFO)
   title String
   body  String?
+  actionUrl   String?
+  actionLabel String?
 
   empresaId String?
   empresa   Empresa? @relation(fields: [empresaId], references: [id], onDelete: Cascade)
@@ -2419,6 +2433,7 @@ model Cliente {
 
   cotizaciones Cotizacion[]
   ordenes      OrdenTrabajo[]
+  posInvoices  PosInvoice[]
   crmConvertedLeads CrmLead[] @relation("CrmLeadConvertedCliente")
   crmContacts       CrmContact[] @relation("CrmContactCliente")
   crmOpportunities  CrmOpportunity[] @relation("CrmOpportunityCliente")
@@ -2491,6 +2506,7 @@ model Cotizacion {
 
   // Conversión a orden
   orden OrdenTrabajo? @relation("CotizacionOrden")
+  posInvoice PosInvoice?
   crmOpportunity CrmOpportunity?
 
   // Auditoría
@@ -2620,10 +2636,13 @@ model Material {
   externalId String?
   nombre    String
   tipo      TipoMaterial
+  tipoNombre String?
   categoria String?
+  extraFields Json @default("{}")
 
   // Productos creados vía flujo “personalizado” (requiere aprobación admin)
   isCustom Boolean @default(false)
+  requiresWorkOrder Boolean @default(false)
 
   // Scope de productos personalizados: solo visibles para el usuario y sede que lo creó
   customOwnerUserId String?
@@ -2685,6 +2704,60 @@ model Material {
   @@index([empresaId, isCustom], map: "idx_materiales_empresa_is_custom")
   @@index([empresaId, customOwnerUserId, customSedeId], map: "idx_materiales_empresa_custom_scope")
   @@map("materiales")
+}
+
+model ProductTypeOption {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  nombre   String
+  baseTipo TipoMaterial @default(OTRO)
+  activo   Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, nombre], map: "uq_product_type_options_empresa_nombre")
+  @@index([empresaId, activo], map: "idx_product_type_options_empresa_activo")
+  @@map("product_type_options")
+}
+
+model ProductCategoryOption {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  nombre   String
+  activo   Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, nombre], map: "uq_product_category_options_empresa_nombre")
+  @@index([empresaId, activo], map: "idx_product_category_options_empresa_activo")
+  @@map("product_category_options")
+}
+
+model ProductCustomFieldDefinition {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  key       String
+  label     String
+  fieldType ProductCustomFieldType @default(TEXT)
+  helpText  String? @db.Text
+  required  Boolean @default(false)
+  activo    Boolean @default(true)
+  optionsJson Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, key], map: "uq_product_custom_field_defs_empresa_key")
+  @@index([empresaId, activo], map: "idx_product_custom_field_defs_empresa_activo")
+  @@map("product_custom_field_definitions")
 }
 
 model MaterialAllowedTerminado {
@@ -2886,6 +2959,14 @@ enum TipoMaterial {
   OTRO
 }
 
+enum ProductCustomFieldType {
+  TEXT
+  LONG_TEXT
+  NUMBER
+  BOOLEAN
+  DATE
+}
+
 // ============================================
 // MÓDULO DE ÓRDENES DE TRABAJO (FASE 2)
 // ============================================
@@ -2894,6 +2975,7 @@ model OrdenTrabajo {
   id           String    @id @default(cuid())
   numero       String    @unique // OT-2025-0001
   fecha        DateTime  @default(now())
+  fechaInicio  DateTime?
   fechaEntrega DateTime?
 
   // Multi-sede (MVP): opcional para compatibilidad con registros antiguos
@@ -2910,15 +2992,23 @@ model OrdenTrabajo {
   assignedTo       User?   @relation("OrdenAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   assignedAt        DateTime?
 
+  sourceType String? @db.VarChar(32)
+  sourceId   String?
+
   // Referencia a cotización
   cotizacionId String?     @unique
   cotizacion   Cotizacion? @relation("CotizacionOrden", fields: [cotizacionId], references: [id])
+
+  posInvoiceId String?     @unique
+  posInvoice   PosInvoice? @relation("PosInvoiceOrden", fields: [posInvoiceId], references: [id], onDelete: SetNull)
 
   // Valores financieros
   subtotal  Float @default(0)
   descuento Float @default(0)
   iva       Float @default(0)
   total     Float @default(0)
+
+  itemsSnapshot Json?
 
   // Proceso de producción
   etapas EtapaProduccion[]
@@ -2937,6 +3027,7 @@ model OrdenTrabajo {
   @@index([sedeId, estado], map: "idx_ordenes_sede_estado")
   @@index([sedeId])
   @@index([assignedToUserId])
+  @@index([sourceType, sourceId], map: "idx_ordenes_source")
   @@map("ordenes_trabajo")
 }
 

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, type ComponentProps } from "react"
+import { useSearchParams } from "next/navigation"
 import { ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -201,6 +202,7 @@ function getSizeDisplayName(sizes: Array<{ key: string; nombre: string }>, key: 
 }
 
 export function LitografiaCalculator() {
+  const searchParams = useSearchParams()
   const PAGE_SIZE = 5
   const [tab] = useState<"config">("config")
 
@@ -208,6 +210,13 @@ export function LitografiaCalculator() {
   const [canConfigWrite, setCanConfigWrite] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [paperRequestsOpen, setPaperRequestsOpen] = useState(false)
+
+  useEffect(() => {
+    if (!searchParams) return
+    if (searchParams.get('notif') === 'paper-requests') {
+      setPaperRequestsOpen(true)
+    }
+  }, [searchParams])
 
   const [cantidad, setCantidad] = useState("1000")
   const [colores] = useState("4")

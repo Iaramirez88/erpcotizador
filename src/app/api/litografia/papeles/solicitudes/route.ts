@@ -150,7 +150,9 @@ export async function POST(request: NextRequest) {
             sedeId: access.sedeId,
             type: 'INFO',
             title: 'Nueva solicitud de papel litográfico',
-            body: `${summary}. Revisa “Solicitudes de papeles”.`,
+            body: `${summary}.`,
+            actionUrl: '/dashboard/litografia?notif=paper-requests',
+            actionLabel: 'Revisar solicitud',
           })),
         })
       }

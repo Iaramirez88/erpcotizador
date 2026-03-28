@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { ModuleKey, EstadoCotizacion } from '@prisma/client'
 import { applyOpportunityStageAutomation } from '@/lib/crm'
+import { ensureInvoiceFromQuote, QuoteInvoiceError } from '@/lib/quote-invoicing'
+import { ensureWorkOrderFromQuote } from '@/lib/work-orders'
 
 export const runtime = 'nodejs'
 
@@ -76,11 +78,42 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
         details: 'Aprobacion de cotizacion desde ERP',
       })
 
-      return { id: upd.id, estado: upd.estado }
+      const invoice = await ensureInvoiceFromQuote(tx, {
+        cotizacionId: upd.id,
+        empresaId: access.empresaId,
+        sedeId: access.sedeId,
+        createdById: access.userId,
+      })
+
+      const workOrder = await ensureWorkOrderFromQuote(tx, {
+        cotizacionId: upd.id,
+        empresaId: access.empresaId,
+        sedeId: access.sedeId,
+        createdById: access.userId,
+        posInvoiceId: invoice.id,
+      })
+
+      return {
+        id: upd.id,
+        estado: upd.estado,
+        facturaId: invoice.id,
+        facturaNumero: invoice.numero,
+        ordenTrabajoId: workOrder?.id ?? null,
+        ordenTrabajoNumero: workOrder?.numero ?? null,
+      }
     })
 
     return NextResponse.json({ success: true, data: updated })
   } catch (error) {
+    if (error instanceof QuoteInvoiceError) {
+      if (error.message === 'SEDE_NOT_FOUND') {
+        return NextResponse.json({ success: false, error: 'Sede no encontrada' }, { status: 404 })
+      }
+      if (error.message === 'NO_ITEMS') {
+        return NextResponse.json({ success: false, error: 'La cotización no tiene ítems válidos para facturar' }, { status: 400 })
+      }
+    }
+
     console.error('Error al aprobar cotización:', error)
     return NextResponse.json({ success: false, error: 'Error al aprobar cotización' }, { status: 500 })
   }

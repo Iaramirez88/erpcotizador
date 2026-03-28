@@ -35,6 +35,15 @@ export async function GET(
             },
           },
         },
+        posInvoice: {
+          include: {
+            items: {
+              include: {
+                material: true,
+              },
+            },
+          },
+        },
         etapas: true,
       },
     });
@@ -67,7 +76,7 @@ export async function PUT(
 
     const { id } = await context.params;
     const body = await request.json();
-    const { estado, fechaEntrega, notas } = body;
+    const { estado, fechaInicio, fechaEntrega, notas } = body;
 
     const before = await prisma.ordenTrabajo.findFirst({
       where: { id, sedeId: access.sedeId },
@@ -85,6 +94,7 @@ export async function PUT(
       where: { id: before.id },
       data: {
         ...(estado && { estado }),
+        ...(fechaInicio && { fechaInicio: new Date(fechaInicio) }),
         ...(fechaEntrega && { fechaEntrega: new Date(fechaEntrega) }),
         ...(notas !== undefined && { observaciones: notas }),
       },
@@ -107,6 +117,8 @@ export async function PUT(
         type: 'INFO' as const,
         title: `Orden ${before.numero}: cambio de estado`,
         body: `Nuevo estado: ${estado}.`,
+        actionUrl: '/dashboard/ordenes',
+        actionLabel: 'Ver órdenes',
       }))
 
       if (items.length) {

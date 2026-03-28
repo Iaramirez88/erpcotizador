@@ -56,7 +56,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
           userId,
           type: 'INFO',
           title: `Te asignaron la orden ${orden.numero}`,
-          body: 'Revisa los detalles en Órdenes de trabajo.',
+          body: 'Tienes una nueva orden asignada.',
+          actionUrl: '/dashboard/ordenes',
+          actionLabel: 'Ver órdenes',
         },
       })
     }

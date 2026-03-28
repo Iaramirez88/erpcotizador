@@ -17,7 +17,7 @@ export function tourIdFromPath(pathname: string): TourId | null {
   // Mantener reglas simples y explícitas
   if (pathname.startsWith('/dashboard/cotizador')) return 'dashboard-cotizador.v1'
   if (pathname.startsWith('/dashboard/clientes')) return 'dashboard-clientes.v1'
-  if (pathname.startsWith('/dashboard/materiales')) return 'dashboard-materiales.v1'
+  if (pathname.startsWith('/dashboard/materiales') || pathname.startsWith('/dashboard/productos')) return 'dashboard-materiales.v1'
   if (pathname.startsWith('/dashboard/inventario')) return 'dashboard-inventario.v1'
   if (pathname.startsWith('/dashboard/configuracion/sedes')) return 'dashboard-sedes.v1'
   return null
@@ -130,8 +130,8 @@ export const TOURS: Record<TourId, TourDefinition> = {
       {
         element: '[data-tour="inventario-search"]',
         popover: {
-          title: 'Buscar materiales',
-          description: 'Filtra la lista por nombre para encontrar el material que necesitas.',
+          title: 'Buscar productos',
+          description: 'Filtra la lista por nombre para encontrar el producto que necesitas.',
         },
       },
       {

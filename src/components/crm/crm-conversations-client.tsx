@@ -1065,7 +1065,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                           </div>
                         ) : materialSearch.trim() && !materialLoading ? (
                           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">
-                            No encontré coincidencias con ese término en materiales activos.
+                            No encontré coincidencias con ese término en productos activos.
                           </div>
                         ) : null}
 
@@ -1074,7 +1074,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <p className="font-semibold text-slate-900">Seleccionado: {selectedMaterial.nombre}</p>
                               <Button asChild variant="ghost" className="h-auto p-0 text-sky-700 hover:text-sky-800">
-                                <Link href={`/dashboard/materiales?search=${encodeURIComponent(selectedMaterial.nombre)}`}>Ver en materiales</Link>
+                                <Link href={`/dashboard/productos?search=${encodeURIComponent(selectedMaterial.nombre)}`}>Ver en productos</Link>
                               </Button>
                             </div>
                             <p className="mt-2 leading-6">Stock visible: {getVisibleStock(selectedMaterial)} {selectedMaterial.unidadMedida || 'unidad'} · Precio ref.: {formatMoney(getMaterialPrice(selectedMaterial), locale)}</p>

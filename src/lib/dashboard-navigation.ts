@@ -46,6 +46,7 @@ export function moduleForDashboardHref(href: string): string | null {
     case '/dashboard/escaneos':
       return 'ESCANEOS'
     case '/dashboard/materiales':
+    case '/dashboard/productos':
     case '/dashboard/terminados':
       return 'MATERIALES'
     case '/dashboard/inventario':
@@ -85,7 +86,11 @@ export function moduleForDashboardPath(pathname: string): string | null {
   if (pathname.startsWith('/dashboard/ordenes')) return 'ORDENES'
   if (pathname.startsWith('/dashboard/litografia')) return 'COTIZADOR'
   if (pathname.startsWith('/dashboard/escaneos')) return 'ESCANEOS'
-  if (pathname.startsWith('/dashboard/materiales') || pathname.startsWith('/dashboard/terminados')) return 'MATERIALES'
+  if (
+    pathname.startsWith('/dashboard/materiales') ||
+    pathname.startsWith('/dashboard/productos') ||
+    pathname.startsWith('/dashboard/terminados')
+  ) return 'MATERIALES'
   if (pathname.startsWith('/dashboard/inventario') || pathname.startsWith('/dashboard/bodegas')) return 'INVENTARIO'
   if (pathname.startsWith('/dashboard/compras')) return 'COMPRAS'
   if (pathname.startsWith('/dashboard/proveedores')) return 'PROVEEDORES'
@@ -124,8 +129,7 @@ export function buildDashboardNavDefinitions(t: (key: string) => string): Dashbo
     { name: t('nav.orders'), href: '/dashboard/ordenes' },
     { name: t('nav.printshop'), href: '/dashboard/litografia' },
     { name: t('nav.scans'), href: '/dashboard/escaneos' },
-    { name: t('nav.finishes'), href: '/dashboard/terminados' },
-    { name: t('nav.products'), href: '/dashboard/materiales' },
+    { name: t('nav.products'), href: '/dashboard/productos' },
     { name: t('nav.inventory'), href: '/dashboard/inventario' },
     { name: t('nav.transfers'), href: '/dashboard/inventario/traslados' },
     { name: t('nav.purchases'), href: '/dashboard/compras' },

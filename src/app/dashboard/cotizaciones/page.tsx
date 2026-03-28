@@ -500,6 +500,17 @@ export default function CotizacionesPage() {
         alert(t('common.errorWithDetails', { details: json?.error ?? t('quotes.errors.approveFallback') }));
         return;
       }
+      const facturaNumero = json?.data?.facturaNumero as string | undefined;
+      const ordenNumero = json?.data?.ordenTrabajoNumero as string | null | undefined;
+      if (facturaNumero || ordenNumero) {
+        const partes = [
+          facturaNumero ? `Factura ${facturaNumero}` : null,
+          ordenNumero ? `Orden ${ordenNumero}` : null,
+        ].filter(Boolean);
+        if (partes.length) {
+          alert(`Cotización aprobada. ${partes.join(' | ')}`);
+        }
+      }
       cargarCotizaciones();
     } catch (error) {
       console.error('Error:', error);

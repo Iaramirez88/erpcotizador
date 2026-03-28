@@ -170,6 +170,7 @@ export async function GET(request: Request) {
       andFilters.push({
         OR: [
         { nombre: { contains: search, mode: 'insensitive' as const } },
+        { tipoNombre: { contains: search, mode: 'insensitive' as const } },
         { externalId: { contains: search, mode: 'insensitive' as const } },
         { categoria: { contains: search, mode: 'insensitive' as const } },
         { proveedor: { contains: search, mode: 'insensitive' as const } },
@@ -541,6 +542,7 @@ export async function POST(request: Request) {
       nombre,
       tipo,
       categoria,
+      tipoNombre,
       imagenUrl,
       ancho,
       largo,
@@ -555,6 +557,8 @@ export async function POST(request: Request) {
       unidadMedida,
       proveedor,
       observaciones,
+      requiresWorkOrder,
+      extraFields,
       activo,
       warehouseId: warehouseIdInput,
       stockScope: stockScopeInput,
@@ -684,7 +688,9 @@ export async function POST(request: Request) {
           externalId: externalIdValue,
           nombre,
           tipo,
+          tipoNombre: typeof tipoNombre === 'string' ? tipoNombre.trim() || null : null,
           categoria,
+          extraFields: extraFields && typeof extraFields === 'object' && !Array.isArray(extraFields) ? extraFields : {},
           imagenUrl: imagenUrlNorm || null,
           ancho: ancho ? parseFloat(ancho) : null,
           largo: largo ? parseFloat(largo) : null,
@@ -699,6 +705,7 @@ export async function POST(request: Request) {
           unidadMedida: unidad,
           proveedor,
           observaciones,
+          requiresWorkOrder: requiresWorkOrder === true,
           activo: isActive,
           empresaId,
           ...(quantityDiscountData.length > 0

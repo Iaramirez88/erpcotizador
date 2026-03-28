@@ -150,6 +150,8 @@ export default async function PermisosPage({ searchParams }: PageProps) {
           title: 'Permisos actualizados',
           body: 'Tu acceso global fue desactivado.',
           empresaId: empresaId2,
+          actionUrl: '/dashboard/configuracion/permisos',
+          actionLabel: 'Ver permisos',
         },
       })
       return
@@ -168,6 +170,8 @@ export default async function PermisosPage({ searchParams }: PageProps) {
         title: 'Permisos actualizados',
         body: `Tu acceso global fue actualizado a ${level}.`,
         empresaId: empresaId2,
+        actionUrl: '/dashboard/configuracion/permisos',
+        actionLabel: 'Ver permisos',
       },
     })
   }

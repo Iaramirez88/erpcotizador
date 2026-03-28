@@ -231,6 +231,8 @@ export async function POST(request: Request) {
           body: 'Te recomendamos completar Teléfono, Cargo y Sede por defecto en “Mi perfil” para que tus cotizaciones salgan completas.',
           sedeId: preferredSedeId,
           empresaId: empresaFinal.id,
+          actionUrl: '/dashboard/perfil',
+          actionLabel: 'Completar perfil',
         },
       })
     }

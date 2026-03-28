@@ -102,6 +102,8 @@ export default async function UsuariosPage() {
             type: 'ERROR',
             title: 'Solicitud de acceso rechazada',
             body: `No se pudo aprobar el acceso a tiempo: ${limit.message || 'límite del plan alcanzado'}.`,
+            actionUrl: '/dashboard/configuracion/usuarios',
+            actionLabel: 'Ver usuarios',
           },
         })
         await prisma.workspaceAccessRequest.update({
@@ -127,6 +129,8 @@ export default async function UsuariosPage() {
               type: 'ERROR',
               title: 'Solicitud de acceso rechazada',
               body: 'Tu usuario ya pertenece a otra entidad. Pídele a un administrador que te invite por email o revisa tu cuenta actual.',
+              actionUrl: '/dashboard/configuracion/usuarios',
+              actionLabel: 'Ver usuarios',
             },
           })
           await prisma.workspaceAccessRequest.update({
@@ -156,6 +160,8 @@ export default async function UsuariosPage() {
         type: 'SUCCESS',
         title: 'Acceso aprobado',
         body: `Tu solicitud fue aprobada. Ya puedes ingresar a este espacio de trabajo.`,
+        actionUrl: '/dashboard',
+        actionLabel: 'Ir al panel',
       },
     })
 
@@ -166,6 +172,8 @@ export default async function UsuariosPage() {
         type: 'INFO',
         title: 'Solicitud aprobada',
         body: `Aprobaste el acceso de ${who}.`,
+        actionUrl: '/dashboard/configuracion/usuarios',
+        actionLabel: 'Ver usuarios',
       },
     })
 
@@ -218,6 +226,8 @@ export default async function UsuariosPage() {
         type: 'ERROR',
         title: 'Solicitud de acceso rechazada',
         body: 'Un administrador rechazó tu solicitud. Si crees que es un error, solicita una invitación por email.',
+        actionUrl: '/dashboard/configuracion/usuarios',
+        actionLabel: 'Ver usuarios',
       },
     })
 

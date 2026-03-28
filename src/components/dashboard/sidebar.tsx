@@ -76,6 +76,7 @@ function moduleForHref(href: string): string | null {
     case '/dashboard/escaneos':
       return 'ESCANEOS'
     case '/dashboard/materiales':
+    case '/dashboard/productos':
       return 'MATERIALES'
     case '/dashboard/terminados':
       return 'MATERIALES'
@@ -314,17 +315,8 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: t('nav.finishes'),
-    href: "/dashboard/terminados",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2l9 4.5v11L12 22 3 17.5v-11L12 2zm0 0v20M3 6.5l9 4.5 9-4.5" />
-      </svg>
-    ),
-  },
-  {
     name: t('nav.products'),
-    href: "/dashboard/materiales",
+    href: "/dashboard/productos",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -754,8 +746,7 @@ export default function Sidebar({ user }: SidebarProps) {
           get('/dashboard/ordenes'),
           get('/dashboard/litografia'),
           get('/dashboard/escaneos'),
-          get('/dashboard/terminados'),
-          get('/dashboard/materiales'),
+          get('/dashboard/productos'),
         ].filter(Boolean) as NavItem[],
       },
       {

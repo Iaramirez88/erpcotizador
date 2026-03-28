@@ -95,6 +95,8 @@ export async function POST(request: Request, context: RouteContext) {
             type: 'WARNING',
             title: `Solicitud rechazada: ${requestRow.nombre}`,
             body: decisionNote ? `Motivo: ${decisionNote}` : 'Un administrador rechazó tu solicitud de papel litográfico.',
+            actionUrl: '/dashboard/litografia',
+            actionLabel: 'Ver litografía',
           },
         })
 
@@ -174,6 +176,8 @@ export async function POST(request: Request, context: RouteContext) {
           body: decisionNote
             ? `Comentario: ${decisionNote}`
             : `Ya puedes usar el papel ${buildPaperSummary({ nombre: requestRow.nombre, tipo: requestRow.tipo, gramaje: requestRow.gramaje })} en litografía.`,
+          actionUrl: '/dashboard/litografia',
+          actionLabel: 'Ver litografía',
         },
       })
 

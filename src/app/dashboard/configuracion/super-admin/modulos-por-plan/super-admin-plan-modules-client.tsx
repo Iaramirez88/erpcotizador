@@ -52,7 +52,7 @@ function titleForModule(moduleKey: ModuleKey): string {
     case 'CRM':
       return 'CRM'
     case 'MATERIALES':
-      return 'Materiales / Terminados'
+      return 'Productos'
     case 'INVENTARIO':
       return 'Inventario'
     case 'REMISIONES':

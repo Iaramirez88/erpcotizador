@@ -5,12 +5,19 @@ import {
   ModuleKey,
   PosInvoiceStatus,
   PosPaymentMethod,
-  type Prisma,
+  Prisma,
   InventoryMovementType,
   InventoryMovementSourceType,
 } from '@prisma/client'
+import { ensureWorkOrderFromInvoice, resolveClienteIdForPosInvoice, WorkOrderClientResolutionError } from '@/lib/work-orders'
 
 export const runtime = 'nodejs'
+
+class StockInsufficientError extends Error {
+  constructor() {
+    super('STOCK_INSUFFICIENT')
+  }
+}
 
 function n(value: unknown): number | null {
   const num = typeof value === 'number' ? value : Number(value)
@@ -106,6 +113,66 @@ function normalizePaymentMethod(value: unknown): PosPaymentMethod {
   return allowed.includes(v) ? (v as PosPaymentMethod) : PosPaymentMethod.OTHER
 }
 
+function getPrismaErrorMetaField(error: Prisma.PrismaClientKnownRequestError): string {
+  const meta = error.meta as { field_name?: string; target?: string[] | string } | undefined
+  if (typeof meta?.field_name === 'string') return meta.field_name
+  if (Array.isArray(meta?.target)) return meta.target.join(',')
+  if (typeof meta?.target === 'string') return meta.target
+  return ''
+}
+
+function mapCreateInvoiceError(error: unknown) {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    const metaField = getPrismaErrorMetaField(error)
+
+    if (error.code === 'P2002') {
+      if (metaField.includes('numero')) {
+        return NextResponse.json(
+          { error: 'El consecutivo POS ya existe. Intenta crear la factura nuevamente.' },
+          { status: 409 }
+        )
+      }
+
+      return NextResponse.json({ error: 'Ya existe un registro duplicado al crear la factura POS' }, { status: 409 })
+    }
+
+    if (error.code === 'P2003') {
+      if (metaField.includes('createdById')) {
+        return NextResponse.json(
+          { error: 'El usuario de la sesión ya no es válido. Cierra sesión e inicia nuevamente.' },
+          { status: 401 }
+        )
+      }
+
+      if (metaField.includes('warehouseId')) {
+        return NextResponse.json({ error: 'La bodega seleccionada ya no existe o no pertenece a esta sede' }, { status: 400 })
+      }
+
+      if (metaField.includes('materialId')) {
+        return NextResponse.json({ error: 'Uno de los materiales seleccionados ya no existe' }, { status: 404 })
+      }
+
+      return NextResponse.json({ error: 'No se pudo crear la factura por una referencia inválida' }, { status: 400 })
+    }
+
+    if (error.code === 'P2025') {
+      return NextResponse.json(
+        { error: 'Uno de los registros relacionados ya no existe. Recarga la pantalla e intenta de nuevo.' },
+        { status: 409 }
+      )
+    }
+
+    if (error.code === 'P2022') {
+      return NextResponse.json(
+        { error: 'La base de datos POS no está actualizada. Ejecuta las migraciones pendientes.' },
+        { status: 500 }
+      )
+    }
+  }
+
+  return null
+}
+
 export async function GET(request: Request) {
   try {
     const access = await requireApiAccess('POS' as ModuleKey, 'READ')
@@ -182,6 +249,13 @@ export async function POST(request: Request) {
       const sede = await tx.sede.findUnique({ where: { id: access.sedeId }, select: { id: true, codigo: true, empresaId: true } })
       if (!sede || sede.empresaId !== empresaId) throw new Error('SEDE_NOT_FOUND')
 
+      const createdBy = await tx.user.findUnique({ where: { id: access.userId }, select: { id: true } })
+      const clienteId = await resolveClienteIdForPosInvoice(tx, {
+        empresaId,
+        clienteDocumento,
+        clienteNombre,
+      })
+
       const warehouseId = await resolveWarehouseId(tx, { empresaId, sedeId: access.sedeId, warehouseId: body?.warehouseId })
 
       const seq = await tx.posSequence.upsert({
@@ -254,6 +328,7 @@ export async function POST(request: Request) {
           empresaId,
           sedeId: access.sedeId,
           warehouseId,
+          clienteId,
           clienteNombre,
           clienteDocumento,
           ivaPct,
@@ -263,7 +338,7 @@ export async function POST(request: Request) {
           iva,
           total,
           note,
-          createdById: access.userId,
+          createdById: createdBy?.id ?? null,
           items: {
             create: computedLineTotals.map((it) => ({
               materialId: it.materialId,
@@ -294,7 +369,7 @@ export async function POST(request: Request) {
             const stockBefore = stockRow?.quantity ?? 0
             const stockAfter = stockBefore - it.quantity
             if (stockAfter < -1e-9) {
-              throw new Error('STOCK_INSUFFICIENT')
+              throw new StockInsufficientError()
             }
 
             await tx.inventoryStock.upsert({
@@ -308,7 +383,7 @@ export async function POST(request: Request) {
             const globalBefore = mat?.stockActual ?? 0
             const globalAfter = globalBefore - it.quantity
             if (globalAfter < -1e-9) {
-              throw new Error('STOCK_INSUFFICIENT')
+              throw new StockInsufficientError()
             }
 
             await tx.material.update({ where: { id: it.materialId }, data: { stockActual: globalAfter }, select: { id: true } })
@@ -326,7 +401,7 @@ export async function POST(request: Request) {
                 note: `POS factura ${invoice.numero}`,
                 sourceType: InventoryMovementSourceType.POS_INVOICE,
                 sourceId: invoice.id,
-                createdById: access.userId,
+                createdById: createdBy?.id ?? null,
               },
               select: { id: true },
             })
@@ -335,7 +410,7 @@ export async function POST(request: Request) {
             const stockBefore = mat?.stockActual ?? 0
             const stockAfter = stockBefore - it.quantity
             if (stockAfter < -1e-9) {
-              throw new Error('STOCK_INSUFFICIENT')
+              throw new StockInsufficientError()
             }
 
             await tx.material.update({ where: { id: it.materialId }, data: { stockActual: stockAfter }, select: { id: true } })
@@ -352,7 +427,7 @@ export async function POST(request: Request) {
                 note: `POS factura ${invoice.numero}`,
                 sourceType: InventoryMovementSourceType.POS_INVOICE,
                 sourceId: invoice.id,
-                createdById: access.userId,
+                createdById: createdBy?.id ?? null,
               },
               select: { id: true },
             })
@@ -360,7 +435,19 @@ export async function POST(request: Request) {
         }
       }
 
-      return invoice
+      const workOrder = await ensureWorkOrderFromInvoice(tx, {
+        invoiceId: invoice.id,
+        empresaId,
+        sedeId: access.sedeId,
+        createdById: access.userId,
+      })
+
+      return {
+        ...invoice,
+        ordenTrabajoId: workOrder?.id ?? null,
+        ordenTrabajoNumero: workOrder?.numero ?? null,
+      }
+
     })
 
     return NextResponse.json({ success: true, data: result })
@@ -379,6 +466,16 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'La suma de pagos debe ser igual al total' }, { status: 400 })
       }
     }
+
+    if (error instanceof WorkOrderClientResolutionError) {
+      return NextResponse.json(
+        { error: 'La factura incluye productos que requieren orden de trabajo y el cliente no pudo ser identificado. Usa un cliente registrado con documento válido.' },
+        { status: 400 }
+      )
+    }
+
+    const prismaResponse = mapCreateInvoiceError(error)
+    if (prismaResponse) return prismaResponse
 
     console.error('Error al crear factura POS:', error)
     return NextResponse.json({ error: 'Error al crear factura POS' }, { status: 500 })
