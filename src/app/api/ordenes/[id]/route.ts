@@ -1,7 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireApiAccess } from '@/lib/api-rbac';
-import { ModuleKey } from '@prisma/client';
+import { EstadoOrden, ModuleKey, Prisma } from '@prisma/client';
+
+function normalizeOptionalString(value: unknown) {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed ? trimmed : null
+}
+
+function normalizeOrderStatus(value: unknown) {
+  if (typeof value !== 'string') return null
+  if (value === 'PENDIENTE') return EstadoOrden.PENDIENTE
+  if (value === 'EN_PROCESO') return EstadoOrden.EN_PRODUCCION
+  if (value === 'FINALIZADO' || value === 'TERMINADO') return EstadoOrden.LISTA_ENTREGA
+  if (value === 'ENTREGADO') return EstadoOrden.ENTREGADA
+  if (value === 'CANCELADO') return EstadoOrden.CANCELADA
+  return Object.values(EstadoOrden).includes(value as EstadoOrden) ? (value as EstadoOrden) : null
+}
 
 // GET /api/ordenes/[id] - Obtener una orden específica
 export async function GET(
@@ -76,11 +92,30 @@ export async function PUT(
 
     const { id } = await context.params;
     const body = await request.json();
-    const { estado, fechaInicio, fechaEntrega, notas } = body;
+    const hasEstado = Object.prototype.hasOwnProperty.call(body ?? {}, 'estado')
+    const hasFechaInicio = Object.prototype.hasOwnProperty.call(body ?? {}, 'fechaInicio')
+    const hasFechaEntrega = Object.prototype.hasOwnProperty.call(body ?? {}, 'fechaEntrega')
+    const hasNotas = Object.prototype.hasOwnProperty.call(body ?? {}, 'notas')
+    const hasAssignedToUserId = Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId')
+    const hasAreaResponsable = Object.prototype.hasOwnProperty.call(body ?? {}, 'areaResponsable')
+
+    const estado = normalizeOrderStatus(body?.estado)
+    const fechaInicio = normalizeOptionalString(body?.fechaInicio)
+    const fechaEntrega = normalizeOptionalString(body?.fechaEntrega)
+    const notas = normalizeOptionalString(body?.notas)
+    const assignedToUserId = normalizeOptionalString(body?.assignedToUserId)
+    const areaResponsable = normalizeOptionalString(body?.areaResponsable)
+
+    if (hasEstado && !estado) {
+      return NextResponse.json(
+        { success: false, error: 'Estado inválido' },
+        { status: 400 }
+      )
+    }
 
     const before = await prisma.ordenTrabajo.findFirst({
       where: { id, sedeId: access.sedeId },
-      select: { id: true, numero: true, estado: true, assignedToUserId: true, vendedorId: true },
+      select: { id: true, numero: true, estado: true, fechaInicio: true, assignedToUserId: true, vendedorId: true },
     })
 
     if (!before) {
@@ -90,14 +125,48 @@ export async function PUT(
       )
     }
 
+    if (hasAssignedToUserId && assignedToUserId) {
+      const membership = await prisma.sedeMembership.findUnique({
+        where: { sedeId_userId: { sedeId: access.sedeId, userId: assignedToUserId } },
+        select: { id: true },
+      })
+
+      if (!membership) {
+        return NextResponse.json(
+          { success: false, error: 'El responsable seleccionado no pertenece a esta sede' },
+          { status: 400 }
+        )
+      }
+    }
+
+    const data: Prisma.OrdenTrabajoUncheckedUpdateInput = {}
+
+    if (hasEstado && estado) {
+      data.estado = estado
+    }
+    if (hasFechaInicio) {
+      data.fechaInicio = fechaInicio ? new Date(fechaInicio) : null
+    }
+    if (hasFechaEntrega) {
+      data.fechaEntrega = fechaEntrega ? new Date(fechaEntrega) : null
+    }
+    if (hasNotas) {
+      data.observaciones = notas
+    }
+    if (hasAreaResponsable) {
+      data.areaResponsable = areaResponsable
+    }
+    if (hasAssignedToUserId) {
+      data.assignedToUserId = assignedToUserId
+      data.assignedAt = assignedToUserId ? new Date() : null
+    }
+    if (!hasFechaInicio && estado === EstadoOrden.EN_PRODUCCION && !before.fechaInicio) {
+      data.fechaInicio = new Date()
+    }
+
     const orden = await prisma.ordenTrabajo.update({
       where: { id: before.id },
-      data: {
-        ...(estado && { estado }),
-        ...(fechaInicio && { fechaInicio: new Date(fechaInicio) }),
-        ...(fechaEntrega && { fechaEntrega: new Date(fechaEntrega) }),
-        ...(notas !== undefined && { observaciones: notas }),
-      },
+      data,
       include: {
         cliente: true,
         vendedor: true,
@@ -106,7 +175,7 @@ export async function PUT(
       },
     });
 
-    if (estado && estado !== before.estado) {
+    if (hasEstado && estado && estado !== before.estado) {
       const recipients = new Set<string>()
       if (before.assignedToUserId) recipients.add(before.assignedToUserId)
       if (before.vendedorId) recipients.add(before.vendedorId)
@@ -124,6 +193,19 @@ export async function PUT(
       if (items.length) {
         await prisma.notification.createMany({ data: items })
       }
+    }
+
+    if (hasAssignedToUserId && assignedToUserId && assignedToUserId !== before.assignedToUserId && assignedToUserId !== access.userId) {
+      await prisma.notification.create({
+        data: {
+          userId: assignedToUserId,
+          type: 'INFO',
+          title: `Te asignaron la orden ${before.numero}`,
+          body: 'Tienes una orden de trabajo asignada para gestionar.',
+          actionUrl: '/dashboard/ordenes',
+          actionLabel: 'Ver órdenes',
+        },
+      })
     }
 
     return NextResponse.json({ success: true, data: orden });

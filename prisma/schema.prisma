@@ -3016,6 +3016,7 @@ model OrdenTrabajo {
   estado    EstadoOrden @default(PENDIENTE)
   prioridad Prioridad   @default(NORMAL)
 
+  areaResponsable String? @db.VarChar(120)
   observaciones  String? @db.Text
   archivosDiseno Json? // URLs de archivos
 

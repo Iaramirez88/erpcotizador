@@ -2,9 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireApiAccess } from '@/lib/api-rbac';
 import { checkPlanLimit } from '@/lib/plan-limits';
-import { ModuleKey, Prioridad } from '@prisma/client';
+import { EstadoOrden, ModuleKey, Prioridad } from '@prisma/client';
 import { ensureInvoiceFromQuote, QuoteInvoiceError } from '@/lib/quote-invoicing';
 import { ensureWorkOrderFromInvoice, ensureWorkOrderFromQuote, WorkOrderClientResolutionError } from '@/lib/work-orders';
+
+const IN_PROGRESS_ORDER_STATES: EstadoOrden[] = [
+  'RECIBIDO',
+  'COTIZADO',
+  'APROBADO',
+  'EN_DISENO',
+  'EN_CORRECCION',
+  'APROBADO_PRODUCCION',
+  'EN_IMPRESION',
+  'EN_PRODUCCION',
+  'EN_ACONDICIONAMIENTO',
+  'EN_ACABADOS',
+  'EN_ENTREGA',
+]
+
+const FINISHED_ORDER_STATES: EstadoOrden[] = ['LISTA_ENTREGA', 'FACTURADO', 'CERRADO']
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,7 +43,19 @@ export async function GET(request: NextRequest) {
     }
 
     if (estado) {
-      where.estado = estado;
+      if (estado === 'EN_PROCESO') {
+        where.estado = { in: IN_PROGRESS_ORDER_STATES };
+      } else if (estado === 'FINALIZADO') {
+        where.estado = { in: FINISHED_ORDER_STATES };
+      } else if (estado === 'TERMINADO') {
+        where.estado = { in: FINISHED_ORDER_STATES };
+      } else if (estado === 'ENTREGADO') {
+        where.estado = 'ENTREGADA';
+      } else if (estado === 'CANCELADO') {
+        where.estado = 'CANCELADA';
+      } else {
+        where.estado = estado;
+      }
     }
 
     const ordenes = await prisma.ordenTrabajo.findMany({
@@ -37,6 +65,7 @@ export async function GET(request: NextRequest) {
         numero: true,
         estado: true,
         prioridad: true,
+        areaResponsable: true,
         fechaEntrega: true,
         fechaInicio: true,
         total: true,
