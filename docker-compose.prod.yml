@@ -51,6 +51,7 @@ services:
   migrate:
     build:
       context: .
+      target: migrate
     environment:
       DATABASE_URL: ${DATABASE_URL}
     depends_on:
@@ -62,6 +63,7 @@ services:
   app:
     build:
       context: .
+      target: web
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL}
@@ -124,6 +126,7 @@ services:
   worker:
     build:
       context: .
+      target: worker
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL}

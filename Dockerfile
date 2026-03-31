@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim
+FROM node:20-bookworm-slim AS base
 
 WORKDIR /app
 
@@ -13,7 +13,10 @@ COPY prisma ./prisma
 
 # Instalar deps (incluye devDeps porque necesitamos prisma CLI/tsx para worker)
 # Evitamos scripts para que `postinstall` no falle durante el build.
+FROM base AS deps
 RUN npm ci --include=dev --ignore-scripts
+
+FROM deps AS source
 
 # Copiar código
 COPY . .
@@ -22,10 +25,26 @@ COPY . .
 ENV DATABASE_URL=postgresql://placeholder:placeholder@localhost:5432/placeholder
 RUN npx prisma generate
 
-# Build de Next
+# Imagen web: solo esta etapa compila Next.js
+FROM source AS web
+
 RUN npm run build
 
 ENV NODE_ENV=production
 EXPOSE 3000
 
 CMD ["npm", "run", "start"]
+
+# Imagen worker: reutiliza dependencias y código, pero evita el build de Next.
+FROM source AS worker
+
+ENV NODE_ENV=production
+
+CMD ["npm", "run", "worker:ocr"]
+
+# Imagen migrate: solo necesita Prisma CLI y schema.
+FROM source AS migrate
+
+ENV NODE_ENV=production
+
+CMD ["npx", "prisma", "migrate", "deploy"]
