@@ -49,9 +49,7 @@ services:
     restart: unless-stopped
 
   migrate:
-    build:
-      context: .
-      target: migrate
+    image: ${APP_RUNTIME_IMAGE:-plataforma-gestion-empresarial-runtime:latest}
     environment:
       DATABASE_URL: ${DATABASE_URL}
     depends_on:
@@ -61,6 +59,7 @@ services:
     restart: "no"
 
   app:
+    image: ${APP_RUNTIME_IMAGE:-plataforma-gestion-empresarial-runtime:latest}
     build:
       context: .
       target: web
@@ -124,9 +123,7 @@ services:
     restart: unless-stopped
 
   worker:
-    build:
-      context: .
-      target: worker
+    image: ${APP_RUNTIME_IMAGE:-plataforma-gestion-empresarial-runtime:latest}
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL}

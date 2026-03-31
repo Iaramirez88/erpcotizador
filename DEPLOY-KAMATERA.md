@@ -85,6 +85,10 @@ En producción, lo ideal es que el servicio `app` **no** publique `3000:3000` a 
 3. Levanta el stack:
   - `docker compose -f docker-compose.prod.yml up -d --build`
 
+Nota de performance:
+- El compose de producción ya reutiliza una sola imagen Node para `app`, `worker` y `migrate`.
+- En cada despliegue solo deberían reconstruirse `app` y `ocr`; `worker` y `migrate` arrancan desde la misma imagen ya construida.
+
 Qué queda expuesto:
 - Público: `80/443` (Caddy)
 - Interno (red Docker): `app:3000`, `postgres:5432`, `redis:6379`, `ocr:8001`
@@ -142,6 +146,10 @@ Si el Postgres queda dentro del mismo servidor, planifica backups:
 ### Actualizaciones
 - `git pull` + `docker compose up -d --build`
 - Considera ventanas de mantenimiento (habrá rebuild/restart).
+
+Para VPS pequeños, usa esta secuencia para reducir picos y hacer el proceso más predecible:
+- `docker compose -f docker-compose.prod.yml build app ocr`
+- `docker compose -f docker-compose.prod.yml up -d --no-build`
 
 ### Observabilidad mínima
 - Alertas de disco (40GB se llena fácil con scans si no usas S3)

@@ -96,6 +96,12 @@ Pasos (en el droplet):
 - Copia `.env.docker.example` a `.env` y ajusta valores (especialmente `DATABASE_URL`, `NEXTAUTH_SECRET`, `APP_URL`).
 - Levanta todo: `docker compose -f docker-compose.prod.yml up -d --build`
 
+Nota de performance:
+- `app`, `worker` y `migrate` reutilizan la misma imagen Node para evitar reconstrucciones redundantes.
+- Si el droplet es pequeño, prefiere esta secuencia:
+- `docker compose -f docker-compose.prod.yml build app ocr`
+- `docker compose -f docker-compose.prod.yml up -d --no-build`
+
 Notas:
 - Postgres/Redis/OCR no se exponen por puertos públicos (más seguro). Solo se publica `3000`.
 - Los escaneos quedan persistidos en un volumen Docker (`scans_data`) montado en `/app/public/scans`.
