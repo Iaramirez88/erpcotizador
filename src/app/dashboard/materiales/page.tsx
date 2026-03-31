@@ -5,7 +5,7 @@
 
 "use client"
 
-import { useCallback, useMemo, useState, useEffect } from "react"
+import { useCallback, useMemo, useState, useEffect, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ImportDialog } from "@/components/import/import-dialog"
@@ -29,7 +29,12 @@ import {
   type ProductCustomFieldDefinition,
   type ProductTypeOption,
 } from "@/components/materiales/product-config-dialog"
+import { CatalogModuleTabs } from "@/components/inventory/catalog-module-tabs"
 import { formatCurrency, formatUnidadMedidaLabel } from "@/lib/utils"
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200] as const
+
+type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number] | 'all'
 
 interface Material {
   id: string
@@ -178,7 +183,7 @@ export default function ProductosPage() {
   const [createdToFiltro, setCreatedToFiltro] = useState("")
 
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState<25 | 50 | 100 | 'all'>(25)
+  const [pageSize, setPageSize] = useState<PageSizeOption>(25)
   const [totalRows, setTotalRows] = useState(0)
 
   const [selectionScope, setSelectionScope] = useState<'none' | 'page' | 'all'>("none")
@@ -208,6 +213,17 @@ export default function ProductosPage() {
     if (notif === 'my-custom-requests') setMyCustomRequestsOpen(true)
   }, [searchParams])
 
+  useEffect(() => {
+    if (!isModalOpen) return
+
+    const timer = window.setTimeout(() => {
+      externalIdInputRef.current?.focus()
+      externalIdInputRef.current?.select()
+    }, 30)
+
+    return () => window.clearTimeout(timer)
+  }, [editingMaterial, isModalOpen])
+
   const [proveedorMatches, setProveedorMatches] = useState<ProveedorLite[]>([])
   const [proveedorLoading, setProveedorLoading] = useState(false)
   const [proveedorCreateOpen, setProveedorCreateOpen] = useState(false)
@@ -215,6 +231,8 @@ export default function ProductosPage() {
   const [proveedorNuevoNit, setProveedorNuevoNit] = useState("")
   const [proveedorCreateSaving, setProveedorCreateSaving] = useState(false)
   const [proveedorError, setProveedorError] = useState("")
+  const externalIdInputRef = useRef<HTMLInputElement | null>(null)
+  const nombreInputRef = useRef<HTMLInputElement | null>(null)
   
   const [formData, setFormData] = useState({
     externalId: "",
@@ -868,6 +886,11 @@ export default function ProductosPage() {
     }
   }
 
+  const handleExternalIdChange = (value: string) => {
+    const normalizedValue = value.replace(/[\r\n\t]+/g, '').trimStart()
+    setFormData((prev) => ({ ...prev, externalId: normalizedValue }))
+  }
+
   const handleDuplicate = (material: Material) => {
     setEditingMaterial(null)
     setQuantityDiscounts(
@@ -1112,6 +1135,8 @@ export default function ProductosPage() {
           </Button>
         </div>
       </div>
+
+      <CatalogModuleTabs />
 
       {/* Modal de exportación */}
       <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>
@@ -1455,19 +1480,21 @@ export default function ProductosPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-sm text-muted-foreground">Mostrar</div>
                   <select
                     value={String(pageSize)}
                     onChange={(e) => {
                       const v = e.target.value
-                      const next = v === 'all' ? 'all' : (Number(v) as 25 | 50 | 100)
+                      const next = v === 'all' ? 'all' : (Number(v) as PageSizeOption)
                       setPageSize(next)
                       setPage(1)
                     }}
                     className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    aria-label="Productos por página"
                   >
-                    <option value="25">25</option>
-                    <option value="50">50</option>
-                    <option value="100">100</option>
+                    {PAGE_SIZE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
                     <option value="all">Todos</option>
                   </select>
 
@@ -1650,30 +1677,50 @@ export default function ProductosPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
+              {/* Código/ID externo */}
+              <div className="col-span-2">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <Label htmlFor="externalId">Código QR / barras / ID externo</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      externalIdInputRef.current?.focus()
+                      externalIdInputRef.current?.select()
+                    }}
+                  >
+                    Capturar con escáner
+                  </Button>
+                </div>
+                <Input
+                  ref={externalIdInputRef}
+                  id="externalId"
+                  value={formData.externalId}
+                  onChange={(e) => handleExternalIdChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return
+                    e.preventDefault()
+                    nombreInputRef.current?.focus()
+                  }}
+                  placeholder="Escanea aquí o escribe: 12345 / SKU-001"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Deja este campo activo y usa el lector en modo teclado. Si el escáner envía Enter al final, el foco pasa al nombre del producto.
+                </p>
+              </div>
+
               {/* Nombre */}
               <div className="col-span-2">
                 <Label htmlFor="nombre">Nombre del Producto *</Label>
                 <Input
+                  ref={nombreInputRef}
                   id="nombre"
                   value={formData.nombre}
                   onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
                   required
                   placeholder="Ej: Vinilo Adhesivo Blanco 3M"
                 />
-              </div>
-
-              {/* Código/ID externo */}
-              <div className="col-span-2">
-                <Label htmlFor="externalId">Código/ID externo (Caja)</Label>
-                <Input
-                  id="externalId"
-                  value={formData.externalId}
-                  onChange={(e) => setFormData({ ...formData, externalId: e.target.value })}
-                  placeholder="Ej: 12345 / SKU-001"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Opcional. Útil para mapear con tu sistema de caja.
-                </p>
               </div>
 
               {/* Tipo de producto (metraje vs físico) */}

@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CatalogModuleTabs } from "@/components/inventory/catalog-module-tabs"
 import {
   Dialog,
   DialogContent,
@@ -23,7 +24,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { ErpPageHero } from "@/components/dashboard/erp-page-chrome"
 import { cn, formatUnidadMedidaLabel } from "@/lib/utils"
 import { useI18n } from "@/components/providers/i18n-provider"
-import { Download } from 'lucide-react'
+import { ArrowDown, ArrowUp, Download, Loader2 } from 'lucide-react'
 import { buildPurchaseOrderPrefillHref } from '@/lib/purchase-order-prefill'
 
 type Material = {
@@ -80,10 +81,28 @@ type ProveedorLite = {
   nit?: string | null
 }
 
+type InventoryScanLookupResponse = {
+  success?: boolean
+  data?: {
+    id: string
+    nombre: string
+    externalId: string | null
+    unidadMedida: string
+    stockActual: number
+    warehouseQuantity: number | null
+  }
+  error?: string
+}
+
 function n(value: unknown, fallback = 0) {
   const num = typeof value === "number" ? value : Number(value)
   return Number.isFinite(num) ? num : fallback
 }
+
+type StockSortKey = 'stockActual' | 'stockMinimo'
+type StockSortDirection = 'desc' | 'asc'
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200] as const
+type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number] | 'all'
 
 export default function InventarioPage() {
   const { t, language } = useI18n()
@@ -102,6 +121,9 @@ export default function InventarioPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const [search, setSearch] = useState("")
+  const [stockSort, setStockSort] = useState<{ key: StockSortKey; direction: StockSortDirection } | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState<PageSizeOption>(25)
 
   const [warehouseFilterId, setWarehouseFilterId] = useState("")
 
@@ -147,6 +169,10 @@ export default function InventarioPage() {
     updateProveedor: false,
     proveedor: "",
   })
+  const [scanCode, setScanCode] = useState("")
+  const [scanQuantity, setScanQuantity] = useState("1")
+  const [scanBusy, setScanBusy] = useState(false)
+  const [scanStatus, setScanStatus] = useState<{ kind: 'idle' | 'success' | 'error'; message: string }>({ kind: 'idle', message: '' })
 
   const [proveedorMatches, setProveedorMatches] = useState<ProveedorLite[]>([])
   const [proveedorLoading, setProveedorLoading] = useState(false)
@@ -230,6 +256,10 @@ export default function InventarioPage() {
   }, [search, warehouseFilterId])
 
   useEffect(() => {
+    setPage(1)
+  }, [pageSize, search, stockSort, warehouseFilterId])
+
+  useEffect(() => {
     let cancelled = false
 
     const loadSedes = async () => {
@@ -262,6 +292,33 @@ export default function InventarioPage() {
     () => activeMaterials.filter((material) => n(material.stockActual) <= n(material.stockMinimo)),
     [activeMaterials]
   )
+
+  const sortedActiveMaterials = useMemo(() => {
+    if (!stockSort) return activeMaterials
+
+    return [...activeMaterials].sort((left, right) => {
+      const leftValue = stockSort.key === 'stockActual' ? n(left.stockActual) : n(left.stockMinimo)
+      const rightValue = stockSort.key === 'stockActual' ? n(right.stockActual) : n(right.stockMinimo)
+
+      if (leftValue !== rightValue) {
+        return stockSort.direction === 'asc' ? leftValue - rightValue : rightValue - leftValue
+      }
+
+      return left.nombre.localeCompare(right.nombre, 'es')
+    })
+  }, [activeMaterials, stockSort])
+
+  const pageCount = useMemo(() => {
+    if (pageSize === 'all') return 1
+    return Math.max(1, Math.ceil(sortedActiveMaterials.length / pageSize))
+  }, [pageSize, sortedActiveMaterials.length])
+
+  const visibleMaterials = useMemo(() => {
+    if (pageSize === 'all') return sortedActiveMaterials
+    const safePage = Math.min(page, pageCount)
+    const start = (safePage - 1) * pageSize
+    return sortedActiveMaterials.slice(start, start + pageSize)
+  }, [page, pageCount, pageSize, sortedActiveMaterials])
 
   const selectedMaterial = useMemo(
     () => activeMaterials.find((m) => m.id === form.materialId) ?? null,
@@ -321,6 +378,9 @@ export default function InventarioPage() {
   function openModal() {
     const defaultMaterialId = activeMaterials[0]?.id ?? ""
     setForm((prev) => ({ ...prev, materialId: prev.materialId || defaultMaterialId }))
+    setScanCode("")
+    setScanQuantity("1")
+    setScanStatus({ kind: 'idle', message: '' })
     setIsModalOpen(true)
   }
 
@@ -441,6 +501,77 @@ export default function InventarioPage() {
     }
   }
 
+  async function submitScannedEntry() {
+    const code = scanCode.replace(/\s+/g, '').trim()
+    const quantity = Number(scanQuantity)
+
+    if (!code) {
+      setScanStatus({ kind: 'error', message: t('inventory.errors.scanCodeRequired') })
+      return
+    }
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setScanStatus({ kind: 'error', message: t('inventory.errors.scanQuantityInvalid') })
+      return
+    }
+
+    setScanBusy(true)
+    setScanStatus({ kind: 'idle', message: '' })
+    setError(null)
+
+    try {
+      const lookupUrl = new URL('/api/inventario/by-code', window.location.origin)
+      lookupUrl.searchParams.set('code', code)
+      if (form.warehouseId) lookupUrl.searchParams.set('warehouseId', form.warehouseId)
+
+      const lookupRes = await fetch(lookupUrl.toString(), { cache: 'no-store' })
+      const lookupJson = (await lookupRes.json().catch(() => ({}))) as InventoryScanLookupResponse
+
+      if (!lookupRes.ok || !lookupJson.success || !lookupJson.data) {
+        setScanStatus({ kind: 'error', message: lookupJson.error || t('inventory.errors.registerMovementFailed') })
+        return
+      }
+
+      const payload: Record<string, unknown> = {
+        materialId: lookupJson.data.id,
+        type: 'IN',
+        quantity,
+        warehouseId: form.warehouseId || undefined,
+        note: form.note || undefined,
+      }
+
+      if (form.updateProveedor) {
+        payload.updateProveedor = true
+        payload.proveedor = String(form.proveedor || '').trim()
+      }
+
+      const res = await fetch('/api/inventario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string }
+
+      if (!res.ok || !json.success) {
+        setScanStatus({ kind: 'error', message: json.error || t('inventory.errors.registerMovementFailed') })
+        return
+      }
+
+      setForm((prev) => ({ ...prev, materialId: lookupJson.data!.id }))
+      setScanCode('')
+      setScanQuantity('1')
+      setScanStatus({
+        kind: 'success',
+        message: `${t('inventory.scan.entryRegisteredPrefix')} ${formatMaterialName(lookupJson.data.id, lookupJson.data.nombre)}.`,
+      })
+      await load()
+    } catch (e) {
+      setScanStatus({ kind: 'error', message: e instanceof Error ? e.message : t('common.unexpectedError') })
+    } finally {
+      setScanBusy(false)
+    }
+  }
+
   function movementLabel(type: Movement["type"]) {
     if (type === "IN") return t('inventory.movementType.in')
     if (type === "OUT") return t('inventory.movementType.out')
@@ -453,6 +584,21 @@ export default function InventarioPage() {
     if (type === "OUT") return "bg-red-50 text-red-700"
     if (type === "ADJUST") return "bg-blue-50 text-blue-700"
     return "bg-gray-100 text-gray-700"
+  }
+
+  function toggleStockSort(key: StockSortKey) {
+    setStockSort((current) => {
+      if (!current || current.key !== key) {
+        return { key, direction: 'desc' }
+      }
+
+      return { key, direction: current.direction === 'desc' ? 'asc' : 'desc' }
+    })
+  }
+
+  function renderSortIcon(key: StockSortKey) {
+    if (!stockSort || stockSort.key !== key) return null
+    return stockSort.direction === 'desc' ? <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUp className="h-3.5 w-3.5" />
   }
 
   return (
@@ -487,6 +633,8 @@ export default function InventarioPage() {
         ]}
       />
 
+      <CatalogModuleTabs />
+
       {error ? <div className="text-sm text-red-600">{error}</div> : null}
 
       <Card>
@@ -507,9 +655,61 @@ export default function InventarioPage() {
             </Button>
           </div>
 
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+            <div>
+              Mostrando <span className="font-medium text-foreground">{visibleMaterials.length}</span> de{' '}
+              <span className="font-medium text-foreground">{sortedActiveMaterials.length}</span> productos
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span>Mostrar</span>
+              <select
+                value={String(pageSize)}
+                onChange={(e) => {
+                  const next = e.target.value === 'all' ? 'all' : (Number(e.target.value) as PageSizeOption)
+                  setPageSize(next)
+                  setPage(1)
+                }}
+                className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                aria-label="Productos por página en inventario"
+              >
+                {PAGE_SIZE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+                <option value="all">Todos</option>
+              </select>
+
+              {pageSize !== 'all' ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((current) => Math.max(1, current - 1))}
+                    disabled={page <= 1}
+                  >
+                    Anterior
+                  </Button>
+                  <span>
+                    Página <span className="font-medium text-foreground">{Math.min(page, pageCount)}</span> /{' '}
+                    <span className="font-medium text-foreground">{pageCount}</span>
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                    disabled={page >= pageCount}
+                  >
+                    Siguiente
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          </div>
+
           {isLoading ? (
             <div className="text-sm text-gray-600">{t('common.loading')}</div>
-          ) : activeMaterials.length === 0 ? (
+          ) : sortedActiveMaterials.length === 0 ? (
             <div className="text-sm text-gray-600">{t('inventory.stock.empty')}</div>
           ) : (
             <div className="overflow-auto">
@@ -519,15 +719,35 @@ export default function InventarioPage() {
                     <th className="py-2 pr-3 w-12">{t('inventory.stock.columns.image')}</th>
                     <th className="py-2 pr-4">{t('inventory.stock.columns.material')}</th>
                     <th className="py-2 pr-4">{t('inventory.stock.columns.site')}</th>
-                    <th className="py-2 pr-4">{t('inventory.stock.columns.stock')}</th>
-                    <th className="py-2 pr-4">{t('inventory.stock.columns.minimum')}</th>
+                    <th className="py-2 pr-4">
+                      <button
+                        type="button"
+                        onClick={() => toggleStockSort('stockActual')}
+                        className="inline-flex items-center gap-1 font-medium text-inherit transition hover:text-gray-900"
+                        title="Ordenar por stock actual"
+                      >
+                        {t('inventory.stock.columns.stock')}
+                        {renderSortIcon('stockActual')}
+                      </button>
+                    </th>
+                    <th className="py-2 pr-4">
+                      <button
+                        type="button"
+                        onClick={() => toggleStockSort('stockMinimo')}
+                        className="inline-flex items-center gap-1 font-medium text-inherit transition hover:text-gray-900"
+                        title="Ordenar por stock mínimo"
+                      >
+                        {t('inventory.stock.columns.minimum')}
+                        {renderSortIcon('stockMinimo')}
+                      </button>
+                    </th>
                     <th className="py-2 pr-4">{t('inventory.stock.columns.unit')}</th>
                     <th className="py-2 pr-4">{t('inventory.stock.columns.supplier')}</th>
                     <th className="py-2 pr-4 text-right">{t('inventory.stock.columns.actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {activeMaterials.map((m) => {
+                  {visibleMaterials.map((m) => {
                     const low = n(m.stockActual) <= n(m.stockMinimo)
                     const wh = m.stocks?.[0]?.warehouse ?? null
                     const nombreView = formatMaterialName(m.id, m.nombre)
@@ -734,6 +954,58 @@ export default function InventarioPage() {
                 </div>
               )}
             </div>
+
+            {form.type === 'IN' ? (
+              <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 space-y-3">
+                <div className="space-y-2">
+                  <Label>{t('inventory.fields.scanCode')}</Label>
+                  <Input
+                    value={scanCode}
+                    onChange={(e) => {
+                      setScanCode(e.target.value)
+                      if (scanStatus.kind !== 'idle') setScanStatus({ kind: 'idle', message: '' })
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void submitScannedEntry()
+                      }
+                    }}
+                    placeholder="Ej: 7701234567890"
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                  <div className="text-xs text-gray-600">{t('inventory.fields.scanCodeHelp')}</div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-3">
+                  <div className="space-y-2">
+                    <Label>{t('inventory.fields.scanQuantity')}</Label>
+                    <Input
+                      inputMode="decimal"
+                      value={scanQuantity}
+                      onChange={(e) => setScanQuantity(e.target.value)}
+                      placeholder={t('inventory.fields.quantityPlaceholder')}
+                    />
+                  </div>
+
+                  <div className="flex items-end">
+                    <Button type="button" variant="secondary" onClick={() => void submitScannedEntry()} disabled={scanBusy} className="w-full sm:w-auto">
+                      {scanBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {scanBusy ? t('inventory.actions.scanning') : t('inventory.actions.scanEntry')}
+                    </Button>
+                  </div>
+                </div>
+
+                {scanStatus.kind !== 'idle' ? (
+                  <div className={cn('text-sm', scanStatus.kind === 'success' ? 'text-green-700' : 'text-red-600')}>
+                    {scanStatus.message}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {selectedMaterial ? (
               <div className="text-xs text-gray-600">

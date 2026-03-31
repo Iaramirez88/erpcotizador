@@ -102,16 +102,16 @@ const FLOW_OPTIONS: Array<{ value: PaymentFlow; label: string; hint: string; ico
 
 const SOURCE_OPTIONS: Array<{ value: PaymentSource; label: string }> = [
   { value: 'NEQUI', label: 'Nequi' },
-  { value: 'DAVIPLATA', label: 'Daviplata' },
+  { value: 'DAVIPLATA', label: 'Daviplata (vía PSE)' },
   { value: 'BANCOLOMBIA', label: 'Bancolombia' },
   { value: 'OTHER', label: 'Otro' },
 ]
 
 function flowMessage(flow: PaymentFlow) {
   if (flow === 'DATAPHONE') return 'Se generará un checkout Bold para cobrar con tarjeta.'
-  if (flow === 'QR') return 'Se generará un QR real con Bold para mostrar al cliente.'
-  if (flow === 'LINK') return 'Se generará un link real de pago con Bold para compartir.'
-  return 'Se registrará el pago en caja.'
+  if (flow === 'QR') return 'Se generará un QR de checkout de Bold para mostrar al cliente.'
+  if (flow === 'LINK') return 'Se generará un link de checkout de Bold para compartir.'
+  return 'Confirma cuánto entrega el cliente y cuánto debe devolverse antes de registrar la venta.'
 }
 
 export function QuickPos() {
@@ -136,6 +136,16 @@ export function QuickPos() {
   const [expanded, setExpanded] = useState(false)
   const [creatingElectronic, setCreatingElectronic] = useState(false)
   const [electronicStatus, setElectronicStatus] = useState<string>('')
+  const [cashTenderedInput, setCashTenderedInput] = useState('')
+
+  const cashTendered = useMemo(() => {
+    const value = Number(cashTenderedInput)
+    return Number.isFinite(value) ? value : 0
+  }, [cashTenderedInput])
+
+  const cashChange = useMemo(() => Math.max(cashTendered - cart.total, 0), [cashTendered, cart.total])
+  const cashShortfall = useMemo(() => Math.max(cart.total - cashTendered, 0), [cashTendered, cart.total])
+  const canCompleteCashSale = paymentFlow !== 'CASH' || (cashTenderedInput.trim() !== '' && cashShortfall < 0.01)
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -173,7 +183,10 @@ export function QuickPos() {
               provider: 'MANUAL',
               status: 'PAID',
               flow: paymentFlow,
-              source: paymentSource,
+              metadata: {
+                cashTendered,
+                cashChange,
+              },
             },
           ],
         }
@@ -189,7 +202,7 @@ export function QuickPos() {
         },
       }
     },
-    [cart.items, cart.total, paymentFlow, paymentSource],
+    [cart.items, cart.total, cashChange, cashTendered, paymentFlow, paymentSource],
   )
 
   const focusScanner = useCallback(() => {
@@ -206,6 +219,15 @@ export function QuickPos() {
   const openInvoicePdf = useCallback((invoiceId: string) => {
     window.open(`/api/pos/facturas/${invoiceId}/pdf`, '_blank', 'noopener,noreferrer')
   }, [])
+
+  const openCashDialog = useCallback(() => {
+    setCashTenderedInput((current) => {
+      const parsed = Number(current)
+      if (Number.isFinite(parsed) && parsed >= cart.total) return current
+      return Number(cart.total.toFixed(2)).toString()
+    })
+    setCheckoutOpen(true)
+  }, [cart.total])
 
   const toggleFullscreen = useCallback(async () => {
     try {
@@ -254,6 +276,7 @@ export function QuickPos() {
       setLastSale({ id: json.data.id, numero: json.data.numero, total: json.data.total, status: json.data.status })
       setStatus({ kind: 'success', message: `Factura ${json.data.numero} creada correctamente.` })
       setCheckoutOpen(false)
+      setCashTenderedInput('')
       cart.clearCart()
       openInvoicePdf(json.data.id)
     } catch (error) {
@@ -324,12 +347,12 @@ export function QuickPos() {
     pendingAutoActionRef.current = false
 
     if (paymentFlow === 'CASH') {
-      void processSale()
+      openCashDialog()
       return
     }
 
     setCheckoutOpen(true)
-  }, [cart.isEmpty, cart.uniqueItems, paymentFlow, processSale])
+  }, [cart.isEmpty, cart.uniqueItems, openCashDialog, paymentFlow])
 
   const lookupAndAddProduct = useCallback(async () => {
     const code = scanCode.replace(/\s+/g, '').trim()
@@ -375,6 +398,8 @@ export function QuickPos() {
 
   const sourceLabel = SOURCE_OPTIONS.find((option) => option.value === paymentSource)?.label ?? 'Otro'
   const flowLabel = FLOW_OPTIONS.find((option) => option.value === paymentFlow)?.label ?? paymentFlow
+  const paymentSummaryLabel = paymentFlow === 'CASH' ? flowLabel : `${flowLabel} · ${sourceLabel}`
+  const showCashConfirmation = paymentFlow === 'CASH' && !checkoutSession
 
   const generateElectronicInvoice = useCallback(async () => {
     if (!lastSale || creatingElectronic) return
@@ -409,9 +434,10 @@ export function QuickPos() {
   return (
     <main
       ref={rootRef}
-      className={`${expanded ? 'fixed inset-0 z-50 overflow-auto' : 'min-h-[calc(100vh-4rem)]'} bg-[radial-gradient(circle_at_top,#fff7ed_0%,#ffffff_40%,#f8fafc_100%)] px-4 py-5 md:px-6`}
+      className={`${expanded ? 'fixed inset-0 z-50 h-screen overflow-hidden' : 'h-[calc(100vh-4rem)] overflow-hidden'} bg-[radial-gradient(circle_at_top,#fff7ed_0%,#ffffff_40%,#f8fafc_100%)] px-4 py-5 md:px-6`}
     >
-      <div className="mx-auto mb-4 flex max-w-[1500px] flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+      <div className="mx-auto flex h-full max-w-[1500px] min-h-0 flex-col gap-4">
+        <div className="flex shrink-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-orange-600">Modo caja</p>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Venta rápida separada del módulo de facturación</h1>
@@ -425,10 +451,10 @@ export function QuickPos() {
             {expanded ? 'Salir de pantalla completa' : 'Pantalla completa'}
           </Button>
         </div>
-      </div>
+        </div>
 
-      <div className="mx-auto grid max-w-[1500px] items-start gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(480px,0.95fr)]">
-        <section className="flex min-h-[calc(100vh-12rem)] flex-col overflow-hidden rounded-[28px] border border-orange-200 bg-white shadow-[0_30px_90px_-48px_rgba(234,88,12,0.5)]">
+        <div className="grid min-h-0 flex-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(460px,0.95fr)]">
+          <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-orange-200 bg-white shadow-[0_30px_90px_-48px_rgba(234,88,12,0.5)]">
           <div className="border-b border-orange-100 bg-gradient-to-r from-orange-50 via-white to-white px-6 py-5">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-orange-600">Punto de venta</p>
             <div className="mt-2 flex items-center justify-between gap-4">
@@ -509,7 +535,7 @@ export function QuickPos() {
           </div>
         </section>
 
-        <aside className="grid gap-4 xl:sticky xl:top-4 xl:max-h-[calc(100vh-6rem)] xl:grid-cols-2 xl:overflow-auto xl:pr-1">
+        <aside className="grid min-h-0 content-start gap-4 overflow-auto pr-1 xl:grid-cols-2">
           <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Escanear</p>
             <div className="mt-3 flex gap-3">
@@ -595,22 +621,34 @@ export function QuickPos() {
               })}
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              {SOURCE_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setPaymentSource(option.value)}
-                  className={`rounded-full border px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition ${
-                    paymentSource === option.value
-                      ? 'border-orange-300 bg-orange-100 text-orange-700'
-                      : 'border-slate-200 bg-white text-slate-500 hover:border-orange-200'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+            {paymentFlow === 'CASH' ? (
+              <div className="mt-4 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-slate-600">
+                El pago en efectivo se confirma en un modal con valores grandes para caja y cliente.
+              </div>
+            ) : (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {SOURCE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setPaymentSource(option.value)}
+                    className={`rounded-full border px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] transition ${
+                      paymentSource === option.value
+                        ? 'border-orange-300 bg-orange-100 text-orange-700'
+                        : 'border-slate-200 bg-white text-slate-500 hover:border-orange-200'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {paymentFlow !== 'CASH' && paymentSource === 'DAVIPLATA' ? (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Daviplata se procesa por PSE dentro del checkout de Bold; no es un canal QR nativo independiente.
+              </div>
+            ) : null}
           </section>
 
           <section className="rounded-[28px] border border-slate-200 bg-slate-950 p-5 text-white shadow-[0_30px_80px_-48px_rgba(15,23,42,0.8)] xl:col-span-1">
@@ -619,7 +657,7 @@ export function QuickPos() {
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-300">Resumen</p>
                 <p className="mt-2 text-3xl font-semibold">{formatCurrency(cart.total)}</p>
                 <p className="mt-2 text-sm text-slate-300">{cart.quantity} unidades en {cart.uniqueItems} líneas.</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{flowLabel} · {sourceLabel}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{paymentSummaryLabel}</p>
               </div>
               <Receipt className="h-8 w-8 text-orange-300" />
             </div>
@@ -630,7 +668,7 @@ export function QuickPos() {
               disabled={cart.isEmpty || submitting}
               onClick={() => {
                 if (paymentFlow === 'CASH') {
-                  void processSale()
+                  openCashDialog()
                   return
                 }
                 setCheckoutOpen(true)
@@ -695,54 +733,110 @@ export function QuickPos() {
             </div>
           </section>
         </aside>
+        </div>
       </div>
 
       <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
-        <DialogContent className="rounded-[28px] border-orange-200 sm:max-w-lg">
+        <DialogContent
+          container={rootRef.current}
+          className={showCashConfirmation ? 'rounded-[32px] border-orange-200 sm:max-w-4xl lg:max-w-5xl' : 'rounded-[28px] border-orange-200 sm:max-w-lg'}
+        >
           <DialogHeader>
             <DialogTitle className="text-2xl">Confirmar cobro</DialogTitle>
             <DialogDescription>{flowMessage(paymentFlow)}</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Canal</p>
-              <p className="mt-2 text-lg font-semibold text-slate-900">
-                {FLOW_OPTIONS.find((option) => option.value === paymentFlow)?.label} · {SOURCE_OPTIONS.find((option) => option.value === paymentSource)?.label}
-              </p>
-              <p className="mt-1 text-sm text-slate-500">Total a facturar: {formatCurrency(cart.total)}</p>
-              {pendingInvoiceNumber ? <p className="mt-1 text-sm text-slate-500">Factura borrador: {pendingInvoiceNumber}</p> : null}
-            </div>
-
-            {checkoutSession?.url ? (
-              <>
-                {paymentFlow === 'QR' ? (
-                  <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-orange-200 bg-orange-50 px-4 py-6">
-                    {qrDataUrl ? <img src={qrDataUrl} alt="QR de pago" className="h-64 w-64 rounded-2xl bg-white p-3" /> : <QrCode className="h-20 w-20 text-orange-500" />}
-                    <p className="mt-3 text-sm text-slate-600">Escanea este QR para pagar con Bold.</p>
-                  </div>
-                ) : null}
-
-                <div className="rounded-2xl border border-dashed border-orange-200 bg-orange-50 px-4 py-3 text-sm text-slate-700">
-                  <p className="font-semibold text-slate-900">Link real de cobro</p>
-                  <p className="mt-1 break-all">{checkoutSession.url}</p>
-                  <div className="mt-3 flex gap-2">
-                    <Button type="button" variant="outline" className="rounded-2xl" onClick={() => window.open(checkoutSession.url, '_blank', 'noopener,noreferrer')}>
-                      <ExternalLink className="mr-2 h-4 w-4" />Abrir checkout
-                    </Button>
-                  </div>
+          {showCashConfirmation ? (
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.95fr)] lg:items-stretch">
+              <div className="space-y-6">
+                <div className="rounded-[32px] border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-amber-50 p-7 text-center shadow-sm">
+                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-orange-700">Total a cobrar</p>
+                  <p className="mt-4 text-6xl font-semibold tracking-tight text-slate-950 md:text-7xl xl:text-[5.5rem]">{formatCurrency(cart.total)}</p>
                 </div>
-              </>
-            ) : null}
-          </div>
+
+                <div className="rounded-[32px] border border-slate-200 bg-white p-7 shadow-sm">
+                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">Dinero entregado por el cliente</p>
+                  <Input
+                    type="number"
+                    min={cart.total}
+                    step="0.01"
+                    inputMode="decimal"
+                    value={cashTenderedInput}
+                    onChange={(event) => setCashTenderedInput(event.target.value)}
+                    placeholder="0"
+                    className="mt-5 h-28 rounded-[28px] border-orange-200 px-8 text-center text-5xl font-semibold text-slate-950 md:text-6xl xl:text-7xl"
+                  />
+                </div>
+              </div>
+
+              <div className="flex h-full flex-col gap-5">
+                <div className="rounded-[32px] border border-slate-200 bg-slate-50 p-6 text-center shadow-sm">
+                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">Cliente entrega</p>
+                  <p className="mt-4 break-words text-5xl font-semibold tracking-tight text-slate-950 md:text-6xl xl:text-7xl">{formatCurrency(cashTendered)}</p>
+                </div>
+
+                <div className="rounded-[32px] border border-emerald-200 bg-emerald-50 p-6 text-center shadow-sm">
+                  <p className="text-sm font-semibold uppercase tracking-[0.22em] text-emerald-700">Devuelta</p>
+                  <p className="mt-4 break-words text-5xl font-semibold tracking-tight text-emerald-900 md:text-6xl xl:text-7xl">{formatCurrency(cashChange)}</p>
+                </div>
+
+                {cashShortfall > 0.009 ? (
+                  <div className="rounded-[28px] border border-rose-200 bg-rose-50 px-5 py-4 text-base font-medium text-rose-700">
+                    Faltan {formatCurrency(cashShortfall)} para completar el pago.
+                  </div>
+                ) : (
+                  <div className="rounded-[28px] border border-emerald-200 bg-emerald-100 px-5 py-4 text-base font-medium text-emerald-800">
+                    El cambio quedó listo para mostrar al cliente y al registrador.
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Canal</p>
+                <p className="mt-2 text-lg font-semibold text-slate-900">
+                  {FLOW_OPTIONS.find((option) => option.value === paymentFlow)?.label} · {SOURCE_OPTIONS.find((option) => option.value === paymentSource)?.label}
+                </p>
+                <p className="mt-1 text-sm text-slate-500">Total a facturar: {formatCurrency(cart.total)}</p>
+                {pendingInvoiceNumber ? <p className="mt-1 text-sm text-slate-500">Factura borrador: {pendingInvoiceNumber}</p> : null}
+              </div>
+
+              {checkoutSession?.url ? (
+                <>
+                  {paymentFlow === 'QR' ? (
+                    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-orange-200 bg-orange-50 px-4 py-6">
+                      {qrDataUrl ? <img src={qrDataUrl} alt="QR de pago" className="h-64 w-64 rounded-2xl bg-white p-3" /> : <QrCode className="h-20 w-20 text-orange-500" />}
+                      <p className="mt-3 text-sm text-slate-600">Escanea este QR para abrir el checkout de Bold.</p>
+                    </div>
+                  ) : null}
+
+                  <div className="rounded-2xl border border-dashed border-orange-200 bg-orange-50 px-4 py-3 text-sm text-slate-700">
+                    <p className="font-semibold text-slate-900">Link de checkout Bold</p>
+                    <p className="mt-1 break-all">{checkoutSession.url}</p>
+                    <div className="mt-3 flex gap-2">
+                      <Button type="button" variant="outline" className="rounded-2xl" onClick={() => window.open(checkoutSession.url, '_blank', 'noopener,noreferrer')}>
+                        <ExternalLink className="mr-2 h-4 w-4" />Abrir checkout
+                      </Button>
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          )}
 
           <DialogFooter className="gap-2 sm:justify-between">
             <Button type="button" variant="outline" className="rounded-2xl" onClick={() => setCheckoutOpen(false)}>
               Volver
             </Button>
             {!checkoutSession ? (
-              <Button type="button" className="rounded-2xl bg-orange-500 text-white hover:bg-orange-600" onClick={() => void processSale()} disabled={submitting}>
-                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Generar checkout'}
+              <Button
+                type="button"
+                className="rounded-2xl bg-orange-500 text-white hover:bg-orange-600"
+                onClick={() => void processSale()}
+                disabled={submitting || !canCompleteCashSale}
+              >
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : paymentFlow === 'CASH' ? 'Registrar venta' : 'Generar checkout'}
               </Button>
             ) : (
               <Button type="button" className="rounded-2xl bg-orange-500 text-white hover:bg-orange-600" onClick={() => pendingInvoiceId && openInvoicePdf(pendingInvoiceId)}>

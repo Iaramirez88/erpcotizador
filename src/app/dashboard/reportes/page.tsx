@@ -49,7 +49,7 @@ interface Estadisticas {
 interface VentaMensual {
   mes: string;
   ventas: number;
-  ordenes: number;
+  ventasCount: number;
 }
 
 interface TopCliente {
@@ -69,6 +69,30 @@ interface OrdenAPI {
     empresa?: string;
   };
 }
+
+type VentaReporteApi = {
+  id: string;
+  createdAt: string;
+  total: number;
+  customerKey: string;
+  customerName: string;
+  customerCompany?: string | null;
+};
+
+type ReporteVentas = {
+  periodo: string;
+  from: string;
+  to: string;
+  totals: {
+    grossSales: number;
+    returned: number;
+    netSales: number;
+    count: number;
+    uniqueCustomers: number;
+    averageSale: number;
+  };
+  sales: VentaReporteApi[];
+};
 
 type ReporteDocumentos = {
   periodo: string;
@@ -270,21 +294,26 @@ export default function ReportesPage() {
 
         const { fromDate, toDate } = parseLocalRange(from, to);
 
-        const [resCotizaciones, resOrdenes, resClientes] = await Promise.all([
+        const [resCotizaciones, resOrdenes, resVentas, resDocs, resCompras] = await Promise.all([
           fetch('/api/cotizaciones', { signal: controller.signal }),
           fetch('/api/ordenes', { signal: controller.signal }),
-          fetch('/api/clientes', { signal: controller.signal }),
+          fetch(`/api/reportes/ventas${buildParams({ periodo, from, to })}`, { signal: controller.signal }),
+          fetch(`/api/reportes/documentos${buildParams({ periodo, from, to })}`, { signal: controller.signal }),
+          fetch(`/api/reportes/compras${buildParams({ periodo, from, to })}`, { signal: controller.signal }),
         ]);
 
-        const [dataCotizaciones, dataOrdenes, dataClientes] = await Promise.all([
+        const [dataCotizaciones, dataOrdenes, dataVentas, dataDocs, dataCompras] = await Promise.all([
           resCotizaciones.json(),
           resOrdenes.json(),
-          resClientes.json(),
+          resVentas.json().catch(() => null),
+          resDocs.json().catch(() => null),
+          resCompras.json().catch(() => null),
         ]);
 
         const cotizaciones = dataCotizaciones.success ? dataCotizaciones.data : [];
         const ordenes: OrdenAPI[] = dataOrdenes.success ? dataOrdenes.data : [];
-        const clientes = dataClientes.success ? dataClientes.data : [];
+        const ventas = dataVentas?.success ? (dataVentas.data as ReporteVentas) : null;
+        const ventasItems = ventas?.sales ?? [];
 
         const ordenesFiltradas = ordenes.filter((o) => {
           const dt = new Date(o.createdAt);
@@ -302,17 +331,21 @@ export default function ReportesPage() {
           return true;
         });
 
-        const ventasTotales = ordenesFiltradas.reduce((sum, orden) => sum + orden.total, 0);
+        const ventasTotales = ventas?.totals.netSales ?? 0;
         const tasaConversion =
           cotizacionesFiltradas.length > 0 ? (ordenesFiltradas.length / cotizacionesFiltradas.length) * 100 : 0;
-        const promedioVenta = ordenesFiltradas.length > 0 ? ventasTotales / ordenesFiltradas.length : 0;
+        const promedioVenta = ventas?.totals.averageSale ?? 0;
+        const clientesActivos = new Set([
+          ...ordenesFiltradas.map((orden) => orden.cliente.id),
+          ...ventasItems.map((sale) => sale.customerKey),
+        ]).size;
 
         if (!cancelled) {
           setEstadisticas({
             ventasTotales,
             cotizacionesTotales: cotizacionesFiltradas.length,
             ordenesTrabajo: ordenesFiltradas.length,
-            clientesActivos: clientes.length,
+            clientesActivos,
             tasaConversion,
             promedioVenta,
           });
@@ -330,11 +363,11 @@ export default function ReportesPage() {
           else cursor.setFullYear(cursor.getFullYear() + 1);
         }
 
-        ordenesFiltradas.forEach((orden) => {
-          const fecha = new Date(orden.createdAt);
+        ventasItems.forEach((venta) => {
+          const fecha = new Date(venta.createdAt);
           const key = bucketKey(fecha, groupBy);
           if (!ventasPorBucket[key]) ventasPorBucket[key] = { ventas: 0, ordenes: 0 };
-          ventasPorBucket[key].ventas += orden.total;
+          ventasPorBucket[key].ventas += venta.total;
           ventasPorBucket[key].ordenes += 1;
         });
 
@@ -344,39 +377,29 @@ export default function ReportesPage() {
             date: bucketDateFromKey(key, groupBy),
             mes: bucketLabelFromKey(key, groupBy, locale),
             ventas: data.ventas,
-            ordenes: data.ordenes,
+            ventasCount: data.ordenes,
           }))
           .sort((a, b) => a.date.getTime() - b.date.getTime())
-          .map(({ mes, ventas, ordenes }) => ({ mes, ventas, ordenes }));
+          .map(({ mes, ventas, ventasCount }) => ({ mes, ventas, ventasCount }));
 
         const clientesMap: Record<string, { nombre: string; empresa?: string; totalCompras: number; numOrdenes: number }> = {};
-        ordenesFiltradas.forEach((orden) => {
-          const clienteId = orden.cliente.id;
+        ventasItems.forEach((venta) => {
+          const clienteId = venta.customerKey;
           if (!clientesMap[clienteId]) {
             clientesMap[clienteId] = {
-              nombre: orden.cliente.nombre,
-              empresa: orden.cliente.empresa,
+              nombre: venta.customerName,
+              empresa: venta.customerCompany ?? undefined,
               totalCompras: 0,
               numOrdenes: 0,
             };
           }
-          clientesMap[clienteId].totalCompras += orden.total;
+          clientesMap[clienteId].totalCompras += venta.total;
           clientesMap[clienteId].numOrdenes += 1;
         });
 
         const topClientesArray = Object.values(clientesMap)
           .sort((a, b) => b.totalCompras - a.totalCompras)
           .slice(0, 5);
-
-        const [resDocs, resCompras] = await Promise.all([
-          fetch(`/api/reportes/documentos${buildParams({ periodo, from, to })}`, { signal: controller.signal }),
-          fetch(`/api/reportes/compras${buildParams({ periodo, from, to })}`, { signal: controller.signal }),
-        ]);
-
-        const [dataDocs, dataCompras] = await Promise.all([
-          resDocs.json().catch(() => null),
-          resCompras.json().catch(() => null),
-        ]);
 
         if (!cancelled) {
           setVentasMensuales(ventasArray);
@@ -935,7 +958,7 @@ export default function ReportesPage() {
                     <Tooltip />
                     <Legend />
                     <Bar dataKey="ventas" name={t('reports.common.sales')} fill="#2563eb" />
-                    <Bar dataKey="ordenes" name={t('reports.common.orders')} fill="#16a34a" />
+                    <Bar dataKey="ventasCount" name={t('reports.common.orders')} fill="#16a34a" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -952,7 +975,7 @@ export default function ReportesPage() {
                         <div className="text-right">
                           <span className="text-sm font-bold">{formatCurrency(mes.ventas)}</span>
                           <span className="text-xs text-gray-500 ml-2">
-                            ({mes.ordenes} {ordersNoun(mes.ordenes)})
+                            ({mes.ventasCount} {ordersNoun(mes.ventasCount)})
                           </span>
                         </div>
                       </div>

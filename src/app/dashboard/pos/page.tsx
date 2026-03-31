@@ -303,7 +303,7 @@ function posPaymentFlowLabel(value: string) {
 function posPaymentSourceLabel(value: string) {
   if (value === 'NONE') return 'Sin origen'
   if (value === 'NEQUI') return 'Nequi'
-  if (value === 'DAVIPLATA') return 'Daviplata'
+  if (value === 'DAVIPLATA') return 'Daviplata (PSE)'
   if (value === 'BANCOLOMBIA') return 'Bancolombia'
   if (value === 'OTHER') return 'Otro'
   return value

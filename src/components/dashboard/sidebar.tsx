@@ -324,7 +324,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
 
-  // Logística
+  // Inventario
   {
     name: t('nav.inventory'),
     href: "/dashboard/inventario",
@@ -349,6 +349,8 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
       </svg>
     ),
   },
+
+  // Logística
   {
     name: t('nav.purchases'),
     href: "/dashboard/compras",
@@ -750,10 +752,15 @@ export default function Sidebar({ user }: SidebarProps) {
         ].filter(Boolean) as NavItem[],
       },
       {
-        title: 'Logística',
+        title: 'Inventario',
         items: [
           get('/dashboard/inventario'),
           get('/dashboard/inventario/traslados'),
+        ].filter(Boolean) as NavItem[],
+      },
+      {
+        title: 'Logística',
+        items: [
           get('/dashboard/compras'),
           get('/dashboard/proveedores'),
           get('/dashboard/configuracion/desperdicios'),
