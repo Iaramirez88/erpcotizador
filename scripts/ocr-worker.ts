@@ -14,7 +14,7 @@ function requiredEnv(name: string): string {
 }
 
 const redisUrl = requiredEnv("REDIS_URL")
-const concurrency = Math.max(1, Number(process.env.OCR_WORKER_CONCURRENCY || 2) || 2)
+const concurrency = Math.max(1, Number(process.env.OCR_WORKER_CONCURRENCY || 1) || 1)
 
 function parseRedisUrlToConnectionOptions(url: string): ConnectionOptions {
   const u = new URL(url)

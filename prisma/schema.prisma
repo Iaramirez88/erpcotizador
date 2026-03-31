@@ -503,6 +503,34 @@ enum PosPaymentMethod {
   VALE
 }
 
+enum PosPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELED
+  EXPIRED
+}
+
+enum PosPaymentProvider {
+  MANUAL
+  BOLD
+}
+
+enum PosPaymentFlow {
+  CASH
+  DATAPHONE
+  QR
+  LINK
+}
+
+enum PosPaymentSource {
+  NONE
+  NEQUI
+  DAVIPLATA
+  BANCOLOMBIA
+  OTHER
+}
+
 // ============================================
 // FACTURACIÓN ELECTRÓNICA (DIAN) - MVP
 // ============================================
@@ -1206,13 +1234,30 @@ model PosPayment {
   invoiceId String
   invoice   PosInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
-  method PosPaymentMethod
-  amount Float            @default(0)
-  note   String?
+  method   PosPaymentMethod
+  status   PosPaymentStatus   @default(PAID)
+  provider PosPaymentProvider @default(MANUAL)
+  flow     PosPaymentFlow     @default(CASH)
+  source   PosPaymentSource   @default(NONE)
+  amount   Float              @default(0)
+  note     String?
+
+  externalReference String? @unique
+
+  boldPaymentLinkId String? @unique
+  boldCheckoutUrl   String?
+  boldPaymentId     String?
+  boldEventId       String?
+  boldType          String?
+
+  paidAt   DateTime?
+  metadata Json      @default("{}")
 
   receivedAt DateTime @default(now())
 
   @@index([invoiceId])
+  @@index([status, provider])
+  @@index([externalReference])
   @@map("pos_payments")
 }
 

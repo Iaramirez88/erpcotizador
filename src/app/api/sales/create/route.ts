@@ -1,0 +1,1 @@
+export { POST, runtime } from '@/app/api/pos/facturas/route'

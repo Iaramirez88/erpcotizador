@@ -197,6 +197,22 @@ type InvoiceDetail = {
   note: string | null
   createdAt: string
   warehouse?: { id: string; nombre: string; codigo: string | null } | null
+  payments: Array<{
+    id: string
+    method: string
+    amount: number
+    note: string | null
+    status: string
+    provider: string
+    flow: string
+    source: string
+    externalReference: string | null
+    boldPaymentLinkId: string | null
+    boldPaymentId: string | null
+    boldType: string | null
+    paidAt: string | null
+    receivedAt: string
+  }>
   items: Array<{
     id: string
     descripcion: string
@@ -259,6 +275,38 @@ function parseMoneyInput(value: unknown, fallback = 0) {
 function priceSuggestion(m: Material | undefined | null): number {
   if (!m) return 0
   return n(m.precioUnidad ?? m.precioMetro ?? m.precioM2 ?? 0)
+}
+
+function posPaymentStatusLabel(value: string) {
+  if (value === 'PENDING') return 'Pendiente'
+  if (value === 'PAID') return 'Pagado'
+  if (value === 'FAILED') return 'Fallido'
+  if (value === 'CANCELED') return 'Cancelado'
+  if (value === 'EXPIRED') return 'Expirado'
+  return value
+}
+
+function posPaymentProviderLabel(value: string) {
+  if (value === 'BOLD') return 'Bold'
+  if (value === 'MANUAL') return 'Manual'
+  return value
+}
+
+function posPaymentFlowLabel(value: string) {
+  if (value === 'CASH') return 'Efectivo'
+  if (value === 'DATAPHONE') return 'Datáfono'
+  if (value === 'QR') return 'QR'
+  if (value === 'LINK') return 'Link'
+  return value
+}
+
+function posPaymentSourceLabel(value: string) {
+  if (value === 'NONE') return 'Sin origen'
+  if (value === 'NEQUI') return 'Nequi'
+  if (value === 'DAVIPLATA') return 'Daviplata'
+  if (value === 'BANCOLOMBIA') return 'Bancolombia'
+  if (value === 'OTHER') return 'Otro'
+  return value
 }
 
 type DraftItem = {
@@ -1898,6 +1946,9 @@ export default function PosPage() {
           <>
             <Button onClick={() => void loadAll()} variant="secondary" disabled={isLoading}>
               {t('pos.actions.refresh')}
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/dashboard/pos/venta-rapida">Venta rápida</Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/dashboard/pos/plantilla">{t('pos.actions.template')}</Link>
@@ -3737,6 +3788,47 @@ export default function PosPage() {
               {detail.note ? (
                 <div className="text-sm text-gray-700">
                   {t('pos.invoiceDetailDialog.labels.note')}: {detail.note}
+                </div>
+              ) : null}
+
+              {detail.payments.length ? (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-gray-900">Pagos registrados</div>
+                  <div className="overflow-auto rounded-md border">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left text-gray-600">
+                          <th className="py-2 px-3">Estado</th>
+                          <th className="py-2 px-3">Proveedor</th>
+                          <th className="py-2 px-3">Canal</th>
+                          <th className="py-2 px-3">Origen</th>
+                          <th className="py-2 px-3">Método</th>
+                          <th className="py-2 px-3">Monto</th>
+                          <th className="py-2 px-3">Referencia</th>
+                          <th className="py-2 px-3">Fecha</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detail.payments.map((payment) => (
+                          <tr key={payment.id} className="border-b last:border-b-0 align-top">
+                            <td className="py-2 px-3 text-gray-900">{posPaymentStatusLabel(payment.status)}</td>
+                            <td className="py-2 px-3 text-gray-700">{posPaymentProviderLabel(payment.provider)}</td>
+                            <td className="py-2 px-3 text-gray-700">{posPaymentFlowLabel(payment.flow)}</td>
+                            <td className="py-2 px-3 text-gray-700">{posPaymentSourceLabel(payment.source)}</td>
+                            <td className="py-2 px-3 text-gray-700">{payment.method}</td>
+                            <td className="py-2 px-3 font-medium text-gray-900">{formatCurrency(n(payment.amount, 0))}</td>
+                            <td className="py-2 px-3 text-xs text-gray-600">
+                              <div>{payment.externalReference || payment.boldPaymentId || payment.boldPaymentLinkId || t('common.na')}</div>
+                              {payment.note ? <div className="mt-1 text-gray-500">{payment.note}</div> : null}
+                            </td>
+                            <td className="py-2 px-3 text-gray-700">
+                              {new Date(payment.paidAt || payment.receivedAt).toLocaleString(locale)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               ) : null}
 

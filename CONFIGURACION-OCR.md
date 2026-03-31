@@ -16,7 +16,8 @@ Para evitar timeouts y que el OCR tumbe el servidor web, el escaneo se **encola*
 Variables:
 
 - `REDIS_URL=redis://...` (habilita la cola)
-- `OCR_WORKER_CONCURRENCY=2` (en el proceso worker)
+- `OCR_WORKER_CONCURRENCY=1` (empieza así en VPS de 1-2 vCPU; solo súbelo si ya mediste margen)
+- `OCR_SYNC_FALLBACK=false` (en producción, para que el contenedor web no procese OCR dentro del request)
 
 Ejecutar el worker:
 

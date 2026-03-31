@@ -67,6 +67,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       AUTH_DEBUG: ${AUTH_DEBUG:-false}
+      OCR_SYNC_FALLBACK: ${OCR_SYNC_FALLBACK:-false}
       # NextAuth/Auth.js: URL base y confianza del host (importante detrás de Caddy/Cloudflare)
       NEXTAUTH_URL: ${NEXTAUTH_URL:-}
       AUTH_TRUST_HOST: ${AUTH_TRUST_HOST:-true}
@@ -129,7 +130,7 @@ services:
       OCR_SERVICE_URL: ${OCR_SERVICE_URL:-http://ocr:8001}
       OCR_SERVICE_API_KEY: ${OCR_SERVICE_API_KEY:-}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-      OCR_WORKER_CONCURRENCY: ${OCR_WORKER_CONCURRENCY:-2}
+      OCR_WORKER_CONCURRENCY: ${OCR_WORKER_CONCURRENCY:-1}
 
       # Spaces/S3 (opcional)
       S3_ENDPOINT: ${S3_ENDPOINT:-}

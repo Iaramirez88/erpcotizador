@@ -389,6 +389,15 @@ export default function ProductosPage() {
   }, [isModalOpen])
 
   useEffect(() => {
+    if (!isModalOpen || editingMaterial || !defaultBodegaId) return
+
+    setFormData((prev) => {
+      if (prev.stockScope !== 'warehouse' || prev.warehouseId) return prev
+      return { ...prev, warehouseId: defaultBodegaId }
+    })
+  }, [defaultBodegaId, editingMaterial, isModalOpen])
+
+  useEffect(() => {
     let cancelled = false
     const loadBodegas = async () => {
       try {
@@ -789,6 +798,14 @@ export default function ProductosPage() {
       const method = editingMaterial ? 'PUT' : 'POST'
 
       const { warehouseId, stockScope, ...restForm } = formData
+      const stockActualN = Number(restForm.stockActual)
+      const effectiveWarehouseId = stockScope === 'warehouse' ? (warehouseId || defaultBodegaId || '') : ''
+
+      if (stockScope === 'warehouse' && stockActualN > 0 && !effectiveWarehouseId) {
+        alert('Selecciona una bodega para el stock inicial o cambia el alcance a Todas las sedes.')
+        setIsSubmitting(false)
+        return
+      }
 
       const response = await fetch(url, {
         method,
@@ -804,7 +821,7 @@ export default function ProductosPage() {
             })
           ),
           stockScope,
-          warehouseId: stockScope === 'warehouse' ? (warehouseId || undefined) : undefined,
+          warehouseId: stockScope === 'warehouse' ? (effectiveWarehouseId || undefined) : undefined,
           quantityDiscounts: quantityDiscounts
             .map((d) => ({
               minQty: parseFloat(d.minQty),
@@ -840,7 +857,8 @@ export default function ProductosPage() {
         resetForm()
         fetchMateriales()
       } else {
-        alert(data.error || 'Error al guardar producto')
+        const detail = String(data?.detail || '').trim()
+        alert(`${data.error || 'Error al guardar producto'}${detail ? `\n\nDetalle: ${detail}` : ''}`)
       }
     } catch (error) {
       console.error('Error:', error)
@@ -976,7 +994,7 @@ export default function ProductosPage() {
       stockActual: "0",
       stockMinimo: "0",
       unidadMedida: "m2",
-      warehouseId: "",
+      warehouseId: defaultBodegaId,
       stockScope: 'warehouse',
       proveedor: "",
       observaciones: "",

@@ -44,7 +44,22 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
         },
         payments: {
           orderBy: { receivedAt: 'asc' },
-          select: { id: true, method: true, amount: true, note: true, receivedAt: true },
+          select: {
+            id: true,
+            method: true,
+            amount: true,
+            note: true,
+            status: true,
+            provider: true,
+            flow: true,
+            source: true,
+            externalReference: true,
+            boldPaymentLinkId: true,
+            boldPaymentId: true,
+            boldType: true,
+            paidAt: true,
+            receivedAt: true,
+          },
         },
         returns: {
           orderBy: { createdAt: 'desc' },

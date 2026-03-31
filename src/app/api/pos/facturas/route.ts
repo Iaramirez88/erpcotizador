@@ -1,14 +1,27 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
+import { getRequestBaseUrl } from '@/lib/app-url'
+import { createBoldPaymentLink } from '@/lib/bold'
 import {
   ModuleKey,
   PosInvoiceStatus,
+  PosPaymentFlow,
   PosPaymentMethod,
+  PosPaymentProvider,
+  PosPaymentSource,
+  PosPaymentStatus,
   Prisma,
   InventoryMovementType,
   InventoryMovementSourceType,
 } from '@prisma/client'
+import {
+  normalizePosPaymentFlow,
+  normalizePosPaymentSource,
+  posPaymentMethodFromFlow,
+  resolveBoldPaymentMethods,
+  type PosFinalizePaymentInput,
+} from '@/lib/pos-payments'
 import { ensureWorkOrderFromInvoice, resolveClienteIdForPosInvoice, WorkOrderClientResolutionError } from '@/lib/work-orders'
 import { reserveNextPosInvoiceNumber } from '@/lib/pos-numbering'
 
@@ -87,6 +100,17 @@ type PaymentInput = {
   method: PosPaymentMethod
   amount: number
   note?: string | null
+  provider?: PosPaymentProvider
+  status?: PosPaymentStatus
+  flow?: string | null
+  source?: string | null
+  metadata?: Prisma.InputJsonValue
+}
+
+type CheckoutInput = {
+  provider?: 'BOLD' | null
+  flow?: string | null
+  source?: string | null
 }
 
 type PostBody = {
@@ -100,6 +124,7 @@ type PostBody = {
   asDraft?: boolean
   items: InvoiceItemInput[]
   payments?: PaymentInput[]
+  checkout?: CheckoutInput | null
 }
 
 function normalizePaymentMethod(value: unknown): PosPaymentMethod {
@@ -229,7 +254,16 @@ export async function POST(request: Request) {
     const otherTaxesAmountInput = Math.max(0, n(body?.otherTaxesAmount ?? 0) ?? 0)
     const note = typeof body?.note === 'string' ? body.note.trim() : null
     const clienteDocumento = typeof body?.clienteDocumento === 'string' ? body.clienteDocumento.trim() : null
-    const asDraft = Boolean(body?.asDraft)
+    const checkout = body?.checkout && typeof body.checkout === 'object' ? body.checkout : null
+    const checkoutProvider = checkout?.provider === 'BOLD' ? PosPaymentProvider.BOLD : null
+    const checkoutFlow = normalizePosPaymentFlow(checkout?.flow)
+    const checkoutSource = normalizePosPaymentSource(checkout?.source)
+    const wantsExternalCheckout = checkoutProvider === PosPaymentProvider.BOLD && checkoutFlow !== 'CASH'
+    const asDraft = Boolean(body?.asDraft || wantsExternalCheckout)
+
+    if (wantsExternalCheckout && !process.env.BOLD_API_KEY && !process.env.BOLD_IDENTITY_KEY) {
+      return NextResponse.json({ error: 'BOLD_API_KEY (o BOLD_IDENTITY_KEY) no configurada en el servidor.' }, { status: 503 })
+    }
 
     const normalizedItems = items
       .map((it) => {
@@ -289,12 +323,21 @@ export async function POST(request: Request) {
       const total = taxableBase + iva + otherTaxesAmountInput
 
       const paymentsInput = Array.isArray(body?.payments) ? body.payments : []
-      const paymentsNormalized: PaymentInput[] = paymentsInput
+      const paymentsNormalized: PosFinalizePaymentInput[] = paymentsInput
         .map((p) => {
           const amount = n(p.amount) ?? 0
           const method = normalizePaymentMethod((p as any).method)
           const note = typeof p.note === 'string' ? p.note.trim() : null
-          return { method, amount, note }
+          return {
+            method,
+            amount,
+            note,
+            provider: p.provider === PosPaymentProvider.BOLD ? PosPaymentProvider.BOLD : PosPaymentProvider.MANUAL,
+            status: p.status === PosPaymentStatus.PENDING ? PosPaymentStatus.PENDING : PosPaymentStatus.PAID,
+            flow: normalizePosPaymentFlow(p.flow) as PosPaymentFlow,
+            source: normalizePosPaymentSource(p.source) as PosPaymentSource,
+            metadata: p.metadata ?? {},
+          }
         })
         .filter((p) => p.amount > 0)
 
@@ -303,7 +346,7 @@ export async function POST(request: Request) {
         : paymentsNormalized.length
           ? paymentsNormalized
           : total > 0
-            ? [{ method: PosPaymentMethod.CASH, amount: total, note: null }]
+            ? [{ method: PosPaymentMethod.CASH, amount: total, note: null, provider: PosPaymentProvider.MANUAL, status: PosPaymentStatus.PAID, flow: PosPaymentFlow.CASH, source: PosPaymentSource.NONE, metadata: {} }]
             : []
 
       const paidSum = paymentsFinal.reduce((sum, p) => sum + p.amount, 0)
@@ -342,7 +385,17 @@ export async function POST(request: Request) {
           },
           payments: paymentsFinal.length
             ? {
-                create: paymentsFinal.map((p) => ({ method: p.method, amount: p.amount, note: p.note })),
+                create: paymentsFinal.map((p) => ({
+                  method: p.method,
+                  amount: p.amount,
+                  note: p.note,
+                  provider: p.provider ?? PosPaymentProvider.MANUAL,
+                  status: p.status ?? PosPaymentStatus.PAID,
+                  flow: p.flow ?? 'CASH',
+                  source: p.source ?? 'NONE',
+                  paidAt: p.status === PosPaymentStatus.PENDING ? null : new Date(),
+                  metadata: p.metadata ?? {},
+                })),
               }
             : undefined,
         },
@@ -442,7 +495,68 @@ export async function POST(request: Request) {
 
     })
 
-    return NextResponse.json({ success: true, data: result })
+    if (!wantsExternalCheckout) {
+      return NextResponse.json({ success: true, data: result })
+    }
+
+    const baseUrl = getRequestBaseUrl(request)
+    const reference = `POS-${result.numero}-${Date.now()}`.slice(0, 60)
+    const callbackUrl = baseUrl ? `${baseUrl}/dashboard/pos/venta-rapida?invoiceId=${encodeURIComponent(result.id)}` : undefined
+
+    try {
+      const checkoutSession = await createBoldPaymentLink({
+        reference,
+        amountCOP: Math.round(result.total),
+        description: `Venta POS ${result.numero}`,
+        callbackUrl,
+        paymentMethods: resolveBoldPaymentMethods(checkoutFlow, checkoutSource),
+      })
+
+      await prisma.posPayment.create({
+        data: {
+          invoiceId: result.id,
+          method: posPaymentMethodFromFlow(checkoutFlow),
+          amount: result.total,
+          status: PosPaymentStatus.PENDING,
+          provider: PosPaymentProvider.BOLD,
+          flow: checkoutFlow,
+          source: checkoutSource,
+          externalReference: reference,
+          boldPaymentLinkId: checkoutSession.paymentLinkId,
+          boldCheckoutUrl: checkoutSession.url,
+          metadata: {
+            requestedFlow: checkoutFlow,
+            requestedSource: checkoutSource,
+          },
+        },
+        select: { id: true },
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          ...result,
+          checkout: {
+            provider: 'BOLD',
+            reference,
+            paymentLinkId: checkoutSession.paymentLinkId,
+            url: checkoutSession.url,
+            flow: checkoutFlow,
+            source: checkoutSource,
+          },
+        },
+      })
+    } catch (error) {
+      console.error('Error creando checkout Bold POS:', error)
+      return NextResponse.json(
+        {
+          error: 'La factura borrador fue creada, pero no se pudo generar el checkout Bold.',
+          invoiceId: result.id,
+          numero: result.numero,
+        },
+        { status: 502 },
+      )
+    }
   } catch (error) {
     if (error instanceof Error) {
       if (error.message === 'SEDE_NOT_FOUND') {

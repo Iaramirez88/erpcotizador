@@ -815,6 +815,13 @@ export async function POST(request: Request) {
     }
 
     console.error("Error al crear material:", error)
-    return NextResponse.json({ error: "Error al crear material" }, { status: 500 })
+    const detail = error instanceof Error ? error.message : null
+    return NextResponse.json(
+      {
+        error: "Error al crear producto",
+        ...(process.env.NODE_ENV !== 'production' && detail ? { detail } : {}),
+      },
+      { status: 500 }
+    )
   }
 }
