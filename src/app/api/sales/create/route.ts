@@ -1,1 +1,3 @@
-export { POST, runtime } from '@/app/api/pos/facturas/route'
+export const runtime = 'nodejs'
+
+export { POST } from '@/app/api/pos/facturas/route'
