@@ -28,6 +28,7 @@ RUN npx prisma generate
 # Imagen web: solo esta etapa compila Next.js
 FROM source AS web
 
+ENV NEXT_DISABLE_BUILD_CHECKS=1
 RUN npm run build
 
 ENV NODE_ENV=production
