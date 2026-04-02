@@ -3055,9 +3055,8 @@ export function LitografiaQuoteDialog(props: {
                                     </div>
                                     <p className="mt-4 text-base font-semibold text-slate-950">{option.label}</p>
                                     <p className="mt-1 text-xs leading-5 text-slate-600">{copy.summary}</p>
-                                    <div className="mt-4 flex items-center justify-between text-xs text-slate-700">
+                                    <div className="mt-4 text-xs text-slate-700">
                                       <span>{copy.detail}</span>
-                                      <span>{Math.max(1, option.paginasPorPliego || 0)} págs/pliego</span>
                                     </div>
                                   </button>
                                 )
@@ -3117,7 +3116,7 @@ export function LitografiaQuoteDialog(props: {
                                 ) : null}
                               </div>
 
-                              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+                              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
                                 <div className="rounded-lg border border-sky-100 bg-white p-3 shadow-sm">
                                   <div className="flex items-center gap-2 text-sky-700">
                                     <BookOpen className="h-4 w-4" />
@@ -3141,14 +3140,6 @@ export function LitografiaQuoteDialog(props: {
                                   </div>
                                   <p className="mt-2 text-sm font-semibold text-slate-950">{editorialTotalCustomerPages} páginas totales</p>
                                   <p className="mt-1 text-xs text-slate-600">Portada {Math.max(0, Math.trunc(parseFloat(editorialPaginasPortadaContraportada) || 0))} + internas {Math.max(0, Math.trunc(parseFloat(editorialTotalPaginas) || 0))}.</p>
-                                </div>
-                                <div className="rounded-lg border border-sky-100 bg-white p-3 shadow-sm">
-                                  <div className="flex items-center gap-2 text-sky-700">
-                                    <Sparkles className="h-4 w-4" />
-                                    <p className="text-xs font-semibold uppercase tracking-[0.14em]">Imposición</p>
-                                  </div>
-                                  <p className="mt-2 text-sm font-semibold text-slate-950">{Math.max(1, Math.trunc(parseFloat(editorialPaginasPorPliego) || 0))} páginas por pliego</p>
-                                  <p className="mt-1 text-xs text-slate-600">Portada {editorialSplitCalc?.coverPliegosPorUnidad ?? 0} e internas {editorialSplitCalc?.innerPliegosPorUnidad ?? 0} por unidad.</p>
                                 </div>
                               </div>
 
@@ -3277,57 +3268,32 @@ export function LitografiaQuoteDialog(props: {
                             </div>
 
                             {(editorialCoverPreset && editorialCoverPaper) || (editorialInnerPreset && editorialInnerPaper) ? (
-                              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-                                {editorialCoverPreset && editorialCoverPaper ? (
-                                  <div className="rounded-xl border border-slate-200 bg-white p-3">
-                                    <div className="mb-3 flex items-start justify-between gap-3">
-                                      <div>
-                                        <p className="text-sm font-semibold text-slate-950">Guía visual de portada</p>
-                                        <p className="text-xs text-slate-600">Visualiza papel base, hoja activa e imposición antes de tocar costos.</p>
-                                      </div>
-                                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700">
-                                        Portada
-                                      </span>
-                                    </div>
-                                    <LitografiaCutGuide
-                                      parentWidthCm={editorialCoverPaper.pliegoWidthCm}
-                                      parentHeightCm={editorialCoverPaper.pliegoHeightCm}
-                                      finalWidthCm={editorialCoverPreset.widthCm}
-                                      finalHeightCm={editorialCoverPreset.heightCm}
-                                      finalLabel={`${editorialCoverPreset.nombre} ${formatCm(editorialCoverPreset.widthCm)}x${formatCm(editorialCoverPreset.heightCm)} cm`}
-                                      printSheetLabel={profiles.find((p) => p.id === editorialCover.planchaProfileId)?.nombre}
-                                      runQty={Math.max(0, Math.trunc(parseFloat(cantidad) || 0))}
-                                      extraQty={Math.max(0, Math.trunc(parseFloat(String(editorialCover.sobranteMinimo || sobranteMinimo)) || 0))}
-                                      machineWidthCm={Number(profiles.find((p) => p.id === editorialCover.planchaProfileId)?.anchoUtilCm) || 0}
-                                      machineHeightCm={Number(profiles.find((p) => p.id === editorialCover.planchaProfileId)?.altoUtilCm) || 0}
-                                    />
+                              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                                  <div>
+                                    <p className="text-sm font-semibold text-slate-950">Guía visual rápida</p>
+                                    <p className="text-xs text-slate-600">Se dejó una lectura corta: pliego comprado, corte de máquina y hoja activa. El detalle fino aparece dentro de portada e internas.</p>
                                   </div>
-                                ) : null}
-                                {editorialInnerPreset && editorialInnerPaper ? (
-                                  <div className="rounded-xl border border-slate-200 bg-white p-3">
-                                    <div className="mb-3 flex items-start justify-between gap-3">
-                                      <div>
-                                        <p className="text-sm font-semibold text-slate-950">Guía visual de internas</p>
-                                        <p className="text-xs text-slate-600">Entiende piezas, pliegos y papel real de internas antes de ajustar perfiles.</p>
-                                      </div>
-                                      <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-700">
-                                        Internas
-                                      </span>
+                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-700">
+                                    Simplificada
+                                  </span>
+                                </div>
+                                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                                  {editorialCoverPreset && editorialCoverPaper ? (
+                                    <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-3 text-xs text-slate-700">
+                                      <p className="font-semibold text-slate-950">Portada</p>
+                                      <p className="mt-1">{editorialCoverPreset.nombre} · {formatCm(editorialCoverPreset.widthCm)}×{formatCm(editorialCoverPreset.heightCm)} cm</p>
+                                      <p className="mt-1">Papel: {editorialCoverPaper.nombre} · {formatCm(editorialCoverPaper.pliegoWidthCm)}×{formatCm(editorialCoverPaper.pliegoHeightCm)} cm</p>
                                     </div>
-                                    <LitografiaCutGuide
-                                      parentWidthCm={editorialInnerPaper.pliegoWidthCm}
-                                      parentHeightCm={editorialInnerPaper.pliegoHeightCm}
-                                      finalWidthCm={editorialInnerPreset.widthCm}
-                                      finalHeightCm={editorialInnerPreset.heightCm}
-                                      finalLabel={`${editorialInnerPreset.nombre} ${formatCm(editorialInnerPreset.widthCm)}x${formatCm(editorialInnerPreset.heightCm)} cm`}
-                                      printSheetLabel={profiles.find((p) => p.id === editorialInner.planchaProfileId)?.nombre}
-                                      runQty={Math.max(0, Math.trunc(parseFloat(cantidad) || 0))}
-                                      extraQty={Math.max(0, Math.trunc(parseFloat(String(editorialInner.sobranteMinimo || sobranteMinimo)) || 0))}
-                                      machineWidthCm={Number(profiles.find((p) => p.id === editorialInner.planchaProfileId)?.anchoUtilCm) || 0}
-                                      machineHeightCm={Number(profiles.find((p) => p.id === editorialInner.planchaProfileId)?.altoUtilCm) || 0}
-                                    />
-                                  </div>
-                                ) : null}
+                                  ) : null}
+                                  {editorialInnerPreset && editorialInnerPaper ? (
+                                    <div className="rounded-xl border border-sky-200 bg-sky-50/40 p-3 text-xs text-slate-700">
+                                      <p className="font-semibold text-slate-950">Internas</p>
+                                      <p className="mt-1">{editorialInnerPreset.nombre} · {formatCm(editorialInnerPreset.widthCm)}×{formatCm(editorialInnerPreset.heightCm)} cm</p>
+                                      <p className="mt-1">Papel: {editorialInnerPaper.nombre} · {formatCm(editorialInnerPaper.pliegoWidthCm)}×{formatCm(editorialInnerPaper.pliegoHeightCm)} cm</p>
+                                    </div>
+                                  ) : null}
+                                </div>
                               </div>
                             ) : null}
 

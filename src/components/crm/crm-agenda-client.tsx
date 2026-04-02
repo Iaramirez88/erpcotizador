@@ -10,7 +10,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
 
 type TaskStatus = 'OPEN' | 'DONE' | 'CANCELED'
@@ -34,6 +36,16 @@ type LeadOption = { id: string; nombre: string; empresaNombre?: string | null; e
 type ClienteOption = { id: string; nombre: string; documento: string; email?: string | null; telefono?: string | null }
 type Assignee = { id: string; name?: string | null; email?: string | null }
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
+
+type TaskFormState = {
+  title: string
+  description: string
+  priority: TaskPriority
+  dueAt: string
+  relationType: 'lead' | 'cliente'
+  relationId: string
+  assignedToUserId: string
+}
 
 function formatDate(value: string | null | undefined, fallback: string) {
   if (!value) return fallback
@@ -91,11 +103,98 @@ function OriginBadge({ originKey, label }: { originKey: CrmOriginKey; label: str
   )
 }
 
+function AgendaTaskForm({
+  taskForm,
+  setTaskForm,
+  leadOptions,
+  clientOptions,
+  assignees,
+  saving,
+  onSubmit,
+}: {
+  taskForm: TaskFormState
+  setTaskForm: React.Dispatch<React.SetStateAction<TaskFormState>>
+  leadOptions: LeadOption[]
+  clientOptions: ClienteOption[]
+  assignees: Assignee[]
+  saving: boolean
+  onSubmit: () => void
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-2">
+        <Label>Título</Label>
+        <Input value={taskForm.title} onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))} placeholder="Ej. Llamada de seguimiento" />
+      </div>
+      <div className="grid gap-2">
+        <Label>Descripción</Label>
+        <Textarea value={taskForm.description} onChange={(event) => setTaskForm((current) => ({ ...current, description: event.target.value }))} rows={3} placeholder="Detalles de la gestión comercial o reunión." />
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-2">
+          <Label>Tipo de relación</Label>
+          <Select value={taskForm.relationType} onValueChange={(value) => setTaskForm((current) => ({ ...current, relationType: value as 'lead' | 'cliente', relationId: '' }))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="lead">Prospecto</SelectItem>
+              <SelectItem value="cliente">Cliente</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-2">
+          <Label>Prioridad</Label>
+          <Select value={taskForm.priority} onValueChange={(value) => setTaskForm((current) => ({ ...current, priority: value as TaskPriority }))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="LOW">Baja</SelectItem>
+              <SelectItem value="NORMAL">Normal</SelectItem>
+              <SelectItem value="HIGH">Alta</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-2">
+          <Label>Fecha y hora</Label>
+          <Input type="datetime-local" value={taskForm.dueAt} onChange={(event) => setTaskForm((current) => ({ ...current, dueAt: event.target.value }))} />
+        </div>
+        <div className="grid gap-2">
+          <Label>Responsable</Label>
+          <Select value={taskForm.assignedToUserId || '__none__'} onValueChange={(value) => setTaskForm((current) => ({ ...current, assignedToUserId: value === '__none__' ? '' : value }))}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Sin asignar</SelectItem>
+              {assignees.map((assignee) => <SelectItem key={assignee.id} value={assignee.id}>{assignee.name || assignee.email || assignee.id}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="grid gap-2">
+        <Label>{taskForm.relationType === 'lead' ? 'Prospecto seleccionado' : 'Cliente seleccionado'}</Label>
+        <Select value={taskForm.relationId || '__none__'} onValueChange={(value) => setTaskForm((current) => ({ ...current, relationId: value === '__none__' ? '' : value }))}>
+          <SelectTrigger><SelectValue placeholder="Selecciona un registro" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">Sin selección</SelectItem>
+            {(taskForm.relationType === 'lead' ? leadOptions : clientOptions).map((item) => (
+              <SelectItem key={item.id} value={item.id}>{item.nombre}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <Button className="w-full rounded-xl" onClick={onSubmit} disabled={saving}>
+        {saving ? 'Guardando...' : 'Agregar a la agenda'}
+      </Button>
+    </div>
+  )
+}
+
 export function CrmAgendaClient() {
   const searchParams = useSearchParams()
   const today = useMemo(() => new Date(), [])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [agendaDialogOpen, setAgendaDialogOpen] = useState(false)
+  const [agendaPanelPinned, setAgendaPanelPinned] = useState(false)
   const [selectedDate, setSelectedDate] = useState(toDateKey(today))
   const [visibleMonth, setVisibleMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
   const [tasks, setTasks] = useState<Task[]>([])
@@ -104,7 +203,7 @@ export function CrmAgendaClient() {
   const [leadOptions, setLeadOptions] = useState<LeadOption[]>([])
   const [clientOptions, setClientOptions] = useState<ClienteOption[]>([])
   const [assignees, setAssignees] = useState<Assignee[]>([])
-  const [taskForm, setTaskForm] = useState({
+  const [taskForm, setTaskForm] = useState<TaskFormState>({
     title: '',
     description: '',
     priority: 'NORMAL' as TaskPriority,
@@ -235,6 +334,7 @@ export function CrmAgendaClient() {
         title: '',
         description: '',
       }))
+      setAgendaDialogOpen(false)
       await loadTasks()
     } finally {
       setSaving(false)
@@ -316,7 +416,10 @@ export function CrmAgendaClient() {
                   <button
                     key={day.dateKey}
                     type="button"
-                    onClick={() => setSelectedDate(day.dateKey)}
+                    onClick={() => {
+                      setSelectedDate(day.dateKey)
+                      if (!agendaPanelPinned) setAgendaDialogOpen(true)
+                    }}
                     className={isSelected ? 'min-h-[108px] rounded-3xl border border-sky-300 bg-sky-50/80 p-3 text-left shadow-sm' : day.isCurrentMonth ? 'min-h-[108px] rounded-3xl border border-slate-200 bg-white p-3 text-left shadow-sm transition-shadow hover:shadow-md' : 'min-h-[108px] rounded-3xl border border-slate-100 bg-slate-50/60 p-3 text-left text-slate-400'}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -384,72 +487,48 @@ export function CrmAgendaClient() {
         <div className="space-y-4">
           <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
             <CardHeader className="border-b border-slate-100 pb-5">
-              <CardTitle className="text-xl">Nueva agenda</CardTitle>
-              <CardDescription>Programa una acción comercial para un prospecto o cliente.</CardDescription>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-xl">Nueva agenda</CardTitle>
+                  <CardDescription>{agendaPanelPinned ? 'El panel queda fijo a la derecha para crear tareas sin abrir modal.' : 'Haz click en un día para abrir el modal rápido de nueva agenda.'}</CardDescription>
+                </div>
+                <Button variant="outline" className="rounded-xl" onClick={() => setAgendaDialogOpen(true)}>
+                  Abrir modal
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4 p-4 md:p-5">
-              <div className="grid gap-2">
-                <Label>Título</Label>
-                <Input value={taskForm.title} onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))} placeholder="Ej. Llamada de seguimiento" />
-              </div>
-              <div className="grid gap-2">
-                <Label>Descripción</Label>
-                <Textarea value={taskForm.description} onChange={(event) => setTaskForm((current) => ({ ...current, description: event.target.value }))} rows={3} placeholder="Detalles de la gestión comercial o reunión." />
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="grid gap-2">
-                  <Label>Tipo de relación</Label>
-                  <Select value={taskForm.relationType} onValueChange={(value) => setTaskForm((current) => ({ ...current, relationType: value as 'lead' | 'cliente', relationId: '' }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="lead">Prospecto</SelectItem>
-                      <SelectItem value="cliente">Cliente</SelectItem>
-                    </SelectContent>
-                  </Select>
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">Anclar panel nueva agenda</p>
+                  <p className="text-xs text-slate-600">Si está apagado, el formulario vive solo dentro del modal al seleccionar un día.</p>
                 </div>
-                <div className="grid gap-2">
-                  <Label>Prioridad</Label>
-                  <Select value={taskForm.priority} onValueChange={(value) => setTaskForm((current) => ({ ...current, priority: value as TaskPriority }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="LOW">Baja</SelectItem>
-                      <SelectItem value="NORMAL">Normal</SelectItem>
-                      <SelectItem value="HIGH">Alta</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <Switch checked={agendaPanelPinned} onCheckedChange={setAgendaPanelPinned} aria-label="Anclar panel nueva agenda" />
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="grid gap-2">
-                  <Label>Fecha y hora</Label>
-                  <Input type="datetime-local" value={taskForm.dueAt} onChange={(event) => setTaskForm((current) => ({ ...current, dueAt: event.target.value }))} />
+
+              {agendaPanelPinned ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-950">Agenda para {selectedDate}</p>
+                      <p className="text-xs text-slate-600">Usa este panel fijo solo si necesitas crear varias tareas seguidas.</p>
+                    </div>
+                  </div>
+                  <AgendaTaskForm
+                    taskForm={taskForm}
+                    setTaskForm={setTaskForm}
+                    leadOptions={leadOptions}
+                    clientOptions={clientOptions}
+                    assignees={assignees}
+                    saving={saving}
+                    onSubmit={() => void handleCreateTask()}
+                  />
                 </div>
-                <div className="grid gap-2">
-                  <Label>Responsable</Label>
-                  <Select value={taskForm.assignedToUserId || '__none__'} onValueChange={(value) => setTaskForm((current) => ({ ...current, assignedToUserId: value === '__none__' ? '' : value }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Sin asignar</SelectItem>
-                      {assignees.map((assignee) => <SelectItem key={assignee.id} value={assignee.id}>{assignee.name || assignee.email || assignee.id}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-600">
+                  Selecciona un día del calendario para abrir el modal con la nueva agenda. El panel derecho queda libre por defecto.
                 </div>
-              </div>
-              <div className="grid gap-2">
-                <Label>{taskForm.relationType === 'lead' ? 'Prospecto seleccionado' : 'Cliente seleccionado'}</Label>
-                <Select value={taskForm.relationId || '__none__'} onValueChange={(value) => setTaskForm((current) => ({ ...current, relationId: value === '__none__' ? '' : value }))}>
-                  <SelectTrigger><SelectValue placeholder="Selecciona un registro" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Sin selección</SelectItem>
-                    {(taskForm.relationType === 'lead' ? leadOptions : clientOptions).map((item) => (
-                      <SelectItem key={item.id} value={item.id}>{item.nombre}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button className="w-full rounded-xl" onClick={() => void handleCreateTask()} disabled={saving}>
-                {saving ? 'Guardando...' : 'Agregar a la agenda'}
-              </Button>
+              )}
             </CardContent>
           </Card>
 
@@ -497,6 +576,29 @@ export function CrmAgendaClient() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={agendaDialogOpen} onOpenChange={setAgendaDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Nueva agenda</DialogTitle>
+            <DialogDescription>Programa una acción para {selectedDate}. Este modal se abre al seleccionar un día del calendario.</DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <AgendaTaskForm
+              taskForm={taskForm}
+              setTaskForm={setTaskForm}
+              leadOptions={leadOptions}
+              clientOptions={clientOptions}
+              assignees={assignees}
+              saving={saving}
+              onSubmit={() => void handleCreateTask()}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAgendaDialogOpen(false)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

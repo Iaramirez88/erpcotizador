@@ -866,13 +866,14 @@ export default function InventarioPage() {
       </Card>
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[88vh] overflow-hidden">
           <DialogHeader>
             <DialogTitle>{t('inventory.dialog.title')}</DialogTitle>
             <DialogDescription>{t('inventory.dialog.description')}</DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={submitMovement} className="space-y-4">
+          <form onSubmit={submitMovement} className="space-y-4 overflow-hidden">
+            <div className="max-h-[calc(88vh-190px)] space-y-4 overflow-y-auto pr-1">
             <div className="space-y-2">
               <Label>{t('inventory.fields.material')}</Label>
               <select
@@ -1138,6 +1139,7 @@ export default function InventarioPage() {
                 ) : null}
               </div>
             ) : null}
+            </div>
 
             <DialogFooter>
               <Button type="button" variant="secondary" onClick={() => setIsModalOpen(false)} disabled={isSubmitting}>

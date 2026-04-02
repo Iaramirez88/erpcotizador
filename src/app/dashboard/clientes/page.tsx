@@ -6,6 +6,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { ChevronDown, ChevronUp, SlidersHorizontal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ImportDialog } from "@/components/import/import-dialog"
 import { Input } from "@/components/ui/input"
@@ -104,6 +105,7 @@ export default function ClientesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
   
   const [formData, setFormData] = useState({
     nombre: "",
@@ -347,6 +349,10 @@ export default function ClientesPage() {
             <Button variant="outline" onClick={() => setIsExportOpen(true)}>
               {t('customers.actions.exportExcel')}
             </Button>
+            <Button type="button" variant="outline" onClick={() => setFiltersOpen((current) => !current)}>
+              <SlidersHorizontal className="mr-2 h-4 w-4" />
+              {filtersOpen ? 'Ocultar filtros' : 'Mostrar filtros'}
+            </Button>
             <Button onClick={openNewClienteModal} data-tour="clientes-new">
               <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -513,7 +519,7 @@ export default function ClientesPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_360px]">
+      <div className={filtersOpen ? "grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_360px]" : "grid grid-cols-1 gap-6"}>
         {/* Lista (primero) */}
         <Card className="min-w-0">
           <CardHeader>
@@ -643,9 +649,17 @@ export default function ClientesPage() {
         {/* Filtros (compacto, al lado) */}
         <Card>
           <CardHeader>
-            <CardTitle>{t('customers.filters.title')}</CardTitle>
-            <CardDescription>{t('customers.filters.subtitle')}</CardDescription>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle>{t('customers.filters.title')}</CardTitle>
+                <CardDescription>{t('customers.filters.subtitle')}</CardDescription>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={() => setFiltersOpen((current) => !current)}>
+                {filtersOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </div>
           </CardHeader>
+          {filtersOpen ? (
           <CardContent className="space-y-4">
             <div className="space-y-1">
               <Label>{t('customers.filters.site')}</Label>
@@ -780,6 +794,13 @@ export default function ClientesPage() {
               </div>
             </div>
           </CardContent>
+          ) : (
+            <CardContent>
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-600">
+                Los filtros quedan colapsados por defecto para dar más ancho al listado. Ábrelos solo cuando los necesites.
+              </div>
+            </CardContent>
+          )}
         </Card>
       </div>
 
