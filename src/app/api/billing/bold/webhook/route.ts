@@ -22,6 +22,8 @@ type BoldWebhookEvent = {
   type?: string
   data?: {
     payment_id?: string
+    payment_method?: unknown
+    payment_method_type?: unknown
     metadata?: {
       reference?: string
       [k: string]: unknown
@@ -29,6 +31,25 @@ type BoldWebhookEvent = {
     [k: string]: unknown
   }
   [k: string]: unknown
+}
+
+function normalizePaymentMethod(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+    return normalized ? normalized : null
+  }
+
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    const candidates = [record.type, record.name, record.method, record.payment_method_type]
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim()
+      }
+    }
+  }
+
+  return null
 }
 
 export async function POST(request: Request) {
@@ -55,6 +76,10 @@ export async function POST(request: Request) {
   const eventId = event.id ?? null
   const paymentId = event.data?.payment_id ?? null
   const reference = event.data?.metadata?.reference ?? null
+  const paymentMethod =
+    normalizePaymentMethod(event.data?.payment_method) ||
+    normalizePaymentMethod(event.data?.payment_method_type) ||
+    null
 
   if (!reference) {
     return NextResponse.json({ ok: true, ignored: true, reason: 'Sin metadata.reference' })
@@ -80,6 +105,7 @@ export async function POST(request: Request) {
         boldPaymentId: paymentId,
         boldEventId: eventId,
         boldType: type,
+        paymentMethod,
       },
     })
 
@@ -114,6 +140,7 @@ export async function POST(request: Request) {
         boldPaymentId: paymentId,
         boldEventId: eventId,
         boldType: type,
+        paymentMethod,
       },
     })
 
@@ -128,6 +155,7 @@ export async function POST(request: Request) {
         boldPaymentId: paymentId,
         boldEventId: eventId,
         boldType: type,
+        paymentMethod,
       },
     })
 

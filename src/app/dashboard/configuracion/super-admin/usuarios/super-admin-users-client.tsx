@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { useI18n } from '@/components/providers/i18n-provider'
 import {
   Dialog,
@@ -17,7 +18,29 @@ import {
 } from '@/components/ui/dialog'
 import type { PlanTier } from '@/lib/plans'
 
+type BillingCycle = 'MONTHLY' | 'YEARLY'
 type UserRole = 'ADMIN' | 'USER' | 'VENDEDOR' | 'PRODUCCION' | 'CLIENTE'
+type SedeRole = 'ADMIN' | 'MANAGER' | 'MEMBER' | 'READER'
+type ModuleKey =
+  | 'DASHBOARD'
+  | 'COTIZADOR'
+  | 'COTIZACIONES'
+  | 'CLIENTES'
+  | 'CRM'
+  | 'MATERIALES'
+  | 'INVENTARIO'
+  | 'REMISIONES'
+  | 'POS'
+  | 'PROVEEDORES'
+  | 'COMPRAS'
+  | 'ORDENES'
+  | 'ESCANEOS'
+  | 'REPORTES'
+  | 'CONTABILIDAD'
+  | 'NOTIFICACIONES'
+  | 'CONFIG'
+
+type UserSegment = 'ALL' | 'NEW' | 'TRIAL' | 'NO_COMPANY' | 'WITH_COMPANY'
 
 type Row = {
   id: string
@@ -25,10 +48,15 @@ type Row = {
   name: string | null
   role: UserRole
   createdAt: string
+  isNew: boolean
   empresa: null | {
     id: string
     nombre: string
+    nit: string
     planTier: PlanTier
+    planValidUntil: string | null
+    trialTier: PlanTier | null
+    trialValidUntil: string | null
   }
 }
 
@@ -38,15 +66,40 @@ type GetResponse =
       page: number
       limit: number
       total: number
+      segment?: UserSegment
       items: Row[]
     }
   | { ok?: false; error?: string }
 
-type PutResponse =
-  | {
-      ok: true
-      user: Row
-    }
+type ManagementSede = {
+  sedeId: string
+  sedeNombre: string
+  sedeRole: SedeRole
+  modules: Array<{ module: ModuleKey; enabled: boolean }>
+}
+
+type ManagementUser = {
+  id: string
+  email: string
+  name: string | null
+  role: UserRole
+  createdAt: string
+  empresa: null | {
+    id: string
+    nombre: string
+    nit: string
+    planTier: PlanTier
+    billingCycle: BillingCycle
+    planValidUntil: string | null
+    trialTier: PlanTier | null
+    trialValidUntil: string | null
+  }
+  sedes: ManagementSede[]
+  selectedSedeId: string | null
+}
+
+type ManagementResponse =
+  | { ok: true; user: ManagementUser }
   | { ok?: false; error?: string }
 
 function fmtDate(value: string | null | undefined, locale: string, naText: string): string {
@@ -58,6 +111,22 @@ function fmtDate(value: string | null | undefined, locale: string, naText: strin
   }
 }
 
+function toDateInputValue(value: string | null | undefined): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function isFutureDate(value: string | null | undefined): boolean {
+  if (!value) return false
+  const time = new Date(value).getTime()
+  return Number.isFinite(time) && time > Date.now()
+}
+
 export default function SuperAdminUsersClient() {
   const { t, language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
@@ -65,25 +134,41 @@ export default function SuperAdminUsersClient() {
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
   const [items, setItems] = useState<Row[]>([])
   const [page, setPage] = useState(1)
   const [limit] = useState(10)
   const [total, setTotal] = useState(0)
   const [search, setSearch] = useState('')
-
-  const totalPages = useMemo(() => {
-    const n = Math.ceil((total || 0) / limit)
-    return n <= 0 ? 1 : n
-  }, [total, limit])
+  const [segment, setSegment] = useState<UserSegment>('ALL')
 
   const [editOpen, setEditOpen] = useState(false)
+  const [editing, setEditing] = useState<Row | null>(null)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [editing, setEditing] = useState<Row | null>(null)
+  const [managementLoading, setManagementLoading] = useState(false)
+  const [managementError, setManagementError] = useState<string | null>(null)
+  const [management, setManagement] = useState<ManagementUser | null>(null)
 
   const [editName, setEditName] = useState('')
   const [editRole, setEditRole] = useState<UserRole>('USER')
+  const [editPlanTier, setEditPlanTier] = useState<PlanTier>('FULL')
+  const [editBillingCycle, setEditBillingCycle] = useState<BillingCycle>('MONTHLY')
+  const [editPlanValidUntil, setEditPlanValidUntil] = useState('')
+  const [editIsPaid, setEditIsPaid] = useState(false)
+  const [editIsPaidTouched, setEditIsPaidTouched] = useState(false)
+  const [editClearTrial, setEditClearTrial] = useState(false)
+  const [selectedSedeId, setSelectedSedeId] = useState('')
+  const [sedeStates, setSedeStates] = useState<ManagementSede[]>([])
+
+  const totalPages = useMemo(() => {
+    const value = Math.ceil((total || 0) / limit)
+    return value <= 0 ? 1 : value
+  }, [limit, total])
+
+  const selectedSede = useMemo(
+    () => sedeStates.find((item) => item.sedeId === selectedSedeId) ?? null,
+    [sedeStates, selectedSedeId],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -95,15 +180,18 @@ export default function SuperAdminUsersClient() {
         const params = new URLSearchParams()
         params.set('page', String(page))
         params.set('limit', String(limit))
+        params.set('segment', segment)
         if (search.trim()) params.set('search', search.trim())
 
         const res = await fetch(`/api/super-admin/users?${params.toString()}`, { cache: 'no-store' })
         const json = (await res.json().catch(() => ({}))) as GetResponse
 
         if (!res.ok || !('ok' in json) || !json.ok) {
-          setError(('error' in json && json.error) || t('superAdmin.users.errors.loadFailed'))
-          setItems([])
-          setTotal(0)
+          if (!cancelled) {
+            setItems([])
+            setTotal(0)
+            setError(('error' in json && json.error) || t('superAdmin.users.errors.loadFailed'))
+          }
           return
         }
 
@@ -111,10 +199,12 @@ export default function SuperAdminUsersClient() {
           setItems(json.items)
           setTotal(json.total)
         }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : t('common.unexpectedError'))
-        setItems([])
-        setTotal(0)
+      } catch {
+        if (!cancelled) {
+          setItems([])
+          setTotal(0)
+          setError(t('superAdmin.users.errors.loadFailed'))
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -124,36 +214,115 @@ export default function SuperAdminUsersClient() {
     return () => {
       cancelled = true
     }
-  }, [page, limit, search])
+  }, [limit, page, search, segment, t])
 
-  function openEdit(row: Row) {
+  function resetEditState() {
+    setEditing(null)
+    setManagement(null)
+    setManagementError(null)
+    setManagementLoading(false)
+    setEditName('')
+    setEditRole('USER')
+    setEditPlanTier('FULL')
+    setEditBillingCycle('MONTHLY')
+    setEditPlanValidUntil('')
+    setEditIsPaid(false)
+    setEditIsPaidTouched(false)
+    setEditClearTrial(false)
+    setSelectedSedeId('')
+    setSedeStates([])
+  }
+
+  async function openEdit(row: Row) {
+    setEditOpen(true)
     setEditing(row)
     setEditName(row.name ?? '')
     setEditRole(row.role)
-    setEditOpen(true)
+    setManagement(null)
+    setManagementError(null)
+    setManagementLoading(true)
+
+    try {
+      const res = await fetch(`/api/super-admin/users/${row.id}/management`, { cache: 'no-store' })
+      const json = (await res.json().catch(() => ({}))) as ManagementResponse
+
+      if (!res.ok || !('ok' in json) || !json.ok) {
+        setManagementError(('error' in json && json.error) || t('superAdmin.users.errors.loadManagementFailed'))
+        return
+      }
+
+      const detail = json.user
+      setManagement(detail)
+      setEditName(detail.name ?? '')
+      setEditRole(detail.role)
+      setEditPlanTier(detail.empresa?.planTier ?? 'FULL')
+      setEditBillingCycle(detail.empresa?.billingCycle ?? 'MONTHLY')
+      setEditPlanValidUntil(toDateInputValue(detail.empresa?.planValidUntil))
+      setEditIsPaid(isFutureDate(detail.empresa?.planValidUntil))
+      setEditIsPaidTouched(false)
+      setEditClearTrial(false)
+      setSelectedSedeId(detail.selectedSedeId ?? detail.sedes[0]?.sedeId ?? '')
+      setSedeStates(detail.sedes)
+    } catch {
+      setManagementError(t('superAdmin.users.errors.loadManagementFailed'))
+    } finally {
+      setManagementLoading(false)
+    }
   }
 
   async function saveEdit() {
-    if (!editing) return
+    if (!editing || !management) return
+
     setSaving(true)
     try {
-      const res = await fetch(`/api/super-admin/users/${editing.id}`, {
-        method: 'PUT',
+      const res = await fetch(`/api/super-admin/users/${editing.id}/management`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName || null, role: editRole }),
+        body: JSON.stringify({
+          name: editName.trim() || null,
+          role: editRole,
+          planTier: management.empresa ? editPlanTier : undefined,
+          billingCycle: management.empresa ? editBillingCycle : undefined,
+          planValidUntil: management.empresa ? (editPlanValidUntil || null) : undefined,
+          clearTrial: management.empresa ? editClearTrial : undefined,
+          isPaid: management.empresa && editIsPaidTouched ? editIsPaid : undefined,
+          sedeAccesses: sedeStates.map((sede) => ({
+            sedeId: sede.sedeId,
+            sedeRole: sede.sedeRole,
+            modules: Object.fromEntries(sede.modules.map((moduleRow) => [moduleRow.module, moduleRow.enabled])),
+          })),
+        }),
       })
+      const json = (await res.json().catch(() => ({}))) as ManagementResponse
 
-      const json = (await res.json().catch(() => ({}))) as PutResponse
       if (!res.ok || !('ok' in json) || !json.ok) {
         alert(('error' in json && json.error) || t('superAdmin.users.errors.saveFailed'))
         return
       }
 
-      setItems((prev) => prev.map((it) => (it.id === editing.id ? json.user : it)))
+      const detail = json.user
+      setItems((prev) => prev.map((item) => item.id === detail.id
+        ? {
+            ...item,
+            name: detail.name,
+            role: detail.role,
+            empresa: detail.empresa
+              ? {
+                  id: detail.empresa.id,
+                  nombre: detail.empresa.nombre,
+                  nit: detail.empresa.nit,
+                  planTier: detail.empresa.planTier,
+                  planValidUntil: detail.empresa.planValidUntil,
+                  trialTier: detail.empresa.trialTier,
+                  trialValidUntil: detail.empresa.trialValidUntil,
+                }
+              : null,
+          }
+        : item))
       setEditOpen(false)
-      setEditing(null)
-    } catch (e) {
-      alert(e instanceof Error ? e.message : t('common.unexpectedError'))
+      resetEditState()
+    } catch {
+      alert(t('superAdmin.users.errors.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -161,6 +330,7 @@ export default function SuperAdminUsersClient() {
 
   async function deleteUser(row: Row) {
     if (!confirm(t('superAdmin.users.confirm.delete', { email: row.email }))) return
+
     setDeletingId(row.id)
     try {
       const res = await fetch(`/api/super-admin/users/${row.id}`, { method: 'DELETE' })
@@ -170,31 +340,34 @@ export default function SuperAdminUsersClient() {
         return
       }
 
-      // Reload simple: remove from list + adjust total.
-      setItems((prev) => prev.filter((it) => it.id !== row.id))
-      setTotal((t) => Math.max(0, t - 1))
-    } catch (e) {
-      alert(e instanceof Error ? e.message : t('common.unexpectedError'))
+      setItems((prev) => prev.filter((item) => item.id !== row.id))
+      setTotal((prev) => Math.max(0, prev - 1))
+    } catch {
+      alert(t('superAdmin.users.errors.deleteFailed'))
     } finally {
       setDeletingId(null)
     }
   }
 
+  function updateSedeRole(sedeId: string, role: SedeRole) {
+    setSedeStates((prev) => prev.map((sede) => sede.sedeId === sedeId ? { ...sede, sedeRole: role } : sede))
+  }
+
+  function updateModuleEnabled(sedeId: string, moduleKey: ModuleKey, enabled: boolean) {
+    setSedeStates((prev) => prev.map((sede) => {
+      if (sede.sedeId !== sedeId) return sede
+      return {
+        ...sede,
+        modules: sede.modules.map((moduleRow) => moduleRow.module === moduleKey ? { ...moduleRow, enabled } : moduleRow),
+      }
+    }))
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('superAdmin.users.title')}</h1>
-          <p className="text-sm text-gray-600">{t('superAdmin.users.subtitle')}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button asChild variant="outline">
-            <Link href="/dashboard/configuracion/super-admin/empresas">{t('superAdmin.nav.companies')}</Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href="/dashboard/configuracion/super-admin/modulos-por-plan">{t('superAdmin.nav.modulesByPlan')}</Link>
-          </Button>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">{t('superAdmin.users.title')}</h1>
+        <p className="text-sm text-gray-600">{t('superAdmin.users.subtitle')}</p>
       </div>
 
       <Card>
@@ -202,70 +375,122 @@ export default function SuperAdminUsersClient() {
           <CardTitle>{t('superAdmin.users.list.title')}</CardTitle>
           <CardDescription>{t('superAdmin.users.list.subtitle')}</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2 flex-wrap mb-4">
-            <div className="min-w-[240px] flex-1">
-              <Input placeholder={t('superAdmin.users.searchPlaceholder')} value={search} onChange={(e) => {
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+            <Input
+              placeholder={t('superAdmin.users.searchPlaceholder')}
+              value={search}
+              onChange={(e) => {
                 setPage(1)
                 setSearch(e.target.value)
-              }} />
+              }}
+            />
+            <div className="flex flex-wrap gap-2">
+              {(['ALL', 'NEW', 'TRIAL', 'NO_COMPANY', 'WITH_COMPANY'] as UserSegment[]).map((value) => (
+                <Button
+                  key={value}
+                  type="button"
+                  size="sm"
+                  variant={segment === value ? 'default' : 'outline'}
+                  onClick={() => {
+                    setPage(1)
+                    setSegment(value)
+                  }}
+                >
+                  {t(`superAdmin.users.filters.${value}`)}
+                </Button>
+              ))}
             </div>
-            <Button variant="outline" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-              {t('common.previous')}
-            </Button>
-            <div className="text-sm text-muted-foreground">
-              {t('superAdmin.pagination.pageOf', { page: String(page), totalPages: String(totalPages) })}
-            </div>
-            <Button variant="outline" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
-              {t('common.next')}
-            </Button>
           </div>
 
           {loading ? (
-            <div className="text-sm text-muted-foreground py-6">{t('common.loading')}</div>
+            <div className="py-6 text-sm text-muted-foreground">{t('common.loading')}</div>
           ) : error ? (
-            <div className="text-sm text-red-600 py-6">{error}</div>
+            <div className="py-3 text-sm text-red-600">{error}</div>
           ) : items.length === 0 ? (
-            <div className="text-sm text-muted-foreground py-6">{t('superAdmin.users.empty')}</div>
+            <div className="py-6 text-sm text-muted-foreground">{t('superAdmin.users.empty')}</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full min-w-[900px] text-sm">
                 <thead>
-                  <tr className="border-b">
-                    <th className="py-2 text-left">{t('superAdmin.users.columns.user')}</th>
-                    <th className="py-2 text-left">{t('common.email')}</th>
-                    <th className="py-2 text-left">{t('superAdmin.users.columns.company')}</th>
-                    <th className="py-2 text-left">{t('superAdmin.users.columns.plan')}</th>
-                    <th className="py-2 text-left">{t('superAdmin.users.columns.role')}</th>
-                    <th className="py-2 text-left">{t('superAdmin.users.columns.createdAt')}</th>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="py-2 pr-4">{t('superAdmin.users.columns.user')}</th>
+                    <th className="py-2 pr-4">{t('common.email')}</th>
+                    <th className="py-2 pr-4">{t('superAdmin.users.columns.company')}</th>
+                    <th className="py-2 pr-4">{t('superAdmin.users.columns.plan')}</th>
+                    <th className="py-2 pr-4">{t('superAdmin.users.columns.access')}</th>
+                    <th className="py-2 pr-4">{t('superAdmin.users.columns.role')}</th>
+                    <th className="py-2 pr-4">{t('superAdmin.users.columns.createdAt')}</th>
                     <th className="py-2 text-right">{t('superAdmin.users.columns.actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((u) => (
-                    <tr key={u.id} className="border-b">
-                      <td className="py-2">
-                        <div className="font-medium">{u.name || naText}</div>
-                        <div className="text-xs text-muted-foreground">{u.id}</div>
+                  {items.map((user) => (
+                    <tr key={user.id} className="border-b align-top">
+                      <td className="py-3 pr-4">
+                        <div className="font-medium text-foreground">{user.name || naText}</div>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {user.isNew ? (
+                            <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                              {t('superAdmin.users.badges.new')}
+                            </span>
+                          ) : null}
+                          {isFutureDate(user.empresa?.trialValidUntil) ? (
+                            <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                              {t('superAdmin.users.badges.trial')}
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
-                      <td className="py-2">{u.email}</td>
-                      <td className="py-2">{u.empresa?.nombre || naText}</td>
-                      <td className="py-2">{u.empresa?.planTier || naText}</td>
-                      <td className="py-2">{u.role}</td>
-                      <td className="py-2">{fmtDate(u.createdAt, locale, naText)}</td>
-                      <td className="py-2">
+                      <td className="py-3 pr-4">{user.email}</td>
+                      <td className="py-3 pr-4">
+                        {user.empresa ? (
+                          <div>
+                            <div className="font-medium">{user.empresa.nombre}</div>
+                            <div className="text-xs text-muted-foreground">{user.empresa.nit}</div>
+                          </div>
+                        ) : (
+                          naText
+                        )}
+                      </td>
+                      <td className="py-3 pr-4">
+                        {user.empresa ? (
+                          <div>
+                            <div className="font-medium">{user.empresa.planTier}</div>
+                            <div>{t('superAdmin.users.labels.validUntil')}: {fmtDate(user.empresa.planValidUntil, locale, naText)}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {t('superAdmin.users.labels.trialUntil')}: {fmtDate(user.empresa.trialValidUntil, locale, naText)}
+                            </div>
+                          </div>
+                        ) : (
+                          naText
+                        )}
+                      </td>
+                      <td className="py-3 pr-4">
+                        {user.empresa ? (
+                          <Link href={`/dashboard/configuracion/super-admin/empresas?empresa=${user.empresa.id}`} className="text-primary underline underline-offset-4">
+                            {t('superAdmin.companies.actions.viewDetail')}
+                          </Link>
+                        ) : (
+                          naText
+                        )}
+                      </td>
+                      <td className="py-3 pr-4">{user.role}</td>
+                      <td className="py-3 pr-4">{fmtDate(user.createdAt, locale, naText)}</td>
+                      <td className="py-3 text-right">
                         <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={() => openEdit(u)}>
+                          <Button type="button" variant="outline" size="sm" onClick={() => void openEdit(user)}>
                             {t('common.edit')}
                           </Button>
                           <Button
+                            type="button"
                             variant="outline"
                             size="sm"
                             className="text-red-600 hover:text-red-700"
-                            disabled={deletingId === u.id}
-                            onClick={() => void deleteUser(u)}
+                            disabled={deletingId === user.id}
+                            onClick={() => void deleteUser(user)}
                           >
-                            {deletingId === u.id ? t('superAdmin.users.deleting') : t('common.delete')}
+                            {deletingId === user.id ? t('superAdmin.users.deleting') : t('common.delete')}
                           </Button>
                         </div>
                       </td>
@@ -275,53 +500,227 @@ export default function SuperAdminUsersClient() {
               </table>
             </div>
           )}
+
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+            <div>{t('superAdmin.pagination.pageOf', { page: String(page), totalPages: String(totalPages) })}</div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>
+                {t('common.previous')}
+              </Button>
+              <Button type="button" variant="outline" disabled={page >= totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>
+                {t('common.next')}
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      <Dialog open={editOpen} onOpenChange={(v) => {
-        setEditOpen(v)
-        if (!v) setEditing(null)
+      <Dialog open={editOpen} onOpenChange={(value) => {
+        setEditOpen(value)
+        if (!value) resetEditState()
       }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('superAdmin.users.edit.title')}</DialogTitle>
             <DialogDescription>{t('superAdmin.users.edit.description')}</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label>{t('superAdmin.users.fields.name')}</Label>
-              <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
-            </div>
+          {managementLoading ? (
+            <div className="py-8 text-sm text-muted-foreground">{t('common.loading')}</div>
+          ) : managementError ? (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{managementError}</div>
+          ) : management ? (
+            <div className="space-y-6">
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="space-y-4 rounded-lg border p-4">
+                  <div className="text-sm font-semibold">{t('superAdmin.users.sections.profile')}</div>
 
-            <div className="space-y-1">
-              <Label>{t('superAdmin.users.fields.role')}</Label>
-              <select
-                value={editRole}
-                onChange={(e) => setEditRole(e.target.value as UserRole)}
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-              >
-                <option value="USER">USER</option>
-                <option value="VENDEDOR">VENDEDOR</option>
-                <option value="PRODUCCION">PRODUCCION</option>
-                <option value="CLIENTE">CLIENTE</option>
-                <option value="ADMIN">ADMIN</option>
-              </select>
-            </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="super-admin-user-name">{t('superAdmin.users.fields.name')}</Label>
+                    <Input id="super-admin-user-name" value={editName} onChange={(e) => setEditName(e.target.value)} />
+                  </div>
 
-            <div className="rounded border p-3 text-sm">
-              <div className="text-muted-foreground">{t('superAdmin.users.fields.company')}</div>
-              <div className="font-medium">{editing?.empresa?.nombre || naText}</div>
-              <div className="text-muted-foreground mt-2">{t('superAdmin.users.fields.plan')}</div>
-              <div className="font-medium">{editing?.empresa?.planTier || naText}</div>
+                  <div className="space-y-2">
+                    <Label htmlFor="super-admin-user-role">{t('superAdmin.users.fields.role')}</Label>
+                    <select
+                      id="super-admin-user-role"
+                      className="w-full rounded-md border px-3 py-2 text-sm"
+                      value={editRole}
+                      onChange={(e) => setEditRole(e.target.value as UserRole)}
+                    >
+                      {(['ADMIN', 'USER', 'VENDEDOR', 'PRODUCCION', 'CLIENTE'] as UserRole[]).map((role) => (
+                        <option key={role} value={role}>{role}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="rounded-md bg-muted/40 p-3 text-sm">
+                    <div className="text-muted-foreground">{t('common.email')}</div>
+                    <div className="font-medium">{management.email}</div>
+                    <div className="mt-3 text-muted-foreground">{t('superAdmin.users.fields.company')}</div>
+                    <div className="font-medium">{management.empresa?.nombre ?? t('superAdmin.users.labels.noCompanyAssigned')}</div>
+                    {management.empresa ? <div className="text-xs text-muted-foreground">{management.empresa.nit}</div> : null}
+                    <div className="mt-3 text-muted-foreground">{t('superAdmin.users.columns.createdAt')}</div>
+                    <div>{fmtDate(management.createdAt, locale, naText)}</div>
+                  </div>
+                </div>
+
+                <div className="space-y-4 rounded-lg border p-4">
+                  <div className="text-sm font-semibold">{t('superAdmin.users.sections.plan')}</div>
+
+                  {management.empresa ? (
+                    <>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="super-admin-plan-tier">{t('superAdmin.users.fields.plan')}</Label>
+                          <select
+                            id="super-admin-plan-tier"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={editPlanTier}
+                            onChange={(e) => setEditPlanTier(e.target.value as PlanTier)}
+                          >
+                            {(['CRM', 'BASIC', 'MEDIO', 'INTERMEDIO', 'FULL'] as PlanTier[]).map((plan) => (
+                              <option key={plan} value={plan}>{plan}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="super-admin-billing-cycle">{t('superAdmin.users.fields.billingCycle')}</Label>
+                          <select
+                            id="super-admin-billing-cycle"
+                            className="w-full rounded-md border px-3 py-2 text-sm"
+                            value={editBillingCycle}
+                            onChange={(e) => setEditBillingCycle(e.target.value as BillingCycle)}
+                          >
+                            <option value="MONTHLY">MONTHLY</option>
+                            <option value="YEARLY">YEARLY</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="super-admin-plan-valid-until">{t('superAdmin.users.fields.planValidUntil')}</Label>
+                        <Input
+                          id="super-admin-plan-valid-until"
+                          type="date"
+                          value={editPlanValidUntil}
+                          onChange={(e) => setEditPlanValidUntil(e.target.value)}
+                        />
+                      </div>
+
+                      <label className="flex items-start justify-between gap-3 rounded-lg border p-3">
+                        <div>
+                          <div className="font-medium">{t('superAdmin.users.fields.activatePlan')}</div>
+                          <div className="text-xs text-muted-foreground">{t('superAdmin.users.fields.activatePlanHelp')}</div>
+                        </div>
+                        <Switch
+                          checked={editIsPaid}
+                          onCheckedChange={(checked) => {
+                            setEditIsPaid(checked)
+                            setEditIsPaidTouched(true)
+                          }}
+                        />
+                      </label>
+
+                      <label className="flex items-start justify-between gap-3 rounded-lg border p-3">
+                        <div>
+                          <div className="font-medium">{t('superAdmin.users.fields.clearTrial')}</div>
+                          <div className="text-xs text-muted-foreground">{t('superAdmin.users.fields.clearTrialHelp')}</div>
+                        </div>
+                        <Switch checked={editClearTrial} onCheckedChange={setEditClearTrial} />
+                      </label>
+
+                      <div className="rounded-md bg-muted/40 p-3 text-sm">
+                        <div>
+                          {t('superAdmin.users.labels.validUntil')}: <span className="font-medium">{fmtDate(management.empresa.planValidUntil, locale, naText)}</span>
+                        </div>
+                        <div className="text-muted-foreground">
+                          {t('superAdmin.users.labels.trialUntil')}: {fmtDate(management.empresa.trialValidUntil, locale, naText)}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="rounded-md border p-3 text-sm text-muted-foreground">
+                      {t('superAdmin.users.labels.noCompanyAssigned')}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-4 rounded-lg border p-4">
+                <div>
+                  <div className="text-sm font-semibold">{t('superAdmin.users.sections.access')}</div>
+                  <div className="text-xs text-muted-foreground">{t('superAdmin.users.fields.accessHelp')}</div>
+                </div>
+
+                {sedeStates.length === 0 ? (
+                  <div className="rounded-md border p-3 text-sm text-muted-foreground">
+                    {t('superAdmin.users.labels.noSedeAssigned')}
+                  </div>
+                ) : (
+                  <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+                    <div className="space-y-2">
+                      {sedeStates.map((sede) => (
+                        <button
+                          key={sede.sedeId}
+                          type="button"
+                          className={`w-full rounded-lg border px-3 py-2 text-left text-sm ${selectedSedeId === sede.sedeId ? 'border-primary bg-primary/5' : 'hover:bg-muted/40'}`}
+                          onClick={() => setSelectedSedeId(sede.sedeId)}
+                        >
+                          <div className="font-medium">{sede.sedeNombre}</div>
+                          <div className="text-xs text-muted-foreground">{t(`rbac.sedeRole.${sede.sedeRole}`)}</div>
+                        </button>
+                      ))}
+                    </div>
+
+                    {selectedSede ? (
+                      <div className="space-y-4">
+                        <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-end">
+                          <div className="space-y-2">
+                            <Label htmlFor="super-admin-sede-role">{t('superAdmin.users.fields.sedeRole')}</Label>
+                            <select
+                              id="super-admin-sede-role"
+                              className="w-full rounded-md border px-3 py-2 text-sm"
+                              value={selectedSede.sedeRole}
+                              onChange={(e) => updateSedeRole(selectedSede.sedeId, e.target.value as SedeRole)}
+                            >
+                              {(['ADMIN', 'MANAGER', 'MEMBER', 'READER'] as SedeRole[]).map((role) => (
+                                <option key={role} value={role}>{t(`rbac.sedeRole.${role}`)}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="text-xs text-muted-foreground">{t('superAdmin.users.fields.accessRoleHelp')}</div>
+                        </div>
+
+                        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                          {selectedSede.modules.map((moduleRow) => (
+                            <label key={moduleRow.module} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
+                              <div>
+                                <div className="font-medium">{t(`rbac.module.${moduleRow.module}`)}</div>
+                                <div className="text-[11px] text-muted-foreground">{moduleRow.module}</div>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={moduleRow.enabled}
+                                onChange={(e) => updateModuleEnabled(selectedSede.sedeId, moduleRow.module, e.target.checked)}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          ) : null}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>
+            <Button type="button" variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>
               {t('common.cancel')}
             </Button>
-            <Button onClick={() => void saveEdit()} disabled={saving}>
+            <Button type="button" onClick={() => void saveEdit()} disabled={saving || managementLoading || !management}>
               {saving ? t('common.saving') : t('common.save')}
             </Button>
           </DialogFooter>

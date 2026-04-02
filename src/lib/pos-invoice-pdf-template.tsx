@@ -35,6 +35,10 @@ export interface PosInvoicePdfProps {
     items: PosInvoicePdfItem[]
     payments?: PosInvoicePdfPayment[]
   }
+  verification?: {
+    url: string
+    qrDataUrl?: string
+  }
   empresa?: {
     nombre?: string
     nit?: string
@@ -204,6 +208,35 @@ function createStyles(t: PosInvoiceTemplateSettings, StyleSheet: ReactPdfCompone
       paddingTop: 6,
       paddingBottom: 6,
     },
+    verificationCard: {
+      position: 'absolute',
+      right: footerRightRight,
+      bottom: footerBottom + 44,
+      width: 180,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+      borderRadius: 10,
+      padding: 8,
+      backgroundColor: t.colors.pageBackground,
+    },
+    verificationTitle: {
+      fontSize: Math.max(t.typography.baseFontSize - 1, 8),
+      fontWeight: 'bold',
+      textAlign: 'center',
+      color: t.colors.text,
+      marginBottom: 6,
+    },
+    verificationQr: {
+      width: 164,
+      height: 164,
+      alignSelf: 'center',
+    },
+    verificationUrl: {
+      marginTop: 6,
+      fontSize: Math.max(t.typography.baseFontSize - 3, 6),
+      color: t.colors.mutedText,
+      textAlign: 'center',
+    },
     footer: {
       position: 'absolute',
       bottom: footerBottom,
@@ -219,7 +252,7 @@ function createStyles(t: PosInvoiceTemplateSettings, StyleSheet: ReactPdfCompone
   })
 }
 
-export function PosInvoicePDFCore({ pdf, invoice, empresa, template }: PosInvoicePdfCoreProps) {
+export function PosInvoicePDFCore({ pdf, invoice, empresa, template, verification }: PosInvoicePdfCoreProps) {
   const { Document, Page, Text, View, Image, StyleSheet } = pdf
   const t = mergePosInvoiceTemplateSettings(template ?? DEFAULT_POS_INVOICE_TEMPLATE)
   const styles = createStyles(t, StyleSheet)
@@ -345,6 +378,14 @@ export function PosInvoicePDFCore({ pdf, invoice, empresa, template }: PosInvoic
             ) : null}
           </View>
         </View>
+
+        {verification?.qrDataUrl ? (
+          <View style={styles.verificationCard}>
+            <Text style={styles.verificationTitle}>Verificar original</Text>
+            <Image style={styles.verificationQr} src={verification.qrDataUrl} />
+            <Text style={styles.verificationUrl}>{verification.url}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.footer}>
           {t.footer.showTimestamp ? <Text>Factura generada el {new Date().toLocaleString('es-CO')}</Text> : null}

@@ -402,6 +402,34 @@ export async function POST(request: Request) {
         select: { id: true, numero: true, status: true, total: true, warehouseId: true },
       })
 
+      await tx.posInvoiceAuditEvent.create({
+        data: {
+          invoiceId: invoice.id,
+          action: 'CREATED',
+          performedById: createdBy?.id ?? null,
+          after: {
+            numero: invoice.numero,
+            status: invoice.status,
+            total: invoice.total,
+            warehouseId: invoice.warehouseId,
+            clienteNombre,
+            clienteDocumento,
+            ivaPct,
+            discountAmount: discountFinal,
+            otherTaxesAmount: otherTaxesAmountInput,
+            subtotal,
+            iva,
+            items: computedLineTotals.map((it) => ({
+              materialId: it.materialId,
+              descripcion: it.descripcion,
+              quantity: it.quantity,
+              unitPrice: it.unitPrice,
+              total: it.total,
+            })),
+          },
+        },
+      })
+
       if (invoice.status === PosInvoiceStatus.PAID) {
         for (const it of computedLineTotals) {
           if (!it.materialId) continue
@@ -480,12 +508,23 @@ export async function POST(request: Request) {
         }
       }
 
-      const workOrder = await ensureWorkOrderFromInvoice(tx, {
-        invoiceId: invoice.id,
-        empresaId,
-        sedeId: access.sedeId,
-        createdById: access.userId,
-      })
+      let workOrder = null
+      if (invoice.status !== PosInvoiceStatus.DRAFT) {
+        try {
+          workOrder = await ensureWorkOrderFromInvoice(tx, {
+            invoiceId: invoice.id,
+            empresaId,
+            sedeId: access.sedeId,
+            createdById: access.userId,
+          })
+        } catch (error) {
+          if (error instanceof WorkOrderClientResolutionError) {
+            throw error
+          }
+
+          console.error('POS: la factura fue creada pero no se pudo sincronizar la orden de trabajo automática:', error)
+        }
+      }
 
       return {
         ...invoice,

@@ -125,6 +125,7 @@ model User {
 
   // POS (facturación interna)
   posInvoicesCreated PosInvoice[] @relation("PosInvoiceCreatedBy")
+  posInvoiceAuditEventsPerformed PosInvoiceAuditEvent[] @relation("PosInvoiceAuditPerformedBy")
   posReturnsCreated  PosReturn[]  @relation("PosReturnCreatedBy")
 
   // DIAN (documentos electrónicos)
@@ -614,6 +615,7 @@ model Empresa {
   stripeCancelAtPeriodEnd  Boolean   @default(false)
 
   billingInvoices BillingInvoice[]
+  moduleOverrides EmpresaModuleOverride[]
 
   inventoryMovements InventoryMovement[]
 
@@ -692,6 +694,22 @@ model Empresa {
   updatedAt DateTime @updatedAt
 
   @@map("empresas")
+}
+
+model EmpresaModuleOverride {
+  id        String    @id @default(cuid())
+  empresaId String
+  module    ModuleKey
+  enabled   Boolean
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, module])
+  @@index([empresaId])
+  @@map("empresa_module_overrides")
 }
 
 model BillingReminderLog {
@@ -1191,6 +1209,7 @@ model PosInvoice {
   items    PosInvoiceItem[]
   payments PosPayment[]
   returns  PosReturn[]
+  auditEvents PosInvoiceAuditEvent[]
 
   // DIAN (documentos electrónicos)
   dianDocuments DianElectronicDocument[] @relation("DianDocPosInvoice")
@@ -1207,6 +1226,35 @@ model PosInvoice {
   @@index([sedeId, createdAt])
   @@index([clienteId])
   @@map("pos_invoices")
+}
+
+enum PosInvoiceAuditAction {
+  CREATED
+  UPDATED
+  SHARED_EMAIL
+  SHARED_WHATSAPP
+  PDF_DOWNLOADED
+}
+
+model PosInvoiceAuditEvent {
+  id String @id @default(cuid())
+
+  invoiceId String
+  invoice   PosInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  action PosInvoiceAuditAction
+  note   String? @db.Text
+  before Json?
+  after  Json?
+
+  performedById String?
+  performedBy   User? @relation("PosInvoiceAuditPerformedBy", fields: [performedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([invoiceId, createdAt])
+  @@index([action, createdAt])
+  @@map("pos_invoice_audit_events")
 }
 
 model PosInvoiceItem {
@@ -1407,6 +1455,7 @@ model BillingInvoice {
   boldPaymentId     String?
   boldEventId       String?
   boldType          String?
+  paymentMethod     String?
 
   expiresAt DateTime?
   paidAt    DateTime?

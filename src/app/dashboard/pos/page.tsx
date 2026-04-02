@@ -30,7 +30,8 @@ import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { formatCurrency, formatUnidadMedidaLabel } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useI18n } from '@/components/providers/i18n-provider'
-import { Download, Plus, Search } from 'lucide-react'
+import { buildWhatsAppWebUrl } from '@/lib/whatsapp-link'
+import { CheckCircle, Download, Eye, History, Mail, MessageCircle, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 
 type DianDirection = 'OUTBOUND' | 'INBOUND'
 type DianType = 'INVOICE' | 'CREDIT_NOTE' | 'DEBIT_NOTE' | 'ELECTRONIC_INSTRUMENT'
@@ -100,8 +101,34 @@ function getDianNumeracionTipoDocOptions(t: TFunction): DianNumeracionTipoDocume
   ]
 }
 
+type DianProviderCode = 'SIIGO' | 'ALEGRA' | 'WORLD_OFFICE' | 'FACTUS' | 'CARVAJAL' | 'CUSTOM'
+type DianConnectionType = 'MODERN_API' | 'ASSISTED' | 'MANUAL'
+
+function getDianProviderOptions(t: TFunction): Array<{ value: DianProviderCode; label: string }> {
+  return [
+    { value: 'ALEGRA', label: t('pos.dian.configuration.providers.ALEGRA') },
+    { value: 'SIIGO', label: t('pos.dian.configuration.providers.SIIGO') },
+    { value: 'WORLD_OFFICE', label: t('pos.dian.configuration.providers.WORLD_OFFICE') },
+    { value: 'FACTUS', label: t('pos.dian.configuration.providers.FACTUS') },
+    { value: 'CARVAJAL', label: t('pos.dian.configuration.providers.CARVAJAL') },
+    { value: 'CUSTOM', label: t('pos.dian.configuration.providers.CUSTOM') },
+  ]
+}
+
+function getDianConnectionTypeOptions(t: TFunction): Array<{ value: DianConnectionType; label: string }> {
+  return [
+    { value: 'MODERN_API', label: t('pos.dian.configuration.connectionTypes.MODERN_API') },
+    { value: 'ASSISTED', label: t('pos.dian.configuration.connectionTypes.ASSISTED') },
+    { value: 'MANUAL', label: t('pos.dian.configuration.connectionTypes.MANUAL') },
+  ]
+}
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 type DianDocListItem = {
@@ -190,8 +217,16 @@ type InvoiceDetail = {
   empresaId?: string
   clienteNombre: string
   clienteDocumento: string | null
+  cliente?: {
+    id: string
+    email: string | null
+    telefono: string | null
+    celular: string | null
+  } | null
   ivaPct: number
   subtotal: number
+  discountAmount: number
+  otherTaxesAmount: number
   iva: number
   total: number
   note: string | null
@@ -221,6 +256,29 @@ type InvoiceDetail = {
     total: number
     material?: { id: string; nombre: string; unidadMedida: string } | null
   }>
+  dianDocuments: Array<{
+    id: string
+    numero: string | null
+    status: string
+    createdAt: string
+  }>
+  auditEvents: Array<{
+    id: string
+    action: 'CREATED' | 'UPDATED' | 'SHARED_EMAIL' | 'SHARED_WHATSAPP' | 'PDF_DOWNLOADED'
+    note: string | null
+    before: unknown
+    after: unknown
+    createdAt: string
+    performedBy?: { id: string; name: string | null; email: string | null } | null
+  }>
+  shareStats: {
+    emailCount: number
+    whatsappCount: number
+    downloadCount: number
+    lastEmailAt: string | null
+    lastWhatsappAt: string | null
+    lastDownloadAt: string | null
+  }
 }
 
 type ReturnListItem = {
@@ -356,6 +414,8 @@ export default function PosPage() {
   const dianSteps = useMemo(() => getDianSteps(t), [t])
   const dianDocTypes = useMemo(() => getDianDocTypes(t), [t])
   const dianNumTipoDocOptions = useMemo(() => getDianNumeracionTipoDocOptions(t), [t])
+  const dianProviderOptions = useMemo(() => getDianProviderOptions(t), [t])
+  const dianConnectionTypeOptions = useMemo(() => getDianConnectionTypeOptions(t), [t])
 
   const [activeTab, setActiveTab] = useState<'interna' | 'dian'>('interna')
   const [tabPending, setTabPending] = useState(false)
@@ -382,6 +442,7 @@ export default function PosPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [finalizeSubmitting, setFinalizeSubmitting] = useState(false)
   const [createAsDraft, setCreateAsDraft] = useState(false)
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null)
 
   const [returnSubmitting, setReturnSubmitting] = useState(false)
 
@@ -394,6 +455,18 @@ export default function PosPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [detail, setDetail] = useState<InvoiceDetail | null>(null)
+  const [detailShareEmail, setDetailShareEmail] = useState('')
+  const [detailSharePhone, setDetailSharePhone] = useState('')
+  const [detailShareMessage, setDetailShareMessage] = useState('')
+  const [detailSendingEmail, setDetailSendingEmail] = useState(false)
+  const [detailSharingWhatsapp, setDetailSharingWhatsapp] = useState(false)
+  const [inlineEmailingId, setInlineEmailingId] = useState<string | null>(null)
+  const [inlineWhatsappId, setInlineWhatsappId] = useState<string | null>(null)
+  const [traceOpen, setTraceOpen] = useState(false)
+  const [traceLoading, setTraceLoading] = useState(false)
+  const [traceError, setTraceError] = useState<string | null>(null)
+  const [traceInvoice, setTraceInvoice] = useState<InvoiceDetail | null>(null)
+  const [invoiceSubmitMode, setInvoiceSubmitMode] = useState<'draft' | 'approve'>('approve')
 
   const [dianFilterDirection, setDianFilterDirection] = useState<'ALL' | DianDirection>('ALL')
   const [dianDocs, setDianDocs] = useState<DianDocListItem[]>([])
@@ -404,6 +477,7 @@ export default function PosPage() {
   const [dianDetail, setDianDetail] = useState<DianDocDetail | null>(null)
   const [dianDetailLoading, setDianDetailLoading] = useState(false)
   const [dianDetailError, setDianDetailError] = useState<string | null>(null)
+  const [dianPreviewOpen, setDianPreviewOpen] = useState(false)
 
   const [dianCreating, setDianCreating] = useState(false)
   const [dianActionSubmitting, setDianActionSubmitting] = useState<DianAction | null>(null)
@@ -420,7 +494,7 @@ export default function PosPage() {
     | 'nota_debito'
     | 'nota_credito'
   >('factura_venta')
-  const [dianConfigTab, setDianConfigTab] = useState<'rangos' | 'comprador' | 'productos'>('rangos')
+  const [dianConfigTab, setDianConfigTab] = useState<'guia' | 'basicos' | 'rangos' | 'comprador' | 'productos'>('guia')
   const [dianPlantillaTab, setDianPlantillaTab] = useState<'factura_venta'>('factura_venta')
 
   useEffect(() => {
@@ -439,6 +513,29 @@ export default function PosPage() {
   }, [searchParams])
 
   type DianSettings = {
+    onboarding?: {
+      environment?: string
+      provider?: DianProviderCode | string
+      connectionType?: DianConnectionType | string
+      apiKey?: string
+      apiUser?: string
+      apiPassword?: string
+      apiUrl?: string
+      softwareId?: string
+      softwarePin?: string
+      testSetId?: string
+    }
+    emisor?: {
+      nit?: string
+      dv?: string
+      razonSocial?: string
+      regimen?: string
+      responsabilidades?: string
+      correo?: string
+      telefono?: string
+      direccion?: string
+      municipioCodigo?: string
+    }
     numeracion?: Array<{
       tipoDocumento?: DianNumeracionTipoDocumento
       prefijo?: string
@@ -518,6 +615,11 @@ export default function PosPage() {
     ciudad: '',
     departamento: '',
   })
+
+  const dianProvider = String(dianSettings.onboarding?.provider ?? 'ALEGRA') as DianProviderCode
+  const dianConnectionType = String(dianSettings.onboarding?.connectionType ?? 'MODERN_API') as DianConnectionType
+  const dianProviderHasModernApi = dianProvider === 'ALEGRA' || dianProvider === 'SIIGO' || dianProvider === 'FACTUS' || dianProvider === 'CARVAJAL'
+  const dianProviderNeedsAdvisory = dianProvider === 'WORLD_OFFICE' || dianProvider === 'CUSTOM'
 
   const [form, setForm] = useState({
     clienteNombre: '',
@@ -866,6 +968,7 @@ export default function PosPage() {
         if (created?.id) {
           setDianSelectedId(created.id)
           await loadDianDetail(created.id)
+          setDianPreviewOpen(true)
         }
         return true
       } catch (e) {
@@ -1119,6 +1222,23 @@ export default function PosPage() {
                 kind: 'POS_INVOICE',
                 subType: args.subType,
                 posInvoiceId,
+                buyer: {
+                  nombre: String(inv.clienteNombre ?? ''),
+                  documento: String(inv.clienteDocumento ?? ''),
+                },
+                items: Array.isArray(inv.items)
+                  ? inv.items.map((item) => ({
+                      descripcion: String(item.descripcion ?? ''),
+                      quantity: Number(item.quantity ?? 0),
+                      unitPrice: Number(item.unitPrice ?? 0),
+                      ivaPct: Number(inv.ivaPct ?? 0),
+                    }))
+                  : [],
+                totals: {
+                  subtotal: Number(inv.subtotal ?? 0),
+                  iva: Number(inv.iva ?? 0),
+                  total: Number(inv.total ?? 0),
+                },
               },
             },
           }),
@@ -1135,6 +1255,7 @@ export default function PosPage() {
         if (created?.id) {
           setDianSelectedId(created.id)
           await loadDianDetail(created.id)
+          setDianPreviewOpen(true)
         }
 
         if (!created?.reused) {
@@ -1396,7 +1517,7 @@ export default function PosPage() {
     await saveDianSettings(dianSettings)
   }, [dianSettings, saveDianSettings, t, validateDianNumeracion])
 
-  const runDianAction = useCallback(
+  const executeDianAction = useCallback(
     async (action: DianAction) => {
       if (!dianSelectedId || dianActionSubmitting) return
       if (action === 'transmitir' && dianDetail?.direction === 'INBOUND') {
@@ -1424,12 +1545,74 @@ export default function PosPage() {
     [dianActionSubmitting, dianDetail?.direction, dianSelectedId, loadDianDetail, loadDianDocs, t]
   )
 
+  const runDianAction = useCallback(
+    async (action: DianAction) => {
+      if (action === 'transmitir') {
+        if (!dianSelectedId) return
+        if (!dianDetail || dianDetail.id !== dianSelectedId) {
+          await loadDianDetail(dianSelectedId)
+        }
+        setDianPreviewOpen(true)
+        return
+      }
+
+      await executeDianAction(action)
+    },
+    [dianDetail, dianSelectedId, executeDianAction, loadDianDetail]
+  )
+
   const dianBitacora = useMemo(() => {
     if (!dianDetail?.events?.length) return ''
     return dianDetail.events
       .map((ev) => `${new Date(ev.createdAt).toLocaleString(locale)} [${ev.type}] ${ev.message}`)
       .join('\n')
   }, [dianDetail?.events, locale])
+
+  const dianPreviewData = useMemo(() => {
+    if (!dianDetail) return null
+
+    const payload = isRecord(dianDetail.payload) ? dianDetail.payload : null
+    const ui = payload && isRecord(payload.ui) ? payload.ui : null
+    const buyer = ui && isRecord(ui.buyer) ? ui.buyer : null
+    const totals = ui && isRecord(ui.totals) ? ui.totals : null
+    const items = Array.isArray(ui?.items)
+      ? ui.items
+          .filter((item): item is Record<string, unknown> => isRecord(item))
+          .map((item) => {
+            const quantity = Number(item.quantity ?? 0)
+            const unitPrice = Number(item.unitPrice ?? 0)
+            const ivaPct = Number(item.ivaPct ?? 0)
+            const subtotal = quantity * unitPrice
+            const iva = subtotal * (ivaPct / 100)
+            return {
+              descripcion: String(item.descripcion ?? ''),
+              quantity,
+              unitPrice,
+              ivaPct,
+              subtotal,
+              iva,
+            }
+          })
+      : []
+
+    const subtotal = Number(totals?.subtotal ?? items.reduce((sum, item) => sum + item.subtotal, 0))
+    const iva = Number(totals?.iva ?? items.reduce((sum, item) => sum + item.iva, 0))
+    const total = Number(totals?.total ?? subtotal + iva)
+    const sourceLabel = dianDetail.posInvoice?.numero || dianDetail.posReturn?.numero || String(ui?.kind ?? 'MANUAL')
+
+    return {
+      buyerName: buyer ? String(buyer.nombre ?? '') : '',
+      buyerDocument: buyer ? String(buyer.documento ?? '') : '',
+      buyerEmail: buyer ? String(buyer.email ?? '') : '',
+      sourceLabel,
+      sourceKind: String(ui?.kind ?? (dianDetail.posInvoice ? 'POS_INVOICE' : dianDetail.posReturn ? 'POS_RETURN' : 'MANUAL')),
+      subType: typeof ui?.subType === 'string' ? ui.subType : '',
+      items,
+      subtotal,
+      iva,
+      total,
+    }
+  }, [dianDetail])
 
   useEffect(() => {
     if (activeTab !== 'dian') return
@@ -1440,9 +1623,22 @@ export default function PosPage() {
     void loadAll()
   }, [loadAll])
 
+  function resetInvoiceEditor() {
+    setEditingInvoiceId(null)
+    setCreateAsDraft(false)
+    setInvoiceSubmitMode('approve')
+    setPaymentsTouched(false)
+    setPaymentAmounts(
+      PAYMENT_METHODS.reduce((acc, key) => {
+        acc[key] = '0'
+        return acc
+      }, {} as Record<PaymentMethod, string>),
+    )
+  }
+
   function openCreate() {
     setError(null)
-    setCreateAsDraft(false)
+    resetInvoiceEditor()
     setForm({
       clienteNombre: t('pos.createDialog.defaultCustomer'),
       clienteDocumento: '',
@@ -1453,6 +1649,36 @@ export default function PosPage() {
       warehouseId: defaultBodegaId,
       items: [{ materialId: '', descripcion: '', quantity: '1', unitPrice: '' }],
     })
+    setCreateOpen(true)
+  }
+
+  function openEditInvoice(invoice: InvoiceDetail) {
+    if (invoice.status !== 'DRAFT') {
+      setError(t('pos.errors.editOnlyDraft'))
+      return
+    }
+
+    setError(null)
+    setEditingInvoiceId(invoice.id)
+    setCreateAsDraft(true)
+    setInvoiceSubmitMode('draft')
+    setForm({
+      clienteNombre: invoice.clienteNombre,
+      clienteDocumento: invoice.clienteDocumento || '',
+      ivaPct: String(invoice.ivaPct ?? 0),
+      discountAmount: String(invoice.discountAmount ?? 0),
+      otherTaxesAmount: String(invoice.otherTaxesAmount ?? 0),
+      note: invoice.note || '',
+      warehouseId: invoice.warehouse?.id || defaultBodegaId,
+      items: invoice.items.length
+        ? invoice.items.map((item) => ({
+            materialId: item.material?.id || '',
+            descripcion: item.descripcion,
+            quantity: String(item.quantity),
+            unitPrice: String(item.unitPrice),
+          }))
+        : [{ materialId: '', descripcion: '', quantity: '1', unitPrice: '' }],
+    })
     setPaymentsTouched(false)
     setPaymentAmounts(
       PAYMENT_METHODS.reduce((acc, key) => {
@@ -1461,6 +1687,52 @@ export default function PosPage() {
       }, {} as Record<PaymentMethod, string>),
     )
     setCreateOpen(true)
+  }
+
+  function buildInvoiceWhatsAppMessage(invoice: InvoiceDetail, pdfUrl: string) {
+    const lines = [
+      `*Factura ${invoice.numero}*`,
+      `*Cliente:* ${invoice.clienteNombre}`,
+      `*Fecha:* ${new Date(invoice.createdAt).toLocaleDateString(locale)}`,
+      `*Total:* ${formatCurrency(invoice.total)}`,
+      '',
+      pdfUrl,
+    ]
+
+    return lines.join('\n')
+  }
+
+  async function fetchInvoiceDetail(invoiceId: string): Promise<{ data: InvoiceDetail | null; error: string | null }> {
+    try {
+      const res = await fetch(`/api/pos/facturas/${invoiceId}`)
+      const json = (await res.json().catch(() => ({}))) as ApiListResponse<InvoiceDetail>
+      if (!res.ok || !json.success || !json.data) {
+        return { data: null, error: json.error || t('pos.errors.loadInvoiceDetailFailed') }
+      }
+
+      return { data: json.data, error: null }
+    } catch (e) {
+      return { data: null, error: e instanceof Error ? e.message : t('common.unexpectedError') }
+    }
+  }
+
+  async function refreshInvoiceDetail(invoiceId: string) {
+    const { data, error } = await fetchInvoiceDetail(invoiceId)
+    if (!data) {
+      setDetailError(error || t('pos.errors.loadInvoiceDetailFailed'))
+      return null
+    }
+
+    try {
+      setDetail(data)
+      setDetailShareEmail(data.cliente?.email || '')
+      setDetailSharePhone(data.cliente?.celular || data.cliente?.telefono || '')
+      setDetailShareMessage('')
+      return data
+    } catch (e) {
+      setDetailError(e instanceof Error ? e.message : t('common.unexpectedError'))
+      return null
+    }
   }
 
   async function submitInlineCliente(e: React.FormEvent) {
@@ -1676,12 +1948,13 @@ export default function PosPage() {
     })
   }, [createAsDraft, createOpen, computed.total, paymentsTouched])
 
-  async function submitInvoice(e: React.FormEvent) {
-    e.preventDefault()
+  async function submitInvoice(mode: 'draft' | 'approve') {
     setIsSubmitting(true)
     setError(null)
 
     try {
+      const saveAsDraft = mode === 'draft'
+
       if (!form.clienteNombre.trim()) {
         setError(t('pos.errors.clientNameRequired'))
         return
@@ -1692,7 +1965,7 @@ export default function PosPage() {
         return
       }
 
-      if (!createAsDraft && !computedPayments.ok) {
+      if (!saveAsDraft && !computedPayments.ok) {
         setError(t('pos.errors.paymentsMustMatchTotal'))
         return
       }
@@ -1705,27 +1978,31 @@ export default function PosPage() {
         otherTaxesAmount: computed.otherTaxesAmount,
         note: form.note.trim() || undefined,
         warehouseId: form.warehouseId || undefined,
-        asDraft: createAsDraft,
+        asDraft: saveAsDraft,
         items: computed.lines.map((it) => ({
           materialId: it.materialId || undefined,
           descripcion: it.descripcion?.trim() || undefined,
           quantity: it.quantity,
           unitPrice: it.unitPrice,
         })),
-        payments: createAsDraft ? undefined : computedPayments.normalized,
+        payments: saveAsDraft ? undefined : computedPayments.normalized,
       }
 
-      const res = await fetch('/api/pos/facturas', {
-        method: 'POST',
+      const targetUrl = editingInvoiceId ? `/api/pos/facturas/${editingInvoiceId}` : '/api/pos/facturas'
+      const method = editingInvoiceId ? 'PATCH' : 'POST'
+
+      const res = await fetch(targetUrl, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
 
       const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string }
       if (!res.ok || !json.success) {
-        if (!createAsDraft && json.error === 'Stock insuficiente') {
+        if (!saveAsDraft && json.error === 'Stock insuficiente') {
           setError(t('pos.errors.stockInsufficientDraftHint'))
           setCreateAsDraft(true)
+          setInvoiceSubmitMode('draft')
           return
         }
 
@@ -1734,6 +2011,7 @@ export default function PosPage() {
       }
 
       setCreateOpen(false)
+      resetInvoiceEditor()
       await loadAll()
     } catch (e) {
       setError(e instanceof Error ? e.message : t('common.unexpectedError'))
@@ -1749,13 +2027,7 @@ export default function PosPage() {
     setDetailLoading(true)
 
     try {
-      const res = await fetch(`/api/pos/facturas/${invoiceId}`)
-      const json = (await res.json().catch(() => ({}))) as ApiListResponse<InvoiceDetail>
-      if (!res.ok || !json.success || !json.data) {
-        setDetailError(json.error || t('pos.errors.loadInvoiceDetailFailed'))
-        return
-      }
-      setDetail(json.data)
+      await refreshInvoiceDetail(invoiceId)
     } catch (e) {
       setDetailError(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
@@ -1779,6 +2051,7 @@ export default function PosPage() {
       anchor.click()
       window.URL.revokeObjectURL(url)
       document.body.removeChild(anchor)
+      if (detail?.id === invoiceId) await refreshInvoiceDetail(invoiceId)
     } catch (e) {
       setError(e instanceof Error ? e.message : t('pos.errors.downloadInvoicePdfFailed'))
     }
@@ -1786,6 +2059,194 @@ export default function PosPage() {
 
   function openInvoicePdf(invoiceId: string) {
     window.open(`/api/pos/facturas/${invoiceId}/pdf`, '_blank', 'noopener,noreferrer')
+  }
+
+  async function openInvoiceEditorFromRow(invoiceId: string) {
+    setError(null)
+    const { data, error } = await fetchInvoiceDetail(invoiceId)
+    if (!data) {
+      setError(error || t('pos.errors.loadInvoiceDetailFailed'))
+      return
+    }
+
+    openEditInvoice(data)
+  }
+
+  async function openInvoiceTraceability(invoiceId: string) {
+    setTraceOpen(true)
+    setTraceLoading(true)
+    setTraceError(null)
+    setTraceInvoice(null)
+
+    const { data, error } = await fetchInvoiceDetail(invoiceId)
+    if (!data) {
+      setTraceError(error || t('pos.errors.loadInvoiceDetailFailed'))
+      setTraceLoading(false)
+      return
+    }
+
+    setTraceInvoice(data)
+    setTraceLoading(false)
+  }
+
+  async function sendInvoiceByEmailQuick(invoiceId: string) {
+    setError(null)
+    setInlineEmailingId(invoiceId)
+
+    try {
+      const { data, error } = await fetchInvoiceDetail(invoiceId)
+      if (!data) {
+        setError(error || t('pos.errors.loadInvoiceDetailFailed'))
+        return
+      }
+
+      const recipient = data.cliente?.email?.trim() || ''
+      if (!recipient) {
+        setError(t('pos.errors.shareEmailRequired'))
+        return
+      }
+
+      const res = await fetch(`/api/pos/facturas/${data.id}/enviar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destinatarios: [recipient],
+        }),
+      })
+
+      const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string }
+      if (!res.ok || !json.success) {
+        setError(json.error || t('pos.errors.sendInvoiceEmailFailed'))
+        return
+      }
+
+      if (detail?.id === data.id) await refreshInvoiceDetail(data.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('pos.errors.sendInvoiceEmailFailed'))
+    } finally {
+      setInlineEmailingId(null)
+    }
+  }
+
+  async function shareInvoiceByWhatsappQuick(invoiceId: string) {
+    setError(null)
+    setInlineWhatsappId(invoiceId)
+
+    try {
+      const { data, error } = await fetchInvoiceDetail(invoiceId)
+      if (!data) {
+        setError(error || t('pos.errors.loadInvoiceDetailFailed'))
+        return
+      }
+
+      const res = await fetch(`/api/pos/facturas/${data.id}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+
+      const json = (await res.json().catch(() => ({}))) as {
+        success?: boolean
+        error?: string
+        data?: { url?: string }
+      }
+
+      if (!res.ok || !json.success || !json.data?.url) {
+        setError(json.error || t('pos.errors.shareInvoiceWhatsappFailed'))
+        return
+      }
+
+      const phone = data.cliente?.celular || data.cliente?.telefono || ''
+      const message = buildInvoiceWhatsAppMessage(data, json.data.url)
+      const whatsappUrl = buildWhatsAppWebUrl({ phone, message })
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
+
+      if (detail?.id === data.id) await refreshInvoiceDetail(data.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('pos.errors.shareInvoiceWhatsappFailed'))
+    } finally {
+      setInlineWhatsappId(null)
+    }
+  }
+
+  async function sendInvoiceByEmail(invoice: InvoiceDetail) {
+    const recipients = detailShareEmail
+      .split(/[;,\s]+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+
+    if (!recipients.length) {
+      setDetailError(t('pos.errors.shareEmailRequired'))
+      return
+    }
+
+    setDetailError(null)
+    setDetailSendingEmail(true)
+
+    try {
+      const res = await fetch(`/api/pos/facturas/${invoice.id}/enviar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destinatarios: recipients,
+          mensaje: detailShareMessage.trim() || undefined,
+        }),
+      })
+
+      const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string }
+      if (!res.ok || !json.success) {
+        setDetailError(json.error || t('pos.errors.sendInvoiceEmailFailed'))
+        return
+      }
+
+      await refreshInvoiceDetail(invoice.id)
+    } catch (e) {
+      setDetailError(e instanceof Error ? e.message : t('pos.errors.sendInvoiceEmailFailed'))
+    } finally {
+      setDetailSendingEmail(false)
+    }
+  }
+
+  async function shareInvoiceByWhatsapp(invoice: InvoiceDetail) {
+    setDetailError(null)
+    setDetailSharingWhatsapp(true)
+
+    try {
+      const res = await fetch(`/api/pos/facturas/${invoice.id}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+
+      const json = (await res.json().catch(() => ({}))) as {
+        success?: boolean
+        error?: string
+        data?: { url?: string }
+      }
+
+      if (!res.ok || !json.success || !json.data?.url) {
+        setDetailError(json.error || t('pos.errors.shareInvoiceWhatsappFailed'))
+        return
+      }
+
+      const message = detailShareMessage.trim() || buildInvoiceWhatsAppMessage(invoice, json.data.url)
+      const whatsappUrl = buildWhatsAppWebUrl({ phone: detailSharePhone, message })
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
+      await refreshInvoiceDetail(invoice.id)
+    } catch (e) {
+      setDetailError(e instanceof Error ? e.message : t('pos.errors.shareInvoiceWhatsappFailed'))
+    } finally {
+      setDetailSharingWhatsapp(false)
+    }
+  }
+
+  function invoiceAuditActionLabel(action: InvoiceDetail['auditEvents'][number]['action']) {
+    if (action === 'CREATED') return t('pos.invoiceDetailDialog.audit.actions.created')
+    if (action === 'UPDATED') return t('pos.invoiceDetailDialog.audit.actions.updated')
+    if (action === 'SHARED_EMAIL') return t('pos.invoiceDetailDialog.audit.actions.sharedEmail')
+    if (action === 'SHARED_WHATSAPP') return t('pos.invoiceDetailDialog.audit.actions.sharedWhatsapp')
+    if (action === 'PDF_DOWNLOADED') return t('pos.invoiceDetailDialog.audit.actions.downloadedPdf')
+    return action
   }
 
   async function anular(invoiceId: string) {
@@ -2038,23 +2499,98 @@ export default function PosPage() {
                           <td className="py-2 pr-4 text-gray-700">{inv.status}</td>
                           <td className="py-2 pr-4 font-medium">{formatCurrency(n(inv.total, 0))}</td>
                           <td className="py-2 pr-2">
-                            <div className="flex gap-2">
-                              <Button type="button" size="sm" variant="outline" onClick={() => void openDetail(inv.id)}>
-                                {t('pos.actions.view')}
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-9 w-9 rounded-full p-0"
+                                title={t('pos.actions.view')}
+                                onClick={() => void openDetail(inv.id)}
+                              >
+                                <Eye className="h-4 w-4" />
                               </Button>
-                              <Button type="button" size="sm" variant="outline" onClick={() => openInvoicePdf(inv.id)}>
-                                {t('pos.actions.print')}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-9 w-9 rounded-full p-0"
+                                title={t('pos.invoiceDetailDialog.audit.title')}
+                                onClick={() => void openInvoiceTraceability(inv.id)}
+                              >
+                                <History className="h-4 w-4" />
                               </Button>
-                              <Button type="button" size="sm" variant="outline" onClick={() => void downloadInvoicePdf(inv.id, inv.numero)}>
-                                {t('pos.actions.downloadPdf')}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-9 w-9 rounded-full p-0"
+                                title={t('common.edit')}
+                                onClick={() => void openInvoiceEditorFromRow(inv.id)}
+                                disabled={inv.status !== 'DRAFT'}
+                              >
+                                <Pencil className="h-4 w-4" />
                               </Button>
-                              {inv.status === 'DRAFT' ? (
-                                <Button type="button" size="sm" onClick={() => void finalizar(inv.id)} disabled={finalizeSubmitting}>
-                                  {finalizeSubmitting ? t('pos.actions.finalizing') : t('pos.actions.finalize')}
-                                </Button>
-                              ) : null}
-                              <Button type="button" size="sm" variant="destructive" onClick={() => void anular(inv.id)}>
-                                {t('pos.actions.void')}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-9 w-9 rounded-full p-0"
+                                title={t('pos.actions.finalize')}
+                                onClick={() => void finalizar(inv.id)}
+                                disabled={inv.status !== 'DRAFT' || finalizeSubmitting}
+                              >
+                                <CheckCircle className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-9 w-9 rounded-full p-0"
+                                title={t('pos.actions.downloadPdf')}
+                                onClick={() => void downloadInvoicePdf(inv.id, inv.numero)}
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-9 w-9 rounded-full p-0"
+                                title={t('pos.invoiceDetailDialog.share.sendEmail')}
+                                onClick={() => void sendInvoiceByEmailQuick(inv.id)}
+                                disabled={inlineEmailingId === inv.id}
+                              >
+                                {inlineEmailingId === inv.id ? (
+                                  <div className="h-4 w-4 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
+                                ) : (
+                                  <Mail className="h-4 w-4" />
+                                )}
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-9 w-9 rounded-full p-0"
+                                title={t('pos.invoiceDetailDialog.share.sendWhatsapp')}
+                                onClick={() => void shareInvoiceByWhatsappQuick(inv.id)}
+                                disabled={inlineWhatsappId === inv.id}
+                              >
+                                {inlineWhatsappId === inv.id ? (
+                                  <div className="h-4 w-4 rounded-full border-2 border-emerald-600 border-t-transparent animate-spin" />
+                                ) : (
+                                  <MessageCircle className="h-4 w-4" />
+                                )}
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-9 w-9 rounded-full p-0 text-red-600 hover:text-red-700"
+                                title={t('pos.actions.void')}
+                                onClick={() => void anular(inv.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
                           </td>
@@ -2188,6 +2724,8 @@ export default function PosPage() {
                       value={dianConfigTab}
                       onChange={(e) => setDianConfigTab(e.target.value as typeof dianConfigTab)}
                     >
+                      <option value="guia">{t('pos.dian.configuration.tabs.guide')}</option>
+                      <option value="basicos">{t('pos.dian.configuration.tabs.basics')}</option>
                       <option value="rangos">{t('pos.dian.configuration.tabs.ranges')}</option>
                       <option value="comprador">{t('pos.dian.configuration.tabs.buyer')}</option>
                       <option value="productos">{t('pos.dian.configuration.tabs.products')}</option>
@@ -2588,6 +3126,12 @@ export default function PosPage() {
                             </div>
 
                             <div className="flex flex-wrap gap-2">
+                              <Button asChild type="button" variant="outline">
+                                <Link href={`/api/dian/documentos/${dianSelectedId}/pdf`} target="_blank" rel="noreferrer">
+                                  {t('pos.dian.actions.pdf.open')}
+                                </Link>
+                              </Button>
+
                               <div className="flex items-center gap-1">
                                 <Button
                                   type="button"
@@ -2767,6 +3311,384 @@ export default function PosPage() {
                       {dianSettingsSaving ? t('common.saving') : t('pos.dian.configuration.save')}
                     </Button>
                   </div>
+
+                  {dianConfigTab === 'guia' ? (
+                    <div className="space-y-4">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-base">{t('pos.dian.configuration.guide.title')}</CardTitle>
+                          <CardDescription>{t('pos.dian.configuration.guide.description')}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-3 md:grid-cols-3">
+                          <div className="rounded-md border p-3 text-sm">
+                            <div className="font-medium">1. {t('pos.dian.configuration.guide.step1.title')}</div>
+                            <p className="mt-2 text-muted-foreground">{t('pos.dian.configuration.guide.step1.description')}</p>
+                          </div>
+                          <div className="rounded-md border p-3 text-sm">
+                            <div className="font-medium">2. {t('pos.dian.configuration.guide.step2.title')}</div>
+                            <p className="mt-2 text-muted-foreground">{t('pos.dian.configuration.guide.step2.description')}</p>
+                          </div>
+                          <div className="rounded-md border p-3 text-sm">
+                            <div className="font-medium">3. {t('pos.dian.configuration.guide.step3.title')}</div>
+                            <p className="mt-2 text-muted-foreground">{t('pos.dian.configuration.guide.step3.description')}</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-base">{t('pos.dian.configuration.guide.whereToFind.title')}</CardTitle>
+                          <CardDescription>{t('pos.dian.configuration.guide.whereToFind.description')}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="overflow-auto">
+                          <table className="min-w-full text-sm">
+                            <thead>
+                              <tr className="border-b text-left text-gray-600">
+                                <th className="py-2 pr-4">{t('pos.dian.configuration.guide.whereToFind.field')}</th>
+                                <th className="py-2 pr-4">{t('pos.dian.configuration.guide.whereToFind.source')}</th>
+                                <th className="py-2 pr-2">{t('pos.dian.configuration.guide.whereToFind.note')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {[
+                                ['softwareId', 'softwareIdSource', 'softwareIdNote'],
+                                ['softwarePin', 'softwarePinSource', 'softwarePinNote'],
+                                ['testSetId', 'testSetIdSource', 'testSetIdNote'],
+                                ['resolution', 'resolutionSource', 'resolutionNote'],
+                                ['municipio', 'municipioSource', 'municipioNote'],
+                              ].map(([field, source, note]) => (
+                                <tr key={field} className="border-b last:border-b-0 align-top">
+                                  <td className="py-2 pr-4 font-medium">{t(`pos.dian.configuration.guide.whereToFind.${field}`)}</td>
+                                  <td className="py-2 pr-4 text-muted-foreground">{t(`pos.dian.configuration.guide.whereToFind.${source}`)}</td>
+                                  <td className="py-2 pr-2 text-muted-foreground">{t(`pos.dian.configuration.guide.whereToFind.${note}`)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  ) : null}
+
+                  {dianConfigTab === 'basicos' ? (
+                    <div className="space-y-4">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-base">{t('pos.dian.configuration.basics.connectionTitle')}</CardTitle>
+                          <CardDescription>{t('pos.dian.configuration.basics.connectionDescription')}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                              <Label>{t('pos.dian.configuration.basics.provider')}</Label>
+                              <select
+                                className="w-full h-10 rounded-md border px-3 text-sm"
+                                value={dianProvider}
+                                onChange={(e) =>
+                                  setDianSettings((prev) => ({
+                                    ...prev,
+                                    onboarding: {
+                                      ...(prev.onboarding || {}),
+                                      provider: e.target.value,
+                                      connectionType:
+                                        e.target.value === 'WORLD_OFFICE' ? 'ASSISTED' : prev.onboarding?.connectionType || 'MODERN_API',
+                                    },
+                                  }))
+                                }
+                              >
+                                {dianProviderOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <Label>{t('pos.dian.configuration.basics.connectionType')}</Label>
+                              <select
+                                className="w-full h-10 rounded-md border px-3 text-sm"
+                                value={dianConnectionType}
+                                onChange={(e) =>
+                                  setDianSettings((prev) => ({
+                                    ...prev,
+                                    onboarding: { ...(prev.onboarding || {}), connectionType: e.target.value },
+                                  }))
+                                }
+                              >
+                                {dianConnectionTypeOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <Label>{t('pos.dian.configuration.basics.environment')}</Label>
+                              <select
+                                className="w-full h-10 rounded-md border px-3 text-sm"
+                                value={String(dianSettings.onboarding?.environment ?? 'habilitacion')}
+                                onChange={(e) =>
+                                  setDianSettings((prev) => ({
+                                    ...prev,
+                                    onboarding: { ...(prev.onboarding || {}), environment: e.target.value },
+                                  }))
+                                }
+                              >
+                                <option value="habilitacion">{t('pos.dian.configuration.basics.environments.testing')}</option>
+                                <option value="produccion">{t('pos.dian.configuration.basics.environments.production')}</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="rounded-md border bg-slate-50 p-3 text-sm space-y-2">
+                            <div className="font-medium">{t(`pos.dian.configuration.providerGuides.${dianProvider}.title`)}</div>
+                            <p className="text-muted-foreground">{t(`pos.dian.configuration.providerGuides.${dianProvider}.description`)}</p>
+                            <p className="text-xs text-muted-foreground">{t(`pos.dian.configuration.providerGuides.${dianProvider}.source`)}</p>
+                          </div>
+
+                          {dianConnectionType === 'MODERN_API' ? (
+                            <div className="space-y-3 rounded-md border p-4">
+                              <div>
+                                <div className="text-sm font-medium">{t('pos.dian.configuration.basics.apiCredentialsTitle')}</div>
+                                <div className="text-xs text-muted-foreground">{t('pos.dian.configuration.basics.apiCredentialsDescription')}</div>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                  <Label>{t('pos.dian.configuration.basics.apiKey')}</Label>
+                                  <Input
+                                    value={String(dianSettings.onboarding?.apiKey ?? '')}
+                                    onChange={(e) =>
+                                      setDianSettings((prev) => ({
+                                        ...prev,
+                                        onboarding: { ...(prev.onboarding || {}), apiKey: e.target.value },
+                                      }))
+                                    }
+                                    placeholder={t('pos.dian.configuration.basics.apiKeyPlaceholder')}
+                                  />
+                                </div>
+                                <div>
+                                  <Label>{t('pos.dian.configuration.basics.apiUser')}</Label>
+                                  <Input
+                                    value={String(dianSettings.onboarding?.apiUser ?? '')}
+                                    onChange={(e) =>
+                                      setDianSettings((prev) => ({
+                                        ...prev,
+                                        onboarding: { ...(prev.onboarding || {}), apiUser: e.target.value },
+                                      }))
+                                    }
+                                    placeholder={t('pos.dian.configuration.basics.apiUserPlaceholder')}
+                                  />
+                                </div>
+                                <div>
+                                  <Label>{t('pos.dian.configuration.basics.apiPassword')}</Label>
+                                  <Input
+                                    type="password"
+                                    value={String(dianSettings.onboarding?.apiPassword ?? '')}
+                                    onChange={(e) =>
+                                      setDianSettings((prev) => ({
+                                        ...prev,
+                                        onboarding: { ...(prev.onboarding || {}), apiPassword: e.target.value },
+                                      }))
+                                    }
+                                    placeholder={t('pos.dian.configuration.basics.apiPasswordPlaceholder')}
+                                  />
+                                </div>
+                                <div>
+                                  <Label>{t('pos.dian.configuration.basics.apiUrl')}</Label>
+                                  <Input
+                                    value={String(dianSettings.onboarding?.apiUrl ?? '')}
+                                    onChange={(e) =>
+                                      setDianSettings((prev) => ({
+                                        ...prev,
+                                        onboarding: { ...(prev.onboarding || {}), apiUrl: e.target.value },
+                                      }))
+                                    }
+                                    placeholder={t('pos.dian.configuration.basics.apiUrlPlaceholder')}
+                                  />
+                                </div>
+                              </div>
+                              <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                                {dianProviderHasModernApi
+                                  ? t('pos.dian.configuration.basics.apiModernInstruction')
+                                  : t('pos.dian.configuration.basics.apiGenericInstruction')}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {dianConnectionType === 'ASSISTED' || dianProviderNeedsAdvisory ? (
+                            <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm space-y-2">
+                              <div className="font-medium text-amber-900">{t('pos.dian.configuration.basics.assistedTitle')}</div>
+                              <p className="text-amber-900/80">{t('pos.dian.configuration.basics.assistedDescription')}</p>
+                              <ul className="list-disc pl-5 text-amber-900/80 space-y-1">
+                                <li>{t('pos.dian.configuration.basics.assistedBulletApiKey')}</li>
+                                <li>{t('pos.dian.configuration.basics.assistedBulletUser')}</li>
+                                <li>{t('pos.dian.configuration.basics.assistedBulletPassword')}</li>
+                                <li>{t('pos.dian.configuration.basics.assistedBulletEndpoint')}</li>
+                              </ul>
+                              <div className="text-xs text-amber-900/70">{t(`pos.dian.configuration.providerGuides.${dianProvider}.requestExample`)}</div>
+                            </div>
+                          ) : null}
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div>
+                            <Label>{t('pos.dian.configuration.basics.softwareId')}</Label>
+                            <Input
+                              value={String(dianSettings.onboarding?.softwareId ?? '')}
+                              onChange={(e) =>
+                                setDianSettings((prev) => ({
+                                  ...prev,
+                                  onboarding: { ...(prev.onboarding || {}), softwareId: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label>{t('pos.dian.configuration.basics.softwarePin')}</Label>
+                            <Input
+                              value={String(dianSettings.onboarding?.softwarePin ?? '')}
+                              onChange={(e) =>
+                                setDianSettings((prev) => ({
+                                  ...prev,
+                                  onboarding: { ...(prev.onboarding || {}), softwarePin: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label>{t('pos.dian.configuration.basics.testSetId')}</Label>
+                            <Input
+                              value={String(dianSettings.onboarding?.testSetId ?? '')}
+                              onChange={(e) =>
+                                setDianSettings((prev) => ({
+                                  ...prev,
+                                  onboarding: { ...(prev.onboarding || {}), testSetId: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-base">{t('pos.dian.configuration.basics.issuerTitle')}</CardTitle>
+                          <CardDescription>{t('pos.dian.configuration.basics.issuerDescription')}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div>
+                            <Label>{t('pos.dian.configuration.basics.nit')}</Label>
+                            <Input
+                              value={String(dianSettings.emisor?.nit ?? '')}
+                              onChange={(e) =>
+                                setDianSettings((prev) => ({
+                                  ...prev,
+                                  emisor: { ...(prev.emisor || {}), nit: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label>{t('pos.dian.configuration.basics.dv')}</Label>
+                            <Input
+                              value={String(dianSettings.emisor?.dv ?? '')}
+                              onChange={(e) =>
+                                setDianSettings((prev) => ({
+                                  ...prev,
+                                  emisor: { ...(prev.emisor || {}), dv: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label>{t('pos.dian.configuration.basics.regimen')}</Label>
+                            <Input
+                              value={String(dianSettings.emisor?.regimen ?? '')}
+                              onChange={(e) =>
+                                setDianSettings((prev) => ({
+                                  ...prev,
+                                  emisor: { ...(prev.emisor || {}), regimen: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div className="md:col-span-2">
+                            <Label>{t('pos.dian.configuration.basics.businessName')}</Label>
+                            <Input
+                              value={String(dianSettings.emisor?.razonSocial ?? '')}
+                              onChange={(e) =>
+                                setDianSettings((prev) => ({
+                                  ...prev,
+                                  emisor: { ...(prev.emisor || {}), razonSocial: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label>{t('pos.dian.configuration.basics.email')}</Label>
+                            <Input
+                              value={String(dianSettings.emisor?.correo ?? '')}
+                              onChange={(e) =>
+                                setDianSettings((prev) => ({
+                                  ...prev,
+                                  emisor: { ...(prev.emisor || {}), correo: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label>{t('pos.dian.configuration.basics.phone')}</Label>
+                            <Input
+                              value={String(dianSettings.emisor?.telefono ?? '')}
+                              onChange={(e) =>
+                                setDianSettings((prev) => ({
+                                  ...prev,
+                                  emisor: { ...(prev.emisor || {}), telefono: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label>{t('pos.dian.configuration.basics.municipalityCode')}</Label>
+                            <Input
+                              value={String(dianSettings.emisor?.municipioCodigo ?? '')}
+                              onChange={(e) =>
+                                setDianSettings((prev) => ({
+                                  ...prev,
+                                  emisor: { ...(prev.emisor || {}), municipioCodigo: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div className="md:col-span-3">
+                            <Label>{t('pos.dian.configuration.basics.address')}</Label>
+                            <Input
+                              value={String(dianSettings.emisor?.direccion ?? '')}
+                              onChange={(e) =>
+                                setDianSettings((prev) => ({
+                                  ...prev,
+                                  emisor: { ...(prev.emisor || {}), direccion: e.target.value },
+                                }))
+                              }
+                            />
+                          </div>
+                          <div className="md:col-span-3">
+                            <Label>{t('pos.dian.configuration.basics.responsibilities')}</Label>
+                            <Textarea
+                              value={String(dianSettings.emisor?.responsabilidades ?? '')}
+                              onChange={(e) =>
+                                setDianSettings((prev) => ({
+                                  ...prev,
+                                  emisor: { ...(prev.emisor || {}), responsabilidades: e.target.value },
+                                }))
+                              }
+                              className="min-h-24"
+                            />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  ) : null}
 
                   {dianConfigTab === 'rangos' ? (
                     <div className="space-y-3">
@@ -3099,6 +4021,137 @@ export default function PosPage() {
         </TabsContent>
       </Tabs>
 
+      <Dialog open={dianPreviewOpen} onOpenChange={setDianPreviewOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t('pos.dian.preview.title')}</DialogTitle>
+            <DialogDescription>{t('pos.dian.preview.description')}</DialogDescription>
+          </DialogHeader>
+
+          {!dianDetail ? (
+            <div className="text-sm text-muted-foreground">{t('pos.dian.detail.selectToView')}</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-4">
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-muted-foreground">{t('pos.dian.preview.labels.number')}</div>
+                  <div className="text-sm font-medium">{dianDetail.numero || t('common.na')}</div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-muted-foreground">{t('pos.dian.preview.labels.type')}</div>
+                  <div className="text-sm font-medium">{dianTypeLabel(dianDocTypes, dianDetail.type)}</div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-muted-foreground">{t('pos.dian.preview.labels.status')}</div>
+                  <div className="text-sm font-medium">{dianDetail.status}</div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-muted-foreground">{t('pos.dian.preview.labels.source')}</div>
+                  <div className="text-sm font-medium">{dianPreviewData?.sourceLabel || t('common.na')}</div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                <div className="space-y-3 rounded-md border p-3">
+                  <div className="font-medium">{t('pos.dian.preview.buyer.title')}</div>
+                  <div className="grid gap-3 md:grid-cols-3 text-sm">
+                    <div>
+                      <div className="text-xs text-muted-foreground">{t('pos.dian.preview.buyer.name')}</div>
+                      <div className="font-medium">{dianPreviewData?.buyerName || t('common.na')}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">{t('pos.dian.preview.buyer.document')}</div>
+                      <div className="font-medium">{dianPreviewData?.buyerDocument || t('common.na')}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">{t('common.email')}</div>
+                      <div className="font-medium">{dianPreviewData?.buyerEmail || t('common.na')}</div>
+                    </div>
+                  </div>
+
+                  <div className="font-medium">{t('pos.dian.preview.items.title')}</div>
+                  {dianPreviewData?.items.length ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-left text-muted-foreground">
+                            <th className="py-2 pr-3">{t('pos.dian.preview.items.description')}</th>
+                            <th className="py-2 pr-3">{t('pos.dian.preview.items.quantity')}</th>
+                            <th className="py-2 pr-3">{t('pos.dian.preview.items.unitPrice')}</th>
+                            <th className="py-2 pr-3">IVA %</th>
+                            <th className="py-2">{t('pos.dian.preview.items.subtotal')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {dianPreviewData.items.map((item, idx) => (
+                            <tr key={`${item.descripcion}-${idx}`} className="border-b last:border-b-0">
+                              <td className="py-2 pr-3">{item.descripcion}</td>
+                              <td className="py-2 pr-3">{item.quantity}</td>
+                              <td className="py-2 pr-3">{formatCurrency(item.unitPrice)}</td>
+                              <td className="py-2 pr-3">{item.ivaPct}</td>
+                              <td className="py-2">{formatCurrency(item.subtotal)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                      {t('pos.dian.preview.items.empty')}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3 rounded-md border p-3">
+                  <div className="font-medium">{t('pos.dian.preview.summary.title')}</div>
+                  <div className="rounded-md bg-muted/40 p-3 text-sm space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">{t('pos.dian.preview.summary.sourceKind')}</span>
+                      <span className="font-medium">{dianPreviewData?.sourceKind || t('common.na')}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">{t('pos.dian.preview.summary.subType')}</span>
+                      <span className="font-medium">{dianPreviewData?.subType || t('common.na')}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">{t('pos.dian.preview.summary.subtotal')}</span>
+                      <span className="font-medium">{formatCurrency(dianPreviewData?.subtotal || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-muted-foreground">IVA</span>
+                      <span className="font-medium">{formatCurrency(dianPreviewData?.iva || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-t pt-2">
+                      <span className="font-medium">{t('pos.dian.preview.summary.total')}</span>
+                      <span className="text-base font-semibold">{formatCurrency(dianPreviewData?.total || 0)}</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    {t('pos.dian.preview.approvalHint')}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDianPreviewOpen(false)} disabled={dianActionSubmitting === 'transmitir'}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              onClick={async () => {
+                await executeDianAction('transmitir')
+                setDianPreviewOpen(false)
+              }}
+              disabled={!dianDetail || dianActionSubmitting === 'transmitir' || Boolean(dianDetail?.transmittedAt)}
+            >
+              {dianActionSubmitting === 'transmitir' ? t('pos.dian.actions.transmit.transmitting') : t('pos.dian.preview.confirmTransmit')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={clientePickerOpen}
         onOpenChange={(open) => {
@@ -3398,23 +4451,50 @@ export default function PosPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="w-[90vw] max-w-6xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{t('pos.createDialog.title')}</DialogTitle>
+            <DialogTitle>{editingInvoiceId ? t('pos.createDialog.editTitle') : t('pos.createDialog.title')}</DialogTitle>
             <DialogDescription>{t('pos.createDialog.description')}</DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={(e) => void submitInvoice(e)} className="space-y-3">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              void submitInvoice(invoiceSubmitMode)
+            }}
+            className="space-y-3"
+          >
             <div className="flex items-center justify-between rounded-md border p-2">
               <div>
-                <div className="text-sm font-medium">{t('pos.createDialog.saveAsDraft.title')}</div>
-                <div className="text-xs text-muted-foreground">{t('pos.createDialog.saveAsDraft.description')}</div>
+                <div className="text-sm font-medium">{t('pos.createDialog.mode.title')}</div>
+                <div className="text-xs text-muted-foreground">
+                  {invoiceSubmitMode === 'draft'
+                    ? t('pos.createDialog.saveAsDraft.description')
+                    : t('pos.createDialog.approve.description')}
+                </div>
               </div>
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={createAsDraft}
-                  onChange={(e) => setCreateAsDraft(e.target.checked)}
-                />
-              </label>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={invoiceSubmitMode === 'draft' ? 'default' : 'outline'}
+                  onClick={() => {
+                    setInvoiceSubmitMode('draft')
+                    setCreateAsDraft(true)
+                  }}
+                >
+                  {t('pos.createDialog.saveAsDraft.title')}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={invoiceSubmitMode === 'approve' ? 'default' : 'outline'}
+                  onClick={() => {
+                    setInvoiceSubmitMode('approve')
+                    setCreateAsDraft(false)
+                  }}
+                >
+                  {t('pos.createDialog.approve.title')}
+                </Button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -3677,8 +4757,36 @@ export default function PosPage() {
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={isSubmitting}>
                 {t('common.cancel')}
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? t('pos.actions.creating') : t('pos.createDialog.create')}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting}
+                onClick={() => {
+                  setInvoiceSubmitMode('draft')
+                  setCreateAsDraft(true)
+                  void submitInvoice('draft')
+                }}
+              >
+                {isSubmitting && invoiceSubmitMode === 'draft'
+                  ? t('pos.actions.creating')
+                  : editingInvoiceId
+                    ? t('pos.createDialog.saveDraftChanges')
+                    : t('pos.createDialog.saveAsDraft.title')}
+              </Button>
+              <Button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => {
+                  setInvoiceSubmitMode('approve')
+                  setCreateAsDraft(false)
+                  void submitInvoice('approve')
+                }}
+              >
+                {isSubmitting && invoiceSubmitMode === 'approve'
+                  ? t('pos.actions.creating')
+                  : editingInvoiceId
+                    ? t('pos.createDialog.approveDraft')
+                    : t('pos.createDialog.approve.title')}
               </Button>
             </DialogFooter>
           </form>
@@ -3752,7 +4860,7 @@ export default function PosPage() {
       </Dialog>
 
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('pos.invoiceDetailDialog.title')}</DialogTitle>
             <DialogDescription>{t('pos.invoiceDetailDialog.description')}</DialogDescription>
@@ -3791,79 +4899,170 @@ export default function PosPage() {
                 </div>
               ) : null}
 
-              {detail.payments.length ? (
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-gray-900">Pagos registrados</div>
-                  <div className="overflow-auto rounded-md border">
+              <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem] gap-4">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="rounded-md border p-3">
+                      <div className="text-xs text-gray-500">{t('pos.invoiceDetailDialog.stats.email')}</div>
+                      <div className="text-xl font-semibold">{detail.shareStats.emailCount}</div>
+                      <div className="text-xs text-muted-foreground">{detail.shareStats.lastEmailAt ? new Date(detail.shareStats.lastEmailAt).toLocaleString(locale) : t('common.na')}</div>
+                    </div>
+                    <div className="rounded-md border p-3">
+                      <div className="text-xs text-gray-500">{t('pos.invoiceDetailDialog.stats.whatsapp')}</div>
+                      <div className="text-xl font-semibold">{detail.shareStats.whatsappCount}</div>
+                      <div className="text-xs text-muted-foreground">{detail.shareStats.lastWhatsappAt ? new Date(detail.shareStats.lastWhatsappAt).toLocaleString(locale) : t('common.na')}</div>
+                    </div>
+                    <div className="rounded-md border p-3">
+                      <div className="text-xs text-gray-500">{t('pos.invoiceDetailDialog.stats.downloads')}</div>
+                      <div className="text-xl font-semibold">{detail.shareStats.downloadCount}</div>
+                      <div className="text-xs text-muted-foreground">{detail.shareStats.lastDownloadAt ? new Date(detail.shareStats.lastDownloadAt).toLocaleString(locale) : t('common.na')}</div>
+                    </div>
+                  </div>
+
+                  {detail.payments.length ? (
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-gray-900">Pagos registrados</div>
+                      <div className="overflow-auto rounded-md border">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="border-b text-left text-gray-600">
+                              <th className="py-2 px-3">Estado</th>
+                              <th className="py-2 px-3">Proveedor</th>
+                              <th className="py-2 px-3">Canal</th>
+                              <th className="py-2 px-3">Origen</th>
+                              <th className="py-2 px-3">Método</th>
+                              <th className="py-2 px-3">Monto</th>
+                              <th className="py-2 px-3">Referencia</th>
+                              <th className="py-2 px-3">Fecha</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {detail.payments.map((payment) => (
+                              <tr key={payment.id} className="border-b last:border-b-0 align-top">
+                                <td className="py-2 px-3 text-gray-900">{posPaymentStatusLabel(payment.status)}</td>
+                                <td className="py-2 px-3 text-gray-700">{posPaymentProviderLabel(payment.provider)}</td>
+                                <td className="py-2 px-3 text-gray-700">{posPaymentFlowLabel(payment.flow)}</td>
+                                <td className="py-2 px-3 text-gray-700">{posPaymentSourceLabel(payment.source)}</td>
+                                <td className="py-2 px-3 text-gray-700">{payment.method}</td>
+                                <td className="py-2 px-3 font-medium text-gray-900">{formatCurrency(n(payment.amount, 0))}</td>
+                                <td className="py-2 px-3 text-xs text-gray-600">
+                                  <div>{payment.externalReference || payment.boldPaymentId || payment.boldPaymentLinkId || t('common.na')}</div>
+                                  {payment.note ? <div className="mt-1 text-gray-500">{payment.note}</div> : null}
+                                </td>
+                                <td className="py-2 px-3 text-gray-700">{new Date(payment.paidAt || payment.receivedAt).toLocaleString(locale)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="overflow-auto">
                     <table className="min-w-full text-sm">
                       <thead>
-                        <tr className="border-b text-left text-gray-600">
-                          <th className="py-2 px-3">Estado</th>
-                          <th className="py-2 px-3">Proveedor</th>
-                          <th className="py-2 px-3">Canal</th>
-                          <th className="py-2 px-3">Origen</th>
-                          <th className="py-2 px-3">Método</th>
-                          <th className="py-2 px-3">Monto</th>
-                          <th className="py-2 px-3">Referencia</th>
-                          <th className="py-2 px-3">Fecha</th>
+                        <tr className="text-left text-gray-600 border-b">
+                          <th className="py-2 pr-4">{t('pos.items.columns.description')}</th>
+                          <th className="py-2 pr-4">{t('pos.items.columns.quantity')}</th>
+                          <th className="py-2 pr-4">{t('pos.items.columns.price')}</th>
+                          <th className="py-2 pr-4">{t('pos.items.columns.total')}</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {detail.payments.map((payment) => (
-                          <tr key={payment.id} className="border-b last:border-b-0 align-top">
-                            <td className="py-2 px-3 text-gray-900">{posPaymentStatusLabel(payment.status)}</td>
-                            <td className="py-2 px-3 text-gray-700">{posPaymentProviderLabel(payment.provider)}</td>
-                            <td className="py-2 px-3 text-gray-700">{posPaymentFlowLabel(payment.flow)}</td>
-                            <td className="py-2 px-3 text-gray-700">{posPaymentSourceLabel(payment.source)}</td>
-                            <td className="py-2 px-3 text-gray-700">{payment.method}</td>
-                            <td className="py-2 px-3 font-medium text-gray-900">{formatCurrency(n(payment.amount, 0))}</td>
-                            <td className="py-2 px-3 text-xs text-gray-600">
-                              <div>{payment.externalReference || payment.boldPaymentId || payment.boldPaymentLinkId || t('common.na')}</div>
-                              {payment.note ? <div className="mt-1 text-gray-500">{payment.note}</div> : null}
-                            </td>
-                            <td className="py-2 px-3 text-gray-700">
-                              {new Date(payment.paidAt || payment.receivedAt).toLocaleString(locale)}
-                            </td>
+                        {detail.items.map((it) => (
+                          <tr key={it.id} className="border-b last:border-b-0">
+                            <td className="py-2 pr-4 text-gray-900">{it.descripcion}</td>
+                            <td className="py-2 pr-4 text-gray-700">{n(it.quantity, 0).toLocaleString(locale)}</td>
+                            <td className="py-2 pr-4 text-gray-700">{formatCurrency(n(it.unitPrice, 0))}</td>
+                            <td className="py-2 pr-4 font-medium">{formatCurrency(n(it.total, 0))}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                </div>
-              ) : null}
 
-              <div className="overflow-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-gray-600 border-b">
-                      <th className="py-2 pr-4">{t('pos.items.columns.description')}</th>
-                      <th className="py-2 pr-4">{t('pos.items.columns.quantity')}</th>
-                      <th className="py-2 pr-4">{t('pos.items.columns.price')}</th>
-                      <th className="py-2 pr-4">{t('pos.items.columns.total')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detail.items.map((it) => (
-                      <tr key={it.id} className="border-b last:border-b-0">
-                        <td className="py-2 pr-4 text-gray-900">{it.descripcion}</td>
-                        <td className="py-2 pr-4 text-gray-700">{n(it.quantity, 0).toLocaleString(locale)}</td>
-                        <td className="py-2 pr-4 text-gray-700">{formatCurrency(n(it.unitPrice, 0))}</td>
-                        <td className="py-2 pr-4 font-medium">{formatCurrency(n(it.total, 0))}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  <div className="flex flex-wrap justify-end gap-6 text-sm">
+                    <div>
+                      <span className="text-gray-500">{t('pos.summary.subtotal')}:</span> <span className="font-medium">{formatCurrency(detail.subtotal)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">{t('pos.summary.discount')}:</span> <span className="font-medium">{formatCurrency(detail.discountAmount)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">{t('pos.summary.otherTaxes')}:</span> <span className="font-medium">{formatCurrency(detail.otherTaxesAmount)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">{t('pos.summary.vat')}:</span> <span className="font-medium">{formatCurrency(detail.iva)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">{t('pos.summary.total')}:</span> <span className="font-semibold">{formatCurrency(detail.total)}</span>
+                    </div>
+                  </div>
+                </div>
 
-              <div className="flex justify-end gap-6 text-sm">
-                <div>
-                  <span className="text-gray-500">{t('pos.summary.subtotal')}:</span> <span className="font-medium">{formatCurrency(detail.subtotal)}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">{t('pos.summary.vat')}:</span> <span className="font-medium">{formatCurrency(detail.iva)}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500">{t('pos.summary.total')}:</span> <span className="font-semibold">{formatCurrency(detail.total)}</span>
+                <div className="space-y-4">
+                  <div className="rounded-md border p-3 space-y-3">
+                    <div>
+                      <div className="text-sm font-medium">{t('pos.invoiceDetailDialog.share.title')}</div>
+                      <div className="text-xs text-muted-foreground">{t('pos.invoiceDetailDialog.share.description')}</div>
+                    </div>
+                    <div>
+                      <Label>{t('pos.invoiceDetailDialog.share.email')}</Label>
+                      <Input value={detailShareEmail} onChange={(e) => setDetailShareEmail(e.target.value)} placeholder={t('pos.invoiceDetailDialog.share.emailPlaceholder')} />
+                    </div>
+                    <div>
+                      <Label>{t('pos.invoiceDetailDialog.share.whatsapp')}</Label>
+                      <Input value={detailSharePhone} onChange={(e) => setDetailSharePhone(e.target.value)} placeholder={t('pos.invoiceDetailDialog.share.whatsappPlaceholder')} />
+                    </div>
+                    <div>
+                      <Label>{t('pos.invoiceDetailDialog.share.message')}</Label>
+                      <Textarea
+                        value={detailShareMessage}
+                        onChange={(e) => setDetailShareMessage(e.target.value)}
+                        placeholder={buildInvoiceWhatsAppMessage(detail, 'https://...')}
+                        className="min-h-28"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 gap-2">
+                      {detail.status === 'DRAFT' ? (
+                        <Button type="button" variant="outline" onClick={() => {
+                          openEditInvoice(detail)
+                          setDetailOpen(false)
+                        }}>
+                          {t('common.edit')}
+                        </Button>
+                      ) : null}
+                      <Button type="button" variant="outline" onClick={() => void sendInvoiceByEmail(detail)} disabled={detailSendingEmail}>
+                        {detailSendingEmail ? t('common.sending') : t('pos.invoiceDetailDialog.share.sendEmail')}
+                      </Button>
+                      <Button type="button" variant="outline" onClick={() => void shareInvoiceByWhatsapp(detail)} disabled={detailSharingWhatsapp}>
+                        {detailSharingWhatsapp ? t('common.processing') : t('pos.invoiceDetailDialog.share.sendWhatsapp')}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border p-3 space-y-3">
+                    <div>
+                      <div className="text-sm font-medium">{t('pos.invoiceDetailDialog.audit.title')}</div>
+                      <div className="text-xs text-muted-foreground">{t('pos.invoiceDetailDialog.audit.description')}</div>
+                    </div>
+                    <div className="space-y-2 max-h-[26rem] overflow-y-auto pr-1">
+                      {detail.auditEvents.length ? detail.auditEvents.map((event) => (
+                        <div key={event.id} className="rounded-md border p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-medium">{invoiceAuditActionLabel(event.action)}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {event.performedBy?.name || event.performedBy?.email || t('common.na')}
+                              </div>
+                            </div>
+                            <div className="text-xs text-muted-foreground">{new Date(event.createdAt).toLocaleString(locale)}</div>
+                          </div>
+                          {event.note ? <div className="mt-2 text-sm text-muted-foreground">{event.note}</div> : null}
+                        </div>
+                      )) : <div className="text-sm text-muted-foreground">{t('pos.invoiceDetailDialog.audit.empty')}</div>}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -3886,6 +5085,94 @@ export default function PosPage() {
               </Button>
             ) : null}
             <Button type="button" variant="outline" onClick={() => setDetailOpen(false)}>
+              {t('common.close')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={traceOpen}
+        onOpenChange={(open) => {
+          setTraceOpen(open)
+          if (!open) {
+            setTraceError(null)
+            setTraceInvoice(null)
+            setTraceLoading(false)
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {t('pos.invoiceTraceDialog.title')}
+              {traceInvoice?.numero ? ` (${traceInvoice.numero})` : ''}
+            </DialogTitle>
+            <DialogDescription>{t('pos.invoiceTraceDialog.description')}</DialogDescription>
+          </DialogHeader>
+
+          {traceLoading ? (
+            <div className="text-sm text-muted-foreground">{t('common.loading')}</div>
+          ) : traceError ? (
+            <div className="text-sm text-red-600">{traceError}</div>
+          ) : !traceInvoice ? (
+            <div className="text-sm text-muted-foreground">{t('pos.invoiceDetailDialog.empty')}</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-muted-foreground">{t('pos.invoiceDetailDialog.labels.number')}</div>
+                  <div className="font-medium">{traceInvoice.numero}</div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-muted-foreground">{t('pos.invoiceDetailDialog.labels.client')}</div>
+                  <div className="font-medium">{traceInvoice.clienteNombre}</div>
+                </div>
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-muted-foreground">{t('pos.invoiceDetailDialog.labels.status')}</div>
+                  <div className="font-medium">{traceInvoice.status}</div>
+                </div>
+              </div>
+
+              {traceInvoice.status === 'DRAFT' ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  <div className="font-medium">{t('pos.invoiceTraceDialog.draftBadge')}</div>
+                  <div className="mt-1 text-amber-900/80">{t('pos.invoiceTraceDialog.draftHelp')}</div>
+                </div>
+              ) : null}
+
+              <div className="space-y-2 max-h-[26rem] overflow-y-auto pr-1">
+                {traceInvoice.auditEvents.length ? traceInvoice.auditEvents.map((event) => (
+                  <div key={event.id} className="rounded-md border p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium">{invoiceAuditActionLabel(event.action)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {event.performedBy?.name || event.performedBy?.email || t('common.na')}
+                        </div>
+                      </div>
+                      <div className="text-xs text-muted-foreground">{new Date(event.createdAt).toLocaleString(locale)}</div>
+                    </div>
+                    {event.note ? <div className="mt-2 text-sm text-muted-foreground">{event.note}</div> : null}
+                  </div>
+                )) : <div className="text-sm text-muted-foreground">{t('pos.invoiceDetailDialog.audit.empty')}</div>}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            {traceInvoice?.status === 'DRAFT' ? (
+              <Button
+                type="button"
+                onClick={() => {
+                  setTraceOpen(false)
+                  openEditInvoice(traceInvoice)
+                }}
+              >
+                {t('pos.invoiceTraceDialog.actions.editDraft')}
+              </Button>
+            ) : null}
+            <Button type="button" variant="outline" onClick={() => setTraceOpen(false)}>
               {t('common.close')}
             </Button>
           </DialogFooter>

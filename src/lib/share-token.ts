@@ -1,7 +1,12 @@
 import crypto from 'crypto'
 
-type SharePayload = {
+type CotizacionSharePayload = {
   cotizacionId: string
+  exp: number
+}
+
+type PosInvoiceSharePayload = {
+  posInvoiceId: string
   exp: number
 }
 
@@ -29,7 +34,7 @@ export function createCotizacionShareToken(params: {
   ttlSeconds: number
   secret: string
 }) {
-  const payload: SharePayload = {
+  const payload: CotizacionSharePayload = {
     cotizacionId: params.cotizacionId,
     exp: Math.floor(Date.now() / 1000) + params.ttlSeconds,
   }
@@ -51,9 +56,9 @@ export function verifyCotizacionShareToken(token: string, secret: string): { cot
   if (a.length !== b.length) return null
   if (!crypto.timingSafeEqual(a, b)) return null
 
-  let payload: SharePayload
+  let payload: CotizacionSharePayload
   try {
-    payload = JSON.parse(base64UrlDecode(payloadB64).toString('utf8')) as SharePayload
+    payload = JSON.parse(base64UrlDecode(payloadB64).toString('utf8')) as CotizacionSharePayload
   } catch {
     return null
   }
@@ -62,4 +67,44 @@ export function verifyCotizacionShareToken(token: string, secret: string): { cot
   if (Math.floor(Date.now() / 1000) > payload.exp) return null
 
   return { cotizacionId: payload.cotizacionId }
+}
+
+export function createPosInvoiceShareToken(params: {
+  posInvoiceId: string
+  ttlSeconds: number
+  secret: string
+}) {
+  const payload: PosInvoiceSharePayload = {
+    posInvoiceId: params.posInvoiceId,
+    exp: Math.floor(Date.now() / 1000) + params.ttlSeconds,
+  }
+
+  const payloadB64 = base64UrlEncode(JSON.stringify(payload))
+  const sig = sign(params.secret, payloadB64)
+  return `${payloadB64}.${sig}`
+}
+
+export function verifyPosInvoiceShareToken(token: string, secret: string): { posInvoiceId: string } | null {
+  const parts = token.split('.')
+  if (parts.length !== 2) return null
+
+  const [payloadB64, sig] = parts
+  const expected = sign(secret, payloadB64)
+
+  const a = Buffer.from(sig)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length) return null
+  if (!crypto.timingSafeEqual(a, b)) return null
+
+  let payload: PosInvoiceSharePayload
+  try {
+    payload = JSON.parse(base64UrlDecode(payloadB64).toString('utf8')) as PosInvoiceSharePayload
+  } catch {
+    return null
+  }
+
+  if (!payload?.posInvoiceId || typeof payload.exp !== 'number') return null
+  if (Math.floor(Date.now() / 1000) > payload.exp) return null
+
+  return { posInvoiceId: payload.posInvoiceId }
 }

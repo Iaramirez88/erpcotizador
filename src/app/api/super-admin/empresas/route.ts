@@ -54,6 +54,10 @@ type CreateBody = {
   companyEmail?: unknown
 }
 
+function lastDays(date: Date, days: number) {
+  return new Date(date.getTime() - days * 24 * 60 * 60 * 1000)
+}
+
 export async function GET(req: NextRequest) {
   const session = requireSuperAdmin(await auth())
   if (!session) return NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 401 })
@@ -71,10 +75,11 @@ export async function GET(req: NextRequest) {
           ],
         }
       : undefined,
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: 'desc' },
     select: {
       id: true,
       workspaceCode: true,
+      planOwnerUserId: true,
       nombre: true,
       nit: true,
       direccion: true,
@@ -84,6 +89,9 @@ export async function GET(req: NextRequest) {
       planTier: true,
       billingCycle: true,
       planValidUntil: true,
+      trialTier: true,
+      trialStartedAt: true,
+      trialValidUntil: true,
       stripeSubscriptionStatus: true,
       stripeCurrentPeriodEnd: true,
       createdAt: true,
@@ -93,10 +101,27 @@ export async function GET(req: NextRequest) {
         where: { paidAt: { not: null } },
         orderBy: { paidAt: 'desc' },
         take: 1,
-        select: { paidAt: true, amountCOP: true, status: true },
+        select: { paidAt: true, amountCOP: true, status: true, paymentMethod: true },
       },
     },
   })
+
+  const ownerIds = empresas
+    .map((empresa) => empresa.planOwnerUserId)
+    .filter((value): value is string => Boolean(value))
+
+  const ownerEmailById = new Map<string, string>()
+  if (ownerIds.length) {
+    const owners = await prisma.user.findMany({
+      where: { id: { in: ownerIds } },
+      select: { id: true, email: true },
+    })
+    for (const owner of owners) {
+      if (owner.email) ownerEmailById.set(owner.id, owner.email)
+    }
+  }
+
+  const recentThreshold = lastDays(new Date(), 7)
 
   return NextResponse.json({
     ok: true,
@@ -107,9 +132,14 @@ export async function GET(req: NextRequest) {
       nombre: e.nombre,
       nit: e.nit,
       email: e.email,
+      planOwnerEmail: e.planOwnerUserId ? ownerEmailById.get(e.planOwnerUserId) ?? null : null,
       planTier: e.planTier,
       billingCycle: e.billingCycle,
       planValidUntil: e.planValidUntil,
+      trialTier: e.trialTier,
+      trialStartedAt: e.trialStartedAt,
+      trialValidUntil: e.trialValidUntil,
+      isNew: e.createdAt >= recentThreshold,
       stripeSubscriptionStatus: e.stripeSubscriptionStatus,
       stripeCurrentPeriodEnd: e.stripeCurrentPeriodEnd,
       createdAt: e.createdAt,

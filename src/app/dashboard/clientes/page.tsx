@@ -647,6 +647,7 @@ export default function ClientesPage() {
         </Card>
 
         {/* Filtros (compacto, al lado) */}
+        {filtersOpen ? (
         <Card>
           <CardHeader>
             <div className="flex items-start justify-between gap-3">
@@ -654,12 +655,11 @@ export default function ClientesPage() {
                 <CardTitle>{t('customers.filters.title')}</CardTitle>
                 <CardDescription>{t('customers.filters.subtitle')}</CardDescription>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => setFiltersOpen((current) => !current)}>
-                {filtersOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              <Button type="button" variant="outline" size="sm" onClick={() => setFiltersOpen(false)}>
+                <ChevronUp className="h-4 w-4" />
               </Button>
             </div>
           </CardHeader>
-          {filtersOpen ? (
           <CardContent className="space-y-4">
             <div className="space-y-1">
               <Label>{t('customers.filters.site')}</Label>
@@ -794,14 +794,8 @@ export default function ClientesPage() {
               </div>
             </div>
           </CardContent>
-          ) : (
-            <CardContent>
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-600">
-                Los filtros quedan colapsados por defecto para dar más ancho al listado. Ábrelos solo cuando los necesites.
-              </div>
-            </CardContent>
-          )}
         </Card>
+        ) : null}
       </div>
 
       {/* Modal de crear/editar */}

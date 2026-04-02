@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ALL_MODULE_KEYS } from '@/lib/plan-modules'
-import { getEnabledModulesForPlan } from '@/lib/plan-modules'
+import { getEnabledModulesForEmpresa } from '@/lib/plan-modules'
 import { resolveEffectivePlanTier } from '@/lib/plan-access'
 import { requireEmpresaIdForUser } from '@/lib/rbac'
 
@@ -36,7 +36,7 @@ export async function GET() {
 
     const planTier = empresa ? resolveEffectivePlanTier(empresa, new Date()) : 'FULL'
 
-    const enabled = await getEnabledModulesForPlan(planTier)
+    const enabled = await getEnabledModulesForEmpresa({ empresaId, planTier })
     return NextResponse.json({ ok: true, enabled, planTier })
   } catch (error: unknown) {
     console.error('GET /api/modules/enabled error:', error)

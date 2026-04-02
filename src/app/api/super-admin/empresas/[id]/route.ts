@@ -51,7 +51,24 @@ type PatchBody = {
   planTier?: unknown
   billingCycle?: unknown
   isPaid?: unknown
+  planValidUntil?: unknown
+  clearTrial?: unknown
   planOwnerEmail?: unknown
+}
+
+function parsePlanValidUntil(value: unknown): Date | null | 'invalid' {
+  if (value == null) return null
+  if (typeof value !== 'string') return 'invalid'
+  const normalized = value.trim()
+  if (!normalized) return null
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    const next = new Date(`${normalized}T23:59:59`)
+    return Number.isNaN(next.getTime()) ? 'invalid' : next
+  }
+
+  const next = new Date(normalized)
+  return Number.isNaN(next.getTime()) ? 'invalid' : next
 }
 
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -105,6 +122,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
           expiresAt: true,
           externalReference: true,
           boldPaymentLinkId: true,
+          paymentMethod: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -199,6 +217,25 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     } else {
       data.planValidUntil = null
     }
+  }
+
+  if ('planValidUntil' in body) {
+    const parsed = parsePlanValidUntil(body.planValidUntil)
+    if (parsed === 'invalid') {
+      return NextResponse.json({ ok: false, error: 'Fecha de vigencia inválida.' }, { status: 400 })
+    }
+    data.planValidUntil = parsed
+    if (parsed) {
+      data.trialTier = null
+      data.trialStartedAt = null
+      data.trialValidUntil = null
+    }
+  }
+
+  if (body.clearTrial === true) {
+    data.trialTier = null
+    data.trialStartedAt = null
+    data.trialValidUntil = null
   }
 
   const planOwnerEmailRaw = normalizeNullableString(body.planOwnerEmail)
