@@ -12,14 +12,20 @@ type LitografiaImpositionPreviewProps = {
   utilHeightCm: number
   pieceWidthCm: number
   pieceHeightCm: number
-  piecesAcross: number
-  piecesDown: number
+  sheetPiecesAcross: number
+  sheetPiecesDown: number
+  machinePiecesAcross: number
+  machinePiecesDown: number
+  sheetPiecesPerParent?: number
+  machinePiecesPerSheet?: number
   gapCm?: number
   paperLabel: string
   formatLabel: string
   machineLabel: string
-  arrangementLabel: string
-  orientationLabel: string
+  sheetArrangementLabel: string
+  machineArrangementLabel: string
+  sheetOrientationLabel: string
+  machineOrientationLabel?: string
   className?: string
 }
 
@@ -101,9 +107,16 @@ export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewPr
   const utilHeight = Math.min(sheetHeight, safePositive(props.utilHeightCm, sheetHeight))
   const pieceWidth = safePositive(props.pieceWidthCm)
   const pieceHeight = safePositive(props.pieceHeightCm)
-  const piecesAcross = Math.max(0, Math.trunc(props.piecesAcross))
-  const piecesDown = Math.max(0, Math.trunc(props.piecesDown))
+  const sheetPiecesAcross = Math.max(0, Math.trunc(props.sheetPiecesAcross))
+  const sheetPiecesDown = Math.max(0, Math.trunc(props.sheetPiecesDown))
+  const machinePiecesAcross = Math.max(0, Math.trunc(props.machinePiecesAcross))
+  const machinePiecesDown = Math.max(0, Math.trunc(props.machinePiecesDown))
   const gap = Math.max(0, Number(props.gapCm) || 0)
+
+  const sheetUsedWidth = sheetPiecesAcross > 0 ? (sheetPiecesAcross * pieceWidth) + (Math.max(0, sheetPiecesAcross - 1) * gap) : 0
+  const sheetUsedHeight = sheetPiecesDown > 0 ? (sheetPiecesDown * pieceHeight) + (Math.max(0, sheetPiecesDown - 1) * gap) : 0
+  const sheetStartX = Math.max(0, (sheetWidth - Math.min(sheetUsedWidth, sheetWidth)) / 2)
+  const sheetStartY = Math.max(0, (sheetHeight - Math.min(sheetUsedHeight, sheetHeight)) / 2)
 
   const machineRects = buildPieceRects({
     startX: 0,
@@ -114,45 +127,71 @@ export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewPr
     across: machineSheetsAcross,
     down: machineSheetsDown,
   })
+  const sheetPieceRects = buildPieceRects({
+    startX: sheetStartX,
+    startY: sheetStartY,
+    pieceWidth,
+    pieceHeight,
+    gap,
+    across: sheetPiecesAcross,
+    down: sheetPiecesDown,
+  })
   const utilX = Math.max(0, (machineSheetWidth - utilWidth) / 2)
   const utilY = Math.max(0, (machineSheetHeight - utilHeight) / 2)
-  const usedWidth = piecesAcross > 0 ? (piecesAcross * pieceWidth) + (Math.max(0, piecesAcross - 1) * gap) : 0
-  const usedHeight = piecesDown > 0 ? (piecesDown * pieceHeight) + (Math.max(0, piecesDown - 1) * gap) : 0
+  const usedWidth = machinePiecesAcross > 0 ? (machinePiecesAcross * pieceWidth) + (Math.max(0, machinePiecesAcross - 1) * gap) : 0
+  const usedHeight = machinePiecesDown > 0 ? (machinePiecesDown * pieceHeight) + (Math.max(0, machinePiecesDown - 1) * gap) : 0
   const pieceRects = buildPieceRects({
     startX: utilX,
     startY: utilY,
     pieceWidth,
     pieceHeight,
     gap,
-    across: piecesAcross,
-    down: piecesDown,
+    across: machinePiecesAcross,
+    down: machinePiecesDown,
   })
-  const totalPieces = piecesAcross * piecesDown
+  const totalPieces = sheetPiecesAcross * sheetPiecesDown
+  const totalMachinePieces = machinePiecesAcross * machinePiecesDown
 
   return (
     <div className={cn("rounded-lg border bg-background/70 p-3", props.className)}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-sm font-medium">Vista de imposicion del pliego</p>
+          <p className="text-sm font-medium">Vista de imposicion editorial</p>
           <p className="text-[11px] text-muted-foreground">{props.paperLabel}</p>
           <p className="text-[11px] text-muted-foreground">{props.machineLabel}</p>
         </div>
         <div className="rounded-md border bg-muted/40 px-2 py-1 text-right text-[11px] text-muted-foreground">
-          <div className="font-medium text-foreground">{props.arrangementLabel}</div>
-          <div>{totalPieces} piezas por pliego</div>
+          <div className="font-medium text-foreground">{props.sheetArrangementLabel}</div>
+          <div>{props.sheetPiecesPerParent ?? totalPieces} piezas finales por pliego</div>
+          <div>{props.machinePiecesPerSheet ?? totalMachinePieces} piezas por hoja de maquina</div>
         </div>
       </div>
 
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
         <div className="rounded-lg border bg-gradient-to-b from-slate-50 to-white p-3">
-          <p className="mb-2 text-[11px] font-medium text-foreground">1. Del pliego sale el corte de máquina</p>
+          <p className="mb-2 text-[11px] font-medium text-foreground">1. Rendimiento del pliego comprado</p>
           <svg
             viewBox={`0 0 ${sheetWidth} ${sheetHeight}`}
             className="mx-auto block h-auto max-h-[240px] w-full"
-            aria-label="Vista del pliego y corte de máquina"
+            aria-label="Vista del pliego comprado"
             role="img"
           >
             <rect x={0} y={0} width={sheetWidth} height={sheetHeight} rx={2} ry={2} fill="#f8fafc" stroke="#64748b" strokeWidth={0.5} />
+            {sheetPieceRects.map((piece, index) => (
+              <rect
+                key={`sheet-piece-${piece.x}-${piece.y}-${index}`}
+                x={piece.x}
+                y={piece.y}
+                width={piece.width}
+                height={piece.height}
+                rx={0.8}
+                ry={0.8}
+                fill="#0ea5e9"
+                fillOpacity={0.14}
+                stroke="#0284c7"
+                strokeWidth={0.35}
+              />
+            ))}
             {machineRects.map((piece, index) => (
               <rect
                 key={`machine-${piece.x}-${piece.y}-${index}`}
@@ -169,12 +208,12 @@ export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewPr
             ))}
           </svg>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            {props.machineSheetsPerParent ?? 0} hojas de máquina por pliego
+            Papel: {props.sheetPiecesPerParent ?? totalPieces} piezas finales por pliego ({props.sheetArrangementLabel}, {props.sheetOrientationLabel}).
           </p>
         </div>
 
         <div className="rounded-lg border bg-gradient-to-b from-slate-50 to-white p-3">
-          <p className="mb-2 text-[11px] font-medium text-foreground">2. En cada hoja de máquina caben las piezas finales</p>
+          <p className="mb-2 text-[11px] font-medium text-foreground">2. Capacidad por hoja de maquina</p>
           <svg
             viewBox={`0 0 ${machineSheetWidth} ${machineSheetHeight}`}
             className="mx-auto block h-auto max-h-[240px] w-full"
@@ -225,6 +264,9 @@ export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewPr
               />
             ) : null}
           </svg>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Maquina: {props.machinePiecesPerSheet ?? totalMachinePieces} piezas por hoja ({props.machineArrangementLabel}, {props.machineOrientationLabel ?? props.sheetOrientationLabel}). Del pliego salen {props.machineSheetsPerParent ?? 0} hojas de maquina.
+          </p>
         </div>
       </div>
 
@@ -246,10 +288,14 @@ export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewPr
           <p>{props.formatLabel}</p>
         </div>
         <div className="rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground">
-          <p className="font-medium text-foreground">Imposicion</p>
-          <p>{props.arrangementLabel} • {props.orientationLabel}</p>
+          <p className="font-medium text-foreground">Papel vs maquina</p>
+          <p>{props.sheetPiecesPerParent ?? totalPieces} por pliego • {props.machinePiecesPerSheet ?? totalMachinePieces} por hoja</p>
         </div>
       </div>
+
+      <p className="mt-3 text-[11px] text-muted-foreground">
+        El costo de papel se calcula con el rendimiento del pliego comprado. La capacidad por hoja de maquina es una referencia operativa y no reemplaza cuantas piezas salen del pliego.
+      </p>
 
       <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
         <span className="inline-flex items-center gap-1">
@@ -270,9 +316,9 @@ export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewPr
         </span>
       </div>
 
-      {totalPieces > MAX_VISIBLE_PIECES ? (
+      {Math.max(totalPieces, totalMachinePieces) > MAX_VISIBLE_PIECES ? (
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Vista simplificada: se muestran {MAX_VISIBLE_PIECES} piezas de un total de {totalPieces}.
+          Vista simplificada: se muestran {MAX_VISIBLE_PIECES} piezas por panel cuando el total supera ese limite.
         </p>
       ) : null}
     </div>

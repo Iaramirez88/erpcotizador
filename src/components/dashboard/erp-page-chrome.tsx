@@ -40,6 +40,8 @@ export function ErpPageHero({
   stats = [],
   className,
 }: ErpPageHeroProps) {
+  const hasStats = stats.length > 0
+
   return (
     <section
       className={cn(
@@ -47,7 +49,7 @@ export function ErpPageHero({
         className,
       )}
     >
-      <div className="grid gap-4 p-5 lg:grid-cols-[1.2fr_0.8fr] lg:p-6">
+      <div className={cn('grid gap-4 p-5 lg:p-6', hasStats ? 'lg:grid-cols-[1.2fr_0.8fr]' : undefined)}>
         <div className="space-y-3">
           {breadcrumbs.length ? <ErpBreadcrumbs items={breadcrumbs} /> : null}
           {eyebrow ? (
@@ -62,7 +64,7 @@ export function ErpPageHero({
           {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
         </div>
 
-        {stats.length ? (
+        {hasStats ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {stats.map((stat) => (
               <div

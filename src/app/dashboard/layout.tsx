@@ -15,6 +15,7 @@ import PlanLimitFetchInterceptor from "@/components/dashboard/plan-limit-fetch-i
 import PlanLimitModal from "@/components/dashboard/plan-limit-modal"
 import RouteLoadingIndicator from "@/components/dashboard/route-loading-indicator"
 import RouteLoadingStartListener from "@/components/dashboard/route-loading-start-listener"
+import LastDashboardRouteTracker from "@/components/dashboard/last-dashboard-route-tracker"
 import FloatingChatDrawer from "@/components/dashboard/floating-chat-drawer"
 import { getActiveSedeForUser, getEffectiveAccessMap, NAV_MODULES } from "@/lib/rbac"
 import { resolveUserIdFromSession } from "@/lib/session-user"
@@ -31,9 +32,9 @@ export default async function DashboardLayout({
     redirect("/auth/login")
   }
 
+  const userId = await resolveUserIdFromSession(session)
   let allowedModules: string[] | null = null
   try {
-    const userId = await resolveUserIdFromSession(session)
     if (userId) {
       const sede = await getActiveSedeForUser(userId)
       const access = await getEffectiveAccessMap({ userId, sedeId: sede.id, modules: NAV_MODULES })
@@ -58,6 +59,7 @@ export default async function DashboardLayout({
       <PlanLimitFetchInterceptor />
       <PlanLimitModal />
       <RouteLoadingStartListener />
+      {userId ? <LastDashboardRouteTracker userId={userId} /> : null}
       <div className="flex h-screen bg-[#eef3ef]">
         {/* Sidebar */}
         <Sidebar user={user} />

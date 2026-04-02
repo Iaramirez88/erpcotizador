@@ -45,6 +45,11 @@ export type LitografiaResult = {
   hojasMaquinaNecesarias?: number
   hojasMaquinaHorizontal?: number
   hojasMaquinaVertical?: number
+  hojaMaquinaWidthCm?: number
+  hojaMaquinaHeightCm?: number
+  piezasPorHojaMaquina?: number
+  piezasHojaMaquinaHorizontal?: number
+  piezasHojaMaquinaVertical?: number
   orientacionCorte?: "normal" | "girada"
   papelPliegoWidthCm?: number
   papelPliegoHeightCm?: number
@@ -177,6 +182,11 @@ export function computeLitografia(params: LitografiaParams): LitografiaResult {
   let hojasMaquinaNecesarias: number | undefined
   let hojasMaquinaHorizontal: number | undefined
   let hojasMaquinaVertical: number | undefined
+  let hojaMaquinaWidthCm: number | undefined
+  let hojaMaquinaHeightCm: number | undefined
+  let piezasPorHojaMaquina: number | undefined
+  let piezasHojaMaquinaHorizontal: number | undefined
+  let piezasHojaMaquinaVertical: number | undefined
   let orientacionCorte: "normal" | "girada" | undefined
   let pliegoUtilWidthCm: number | undefined
   let pliegoUtilHeightCm: number | undefined
@@ -192,13 +202,20 @@ export function computeLitografia(params: LitografiaParams): LitografiaResult {
       const hojaMaquinaW = machineSheet.width || pliegoW
       const hojaMaquinaH = machineSheet.height || pliegoH
       const corteLayout = computePiecesPerSheet(pliegoW, pliegoH, hojaMaquinaW, hojaMaquinaH, 0)
+      const machineLayout = computePiecesPerSheet(hojaMaquinaW, hojaMaquinaH, formatoW, formatoH, maquinaSeparacion)
+      const machineSheetsPerParent = corteLayout.total >= 1 ? corteLayout.total : 1
 
       piezasPorPliego = layout.total
       pliegosNecesarios = Math.ceil(qtyConDesperdicio / layout.total)
-      hojasMaquinaPorPliego = 1
-      hojasMaquinaNecesarias = pliegosNecesarios
+      hojasMaquinaPorPliego = machineSheetsPerParent
+      hojasMaquinaNecesarias = pliegosNecesarios * machineSheetsPerParent
       hojasMaquinaHorizontal = corteLayout.total >= 1 ? corteLayout.across : 1
       hojasMaquinaVertical = corteLayout.total >= 1 ? corteLayout.down : 1
+      hojaMaquinaWidthCm = hojaMaquinaW
+      hojaMaquinaHeightCm = hojaMaquinaH
+      piezasPorHojaMaquina = machineLayout.total >= 1 ? machineLayout.total : undefined
+      piezasHojaMaquinaHorizontal = machineLayout.total >= 1 ? machineLayout.across : undefined
+      piezasHojaMaquinaVertical = machineLayout.total >= 1 ? machineLayout.down : undefined
       orientacionCorte = corteLayout.total >= 1 ? corteLayout.orientation : "normal"
       pliegoUtilWidthCm = pliegoW
       pliegoUtilHeightCm = pliegoH
@@ -238,6 +255,11 @@ export function computeLitografia(params: LitografiaParams): LitografiaResult {
     hojasMaquinaNecesarias,
     hojasMaquinaHorizontal,
     hojasMaquinaVertical,
+    hojaMaquinaWidthCm,
+    hojaMaquinaHeightCm,
+    piezasPorHojaMaquina,
+    piezasHojaMaquinaHorizontal,
+    piezasHojaMaquinaVertical,
     orientacionCorte,
     papelPliegoWidthCm: papelModo === "pliego" ? pliegoW : undefined,
     papelPliegoHeightCm: papelModo === "pliego" ? pliegoH : undefined,

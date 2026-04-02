@@ -1,6 +1,6 @@
 "use client"
 
-import { BookOpen, ChevronDown, ChevronUp, Layers3, Package2, Sparkles } from "lucide-react"
+import { BookOpen, ChevronDown, ChevronUp, FileText, Layers3, Package2, Sparkles } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useI18n } from "@/components/providers/i18n-provider"
 import { Button } from "@/components/ui/button"
@@ -19,9 +19,10 @@ import { SearchableNativeSelect } from "@/components/ui/searchable-native-select
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { LitografiaCutGuide } from "@/components/litografia/litografia-cut-guide"
+import { LitografiaImpositionPreview } from "@/components/litografia/litografia-imposition-preview"
 import { LitografiaPaperRequestDialog } from "@/components/litografia/litografia-paper-request-dialog"
 import { computeLitografia, type LitografiaResult } from "@/lib/litografia"
-import { formatCurrency } from "@/lib/utils"
+import { cn, formatCurrency } from "@/lib/utils"
 
 type PapelTipo = "bond" | "propalcote" | "periodico" | "otro"
 
@@ -138,6 +139,15 @@ type CustomDropdown = {
   items?: CustomDropdownItem[]
 }
 
+type EditorialOptionItem = {
+  value: string
+  label: string
+  totalPaginas: number
+  paginasPortadaContraportada: number
+  cartasPorPlancha: number
+  paginasPorPliego: number
+}
+
 type ApiEnvelope = { ok?: unknown; data?: unknown; error?: unknown }
 
 function asApiEnvelope(value: unknown): ApiEnvelope {
@@ -181,6 +191,73 @@ function normalizeFinishText(value: string | null | undefined) {
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase()
+}
+
+function getEditorialProductKind(option: Pick<EditorialOptionItem, "value" | "label"> | null | undefined) {
+  const normalized = normalizeFinishText(`${option?.value || ""} ${option?.label || ""}`)
+  if (normalized.includes("cartilla")) return "cartilla" as const
+  if (normalized.includes("revista")) return "revista" as const
+  if (normalized.includes("libro")) return "libro" as const
+  return "otro" as const
+}
+
+function getEditorialProductCopy(option: EditorialOptionItem | null | undefined) {
+  const kind = getEditorialProductKind(option)
+  switch (kind) {
+    case "libro":
+      return {
+        badge: "Lomo y lectura continua",
+        summary: "Pensado para interiores extensos y portada diferenciada.",
+        detail: `${Math.max(0, option?.totalPaginas ?? 0)} págs internas sugeridas`,
+      }
+    case "cartilla":
+      return {
+        badge: "Pocas páginas, salida ágil",
+        summary: "Ideal para material breve, educativo o institucional.",
+        detail: `${Math.max(0, option?.totalPaginas ?? 0)} págs internas sugeridas`,
+      }
+    case "revista":
+      return {
+        badge: "Visual y editorial",
+        summary: "Útil cuando portada e internas comparten ritmo comercial.",
+        detail: `${Math.max(0, option?.totalPaginas ?? 0)} págs internas sugeridas`,
+      }
+    default:
+      return {
+        badge: "Plantilla editorial",
+        summary: "Base rápida para configurar portada e internas.",
+        detail: `${Math.max(0, option?.totalPaginas ?? 0)} págs internas sugeridas`,
+      }
+  }
+}
+
+function scoreEditorialFormat(kind: ReturnType<typeof getEditorialProductKind>, option: { key: string; nombre: string; widthCm: number; heightCm: number }) {
+  const normalized = normalizeFinishText(`${option.key} ${option.nombre}`)
+  const area = Math.max(0.01, option.widthCm * option.heightCm)
+  const targetArea =
+    kind === "cartilla"
+      ? 440
+      : kind === "libro"
+        ? 520
+        : kind === "revista"
+          ? 620
+          : 520
+
+  const priorityKeywords =
+    kind === "cartilla"
+      ? ["media carta", "a5", "cuarto", "carta", "17x24", "a4"]
+      : kind === "libro"
+        ? ["17x24", "media carta", "a5", "21x28", "carta", "a4"]
+        : kind === "revista"
+          ? ["carta", "a4", "21x28", "oficio", "17x24", "tabloide"]
+          : ["carta", "a4", "17x24", "21x28", "media carta"]
+
+  let score = 0
+  const keywordIndex = priorityKeywords.findIndex((keyword) => normalized.includes(keyword))
+  if (keywordIndex >= 0) score += 200 - (keywordIndex * 20)
+  score -= Math.abs(area - targetArea) / 10
+  if (normalized.includes("personalizado")) score -= 400
+  return score
 }
 
 function isTroquelLikeFinish(finish: Pick<FinishOption, "key" | "nombre">) {
@@ -489,6 +566,10 @@ export function LitografiaQuoteDialog(props: {
   const selectedEditorialOption = useMemo(
     () => editorialOptions.find((option) => option.value === selectedEditorialProductoKey) || null,
     [editorialOptions, selectedEditorialProductoKey]
+  )
+  const editorialProductKind = useMemo(
+    () => getEditorialProductKind(selectedEditorialOption),
+    [selectedEditorialOption]
   )
   const isEditorialCartilla = useMemo(() => {
     if (!editorialEnabled || !selectedEditorialOption) return false
@@ -1143,6 +1224,14 @@ export function LitografiaQuoteDialog(props: {
     return activeSizes.map((s) => ({ key: s.key, nombre: s.nombre, widthCm: s.widthCm, heightCm: s.heightCm }))
   }, [activeSizes])
 
+  const editorialQuickFormats = useMemo(() => {
+    return sizeOptions
+      .map((option) => ({ option, score: scoreEditorialFormat(editorialProductKind, option) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6)
+      .map((entry) => entry.option)
+  }, [editorialProductKind, sizeOptions])
+
   const customSizeOption = useMemo(() => {
     const widthCm = parsePositiveCm(customFormatoWidthCm)
     const heightCm = parsePositiveCm(customFormatoHeightCm)
@@ -1618,8 +1707,32 @@ export function LitografiaQuoteDialog(props: {
       pliegosPorUnidad: Math.max(1, Math.trunc(Number(pliegosPorUnidad) || 0) || 1),
       qtyForCompute,
       sobranteFinal,
+      paperLabel: `${paper.nombre}${paper.gramaje ? ` ${paper.gramaje}g` : ""} • ${formatCm(paper.pliegoWidthCm)}×${formatCm(paper.pliegoHeightCm)} cm`,
+      formatLabel: `${preset.nombre} (${formatCm(preset.widthCm)}×${formatCm(preset.heightCm)} cm)`,
+      machineLabel: planchaProfile
+        ? `${planchaProfile.nombre} (${formatCm(planchaProfile.anchoUtilCm)}×${formatCm(planchaProfile.altoUtilCm)} cm)`
+        : "Maquina sin perfil",
+      sheetWidthCm: paper.pliegoWidthCm ?? 0,
+      sheetHeightCm: paper.pliegoHeightCm ?? 0,
+      machineSheetWidthCm: r.hojaMaquinaWidthCm ?? (Number(planchaProfile?.anchoUtilCm) || 0),
+      machineSheetHeightCm: r.hojaMaquinaHeightCm ?? (Number(planchaProfile?.altoUtilCm) || 0),
+      utilWidthCm: Number(planchaProfile?.anchoUtilCm) || paper.pliegoWidthCm || 0,
+      utilHeightCm: Number(planchaProfile?.altoUtilCm) || paper.pliegoHeightCm || 0,
+      pieceWidthCm: preset.widthCm ?? 0,
+      pieceHeightCm: preset.heightCm ?? 0,
       piezasPorPliego: r.piezasPorPliego,
       pliegosNecesarios: r.pliegosNecesarios,
+      piezasPorHojaMaquina: r.piezasPorHojaMaquina,
+      hojasMaquinaPorPliego: r.hojasMaquinaPorPliego,
+      hojasMaquinaNecesarias: r.hojasMaquinaNecesarias,
+      hojasMaquinaHorizontal: r.hojasMaquinaHorizontal,
+      hojasMaquinaVertical: r.hojasMaquinaVertical,
+      piezasHorizontal: r.piezasHorizontal,
+      piezasVertical: r.piezasVertical,
+      piezasHojaMaquinaHorizontal: r.piezasHojaMaquinaHorizontal,
+      piezasHojaMaquinaVertical: r.piezasHojaMaquinaVertical,
+      orientacionImpresion: r.orientacionImpresion,
+      orientacionCorte: r.orientacionCorte,
     }
   }, [cantidad, papers, profiles, sobranteMinimo, resolveSizeOption])
 
@@ -2894,18 +3007,77 @@ export function LitografiaQuoteDialog(props: {
 
                       {editorialMode && (
                         <div className="sm:col-span-2">
-                          <Label className={requiredLabelClass(validation.missingEditorialTemplate)}>Libros / Cartillas / Revistas</Label>
-                          <SearchableNativeSelect
-                            value={selectedEditorialProductoKey}
-                            onChange={(v) => setSelectedEditorialProductoKey(v)}
-                            disabled={editorialOptionsLoading}
-                            searchClassName={INPUT_COMPACT}
-                            selectClassName={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingEditorialTemplate)}`}
-                            includeAllOption={{ value: "", label: "Seleccionar…" }}
-                            options={editorialOptions.map((o) => ({ value: o.value, label: o.label }))}
-                            searchPlaceholder="Buscar…"
-                            emptyText={editorialOptions.length ? t('common.noResults') : 'Sin dropdown editorial configurado'}
-                          />
+                          <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-sky-50/70 p-4 shadow-sm">
+                            <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+                              <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">Paso 1</p>
+                                <Label className={cn("mt-1 block text-sm font-semibold text-slate-950", requiredLabelClass(validation.missingEditorialTemplate))}>Elige el producto editorial</Label>
+                                <p className="mt-1 text-xs text-slate-600">Primero define si vas a cotizar libro, cartilla o revista. Luego eliges formato y revisas portada vs internas.</p>
+                              </div>
+                              {selectedEditorialOption ? (
+                                <div className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium text-sky-800 shadow-sm">
+                                  {getEditorialProductCopy(selectedEditorialOption).badge}
+                                </div>
+                              ) : null}
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                              {editorialOptions.map((option) => {
+                                const selected = option.value === selectedEditorialProductoKey
+                                const productKind = getEditorialProductKind(option)
+                                const copy = getEditorialProductCopy(option)
+                                const Icon = productKind === "libro" ? BookOpen : productKind === "revista" ? FileText : Layers3
+                                return (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => setSelectedEditorialProductoKey(option.value)}
+                                    className={cn(
+                                      "rounded-2xl border p-4 text-left transition-all",
+                                      selected
+                                        ? "border-sky-400 bg-sky-50 shadow-[0_12px_30px_-18px_rgba(14,165,233,0.65)]"
+                                        : "border-slate-200 bg-white hover:border-sky-200 hover:bg-slate-50"
+                                    )}
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className={cn(
+                                        "flex h-10 w-10 items-center justify-center rounded-xl border",
+                                        selected ? "border-sky-300 bg-white text-sky-700" : "border-slate-200 bg-slate-50 text-slate-700"
+                                      )}>
+                                        <Icon className="h-4 w-4" />
+                                      </div>
+                                      <span className={cn(
+                                        "rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
+                                        selected ? "bg-sky-100 text-sky-800" : "bg-slate-100 text-slate-600"
+                                      )}>
+                                        {copy.badge}
+                                      </span>
+                                    </div>
+                                    <p className="mt-4 text-base font-semibold text-slate-950">{option.label}</p>
+                                    <p className="mt-1 text-xs leading-5 text-slate-600">{copy.summary}</p>
+                                    <div className="mt-4 flex items-center justify-between text-xs text-slate-700">
+                                      <span>{copy.detail}</span>
+                                      <span>{Math.max(1, option.paginasPorPliego || 0)} págs/pliego</span>
+                                    </div>
+                                  </button>
+                                )
+                              })}
+                            </div>
+
+                            <div className="mt-4">
+                              <SearchableNativeSelect
+                                value={selectedEditorialProductoKey}
+                                onChange={(v) => setSelectedEditorialProductoKey(v)}
+                                disabled={editorialOptionsLoading}
+                                searchClassName={INPUT_COMPACT}
+                                selectClassName={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingEditorialTemplate)}`}
+                                includeAllOption={{ value: "", label: "Seleccionar…" }}
+                                options={editorialOptions.map((o) => ({ value: o.value, label: o.label }))}
+                                searchPlaceholder="Buscar…"
+                                emptyText={editorialOptions.length ? t('common.noResults') : 'Sin dropdown editorial configurado'}
+                              />
+                            </div>
+                          </div>
                           {!editorialOptions.length ? (
                             <p className={HELP_TEXT}>
                               Crea la plantilla en Configuración de Litografía → Dropdowns personalizados → “Crear plantilla Editorial”.
@@ -2919,13 +3091,13 @@ export function LitografiaQuoteDialog(props: {
                                 <div>
                                   <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">
                                     <Sparkles className="h-3.5 w-3.5" />
-                                    Guía rápida editorial
+                                    Paso 2
                                   </div>
                                   <h3 className="mt-3 text-base font-semibold text-slate-950">
                                     {selectedEditorialOption?.label || "Producto editorial"}
                                   </h3>
                                   <p className="mt-1 text-sm text-slate-600">
-                                    Primero define la estructura global del libro o cartilla. Después ajustas portada e internas con una referencia visual ya calculada.
+                                    Ajusta la estructura global y valida de inmediato cómo se reparten portada e internas. La lectura operativa queda separada del cálculo de papel.
                                   </p>
                                 </div>
                                 {selectedEditorialOption ? (
@@ -2977,6 +3149,90 @@ export function LitografiaQuoteDialog(props: {
                                   </div>
                                   <p className="mt-2 text-sm font-semibold text-slate-950">{Math.max(1, Math.trunc(parseFloat(editorialPaginasPorPliego) || 0))} páginas por pliego</p>
                                   <p className="mt-1 text-xs text-slate-600">Portada {editorialSplitCalc?.coverPliegosPorUnidad ?? 0} e internas {editorialSplitCalc?.innerPliegosPorUnidad ?? 0} por unidad.</p>
+                                </div>
+                              </div>
+
+                              <div className="mt-4 rounded-xl border border-slate-200 bg-white/80 p-4">
+                                <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+                                  <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">Paso 3</p>
+                                    <p className="mt-1 text-sm font-semibold text-slate-950">Elige el formato final</p>
+                                    <p className="mt-1 text-xs text-slate-600">Selecciona un tamaño rápido para arrancar. Si ninguno aplica, usa tamaño personalizado o el selector completo.</p>
+                                  </div>
+                                  {editorialCoverPreset ? (
+                                    <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-medium text-slate-700">
+                                      Formato activo: {editorialCoverPreset.nombre} ({formatCm(editorialCoverPreset.widthCm)}×{formatCm(editorialCoverPreset.heightCm)} cm)
+                                    </div>
+                                  ) : null}
+                                </div>
+
+                                <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+                                  {editorialQuickFormats.map((option) => {
+                                    const selected = editorialCover.formatoKey === option.key
+                                    return (
+                                      <button
+                                        key={option.key}
+                                        type="button"
+                                        onClick={() => {
+                                          setEditorialCover((prev) => ({ ...prev, formatoKey: option.key }))
+                                          setEditorialInner((prev) => ({ ...prev, formatoKey: option.key }))
+                                        }}
+                                        className={cn(
+                                          "rounded-xl border p-3 text-left transition-all",
+                                          selected
+                                            ? "border-sky-400 bg-sky-50 shadow-[0_10px_26px_-18px_rgba(14,165,233,0.7)]"
+                                            : "border-slate-200 bg-white hover:border-sky-200 hover:bg-slate-50"
+                                        )}
+                                      >
+                                        <div className="flex items-center justify-between gap-2">
+                                          <span className="text-sm font-semibold text-slate-950">{option.nombre}</span>
+                                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                                            {formatCm(option.widthCm)}×{formatCm(option.heightCm)}
+                                          </span>
+                                        </div>
+                                        <div className="mt-3 flex h-20 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50">
+                                          <div
+                                            className={cn(
+                                              "rounded-md border",
+                                              selected ? "border-sky-500 bg-sky-100" : "border-slate-400 bg-white"
+                                            )}
+                                            style={{
+                                              width: `${Math.max(28, Math.min(78, option.widthCm * 3))}px`,
+                                              height: `${Math.max(28, Math.min(78, option.heightCm * 3))}px`,
+                                            }}
+                                          />
+                                        </div>
+                                        <p className="mt-3 text-[11px] leading-5 text-slate-600">Sirve como tamaño final del producto. Luego el preview muestra cuántas piezas salen por pliego y por hoja de máquina.</p>
+                                      </button>
+                                    )
+                                  })}
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditorialCover((prev) => ({ ...prev, formatoKey: CUSTOM_PRINT_SIZE_KEY }))
+                                      setEditorialInner((prev) => ({ ...prev, formatoKey: CUSTOM_PRINT_SIZE_KEY }))
+                                    }}
+                                    className={cn(
+                                      "rounded-xl border p-3 text-left transition-all",
+                                      editorialCover.formatoKey === CUSTOM_PRINT_SIZE_KEY
+                                        ? "border-sky-400 bg-sky-50 shadow-[0_10px_26px_-18px_rgba(14,165,233,0.7)]"
+                                        : "border-slate-200 bg-white hover:border-sky-200 hover:bg-slate-50"
+                                    )}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-sm font-semibold text-slate-950">Tamaño personalizado</span>
+                                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">manual</span>
+                                    </div>
+                                    <div className="mt-3 flex h-20 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50">
+                                      <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                                        <span className="rounded border border-slate-300 bg-white px-2 py-1">W</span>
+                                        <ChevronUp className="h-3 w-3 rotate-90" />
+                                        <span className="rounded border border-slate-300 bg-white px-2 py-1">H</span>
+                                      </div>
+                                    </div>
+                                    <p className="mt-3 text-[11px] leading-5 text-slate-600">Úsalo cuando el trabajo no coincide con un formato estándar del taller.</p>
+                                  </button>
                                 </div>
                               </div>
 
@@ -3077,9 +3333,11 @@ export function LitografiaQuoteDialog(props: {
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="sm:col-span-2">
-                              <p className="text-xs text-muted-foreground">
-                                Estructura editorial. Abajo configuras costos por Portada e Internas.
-                              </p>
+                              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">Paso 4</p>
+                                <p className="mt-1 text-sm font-semibold text-slate-950">Configura portada e internas por separado</p>
+                                <p className="mt-1 text-xs text-slate-600">Cada bloque ya resume tamaño, papel y salida operativa para que el impresor lea rápido qué va en portada y qué va en internas.</p>
+                              </div>
                             </div>
                             <div>
                               <Label className={requiredLabelClass(validation.missingFormato)}>{t('printshopQuote.fields.printSize')} (global)</Label>
@@ -3130,7 +3388,7 @@ export function LitografiaQuoteDialog(props: {
                                 ))}
                               </select>
                               <p className={HELP_TEXT}>
-                                Determina cuántas piezas caben por pliego (imposición) y afecta los pliegos requeridos.
+                                Este selector sigue disponible como respaldo. Las tarjetas rápidas de arriba son la entrada principal.
                               </p>
                               {editorialCover.formatoKey === CUSTOM_PRINT_SIZE_KEY ? (
                                 <div className="mt-2 grid grid-cols-2 gap-2">
@@ -3250,9 +3508,55 @@ export function LitografiaQuoteDialog(props: {
                                       Defínelas arriba en la guía rápida. Aquí solo ves su efecto en portada y contraportada.
                                     </p>
                                     {editorialCoverSheetsPreview ? (
-                                      <p className={HELP_TEXT}>
-                                        Para {editorialCoverSheetsPreview.runQty} unidades: {editorialCoverSheetsPreview.qtyForCompute} piezas → {editorialCoverSheetsPreview.pliegosNecesarios ?? "—"} pliegos ({editorialCoverSheetsPreview.piezasPorPliego ?? "—"} pzas/pliego, sobrante {Math.max(0, Math.trunc(editorialCoverSheetsPreview.sobranteFinal || 0))}).
-                                      </p>
+                                      <div className="mt-2 space-y-2 rounded-md border border-sky-200 bg-sky-50/60 p-3">
+                                        <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-700 xl:grid-cols-4">
+                                          <div className="rounded-md border border-white/70 bg-white/80 p-2">
+                                            <p className="font-medium text-slate-900">Papel</p>
+                                            <p>{editorialCoverSheetsPreview.piezasPorPliego ?? "—"} pzas/pliego</p>
+                                          </div>
+                                          <div className="rounded-md border border-white/70 bg-white/80 p-2">
+                                            <p className="font-medium text-slate-900">Maquina</p>
+                                            <p>{editorialCoverSheetsPreview.piezasPorHojaMaquina ?? "—"} pzas/hoja</p>
+                                          </div>
+                                          <div className="rounded-md border border-white/70 bg-white/80 p-2">
+                                            <p className="font-medium text-slate-900">Cortes/pliego</p>
+                                            <p>{editorialCoverSheetsPreview.hojasMaquinaPorPliego ?? "—"} hojas</p>
+                                          </div>
+                                          <div className="rounded-md border border-white/70 bg-white/80 p-2">
+                                            <p className="font-medium text-slate-900">Papel total</p>
+                                            <p>{editorialCoverSheetsPreview.pliegosNecesarios ?? "—"} pliegos</p>
+                                          </div>
+                                        </div>
+                                        <p className={HELP_TEXT}>
+                                          Para {editorialCoverSheetsPreview.runQty} unidades: {editorialCoverSheetsPreview.qtyForCompute} piezas finales. El papel se calcula con {editorialCoverSheetsPreview.piezasPorPliego ?? "—"} piezas por pliego; la maquina trabaja a {editorialCoverSheetsPreview.piezasPorHojaMaquina ?? "—"} piezas por hoja y no debe reemplazar ese rendimiento.
+                                        </p>
+                                        <LitografiaImpositionPreview
+                                          sheetWidthCm={editorialCoverSheetsPreview.sheetWidthCm}
+                                          sheetHeightCm={editorialCoverSheetsPreview.sheetHeightCm}
+                                          machineSheetWidthCm={editorialCoverSheetsPreview.machineSheetWidthCm}
+                                          machineSheetHeightCm={editorialCoverSheetsPreview.machineSheetHeightCm}
+                                          machineSheetsAcross={editorialCoverSheetsPreview.hojasMaquinaHorizontal}
+                                          machineSheetsDown={editorialCoverSheetsPreview.hojasMaquinaVertical}
+                                          machineSheetsPerParent={editorialCoverSheetsPreview.hojasMaquinaPorPliego}
+                                          utilWidthCm={editorialCoverSheetsPreview.utilWidthCm}
+                                          utilHeightCm={editorialCoverSheetsPreview.utilHeightCm}
+                                          pieceWidthCm={editorialCoverSheetsPreview.pieceWidthCm}
+                                          pieceHeightCm={editorialCoverSheetsPreview.pieceHeightCm}
+                                          sheetPiecesAcross={editorialCoverSheetsPreview.piezasHorizontal ?? 0}
+                                          sheetPiecesDown={editorialCoverSheetsPreview.piezasVertical ?? 0}
+                                          machinePiecesAcross={editorialCoverSheetsPreview.piezasHojaMaquinaHorizontal ?? 0}
+                                          machinePiecesDown={editorialCoverSheetsPreview.piezasHojaMaquinaVertical ?? 0}
+                                          sheetPiecesPerParent={editorialCoverSheetsPreview.piezasPorPliego}
+                                          machinePiecesPerSheet={editorialCoverSheetsPreview.piezasPorHojaMaquina}
+                                          paperLabel={editorialCoverSheetsPreview.paperLabel}
+                                          formatLabel={editorialCoverSheetsPreview.formatLabel}
+                                          machineLabel={editorialCoverSheetsPreview.machineLabel}
+                                          sheetArrangementLabel={`${editorialCoverSheetsPreview.piezasHorizontal ?? 0} × ${editorialCoverSheetsPreview.piezasVertical ?? 0}`}
+                                          machineArrangementLabel={`${editorialCoverSheetsPreview.piezasHojaMaquinaHorizontal ?? 0} × ${editorialCoverSheetsPreview.piezasHojaMaquinaVertical ?? 0}`}
+                                          sheetOrientationLabel={editorialCoverSheetsPreview.orientacionImpresion === "girada" ? "girado" : "normal"}
+                                          machineOrientationLabel={editorialCoverSheetsPreview.orientacionCorte === "girada" ? "girado" : "normal"}
+                                        />
+                                      </div>
                                     ) : null}
                                   </div>
 
@@ -3609,9 +3913,55 @@ export function LitografiaQuoteDialog(props: {
                                       Defínelas arriba en la guía rápida. Aquí ves su impacto sobre pliegos y papel de internas.
                                     </p>
                                     {editorialInnerSheetsPreview ? (
-                                      <p className={HELP_TEXT}>
-                                        Para {editorialInnerSheetsPreview.runQty} unidades: {editorialInnerSheetsPreview.qtyForCompute} piezas → {editorialInnerSheetsPreview.pliegosNecesarios ?? "—"} pliegos ({editorialInnerSheetsPreview.piezasPorPliego ?? "—"} pzas/pliego, sobrante {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobranteFinal || 0))}).
-                                      </p>
+                                      <div className="mt-2 space-y-2 rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
+                                        <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-700 xl:grid-cols-4">
+                                          <div className="rounded-md border border-white/70 bg-white/80 p-2">
+                                            <p className="font-medium text-slate-900">Papel</p>
+                                            <p>{editorialInnerSheetsPreview.piezasPorPliego ?? "—"} pzas/pliego</p>
+                                          </div>
+                                          <div className="rounded-md border border-white/70 bg-white/80 p-2">
+                                            <p className="font-medium text-slate-900">Maquina</p>
+                                            <p>{editorialInnerSheetsPreview.piezasPorHojaMaquina ?? "—"} pzas/hoja</p>
+                                          </div>
+                                          <div className="rounded-md border border-white/70 bg-white/80 p-2">
+                                            <p className="font-medium text-slate-900">Cortes/pliego</p>
+                                            <p>{editorialInnerSheetsPreview.hojasMaquinaPorPliego ?? "—"} hojas</p>
+                                          </div>
+                                          <div className="rounded-md border border-white/70 bg-white/80 p-2">
+                                            <p className="font-medium text-slate-900">Papel total</p>
+                                            <p>{editorialInnerSheetsPreview.pliegosNecesarios ?? "—"} pliegos</p>
+                                          </div>
+                                        </div>
+                                        <p className={HELP_TEXT}>
+                                          Para {editorialInnerSheetsPreview.runQty} unidades: {editorialInnerSheetsPreview.qtyForCompute} piezas finales. El papel se calcula con {editorialInnerSheetsPreview.piezasPorPliego ?? "—"} piezas por pliego; la maquina trabaja a {editorialInnerSheetsPreview.piezasPorHojaMaquina ?? "—"} piezas por hoja y no debe reemplazar ese rendimiento.
+                                        </p>
+                                        <LitografiaImpositionPreview
+                                          sheetWidthCm={editorialInnerSheetsPreview.sheetWidthCm}
+                                          sheetHeightCm={editorialInnerSheetsPreview.sheetHeightCm}
+                                          machineSheetWidthCm={editorialInnerSheetsPreview.machineSheetWidthCm}
+                                          machineSheetHeightCm={editorialInnerSheetsPreview.machineSheetHeightCm}
+                                          machineSheetsAcross={editorialInnerSheetsPreview.hojasMaquinaHorizontal}
+                                          machineSheetsDown={editorialInnerSheetsPreview.hojasMaquinaVertical}
+                                          machineSheetsPerParent={editorialInnerSheetsPreview.hojasMaquinaPorPliego}
+                                          utilWidthCm={editorialInnerSheetsPreview.utilWidthCm}
+                                          utilHeightCm={editorialInnerSheetsPreview.utilHeightCm}
+                                          pieceWidthCm={editorialInnerSheetsPreview.pieceWidthCm}
+                                          pieceHeightCm={editorialInnerSheetsPreview.pieceHeightCm}
+                                          sheetPiecesAcross={editorialInnerSheetsPreview.piezasHorizontal ?? 0}
+                                          sheetPiecesDown={editorialInnerSheetsPreview.piezasVertical ?? 0}
+                                          machinePiecesAcross={editorialInnerSheetsPreview.piezasHojaMaquinaHorizontal ?? 0}
+                                          machinePiecesDown={editorialInnerSheetsPreview.piezasHojaMaquinaVertical ?? 0}
+                                          sheetPiecesPerParent={editorialInnerSheetsPreview.piezasPorPliego}
+                                          machinePiecesPerSheet={editorialInnerSheetsPreview.piezasPorHojaMaquina}
+                                          paperLabel={editorialInnerSheetsPreview.paperLabel}
+                                          formatLabel={editorialInnerSheetsPreview.formatLabel}
+                                          machineLabel={editorialInnerSheetsPreview.machineLabel}
+                                          sheetArrangementLabel={`${editorialInnerSheetsPreview.piezasHorizontal ?? 0} × ${editorialInnerSheetsPreview.piezasVertical ?? 0}`}
+                                          machineArrangementLabel={`${editorialInnerSheetsPreview.piezasHojaMaquinaHorizontal ?? 0} × ${editorialInnerSheetsPreview.piezasHojaMaquinaVertical ?? 0}`}
+                                          sheetOrientationLabel={editorialInnerSheetsPreview.orientacionImpresion === "girada" ? "girado" : "normal"}
+                                          machineOrientationLabel={editorialInnerSheetsPreview.orientacionCorte === "girada" ? "girado" : "normal"}
+                                        />
+                                      </div>
                                     ) : null}
                                   </div>
 

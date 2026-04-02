@@ -1,6 +1,7 @@
 import Link from 'next/link'
-import { ArrowRight, BarChart3, Boxes, Calculator, ClipboardList, FolderKanban, MessageSquareMore, Package2, ReceiptText, ScanSearch, Settings2, Sparkles, Users2, Workflow } from 'lucide-react'
+import { ArrowRight, BarChart3, Boxes, Calculator, ClipboardList, FolderKanban, Package2, ReceiptText, ScanSearch, Users2, Workflow } from 'lucide-react'
 import { auth } from '@/lib/auth'
+import ContinueLastViewButton from '@/components/dashboard/continue-last-view-button'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -140,12 +141,12 @@ export default async function DashboardPage() {
   const enabledModules = allowedModules ? new Set(allowedModules) : null
   const cards = buildStartCards().filter((card) => !enabledModules || card.moduleKeys.some((moduleKey) => enabledModules.has(moduleKey)))
   const displayName = session.user.name || session.user.email || 'equipo'
+  const continueHref = cards[0]?.href ?? '/dashboard/reportes'
 
   return (
     <div className="space-y-6 pb-6">
       <ErpPageHero
         breadcrumbs={[{ label: 'Dashboard' }]}
-        eyebrow="Centro de arranque"
         title={`Hola, ${displayName}`}
         description={activeSedeName
           ? `El dashboard ahora es una pantalla de inicio. Elige qué quieres gestionar primero en ${activeSedeName} y entra directo al flujo correcto.`
@@ -158,27 +159,15 @@ export default async function DashboardPage() {
                 Ir a reportes
               </Link>
             </Button>
-            <Button asChild className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800">
-              <Link href="/dashboard/crm">
-                <Sparkles className="mr-2 h-4 w-4" />
-                Continuar operación
-              </Link>
-            </Button>
+            <ContinueLastViewButton userId={userId} fallbackHref={continueHref} />
           </>
         }
-        stats={[
-          { label: 'Modo actual', value: 'Inicio guiado', hint: 'Sin KPIs ni resumen general aquí', tone: 'neutral' },
-          { label: 'Analítica', value: 'Reportes', hint: 'Ventas, conversiones y desempeño quedaron separados', tone: 'teal' },
-          { label: 'Flujos visibles', value: cards.length, hint: 'Accesos disponibles según permisos actuales', tone: 'amber' },
-        ]}
       />
 
       <Card className="rounded-[28px] border-slate-200 shadow-[0_20px_50px_-34px_rgba(15,23,42,0.3)]">
         <CardHeader className="border-b border-slate-100 pb-5">
           <CardTitle className="text-2xl text-slate-950">¿Qué quieres hacer hoy?</CardTitle>
-          <CardDescription>
-            Escoge un frente de trabajo. Reportes queda reservado para análisis y este espacio se usa para arrancar acciones concretas.
-          </CardDescription>
+          <CardDescription>Escoge un frente de trabajo y entra directo a la gestión que necesitas.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
           {cards.map((card) => {
@@ -206,54 +195,6 @@ export default async function DashboardPage() {
           })}
         </CardContent>
       </Card>
-
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card className="rounded-[28px] border-slate-200 shadow-[0_18px_44px_-34px_rgba(15,23,42,0.26)]">
-          <CardHeader>
-            <CardTitle className="text-xl text-slate-950">Cómo queda la separación</CardTitle>
-            <CardDescription>El sistema deja de duplicar propósito entre dashboard y reportes.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3 text-sm text-slate-700 md:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Dashboard</p>
-              <p className="mt-2 font-semibold text-slate-950">Centro de inicio y decisión</p>
-              <p className="mt-2 leading-6">Aquí el usuario decide si quiere vender, organizar, comprar, escanear, facturar o configurar. Todo orientado a comenzar gestión.</p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Reportes</p>
-              <p className="mt-2 font-semibold text-slate-950">Analítica y lectura del negocio</p>
-              <p className="mt-2 leading-6">Allí quedan ventas, conversiones, clientes, compras y tendencias para lectura ejecutiva, sin mezclarlo con accesos operativos.</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="rounded-[28px] border-slate-200 shadow-[0_18px_44px_-34px_rgba(15,23,42,0.26)]">
-          <CardHeader>
-            <CardTitle className="text-xl text-slate-950">Atajos complementarios</CardTitle>
-            <CardDescription>Acciones frecuentes fuera del flujo principal.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Button asChild variant="outline" className="w-full justify-between rounded-2xl border-slate-200 bg-white/90 px-4 py-6 text-left">
-              <Link href="/dashboard/reportes">
-                <span className="flex items-center gap-3"><BarChart3 className="h-5 w-5" />Ver reportes y métricas</span>
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="w-full justify-between rounded-2xl border-slate-200 bg-white/90 px-4 py-6 text-left">
-              <Link href="/dashboard/chat">
-                <span className="flex items-center gap-3"><MessageSquareMore className="h-5 w-5" />Entrar al chat interno</span>
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="w-full justify-between rounded-2xl border-slate-200 bg-white/90 px-4 py-6 text-left">
-              <Link href="/dashboard/configuracion/empresa">
-                <span className="flex items-center gap-3"><Settings2 className="h-5 w-5" />Ajustar empresa y módulos</span>
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   )
 }
