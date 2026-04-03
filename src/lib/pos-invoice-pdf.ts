@@ -6,6 +6,7 @@ import {
   buildAbsoluteVerificationUrl,
   buildPosInvoiceVerificationPath,
   createVerificationQrDataUrl,
+  DOCUMENT_QR_SIZE,
 } from '@/lib/document-verification'
 
 function bufferToArrayBuffer(buffer: Buffer): ArrayBuffer {
@@ -83,7 +84,7 @@ export async function renderPosInvoicePdf(args: {
 
   const renderer = await getReactPdfRenderer()
   const verificationUrl = buildAbsoluteVerificationUrl(args.origin, buildPosInvoiceVerificationPath(invoice.id))
-  const verificationQrDataUrl = await createVerificationQrDataUrl(verificationUrl)
+  const verificationQrDataUrl = await createVerificationQrDataUrl(verificationUrl, DOCUMENT_QR_SIZE)
 
   const invoicePdfData = {
     numero: invoice.numero,
@@ -144,7 +145,7 @@ export async function renderPosInvoicePdf(args: {
         createElement(renderer.Text, null, `Cliente: ${invoicePdfData.clienteNombre}`),
         createElement(renderer.Text, null, `Total: ${invoicePdfData.total}`),
         createElement(renderer.Text, { style: { marginTop: 12 } }, `Verificación: ${verificationUrl}`),
-        createElement(renderer.Image, { src: verificationQrDataUrl, style: { width: 180, height: 180, marginTop: 16 } }),
+        createElement(renderer.Image, { src: verificationQrDataUrl, style: { width: DOCUMENT_QR_SIZE, height: DOCUMENT_QR_SIZE, marginTop: 16 } }),
         createElement(renderer.Text, { style: { marginTop: 12 } }, 'Se generó una versión mínima porque la plantilla completa no pudo renderizarse.'),
       ),
     )

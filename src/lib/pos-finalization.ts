@@ -1,6 +1,7 @@
 import {
   InventoryMovementSourceType,
   InventoryMovementType,
+  PosPaymentMethod,
   PosInvoiceStatus,
   PosPaymentFlow,
   PosPaymentProvider,
@@ -124,7 +125,24 @@ export async function finalizeInvoice(
   const remaining = Math.max(0, invoice.total - alreadyPaid)
 
   const paymentsInput = Array.isArray(args.body.payments) ? args.body.payments.filter((payment) => payment.amount > 0) : []
-  const paymentsFinal = paymentsInput.length ? paymentsInput : []
+  const defaultPayment: PosFinalizePaymentInput | null = remaining > 0
+    ? {
+        method: PosPaymentMethod.CASH,
+        amount: remaining,
+        note: null,
+        provider: PosPaymentProvider.MANUAL,
+        status: PosPaymentStatus.PAID,
+        flow: PosPaymentFlow.CASH,
+        source: PosPaymentSource.NONE,
+        metadata: {},
+      }
+    : null
+
+  const paymentsFinal: PosFinalizePaymentInput[] = paymentsInput.length
+    ? paymentsInput
+    : defaultPayment
+      ? [defaultPayment]
+      : []
   const paidNow = paymentsFinal.reduce((sum, payment) => sum + payment.amount, 0)
 
   if (remaining > 0 && Math.abs(paidNow - remaining) >= 0.01) {

@@ -1114,11 +1114,11 @@ export default function PosPage() {
   )
 
   const loadPosInvoiceIntoDian = useCallback(
-    async (invoiceId: string) => {
+    async (invoiceId: string): Promise<InvoiceDetail | null> => {
       const id = String(invoiceId || '').trim()
       if (!id) {
         setDianError(t('pos.dian.posInvoice.selectInternalInvoice'))
-        return
+        return null
       }
 
       setDianCreatePosInvoiceLoading(true)
@@ -1129,7 +1129,7 @@ export default function PosPage() {
         if (!res.ok || !json.success || !json.data) {
           setDianError(json.error || t('pos.dian.posInvoice.loadFailed'))
           setDianCreatePosInvoice(null)
-          return
+          return null
         }
 
         const inv = json.data
@@ -1137,7 +1137,7 @@ export default function PosPage() {
         setDianCreateBuyer({
           nombre: String(inv.clienteNombre ?? ''),
           documento: String(inv.clienteDocumento ?? ''),
-          email: '',
+          email: String(inv.cliente?.email ?? ''),
         })
         setDianCreateItems(
           Array.isArray(inv.items) && inv.items.length > 0
@@ -1154,9 +1154,12 @@ export default function PosPage() {
           const suggested = suggestDianNumeroFromSettings('FACTURA_VENTA')
           if (suggested) setDianCreateNumero(suggested)
         }
+
+        return inv
       } catch (e) {
         setDianError(e instanceof Error ? e.message : t('common.unexpectedError'))
         setDianCreatePosInvoice(null)
+        return null
       } finally {
         setDianCreatePosInvoiceLoading(false)
       }
@@ -1172,11 +1175,10 @@ export default function PosPage() {
         return
       }
 
-      if (dianCreatePosInvoice?.id !== posInvoiceId) {
-        await loadPosInvoiceIntoDian(posInvoiceId)
-      }
+      const inv = dianCreatePosInvoice?.id === posInvoiceId
+        ? dianCreatePosInvoice
+        : await loadPosInvoiceIntoDian(posInvoiceId)
 
-      const inv = dianCreatePosInvoice
       if (!inv || inv.id !== posInvoiceId) {
         setDianError(t('pos.dian.posInvoice.selectedLoadFailed'))
         return

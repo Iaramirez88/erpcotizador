@@ -1,5 +1,6 @@
 import React from 'react'
 import type { ReactPdfComponents } from '@/lib/pdf-template'
+import { DOCUMENT_QR_CARD_WIDTH, DOCUMENT_QR_IMAGE_SIZE } from '@/lib/document-verification'
 import {
   DEFAULT_POS_INVOICE_TEMPLATE,
   PosInvoiceTemplateSettings,
@@ -212,7 +213,7 @@ function createStyles(t: PosInvoiceTemplateSettings, StyleSheet: ReactPdfCompone
       position: 'absolute',
       right: footerRightRight,
       bottom: footerBottom + 44,
-      width: 180,
+      width: DOCUMENT_QR_CARD_WIDTH,
       borderWidth: 1,
       borderColor: t.colors.border,
       borderRadius: 10,
@@ -227,8 +228,8 @@ function createStyles(t: PosInvoiceTemplateSettings, StyleSheet: ReactPdfCompone
       marginBottom: 6,
     },
     verificationQr: {
-      width: 164,
-      height: 164,
+      width: DOCUMENT_QR_IMAGE_SIZE,
+      height: DOCUMENT_QR_IMAGE_SIZE,
       alignSelf: 'center',
     },
     verificationUrl: {

@@ -6,6 +6,9 @@ import {
   buildAbsoluteVerificationUrl,
   buildDianDocumentVerificationPath,
   createVerificationQrDataUrl,
+  DOCUMENT_QR_CARD_WIDTH,
+  DOCUMENT_QR_IMAGE_SIZE,
+  DOCUMENT_QR_SIZE,
 } from '@/lib/document-verification'
 
 function normalizeAssetUrl(value: unknown, origin: string): string | undefined {
@@ -39,6 +42,13 @@ function numberFromPayload(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
+type PayloadLineItem = {
+  descripcion: string
+  quantity: number
+  unitPrice: number
+  total: number
+}
+
 function buildPayloadSummary(payload: unknown) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return {
@@ -47,29 +57,82 @@ function buildPayloadSummary(payload: unknown) {
       subtotal: null,
       iva: null,
       total: null,
+      items: [] as PayloadLineItem[],
     }
   }
 
   const data = payload as Record<string, unknown>
+  const ui = data.ui && typeof data.ui === 'object' && !Array.isArray(data.ui)
+    ? (data.ui as Record<string, unknown>)
+    : null
   const customer = data.customer && typeof data.customer === 'object' && !Array.isArray(data.customer)
     ? (data.customer as Record<string, unknown>)
+    : null
+  const buyer = ui?.buyer && typeof ui.buyer === 'object' && !Array.isArray(ui.buyer)
+    ? (ui.buyer as Record<string, unknown>)
     : null
   const totals = data.totals && typeof data.totals === 'object' && !Array.isArray(data.totals)
     ? (data.totals as Record<string, unknown>)
     : null
+  const uiTotals = ui?.totals && typeof ui.totals === 'object' && !Array.isArray(ui.totals)
+    ? (ui.totals as Record<string, unknown>)
+    : null
+  const rawItems = Array.isArray(ui?.items)
+    ? ui.items
+    : Array.isArray(data.items)
+      ? data.items
+      : []
+
+  const items = rawItems
+    .map((item) => {
+      const row = item && typeof item === 'object' && !Array.isArray(item)
+        ? (item as Record<string, unknown>)
+        : null
+      if (!row) return null
+
+      const descripcion =
+        textFromPayload(row.descripcion) ||
+        textFromPayload(row.description) ||
+        textFromPayload(row.nombre) ||
+        ''
+      const quantity = numberFromPayload(row.quantity) ?? numberFromPayload(row.cantidad) ?? 0
+      const unitPrice = numberFromPayload(row.unitPrice) ?? numberFromPayload(row.precioUnitario) ?? 0
+      const total = numberFromPayload(row.total) ?? quantity * unitPrice
+
+      if (!descripcion || quantity <= 0) return null
+
+      return { descripcion, quantity, unitPrice, total }
+    })
+    .filter((item): item is PayloadLineItem => Boolean(item))
 
   return {
     customerName:
+      textFromPayload(buyer?.nombre) ||
+      textFromPayload(buyer?.name) ||
       textFromPayload(customer?.name) ||
       textFromPayload(data.customerName) ||
       textFromPayload(data.clienteNombre),
     customerDocument:
+      textFromPayload(buyer?.documento) ||
+      textFromPayload(buyer?.document) ||
       textFromPayload(customer?.document) ||
       textFromPayload(data.customerDocument) ||
       textFromPayload(data.clienteDocumento),
-    subtotal: numberFromPayload(totals?.subtotal) ?? numberFromPayload(data.subtotal),
-    iva: numberFromPayload(totals?.tax) ?? numberFromPayload(totals?.iva) ?? numberFromPayload(data.iva),
-    total: numberFromPayload(totals?.total) ?? numberFromPayload(data.total),
+    subtotal:
+      numberFromPayload(uiTotals?.subtotal) ??
+      numberFromPayload(totals?.subtotal) ??
+      numberFromPayload(data.subtotal),
+    iva:
+      numberFromPayload(uiTotals?.iva) ??
+      numberFromPayload(uiTotals?.tax) ??
+      numberFromPayload(totals?.tax) ??
+      numberFromPayload(totals?.iva) ??
+      numberFromPayload(data.iva),
+    total:
+      numberFromPayload(uiTotals?.total) ??
+      numberFromPayload(totals?.total) ??
+      numberFromPayload(data.total),
+    items,
   }
 }
 
@@ -207,7 +270,7 @@ function createStyles(StyleSheet: ReactPdfComponents['StyleSheet']) {
       position: 'absolute',
       right: 42,
       bottom: 70,
-      width: 180,
+      width: DOCUMENT_QR_CARD_WIDTH,
       borderWidth: 1,
       borderColor: '#cbd5e1',
       borderRadius: 10,
@@ -215,7 +278,7 @@ function createStyles(StyleSheet: ReactPdfComponents['StyleSheet']) {
       backgroundColor: '#ffffff',
     },
     qrTitle: { fontSize: 9, fontWeight: 'bold', textAlign: 'center', marginBottom: 6 },
-    qrImage: { width: 164, height: 164, alignSelf: 'center' },
+    qrImage: { width: DOCUMENT_QR_IMAGE_SIZE, height: DOCUMENT_QR_IMAGE_SIZE, alignSelf: 'center' },
     qrUrl: { fontSize: 7, color: '#64748b', marginTop: 6, textAlign: 'center' },
     footer: {
       position: 'absolute',
@@ -237,6 +300,7 @@ function DianDocumentPDFCore({ pdf, document, verificationUrl, verificationQrDat
   const styles = createStyles(StyleSheet)
   const payloadSummary = buildPayloadSummary(document.payload)
   const invoice = document.posInvoice
+  const lineItems = invoice?.items?.length ? invoice.items : payloadSummary.items
   const totals = {
     subtotal: invoice?.subtotal ?? payloadSummary.subtotal,
     iva: invoice?.iva ?? payloadSummary.iva,
@@ -319,7 +383,7 @@ function DianDocumentPDFCore({ pdf, document, verificationUrl, verificationQrDat
           ) : null}
         </View>
 
-        {invoice?.items?.length ? (
+        {lineItems.length ? (
           <View style={styles.block}>
             <Text style={styles.blockTitle}>Detalle de la factura</Text>
             <View style={styles.tableHeader}>
@@ -328,7 +392,7 @@ function DianDocumentPDFCore({ pdf, document, verificationUrl, verificationQrDat
               <Text style={styles.colUnit}>P. unit</Text>
               <Text style={styles.colTotal}>Total</Text>
             </View>
-            {invoice.items.map((item, index) => (
+            {lineItems.map((item, index) => (
               <View key={`${item.descripcion}-${index}`} style={styles.tableRow}>
                 <Text style={styles.colDescription}>{item.descripcion}</Text>
                 <Text style={styles.colQty}>{item.quantity}</Text>
@@ -439,7 +503,7 @@ export async function renderDianDocumentPdf(args: { documentId: string; origin: 
       : null,
   }
   const verificationUrl = buildAbsoluteVerificationUrl(args.origin, buildDianDocumentVerificationPath(document.id))
-  const verificationQrDataUrl = await createVerificationQrDataUrl(verificationUrl)
+  const verificationQrDataUrl = await createVerificationQrDataUrl(verificationUrl, DOCUMENT_QR_SIZE)
 
   async function renderDocumentPdf() {
     const pdfDoc = DianDocumentPDFCore({
@@ -472,7 +536,7 @@ export async function renderDianDocumentPdf(args: { documentId: string; origin: 
         createElement(renderer.Text, null, `Tipo: ${hydratedDocument.type}`),
         createElement(renderer.Text, { style: { marginTop: 12 } }, `Verificación: ${verificationUrl}`),
         verificationQrDataUrl
-          ? createElement(renderer.Image, { src: verificationQrDataUrl, style: { width: 180, height: 180, marginTop: 16 } })
+          ? createElement(renderer.Image, { src: verificationQrDataUrl, style: { width: DOCUMENT_QR_SIZE, height: DOCUMENT_QR_SIZE, marginTop: 16 } })
           : null,
       ),
     )
