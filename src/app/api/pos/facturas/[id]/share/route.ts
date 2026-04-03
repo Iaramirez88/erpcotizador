@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { createPosInvoiceShareToken } from '@/lib/share-token'
 import { getRequestBaseUrl } from '@/lib/app-url'
+import { createPosInvoiceAuditEvent } from '@/lib/pos-invoice-audit'
 
 export const runtime = 'nodejs'
 
@@ -37,17 +38,15 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const baseUrl = String(baseUrlRaw || '').replace(/\/+$/, '')
   const url = `${baseUrl}/api/public/pos/facturas/pdf?token=${encodeURIComponent(token)}`
 
-  await prisma.posInvoiceAuditEvent.create({
-    data: {
-      invoiceId: invoice.id,
-      action: 'SHARED_WHATSAPP',
-      performedById: access.userId,
-      after: {
-        url,
-        ttlSeconds,
-      },
+  await createPosInvoiceAuditEvent(prisma, {
+    invoiceId: invoice.id,
+    action: 'SHARED_WHATSAPP',
+    performedById: access.userId,
+    after: {
+      url,
+      ttlSeconds,
     },
-  }).catch(() => null)
+  })
 
   return NextResponse.json({ success: true, data: { url, token, expSeconds: ttlSeconds } })
 }

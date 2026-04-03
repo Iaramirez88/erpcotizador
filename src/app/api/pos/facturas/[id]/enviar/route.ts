@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { getResendClient } from '@/lib/email'
 import { getRequestBaseUrl } from '@/lib/app-url'
+import { createPosInvoiceAuditEvent } from '@/lib/pos-invoice-audit'
 import { renderPosInvoicePdf } from '@/lib/pos-invoice-pdf'
 
 export const runtime = 'nodejs'
@@ -79,19 +80,17 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json({ error: message }, { status: statusCode >= 400 && statusCode < 600 ? statusCode : 500 })
   }
 
-  await prisma.posInvoiceAuditEvent.create({
-    data: {
-      invoiceId: rendered.invoice.id,
-      action: 'SHARED_EMAIL',
-      performedById: access.userId,
-      note: customMessage || null,
-      after: {
-        to: destinatarios,
-        toCount: destinatarios.length,
-        emailId: data?.id ?? null,
-      },
+  await createPosInvoiceAuditEvent(prisma, {
+    invoiceId: rendered.invoice.id,
+    action: 'SHARED_EMAIL',
+    performedById: access.userId,
+    note: customMessage || null,
+    after: {
+      to: destinatarios,
+      toCount: destinatarios.length,
+      emailId: data?.id ?? null,
     },
-  }).catch(() => null)
+  })
 
   return NextResponse.json({ success: true, emailId: data?.id ?? null })
 }

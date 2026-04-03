@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getRequestBaseUrl } from '@/lib/app-url'
+import { createPosInvoiceAuditEvent } from '@/lib/pos-invoice-audit'
 import { verifyPosInvoiceShareToken } from '@/lib/share-token'
 import { renderPosInvoicePdf } from '@/lib/pos-invoice-pdf'
 
@@ -31,14 +32,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Factura no encontrada' }, { status: 404 })
   }
 
-  await prisma.posInvoiceAuditEvent.create({
-    data: {
-      invoiceId: rendered.invoice.id,
-      action: 'PDF_DOWNLOADED',
-      note: 'El PDF público de la factura fue abierto desde un enlace compartido.',
-      after: { channel: 'public_link' },
-    },
-  }).catch(() => null)
+  await createPosInvoiceAuditEvent(prisma, {
+    invoiceId: rendered.invoice.id,
+    action: 'PDF_DOWNLOADED',
+    note: 'El PDF público de la factura fue abierto desde un enlace compartido.',
+    after: { channel: 'public_link' },
+  })
 
   return new NextResponse(rendered.arrayBuffer, {
     headers: {

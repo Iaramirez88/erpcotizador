@@ -3,6 +3,7 @@ import { ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { getRequestBaseUrl } from '@/lib/app-url'
+import { createPosInvoiceAuditEvent } from '@/lib/pos-invoice-audit'
 import { renderPosInvoicePdf } from '@/lib/pos-invoice-pdf'
 
 export const runtime = 'nodejs'
@@ -26,14 +27,12 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ id: str
     const disposition = wantsDownload ? 'attachment' : 'inline'
 
     if (wantsDownload) {
-      await prisma.posInvoiceAuditEvent.create({
-        data: {
-          invoiceId: rendered.invoice.id,
-          action: 'PDF_DOWNLOADED',
-          performedById: access.userId,
-          after: { channel: 'internal_download' },
-        },
-      }).catch(() => null)
+      await createPosInvoiceAuditEvent(prisma, {
+        invoiceId: rendered.invoice.id,
+        action: 'PDF_DOWNLOADED',
+        performedById: access.userId,
+        after: { channel: 'internal_download' },
+      })
     }
 
     return new NextResponse(rendered.arrayBuffer, {

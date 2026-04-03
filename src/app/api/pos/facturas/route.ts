@@ -22,6 +22,7 @@ import {
   resolveBoldPaymentMethods,
   type PosFinalizePaymentInput,
 } from '@/lib/pos-payments'
+import { createPosInvoiceAuditEvent } from '@/lib/pos-invoice-audit'
 import { ensureWorkOrderFromInvoice, resolveClienteIdForPosInvoice, WorkOrderClientResolutionError } from '@/lib/work-orders'
 import { reserveNextPosInvoiceNumber } from '@/lib/pos-numbering'
 
@@ -402,31 +403,30 @@ export async function POST(request: Request) {
         select: { id: true, numero: true, status: true, total: true, warehouseId: true },
       })
 
-      await tx.posInvoiceAuditEvent.create({
-        data: {
-          invoiceId: invoice.id,
-          action: 'CREATED',
-          performedById: createdBy?.id ?? null,
-          after: {
-            numero: invoice.numero,
-            status: invoice.status,
-            total: invoice.total,
-            warehouseId: invoice.warehouseId,
-            clienteNombre,
-            clienteDocumento,
-            ivaPct,
-            discountAmount: discountFinal,
-            otherTaxesAmount: otherTaxesAmountInput,
-            subtotal,
-            iva,
-            items: computedLineTotals.map((it) => ({
-              materialId: it.materialId,
-              descripcion: it.descripcion,
-              quantity: it.quantity,
-              unitPrice: it.unitPrice,
-              total: it.total,
-            })),
-          },
+      await createPosInvoiceAuditEvent(tx, {
+        invoiceId: invoice.id,
+        action: 'CREATED',
+        performedById: createdBy?.id ?? null,
+        fallbackMode: 'skip',
+        after: {
+          numero: invoice.numero,
+          status: invoice.status,
+          total: invoice.total,
+          warehouseId: invoice.warehouseId,
+          clienteNombre,
+          clienteDocumento,
+          ivaPct,
+          discountAmount: discountFinal,
+          otherTaxesAmount: otherTaxesAmountInput,
+          subtotal,
+          iva,
+          items: computedLineTotals.map((it) => ({
+            materialId: it.materialId,
+            descripcion: it.descripcion,
+            quantity: it.quantity,
+            unitPrice: it.unitPrice,
+            total: it.total,
+          })),
         },
       })
 
