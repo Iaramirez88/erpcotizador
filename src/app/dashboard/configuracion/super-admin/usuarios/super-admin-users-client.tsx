@@ -411,7 +411,7 @@ export default function SuperAdminUsersClient() {
             <div className="py-6 text-sm text-muted-foreground">{t('superAdmin.users.empty')}</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-sm">
+              <table className="w-full min-w-[760px] sm:min-w-[900px] text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="py-2 pr-4">{t('superAdmin.users.columns.user')}</th>

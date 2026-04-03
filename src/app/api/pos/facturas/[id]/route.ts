@@ -401,7 +401,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     return NextResponse.json({ success: true, data: detail })
   } catch (error) {
     if (error instanceof Error && error.message === 'MATERIAL_NOT_FOUND') {
-      return NextResponse.json({ error: 'Material no encontrado' }, { status: 404 })
+      return NextResponse.json({ error: 'Producto no encontrado' }, { status: 404 })
     }
 
     console.error('Error al actualizar factura POS:', error)

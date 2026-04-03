@@ -68,7 +68,7 @@ export async function GET(
 
     if (!material) {
       return NextResponse.json(
-        { error: "Material no encontrado" },
+        { error: "Producto no encontrado" },
         { status: 404 }
       )
     }
@@ -446,7 +446,7 @@ export async function PUT(
 
     return NextResponse.json({
       success: true,
-      message: "Material actualizado exitosamente",
+      message: "Producto actualizado exitosamente",
       data: material
     })
 
@@ -494,7 +494,7 @@ export async function DELETE(
 
     if (!material) {
       return NextResponse.json(
-        { error: "Material no encontrado" },
+        { error: "Producto no encontrado" },
         { status: 404 }
       )
     }
@@ -502,7 +502,7 @@ export async function DELETE(
     if (material._count.items > 0) {
       return NextResponse.json(
         { 
-          error: "No se puede eliminar un material usado en cotizaciones",
+          error: "No se puede eliminar un producto usado en cotizaciones",
           suggestion: "Considera desactivarlo en lugar de eliminarlo"
         },
         { status: 400 }
@@ -515,7 +515,7 @@ export async function DELETE(
 
     return NextResponse.json({
       success: true,
-      message: "Material eliminado exitosamente"
+      message: "Producto eliminado exitosamente"
     })
 
   } catch (error) {

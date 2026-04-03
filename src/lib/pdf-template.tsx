@@ -830,7 +830,7 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
             <View style={styles.table}>
               {unidadItems.length > 0 ? <Text style={styles.smallMuted}>Ítems por metraje</Text> : null}
               <View style={styles.tableHeader}>
-                <Text style={styles.col1}>Material</Text>
+                <Text style={styles.col1}>Producto</Text>
                 <Text style={styles.col2}>Ancho (m)</Text>
                 <Text style={styles.col3}>Alto (m)</Text>
                 <Text style={styles.col4}>Medida / Cant</Text>

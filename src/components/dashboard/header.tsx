@@ -150,10 +150,10 @@ export default function Header({ user }: HeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/60 bg-white/72 px-2.5 py-2 shadow-[0_10px_24px_-22px_rgba(15,23,42,0.3)] backdrop-blur-xl sm:px-3 lg:px-4">
-      <div className="mx-auto flex w-full max-w-[1680px] items-center justify-between">
+    <header className="sticky top-0 z-50 border-b border-white/60 bg-white/72 px-2 py-2 shadow-[0_10px_24px_-22px_rgba(15,23,42,0.3)] backdrop-blur-xl sm:px-3 lg:px-4">
+      <div className="mx-auto flex w-full max-w-[1680px] items-center justify-between gap-2">
         {/* Breadcrumb / Title */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex min-w-0 items-center gap-1.5">
           <Button
             variant="ghost"
             size="icon"
@@ -167,17 +167,17 @@ export default function Header({ user }: HeaderProps) {
             </svg>
           </Button>
 
-          <h2 className="text-sm font-semibold text-slate-900 sm:text-base">{t('header.controlPanel')}</h2>
+          <h2 className="truncate text-sm font-semibold text-slate-900 sm:text-base">{t('header.controlPanel')}</h2>
         </div>
 
         {/* Actions */}
-        <div className="flex items-center space-x-1.5 sm:space-x-2.5">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2.5">
           <NotificationsBell onUnreadCountChange={setUnreadCount} />
 
           {/* Más opciones */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" type="button" className="relative h-8 bg-white/80 px-2.5">
+              <Button variant="outline" size="sm" type="button" className="relative h-8 bg-white/80 px-2 text-xs sm:px-2.5 sm:text-sm">
                 {t('common.more')}
               </Button>
             </DropdownMenuTrigger>
@@ -248,7 +248,7 @@ export default function Header({ user }: HeaderProps) {
           </DropdownMenu>
 
           {/* User Menu */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <div className="relative h-8 w-8 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm">
               {user.image ? (
                 <Image src={user.image} alt={user.name ?? 'Usuario'} fill className="object-cover" sizes="32px" unoptimized />

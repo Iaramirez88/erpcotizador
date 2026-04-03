@@ -844,215 +844,206 @@ export default function CotizacionesPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-3">
-          {cotizaciones.map((cot) => (
-            <Card key={cot.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-semibold">{cot.numero}</h3>
+        <div className="space-y-3">
+          <div className="overflow-x-auto rounded-xl border bg-white">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="py-2 pr-4 pl-4">{t('quotes.columns.date')}</th>
+                  <th className="py-2 pr-4">{t('quotes.columns.number')}</th>
+                  <th className="py-2 pr-4">{t('quotes.columns.client')}</th>
+                  <th className="py-2 pr-4">{t('quotes.columns.status')}</th>
+                  <th className="py-2 pr-4">{t('quotes.columns.items')}</th>
+                  <th className="py-2 pr-4">{t('quotes.columns.total')}</th>
+                  <th className="py-2 pr-4 text-right">{t('quotes.columns.actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cotizaciones.map((cot) => (
+                  <tr key={cot.id} className="border-b last:border-b-0 align-top">
+                    <td className="py-3 pr-4 pl-4 whitespace-nowrap text-muted-foreground">
+                      {formatDate(cot.createdAt)}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <div className="font-medium text-foreground">{cot.numero}</div>
+                      {cot.ventaRealizadaAt ? (
+                        <span className="mt-1 inline-flex rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-800">
+                          Venta realizada
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="py-3 pr-4 text-foreground">{cot.cliente.nombre}</td>
+                    <td className="py-3 pr-4">
                       <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${getEstadoColor(
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${getEstadoColor(
                           cot.estado
                         )}`}
                       >
                         {getEstadoIcon(cot.estado)}
                         {getEstadoLabel(cot.estado)}
                       </span>
-                      {cot.ventaRealizadaAt ? (
-                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          Venta realizada
-                        </span>
+                    </td>
+                    <td className="py-3 pr-4 text-foreground">
+                      <div>{cot.items.length}</div>
+                      {(cot.postApprovalEditCount ?? 0) > 0 ? (
+                        <div className="text-xs text-muted-foreground">Post-aprob.: {cot.postApprovalEditCount}</div>
                       ) : null}
-                    </div>
-                    
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm text-muted-foreground mb-2">
-                      <div>
-                        <span className="font-medium">{t('quotes.fields.client')}</span>
-                        <p className="text-gray-900">{cot.cliente.nombre}</p>
-                      </div>
-                      <div>
-                        <span className="font-medium">{t('quotes.fields.date')}</span>
-                        <p className="text-gray-900">{formatDate(cot.createdAt)}</p>
-                      </div>
-                      <div>
-                        <span className="font-medium">{t('quotes.fields.items')}</span>
-                        <p className="text-gray-900">{cot.items.length}</p>
-                        {(cot.postApprovalEditCount ?? 0) > 0 ? (
-                          <p className="text-xs text-muted-foreground">
-                            Post-aprob.: {cot.postApprovalEditCount}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div>
-                        <span className="font-medium">{t('quotes.fields.total')}</span>
-                        <p className="text-gray-900 text-lg font-semibold">
-                          {formatCurrency(cot.total)}
-                        </p>
-                        {typeof cot.ganancia === 'number' && Number.isFinite(cot.ganancia) ? (
-                          <p className="text-xs text-muted-foreground">
-                            Ganancia: {formatCurrency(cot.ganancia)}
-                            {typeof cot.margenPct === 'number' && Number.isFinite(cot.margenPct)
-                              ? ` (${cot.margenPct.toFixed(1)}%)`
-                              : ''}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Acciones */}
-                  <div className="flex gap-2 ml-4">
-                    {/* Preview */}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => abrirPreview(cot)}
-                      title={t('quotes.actions.preview')}
-                    >
-                      <Eye className="w-4 h-4" />
-                    </Button>
-
-                    {/* Trazabilidad */}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void abrirTrazabilidad(cot)}
-                      title="Trazabilidad"
-                    >
-                      <History className="w-4 h-4" />
-                    </Button>
-
-                    {/* Editar (permitido también en aprobadas; se bloquea si ya tiene orden) */}
-                    {!cot.orden ? (
-                      <Link href={`/dashboard/cotizador?id=${cot.id}`}>
-                        <Button size="sm" variant="outline" title={t('quotes.actions.edit')}>
-                          <Pencil className="w-4 h-4" />
+                    </td>
+                    <td className="py-3 pr-4 whitespace-nowrap">
+                      <div className="font-medium text-foreground">{formatCurrency(cot.total)}</div>
+                      {typeof cot.ganancia === 'number' && Number.isFinite(cot.ganancia) ? (
+                        <div className="text-xs text-muted-foreground">
+                          Ganancia: {formatCurrency(cot.ganancia)}
+                          {typeof cot.margenPct === 'number' && Number.isFinite(cot.margenPct)
+                            ? ` (${cot.margenPct.toFixed(1)}%)`
+                            : ''}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <div className="flex min-w-[280px] flex-wrap justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-9 w-9 rounded-full p-0"
+                          onClick={() => abrirPreview(cot)}
+                          title={t('quotes.actions.preview')}
+                        >
+                          <Eye className="w-4 h-4" />
                         </Button>
-                      </Link>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        title="No se puede editar: tiene una orden asociada"
-                        disabled
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                    )}
-
-                    {/* Aprobar */}
-                    {cot.estado !== 'APROBADA' && cot.estado !== 'CONVERTIDA' && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => aprobarCotizacion(cot.id, cot.numero)}
-                        disabled={aprobando === cot.id}
-                        title={t('quotes.actions.approveToSend')}
-                      >
-                        {aprobando === cot.id ? (
-                          <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-9 w-9 rounded-full p-0"
+                          onClick={() => void abrirTrazabilidad(cot)}
+                          title="Trazabilidad"
+                        >
+                          <History className="w-4 h-4" />
+                        </Button>
+                        {!cot.orden ? (
+                          <Link href={`/dashboard/cotizador?id=${cot.id}`}>
+                            <Button size="sm" variant="outline" className="h-9 w-9 rounded-full p-0" title={t('quotes.actions.edit')}>
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                          </Link>
                         ) : (
-                          <CheckCircle className="w-4 h-4" />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-9 w-9 rounded-full p-0"
+                            title="No se puede editar: tiene una orden asociada"
+                            disabled
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
                         )}
-                      </Button>
-                    )}
-
-                    {/* Crear factura (solo si está aprobada) */}
-                    {cot.estado === 'APROBADA' ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => facturarCotizacion(cot.id, cot.numero)}
-                        title={!electronicBillingEnabled ? t('quoteBuilder.preview.billingDisabled') : t('quotes.actions.createInvoice')}
-                        disabled={!electronicBillingEnabled || facturando === cot.id}
-                      >
-                        {facturando === cot.id ? (
-                          <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <FileText className="w-4 h-4" />
+                        {cot.estado !== 'APROBADA' && cot.estado !== 'CONVERTIDA' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-9 w-9 rounded-full p-0"
+                            onClick={() => aprobarCotizacion(cot.id, cot.numero)}
+                            disabled={aprobando === cot.id}
+                            title={t('quotes.actions.approveToSend')}
+                          >
+                            {aprobando === cot.id ? (
+                              <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <CheckCircle className="w-4 h-4" />
+                            )}
+                          </Button>
                         )}
-                      </Button>
-                    ) : null}
-
-                    {/* Botón para crear orden (solo si está aprobada y no tiene orden) */}
-                    {cot.estado === 'APROBADA' && !cot.orden && (
-                      <Button
-                        size="sm"
-                        variant="default"
-                        onClick={() => crearOrden(cot.id, cot.numero)}
-                        title={t('quotes.actions.createOrder')}
-                      >
-                        <ClipboardCheck className="w-4 h-4 mr-1" />
-                        <span className="hidden sm:inline">{t('quotes.actions.createOrderShort')}</span>
-                      </Button>
-                    )}
-
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => descargarPDF(cot.id, cot.numero)}
-                      title={t('quotes.actions.downloadPdf')}
-                    >
-                      <Download className="w-4 h-4" />
-                    </Button>
-                    
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => enviarPorEmail(cot)}
-                      disabled={enviando === cot.id}
-                      title={t('quotes.actions.sendEmail')}
-                      className="relative"
-                    >
-                      {enviando === cot.id ? (
-                        <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <Mail className="w-4 h-4" />
-                      )}
-
-                      {cot.emailSentCount > 0 && (
-                        <span className="absolute -top-1 -right-1 min-w-4 h-4 rounded-full bg-primary text-primary-foreground text-[10px] px-1 flex items-center justify-center">
-                          {cot.emailSentCount}
-                        </span>
-                      )}
-                    </Button>
-
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => compartirPorWhatsApp(cot)}
-                      disabled={compartiendo === cot.id}
-                      title={t('quotes.actions.shareWhatsapp')}
-                      className="relative"
-                    >
-                      {compartiendo === cot.id ? (
-                        <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <MessageCircle className="w-4 h-4" />
-                      )}
-
-                      {cot.whatsappSentCount > 0 && (
-                        <span className="absolute -top-1 -right-1 min-w-4 h-4 rounded-full bg-emerald-600 text-white text-[10px] px-1 flex items-center justify-center">
-                          {cot.whatsappSentCount}
-                        </span>
-                      )}
-                    </Button>
-
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => eliminarCotizacion(cot.id, cot.numero)}
-                      title={t('quotes.actions.delete')}
-                    >
-                      <Trash2 className="w-4 h-4 text-red-600" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                        {cot.estado === 'APROBADA' ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-9 w-9 rounded-full p-0"
+                            onClick={() => facturarCotizacion(cot.id, cot.numero)}
+                            title={!electronicBillingEnabled ? t('quoteBuilder.preview.billingDisabled') : t('quotes.actions.createInvoice')}
+                            disabled={!electronicBillingEnabled || facturando === cot.id}
+                          >
+                            {facturando === cot.id ? (
+                              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <FileText className="w-4 h-4" />
+                            )}
+                          </Button>
+                        ) : null}
+                        {cot.estado === 'APROBADA' && !cot.orden && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="h-9 rounded-full px-3"
+                            onClick={() => crearOrden(cot.id, cot.numero)}
+                            title={t('quotes.actions.createOrder')}
+                          >
+                            <ClipboardCheck className="w-4 h-4 sm:mr-1" />
+                            <span className="hidden sm:inline">{t('quotes.actions.createOrderShort')}</span>
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-9 w-9 rounded-full p-0"
+                          onClick={() => descargarPDF(cot.id, cot.numero)}
+                          title={t('quotes.actions.downloadPdf')}
+                        >
+                          <Download className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => enviarPorEmail(cot)}
+                          disabled={enviando === cot.id}
+                          title={t('quotes.actions.sendEmail')}
+                          className="relative h-9 w-9 rounded-full p-0"
+                        >
+                          {enviando === cot.id ? (
+                            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <Mail className="w-4 h-4" />
+                          )}
+                          {cot.emailSentCount > 0 && (
+                            <span className="absolute -top-1 -right-1 min-w-4 h-4 rounded-full bg-primary text-primary-foreground text-[10px] px-1 flex items-center justify-center">
+                              {cot.emailSentCount}
+                            </span>
+                          )}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => compartirPorWhatsApp(cot)}
+                          disabled={compartiendo === cot.id}
+                          title={t('quotes.actions.shareWhatsapp')}
+                          className="relative h-9 w-9 rounded-full p-0"
+                        >
+                          {compartiendo === cot.id ? (
+                            <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <MessageCircle className="w-4 h-4" />
+                          )}
+                          {cot.whatsappSentCount > 0 && (
+                            <span className="absolute -top-1 -right-1 min-w-4 h-4 rounded-full bg-emerald-600 text-white text-[10px] px-1 flex items-center justify-center">
+                              {cot.whatsappSentCount}
+                            </span>
+                          )}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-9 w-9 rounded-full p-0"
+                          onClick={() => eliminarCotizacion(cot.id, cot.numero)}
+                          title={t('quotes.actions.delete')}
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           {/* Paginación */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pt-2">

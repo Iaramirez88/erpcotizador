@@ -831,7 +831,7 @@ export default function Sidebar({ user }: SidebarProps) {
         className={cn(
           "flex flex-col border-r border-white/10 bg-[linear-gradient(180deg,#0f172a_0%,#111827_52%,#101a2d_100%)] text-slate-100 shadow-[18px_0_40px_-32px_rgba(15,23,42,0.75)]",
           "fixed inset-y-0 left-0 z-50 md:static",
-          sidebarCollapsed ? "w-18" : "w-68 md:w-60",
+          sidebarCollapsed ? "w-[4.5rem]" : "w-[88vw] max-w-[320px] md:w-60 md:max-w-none",
           "transform transition-transform md:translate-x-0",
           mobileNavOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
@@ -852,6 +852,17 @@ export default function Sidebar({ user }: SidebarProps) {
                 <p className="text-[11px] text-slate-400">Cotizador Pro</p>
               </div>
             ) : null}
+
+            <button
+              type="button"
+              className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-slate-200 hover:bg-white/10 md:hidden"
+              onClick={() => setMobileNavOpen(false)}
+              aria-label="Cerrar menú"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
 
             <button
               type="button"

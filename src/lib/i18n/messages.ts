@@ -797,7 +797,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'pos.errors.createReturnFailed': 'No se pudo crear la devolución.',
     'pos.errors.loadReturnDetailFailed': 'No se pudo cargar el detalle de la devolución.',
 
-    'pos.finalize.details.material': 'Material',
+    'pos.finalize.details.material': 'Producto',
     'pos.finalize.details.required': 'Requerido',
     'pos.finalize.details.warehouse': 'Sede',
     'pos.finalize.details.warehouseAvailable': 'Disponible en sede',
@@ -829,7 +829,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'pos.stock.actions.refresh': 'Refrescar',
     'pos.stock.selectWarehouse': 'Selecciona una sede para ver el stock.',
     'pos.stock.empty': 'No hay stock para mostrar.',
-    'pos.stock.columns.material': 'Material',
+    'pos.stock.columns.material': 'Producto',
     'pos.stock.columns.quantity': 'Cant.',
     'pos.stock.columns.unit': 'Unidad',
     'pos.stock.columns.updatedAt': 'Actualizado',
@@ -860,7 +860,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
 
     'pos.items.title': 'Ítems',
     'pos.items.addItem': '+ Agregar ítem',
-    'pos.items.columns.material': 'Material',
+    'pos.items.columns.material': 'Producto',
     'pos.items.columns.description': 'Descripción',
     'pos.items.columns.quantity': 'Cant.',
     'pos.items.columns.price': 'Precio',
@@ -1572,6 +1572,14 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
 
     'quotes.empty.title': 'No hay cotizaciones',
     'quotes.empty.createFirst': 'Crear primera cotización',
+
+    'quotes.columns.date': 'Fecha',
+    'quotes.columns.number': 'Número',
+    'quotes.columns.client': 'Cliente',
+    'quotes.columns.status': 'Estado',
+    'quotes.columns.items': 'Ítems',
+    'quotes.columns.total': 'Total',
+    'quotes.columns.actions': 'Acciones',
 
     'quotes.fields.client': 'Cliente:',
     'quotes.fields.date': 'Fecha:',
@@ -2892,7 +2900,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'pos.errors.createReturnFailed': 'Could not create the return.',
     'pos.errors.loadReturnDetailFailed': 'Could not load return details.',
 
-    'pos.finalize.details.material': 'Material',
+    'pos.finalize.details.material': 'Product',
     'pos.finalize.details.required': 'Required',
     'pos.finalize.details.warehouse': 'Warehouse',
     'pos.finalize.details.warehouseAvailable': 'Available in warehouse',
@@ -2924,7 +2932,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'pos.stock.actions.refresh': 'Refresh',
     'pos.stock.selectWarehouse': 'Select a warehouse to view stock.',
     'pos.stock.empty': 'No stock to display.',
-    'pos.stock.columns.material': 'Material',
+    'pos.stock.columns.material': 'Product',
     'pos.stock.columns.quantity': 'Qty',
     'pos.stock.columns.unit': 'Unit',
     'pos.stock.columns.updatedAt': 'Updated',
@@ -2955,7 +2963,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
 
     'pos.items.title': 'Items',
     'pos.items.addItem': '+ Add item',
-    'pos.items.columns.material': 'Material',
+    'pos.items.columns.material': 'Product',
     'pos.items.columns.description': 'Description',
     'pos.items.columns.quantity': 'Qty',
     'pos.items.columns.price': 'Price',
@@ -3667,6 +3675,14 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
 
     'quotes.empty.title': 'No quotes',
     'quotes.empty.createFirst': 'Create first quote',
+
+    'quotes.columns.date': 'Date',
+    'quotes.columns.number': 'Number',
+    'quotes.columns.client': 'Customer',
+    'quotes.columns.status': 'Status',
+    'quotes.columns.items': 'Items',
+    'quotes.columns.total': 'Total',
+    'quotes.columns.actions': 'Actions',
 
     'quotes.fields.client': 'Customer:',
     'quotes.fields.date': 'Date:',

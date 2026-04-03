@@ -449,7 +449,7 @@ export default function OrdenesPage() {
   };
 
   return (
-    <div className="space-y-6 p-8">
+    <div className="space-y-6 p-4 sm:p-6">
       <ErpPageHero
         eyebrow="ERP operativo"
         title={t('orders.title')}
@@ -612,7 +612,7 @@ export default function OrdenesPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => openEditDialog(orden)}
-                      className="min-w-[148px]"
+                      className="w-full sm:min-w-[148px]"
                     >
                       <PencilLine className="mr-2 h-4 w-4" />
                       {t('orders.actions.manage')}
@@ -623,7 +623,7 @@ export default function OrdenesPage() {
                         size="sm"
                         onClick={() => void borrarOrden(orden)}
                         disabled={deletingId === orden.id}
-                        className="min-w-[148px]"
+                        className="w-full sm:min-w-[148px]"
                       >
                         <Trash2 className="w-4 h-4 mr-2" />
                         {deletingId === orden.id ? t('orders.delete.deleting') : t('orders.delete.action')}

@@ -239,7 +239,7 @@ export default function PlantillaPosInvoicePage() {
               { value: 'header', label: 'Encabezado' },
               { value: 'footer', label: 'Pie' },
             ]}
-            listClassName="grid w-full grid-cols-5"
+            listClassName="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
           >
 
             <TabsContent value="page" className="space-y-4">

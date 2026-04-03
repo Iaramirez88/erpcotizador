@@ -25,7 +25,7 @@ const PDFViewer = dynamic(
 )
 
 import { RemisionPDF } from '@/lib/remision-pdf-template.client'
-import { Download } from 'lucide-react'
+import { Download, Eye, Mail, MessageCircle, Trash2 } from 'lucide-react'
 
 type Warehouse = { id: string; nombre: string; codigo?: string | null; isDefault?: boolean }
 
@@ -352,7 +352,7 @@ export default function RemisionesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Remisiones</h1>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Remisiones</h1>
           <p className="text-muted-foreground">Salida de inventario con trazabilidad por documento.</p>
         </div>
 
@@ -396,94 +396,117 @@ export default function RemisionesPage() {
           ) : filtered.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">No hay remisiones.</div>
           ) : (
-            <div className="space-y-3">
-              {filtered.map((r) => (
-                <div key={r.id} className="rounded-lg border p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div className="font-semibold">{r.numero}</div>
+            <div className="overflow-x-auto rounded-xl border bg-white">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="py-2 pr-4 pl-4">Fecha</th>
+                    <th className="py-2 pr-4">Número</th>
+                    <th className="py-2 pr-4">Cliente</th>
+                    <th className="py-2 pr-4">Sede</th>
+                    <th className="py-2 pr-4">Estado</th>
+                    <th className="py-2 pr-4">Detalle</th>
+                    <th className="py-2 pr-4 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((r) => (
+                    <tr key={r.id} className="border-b last:border-b-0 align-top">
+                      <td className="py-3 pr-4 pl-4 whitespace-nowrap text-muted-foreground">
+                        {new Date(r.createdAt).toLocaleString('es-CO')}
+                      </td>
+                      <td className="py-3 pr-4 font-medium text-foreground">{r.numero}</td>
+                      <td className="py-3 pr-4 text-foreground">{r.clienteNombre || 'Consumidor final'}</td>
+                      <td className="py-3 pr-4 text-muted-foreground">{r.warehouse?.nombre || '(global)'}</td>
+                      <td className="py-3 pr-4">
                         <span
                           className={
-                            "text-xs px-2 py-1 rounded border " +
-                            (r.status === "EMITIDA"
-                              ? "bg-green-50 text-green-700 border-green-200"
-                              : "bg-slate-50 text-slate-700 border-slate-200")
+                            'inline-flex rounded-full border px-2 py-1 text-xs font-medium ' +
+                            (r.status === 'EMITIDA'
+                              ? 'border-green-200 bg-green-50 text-green-700'
+                              : 'border-slate-200 bg-slate-50 text-slate-700')
                           }
                         >
                           {r.status}
                         </span>
-                      </div>
-                      <div className="text-sm text-muted-foreground mt-1">
-                        {r.warehouse?.nombre ? `Sede: ${r.warehouse.nombre}` : "Sede: (global)"}
-                        {r.clienteNombre ? ` · Cliente: ${r.clienteNombre}` : ""}
-                        {r.items?.length ? ` · Items: ${r.items.length}` : ""}
-                      </div>
-                      {r.note ? <div className="text-sm mt-2">{r.note}</div> : null}
-                      {r.items?.length ? (
-                        <div className="text-sm mt-2">
-                          <div className="text-xs text-muted-foreground">Detalle:</div>
-                          <ul className="list-disc pl-5">
-                            {r.items.slice(0, 5).map((it) => (
-                              <li key={it.id}>
-                                {it.material?.nombre} — {it.quantity} {formatUnidadMedidaLabel(it.material?.unidadMedida)}
-                              </li>
-                            ))}
-                            {r.items.length > 5 ? <li>…</li> : null}
-                          </ul>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <div className="max-w-xs text-sm text-foreground">
+                          {r.items?.length ? (
+                            <>
+                              <div>
+                                {r.items.slice(0, 2).map((it) => (
+                                  `${it.material?.nombre} x${it.quantity} ${formatUnidadMedidaLabel(it.material?.unidadMedida)}`
+                                )).join(' · ')}
+                              </div>
+                              {r.items.length > 2 ? (
+                                <div className="text-xs text-muted-foreground">+{r.items.length - 2} productos más</div>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">Sin detalle</span>
+                          )}
+                          {r.note ? <div className="mt-1 text-xs text-muted-foreground">{r.note}</div> : null}
                         </div>
-                      ) : null}
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {r.status === "EMITIDA" ? (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => abrirPreview(r)}
-                            title="Vista Previa"
-                          >
-                            👁️ Preview
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => descargarPDF(r.id, r.numero)}
-                            title="Descargar PDF"
-                          >
-                            📄 PDF
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => enviarPorEmail(r)}
-                            disabled={enviando === r.id}
-                            title="Enviar por Email"
-                          >
-                            {enviando === r.id ? "Enviando..." : "📧 Email"}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => compartirWhatsApp(r)}
-                            title="Compartir por WhatsApp"
-                          >
-                            💬 WhatsApp
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => anular(r.id)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            Anular
-                          </Button>
-                        </>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              ))}
+                      </td>
+                      <td className="py-3 pr-4">
+                        <div className="flex min-w-[220px] flex-wrap justify-end gap-2">
+                          {r.status === 'EMITIDA' ? (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-9 w-9 rounded-full p-0"
+                                onClick={() => abrirPreview(r)}
+                                title="Vista previa"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-9 w-9 rounded-full p-0"
+                                onClick={() => descargarPDF(r.id, r.numero)}
+                                title="Descargar PDF"
+                              >
+                                <Download className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-9 w-9 rounded-full p-0"
+                                onClick={() => enviarPorEmail(r)}
+                                disabled={enviando === r.id}
+                                title="Enviar por email"
+                              >
+                                <Mail className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-9 w-9 rounded-full p-0"
+                                onClick={() => compartirWhatsApp(r)}
+                                title="Compartir por WhatsApp"
+                              >
+                                <MessageCircle className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-9 w-9 rounded-full p-0 text-red-600 hover:text-red-700"
+                                onClick={() => anular(r.id)}
+                                title="Anular remisión"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>

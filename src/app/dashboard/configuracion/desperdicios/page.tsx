@@ -178,7 +178,7 @@ export default function ConfigDesperdiciosPage() {
 
           <div className="flex items-end gap-2">
             <div className="flex-1">
-              <Label>Buscar material</Label>
+              <Label>Buscar producto</Label>
               <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Vinilo, lona, papel…" />
             </div>
             <Button type="button" onClick={save} disabled={loading || saving}>
@@ -188,7 +188,7 @@ export default function ConfigDesperdiciosPage() {
 
           <div className="border rounded-md">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 px-3 py-2 text-xs text-muted-foreground border-b">
-              <div>Material</div>
+              <div>Producto</div>
               <div>Override % (vacío = default)</div>
               <div>Effective</div>
             </div>

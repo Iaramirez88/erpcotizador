@@ -104,6 +104,11 @@ body {
   font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
   font-size: 14px;
   line-height: 1.45;
+  overflow-x: hidden;
+}
+
+html {
+  overflow-x: hidden;
 }
 
 .erp-shell {
@@ -111,11 +116,17 @@ body {
     radial-gradient(circle at top left, rgba(14, 116, 144, 0.1), transparent 26%),
     radial-gradient(circle at 85% 0%, rgba(22, 163, 74, 0.08), transparent 24%),
     linear-gradient(180deg, #f5f4ee 0%, #f8fbff 24%, #f2f7f3 100%);
+  overflow-x: hidden;
 }
 
 .erp-shell__content {
   position: relative;
   z-index: 1;
+  min-width: 0;
+}
+
+.erp-shell__content > * {
+  min-width: 0;
 }
 
 .erp-shell .sgd-card {
@@ -190,6 +201,20 @@ body {
   border-radius: 0.65rem;
 }
 
+.erp-shell .overflow-x-auto {
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.erp-shell img,
+.erp-shell svg,
+.erp-shell canvas,
+.erp-shell video,
+.erp-shell iframe {
+  max-width: 100%;
+}
+
 @keyframes sgd-skeleton-shimmer {
   0% {
     transform: translateX(-120%);
@@ -221,5 +246,34 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .sgd-skeleton::after {
     animation: none;
+  }
+}
+
+@media (max-width: 767px) {
+  body {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  .erp-shell__content {
+    gap: 0.75rem;
+  }
+
+  .erp-shell h1 {
+    font-size: clamp(1.35rem, 5.6vw, 1.9rem);
+    line-height: 1.15;
+  }
+
+  .erp-shell h2 {
+    font-size: clamp(1.05rem, 4.7vw, 1.35rem);
+    line-height: 1.2;
+  }
+
+  .erp-shell .sgd-card {
+    border-radius: 1rem;
+  }
+
+  .erp-shell .overflow-x-auto {
+    padding-bottom: 0.25rem;
   }
 }

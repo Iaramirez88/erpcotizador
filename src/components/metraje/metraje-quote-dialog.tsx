@@ -661,7 +661,7 @@ export function MetrajeQuoteDialog(props: {
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Subtotal material:</span>
+              <span className="text-muted-foreground">Subtotal producto:</span>
               <span className="font-medium">{formatCurrency(costoMaterialPorUnidad * cantidadN)}</span>
             </div>
             <div className="flex justify-between">

@@ -4792,7 +4792,7 @@ export function LitografiaQuoteDialog(props: {
                                   Total = {formatCurrency(troqueladaCost)} × {troqueladaQty} = {formatCurrency(troqueladaCostTotal)}.
                                 </p>
                               ) : (
-                                <p className={HELP_TEXT}>Opcional. Este valor corresponde a troquelar el material con un troquel existente.</p>
+                                <p className={HELP_TEXT}>Opcional. Este valor corresponde a troquelar el producto con un troquel existente.</p>
                               )}
                             </div>
 

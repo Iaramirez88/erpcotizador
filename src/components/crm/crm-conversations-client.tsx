@@ -511,7 +511,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   async function saveInterestSelection() {
     if (!selectedConversation) return
     if (!selectedMaterial && !interestNotes.trim()) {
-      alert('Selecciona un producto/material o escribe el interés consignado.')
+      alert('Selecciona un producto o escribe el interés consignado.')
       return
     }
 
@@ -541,7 +541,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
           type: 'NOTE',
           summary: selectedMaterial ? `Interés comercial registrado: ${selectedMaterial.nombre}` : 'Interés comercial registrado desde conversación',
           details: [
-            selectedMaterial ? `Producto/material: ${selectedMaterial.nombre}` : null,
+            selectedMaterial ? `Producto: ${selectedMaterial.nombre}` : null,
             selectedMaterial?.categoria ? `Categoría: ${selectedMaterial.categoria}` : null,
             selectedMaterial?.proveedor ? `Proveedor: ${selectedMaterial.proveedor}` : null,
             stock !== null ? `Stock visible: ${stock}` : null,
@@ -1017,7 +1017,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                     <Card className="rounded-3xl border-slate-200 bg-white/85">
                       <CardHeader>
                         <CardTitle className="text-base">Interés y stock</CardTitle>
-                        <CardDescription>Busca el producto/material que pidió el cliente, valida disponibilidad y deja trazabilidad comercial.</CardDescription>
+                        <CardDescription>Busca el producto que pidió el cliente, valida disponibilidad y deja trazabilidad comercial.</CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
@@ -1030,7 +1030,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                 void searchMaterials()
                               }
                             }}
-                            placeholder="Buscar producto, material, proveedor o categoría..."
+                            placeholder="Buscar producto, proveedor o categoría..."
                           />
                           <Button className="rounded-xl" variant="outline" onClick={() => void searchMaterials()} disabled={materialLoading}>
                             {materialLoading ? 'Buscando...' : 'Buscar stock'}

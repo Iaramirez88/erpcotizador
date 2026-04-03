@@ -151,7 +151,7 @@ export default function TerminadosPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Terminados</h1>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Terminados</h1>
           <p className="text-muted-foreground">Catálogo de acabados (laminado, UV, argollado, etc.).</p>
         </div>
         <Button onClick={openNew}>Nuevo terminado</Button>

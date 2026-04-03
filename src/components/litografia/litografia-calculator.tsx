@@ -4403,7 +4403,7 @@ export function LitografiaCalculator() {
                 <ChevronRight className="absolute left-2.5 top-4 h-3.5 w-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
                 <CardHeader className="pl-8">
                   <CardTitle>Troquel y Troquelada</CardTitle>
-                  <CardDescription>Configura por separado el costo del troquel y el valor de troquelar el material.</CardDescription>
+                  <CardDescription>Configura por separado el costo del troquel y el valor de troquelar el producto.</CardDescription>
                 </CardHeader>
               </summary>
               <CardContent className="space-y-4">
@@ -4585,7 +4585,7 @@ export function LitografiaCalculator() {
                 <div className="space-y-4 rounded-md border p-4">
                   <div>
                     <h4 className="font-medium">Troquelada</h4>
-                    <p className="text-xs text-muted-foreground">Valor de pasar el material por el troquel ya fabricado.</p>
+                    <p className="text-xs text-muted-foreground">Valor de pasar el producto por el troquel ya fabricado.</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">

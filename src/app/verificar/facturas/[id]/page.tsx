@@ -30,11 +30,11 @@ export default async function VerifyPosInvoicePage({ params }: { params: Promise
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(15,118,110,0.14),_transparent_45%),linear-gradient(180deg,#f8fafc_0%,#ecfeff_100%)] px-4 py-10 text-slate-900">
       <div className="mx-auto max-w-3xl space-y-6">
-        <div className="rounded-3xl border border-teal-200 bg-white/90 p-8 shadow-[0_24px_90px_rgba(15,23,42,0.08)] backdrop-blur">
+        <div className="rounded-3xl border border-teal-200 bg-white/90 p-4 shadow-[0_24px_90px_rgba(15,23,42,0.08)] backdrop-blur sm:p-8">
           <div className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">
             Verificación oficial
           </div>
-          <h1 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">Factura interna verificada</h1>
+          <h1 className="mt-4 text-2xl font-semibold tracking-tight text-slate-950 sm:text-3xl">Factura interna verificada</h1>
           <p className="mt-2 text-sm leading-6 text-slate-600">
             Esta URL confirma que la factura fue generada desde SGDigital y conserva su identificador original.
           </p>

@@ -129,6 +129,7 @@ export default function ComprasPage() {
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [formOpen, setFormOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [compras, setCompras] = useState<Compra[]>([])
   const [activeMode, setActiveMode] = useState<PurchaseWorkbenchMode>('purchase')
@@ -206,6 +207,11 @@ export default function ComprasPage() {
     setActiveMode(nextMode)
   }
 
+  function openForm(nextMode: PurchaseWorkbenchMode) {
+    resetForm(nextMode)
+    setFormOpen(true)
+  }
+
   function applyPrefill(prefill: ReturnType<typeof parsePurchaseOrderPrefillParam>) {
     if (!prefill) return
     const nextMode = prefill.mode === 'purchase' ? 'purchase' : 'order'
@@ -232,6 +238,7 @@ export default function ComprasPage() {
           }))
         : [{ descripcion: '', cantidad: 1, precioUnitario: 0, descuento: 0, iva: 0 }]
     )
+      setFormOpen(true)
   }
 
   function loadCompraIntoForm(compra: Compra, nextMode: PurchaseWorkbenchMode = getCompraMode(compra)) {
@@ -259,6 +266,7 @@ export default function ComprasPage() {
           }))
         : [{ descripcion: '', cantidad: 1, precioUnitario: 0, descuento: 0, iva: 0 }]
     )
+      setFormOpen(true)
   }
 
   function getStatusLabel(compra: Compra) {
@@ -438,6 +446,7 @@ export default function ComprasPage() {
       }
 
       resetForm(activeMode)
+      setFormOpen(false)
       await load()
     } catch (e) {
       alert(e instanceof Error ? e.message : t('common.unexpectedError'))
@@ -513,6 +522,12 @@ export default function ComprasPage() {
         actions={
           <>
             <ImportDialog module="compras" title={t('purchases.actions.import')} />
+            <Button onClick={() => openForm('purchase')}>
+              Nueva compra
+            </Button>
+            <Button variant="outline" onClick={() => openForm('order')}>
+              Nueva orden
+            </Button>
             <Button variant="outline" asChild>
               <Link href="/dashboard/compras/plantilla">{t('purchases.actions.template')}</Link>
             </Button>
@@ -537,6 +552,29 @@ export default function ComprasPage() {
           <TabsTrigger value="purchase" className="rounded-xl">{t('purchases.modes.purchase')}</TabsTrigger>
           <TabsTrigger value="order" className="rounded-xl">{t('purchases.modes.order')}</TabsTrigger>
         </TabsList>
+
+        <Dialog
+          open={formOpen}
+          onOpenChange={(open) => {
+            setFormOpen(open)
+            if (!open) resetForm(activeMode)
+          }}
+        >
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-6xl">
+            <DialogHeader>
+              <DialogTitle>
+                {activeMode === 'order'
+                  ? editingCompraId
+                    ? t('purchases.actions.updateOrder')
+                    : t('purchases.order.title')
+                  : editingCompraId
+                    ? t('purchases.actions.updatePurchase')
+                    : t('purchases.new.title')}
+              </DialogTitle>
+              <DialogDescription>
+                {activeMode === 'order' ? t('purchases.order.description') : t('purchases.new.description')}
+              </DialogDescription>
+            </DialogHeader>
 
         <TabsContent value="purchase" className="space-y-6">
           <Card>
@@ -805,6 +843,8 @@ export default function ComprasPage() {
             </CardContent>
           </Card>
         </TabsContent>
+          </DialogContent>
+        </Dialog>
 
         <Card>
           <CardHeader>

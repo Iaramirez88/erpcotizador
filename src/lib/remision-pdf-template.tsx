@@ -268,7 +268,7 @@ export function RemisionPDFCore({ pdf, remision, empresa, template }: RemisionPD
               <View style={styles.table}>
                 <View style={styles.tableHeader}>
                   <Text style={styles.col1}>#</Text>
-                  <Text style={styles.col2}>Material</Text>
+                  <Text style={styles.col2}>Producto</Text>
                   <Text style={styles.col3}>Cantidad</Text>
                   <Text style={styles.col4}>Nota</Text>
                 </View>

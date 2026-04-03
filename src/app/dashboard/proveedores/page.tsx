@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ImportDialog } from '@/components/import/import-dialog'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -34,6 +35,7 @@ export default function ProveedoresPage() {
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [items, setItems] = useState<Proveedor[]>([])
 
@@ -48,6 +50,18 @@ export default function ProveedoresPage() {
   const [observaciones, setObservaciones] = useState('')
 
   const query = useMemo(() => search.trim(), [search])
+
+  function resetForm() {
+    setNombre('')
+    setNit('')
+    setTelefono('')
+    setDireccion('')
+    setEmail('')
+    setContacto('')
+    setCiudad('')
+    setDepartamento('')
+    setObservaciones('')
+  }
 
   async function load() {
     setLoading(true)
@@ -92,15 +106,8 @@ export default function ProveedoresPage() {
         throw new Error(err?.error ?? t('suppliers.errors.createFailed'))
       }
 
-      setNombre('')
-      setNit('')
-      setTelefono('')
-      setDireccion('')
-      setEmail('')
-      setContacto('')
-      setCiudad('')
-      setDepartamento('')
-      setObservaciones('')
+      resetForm()
+      setCreateOpen(false)
       await load()
     } catch (e) {
       alert(e instanceof Error ? e.message : t('common.unexpectedError'))
@@ -133,13 +140,16 @@ export default function ProveedoresPage() {
   }
 
   return (
-    <div className="space-y-6 p-8">
+    <div className="space-y-6 p-4 sm:p-6">
       <ErpPageHero
         eyebrow="ERP de abastecimiento"
         title={t('suppliers.title')}
         description={t('suppliers.subtitle')}
         actions={
           <>
+            <Button onClick={() => setCreateOpen(true)}>
+              Nuevo proveedor
+            </Button>
             <ImportDialog
               module="proveedores"
               title={t('suppliers.actions.import')}
@@ -159,12 +169,18 @@ export default function ProveedoresPage() {
         ]}
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('suppliers.create.title')}</CardTitle>
-          <CardDescription>{t('suppliers.create.description')}</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open)
+          if (!open) resetForm()
+        }}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{t('suppliers.create.title')}</DialogTitle>
+            <DialogDescription>{t('suppliers.create.description')}</DialogDescription>
+          </DialogHeader>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-2 lg:col-span-2">
               <Label>{t('suppliers.fields.name')}</Label>
@@ -204,13 +220,13 @@ export default function ProveedoresPage() {
             </div>
           </div>
 
-          <div className="mt-4 flex justify-end">
+          <div className="flex justify-end">
             <Button onClick={create} disabled={saving || !nombre.trim()}>
               {saving ? t('common.saving') : t('suppliers.actions.create')}
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>
