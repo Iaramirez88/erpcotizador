@@ -674,7 +674,7 @@ export default function FloatingChatDrawer() {
                   <button type="button" onClick={() => setActiveTab('crm')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'crm' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
                     CRM
                   </button>
-                  <button type="button" onClick={() => setActiveTab('team')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'team' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                  <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-sm font-medium text-slate-600">
                     Equipo
                   </button>
                 </div>
@@ -812,10 +812,10 @@ export default function FloatingChatDrawer() {
                     <div className="space-y-2">
                       <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contacto, compañero, grupo o mensaje..." className="h-9 rounded-xl border-slate-200 bg-white text-sm" />
                       <div className="hidden grid-cols-3 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:grid">
-                        <button type="button" onClick={() => setActiveTab('updates')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'updates' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                        <button type="button" onClick={() => setActiveTab('updates')} className="rounded-xl px-3 py-1.5 text-sm font-medium text-slate-600">
                           Novedades
                         </button>
-                        <button type="button" onClick={() => setActiveTab('crm')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'crm' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                        <button type="button" onClick={() => setActiveTab('crm')} className="rounded-xl px-3 py-1.5 text-sm font-medium text-slate-600">
                           CRM
                         </button>
                         <button type="button" onClick={() => setActiveTab('team')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'team' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>

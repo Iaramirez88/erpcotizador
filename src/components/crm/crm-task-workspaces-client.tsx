@@ -3,9 +3,11 @@
 import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { ChevronDown, MoreVertical } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -116,6 +118,8 @@ type TaskItem = {
 }
 
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
+type QuickTaskPanelMode = 'attachments' | 'custom-fields' | 'history' | 'note'
+type ExtraTaskColumn = 'attachments' | 'custom-fields' | 'history' | 'note'
 
 const COLOR_PRESETS = ['#0F172A', '#1D4ED8', '#0F766E', '#BE185D', '#7C3AED', '#C2410C', '#DC2626', '#16A34A']
 
@@ -253,10 +257,21 @@ function mapLibraryItemToAttachment(item: CrmFileItem): TaskAttachment {
   }
 }
 
+function getLatestTaskHistoryEntry(task: TaskItem | null | undefined) {
+  if (!task?.history?.length) return null
+  return [...task.history].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] ?? null
+}
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
   const response = await fetch(url, init)
   return (await response.json().catch(() => ({}))) as JsonResponse<T>
 }
+
+const WORKSPACE_PANEL_STORAGE_KEY = 'crm-task-workspaces:workspace-panel-collapsed'
+const TASK_COLUMN_WIDTH_STORAGE_KEY = 'crm-task-workspaces:task-column-width'
+const TASK_EXTRA_COLUMNS_STORAGE_KEY = 'crm-task-workspaces:task-extra-columns'
+const TASK_PRIORITY_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-priority-column-visible'
+const TASK_CREATED_AT_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-created-at-column-visible'
 
 export function CrmTaskWorkspacesClient() {
   const searchParams = useSearchParams()
@@ -281,6 +296,14 @@ export function CrmTaskWorkspacesClient() {
   const [assigneeSearch, setAssigneeSearch] = useState('')
   const [detailAssigneeSearch, setDetailAssigneeSearch] = useState('')
   const [noteDraft, setNoteDraft] = useState('')
+  const [quickTaskPanel, setQuickTaskPanel] = useState<{ taskId: string; mode: QuickTaskPanelMode } | null>(null)
+  const [quickNoteDraft, setQuickNoteDraft] = useState('')
+  const [savingQuickNote, setSavingQuickNote] = useState(false)
+  const [workspacePanelCollapsed, setWorkspacePanelCollapsed] = useState(false)
+  const [taskColumnWidth, setTaskColumnWidth] = useState(160)
+  const [showPriorityColumn, setShowPriorityColumn] = useState(true)
+  const [showCreatedAtColumn, setShowCreatedAtColumn] = useState(false)
+  const [visibleExtraTaskColumns, setVisibleExtraTaskColumns] = useState<ExtraTaskColumn[]>([])
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [tasks, setTasks] = useState<TaskItem[]>([])
   const [users, setUsers] = useState<TeamUser[]>([])
@@ -299,6 +322,12 @@ export function CrmTaskWorkspacesClient() {
   const selectedWorkspace = useMemo(() => workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null, [selectedWorkspaceId, workspaces])
   const canEditTasks = Boolean(selectedWorkspace?.permissions?.canEditTasks)
   const canManageWorkspace = Boolean(selectedWorkspace?.permissions?.canManage)
+  const clampedTaskColumnWidth = useMemo(() => Math.min(240, Math.max(140, taskColumnWidth)), [taskColumnWidth])
+  const totalTaskColumnCount = useMemo(() => 6 + visibleExtraTaskColumns.length + (showPriorityColumn ? 1 : 0) + (showCreatedAtColumn ? 1 : 0), [showCreatedAtColumn, showPriorityColumn, visibleExtraTaskColumns.length])
+  const taskGridTemplate = useMemo(() => `repeat(${totalTaskColumnCount}, ${clampedTaskColumnWidth}px)`, [clampedTaskColumnWidth, totalTaskColumnCount])
+  const taskTableMinWidth = useMemo(() => clampedTaskColumnWidth * totalTaskColumnCount + 80 + 48, [clampedTaskColumnWidth, totalTaskColumnCount])
+  const quickTask = useMemo(() => quickTaskPanel ? tasks.find((task) => task.id === quickTaskPanel.taskId) ?? null : null, [quickTaskPanel, tasks])
+  const quickTaskLatestHistory = useMemo(() => getLatestTaskHistoryEntry(quickTask), [quickTask])
 
   async function loadBase() {
     setLoading(true)
@@ -356,6 +385,44 @@ export function CrmTaskWorkspacesClient() {
 
   useEffect(() => { void loadBase() }, [])
   useEffect(() => { void loadTasks(selectedWorkspaceId) }, [loadTasks, selectedWorkspaceId])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      setWorkspacePanelCollapsed(window.localStorage.getItem(WORKSPACE_PANEL_STORAGE_KEY) === 'true')
+      const savedColumnWidth = Number(window.localStorage.getItem(TASK_COLUMN_WIDTH_STORAGE_KEY) || '')
+      if (Number.isFinite(savedColumnWidth)) {
+        setTaskColumnWidth(Math.min(240, Math.max(140, savedColumnWidth)))
+      }
+      const savedExtraColumns = JSON.parse(window.localStorage.getItem(TASK_EXTRA_COLUMNS_STORAGE_KEY) || '[]') as unknown
+      if (Array.isArray(savedExtraColumns)) {
+        setVisibleExtraTaskColumns(savedExtraColumns.filter((item): item is ExtraTaskColumn => item === 'attachments' || item === 'custom-fields' || item === 'history' || item === 'note'))
+      }
+      const savedPriorityColumn = window.localStorage.getItem(TASK_PRIORITY_COLUMN_STORAGE_KEY)
+      if (savedPriorityColumn === 'true' || savedPriorityColumn === 'false') {
+        setShowPriorityColumn(savedPriorityColumn === 'true')
+      }
+      const savedCreatedAtColumn = window.localStorage.getItem(TASK_CREATED_AT_COLUMN_STORAGE_KEY)
+      if (savedCreatedAtColumn === 'true' || savedCreatedAtColumn === 'false') {
+        setShowCreatedAtColumn(savedCreatedAtColumn === 'true')
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(WORKSPACE_PANEL_STORAGE_KEY, String(workspacePanelCollapsed))
+      window.localStorage.setItem(TASK_COLUMN_WIDTH_STORAGE_KEY, String(clampedTaskColumnWidth))
+      window.localStorage.setItem(TASK_EXTRA_COLUMNS_STORAGE_KEY, JSON.stringify(visibleExtraTaskColumns))
+      window.localStorage.setItem(TASK_PRIORITY_COLUMN_STORAGE_KEY, String(showPriorityColumn))
+      window.localStorage.setItem(TASK_CREATED_AT_COLUMN_STORAGE_KEY, String(showCreatedAtColumn))
+    } catch {
+      // ignore
+    }
+  }, [clampedTaskColumnWidth, showCreatedAtColumn, showPriorityColumn, visibleExtraTaskColumns, workspacePanelCollapsed])
 
   useEffect(() => {
     if (!requestedTaskId) return
@@ -497,6 +564,33 @@ export function CrmTaskWorkspacesClient() {
     }
   }
 
+  function replaceTaskInState(task: TaskItem) {
+    setTasks((current) => current.map((item) => item.id === task.id ? task : item))
+    setSelectedTask((current) => current?.id === task.id ? task : current)
+  }
+
+  function openQuickTaskPanel(taskId: string, mode: QuickTaskPanelMode) {
+    setQuickTaskPanel({ taskId, mode })
+    if (mode === 'note') {
+      setQuickNoteDraft('')
+    }
+  }
+
+  async function handleQuickAddNote() {
+    if (!quickTask || !quickNoteDraft.trim()) return alert('Escribe una nota para registrar en el historial.')
+    if (!canEditTasks) return alert('Tu rol actual en este espacio es solo de lectura.')
+    setSavingQuickNote(true)
+    try {
+      const json = await requestJson<TaskItem>(`/api/crm/tasks/${quickTask.id}/notes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note: quickNoteDraft }) })
+      if (!json.success || !json.data) return alert(json.error || 'No se pudo agregar la nota.')
+      replaceTaskInState(normalizeTask(json.data))
+      setQuickNoteDraft('')
+      setQuickTaskPanel(null)
+    } finally {
+      setSavingQuickNote(false)
+    }
+  }
+
   async function uploadAttachment(file: File) {
     if (!detailForm.id) {
       alert('Abre una tarea antes de adjuntar archivos.')
@@ -559,6 +653,206 @@ export function CrmTaskWorkspacesClient() {
     setCustomFieldDraft({ label: '', type: 'TEXT', textValue: '', file: null })
   }
 
+  function renderTaskAssignments(task: TaskItem) {
+    if (!task.assignments.length) {
+      return <span className="text-xs text-slate-400">Sin responsables</span>
+    }
+
+    return task.assignments.map((assignment) => (
+      <span
+        key={assignment.id}
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-semibold text-sky-800"
+        title={assignment.user.name || assignment.user.email || assignment.user.id}
+      >
+        {initials(assignment.user.name, assignment.user.email)}
+      </span>
+    ))
+  }
+
+  function renderTaskStatusControl(task: TaskItem) {
+    const statusMeta = STATUS_META[task.status]
+    const statusOptions: Array<{ value: TaskStatus; label: string; className: string }> = [
+      { value: 'OPEN', label: 'No iniciado', className: STATUS_META.OPEN.badgeClass },
+      { value: 'IN_PROGRESS', label: 'En curso', className: STATUS_META.IN_PROGRESS.badgeClass },
+      { value: 'DONE', label: 'Finalizada', className: STATUS_META.DONE.badgeClass },
+      { value: 'CANCELED', label: 'Cancelada', className: STATUS_META.CANCELED.badgeClass },
+    ]
+
+    if (!canEditTasks) {
+      return (
+        <span className={`inline-flex w-fit rounded-full border px-3 py-1 text-xs font-semibold ${statusMeta.badgeClass}`}>
+          {statusMeta.label}
+        </span>
+      )
+    }
+
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className={`inline-flex items-center justify-between gap-2 rounded-full border px-3 py-2 text-sm font-semibold shadow-sm transition-colors ${statusMeta.badgeClass}`}
+            style={{ width: `${clampedTaskColumnWidth}px`, maxWidth: `${clampedTaskColumnWidth}px` }}
+            aria-label={`Cambiar estado. Actual: ${statusMeta.label}`}
+          >
+            <span className="truncate">{statusMeta.label}</span>
+            <ChevronDown className="h-4 w-4 opacity-70" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-56 rounded-2xl p-2">
+          {statusOptions.map((option) => (
+            <DropdownMenuItem
+              key={option.value}
+              onSelect={() => void handleUpdateTask(task.id, { status: option.value })}
+              className="rounded-xl px-2 py-1.5"
+            >
+              <span className={`inline-flex w-full items-center justify-between rounded-full border px-3 py-2 text-sm font-semibold ${option.className}`}>
+                <span>{option.label}</span>
+                {task.status === option.value ? <span className="text-xs opacity-80">Actual</span> : null}
+              </span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
+
+  function renderTaskPriorityControl(task: TaskItem) {
+    const priorityMeta = PRIORITY_META[task.priority]
+    const priorityOptions: Array<{ value: TaskPriority; label: string; className: string }> = [
+      { value: 'LOW', label: 'Baja', className: PRIORITY_META.LOW.badgeClass },
+      { value: 'NORMAL', label: 'Normal', className: PRIORITY_META.NORMAL.badgeClass },
+      { value: 'HIGH', label: 'Alta', className: PRIORITY_META.HIGH.badgeClass },
+    ]
+
+    if (!canEditTasks) {
+      return (
+        <span className={`inline-flex w-fit rounded-full border px-3 py-1 text-xs font-semibold ${priorityMeta.badgeClass}`}>
+          {priorityMeta.label}
+        </span>
+      )
+    }
+
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className={`inline-flex items-center justify-between gap-2 rounded-full border px-3 py-2 text-sm font-semibold shadow-sm transition-colors ${priorityMeta.badgeClass}`}
+            style={{ width: `${clampedTaskColumnWidth}px`, maxWidth: `${clampedTaskColumnWidth}px` }}
+            aria-label={`Cambiar prioridad. Actual: ${priorityMeta.label}`}
+          >
+            <span className="truncate">{priorityMeta.label}</span>
+            <ChevronDown className="h-4 w-4 opacity-70" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-56 rounded-2xl p-2">
+          {priorityOptions.map((option) => (
+            <DropdownMenuItem
+              key={option.value}
+              onSelect={() => void handleUpdateTask(task.id, { priority: option.value })}
+              className="rounded-xl px-2 py-1.5"
+            >
+              <span className={`inline-flex w-full items-center justify-between rounded-full border px-3 py-2 text-sm font-semibold ${option.className}`}>
+                <span>{option.label}</span>
+                {task.priority === option.value ? <span className="text-xs opacity-80">Actual</span> : null}
+              </span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
+
+  function renderTaskAttachmentsColumn(task: TaskItem) {
+    const attachments = task.attachmentsJson ?? []
+    const firstImage = attachments.find((attachment) => attachment.type === 'image')
+
+    if (!attachments.length) {
+      return <span className="text-xs text-slate-400">Sin adjuntos</span>
+    }
+
+    return (
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+        {firstImage ? (
+          <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
+            <Image src={firstImage.url} alt={firstImage.name} fill className="object-cover" sizes="40px" unoptimized />
+          </div>
+        ) : (
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-[10px] font-semibold uppercase text-slate-500">
+            {attachments[0]?.type || 'file'}
+          </div>
+        )}
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-slate-700">{attachments[0]?.name || 'Adjunto'}</p>
+          <p className="text-xs text-slate-500">{attachments.length} archivo(s)</p>
+        </div>
+      </div>
+    )
+  }
+
+  function renderTaskCustomFieldsColumn(task: TaskItem) {
+    const customFields = task.customFieldsJson ?? []
+    const firstField = customFields[0]
+
+    if (!firstField) {
+      return <span className="text-xs text-slate-400">Sin campos</span>
+    }
+
+    return (
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-slate-700">{firstField.label}</p>
+        <p className="truncate text-xs text-slate-500">{firstField.type === 'TEXT' ? (firstField.textValue || 'Sin valor') : (firstField.file?.name || 'Archivo')}</p>
+      </div>
+    )
+  }
+
+  function renderTaskHistoryColumn(task: TaskItem) {
+    const latestHistory = getLatestTaskHistoryEntry(task)
+
+    if (!latestHistory) {
+      return <span className="text-xs text-slate-400">Sin historial</span>
+    }
+
+    return (
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-slate-700">{latestHistory.message}</p>
+        <p className="truncate text-xs text-slate-500">{formatDate(latestHistory.createdAt, 'Sin fecha')}</p>
+      </div>
+    )
+  }
+
+  function renderTaskCreatedAtColumn(task: TaskItem) {
+    return (
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-slate-700">{formatDate(task.createdAt, 'Sin fecha')}</p>
+        <p className="truncate text-xs text-slate-500">Creación de la tarea</p>
+      </div>
+    )
+  }
+
+  function renderTaskNoteColumn(task: TaskItem) {
+    const notesCount = task.history.filter((entry) => entry.type === 'NOTE_ADDED').length
+
+    return (
+      <div className="flex items-center justify-between gap-2 overflow-hidden">
+        <span className="truncate text-xs text-slate-500">{notesCount ? `${notesCount} nota(s)` : 'Sin notas'}</span>
+        <Button variant="outline" size="sm" className="h-8 rounded-xl px-2.5" onClick={() => openQuickTaskPanel(task.id, 'note')} disabled={!canEditTasks}>
+          Nota
+        </Button>
+      </div>
+    )
+  }
+
+  function toggleExtraTaskColumn(column: ExtraTaskColumn, checked: boolean) {
+    setVisibleExtraTaskColumns((current) => {
+      if (checked) {
+        return current.includes(column) ? current : [...current, column]
+      }
+      return current.filter((item) => item !== column)
+    })
+  }
+
   return (
     <div className="space-y-6 pb-6">
       <ErpPageHero
@@ -575,11 +869,223 @@ export function CrmTaskWorkspacesClient() {
         ]}
       />
 
-      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]"><CardHeader className="border-b border-slate-100 pb-5"><CardTitle className="text-xl">Espacios de trabajo</CardTitle><CardDescription>Selecciona un espacio para ver tareas, miembros y permisos efectivos.</CardDescription></CardHeader><CardContent className="space-y-3 p-4 md:p-5">{loading ? <p className="text-sm text-muted-foreground">Cargando espacios...</p> : null}{!loading && workspaces.length === 0 ? <p className="text-sm text-muted-foreground">No tienes espacios de trabajo todavía.</p> : null}{workspaces.map((workspace) => <button key={workspace.id} type="button" onClick={() => setSelectedWorkspaceId(workspace.id)} className={selectedWorkspaceId === workspace.id ? 'w-full rounded-3xl border border-sky-300 bg-sky-50/80 p-4 text-left shadow-sm' : 'w-full rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-4 text-left shadow-sm transition-shadow hover:shadow-md'}><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-slate-950">{workspace.name}</p><p className="mt-1 text-sm text-slate-600">{workspace.description || (workspace.scope === 'SEDE' ? workspace.sede?.nombre || 'Espacio por sede' : workspace.ownerUser?.name || workspace.ownerUser?.email || 'Espacio por usuario')}</p></div><div className="flex flex-col items-end gap-1"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{workspace.scope}</span><span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">{formatRole(workspace.currentUserRole)}</span></div></div><div className="mt-3 flex items-center justify-between text-xs text-slate-500"><span>{workspace._count?.tasks ?? 0} tareas</span><span>{workspace._count?.members ?? workspace.members.length} miembros</span></div></button>)}</CardContent></Card>
+      <div className={`grid gap-4 ${workspacePanelCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[320px_minmax(0,1fr)]'}`}>
+        {!workspacePanelCollapsed ? <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]"><CardHeader className="border-b border-slate-100 pb-5"><CardTitle className="text-xl">Espacios de trabajo</CardTitle><CardDescription>Selecciona un espacio para ver tareas, miembros y permisos efectivos.</CardDescription></CardHeader><CardContent className="space-y-3 p-4 md:p-5">{loading ? <p className="text-sm text-muted-foreground">Cargando espacios...</p> : null}{!loading && workspaces.length === 0 ? <p className="text-sm text-muted-foreground">No tienes espacios de trabajo todavía.</p> : null}{workspaces.map((workspace) => <button key={workspace.id} type="button" onClick={() => setSelectedWorkspaceId(workspace.id)} className={selectedWorkspaceId === workspace.id ? 'w-full rounded-3xl border border-sky-300 bg-sky-50/80 p-4 text-left shadow-sm' : 'w-full rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-4 text-left shadow-sm transition-shadow hover:shadow-md'}><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-slate-950">{workspace.name}</p><p className="mt-1 text-sm text-slate-600">{workspace.description || (workspace.scope === 'SEDE' ? workspace.sede?.nombre || 'Espacio por sede' : workspace.ownerUser?.name || workspace.ownerUser?.email || 'Espacio por usuario')}</p></div><div className="flex flex-col items-end gap-1"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{workspace.scope}</span><span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">{formatRole(workspace.currentUserRole)}</span></div></div><div className="mt-3 flex items-center justify-between text-xs text-slate-500"><span>{workspace._count?.tasks ?? 0} tareas</span><span>{workspace._count?.members ?? workspace.members.length} miembros</span></div></button>)}</CardContent></Card> : null}
 
-        <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]"><CardHeader className="border-b border-slate-100 pb-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div><CardTitle className="text-xl">Tareas del espacio</CardTitle><CardDescription>{selectedWorkspace ? `${selectedWorkspace.name} · ${formatRole(selectedWorkspace.currentUserRole)}${selectedWorkspace.permissions?.canEditTasks ? ' con edición de tareas' : ' solo lectura'}` : 'Tabla operativa con responsables, estado, color, evidencia y acceso a detalle completo.'}</CardDescription></div><div className="flex flex-wrap gap-2">{canManageWorkspace ? <Button variant="outline" className="rounded-xl" onClick={openWorkspaceSettings}>Miembros y roles</Button> : null}<Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por tarea, responsable, campo o descripción..." className="w-[320px] rounded-xl" /><Button variant="outline" className="rounded-xl" onClick={() => setShowArchived((current) => !current)}>{showArchived ? 'Ocultar archivadas' : 'Ver archivadas'}</Button></div></div></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><div className="min-w-[1080px]"><div className="grid grid-cols-[1.35fr_1.3fr_0.75fr_1fr_0.9fr_0.85fr] gap-4 border-b border-slate-100 px-6 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500"><span>Tarea</span><span>Descripción</span><span>Responsables</span><span>Estado</span><span>Entrega</span><span>Acciones</span></div>{filteredTasks.map((task) => { const statusMeta = STATUS_META[task.status]; return <div key={task.id} className={`grid grid-cols-[1.35fr_1.3fr_0.75fr_1fr_0.9fr_0.85fr] items-center gap-4 border-b px-6 py-3 text-sm text-slate-700 bg-gradient-to-r ${statusMeta.softClass}`} style={{ borderLeft: `5px solid ${normalizeHex(task.colorHex)}`, borderBottomColor: 'rgba(226,232,240,0.9)' }}><div className="flex min-w-0 items-center gap-2"><p className="truncate font-semibold text-slate-950">{task.title}</p><span className={`inline-flex shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${PRIORITY_META[task.priority].badgeClass}`}>{PRIORITY_META[task.priority].label}</span></div><p className="truncate text-slate-600">{task.description || 'Sin descripción'}</p><div className="flex min-w-0 flex-wrap items-center gap-2">{task.assignments.length === 0 ? <span className="text-xs text-slate-400">Sin responsables</span> : null}{task.assignments.map((assignment) => <span key={assignment.id} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-semibold text-sky-800" title={assignment.user.name || assignment.user.email || assignment.user.id}>{initials(assignment.user.name, assignment.user.email)}</span>)}</div><div><Select value={task.status} onValueChange={(value) => void handleUpdateTask(task.id, { status: value })} disabled={!canEditTasks}><SelectTrigger className={`h-10 rounded-xl border font-semibold shadow-sm ${STATUS_SELECT_CLASS[task.status]}`}><SelectValue>{formatStatus(task.status)}</SelectValue></SelectTrigger><SelectContent><SelectItem value="OPEN">No iniciado</SelectItem><SelectItem value="IN_PROGRESS">En curso</SelectItem><SelectItem value="DONE">Finalizada</SelectItem><SelectItem value="CANCELED">Cancelada</SelectItem></SelectContent></Select></div><div className="truncate text-slate-600">{task.completedAt ? `Completada: ${formatDate(task.completedAt, 'Sin fecha')}` : formatDate(task.dueAt, 'Sin fecha')}</div><div className="flex items-center gap-2"><Button variant="outline" className="rounded-xl" onClick={() => void loadTaskDetail(task.id)}>Ver detalles</Button><Button variant="outline" className="rounded-xl" onClick={() => void handleUpdateTask(task.id, { archived: !task.archivedAt })} disabled={!canEditTasks}>{task.archivedAt ? 'Restaurar' : 'Archivar'}</Button></div></div>})}{!filteredTasks.length ? <div className="px-6 py-8 text-sm text-slate-500">No hay tareas para mostrar en este espacio.</div> : null}</div></div></CardContent></Card>
+        <Card className="min-w-0 rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
+          <CardHeader className="border-b border-slate-100 pb-5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <CardTitle className="text-xl">Tareas del espacio</CardTitle>
+                <CardDescription>
+                  {selectedWorkspace
+                    ? `${selectedWorkspace.name} · ${formatRole(selectedWorkspace.currentUserRole)}${selectedWorkspace.permissions?.canEditTasks ? ' con edición de tareas' : ' solo lectura'}`
+                    : 'Tabla operativa con responsables, estado, color, evidencia y acceso a detalle completo.'}
+                </CardDescription>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                <Button variant="outline" className="rounded-xl" onClick={() => setWorkspacePanelCollapsed((current) => !current)}>
+                  {workspacePanelCollapsed ? 'Mostrar espacios' : 'Ocultar espacios'}
+                </Button>
+                {canManageWorkspace ? <Button variant="outline" className="rounded-xl" onClick={openWorkspaceSettings}>Miembros y roles</Button> : null}
+                <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por tarea, responsable, campo o descripción..." className="w-full rounded-xl sm:w-[320px]" />
+                <Button variant="outline" className="rounded-xl" onClick={() => setShowArchived((current) => !current)}>{showArchived ? 'Ocultar archivadas' : 'Ver archivadas'}</Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="rounded-xl">Columnas visibles</Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56 rounded-2xl p-1.5">
+                    <DropdownMenuCheckboxItem checked={showPriorityColumn} onCheckedChange={(checked) => setShowPriorityColumn(Boolean(checked))}>
+                      Prioridad
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem checked={showCreatedAtColumn} onCheckedChange={(checked) => setShowCreatedAtColumn(Boolean(checked))}>
+                      Fecha de creación
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('attachments')} onCheckedChange={(checked) => toggleExtraTaskColumn('attachments', Boolean(checked))}>
+                      Adjuntos
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('custom-fields')} onCheckedChange={(checked) => toggleExtraTaskColumn('custom-fields', Boolean(checked))}>
+                      Campos personalizados
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('history')} onCheckedChange={(checked) => toggleExtraTaskColumn('history', Boolean(checked))}>
+                      Último cambio
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('note')} onCheckedChange={(checked) => toggleExtraTaskColumn('note', Boolean(checked))}>
+                      Nota rápida
+                    </DropdownMenuCheckboxItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <div className="flex items-center gap-3 rounded-xl border border-slate-200 px-3 py-2">
+                  <Label htmlFor="task-column-width" className="whitespace-nowrap text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Ancho columnas</Label>
+                  <input
+                    id="task-column-width"
+                    type="range"
+                    min="140"
+                    max="240"
+                    step="10"
+                    value={clampedTaskColumnWidth}
+                    onChange={(event) => setTaskColumnWidth(Number(event.target.value))}
+                    className="w-28 accent-slate-900"
+                  />
+                  <span className="min-w-[52px] text-xs font-semibold text-slate-600">{clampedTaskColumnWidth}px</span>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="min-w-0 p-0">
+            <div className="w-full overflow-x-auto overscroll-x-contain pb-2">
+              <div className="w-max" style={{ minWidth: `${taskTableMinWidth}px` }}>
+                <div className="grid gap-4 border-b border-slate-100 px-6 py-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500" style={{ gridTemplateColumns: taskGridTemplate }}>
+                  <span>Tarea</span>
+                  {showPriorityColumn ? <span>Prioridad</span> : null}
+                  <span>Descripción</span>
+                  <span>Responsables</span>
+                  <span>Estado</span>
+                  <span>Entrega</span>
+                  {showCreatedAtColumn ? <span>Creada</span> : null}
+                  {visibleExtraTaskColumns.includes('attachments') ? <span>Adjuntos</span> : null}
+                  {visibleExtraTaskColumns.includes('custom-fields') ? <span>Campos</span> : null}
+                  {visibleExtraTaskColumns.includes('history') ? <span>Último cambio</span> : null}
+                  {visibleExtraTaskColumns.includes('note') ? <span>Nota rápida</span> : null}
+                  <span>Acciones</span>
+                </div>
+                {filteredTasks.map((task) => {
+                  const statusMeta = STATUS_META[task.status]
+                  return (
+                    <div
+                      key={task.id}
+                      className={`grid items-center gap-4 border-b px-6 py-2.5 text-sm text-slate-700 bg-gradient-to-r ${statusMeta.softClass}`}
+                      style={{ gridTemplateColumns: taskGridTemplate, borderLeft: `5px solid ${normalizeHex(task.colorHex)}`, borderBottomColor: 'rgba(226,232,240,0.9)' }}
+                    >
+                      <p className="truncate font-semibold text-slate-950">{task.title}</p>
+                      {showPriorityColumn ? <div className="overflow-hidden">{renderTaskPriorityControl(task)}</div> : null}
+                      <p className="truncate text-slate-600">{task.description || 'Sin descripción'}</p>
+                      <div className="flex min-w-0 flex-wrap items-center gap-2 overflow-hidden">{renderTaskAssignments(task)}</div>
+                      <div className="overflow-hidden">{renderTaskStatusControl(task)}</div>
+                      <div className="truncate text-slate-600">{task.completedAt ? `Completada: ${formatDate(task.completedAt, 'Sin fecha')}` : formatDate(task.dueAt, 'Sin fecha')}</div>
+                      {showCreatedAtColumn ? <div className="overflow-hidden">{renderTaskCreatedAtColumn(task)}</div> : null}
+                      {visibleExtraTaskColumns.includes('attachments') ? <div className="overflow-hidden">{renderTaskAttachmentsColumn(task)}</div> : null}
+                      {visibleExtraTaskColumns.includes('custom-fields') ? <div className="overflow-hidden">{renderTaskCustomFieldsColumn(task)}</div> : null}
+                      {visibleExtraTaskColumns.includes('history') ? <div className="overflow-hidden">{renderTaskHistoryColumn(task)}</div> : null}
+                      {visibleExtraTaskColumns.includes('note') ? <div className="overflow-hidden">{renderTaskNoteColumn(task)}</div> : null}
+                      <div className="flex items-center overflow-hidden">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" aria-label={`Acciones para ${task.title}`}>
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44 rounded-2xl p-1.5">
+                            <DropdownMenuItem onSelect={() => void loadTaskDetail(task.id)}>
+                              Ver detalles
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => void handleUpdateTask(task.id, { archived: !task.archivedAt })} disabled={!canEditTasks}>
+                              {task.archivedAt ? 'Restaurar' : 'Archivar'}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  )
+                })}
+                {!filteredTasks.length ? <div className="px-6 py-8 text-sm text-slate-500">No hay tareas para mostrar en este espacio.</div> : null}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
+      <Dialog open={Boolean(quickTaskPanel)} onOpenChange={(open) => { if (!open) setQuickTaskPanel(null) }}>
+        <DialogContent className={quickTaskPanel?.mode === 'note' ? 'max-w-md' : 'max-w-2xl'}>
+          <DialogHeader>
+            <DialogTitle>
+              {quickTaskPanel?.mode === 'attachments' ? 'Adjuntos de la tarea' : null}
+              {quickTaskPanel?.mode === 'custom-fields' ? 'Campos personalizados' : null}
+              {quickTaskPanel?.mode === 'history' ? 'Último cambio' : null}
+              {quickTaskPanel?.mode === 'note' ? 'Crear nota rápida' : null}
+            </DialogTitle>
+            <DialogDescription>
+              {quickTask ? quickTask.title : 'Selecciona una tarea válida.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {quickTaskPanel?.mode === 'attachments' ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {quickTask?.attachmentsJson?.length ? quickTask.attachmentsJson.map((attachment) => (
+                <div key={attachment.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-slate-950">{attachment.name}</p>
+                      <p className="mt-1 text-xs text-slate-500">{attachment.type.toUpperCase()} · {formatAttachmentSize(attachment.sizeBytes)}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    {attachment.type === 'image' ? (
+                      <div className="relative h-32 w-full">
+                        <Image src={attachment.url} alt={attachment.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, 320px" unoptimized />
+                      </div>
+                    ) : (
+                      <div className="flex h-24 items-center justify-center px-3 text-center text-sm text-slate-500">
+                        {attachment.mimeType || 'Archivo disponible'}
+                      </div>
+                    )}
+                  </div>
+                  <a href={attachment.url} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-sm font-medium text-sky-700 hover:text-sky-900">Abrir archivo</a>
+                </div>
+              )) : <p className="text-sm text-slate-500">Esta tarea no tiene adjuntos.</p>}
+            </div>
+          ) : null}
+
+          {quickTaskPanel?.mode === 'custom-fields' ? (
+            <div className="space-y-3">
+              {quickTask?.customFieldsJson?.length ? quickTask.customFieldsJson.map((field) => (
+                <div key={field.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-medium text-slate-950">{field.label}</p>
+                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">{field.type}</span>
+                  </div>
+                  {field.type === 'TEXT' ? <p className="mt-2 text-sm text-slate-600">{field.textValue || 'Sin contenido'}</p> : null}
+                  {field.type === 'FILE' ? (
+                    field.file ? (
+                      <div className="mt-2 space-y-2">
+                        {field.file.type === 'image' ? (
+                          <div className="relative h-28 w-full overflow-hidden rounded-xl border border-slate-200">
+                            <Image src={field.file.url} alt={field.file.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, 320px" unoptimized />
+                          </div>
+                        ) : null}
+                        <a href={field.file.url} target="_blank" rel="noreferrer" className="inline-flex text-sm font-medium text-sky-700 hover:text-sky-900">{field.file.name}</a>
+                      </div>
+                    ) : <p className="mt-2 text-sm text-slate-500">Sin archivo asociado.</p>
+                  ) : null}
+                </div>
+              )) : <p className="text-sm text-slate-500">Esta tarea no tiene campos personalizados.</p>}
+            </div>
+          ) : null}
+
+          {quickTaskPanel?.mode === 'history' ? (
+            quickTaskLatestHistory ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-600">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-medium text-slate-900">{quickTaskLatestHistory.message}</p>
+                  <span className="text-xs text-slate-500">{formatDate(quickTaskLatestHistory.createdAt, 'Sin fecha')}</span>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">{quickTaskLatestHistory.actorUser?.name || quickTaskLatestHistory.actorUser?.email || 'Sistema'} · {quickTaskLatestHistory.type}</p>
+              </div>
+            ) : <p className="text-sm text-slate-500">Esta tarea no tiene historial todavía.</p>
+          ) : null}
+
+          {quickTaskPanel?.mode === 'note' ? (
+            <div className="space-y-3">
+              <Textarea value={quickNoteDraft} onChange={(event) => setQuickNoteDraft(event.target.value)} placeholder="Escribe una nota breve para esta tarea..." rows={4} disabled={!canEditTasks} />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setQuickTaskPanel(null)}>Cancelar</Button>
+                <Button onClick={() => void handleQuickAddNote()} disabled={savingQuickNote || !canEditTasks}>{savingQuickNote ? 'Guardando...' : 'Guardar nota'}</Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={workspaceSettingsOpen} onOpenChange={setWorkspaceSettingsOpen}><DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto"><DialogHeader><DialogTitle>Administrar espacio de trabajo</DialogTitle><DialogDescription>Edita miembros después de creado y aplica roles reales con restricciones operativas.</DialogDescription></DialogHeader><div className="grid gap-4 py-2"><div className="grid gap-4 md:grid-cols-2"><div className="grid gap-2"><Label>Nombre</Label><Input value={workspaceSettingsForm.name} onChange={(event) => setWorkspaceSettingsForm((current) => ({ ...current, name: event.target.value }))} disabled={!canManageWorkspace} /></div><div className="grid gap-2"><Label>Responsable</Label><Select value={workspaceSettingsForm.ownerUserId || '__none__'} onValueChange={(value) => setWorkspaceSettingsForm((current) => ({ ...current, ownerUserId: value === '__none__' ? '' : value, members: value !== '__none__' && !current.members.some((item) => item.userId === value) ? [...current.members, { userId: value, role: 'MANAGER' }] : current.members }))} disabled={!canManageWorkspace}><SelectTrigger><SelectValue placeholder="Selecciona un responsable" /></SelectTrigger><SelectContent><SelectItem value="__none__">Sin responsable</SelectItem>{users.map((user) => <SelectItem key={user.id} value={user.id}>{user.name || user.email || user.id}</SelectItem>)}</SelectContent></Select></div></div><div className="grid gap-2"><Label>Descripción</Label><Textarea value={workspaceSettingsForm.description} onChange={(event) => setWorkspaceSettingsForm((current) => ({ ...current, description: event.target.value }))} rows={3} disabled={!canManageWorkspace} /></div><div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]"><div className="grid gap-2"><Label>Agregar miembro</Label><Input value={workspaceMemberSearch} onChange={(event) => setWorkspaceMemberSearch(event.target.value)} placeholder="Busca usuarios para invitarlos al espacio..." disabled={!canManageWorkspace} /><div className="max-h-56 space-y-2 overflow-y-auto rounded-2xl border border-slate-200 p-3">{workspaceMemberCandidates.map((user) => <button key={user.id} type="button" onClick={() => setWorkspaceSettingsForm((current) => ({ ...current, members: [...current.members, { userId: user.id, role: 'VIEWER' }] }))} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left" disabled={!canManageWorkspace}><span>{user.name || user.email || user.id}</span><span className="text-xs text-slate-500">Agregar</span></button>)}{!workspaceMemberCandidates.length ? <p className="text-sm text-slate-400">No hay usuarios adicionales con ese filtro.</p> : null}</div></div><div className="grid gap-2"><Label>Miembros y roles</Label><div className="max-h-72 space-y-2 overflow-y-auto rounded-2xl border border-slate-200 p-3">{workspaceSettingsForm.members.map((member) => { const user = users.find((item) => item.id === member.userId); const locked = member.userId === selectedWorkspace?.createdBy?.id || member.userId === workspaceSettingsForm.ownerUserId; return <div key={member.userId} className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-3 md:grid-cols-[1fr_170px_110px] md:items-center"><div><p className="font-medium text-slate-950">{user?.name || user?.email || member.userId}</p><p className="text-xs text-slate-500">{locked ? 'Rol protegido por propiedad del espacio' : 'Puedes cambiar el rol o quitar el acceso'}</p></div><Select value={member.role} onValueChange={(value) => setWorkspaceSettingsForm((current) => ({ ...current, members: current.members.map((item) => item.userId === member.userId ? { ...item, role: value as WorkspaceRole } : item) }))} disabled={!canManageWorkspace || locked}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="VIEWER">Viewer</SelectItem><SelectItem value="EDITOR">Editor</SelectItem><SelectItem value="MANAGER">Manager</SelectItem></SelectContent></Select><Button variant="outline" onClick={() => setWorkspaceSettingsForm((current) => ({ ...current, members: current.members.filter((item) => item.userId !== member.userId) }))} disabled={!canManageWorkspace || locked}>Quitar</Button></div>})}</div></div></div></div><DialogFooter><Button variant="outline" onClick={() => setWorkspaceSettingsOpen(false)}>Cancelar</Button><Button onClick={() => void handleSaveWorkspaceSettings()} disabled={savingWorkspace || !canManageWorkspace}>{savingWorkspace ? 'Guardando...' : 'Guardar cambios'}</Button></DialogFooter></DialogContent></Dialog>
 
