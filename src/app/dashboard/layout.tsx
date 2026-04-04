@@ -70,7 +70,7 @@ export default async function DashboardLayout({
           <Header user={user} />
 
           {/* Page Content */}
-          <main className="erp-shell relative flex-1 overflow-y-auto p-2 sm:p-3 lg:p-4">
+          <main className="erp-shell relative flex-1 overflow-y-auto p-2 pb-20 sm:p-3 sm:pb-20 lg:p-4 lg:pb-20">
             <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[radial-gradient(circle_at_top_left,_rgba(14,116,144,0.18),_transparent_32%),radial-gradient(circle_at_top_right,_rgba(22,163,74,0.12),_transparent_28%)]" />
             <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-28 h-64 bg-[linear-gradient(180deg,_rgba(255,255,255,0.32),_rgba(255,255,255,0))]" />
             <div className="erp-shell__content mx-auto flex w-full max-w-[1680px] flex-col gap-4">

@@ -26,7 +26,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { MobileActionsMenu } from '@/components/ui/mobile-actions-menu'
 import { formatCurrency, formatUnidadMedidaLabel } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useI18n } from '@/components/providers/i18n-provider'
@@ -2474,7 +2476,92 @@ export default function PosPage() {
               ) : invoices.length === 0 ? (
                 <div className="text-sm text-gray-600">{t('pos.invoices.recent.empty')}</div>
               ) : (
-                <div className="overflow-auto">
+                <>
+                <div className="space-y-3 md:hidden">
+                  {invoices.map((inv) => (
+                    <Card key={inv.id} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <button className="font-semibold text-blue-700 hover:underline" onClick={() => void openDetail(inv.id)}>
+                              {inv.numero}
+                            </button>
+                            <p className="mt-1 text-sm text-muted-foreground">{new Date(inv.createdAt).toLocaleString(locale)}</p>
+                            <p className="mt-2 text-sm font-medium text-foreground">{inv.clienteNombre}</p>
+                          </div>
+                          <MobileActionsMenu label={inv.numero}>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onSelect={(e) => {
+                              e.preventDefault();
+                              void openDetail(inv.id);
+                            }}>
+                              {t('pos.actions.view')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={(e) => {
+                              e.preventDefault();
+                              void openInvoiceTraceability(inv.id);
+                            }}>
+                              {t('pos.invoiceDetailDialog.audit.title')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={(e) => {
+                              e.preventDefault();
+                              void openInvoiceEditorFromRow(inv.id);
+                            }} disabled={inv.status !== 'DRAFT'}>
+                              {t('common.edit')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={(e) => {
+                              e.preventDefault();
+                              void finalizar(inv.id);
+                            }} disabled={inv.status !== 'DRAFT' || finalizeSubmitting}>
+                              {t('pos.actions.finalize')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={(e) => {
+                              e.preventDefault();
+                              void downloadInvoicePdf(inv.id, inv.numero);
+                            }}>
+                              {t('pos.actions.downloadPdf')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={(e) => {
+                              e.preventDefault();
+                              void sendInvoiceByEmailQuick(inv.id);
+                            }} disabled={inlineEmailingId === inv.id}>
+                              {t('pos.invoiceDetailDialog.share.sendEmail')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={(e) => {
+                              e.preventDefault();
+                              void shareInvoiceByWhatsappQuick(inv.id);
+                            }} disabled={inlineWhatsappId === inv.id}>
+                              {t('pos.invoiceDetailDialog.share.sendWhatsapp')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => {
+                              e.preventDefault();
+                              void anular(inv.id);
+                            }}>
+                              {t('pos.actions.void')}
+                            </DropdownMenuItem>
+                          </MobileActionsMenu>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">{t('pos.invoices.columns.warehouse')}</p>
+                            <p className="font-medium text-foreground">{inv.warehouse?.nombre || t('common.na')}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">{t('pos.invoices.columns.status')}</p>
+                            <p className="font-medium text-foreground">{inv.status}</p>
+                          </div>
+                          <div className="col-span-2">
+                            <p className="text-muted-foreground">{t('pos.invoices.columns.total')}</p>
+                            <p className="font-semibold text-foreground">{formatCurrency(n(inv.total, 0))}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                <div className="hidden overflow-auto md:block">
                   <table className="min-w-full text-sm">
                     <thead>
                       <tr className="text-left text-gray-600 border-b">
@@ -2601,6 +2688,7 @@ export default function PosPage() {
                     </tbody>
                   </table>
                 </div>
+                </>
               )}
             </CardContent>
           </Card>

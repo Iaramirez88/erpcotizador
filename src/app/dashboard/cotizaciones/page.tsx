@@ -30,6 +30,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { MobileActionsMenu } from '@/components/ui/mobile-actions-menu';
 import CotizacionPDF, { type CotizacionPdfData } from '@/lib/pdf-template.client';
 import type { CotizacionTemplateSettings } from '@/lib/cotizacion-template';
 import { useI18n } from '@/components/providers/i18n-provider';
@@ -845,7 +847,131 @@ export default function CotizacionesPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          <div className="overflow-x-auto rounded-xl border bg-white">
+          <div className="space-y-3 md:hidden">
+            {cotizaciones.map((cot) => (
+              <Card key={cot.id} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="font-semibold text-foreground">{cot.numero}</div>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${getEstadoColor(cot.estado)}`}
+                        >
+                          {getEstadoIcon(cot.estado)}
+                          {getEstadoLabel(cot.estado)}
+                        </span>
+                        {cot.ventaRealizadaAt ? (
+                          <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-800">
+                            Venta realizada
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">{formatDate(cot.createdAt)}</p>
+                      <p className="mt-2 text-sm font-medium text-foreground">{cot.cliente.nombre}</p>
+                    </div>
+                    <MobileActionsMenu label={cot.numero}>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={(e) => {
+                        e.preventDefault();
+                        abrirPreview(cot);
+                      }}>
+                        Ver vista previa
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={(e) => {
+                        e.preventDefault();
+                        void abrirTrazabilidad(cot);
+                      }}>
+                        Trazabilidad
+                      </DropdownMenuItem>
+                      {!cot.orden ? (
+                        <DropdownMenuItem asChild>
+                          <Link href={`/dashboard/cotizador?id=${cot.id}`}>Editar</Link>
+                        </DropdownMenuItem>
+                      ) : null}
+                      {cot.estado !== 'APROBADA' && cot.estado !== 'CONVERTIDA' ? (
+                        <DropdownMenuItem onSelect={(e) => {
+                          e.preventDefault();
+                          aprobarCotizacion(cot.id, cot.numero);
+                        }} disabled={aprobando === cot.id}>
+                          Aprobar para facturar
+                        </DropdownMenuItem>
+                      ) : null}
+                      {cot.estado === 'APROBADA' && !electronicBillingEnabled ? (
+                        <DropdownMenuItem disabled>
+                          {t('quoteBuilder.preview.billingDisabled')}
+                        </DropdownMenuItem>
+                      ) : null}
+                      {cot.estado === 'APROBADA' && electronicBillingEnabled ? (
+                        <DropdownMenuItem onSelect={(e) => {
+                          e.preventDefault();
+                          facturarCotizacion(cot.id, cot.numero);
+                        }} disabled={facturando === cot.id}>
+                          Crear factura
+                        </DropdownMenuItem>
+                      ) : null}
+                      {cot.estado === 'APROBADA' && !cot.orden ? (
+                        <DropdownMenuItem onSelect={(e) => {
+                          e.preventDefault();
+                          crearOrden(cot.id, cot.numero);
+                        }}>
+                          Crear orden
+                        </DropdownMenuItem>
+                      ) : null}
+                      <DropdownMenuItem onSelect={(e) => {
+                        e.preventDefault();
+                        descargarPDF(cot.id, cot.numero);
+                      }}>
+                        Descargar PDF
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={(e) => {
+                        e.preventDefault();
+                        enviarPorEmail(cot);
+                      }} disabled={enviando === cot.id}>
+                        Enviar por email{cot.emailSentCount > 0 ? ` (${cot.emailSentCount})` : ''}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={(e) => {
+                        e.preventDefault();
+                        compartirPorWhatsApp(cot);
+                      }} disabled={compartiendo === cot.id}>
+                        Compartir por WhatsApp{cot.whatsappSentCount > 0 ? ` (${cot.whatsappSentCount})` : ''}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => {
+                        e.preventDefault();
+                        eliminarCotizacion(cot.id, cot.numero);
+                      }}>
+                        Eliminar
+                      </DropdownMenuItem>
+                    </MobileActionsMenu>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Items</p>
+                      <p className="font-medium text-foreground">{cot.items.length}</p>
+                      {(cot.postApprovalEditCount ?? 0) > 0 ? (
+                        <p className="text-xs text-muted-foreground">Post-aprob.: {cot.postApprovalEditCount}</p>
+                      ) : null}
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Total</p>
+                      <p className="font-medium text-foreground">{formatCurrency(cot.total)}</p>
+                      {typeof cot.ganancia === 'number' && Number.isFinite(cot.ganancia) ? (
+                        <p className="text-xs text-muted-foreground">
+                          Ganancia: {formatCurrency(cot.ganancia)}
+                          {typeof cot.margenPct === 'number' && Number.isFinite(cot.margenPct)
+                            ? ` (${cot.margenPct.toFixed(1)}%)`
+                            : ''}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <div className="hidden overflow-x-auto rounded-xl border bg-white md:block">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-muted-foreground">

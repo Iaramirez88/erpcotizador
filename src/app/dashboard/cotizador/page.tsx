@@ -1474,7 +1474,7 @@ export default function CotizadorPage() {
       </Dialog>
       {/* Header */}
       <div>
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight" data-tour="cotizador-title">{t('quoteBuilder.page.title')}</h1>
             <p className="text-muted-foreground">
@@ -1485,7 +1485,7 @@ export default function CotizadorPage() {
                   : t('quoteBuilder.page.subtitle')}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
             <Button asChild variant="outline" size="sm" type="button">
               <Link href="/dashboard/cotizaciones">{t('quoteBuilder.actions.history')}</Link>
             </Button>
@@ -1518,8 +1518,8 @@ export default function CotizadorPage() {
               <CardTitle>{t('quoteBuilder.sections.general')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2" data-tour="cotizador-cliente">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2" data-tour="cotizador-cliente">
                   <Label htmlFor="cliente">{t('quoteBuilder.fields.client')} *</Label>
                   <div className="relative">
                     <Input
@@ -1574,7 +1574,7 @@ export default function CotizadorPage() {
                   </div>
                 </div>
 
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <Label htmlFor="descripcion">{t('quoteBuilder.fields.description')}</Label>
                   <Textarea
                     id="descripcion"
@@ -1611,9 +1611,9 @@ export default function CotizadorPage() {
           {/* Items */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle>{t('quoteBuilder.sections.items')}</CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
                   <Button
                     variant="outline"
                     size="sm"
@@ -1648,13 +1648,13 @@ export default function CotizadorPage() {
             </CardHeader>
             <CardContent>
               {showItemForm && (
-                <div className="p-4 mb-4 border rounded-lg bg-muted/50 space-y-4">
+                <div className="mb-4 space-y-4 rounded-lg border bg-muted/50 p-4">
                   <h4 className="font-medium">
                     {editingManualItemId ? t('quoteBuilder.itemForm.editTitle') : t('quoteBuilder.itemForm.newTitle')}
                   </h4>
                   
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
                       <Label htmlFor="item-material">{t('quoteBuilder.itemForm.productRequired')} *</Label>
                       <div className="relative">
                         <Input
@@ -1722,7 +1722,7 @@ export default function CotizadorPage() {
                       </div>
                     </div>
 
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2">
                       <Label htmlFor="item-desc">{t('quoteBuilder.fields.description')}</Label>
                       <Input
                         id="item-desc"
@@ -1766,7 +1766,7 @@ export default function CotizadorPage() {
 
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     <Button onClick={agregarItem} size="sm">
                       {editingManualItemId ? t('quoteBuilder.actions.saveChanges') : t('common.add')}
                     </Button>
@@ -1813,13 +1813,13 @@ export default function CotizadorPage() {
                     const details = detailParts.join(" • ")
 
                     return (
-                      <div key={item.id} className="p-4 border rounded-lg">
-                        <div className="flex items-start justify-between">
+                      <div key={item.id} className="rounded-lg border p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div className="flex-1">
                             <h4 className="font-medium">{item.descripcion}</h4>
                             <p className="text-sm text-muted-foreground">{details}</p>
                           {(item.laminado || item.troquelado || item.instalacion) && (
-                            <div className="flex gap-2 mt-1">
+                            <div className="mt-1 flex flex-wrap gap-2">
                               {item.laminado && <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">{t('quoteBuilder.items.laminated')}</span>}
                               {item.troquelado && <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">{t('quoteBuilder.items.dieCut')}</span>}
                               {item.instalacion && <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded">{t('quoteBuilder.items.installation')}</span>}
@@ -1844,7 +1844,7 @@ export default function CotizadorPage() {
                             </div>
                           ) : null}
                           </div>
-                          <div className="text-right space-y-1">
+                          <div className="space-y-1 text-left sm:text-right">
                             <p className="text-sm text-muted-foreground">
                               {formatCurrency(item.precioUnitario)} {t('quoteBuilder.items.each')}
                             </p>

@@ -14,6 +14,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
+import { MobileActionsMenu } from '@/components/ui/mobile-actions-menu'
 import { formatUnidadMedidaLabel } from "@/lib/utils"
 import PlantillaRemisionesPage from "./plantilla/page"
 import dynamic from "next/dynamic"
@@ -396,7 +398,103 @@ export default function RemisionesPage() {
           ) : filtered.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">No hay remisiones.</div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border bg-white">
+            <>
+            <div className="space-y-3 md:hidden">
+              {filtered.map((r) => (
+                <Card key={r.id} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-foreground">{r.numero}</p>
+                          <span
+                            className={
+                              'inline-flex rounded-full border px-2 py-1 text-xs font-medium ' +
+                              (r.status === 'EMITIDA'
+                                ? 'border-green-200 bg-green-50 text-green-700'
+                                : 'border-slate-200 bg-slate-50 text-slate-700')
+                            }
+                          >
+                            {r.status}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-muted-foreground">{new Date(r.createdAt).toLocaleString('es-CO')}</p>
+                        <p className="mt-2 text-sm font-medium text-foreground">{r.clienteNombre || 'Consumidor final'}</p>
+                      </div>
+                      <MobileActionsMenu label={r.numero}>
+                        <DropdownMenuSeparator />
+                        {r.status === 'EMITIDA' ? (
+                          <>
+                            <DropdownMenuItem onSelect={(e) => {
+                              e.preventDefault();
+                              abrirPreview(r);
+                            }}>
+                              Vista previa
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={(e) => {
+                              e.preventDefault();
+                              descargarPDF(r.id, r.numero);
+                            }}>
+                              Descargar PDF
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={(e) => {
+                              e.preventDefault();
+                              enviarPorEmail(r);
+                            }} disabled={enviando === r.id}>
+                              Enviar por email
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={(e) => {
+                              e.preventDefault();
+                              compartirWhatsApp(r);
+                            }}>
+                              Compartir por WhatsApp
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => {
+                              e.preventDefault();
+                              anular(r.id);
+                            }}>
+                              Anular remisión
+                            </DropdownMenuItem>
+                          </>
+                        ) : null}
+                      </MobileActionsMenu>
+                    </div>
+
+                    <div className="mt-4 space-y-3 text-sm">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-muted-foreground">Sede</p>
+                          <p className="font-medium text-foreground">{r.warehouse?.nombre || '(global)'}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Detalle</p>
+                          <p className="font-medium text-foreground">{r.items?.length || 0} items</p>
+                        </div>
+                      </div>
+                      <div className="text-muted-foreground">
+                        {r.items?.length ? (
+                          <>
+                            <div>
+                              {r.items.slice(0, 2).map((it) => (
+                                `${it.material?.nombre} x${it.quantity} ${formatUnidadMedidaLabel(it.material?.unidadMedida)}`
+                              )).join(' · ')}
+                            </div>
+                            {r.items.length > 2 ? (
+                              <div className="text-xs text-muted-foreground">+{r.items.length - 2} productos más</div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span>Sin detalle</span>
+                        )}
+                        {r.note ? <div className="mt-1 text-xs">{r.note}</div> : null}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            <div className="hidden overflow-x-auto rounded-xl border bg-white md:block">
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
@@ -508,6 +606,7 @@ export default function RemisionesPage() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </CardContent>
       </Card>

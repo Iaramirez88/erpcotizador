@@ -22,6 +22,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
+import { MobileActionsMenu } from '@/components/ui/mobile-actions-menu'
 
 interface Cliente {
   id: string
@@ -553,7 +555,78 @@ export default function ClientesPage() {
                 </Button>
               </div>
             ) : (
-              <div className="max-w-full overflow-x-auto">
+              <>
+              <div className="space-y-3 md:hidden">
+                {clientes.map((cliente) => (
+                  <Card key={cliente.id} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-foreground">{cliente.nombre}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">{cliente.email || t('customers.noEmail')}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{cliente.tipoDocumento} · {cliente.documento}</p>
+                        </div>
+                        <MobileActionsMenu label={cliente.nombre}>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onSelect={(e) => {
+                            e.preventDefault();
+                            handleEdit(cliente);
+                          }}>
+                            {t('common.edit')}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => {
+                            e.preventDefault();
+                            handleDelete(cliente.id);
+                          }}>
+                            {t('common.delete')}
+                          </DropdownMenuItem>
+                        </MobileActionsMenu>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">{t('customers.columns.site')}</p>
+                          <p className="font-medium text-foreground">{cliente.sede?.nombre || naText}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">{t('customers.columns.segment')}</p>
+                          <p className="font-medium text-foreground">{cliente.segmento ? segmentoLabel(cliente.segmento) : naText}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">{t('customers.columns.contact')}</p>
+                          <p className="font-medium text-foreground">{cliente.celular || cliente.telefono || t('customers.noPhone')}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">{t('customers.columns.city')}</p>
+                          <p className="font-medium text-foreground">{cliente.ciudad || t('customers.naDash')}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">{t('customers.columns.billed')}</p>
+                          <p className="font-medium text-foreground">{fmtMoney(cliente.invoiceTotal, locale)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">{t('customers.columns.lastActivity')}</p>
+                          <p className="font-medium text-foreground">{fmtDate(cliente.ultimaActividadAt, locale, naText)}</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                        <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-1 font-medium text-blue-700">
+                          Cotizaciones: {cliente.cotizacionesRangeCount || 0}
+                        </span>
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">
+                          Órdenes: {cliente._count?.ordenes || 0}
+                        </span>
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">
+                          Facturas: {cliente.invoiceCount || 0}
+                        </span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              <div className="hidden max-w-full overflow-x-auto md:block">
                 <table className="min-w-[1400px] w-full">
                   <thead className="border-b">
                     <tr className="text-left">
@@ -642,6 +715,7 @@ export default function ClientesPage() {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </CardContent>
         </Card>

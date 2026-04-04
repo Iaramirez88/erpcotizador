@@ -1,8 +1,9 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Image as ImageIcon, Paperclip, Plus, Smile, Trash2, Users, X } from 'lucide-react'
+import { Image as ImageIcon, MoreVertical, Paperclip, Plus, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
@@ -178,9 +179,11 @@ function renderAttachments(attachments: ChatAttachment[] | undefined) {
 export default function FloatingChatDrawer() {
   const storageTabKey = 'sg_floating_chat_last_tab'
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const teamTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [open, setOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'updates' | 'crm' | 'team'>('updates')
   const [teamView, setTeamView] = useState<'direct' | 'groups'>('direct')
+  const [teamMobilePanel, setTeamMobilePanel] = useState<'options' | 'chat'>('options')
   const [loading, setLoading] = useState(true)
   const [crmLoading, setCrmLoading] = useState(false)
   const [teamLoading, setTeamLoading] = useState(false)
@@ -190,7 +193,6 @@ export default function FloatingChatDrawer() {
   const [uploadingTeamAttachment, setUploadingTeamAttachment] = useState(false)
   const [creatingGroup, setCreatingGroup] = useState(false)
   const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null)
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [groupDialogOpen, setGroupDialogOpen] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -302,9 +304,21 @@ export default function FloatingChatDrawer() {
   useEffect(() => {
     if (activeTab !== 'team') {
       setPendingTeamAttachments([])
-      setShowEmojiPicker(false)
     }
   }, [activeTab])
+
+  useEffect(() => {
+    if (activeTab !== 'team') return
+    setTeamMobilePanel(selectedThreadId ? 'chat' : 'options')
+  }, [activeTab, selectedThreadId])
+
+  useEffect(() => {
+    const textarea = teamTextareaRef.current
+    if (!textarea) return
+    textarea.style.height = '0px'
+    const nextHeight = Math.min(textarea.scrollHeight, 140)
+    textarea.style.height = `${Math.max(nextHeight, 44)}px`
+  }, [teamMessageDraft, selectedThreadId])
 
   const filteredTeamUsers = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -479,11 +493,26 @@ export default function FloatingChatDrawer() {
       }
       setTeamMessageDraft('')
       setPendingTeamAttachments([])
-      setShowEmojiPicker(false)
       await Promise.all([loadBase(), loadThreadDetail(selectedThreadId)])
     } finally {
       setSendingTeam(false)
     }
+  }
+
+  function openTeamAttachmentPicker(kind: 'image' | 'document') {
+    if (!fileInputRef.current || !selectedThreadId || uploadingTeamAttachment) return
+    fileInputRef.current.accept = kind === 'image'
+      ? 'image/png,image/jpeg,image/webp,image/gif'
+      : 'application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv'
+    fileInputRef.current.value = ''
+    fileInputRef.current.click()
+  }
+
+  function handleTeamMessageKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Enter' || event.shiftKey) return
+    event.preventDefault()
+    if (sendingTeam || !selectedThreadId || uploadingTeamAttachment) return
+    void handleSendTeamMessage()
   }
 
   async function handleStartTeamChat(userId: string) {
@@ -604,55 +633,77 @@ export default function FloatingChatDrawer() {
             open ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-[calc(100%+1.5rem)] opacity-0',
           )}
         >
-          <div className="border-b border-slate-200 bg-[linear-gradient(135deg,_#fffdf8_0%,_#f8fbff_48%,_#f2f7f4_100%)] px-4 py-3 sm:px-5">
-            <div className="flex items-start justify-between gap-3">
+          <div className="border-b border-slate-200 bg-[linear-gradient(135deg,_#fffdf8_0%,_#f8fbff_48%,_#f2f7f4_100%)] px-4 py-2.5 sm:px-5">
+            <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">Chat global</p>
-                <h3 className="mt-1 text-base font-semibold text-slate-950 sm:text-lg">Mensajes y novedades</h3>
-                <p className="mt-1 text-[13px] text-slate-600">Trabaja con el chat sin bloquear el resto del dashboard.</p>
+                <h3 className="mt-0.5 text-[15px] font-semibold text-slate-950 sm:text-base">Mensajes y novedades</h3>
+                <p className="mt-0.5 text-xs text-slate-600">Trabaja con el chat sin bloquear el resto del dashboard.</p>
               </div>
-              <Button variant="ghost" size="icon" className="rounded-xl" onClick={() => setOpen(false)}>
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-            <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_auto] lg:items-center">
-              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contacto, compañero, grupo o mensaje..." className="h-10 rounded-xl border-slate-200 bg-white text-sm" />
-              <div className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
-                <button type="button" onClick={() => setActiveTab('updates')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'updates' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
-                  Novedades {unreadTotal > 0 ? `(${unreadTotal})` : ''}
-                </button>
-                <button type="button" onClick={() => setActiveTab('crm')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'crm' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
-                  CRM
-                </button>
-                <button type="button" onClick={() => setActiveTab('team')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'team' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
-                  Equipo
-                </button>
+              <div className="flex items-center gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl md:hidden" aria-label="Cambiar sección del chat">
+                      <MoreVertical className="h-4.5 w-4.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44 rounded-2xl p-1.5">
+                    <DropdownMenuItem onSelect={() => setActiveTab('updates')}>
+                      Novedades
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setActiveTab('crm')}>
+                      CRM
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setActiveTab('team')}>
+                      Equipo
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl" onClick={() => setOpen(false)}>
+                  <X className="h-4.5 w-4.5" />
+                </Button>
               </div>
             </div>
+            {activeTab !== 'team' ? (
+              <div className="mt-2 space-y-2">
+                <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contacto, compañero, grupo o mensaje..." className="h-9 rounded-xl border-slate-200 bg-white text-sm" />
+                <div className="hidden grid-cols-3 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:grid">
+                  <button type="button" onClick={() => setActiveTab('updates')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'updates' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                    Novedades
+                  </button>
+                  <button type="button" onClick={() => setActiveTab('crm')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'crm' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                    CRM
+                  </button>
+                  <button type="button" onClick={() => setActiveTab('team')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'team' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                    Equipo
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="min-h-0 flex-1 overflow-hidden bg-white overflow-x-hidden">
             {activeTab === 'updates' ? (
               <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                <div className="border-b border-slate-100 px-4 py-3 text-sm text-slate-600">
+                <div className="border-b border-slate-100 px-4 py-2.5 text-[13px] text-slate-600">
                   {loading ? 'Sincronizando mensajes nuevos...' : unreadAlerts.length ? `${unreadAlerts.length} hilos con novedades` : 'No tienes mensajes nuevos'}
                 </div>
-                <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
-                  <div className="space-y-3">
-                    {unreadAlerts.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">Todo está al día. Cuando llegue un mensaje nuevo te saldrá aquí y en el badge del botón flotante.</div> : null}
+                <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                  <div className="space-y-2.5">
+                    {unreadAlerts.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-500">Todo está al día. Cuando llegue un mensaje nuevo te saldrá aquí y en el badge del botón flotante.</div> : null}
                     {unreadAlerts.map((alert) => (
-                      <button key={`${alert.kind}-${alert.id}`} type="button" onClick={() => void handleOpenAlert(alert)} className="w-full rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-4 text-left shadow-sm transition-shadow hover:shadow-md">
-                        <div className="flex items-start justify-between gap-3">
+                      <button key={`${alert.kind}-${alert.id}`} type="button" onClick={() => void handleOpenAlert(alert)} className="w-full rounded-[22px] border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] px-3 py-2.5 text-left shadow-sm transition-shadow hover:shadow-md">
+                        <div className="flex items-start justify-between gap-2">
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-semibold text-slate-950">{alert.title}</span>
+                              <span className="text-sm font-semibold text-slate-950">{alert.title}</span>
                               <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{alert.subtitle}</span>
                             </div>
-                            <p className="mt-2 line-clamp-2 text-sm text-slate-600">{alert.preview}</p>
+                            <p className="mt-1 line-clamp-2 text-[13px] text-slate-600">{alert.preview}</p>
                           </div>
                           <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">{alert.unreadCount}</span>
                         </div>
-                        <p className="mt-3 text-xs text-slate-500">{formatDate(alert.occurredAt, 'Sin fecha')}</p>
+                        <p className="mt-1.5 text-[11px] text-slate-500">{formatDate(alert.occurredAt, 'Sin fecha')}</p>
                       </button>
                     ))}
                   </div>
@@ -661,21 +712,21 @@ export default function FloatingChatDrawer() {
             ) : null}
 
             {activeTab === 'crm' ? (
-              <div className="grid h-full min-h-0 overflow-hidden grid-rows-[minmax(220px,0.82fr)_minmax(0,1.18fr)] md:grid-cols-[minmax(320px,0.92fr)_minmax(360px,1.08fr)] md:grid-rows-1">
+              <div className="grid h-full min-h-0 overflow-hidden grid-rows-[minmax(210px,0.82fr)_minmax(0,1.18fr)] md:grid-cols-[minmax(300px,0.92fr)_minmax(340px,1.08fr)] md:grid-rows-1">
                 <div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-b border-slate-100 md:border-b-0 md:border-r">
-                  <div className="border-b border-slate-100 px-4 py-2.5 text-sm text-slate-600">Bandeja CRM</div>
-                  <div className="min-h-0 overflow-y-auto overflow-x-hidden p-3">
-                    <div className="space-y-3">
+                  <div className="border-b border-slate-100 px-4 py-2 text-[13px] text-slate-600">Bandeja CRM</div>
+                  <div className="min-h-0 overflow-y-auto overflow-x-hidden p-2.5">
+                    <div className="space-y-2.5">
                       {filteredConversations.map((item) => (
-                        <button key={item.id} type="button" onClick={() => setSelectedConversationId(item.id)} className={cn('w-full min-w-0 rounded-3xl border p-2.5 text-left shadow-sm transition-shadow hover:shadow-md', selectedConversationId === item.id ? 'border-sky-300 bg-sky-50/80' : 'border-slate-200 bg-white')}>
-                          <div className="flex items-start justify-between gap-3">
+                        <button key={item.id} type="button" onClick={() => setSelectedConversationId(item.id)} className={cn('w-full min-w-0 rounded-[22px] border px-3 py-2.5 text-left shadow-sm transition-shadow hover:shadow-md', selectedConversationId === item.id ? 'border-sky-300 bg-sky-50/80' : 'border-slate-200 bg-white')}>
+                          <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <p className="text-sm font-semibold text-slate-950">{item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || 'Contacto CRM'}</p>
-                              <p className="mt-1 line-clamp-2 text-[13px] text-slate-600">{item.messages?.[0]?.bodyText || item.contactEmail || item.contactPhone || 'Sin mensajes aún'}</p>
+                              <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-slate-600">{item.messages?.[0]?.bodyText || item.contactEmail || item.contactPhone || 'Sin mensajes aún'}</p>
                             </div>
                             {item.unreadCount > 0 ? <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800">{item.unreadCount}</span> : null}
                           </div>
-                          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
+                          <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-slate-500">
                             <span>{formatChannel(item.channelConnection.provider)}</span>
                             <span>{formatDate(item.lastMessageAt, 'Sin fecha')}</span>
                           </div>
@@ -685,37 +736,37 @@ export default function FloatingChatDrawer() {
                   </div>
                 </div>
                 <div className="grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden">
-                  <div className="border-b border-slate-100 px-4 py-2.5 text-sm text-slate-600">Detalle de conversación</div>
-                  <div className="shrink-0 px-4 pt-3">
+                  <div className="border-b border-slate-100 px-4 py-2 text-[13px] text-slate-600">Detalle de conversación</div>
+                  <div className="shrink-0 px-4 pt-2.5">
                     {crmLoading ? <p className="text-sm text-slate-500">Cargando conversación...</p> : null}
-                    {!crmLoading && !selectedConversation ? <p className="pb-4 text-sm text-slate-500">Selecciona un hilo CRM para responderlo aquí.</p> : null}
+                    {!crmLoading && !selectedConversation ? <p className="pb-3 text-sm text-slate-500">Selecciona un hilo CRM para responderlo aquí.</p> : null}
                     {selectedConversation ? (
-                      <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-3">
+                      <div className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-3">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="text-sm font-semibold text-slate-950 sm:text-base">{selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || selectedConversation.cliente?.nombre || 'Contacto CRM'}</h4>
+                          <h4 className="text-sm font-semibold text-slate-950">{selectedConversation.contactDisplayName || selectedConversation.lead?.nombre || selectedConversation.cliente?.nombre || 'Contacto CRM'}</h4>
                           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{formatChannel(selectedConversation.channelConnection.provider)}</span>
                         </div>
-                        <p className="mt-1.5 text-[13px] text-slate-600">{selectedConversation.contactPhone || selectedConversation.contactEmail || 'Sin dato de contacto visible'}</p>
+                        <p className="mt-1 text-[13px] text-slate-600">{selectedConversation.contactPhone || selectedConversation.contactEmail || 'Sin dato de contacto visible'}</p>
                       </div>
                     ) : null}
                   </div>
-                  <div className="min-h-0 overflow-y-auto overflow-x-hidden px-4 py-3">
+                  <div className="min-h-0 overflow-y-auto overflow-x-hidden px-3 py-2.5">
                     {selectedConversation ? (
-                      <div className="space-y-3 min-w-0">
+                      <div className="min-w-0 space-y-2.5">
                         {selectedConversation.messages.map((message) => (
-                          <div key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[94%] min-w-0 rounded-3xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-[13px] text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[94%] min-w-0 rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-3 py-2.5 text-[13px] text-slate-600' : 'mr-auto max-w-[94%] min-w-0 rounded-3xl border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-700'}>
-                            <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-slate-500">
+                          <div key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[94%] min-w-0 rounded-[22px] border border-sky-200 bg-sky-50 px-3 py-2 text-[13px] text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[94%] min-w-0 rounded-[22px] border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-600' : 'mr-auto max-w-[94%] min-w-0 rounded-[22px] border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-700'}>
+                            <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-slate-500">
                               <span>{message.direction}</span>
                               <span>{formatDate(message.occurredAt, 'Sin fecha')}</span>
                             </div>
-                            <p className="mt-1.5 whitespace-pre-wrap break-words leading-5">{message.bodyText || 'Sin texto'}</p>
+                            <p className="mt-1 whitespace-pre-wrap break-words leading-5">{message.bodyText || 'Sin texto'}</p>
                           </div>
                         ))}
                       </div>
                     ) : null}
                   </div>
-                  <div className="shrink-0 border-t border-slate-100 p-4">
-                    <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+                  <div className="shrink-0 border-t border-slate-100 p-3">
+                    <div className="grid gap-2 rounded-[22px] border border-slate-200 bg-slate-50/80 p-3">
                       <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">Responder al cliente</Label>
                       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
                         <Textarea
@@ -723,9 +774,9 @@ export default function FloatingChatDrawer() {
                           onChange={(event) => setCrmMessageDraft(event.target.value)}
                           rows={2}
                           placeholder="Escribe una respuesta rápida sin salir de la pantalla..."
-                          className="min-h-[72px] resize-none rounded-2xl bg-white text-sm leading-5"
+                          className="min-h-[64px] resize-none rounded-2xl bg-white text-sm leading-5"
                         />
-                        <Button className="h-10 rounded-xl px-4" onClick={() => void handleSendCrmMessage()} disabled={sendingCrm || !selectedConversationId}>
+                        <Button size="sm" className="h-10 rounded-xl px-4" onClick={() => void handleSendCrmMessage()} disabled={sendingCrm || !selectedConversationId}>
                           {sendingCrm ? 'Enviando...' : 'Enviar'}
                         </Button>
                       </div>
@@ -736,38 +787,71 @@ export default function FloatingChatDrawer() {
             ) : null}
 
             {activeTab === 'team' ? (
-              <div className="grid h-full min-h-0 overflow-hidden grid-rows-[minmax(240px,0.82fr)_minmax(0,1.18fr)] md:grid-cols-[minmax(320px,0.96fr)_minmax(360px,1.04fr)] md:grid-rows-1">
-                <div className="min-h-0 min-w-0 overflow-hidden border-b border-slate-100 md:border-b-0 md:border-r">
-                  <div className="border-b border-slate-100 px-4 py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <span className="text-sm text-slate-600">Equipo y grupos</span>
-                      <Button variant="outline" className="rounded-xl" onClick={() => setGroupDialogOpen(true)}>
-                        <Plus className="mr-2 h-4 w-4" />
+              <div className="grid h-full min-h-0 overflow-hidden grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[minmax(360px,0.48fr)_minmax(0,0.52fr)] md:grid-rows-1">
+                <div className="border-b border-slate-100 px-4 py-2 md:hidden">
+                  <div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setTeamMobilePanel('options')}
+                      className={cn('rounded-xl px-3 py-2 text-sm font-medium', teamMobilePanel === 'options' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}
+                    >
+                      Opciones
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTeamMobilePanel('chat')}
+                      className={cn('rounded-xl px-3 py-2 text-sm font-medium', teamMobilePanel === 'chat' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}
+                    >
+                      Chat
+                    </button>
+                  </div>
+                </div>
+
+                <div className={cn('grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-b border-slate-100 md:border-b-0 md:border-r', teamMobilePanel === 'chat' ? 'hidden md:grid' : 'grid')}>
+                  <div className="border-b border-slate-100 px-4 py-2.5">
+                    <div className="space-y-2">
+                      <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contacto, compañero, grupo o mensaje..." className="h-9 rounded-xl border-slate-200 bg-white text-sm" />
+                      <div className="hidden grid-cols-3 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:grid">
+                        <button type="button" onClick={() => setActiveTab('updates')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'updates' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                          Novedades
+                        </button>
+                        <button type="button" onClick={() => setActiveTab('crm')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'crm' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                          CRM
+                        </button>
+                        <button type="button" onClick={() => setActiveTab('team')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'team' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                          Equipo
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-[13px] text-slate-600">Equipo y grupos</span>
+                      <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-sm" onClick={() => setGroupDialogOpen(true)}>
+                        <Plus className="mr-1.5 h-4 w-4" />
                         Nuevo grupo
                       </Button>
                     </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
-                      <button type="button" onClick={() => setTeamView('direct')} className={cn('rounded-xl px-3 py-2 text-sm font-medium', teamView === 'direct' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                    <div className="mt-2 grid grid-cols-2 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1">
+                      <button type="button" onClick={() => setTeamView('direct')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', teamView === 'direct' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
                         Directos
                       </button>
-                      <button type="button" onClick={() => setTeamView('groups')} className={cn('rounded-xl px-3 py-2 text-sm font-medium', teamView === 'groups' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                      <button type="button" onClick={() => setTeamView('groups')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', teamView === 'groups' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
                         Grupos creados
                       </button>
                     </div>
                   </div>
 
-                  <div className="min-h-0 h-full overflow-y-auto p-3">
+                  <div className="min-h-0 h-full overflow-y-auto p-2.5 md:h-[90%]">
                     {teamView === 'direct' ? (
-                      <div className="space-y-4">
+                      <div className="space-y-3">
                         <div className="space-y-2">
                           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Abrir chat nuevo</p>
                           {filteredTeamUsers.map((user) => (
-                            <div key={user.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                            <div key={user.id} className="flex items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-2.5">
                               <div>
-                                <p className="font-medium text-slate-950">{user.name || user.email || user.id}</p>
-                                <p className="text-sm text-slate-500">{user.email || 'Sin correo visible'}</p>
+                                <p className="text-sm font-medium text-slate-950">{user.name || user.email || user.id}</p>
+                                <p className="text-xs text-slate-500">{user.email || 'Sin correo visible'}</p>
                               </div>
-                              <Button variant="outline" className="rounded-xl" onClick={() => void handleStartTeamChat(user.id)} disabled={startingThread}>
+                              <Button variant="outline" size="sm" className="h-8 rounded-xl px-3 text-xs" onClick={() => void handleStartTeamChat(user.id)} disabled={startingThread}>
                                 Abrir
                               </Button>
                             </div>
@@ -776,15 +860,18 @@ export default function FloatingChatDrawer() {
                         <div className="space-y-2">
                           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Chats activos</p>
                           {directThreads.map((item) => (
-                            <button key={item.id} type="button" onClick={() => setSelectedThreadId(item.id)} className={cn('w-full min-w-0 rounded-3xl border p-3 text-left shadow-sm transition-shadow hover:shadow-md', selectedThreadId === item.id ? 'border-sky-300 bg-sky-50/80' : 'border-slate-200 bg-white')}>
-                              <div className="flex items-start justify-between gap-3">
+                            <button key={item.id} type="button" onClick={() => {
+                              setSelectedThreadId(item.id)
+                              setTeamMobilePanel('chat')
+                            }} className={cn('w-full min-w-0 rounded-[22px] border px-3 py-2.5 text-left shadow-sm transition-shadow hover:shadow-md', selectedThreadId === item.id ? 'border-sky-300 bg-sky-50/80' : 'border-slate-200 bg-white')}>
+                              <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
-                                  <p className="font-semibold text-slate-950">{item.counterpart?.name || item.counterpart?.email || 'Chat interno'}</p>
-                                  <p className="mt-1 line-clamp-2 text-sm text-slate-600">{item.lastMessage?.bodyText || (item.lastMessage?.attachments?.length ? 'Adjunto enviado' : 'Sin mensajes aún')}</p>
+                                  <p className="text-sm font-semibold leading-5 text-slate-950">{item.counterpart?.name || item.counterpart?.email || 'Chat interno'}</p>
+                                  <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-slate-600">{item.lastMessage?.bodyText || (item.lastMessage?.attachments?.length ? 'Adjunto enviado' : 'Sin mensajes aún')}</p>
                                 </div>
                                 {item.unreadCount > 0 ? <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800">{item.unreadCount}</span> : null}
                               </div>
-                              <p className="mt-2 text-xs text-slate-500">{formatDate(item.lastMessageAt, 'Sin fecha')}</p>
+                              <p className="mt-1.5 text-[11px] text-slate-500">{formatDate(item.lastMessageAt, 'Sin fecha')}</p>
                             </button>
                           ))}
                         </div>
@@ -792,25 +879,28 @@ export default function FloatingChatDrawer() {
                     ) : (
                       <div className="space-y-2">
                         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Grupos creados por ti</p>
-                        {createdGroupThreads.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">Aún no has creado grupos internos.</p> : null}
+                        {createdGroupThreads.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-500">Aún no has creado grupos internos.</p> : null}
                         {createdGroupThreads.map((item) => (
-                          <div key={item.id} className={cn('rounded-3xl border p-3 shadow-sm transition-shadow hover:shadow-md', selectedThreadId === item.id ? 'border-sky-300 bg-sky-50/80' : 'border-slate-200 bg-white')}>
-                            <button type="button" onClick={() => setSelectedThreadId(item.id)} className="w-full text-left">
-                              <div className="flex items-start justify-between gap-3">
+                          <div key={item.id} className={cn('rounded-[22px] border px-3 py-2.5 shadow-sm transition-shadow hover:shadow-md', selectedThreadId === item.id ? 'border-sky-300 bg-sky-50/80' : 'border-slate-200 bg-white')}>
+                            <button type="button" onClick={() => {
+                              setSelectedThreadId(item.id)
+                              setTeamMobilePanel('chat')
+                            }} className="w-full text-left">
+                              <div className="flex items-start justify-between gap-2">
                                 <div>
-                                  <p className="font-semibold text-slate-950">{item.title || 'Grupo interno'}</p>
-                                  <p className="mt-1 line-clamp-2 text-sm text-slate-600">{item.lastMessage?.bodyText || (item.lastMessage?.attachments?.length ? 'Adjunto compartido' : 'Sin mensajes aún')}</p>
+                                  <p className="text-sm font-semibold leading-5 text-slate-950">{item.title || 'Grupo interno'}</p>
+                                  <p className="mt-0.5 line-clamp-2 text-[13px] leading-5 text-slate-600">{item.lastMessage?.bodyText || (item.lastMessage?.attachments?.length ? 'Adjunto compartido' : 'Sin mensajes aún')}</p>
                                 </div>
                                 {item.unreadCount > 0 ? <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800">{item.unreadCount}</span> : null}
                               </div>
-                              <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
+                              <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-slate-500">
                                 <span>{item.participantsCount || item.participants?.length || 0} participantes</span>
                                 <span>{formatDate(item.lastMessageAt, 'Sin fecha')}</span>
                               </div>
                             </button>
-                            <div className="mt-3 flex justify-end">
-                              <Button variant="outline" className="rounded-xl text-rose-700 hover:text-rose-800" onClick={() => void handleDeleteGroup(item.id)} disabled={deletingGroupId === item.id}>
-                                <Trash2 className="mr-2 h-4 w-4" />
+                            <div className="mt-2 flex justify-end">
+                              <Button variant="outline" size="sm" className="h-8 rounded-xl px-3 text-xs text-rose-700 hover:text-rose-800" onClick={() => void handleDeleteGroup(item.id)} disabled={deletingGroupId === item.id}>
+                                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                                 {deletingGroupId === item.id ? 'Eliminando...' : 'Eliminar'}
                               </Button>
                             </div>
@@ -821,24 +911,29 @@ export default function FloatingChatDrawer() {
                   </div>
                 </div>
 
-                <div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
-                  <div className="border-b border-slate-100 px-4 py-3 text-sm text-slate-600">
-                    {selectedThread ? formatThreadName(selectedThread) : 'Conversación interna'}
+                <div className={cn('min-h-0 min-w-0 overflow-hidden', teamMobilePanel === 'options' ? 'hidden md:grid' : 'grid', 'grid-rows-[auto_minmax(0,1fr)_auto]')}>
+                  <div className="border-b border-slate-100 px-4 py-2.5 text-sm text-slate-600">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>{selectedThread ? formatThreadName(selectedThread) : 'Conversación interna'}</span>
+                      <button type="button" onClick={() => setTeamMobilePanel('options')} className="text-xs font-medium text-sky-700 md:hidden">
+                        Ver opciones
+                      </button>
+                    </div>
                   </div>
-                  <div className="min-h-0 overflow-hidden p-4">
+                  <div className="min-h-0 overflow-hidden p-3 md:h-[90%]">
                     {teamLoading ? <p className="text-sm text-slate-500">Cargando chat interno...</p> : null}
                     {!teamLoading && !selectedThread ? <p className="text-sm text-slate-500">Selecciona un compañero o un grupo para abrir la conversación.</p> : null}
                     {selectedThread ? (
-                      <div className="flex min-h-full min-w-0 flex-col gap-4">
-                        <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
-                          <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex min-h-full min-w-0 flex-col gap-3">
+                        <div className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                               <p className="text-sm font-semibold text-slate-950">{formatThreadName(selectedThread)}</p>
-                              <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">{selectedThread.type === 'GROUP' ? 'Grupo interno' : 'Chat directo'}</p>
+                              <p className="mt-0.5 text-[11px] uppercase tracking-[0.16em] text-slate-500">{selectedThread.type === 'GROUP' ? 'Grupo interno' : 'Chat directo'}</p>
                             </div>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-wrap gap-1.5">
                               {selectedThread.participants.map((participant) => (
-                                <span key={participant.id} className="rounded-full bg-white px-3 py-1.5 text-sm text-slate-700 shadow-sm">
+                                <span key={participant.id} className="rounded-full bg-white px-2.5 py-1 text-xs text-slate-700 shadow-sm">
                                   {participant.user.name || participant.user.email || participant.user.id}
                                 </span>
                               ))}
@@ -846,17 +941,17 @@ export default function FloatingChatDrawer() {
                           </div>
                         </div>
 
-                        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+                        <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
                           {selectedThread.messages.length === 0 ? <p className="text-sm text-slate-500">No hay mensajes en este chat.</p> : null}
                           {selectedThread.messages.map((message) => {
                             const isOwn = Boolean(currentUserId && message.sentByUserId === currentUserId)
                             return (
-                              <div key={message.id} className={isOwn ? 'ml-auto max-w-[94%] min-w-0 rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700' : 'mr-auto max-w-[94%] min-w-0 rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}>
-                                <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-slate-500">
+                              <div key={message.id} className={isOwn ? 'ml-auto max-w-[94%] min-w-0 rounded-[22px] border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm text-slate-700' : 'mr-auto max-w-[94%] min-w-0 rounded-[22px] border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700'}>
+                                <div className="flex items-center justify-between gap-3 text-[10px] uppercase tracking-wide text-slate-500">
                                   <span>{message.sentByUser?.name || message.sentByUser?.email || 'Usuario'}</span>
                                   <span>{formatDate(message.occurredAt, 'Sin fecha')}</span>
                                 </div>
-                                {message.bodyText ? <p className="mt-2 whitespace-pre-wrap break-words leading-6">{message.bodyText}</p> : null}
+                                {message.bodyText ? <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-5">{message.bodyText}</p> : null}
                                 {renderAttachments(message.attachments)}
                               </div>
                             )
@@ -866,47 +961,22 @@ export default function FloatingChatDrawer() {
                     ) : null}
                   </div>
 
-                  <div className="shrink-0 border-t border-slate-100 p-4">
-                    <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <Label>Mensaje interno</Label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            className="hidden"
-                            accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
-                            onChange={(event) => {
-                              const file = event.target.files?.[0]
-                              if (file) void handleUploadTeamAttachment(file)
-                            }}
-                          />
-                          <Button type="button" variant="outline" size="icon" className="rounded-xl" onClick={() => setShowEmojiPicker((current) => !current)} disabled={!selectedThreadId}>
-                            <Smile className="h-4 w-4" />
-                          </Button>
-                          <Button type="button" variant="outline" size="icon" className="rounded-xl" onClick={() => fileInputRef.current?.click()} disabled={!selectedThreadId || uploadingTeamAttachment}>
-                            <ImageIcon className="h-4 w-4" />
-                          </Button>
-                          <Button type="button" variant="outline" size="icon" className="rounded-xl" onClick={() => fileInputRef.current?.click()} disabled={!selectedThreadId || uploadingTeamAttachment}>
-                            <Paperclip className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      {showEmojiPicker ? (
-                        <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3">
-                          {EMOJI_CHOICES.map((emoji) => (
-                            <button key={emoji} type="button" onClick={() => setTeamMessageDraft((current) => `${current}${emoji}`)} className="rounded-xl border border-slate-200 px-2.5 py-2 text-lg hover:bg-slate-50">
-                              {emoji}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
+                  <div className="shrink-0 border-t border-slate-100 p-3">
+                    <div className="grid gap-2 rounded-[22px] border border-slate-200 bg-slate-50/80 p-3">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0]
+                          if (file) void handleUploadTeamAttachment(file)
+                        }}
+                      />
 
                       {pendingTeamAttachments.length > 0 ? (
-                        <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3">
+                        <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2.5">
                           {pendingTeamAttachments.map((attachment) => (
-                            <div key={`${attachment.url}-${attachment.name}`} className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-700">
+                            <div key={`${attachment.url}-${attachment.name}`} className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700">
                               <span className="max-w-[220px] truncate">{attachment.name}</span>
                               <button type="button" onClick={() => setPendingTeamAttachments((current) => current.filter((item) => item.url !== attachment.url))} className="text-slate-500 hover:text-slate-800">
                                 <X className="h-4 w-4" />
@@ -916,11 +986,47 @@ export default function FloatingChatDrawer() {
                         </div>
                       ) : null}
 
-                      <Textarea value={teamMessageDraft} onChange={(event) => setTeamMessageDraft(event.target.value)} rows={4} placeholder={selectedThread?.type === 'GROUP' ? 'Escribe un mensaje para el grupo...' : 'Escribe un mensaje para tu compañero...'} disabled={!selectedThreadId} />
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-xs text-slate-500">{uploadingTeamAttachment ? 'Subiendo adjunto...' : 'Puedes combinar texto, emojis, imágenes y documentos en un solo envío.'}</p>
-                        <Button className="rounded-xl" onClick={() => void handleSendTeamMessage()} disabled={sendingTeam || !selectedThreadId || uploadingTeamAttachment}>
-                          {sendingTeam ? 'Enviando...' : 'Enviar'}
+                      <div className="flex items-end gap-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button type="button" variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-2xl" disabled={!selectedThreadId || uploadingTeamAttachment} aria-label="Agregar emoji o adjunto">
+                              <Plus className="h-4.5 w-4.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" side="top" className="w-56 rounded-2xl p-2">
+                            <DropdownMenuLabel>Agregar</DropdownMenuLabel>
+                            <div className="grid grid-cols-6 gap-1.5 px-1 py-1">
+                              {EMOJI_CHOICES.map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  onClick={() => setTeamMessageDraft((current) => `${current}${emoji}`)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-base hover:bg-slate-50"
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onSelect={(event) => {
+                              event.preventDefault()
+                              openTeamAttachmentPicker('image')
+                            }}>
+                              <ImageIcon className="mr-2 h-4 w-4" />
+                              Imagen
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={(event) => {
+                              event.preventDefault()
+                              openTeamAttachmentPicker('document')
+                            }}>
+                              <Paperclip className="mr-2 h-4 w-4" />
+                              Documento
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <Textarea ref={teamTextareaRef} value={teamMessageDraft} onChange={(event) => setTeamMessageDraft(event.target.value)} onKeyDown={handleTeamMessageKeyDown} rows={1} placeholder={selectedThread?.type === 'GROUP' ? 'Escribe un mensaje para el grupo...' : 'Escribe un mensaje para tu compañero...'} disabled={!selectedThreadId} className="min-h-[44px] max-h-[140px] flex-1 overflow-hidden rounded-2xl bg-white px-3 py-2.5 text-sm leading-5" />
+                        <Button size="icon" className="h-11 w-11 shrink-0 rounded-2xl" onClick={() => void handleSendTeamMessage()} disabled={sendingTeam || !selectedThreadId || uploadingTeamAttachment} aria-label={sendingTeam ? 'Enviando mensaje' : 'Enviar mensaje'}>
+                          <SendHorizontal className="h-4.5 w-4.5" />
                         </Button>
                       </div>
                     </div>
@@ -946,7 +1052,7 @@ export default function FloatingChatDrawer() {
       </div>
 
       <Dialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="z-[120] max-w-2xl">
           <DialogHeader>
             <DialogTitle>Crear grupo interno</DialogTitle>
             <DialogDescription>Arma grupos operativos, compártelos en la pestaña de grupos creados y elimínalos cuando ya no hagan falta.</DialogDescription>

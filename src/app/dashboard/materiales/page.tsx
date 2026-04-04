@@ -21,6 +21,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
+import { MobileActionsMenu } from '@/components/ui/mobile-actions-menu'
 import { CustomProductRequestsAdminDialog } from "@/components/materiales/custom-product-requests-admin-dialog"
 import { CustomProductRequestsMyDialog } from "@/components/materiales/custom-product-requests-my-dialog"
 import {
@@ -1623,7 +1625,31 @@ export default function ProductosPage() {
                           </div>
                         </div>
 
-                        <div className="flex gap-2 md:justify-end">
+                        <div className="md:hidden">
+                          <MobileActionsMenu label={material.nombre}>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onSelect={(e) => {
+                              e.preventDefault();
+                              handleEdit(material);
+                            }}>
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={(e) => {
+                              e.preventDefault();
+                              handleDuplicate(material);
+                            }}>
+                              Duplicar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-red-600 focus:text-red-700" onSelect={(e) => {
+                              e.preventDefault();
+                              handleDelete(material.id);
+                            }}>
+                              Eliminar
+                            </DropdownMenuItem>
+                          </MobileActionsMenu>
+                        </div>
+
+                        <div className="hidden gap-2 md:flex md:justify-end">
                           <Button
                             variant="outline"
                             size="sm"
