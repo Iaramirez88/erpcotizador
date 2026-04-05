@@ -125,6 +125,7 @@ export function CrmTeamChatClient() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const scrollTimersRef = useRef<number[]>([])
   const shouldStickToBottomRef = useRef(true)
+  const distanceFromBottomRef = useRef(0)
   const previousThreadKeyRef = useRef<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -180,8 +181,24 @@ export function CrmTeamChatClient() {
     return distanceToBottom <= threshold
   }
 
+  function getDistanceFromBottom() {
+    const container = messagesViewportRef.current
+    if (!container) return 0
+    return Math.max(container.scrollHeight - container.scrollTop - container.clientHeight, 0)
+  }
+
+  function restoreScrollDistance(distance: number) {
+    const container = messagesViewportRef.current
+    if (!container) return
+    window.requestAnimationFrame(() => {
+      const nextTop = Math.max(container.scrollHeight - container.clientHeight - distance, 0)
+      container.scrollTop = nextTop
+    })
+  }
+
   function handleViewportScroll() {
     const nearBottom = isNearBottom()
+    distanceFromBottomRef.current = getDistanceFromBottom()
     shouldStickToBottomRef.current = nearBottom
     setShowScrollToBottom(!nearBottom)
     if (!nearBottom) {
@@ -191,6 +208,7 @@ export function CrmTeamChatClient() {
 
   function jumpToBottom() {
     shouldStickToBottomRef.current = true
+    distanceFromBottomRef.current = 0
     setShowScrollToBottom(false)
     scheduleScrollToBottom('smooth')
   }
@@ -266,6 +284,8 @@ export function CrmTeamChatClient() {
     if (!selectedThread || !threadChanged) return
     if (shouldStickToBottomRef.current) {
       scheduleScrollToBottom('auto')
+    } else {
+      restoreScrollDistance(distanceFromBottomRef.current)
     }
   }, [selectedThread])
 

@@ -194,6 +194,8 @@ export default function FloatingChatDrawer() {
   const teamScrollTimersRef = useRef<number[]>([])
   const crmShouldStickToBottomRef = useRef(true)
   const teamShouldStickToBottomRef = useRef(true)
+  const crmDistanceFromBottomRef = useRef(0)
+  const teamDistanceFromBottomRef = useRef(0)
   const previousConversationKeyRef = useRef<string | null>(null)
   const previousThreadKeyRef = useRef<string | null>(null)
   const [open, setOpen] = useState(false)
@@ -262,8 +264,22 @@ export default function FloatingChatDrawer() {
     return distanceToBottom <= threshold
   }
 
+  function distanceFromBottom(container: HTMLDivElement | null) {
+    if (!container) return 0
+    return Math.max(container.scrollHeight - container.scrollTop - container.clientHeight, 0)
+  }
+
+  function restoreScrollDistance(container: HTMLDivElement | null, distance: number) {
+    if (!container) return
+    window.requestAnimationFrame(() => {
+      const nextTop = Math.max(container.scrollHeight - container.clientHeight - distance, 0)
+      container.scrollTop = nextTop
+    })
+  }
+
   function handleCrmViewportScroll() {
     const nearBottom = isContainerNearBottom(crmMessagesRef.current)
+    crmDistanceFromBottomRef.current = distanceFromBottom(crmMessagesRef.current)
     crmShouldStickToBottomRef.current = nearBottom
     setShowCrmScrollToBottom(!nearBottom)
     if (!nearBottom) {
@@ -273,6 +289,7 @@ export default function FloatingChatDrawer() {
 
   function handleTeamViewportScroll() {
     const nearBottom = isContainerNearBottom(teamMessagesRef.current)
+    teamDistanceFromBottomRef.current = distanceFromBottom(teamMessagesRef.current)
     teamShouldStickToBottomRef.current = nearBottom
     setShowTeamScrollToBottom(!nearBottom)
     if (!nearBottom) {
@@ -282,12 +299,14 @@ export default function FloatingChatDrawer() {
 
   function jumpCrmToBottom() {
     crmShouldStickToBottomRef.current = true
+    crmDistanceFromBottomRef.current = 0
     setShowCrmScrollToBottom(false)
     scheduleScrollToBottom(crmMessagesRef.current, crmMessagesEndRef.current, crmScrollTimersRef, 'smooth')
   }
 
   function jumpTeamToBottom() {
     teamShouldStickToBottomRef.current = true
+    teamDistanceFromBottomRef.current = 0
     setShowTeamScrollToBottom(false)
     scheduleScrollToBottom(teamMessagesRef.current, teamMessagesEndRef.current, teamScrollTimersRef, 'smooth')
   }
@@ -422,6 +441,8 @@ export default function FloatingChatDrawer() {
     if (!open || activeTab !== 'crm' || !selectedConversation || !conversationChanged) return
     if (crmShouldStickToBottomRef.current || selectedConversationId !== selectedConversation.id) {
       scheduleScrollToBottom(crmMessagesRef.current, crmMessagesEndRef.current, crmScrollTimersRef, 'auto')
+    } else {
+      restoreScrollDistance(crmMessagesRef.current, crmDistanceFromBottomRef.current)
     }
   }, [activeTab, open, selectedConversationId, selectedConversation])
 
@@ -435,6 +456,8 @@ export default function FloatingChatDrawer() {
     if (!open || activeTab !== 'team' || !selectedThread || !threadChanged) return
     if (teamShouldStickToBottomRef.current || selectedThreadId !== selectedThread.id) {
       scheduleScrollToBottom(teamMessagesRef.current, teamMessagesEndRef.current, teamScrollTimersRef, 'auto')
+    } else {
+      restoreScrollDistance(teamMessagesRef.current, teamDistanceFromBottomRef.current)
     }
   }, [activeTab, open, selectedThreadId, selectedThread])
 
