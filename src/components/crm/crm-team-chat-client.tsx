@@ -122,6 +122,8 @@ function renderAttachments(attachments: ChatAttachment[] | undefined, onImageLoa
 export function CrmTeamChatClient() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const messagesViewportRef = useRef<HTMLDivElement | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const scrollTimersRef = useRef<number[]>([])
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [creatingThread, setCreatingThread] = useState(false)
@@ -144,12 +146,28 @@ export function CrmTeamChatClient() {
   const [attachmentUpload, setAttachmentUpload] = useState<UploadProgressState | null>(null)
   const [groupForm, setGroupForm] = useState({ title: '', participantUserIds: [] as string[] })
 
+  function clearScrollTimers() {
+    scrollTimersRef.current.forEach((timerId) => window.clearTimeout(timerId))
+    scrollTimersRef.current = []
+  }
+
   function scrollMessagesToBottom(behavior: ScrollBehavior = 'smooth') {
     const container = messagesViewportRef.current
     if (!container) return
     window.requestAnimationFrame(() => {
       container.scrollTo({ top: container.scrollHeight, behavior })
+      messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' })
     })
+  }
+
+  function scheduleScrollToBottom(behavior: ScrollBehavior = 'auto') {
+    const container = messagesViewportRef.current
+    if (!container) return
+    clearScrollTimers()
+    scrollMessagesToBottom(behavior)
+    scrollTimersRef.current = [80, 220, 420].map((delay) => window.setTimeout(() => {
+      scrollMessagesToBottom('auto')
+    }, delay))
   }
 
   async function loadBase() {
@@ -183,6 +201,12 @@ export function CrmTeamChatClient() {
   }
 
   useEffect(() => {
+    return () => {
+      clearScrollTimers()
+    }
+  }, [])
+
+  useEffect(() => {
     void loadBase()
   }, [])
 
@@ -209,8 +233,8 @@ export function CrmTeamChatClient() {
 
   useEffect(() => {
     if (!selectedThread) return
-    scrollMessagesToBottom('auto')
-  }, [selectedThreadId, selectedThread?.messages.length])
+    scheduleScrollToBottom('auto')
+  }, [detailLoading, selectedThreadId, selectedThread?.id, selectedThread?.messages.length])
 
   const visibleUsers = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -311,7 +335,7 @@ export function CrmTeamChatClient() {
       setMessageDraft('')
       setPendingAttachments([])
       await Promise.all([loadBase(), loadDetail(selectedThreadId)])
-      scrollMessagesToBottom('smooth')
+      scheduleScrollToBottom('smooth')
       return true
     } finally {
       setSending(false)
@@ -563,10 +587,11 @@ export function CrmTeamChatClient() {
                           <span>{formatDate(message.occurredAt, 'Sin fecha')}</span>
                         </div>
                         {message.bodyText ? <p className="mt-2 whitespace-pre-wrap leading-6">{message.bodyText}</p> : null}
-                        {renderAttachments(message.attachments, () => scrollMessagesToBottom('auto'))}
+                        {renderAttachments(message.attachments, () => scheduleScrollToBottom('auto'))}
                       </div>
                     )
                   })}
+                  <div ref={messagesEndRef} aria-hidden="true" className="h-px w-full" />
                 </div>
 
                 <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">

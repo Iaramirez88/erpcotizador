@@ -188,6 +188,10 @@ export default function FloatingChatDrawer() {
   const teamTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const crmMessagesRef = useRef<HTMLDivElement | null>(null)
   const teamMessagesRef = useRef<HTMLDivElement | null>(null)
+  const crmMessagesEndRef = useRef<HTMLDivElement | null>(null)
+  const teamMessagesEndRef = useRef<HTMLDivElement | null>(null)
+  const crmScrollTimersRef = useRef<number[]>([])
+  const teamScrollTimersRef = useRef<number[]>([])
   const [open, setOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'updates' | 'crm' | 'team'>('updates')
   const [teamView, setTeamView] = useState<'direct' | 'groups'>('direct')
@@ -218,12 +222,40 @@ export default function FloatingChatDrawer() {
   const [teamAttachmentUpload, setTeamAttachmentUpload] = useState<UploadProgressState | null>(null)
   const [groupForm, setGroupForm] = useState({ title: '', participantUserIds: [] as string[] })
 
-  function scrollContainerToBottom(container: HTMLDivElement | null, behavior: ScrollBehavior = 'smooth') {
+  function clearScrollTimers(timersRef: React.MutableRefObject<number[]>) {
+    timersRef.current.forEach((timerId) => window.clearTimeout(timerId))
+    timersRef.current = []
+  }
+
+  function scrollContainerToBottom(container: HTMLDivElement | null, endAnchor: HTMLDivElement | null, behavior: ScrollBehavior = 'smooth') {
     if (!container) return
     window.requestAnimationFrame(() => {
       container.scrollTo({ top: container.scrollHeight, behavior })
+      endAnchor?.scrollIntoView({ behavior, block: 'end' })
     })
   }
+
+  function scheduleScrollToBottom(
+    container: HTMLDivElement | null,
+    endAnchor: HTMLDivElement | null,
+    timersRef: React.MutableRefObject<number[]>,
+    behavior: ScrollBehavior = 'auto',
+  ) {
+    if (!container) return
+    clearScrollTimers(timersRef)
+    scrollContainerToBottom(container, endAnchor, behavior)
+    const retries = [80, 220, 420]
+    timersRef.current = retries.map((delay) => window.setTimeout(() => {
+      scrollContainerToBottom(container, endAnchor, 'auto')
+    }, delay))
+  }
+
+  useEffect(() => {
+    return () => {
+      clearScrollTimers(crmScrollTimersRef)
+      clearScrollTimers(teamScrollTimersRef)
+    }
+  }, [])
 
   useEffect(() => {
     try {
@@ -321,6 +353,7 @@ export default function FloatingChatDrawer() {
     if (activeTab !== 'team') {
       setPendingTeamAttachments([])
       setTeamAttachmentUpload(null)
+      clearScrollTimers(teamScrollTimersRef)
     }
   }, [activeTab])
 
@@ -338,14 +371,14 @@ export default function FloatingChatDrawer() {
   }, [teamMessageDraft, selectedThreadId])
 
   useEffect(() => {
-    if (activeTab !== 'crm' || !selectedConversation) return
-    scrollContainerToBottom(crmMessagesRef.current, 'auto')
-  }, [activeTab, selectedConversationId, selectedConversation?.messages.length])
+    if (!open || activeTab !== 'crm' || !selectedConversation) return
+    scheduleScrollToBottom(crmMessagesRef.current, crmMessagesEndRef.current, crmScrollTimersRef, 'auto')
+  }, [activeTab, open, crmLoading, selectedConversationId, selectedConversation?.id, selectedConversation?.messages.length])
 
   useEffect(() => {
-    if (activeTab !== 'team' || !selectedThread) return
-    scrollContainerToBottom(teamMessagesRef.current, 'auto')
-  }, [activeTab, selectedThreadId, selectedThread?.messages.length])
+    if (!open || activeTab !== 'team' || !selectedThread) return
+    scheduleScrollToBottom(teamMessagesRef.current, teamMessagesEndRef.current, teamScrollTimersRef, 'auto')
+  }, [activeTab, open, teamLoading, selectedThreadId, selectedThread?.id, selectedThread?.messages.length])
 
   const filteredTeamUsers = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -531,7 +564,7 @@ export default function FloatingChatDrawer() {
       setTeamMessageDraft('')
       setPendingTeamAttachments([])
       await Promise.all([loadBase(), loadThreadDetail(selectedThreadId)])
-      scrollContainerToBottom(teamMessagesRef.current, 'smooth')
+      scheduleScrollToBottom(teamMessagesRef.current, teamMessagesEndRef.current, teamScrollTimersRef, 'smooth')
       return true
     } finally {
       setSendingTeam(false)
@@ -830,6 +863,7 @@ export default function FloatingChatDrawer() {
                             <p className="mt-1 whitespace-pre-wrap break-words leading-5">{message.bodyText || 'Sin texto'}</p>
                           </div>
                         ))}
+                        <div ref={crmMessagesEndRef} aria-hidden="true" className="h-px w-full" />
                       </div>
                     ) : null}
                   </div>
@@ -1020,10 +1054,11 @@ export default function FloatingChatDrawer() {
                                   <span>{formatDate(message.occurredAt, 'Sin fecha')}</span>
                                 </div>
                                 {message.bodyText ? <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-5">{message.bodyText}</p> : null}
-                                {renderAttachments(message.attachments, () => scrollContainerToBottom(teamMessagesRef.current, 'auto'))}
+                                {renderAttachments(message.attachments, () => scheduleScrollToBottom(teamMessagesRef.current, teamMessagesEndRef.current, teamScrollTimersRef, 'auto'))}
                               </div>
                             )
                           })}
+                          <div ref={teamMessagesEndRef} aria-hidden="true" className="h-px w-full" />
                         </div>
                       </div>
                     ) : null}
