@@ -66,6 +66,10 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
       return NextResponse.json({ ok: false, error: 'El nombre del servicio es obligatorio.' }, { status: 400 })
     }
 
+    const shouldUpdatePassword = Object.prototype.hasOwnProperty.call(body ?? {}, 'loginPassword')
+      && typeof body?.loginPassword === 'string'
+      && body.loginPassword.trim().length > 0
+
     const updated = await prisma.websiteService.update({
       where: { id },
       data: {
@@ -81,7 +85,7 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
         isPaid: Boolean(body?.isPaid),
         isCancelled: Boolean(body?.isCancelled),
         loginUsername: normalizeString(body?.loginUsername),
-        loginPasswordEncrypted: encryptWebsiteServicePassword(body?.loginPassword),
+        loginPasswordEncrypted: shouldUpdatePassword ? encryptWebsiteServicePassword(body?.loginPassword) : undefined,
         contactName: normalizeString(body?.contactName),
         contactPhone: normalizeString(body?.contactPhone),
         notes: normalizeString(body?.notes),

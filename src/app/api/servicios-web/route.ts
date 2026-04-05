@@ -157,6 +157,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: 'El nombre del servicio es obligatorio.' }, { status: 400 })
     }
 
+    const loginPassword = Object.prototype.hasOwnProperty.call(body ?? {}, 'loginPassword')
+      ? encryptWebsiteServicePassword(body?.loginPassword)
+      : null
+
     const created = await prisma.websiteService.create({
       data: {
         empresaId: guard.access.empresaId,
@@ -172,7 +176,7 @@ export async function POST(req: NextRequest) {
         isPaid: Boolean(body?.isPaid),
         isCancelled: Boolean(body?.isCancelled),
         loginUsername: normalizeString(body?.loginUsername),
-        loginPasswordEncrypted: encryptWebsiteServicePassword(body?.loginPassword),
+        loginPasswordEncrypted: loginPassword,
         contactName: normalizeString(body?.contactName),
         contactPhone: normalizeString(body?.contactPhone),
         notes: normalizeString(body?.notes),

@@ -29,7 +29,7 @@ type WebsiteServiceItem = {
   isPaid: boolean
   isCancelled: boolean
   loginUsername: string | null
-  loginPassword: string | null
+  hasPassword: boolean
   contactName: string | null
   contactPhone: string | null
   notes: string | null
@@ -157,7 +157,11 @@ export default function WebsiteServicesClient() {
   const [assignedUserIds, setAssignedUserIds] = useState<string[]>([])
   const [editing, setEditing] = useState<WebsiteServiceItem | null>(null)
   const [form, setForm] = useState<ServiceForm>(EMPTY_FORM)
-  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({})
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, string>>({})
+  const [revealDialogOpen, setRevealDialogOpen] = useState(false)
+  const [serviceToReveal, setServiceToReveal] = useState<WebsiteServiceItem | null>(null)
+  const [userPasswordConfirmation, setUserPasswordConfirmation] = useState('')
+  const [revealingPasswordId, setRevealingPasswordId] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
@@ -173,6 +177,7 @@ export default function WebsiteServicesClient() {
       setSummary(json.summary ?? null)
       setAlerts(json.alerts ?? [])
       setCanManageAssignments(Boolean(json.access?.canManageAssignments))
+      setRevealedPasswords({})
 
       if (json.access?.canManageAssignments) {
         const accessRes = await fetch('/api/servicios-web/access', { cache: 'no-store' })
@@ -231,12 +236,56 @@ export default function WebsiteServicesClient() {
       isPaid: Boolean(item.isPaid),
       isCancelled: Boolean(item.isCancelled),
       loginUsername: item.loginUsername ?? '',
-      loginPassword: item.loginPassword ?? '',
+      loginPassword: '',
       contactName: item.contactName ?? '',
       contactPhone: item.contactPhone ?? '',
       notes: item.notes ?? '',
     })
     setDialogOpen(true)
+  }
+
+  function requestRevealPassword(item: WebsiteServiceItem) {
+    if (revealedPasswords[item.id] !== undefined) {
+      setRevealedPasswords((current) => {
+        const next = { ...current }
+        delete next[item.id]
+        return next
+      })
+      return
+    }
+
+    setServiceToReveal(item)
+    setUserPasswordConfirmation('')
+    setRevealDialogOpen(true)
+  }
+
+  async function confirmRevealPassword() {
+    if (!serviceToReveal) return
+    if (!userPasswordConfirmation.trim()) {
+      alert('Debes escribir tu contraseña de usuario para revelar la clave guardada.')
+      return
+    }
+
+    setRevealingPasswordId(serviceToReveal.id)
+    try {
+      const res = await fetch(`/api/servicios-web/${serviceToReveal.id}/reveal-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userPassword: userPasswordConfirmation }),
+      })
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; password?: string | null } | null
+      if (!res.ok || !json?.ok) {
+        alert(json?.error || 'No se pudo revelar la contraseña guardada.')
+        return
+      }
+
+      setRevealedPasswords((current) => ({ ...current, [serviceToReveal.id]: json.password ?? '' }))
+      setRevealDialogOpen(false)
+      setServiceToReveal(null)
+      setUserPasswordConfirmation('')
+    } finally {
+      setRevealingPasswordId(null)
+    }
   }
 
   async function saveService() {
@@ -345,7 +394,8 @@ export default function WebsiteServicesClient() {
             {loading ? <p className="text-sm text-slate-500">Cargando servicios web...</p> : null}
             {!loading && filteredServices.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">No hay servicios registrados con ese filtro.</p> : null}
             {filteredServices.map((item) => {
-              const showPassword = Boolean(visiblePasswords[item.id])
+              const revealedPassword = revealedPasswords[item.id]
+              const showPassword = revealedPassword !== undefined
               return (
                 <div key={item.id} className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-4 shadow-sm">
                   <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -388,12 +438,13 @@ export default function WebsiteServicesClient() {
                     <div className="rounded-2xl border border-slate-200 bg-white p-3">
                       <div className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-900">
                         <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-sky-700" /> Credenciales</span>
-                        <button type="button" className="text-slate-500 hover:text-slate-800" onClick={() => setVisiblePasswords((current) => ({ ...current, [item.id]: !current[item.id] }))}>
+                        <button type="button" className="text-slate-500 hover:text-slate-800" onClick={() => requestRevealPassword(item)} disabled={!item.hasPassword || revealingPasswordId === item.id}>
                           {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
                       </div>
                       <p className="mt-2 text-sm text-slate-600"><span className="font-medium text-slate-900">Usuario:</span> {item.loginUsername || 'Sin usuario'}</p>
-                      <p className="mt-1 break-all text-sm text-slate-600"><span className="font-medium text-slate-900">Contraseña:</span> {showPassword ? (item.loginPassword || 'Sin contraseña') : '••••••••'}</p>
+                      <p className="mt-1 break-all text-sm text-slate-600"><span className="font-medium text-slate-900">Contraseña:</span> {!item.hasPassword ? 'Sin contraseña' : showPassword ? (revealedPassword || 'Sin contraseña') : '••••••••'}</p>
+                      {item.hasPassword ? <p className="mt-1 text-xs text-slate-500">Para verla se pedirá tu contraseña de usuario.</p> : null}
                     </div>
                   </div>
 
@@ -511,7 +562,7 @@ export default function WebsiteServicesClient() {
             </div>
             <div className="grid gap-2">
               <Label>Contraseña</Label>
-              <Input value={form.loginPassword} onChange={(e) => setForm((current) => ({ ...current, loginPassword: e.target.value }))} placeholder="Contraseña cifrada al guardar" />
+              <Input value={form.loginPassword} onChange={(e) => setForm((current) => ({ ...current, loginPassword: e.target.value }))} placeholder={editing ? 'Escribe una nueva o déjala vacía para conservar la actual' : 'Contraseña de acceso al servicio'} />
             </div>
             <div className="grid gap-2">
               <Label>Nombre de contacto</Label>
@@ -541,6 +592,39 @@ export default function WebsiteServicesClient() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
             <Button onClick={() => void saveService()} disabled={saving}>{saving ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear servicio'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={revealDialogOpen} onOpenChange={(nextOpen) => {
+        setRevealDialogOpen(nextOpen)
+        if (!nextOpen) {
+          setServiceToReveal(null)
+          setUserPasswordConfirmation('')
+        }
+      }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirmar contraseña de usuario</DialogTitle>
+            <DialogDescription>
+              {serviceToReveal ? `Para ver la contraseña guardada de ${serviceToReveal.nombre}, confirma tu contraseña de acceso al sistema.` : 'Confirma tu contraseña para continuar.'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2 py-2">
+            <Label htmlFor="website-service-user-password">Tu contraseña</Label>
+            <Input
+              id="website-service-user-password"
+              type="password"
+              value={userPasswordConfirmation}
+              onChange={(event) => setUserPasswordConfirmation(event.target.value)}
+              placeholder="Contraseña de usuario"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRevealDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={() => void confirmRevealPassword()} disabled={revealingPasswordId === serviceToReveal?.id}>
+              {revealingPasswordId === serviceToReveal?.id ? 'Validando...' : 'Ver contraseña'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

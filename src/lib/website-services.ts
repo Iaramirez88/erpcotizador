@@ -1,4 +1,4 @@
-import { decryptChannelSecret, encryptChannelSecret } from '@/lib/crm-channel-secrets'
+import { decryptChannelSecret } from '@/lib/crm-channel-secrets'
 import { prisma } from '@/lib/prisma'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 
@@ -33,11 +33,18 @@ function normalizeString(value: string | null | undefined) {
 
 export function encryptWebsiteServicePassword(value: string | null | undefined) {
   const normalized = normalizeString(value)
-  return normalized ? encryptChannelSecret(normalized) : null
+  return normalized
 }
 
 export function decryptWebsiteServicePassword(value: string | null | undefined) {
-  return normalizeString(decryptChannelSecret(value))
+  const normalized = normalizeString(value)
+  if (!normalized) return null
+  const legacyDecrypted = normalizeString(decryptChannelSecret(normalized))
+  return legacyDecrypted || normalized
+}
+
+export function hasWebsiteServicePassword(value: string | null | undefined) {
+  return Boolean(normalizeString(value))
 }
 
 export async function getWebsiteServicesAccessForUser(userId: string) {
@@ -115,7 +122,7 @@ export function serializeWebsiteService(service: WebsiteServiceRecord) {
     isPaid: service.isPaid,
     isCancelled: service.isCancelled,
     loginUsername: service.loginUsername,
-    loginPassword: decryptWebsiteServicePassword(service.loginPasswordEncrypted),
+    hasPassword: hasWebsiteServicePassword(service.loginPasswordEncrypted),
     contactName: service.contactName,
     contactPhone: service.contactPhone,
     notes: service.notes,
