@@ -1474,6 +1474,7 @@ model BillingInvoice {
   currency    String @default("COP")
   amountCOP   Int
   discountPct Int    @default(0)
+  quotedModulesJson Json @default("[]")
 
   externalReference String @unique
 
@@ -1788,6 +1789,17 @@ model PlanModuleSetting {
   @@unique([planTier, module])
   @@index([module])
   @@map("plan_module_settings")
+}
+
+model PlanModulePriceSetting {
+  id        String    @id @default(cuid())
+  module    ModuleKey @unique
+  priceCOP  Int
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([module])
+  @@map("plan_module_price_settings")
 }
 
 // ============================================

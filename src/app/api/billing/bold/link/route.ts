@@ -7,12 +7,16 @@ import { ANNUAL_DISCOUNT_PCT, type BillingCycle, getPlanPriceCOP, type PlanTier 
 import { resolveUserIdFromSession } from '@/lib/session-user'
 import { ensurePlanOwnerUserIdForEmpresa } from '@/lib/plan-owner'
 import { isSuperAdminEmail } from '@/lib/super-admin'
+import { ALL_MODULE_KEYS, getModularPlanQuote } from '@/lib/plan-catalog'
+import type { ModuleKey } from '@prisma/client'
+import { getPlanModulePriceMap } from '@/lib/plan-module-prices'
 
 export const runtime = 'nodejs'
 
 type Body = {
   tier: PlanTier
   cycle: BillingCycle
+  selectedModules?: ModuleKey[]
 }
 
 function isPlanTier(value: unknown): value is PlanTier {
@@ -21,6 +25,10 @@ function isPlanTier(value: unknown): value is PlanTier {
 
 function isBillingCycle(value: unknown): value is BillingCycle {
   return value === 'MONTHLY' || value === 'YEARLY'
+}
+
+function isModuleKey(value: unknown): value is ModuleKey {
+  return typeof value === 'string' && ALL_MODULE_KEYS.includes(value as ModuleKey)
 }
 
 export async function POST(request: Request) {
@@ -68,8 +76,14 @@ export async function POST(request: Request) {
     const tier = body.tier
     const cycle = body.cycle
 
-    const amountCOP = getPlanPriceCOP(tier, cycle)
-    const discountPct = cycle === 'YEARLY' ? ANNUAL_DISCOUNT_PCT : 0
+    const selectedModules = Array.isArray(body.selectedModules)
+      ? body.selectedModules.filter((moduleKey): moduleKey is ModuleKey => isModuleKey(moduleKey))
+      : []
+
+    const modulePriceMap = selectedModules.length ? await getPlanModulePriceMap() : undefined
+    const modularQuote = selectedModules.length ? getModularPlanQuote({ selectedModules, cycle, modulePriceMap }) : null
+    const amountCOP = modularQuote?.totalCOP ?? getPlanPriceCOP(tier, cycle)
+    const discountPct = modularQuote?.annualDiscountPct ?? (cycle === 'YEARLY' ? ANNUAL_DISCOUNT_PCT : 0)
 
     const ts = Date.now()
     const reference = `PLAN-${empresaId.slice(0, 8)}-${tier}-${cycle}-${ts}`.slice(0, 60)
@@ -83,7 +97,9 @@ export async function POST(request: Request) {
     const { paymentLinkId, url } = await createBoldPaymentLink({
       reference,
       amountCOP,
-      description: `SGDigital - Plan ${tier} (${cycle === 'YEARLY' ? 'Anual' : 'Mensual'})`,
+      description: modularQuote
+        ? `SGDigital - Plan ${tier} + ${selectedModules.length} módulos (${cycle === 'YEARLY' ? 'Anual' : 'Mensual'})`
+        : `SGDigital - Plan ${tier} (${cycle === 'YEARLY' ? 'Anual' : 'Mensual'})`,
       payerEmail: user?.email ?? undefined,
       callbackUrl,
       expirationNanoseconds,
@@ -99,6 +115,7 @@ export async function POST(request: Request) {
         currency: 'COP',
         amountCOP,
         discountPct,
+        quotedModulesJson: selectedModules,
         externalReference: reference,
         boldPaymentLinkId: paymentLinkId,
         boldCheckoutUrl: url,

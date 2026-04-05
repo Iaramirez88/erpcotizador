@@ -7,26 +7,51 @@ import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import type { PayrollPayslipRow, PayrollPeriodRow } from '@/lib/payroll'
 import { formatCurrency } from '@/lib/utils'
 
+type SedeOption = { id: string; nombre: string }
+
 export default function NominaPeriodosPage() {
   const [periods, setPeriods] = useState<PayrollPeriodRow[]>([])
   const [payslips, setPayslips] = useState<PayrollPayslipRow[]>([])
+  const [sedes, setSedes] = useState<SedeOption[]>([])
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [form, setForm] = useState({
+    label: '',
+    frequency: 'QUINCENAL',
+    status: 'BORRADOR',
+    sedeId: '',
+    startsAt: '',
+    endsAt: '',
+    paymentDate: '',
+    notes: '',
+  })
   const { mode, setMode } = useDataViewMode('nomina.periodos', 'list')
 
   async function load() {
-    const [periodsRes, payslipsRes] = await Promise.all([
+    const [periodsRes, payslipsRes, sedesRes] = await Promise.all([
       fetch('/api/nomina/periodos', { cache: 'no-store' }),
       fetch('/api/nomina/desprendibles', { cache: 'no-store' }),
+      fetch('/api/sedes', { cache: 'no-store' }),
     ])
-    const [periodsJson, payslipsJson] = await Promise.all([
+    const [periodsJson, payslipsJson, sedesJson] = await Promise.all([
       periodsRes.json().catch(() => null),
       payslipsRes.json().catch(() => null),
+      sedesRes.json().catch(() => null),
     ])
     setPeriods((periodsJson?.data as PayrollPeriodRow[] | undefined) ?? [])
     setPayslips((payslipsJson?.data as PayrollPayslipRow[] | undefined) ?? [])
+    setSedes((sedesJson?.data as SedeOption[] | undefined) ?? [])
   }
 
   useEffect(() => {
@@ -38,11 +63,70 @@ export default function NominaPeriodosPage() {
     await load()
   }
 
+  function openCreate() {
+    setEditingId(null)
+    setError(null)
+    setForm({ label: '', frequency: 'QUINCENAL', status: 'BORRADOR', sedeId: sedes[0]?.id || '', startsAt: '', endsAt: '', paymentDate: '', notes: '' })
+    setDialogOpen(true)
+  }
+
+  function openEdit(period: PayrollPeriodRow) {
+    setEditingId(period.id)
+    setError(null)
+    setForm({
+      label: period.label,
+      frequency: period.frequency,
+      status: period.status,
+      sedeId: period.sedeId ?? '',
+      startsAt: period.startsAt.slice(0, 10),
+      endsAt: period.endsAt.slice(0, 10),
+      paymentDate: period.paymentDate.slice(0, 10),
+      notes: period.notes ?? '',
+    })
+    setDialogOpen(true)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    setError(null)
+    const res = await fetch('/api/nomina/periodos', {
+      method: editingId ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...(editingId ? { id: editingId } : {}), ...form, sedeId: form.sedeId || null }),
+    })
+    const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null
+    if (!res.ok || !json?.ok) {
+      setError(json?.error ?? 'No fue posible crear el período')
+      setSaving(false)
+      return
+    }
+    setDialogOpen(false)
+    setEditingId(null)
+    setForm({ label: '', frequency: 'QUINCENAL', status: 'BORRADOR', sedeId: sedes[0]?.id || '', startsAt: '', endsAt: '', paymentDate: '', notes: '' })
+    await load()
+    setSaving(false)
+  }
+
+  async function handleDelete(periodId: string) {
+    if (!window.confirm('Eliminar este período?')) return
+    const res = await fetch('/api/nomina/periodos', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: periodId }),
+    })
+    const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null
+    if (!res.ok || !json?.ok) {
+      setError(json?.error ?? 'No fue posible eliminar el período')
+      return
+    }
+    await load()
+  }
+
   return (
     <div className="space-y-4">
       <ErpPageHero
         eyebrow="Nómina"
-        title="Períodos y cálculo"
+        title={<span data-tour="nomina-periodos-title">Períodos y cálculo</span>}
         description="Gestión de cortes de nómina, ejecución de cálculo, desprendibles y contabilización automática."
         stats={[
           { label: 'Periodicidad', value: '4', hint: 'Quincenal, mensual, semanal y jornales', tone: 'sky' },
@@ -53,8 +137,11 @@ export default function NominaPeriodosPage() {
 
       <NominaSubnav />
 
-      <div className="flex justify-end">
-        <DataViewToggle mode={mode} onChange={setMode} />
+      <div className="flex justify-end" data-tour="nomina-periodos-actions">
+        <div className="flex flex-wrap gap-2">
+          <DataViewToggle mode={mode} onChange={setMode} />
+          <Button className="rounded-xl" onClick={openCreate}>Crear período</Button>
+        </div>
       </div>
 
       <Tabs defaultValue="periodos" className="space-y-4">
@@ -65,7 +152,7 @@ export default function NominaPeriodosPage() {
 
         <TabsContent value="periodos" className="space-y-4">
           <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-            <Card className="rounded-[26px] border-slate-200">
+            <Card className="rounded-[26px] border-slate-200" data-tour="nomina-periodos-list">
               <CardHeader>
                 <CardTitle>Cortes de nómina</CardTitle>
                 <CardDescription>Simulación de estados del ciclo: borrador, calculada, pagada y contabilizada.</CardDescription>
@@ -100,6 +187,10 @@ export default function NominaPeriodosPage() {
                         <Button variant="outline" className="rounded-xl" onClick={() => void contabilizar(period.id)}>Contabilizar</Button>
                       </div>
                     ) : null}
+                    <div className="mt-3 flex justify-end gap-2">
+                      <Button variant="outline" className="rounded-xl" onClick={() => openEdit(period)}>Editar</Button>
+                      <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(period.id)}>Eliminar</Button>
+                    </div>
                   </div>
                 ))}
               </CardContent>
@@ -153,6 +244,30 @@ export default function NominaPeriodosPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-xl rounded-[28px]">
+          <DialogHeader>
+            <DialogTitle>Crear período de nómina</DialogTitle>
+            <DialogDescription>Abre un nuevo corte para cálculo, pago y contabilización.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-2 md:col-span-2"><Label>Nombre</Label><Input value={form.label} onChange={(event) => setForm((current) => ({ ...current, label: event.target.value }))} placeholder="Ejemplo: Nómina quincena abril 1" /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>Sede</Label><Select value={form.sedeId || '__none__'} onValueChange={(value) => setForm((current) => ({ ...current, sedeId: value === '__none__' ? '' : value }))}><SelectTrigger><SelectValue placeholder="Todas / sin sede" /></SelectTrigger><SelectContent><SelectItem value="__none__">Todas / sin sede</SelectItem>{sedes.map((sede) => <SelectItem key={sede.id} value={sede.id}>{sede.nombre}</SelectItem>)}</SelectContent></Select></div>
+            <div className="grid gap-2"><Label>Frecuencia</Label><Select value={form.frequency} onValueChange={(value) => setForm((current) => ({ ...current, frequency: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="QUINCENAL">Quincenal</SelectItem><SelectItem value="MENSUAL">Mensual</SelectItem><SelectItem value="SEMANAL">Semanal</SelectItem><SelectItem value="JORNAL">Jornal</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2"><Label>Estado</Label><Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="BORRADOR">Borrador</SelectItem><SelectItem value="CALCULADA">Calculada</SelectItem><SelectItem value="PAGADA">Pagada</SelectItem><SelectItem value="CERRADA">Cerrada</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2"><Label>Fecha inicio</Label><Input type="date" value={form.startsAt} onChange={(event) => setForm((current) => ({ ...current, startsAt: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>Fecha fin</Label><Input type="date" value={form.endsAt} onChange={(event) => setForm((current) => ({ ...current, endsAt: event.target.value }))} /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>Fecha pago</Label><Input type="date" value={form.paymentDate} onChange={(event) => setForm((current) => ({ ...current, paymentDate: event.target.value }))} /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>Notas</Label><Textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} rows={3} /></div>
+          </div>
+          {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={() => void handleSave()} disabled={saving}>{saving ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear período'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

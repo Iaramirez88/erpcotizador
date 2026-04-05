@@ -65,11 +65,11 @@ export default function CentrosDeCostoPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">Centros de costo</h1>
+        <h1 className="text-2xl font-semibold" data-tour="contabilidad-centros-title">Centros de costo</h1>
         <p className="text-sm text-muted-foreground">Crea centros de costo para clasificar asientos (opcional).</p>
       </div>
 
-      <div className="rounded-lg border p-4 space-y-3">
+      <div className="rounded-lg border p-4 space-y-3" data-tour="contabilidad-centros-create">
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
             <Label htmlFor="code">Código</Label>
@@ -93,7 +93,7 @@ export default function CentrosDeCostoPage() {
         {error ? <div className="text-sm text-destructive">{error}</div> : null}
       </div>
 
-      <div className="rounded-lg border">
+      <div className="rounded-lg border" data-tour="contabilidad-centros-list">
         <div className="border-b p-3 text-sm font-medium">Centros</div>
         <div className="p-3">
           {loading ? (

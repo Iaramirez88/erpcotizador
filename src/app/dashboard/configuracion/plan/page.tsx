@@ -5,8 +5,16 @@ import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import type { ModuleKey } from '@prisma/client'
 import { cn } from "@/lib/utils"
 import { formatCOP, getPlanPriceCOP, type BillingCycle, type PlanInfo, type PlanTier } from "@/lib/plans"
+import {
+  buildPlanModuleCatalog,
+  getModularPlanQuote,
+  getDefaultEnabledModulesForPlan,
+  getMinimumPlanTierForModules,
+  PLAN_MODULE_CATALOG,
+} from "@/lib/plan-catalog"
 
 type ComparisonFeature = {
   label: string
@@ -149,6 +157,8 @@ type PlanApiResponse =
         trialValidUntil?: string | null
       } | null
       lastInvoice: LastInvoice | null
+      invoices: LastInvoice[]
+      modulePrices: Array<{ module: ModuleKey; priceCOP: number }>
       all: PlanInfo[]
       devDefault: PlanTier
     }
@@ -172,6 +182,7 @@ type LastInvoice = {
   discountPct: number
   externalReference: string
   checkoutUrl: string | null
+  quotedModules: ModuleKey[]
   expiresAt: string | null
   paidAt: string | null
   createdAt: string
@@ -193,8 +204,11 @@ export default function PlanPage() {
     planValidUntil: string | null
   } | null>(null)
   const [lastInvoice, setLastInvoice] = useState<LastInvoice | null>(null)
+  const [invoices, setInvoices] = useState<LastInvoice[]>([])
+  const [modulePriceMap, setModulePriceMap] = useState<Partial<Record<ModuleKey, number>>>({})
   const [cycle, setCycle] = useState<BillingCycle>("MONTHLY")
   const [isPaying, setIsPaying] = useState(false)
+  const [selectedModules, setSelectedModules] = useState<(typeof PLAN_MODULE_CATALOG)[number]["module"][]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -217,6 +231,8 @@ export default function PlanPage() {
           setCycle(json.empresa?.billingCycle ?? "MONTHLY")
           setAll(json.all)
           setLastInvoice(json.lastInvoice)
+          setInvoices(json.invoices)
+          setModulePriceMap(Object.fromEntries(json.modulePrices.map((row) => [row.module, row.priceCOP])) as Partial<Record<ModuleKey, number>>)
           return
         }
 
@@ -289,19 +305,72 @@ export default function PlanPage() {
 
   const comparisonPlans = useMemo(() => sortedPlans.filter((plan) => plan.tier in PLAN_DETAILS), [sortedPlans])
 
+  const pricedCatalog = useMemo(() => buildPlanModuleCatalog(modulePriceMap), [modulePriceMap])
+
+  const modulesByCategory = useMemo(() => {
+    return pricedCatalog.reduce<Record<string, typeof pricedCatalog>>((acc, item) => {
+      const bucket = acc[item.category] ?? []
+      bucket.push(item)
+      acc[item.category] = bucket
+      return acc
+    }, {})
+  }, [pricedCatalog])
+
+  const recommendedTier = useMemo(() => getMinimumPlanTierForModules(selectedModules), [selectedModules])
+
+  const recommendedPlan = useMemo(() => {
+    return sortedPlans.find((plan) => plan.tier === recommendedTier) ?? null
+  }, [recommendedTier, sortedPlans])
+
+  const modularQuote = useMemo(() => getModularPlanQuote({ selectedModules, cycle, modulePriceMap }), [selectedModules, cycle, modulePriceMap])
+  const recommendedPrice = modularQuote.totalCOP
+
+  const includedModulesForRecommendedTier = useMemo(() => {
+    return new Set(getDefaultEnabledModulesForPlan(recommendedTier))
+  }, [recommendedTier])
+
+  const currentRecommendedDifference = useMemo(() => {
+    if (!current || current.tier === recommendedTier) return null
+
+    const currentPrice = getPlanPriceCOP(current.tier, cycle)
+    return recommendedPrice - currentPrice
+  }, [current, recommendedPrice, recommendedTier, cycle])
+
+  useEffect(() => {
+    if (!current || selectedModules.length > 0) return
+
+    const initialModules = pricedCatalog
+      .map((item) => item.module)
+      .filter((moduleKey) => getDefaultEnabledModulesForPlan(current.tier).includes(moduleKey))
+
+    if (blockedModule && pricedCatalog.some((item) => item.module === blockedModule)) {
+      setSelectedModules(Array.from(new Set([...initialModules, blockedModule as (typeof PLAN_MODULE_CATALOG)[number]["module"]])))
+      return
+    }
+
+    setSelectedModules(initialModules)
+  }, [blockedModule, current, pricedCatalog, selectedModules.length])
+
   function renderAvailability(value: boolean | string) {
     if (typeof value === 'string') return <span className="font-medium text-slate-800">{value}</span>
     return value ? <span className="font-semibold text-emerald-600">✓</span> : <span className="font-semibold text-rose-600">✕</span>
   }
 
-  async function startPayment(tier: PlanTier) {
+  function toggleModule(moduleKey: (typeof PLAN_MODULE_CATALOG)[number]["module"]) {
+    setSelectedModules((prev) => {
+      if (prev.includes(moduleKey)) return prev.filter((item) => item !== moduleKey)
+      return [...prev, moduleKey]
+    })
+  }
+
+  async function startPayment(tier: PlanTier, modules: (typeof PLAN_MODULE_CATALOG)[number]["module"][] = []) {
     setIsPaying(true)
     setError(null)
     try {
       const res = await fetch("/api/billing/bold/link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier, cycle }),
+        body: JSON.stringify({ tier, cycle, selectedModules: modules }),
       })
 
       const json = (await res.json().catch(() => ({}))) as CreateBoldLinkResponse
@@ -456,6 +525,22 @@ export default function PlanPage() {
                   {lastInvoice.paidAt ? ` · Pagado: ${new Date(lastInvoice.paidAt).toLocaleString("es-CO")}` : ""}
                 </div>
 
+                {lastInvoice.quotedModules.length ? (
+                  <div className="pt-1">
+                    <div className="text-xs font-medium text-gray-700">Módulos cotizados</div>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {lastInvoice.quotedModules.map((moduleKey) => {
+                        const item = pricedCatalog.find((module) => module.module === moduleKey)
+                        return (
+                          <span key={moduleKey} className="rounded-full bg-gray-100 px-2 py-1 text-[11px] text-gray-700">
+                            {item?.nombre ?? moduleKey}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
                 {lastInvoice.status === "PENDING" && lastInvoice.checkoutUrl ? (
                   <div className="pt-1">
                     <Button
@@ -473,6 +558,154 @@ export default function PlanPage() {
           </CardContent>
         </Card>
       </div>
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.6fr_0.9fr]">
+        <Card className="border-slate-200 bg-[linear-gradient(135deg,#fff7ed_0%,#ffffff_48%,#eff6ff_100%)]">
+          <CardHeader>
+            <CardTitle>Arma tu plan por módulos</CardTitle>
+            <CardDescription>
+              Selecciona los módulos que realmente vas a usar. El sistema te recomienda el plan mínimo que los cubre y actualiza el valor en tiempo real.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {Object.entries(modulesByCategory).map(([category, modules]) => (
+              <div key={category} className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">{category}</div>
+                    <div className="text-xs text-slate-600">Activa solo lo que aporta valor a esta etapa de la operación.</div>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  {modules.map((module) => {
+                    const selected = selectedModules.includes(module.module)
+                    const startingTier = getMinimumPlanTierForModules([module.module])
+
+                    return (
+                      <button
+                        key={module.module}
+                        type="button"
+                        onClick={() => toggleModule(module.module)}
+                        className={cn(
+                          "rounded-2xl border p-4 text-left transition",
+                          selected
+                            ? "border-slate-900 bg-slate-900 text-white shadow-lg shadow-slate-300/60"
+                            : "border-white/70 bg-white/80 text-slate-900 shadow-sm hover:border-slate-300 hover:bg-white"
+                        )}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold">{module.nombre}</div>
+                            <div className={cn("mt-1 text-xs", selected ? "text-slate-200" : "text-slate-600")}>{module.descripcion}</div>
+                          </div>
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-1 text-[11px] font-semibold",
+                              selected ? "bg-white/15 text-white" : "bg-slate-100 text-slate-700"
+                            )}
+                          >
+                            + {formatCOP(module.activationPriceMonthlyCOP)}/mes
+                          </span>
+                        </div>
+                        <div className={cn("mt-3 text-[11px] font-medium uppercase tracking-[0.16em]", selected ? "text-slate-300" : "text-slate-500")}>
+                          Tier mínimo: {startingTier}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 bg-slate-950 text-white">
+          <CardHeader>
+            <CardTitle>Resumen de cotización</CardTitle>
+            <CardDescription className="text-slate-300">
+              La plataforma se cobra por plan. La calculadora encuentra el tier mínimo que soporta tu combinación actual.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="rounded-2xl bg-white/10 p-4">
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-300">Plan recomendado</div>
+              <div className="mt-2 text-3xl font-bold">{recommendedPlan?.nombre ?? recommendedTier}</div>
+              <div className="mt-1 text-sm text-slate-300">{recommendedPlan?.descripcion ?? 'Configuración recomendada según tus módulos.'}</div>
+              <div className="mt-4 text-4xl font-black">{formatCOP(recommendedPrice)}</div>
+              <div className="text-sm text-slate-300">{cycle === 'YEARLY' ? 'COP / año' : 'COP / mes'}</div>
+            </div>
+
+            <div className="grid gap-2 rounded-2xl border border-white/10 p-4 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-slate-300">Base del plan {recommendedPlan?.nombre ?? recommendedTier}</span>
+                <span>{formatCOP(cycle === 'YEARLY' ? getPlanPriceCOP(recommendedTier, 'YEARLY') : modularQuote.basePriceMonthlyCOP)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-slate-300">Activación de módulos</span>
+                <span>{formatCOP(cycle === 'YEARLY' ? recommendedPrice - getPlanPriceCOP(recommendedTier, 'YEARLY') : modularQuote.modulesSubtotalMonthlyCOP)}</span>
+              </div>
+              {cycle === 'YEARLY' ? (
+                <div className="flex items-center justify-between gap-3 text-emerald-300">
+                  <span>Descuento anual aplicado</span>
+                  <span>{modularQuote.annualDiscountPct}%</span>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-white">Módulos seleccionados</div>
+              {selectedModules.length ? (
+                <div className="space-y-2">
+                  {selectedModules.map((moduleKey) => {
+                    const item = pricedCatalog.find((module) => module.module === moduleKey)
+                    return (
+                      <div key={moduleKey} className="flex items-center justify-between gap-3 rounded-xl bg-white/10 px-3 py-2 text-xs text-slate-100">
+                        <span>{item?.nombre ?? moduleKey}</span>
+                        <span>{formatCOP(cycle === 'YEARLY' ? Math.round(item!.activationPriceMonthlyCOP * 12 * (1 - modularQuote.annualDiscountPct / 100)) : item!.activationPriceMonthlyCOP)}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="text-sm text-slate-300">Selecciona al menos un módulo para construir la recomendación.</div>
+              )}
+            </div>
+
+            <div className="space-y-2 rounded-2xl border border-white/10 p-4">
+              <div className="text-sm font-semibold">Cobertura del plan {recommendedPlan?.nombre ?? recommendedTier}</div>
+              <div className="text-sm text-slate-300">
+                {selectedModules.every((moduleKey) => includedModulesForRecommendedTier.has(moduleKey))
+                  ? 'Todos los módulos elegidos quedan cubiertos en este plan.'
+                  : 'Tu selección requiere un plan superior para cubrir todos los módulos.'}
+              </div>
+              {typeof currentRecommendedDifference === 'number' ? (
+                <div className="text-sm text-slate-200">
+                  {currentRecommendedDifference > 0
+                    ? `Sube ${formatCOP(currentRecommendedDifference)} frente a tu plan actual en este ciclo.`
+                    : `Baja ${formatCOP(Math.abs(currentRecommendedDifference))} frente a tu plan actual en este ciclo.`}
+                </div>
+              ) : current?.tier === recommendedTier ? (
+                <div className="text-sm text-emerald-300">Tu plan actual ya cubre esta combinación.</div>
+              ) : null}
+            </div>
+
+            <Button
+              className="w-full bg-white text-slate-950 hover:bg-slate-100"
+              disabled={isPaying || !recommendedPlan}
+              onClick={() => recommendedPlan ? startPayment(recommendedPlan.tier, selectedModules) : undefined}
+            >
+              {isPaying ? 'Redirigiendo…' : `Continuar con ${recommendedPlan?.nombre ?? recommendedTier}`}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Planes base disponibles</h2>
+          <p className="text-sm text-slate-600">Si prefieres comparar por paquete cerrado, aquí sigues teniendo la vista completa de cada plan.</p>
+        </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {sortedPlans.map((p) => {
@@ -550,6 +783,54 @@ export default function PlanPage() {
             </Card>
           )
         })}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Historial de cobros</CardTitle>
+          <CardDescription>Últimos intentos y pagos registrados para la empresa.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {!invoices.length ? (
+            <div className="text-sm text-gray-600">Aún no hay cobros registrados.</div>
+          ) : (
+            invoices.map((invoice) => (
+              <div key={invoice.id} className="rounded-2xl border border-slate-200 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "text-xs font-semibold px-2 py-1 rounded",
+                        invoice.status === "PAID"
+                          ? "bg-green-50 text-green-700"
+                          : invoice.status === "PENDING"
+                            ? "bg-yellow-50 text-yellow-800"
+                            : invoice.status === "REJECTED"
+                              ? "bg-red-50 text-red-700"
+                              : "bg-gray-100 text-gray-700"
+                      )}
+                    >
+                      {invoice.status}
+                    </span>
+                    <span className="text-sm font-medium text-slate-900">{formatCOP(invoice.amountCOP)}</span>
+                    <span className="text-xs text-slate-500">{invoice.billingCycle === 'YEARLY' ? 'Anual' : 'Mensual'}</span>
+                  </div>
+                  <div className="text-xs text-slate-500">{new Date(invoice.createdAt).toLocaleString('es-CO')}</div>
+                </div>
+                <div className="mt-2 text-xs text-slate-500">Referencia: <span className="font-mono">{invoice.externalReference}</span></div>
+                {invoice.quotedModules.length ? (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {invoice.quotedModules.map((moduleKey) => {
+                      const item = pricedCatalog.find((module) => module.module === moduleKey)
+                      return <span key={moduleKey} className="rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-700">{item?.nombre ?? moduleKey}</span>
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            ))
+          )}
+        </CardContent>
+      </Card>
       </div>
 
       <Card>

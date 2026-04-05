@@ -88,6 +88,7 @@ type DetailInvoice = {
   externalReference: string
   boldPaymentLinkId: string | null
   paymentMethod: string | null
+  quotedModules: ModuleKey[]
   createdAt: string
   updatedAt: string
 }
@@ -775,6 +776,15 @@ export default function SuperAdminEmpresasClient() {
                             <div className="text-xs text-muted-foreground">
                               {t('superAdmin.companies.invoices.reference')}: {inv.externalReference} · {t('superAdmin.companies.labels.createdAt')}: {fmtDate(inv.createdAt, locale, naText)} · {t('superAdmin.companies.labels.paymentMethod')}: {inv.paymentMethod || naText}
                             </div>
+                            {inv.quotedModules.length ? (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {inv.quotedModules.map((moduleKey) => (
+                                  <span key={moduleKey} className="rounded-full bg-muted px-2 py-1 text-[11px]">
+                                    {titleForModule(moduleKey)}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
                         ))}
                       </div>

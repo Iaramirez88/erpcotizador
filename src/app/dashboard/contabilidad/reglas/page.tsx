@@ -189,7 +189,7 @@ export default function ReglasContablesPage() {
     <div className="space-y-4">
       <ErpPageHero
         eyebrow="ERP financiero"
-        title="Reglas contables"
+        title={<span data-tour="contabilidad-reglas-title">Reglas contables</span>}
         description="Define reglas por evento para generar asientos automáticamente con el mismo lenguaje visual del ERP." 
         stats={[
           { label: 'Reglas', value: rules.length, hint: 'Automatizaciones activas', tone: 'neutral' },
@@ -198,7 +198,7 @@ export default function ReglasContablesPage() {
         ]}
       />
 
-      <div className="rounded-lg border p-4 space-y-3">
+      <div className="rounded-lg border p-4 space-y-3" data-tour="contabilidad-reglas-create">
         <div className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
             <Label htmlFor="name">Nombre</Label>
@@ -236,7 +236,7 @@ export default function ReglasContablesPage() {
           </div>
         </div>
 
-        <div className="rounded-md border p-3 space-y-2">
+          <div className="rounded-md border p-3 space-y-2" data-tour="contabilidad-reglas-lines">
           <div className="text-sm font-medium">Líneas</div>
 
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
@@ -340,7 +340,7 @@ export default function ReglasContablesPage() {
         {error ? <div className="text-sm text-destructive">{error}</div> : null}
       </div>
 
-      <div className="rounded-lg border">
+      <div className="rounded-lg border" data-tour="contabilidad-reglas-list">
         <div className="border-b p-3 text-sm font-medium">Reglas existentes</div>
         <div className="p-3">
           {loading ? (

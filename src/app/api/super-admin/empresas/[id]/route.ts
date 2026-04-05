@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import type { BillingCycle, PlanTier } from '@prisma/client'
+import type { BillingCycle, ModuleKey, PlanTier } from '@prisma/client'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
 
@@ -37,6 +37,11 @@ function addYears(date: Date, years: number) {
   const copy = new Date(date)
   copy.setFullYear(copy.getFullYear() + years)
   return copy
+}
+
+function parseQuotedModules(value: unknown): ModuleKey[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is ModuleKey => typeof item === 'string')
 }
 
 type PatchBody = {
@@ -123,6 +128,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
           externalReference: true,
           boldPaymentLinkId: true,
           paymentMethod: true,
+          quotedModulesJson: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -147,6 +153,10 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       workspaceCode,
       hasCompanyCode: Boolean(empresa.registrationCodeHash),
       planOwnerEmail,
+      billingInvoices: empresa.billingInvoices.map((invoice) => ({
+        ...invoice,
+        quotedModules: parseQuotedModules(invoice.quotedModulesJson),
+      })),
     },
   })
 }

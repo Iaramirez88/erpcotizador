@@ -110,7 +110,7 @@ export default function PlanDeCuentasPage() {
     <div className="space-y-4">
       <ErpPageHero
         eyebrow="ERP financiero"
-        title="Plan de cuentas"
+        title={<span data-tour="contabilidad-plan-title">Plan de cuentas</span>}
         description="Crea cuentas contables por empresa con una jerarquía visual consistente y código único."
         stats={[
           { label: 'Cuentas', value: rows.length, hint: 'Registros activos', tone: 'neutral' },
@@ -119,7 +119,7 @@ export default function PlanDeCuentasPage() {
         ]}
       />
 
-      <div className="rounded-lg border p-4 space-y-3">
+      <div className="rounded-lg border p-4 space-y-3" data-tour="contabilidad-plan-create">
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           <div className="space-y-1">
             <Label htmlFor="code">Código</Label>
@@ -197,7 +197,7 @@ export default function PlanDeCuentasPage() {
         {error ? <div className="text-sm text-destructive">{error}</div> : null}
       </div>
 
-      <div className="rounded-lg border">
+      <div className="rounded-lg border" data-tour="contabilidad-plan-list">
         <div className="border-b p-3 text-sm font-medium">Cuentas</div>
         <div className="p-3">
           {loading ? (

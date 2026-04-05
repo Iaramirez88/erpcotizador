@@ -263,7 +263,7 @@ export default function ContabilidadHomePage() {
     <div className="space-y-6">
       <ErpPageHero
         eyebrow="ERP financiero"
-        title="Contabilidad"
+        title={<span data-tour="contabilidad-title">Contabilidad</span>}
         description="Centro contable para operación diaria, configuración estructural, cierres y control tributario, separado del resto del ERP como un área profesional propia."
         actions={
           <>
@@ -287,7 +287,33 @@ export default function ContabilidadHomePage() {
 
       <ContabilidadSubnav />
 
-      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+      <div className="rounded-[26px] border border-sky-200 bg-sky-50/70 p-5 shadow-[0_18px_40px_-30px_rgba(14,116,144,0.35)]" data-tour="contabilidad-create-map">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="text-sm font-semibold uppercase tracking-[0.18em] text-sky-900">Mapa de creación</div>
+            <div className="mt-1 text-sm text-slate-700">Configuración estructural primero, operación contable después. Así el usuario encuentra rápido dónde crear cada elemento.</div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/dashboard/contabilidad/plan-de-cuentas" className="inline-flex h-11 items-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-medium text-slate-800 shadow-sm hover:bg-sky-50">
+              Crear cuenta
+            </Link>
+            <Link href="/dashboard/contabilidad/centros-de-costo" className="inline-flex h-11 items-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-medium text-slate-800 shadow-sm hover:bg-sky-50">
+              Crear centro
+            </Link>
+            <Link href="/dashboard/contabilidad/reglas" className="inline-flex h-11 items-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-medium text-slate-800 shadow-sm hover:bg-sky-50">
+              Crear regla
+            </Link>
+            <Link href="/dashboard/contabilidad/comprobantes" className="inline-flex h-11 items-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-medium text-slate-800 shadow-sm hover:bg-sky-50">
+              Crear comprobante
+            </Link>
+            <Link href="/dashboard/contabilidad/cierres" className="inline-flex h-11 items-center rounded-2xl border border-sky-200 bg-white px-4 text-sm font-medium text-slate-800 shadow-sm hover:bg-sky-50">
+              Crear período
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3" data-tour="contabilidad-areas">
         <Link href="/dashboard/contabilidad/comprobantes" className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.35)] hover:bg-slate-50/80">
           <div className="font-medium text-slate-950">Comprobantes</div>
           <div className="mt-1 text-sm text-slate-600">Ingreso, egreso, diario, ajustes, reversos y trazabilidad por estado.</div>

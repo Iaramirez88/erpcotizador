@@ -81,7 +81,7 @@ export default function NominaHomePage() {
     <div className="space-y-4">
       <ErpPageHero
         eyebrow="ERP financiero"
-        title="Nómina"
+        title={<span data-tour="nomina-title">Nómina</span>}
         description="Módulo base para nómina Colombia: empleados, contratos, novedades, incapacidades, cálculo, desprendibles, liquidaciones, historial de pagos y salida contable."
         stats={[
           { label: 'Activos', value: employees.filter((item) => item.status === 'ACTIVE').length, hint: 'Colaboradores en nómina', tone: 'sky' },
@@ -92,8 +92,29 @@ export default function NominaHomePage() {
 
       <NominaSubnav />
 
+      <Card className="rounded-[26px] border-sky-200 bg-sky-50/70 shadow-[0_20px_40px_-32px_rgba(14,116,144,0.35)]" data-tour="nomina-quick-actions">
+        <CardHeader>
+          <CardTitle>¿Dónde se crea cada cosa?</CardTitle>
+          <CardDescription>Deja visibles los puntos de entrada más usados para arrancar el flujo sin buscar en varias pantallas.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button asChild className="rounded-xl">
+            <Link href="/dashboard/contabilidad/nomina/empleados">Crear empleado o contrato</Link>
+          </Button>
+          <Button asChild variant="outline" className="rounded-xl bg-white/80">
+            <Link href="/dashboard/contabilidad/nomina/novedades">Crear novedad</Link>
+          </Button>
+          <Button asChild variant="outline" className="rounded-xl bg-white/80">
+            <Link href="/dashboard/contabilidad/nomina/periodos">Crear período</Link>
+          </Button>
+          <Button asChild variant="outline" className="rounded-xl bg-white/80">
+            <Link href="/dashboard/contabilidad/nomina/liquidaciones">Crear liquidación</Link>
+          </Button>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 xl:grid-cols-[1.4fr_0.6fr]">
-        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3" data-tour="nomina-modules">
         {payrollAreas.map((area) => (
           <Card key={area.href} className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
             <CardHeader>

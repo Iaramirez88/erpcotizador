@@ -3,8 +3,15 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getDefaultPlanTier, PLANES } from '@/lib/plans'
 import { resolvePaywallState } from '@/lib/plan-access'
+import type { ModuleKey } from '@prisma/client'
+import { getPlanModulePriceRows } from '@/lib/plan-module-prices'
 
 export const runtime = 'nodejs'
+
+function parseQuotedModules(value: unknown): ModuleKey[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is ModuleKey => typeof item === 'string')
+}
 
 export async function GET() {
   try {
@@ -33,10 +40,11 @@ export async function GET() {
         })
       : null
 
-    const lastInvoice = user?.empresaId
-      ? await prisma.billingInvoice.findFirst({
+    const invoices = user?.empresaId
+      ? await prisma.billingInvoice.findMany({
           where: { empresaId: user.empresaId },
           orderBy: { createdAt: 'desc' },
+          take: 10,
           select: {
             id: true,
             provider: true,
@@ -48,12 +56,16 @@ export async function GET() {
             discountPct: true,
             externalReference: true,
             boldCheckoutUrl: true,
+            quotedModulesJson: true,
             expiresAt: true,
             paidAt: true,
             createdAt: true,
           },
         })
-      : null
+      : []
+
+    const lastInvoice = invoices[0] ?? null
+    const modulePrices = await getPlanModulePriceRows()
 
     const paywall = empresa ? resolvePaywallState(empresa, new Date()) : null
 
@@ -103,11 +115,29 @@ export async function GET() {
             discountPct: lastInvoice.discountPct,
             externalReference: lastInvoice.externalReference,
             checkoutUrl: lastInvoice.boldCheckoutUrl,
+            quotedModules: parseQuotedModules(lastInvoice.quotedModulesJson),
             expiresAt: lastInvoice.expiresAt ? lastInvoice.expiresAt.toISOString() : null,
             paidAt: lastInvoice.paidAt ? lastInvoice.paidAt.toISOString() : null,
             createdAt: lastInvoice.createdAt.toISOString(),
           }
         : null,
+      invoices: invoices.map((invoice) => ({
+        id: invoice.id,
+        provider: invoice.provider,
+        status: invoice.status,
+        planTier: invoice.planTier,
+        billingCycle: invoice.billingCycle,
+        currency: invoice.currency,
+        amountCOP: invoice.amountCOP,
+        discountPct: invoice.discountPct,
+        externalReference: invoice.externalReference,
+        checkoutUrl: invoice.boldCheckoutUrl,
+        quotedModules: parseQuotedModules(invoice.quotedModulesJson),
+        expiresAt: invoice.expiresAt ? invoice.expiresAt.toISOString() : null,
+        paidAt: invoice.paidAt ? invoice.paidAt.toISOString() : null,
+        createdAt: invoice.createdAt.toISOString(),
+      })),
+      modulePrices,
       all: PLANES,
       devDefault: getDefaultPlanTier(),
     })

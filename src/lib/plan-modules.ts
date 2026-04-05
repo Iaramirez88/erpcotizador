@@ -1,39 +1,8 @@
 import { prisma } from '@/lib/prisma'
 import type { ModuleKey, PlanTier } from '@prisma/client'
+import { ALL_MODULE_KEYS, ALL_PLAN_TIERS, getDefaultEnabledModulesForPlan } from '@/lib/plan-catalog'
 
-export const ALL_MODULE_KEYS: ModuleKey[] = [
-  'DASHBOARD',
-  'COTIZADOR',
-  'COTIZACIONES',
-  'CLIENTES',
-  'CRM',
-  'MATERIALES',
-  'INVENTARIO',
-  'REMISIONES',
-  'POS',
-  'PROVEEDORES',
-  'COMPRAS',
-  'ORDENES',
-  'ESCANEOS',
-  'REPORTES',
-  'CONTABILIDAD',
-  'NOTIFICACIONES',
-  'CONFIG',
-]
-
-export const ALL_PLAN_TIERS: PlanTier[] = ['CRM', 'BASIC', 'MEDIO', 'INTERMEDIO', 'FULL']
-
-const DEFAULT_ENABLED_MODULES: Record<PlanTier, ModuleKey[]> = {
-  CRM: ['DASHBOARD', 'CRM', 'NOTIFICACIONES', 'CONFIG'],
-  BASIC: ['DASHBOARD', 'COTIZADOR', 'COTIZACIONES', 'CLIENTES', 'MATERIALES', 'REMISIONES', 'ORDENES', 'ESCANEOS', 'REPORTES', 'NOTIFICACIONES', 'CONFIG'],
-  MEDIO: ['DASHBOARD', 'COTIZADOR', 'COTIZACIONES', 'CLIENTES', 'MATERIALES', 'INVENTARIO', 'REMISIONES', 'POS', 'PROVEEDORES', 'COMPRAS', 'ORDENES', 'ESCANEOS', 'REPORTES', 'NOTIFICACIONES', 'CONFIG'],
-  INTERMEDIO: ['DASHBOARD', 'COTIZADOR', 'COTIZACIONES', 'CLIENTES', 'MATERIALES', 'INVENTARIO', 'REMISIONES', 'POS', 'PROVEEDORES', 'COMPRAS', 'ORDENES', 'ESCANEOS', 'REPORTES', 'CONTABILIDAD', 'NOTIFICACIONES', 'CONFIG'],
-  FULL: [...ALL_MODULE_KEYS],
-}
-
-export function getDefaultEnabledModulesForPlan(planTier: PlanTier): ModuleKey[] {
-  return [...(DEFAULT_ENABLED_MODULES[planTier] ?? ALL_MODULE_KEYS)]
-}
+export { ALL_MODULE_KEYS, ALL_PLAN_TIERS, getDefaultEnabledModulesForPlan }
 
 export async function ensurePlanModuleDefaults(): Promise<void> {
   try {

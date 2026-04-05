@@ -39,6 +39,18 @@ type PutResponse =
   | { ok: true; row: Row }
   | { ok?: false; error?: string }
 
+type PriceRow = {
+  module: ModuleKey
+  nombre: string
+  descripcion: string
+  category: string
+  priceCOP: number
+}
+
+type PricesResponse =
+  | { ok: true; rows: PriceRow[] }
+  | { ok?: false; error?: string }
+
 function titleForModule(moduleKey: ModuleKey): string {
   switch (moduleKey) {
     case 'DASHBOARD':
@@ -85,6 +97,8 @@ export default function SuperAdminPlanModulesClient() {
   const [modules, setModules] = useState<ModuleKey[]>([])
   const [rows, setRows] = useState<Row[]>([])
   const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [priceRows, setPriceRows] = useState<PriceRow[]>([])
+  const [savingPriceKey, setSavingPriceKey] = useState<string | null>(null)
 
   const [empresaNit, setEmpresaNit] = useState('')
   const [empresaId, setEmpresaId] = useState('')
@@ -101,8 +115,14 @@ export default function SuperAdminPlanModulesClient() {
       try {
         const res = await fetch('/api/super-admin/plan-modules', { cache: 'no-store' })
         const json = (await res.json().catch(() => ({}))) as GetResponse
+        const pricesRes = await fetch('/api/super-admin/module-prices', { cache: 'no-store' })
+        const pricesJson = (await pricesRes.json().catch(() => ({}))) as PricesResponse
         if (!res.ok || !('ok' in json) || !json.ok) {
           setError(('error' in json && json.error) || 'No se pudo cargar la configuración')
+          return
+        }
+        if (!pricesRes.ok || !('ok' in pricesJson) || !pricesJson.ok) {
+          setError(('error' in pricesJson && pricesJson.error) || 'No se pudo cargar los precios')
           return
         }
 
@@ -110,6 +130,7 @@ export default function SuperAdminPlanModulesClient() {
           setPlanTiers(json.planTiers)
           setModules(json.modules)
           setRows(json.rows)
+          setPriceRows(pricesJson.rows)
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error inesperado')
@@ -176,6 +197,35 @@ export default function SuperAdminPlanModulesClient() {
       setError(e instanceof Error ? e.message : 'Error inesperado')
     } finally {
       setSavingKey(null)
+    }
+  }
+
+  async function setPrice(moduleKey: ModuleKey, value: string) {
+    const numericValue = Number(value)
+    if (!Number.isFinite(numericValue) || numericValue < 0) {
+      setError('El precio debe ser un número mayor o igual a cero')
+      return
+    }
+
+    setSavingPriceKey(moduleKey)
+    setError(null)
+    try {
+      const res = await fetch('/api/super-admin/module-prices', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ module: moduleKey, priceCOP: numericValue }),
+      })
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; row?: { module: ModuleKey; priceCOP: number }; error?: string }
+      if (!res.ok || !json.ok || !json.row) {
+        setError(json.error || 'No se pudo guardar el precio')
+        return
+      }
+
+      setPriceRows((prev) => prev.map((row) => row.module === moduleKey ? { ...row, priceCOP: json.row!.priceCOP } : row))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error inesperado')
+    } finally {
+      setSavingPriceKey(null)
     }
   }
 
@@ -273,6 +323,34 @@ export default function SuperAdminPlanModulesClient() {
           </div>
         </CardContent>
       </Card>
+
+      {!loading && !error ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Precios por módulo</CardTitle>
+            <CardDescription>Ajusta el cargo mensual adicional que usa la calculadora comercial y el checkout.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {priceRows.map((row) => (
+              <div key={row.module} className="rounded-lg border p-3">
+                <div className="text-sm font-semibold text-slate-900">{row.nombre}</div>
+                <div className="mt-1 text-xs text-slate-500">{row.descripcion}</div>
+                <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-400">{row.category}</div>
+                <div className="mt-3 flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    defaultValue={row.priceCOP}
+                    disabled={savingPriceKey === row.module}
+                    onBlur={(event) => void setPrice(row.module, event.target.value)}
+                  />
+                  <span className="text-xs text-slate-500">COP/mes</span>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {loading ? <div className="text-sm text-gray-600">Cargando…</div> : null}
       {error ? <div className="text-sm text-red-600">{error}</div> : null}

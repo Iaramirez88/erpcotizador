@@ -1132,12 +1132,12 @@ export default function FloatingChatDrawer() {
                       </button>
                     </div>
                   </div>
-                  <div className="min-h-0 overflow-hidden p-3">
+                  <div className="min-h-0 overflow-hidden">
                     {teamLoading ? <span className="sr-only">Cargando chat interno...</span> : null}
                     {!teamLoading && !selectedThread ? <p className="text-sm text-slate-500">Selecciona un compañero o un grupo para abrir la conversación.</p> : null}
                     {selectedThread ? (
-                      <div className="flex min-h-full min-w-0 flex-col gap-3">
-                        <div className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-3">
+                      <div className="flex min-h-full min-w-0 flex-col gap-3 px-3 py-3">
+                        <div className="shrink-0 rounded-[22px] border border-slate-200 bg-slate-50/70 p-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                               <p className="text-sm font-semibold text-slate-950">{formatThreadName(selectedThread)}</p>
@@ -1156,7 +1156,7 @@ export default function FloatingChatDrawer() {
                         <div
                           ref={teamMessagesRef}
                           onScroll={handleTeamViewportScroll}
-                          className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1"
+                          className="min-h-0 flex-1 space-y-2.5 overflow-y-scroll pr-2"
                         >
                           {selectedThread.messages.length === 0 ? <p className="text-sm text-slate-500">No hay mensajes en este chat.</p> : null}
                           {selectedThread.messages.map((message) => {
