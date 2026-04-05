@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { uploadFileWithProgress } from '@/lib/upload-file-with-progress'
 
 type TeamUser = {
   id: string
@@ -61,6 +62,11 @@ type ThreadDetail = {
 
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
 
+type UploadProgressState = {
+  name: string
+  progress: number
+}
+
 const EMOJI_CHOICES = ['😀', '😂', '😉', '😍', '🤝', '👏', '🔥', '✅', '🙏', '📌', '📎', '🚀']
 
 function formatDate(value: string | null | undefined, fallback: string) {
@@ -89,14 +95,14 @@ function threadTitle(thread: ThreadSummary | ThreadDetail | null) {
   return 'Chat directo'
 }
 
-function renderAttachments(attachments: ChatAttachment[] | undefined) {
+function renderAttachments(attachments: ChatAttachment[] | undefined, onImageLoad?: () => void) {
   if (!attachments?.length) return null
   return (
     <div className="mt-3 space-y-2">
       {attachments.map((attachment) => (
         attachment.type === 'image' ? (
           <a key={`${attachment.url}-${attachment.name}`} href={attachment.url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            <img src={attachment.url} alt={attachment.name} className="max-h-72 w-full object-cover" />
+            <img src={attachment.url} alt={attachment.name} className="max-h-72 w-full object-cover" onLoad={onImageLoad} />
             <div className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">{attachment.name}</div>
           </a>
         ) : (
@@ -115,6 +121,7 @@ function renderAttachments(attachments: ChatAttachment[] | undefined) {
 
 export function CrmTeamChatClient() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const messagesViewportRef = useRef<HTMLDivElement | null>(null)
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [creatingThread, setCreatingThread] = useState(false)
@@ -134,7 +141,16 @@ export function CrmTeamChatClient() {
   const [search, setSearch] = useState('')
   const [messageDraft, setMessageDraft] = useState('')
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([])
+  const [attachmentUpload, setAttachmentUpload] = useState<UploadProgressState | null>(null)
   const [groupForm, setGroupForm] = useState({ title: '', participantUserIds: [] as string[] })
+
+  function scrollMessagesToBottom(behavior: ScrollBehavior = 'smooth') {
+    const container = messagesViewportRef.current
+    if (!container) return
+    window.requestAnimationFrame(() => {
+      container.scrollTo({ top: container.scrollHeight, behavior })
+    })
+  }
 
   async function loadBase() {
     setLoading(true)
@@ -174,6 +190,7 @@ export function CrmTeamChatClient() {
     if (!selectedThreadId) {
       setSelectedThread(null)
       setPendingAttachments([])
+      setAttachmentUpload(null)
       return
     }
     void loadDetail(selectedThreadId)
@@ -189,6 +206,11 @@ export function CrmTeamChatClient() {
 
     return () => window.clearInterval(interval)
   }, [selectedThreadId])
+
+  useEffect(() => {
+    if (!selectedThread) return
+    scrollMessagesToBottom('auto')
+  }, [selectedThreadId, selectedThread?.messages.length])
 
   const visibleUsers = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -258,11 +280,19 @@ export function CrmTeamChatClient() {
     }
   }
 
-  async function handleSendMessage() {
-    if (!selectedThreadId) return
-    if (!messageDraft.trim() && pendingAttachments.length === 0) {
-      alert('Escribe un mensaje o agrega un adjunto antes de enviarlo.')
-      return
+  async function sendMessage(options?: {
+    bodyText?: string
+    attachments?: ChatAttachment[]
+    suppressEmptyAlert?: boolean
+  }) {
+    if (!selectedThreadId) return false
+    const bodyText = typeof options?.bodyText === 'string' ? options.bodyText : messageDraft
+    const attachments = options?.attachments ?? pendingAttachments
+    if (!bodyText.trim() && attachments.length === 0) {
+      if (!options?.suppressEmptyAlert) {
+        alert('Escribe un mensaje o agrega un adjunto antes de enviarlo.')
+      }
+      return false
     }
 
     setSending(true)
@@ -270,20 +300,26 @@ export function CrmTeamChatClient() {
       const json = await requestJson(`/api/crm/internal-chat/threads/${selectedThreadId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bodyText: messageDraft, attachments: pendingAttachments }),
+        body: JSON.stringify({ bodyText, attachments }),
       })
 
       if (!json.success) {
         alert(json.error || 'No se pudo enviar el mensaje.')
-        return
+        return false
       }
 
       setMessageDraft('')
       setPendingAttachments([])
       await Promise.all([loadBase(), loadDetail(selectedThreadId)])
+      scrollMessagesToBottom('smooth')
+      return true
     } finally {
       setSending(false)
     }
+  }
+
+  async function handleSendMessage() {
+    await sendMessage()
   }
 
   async function handleUploadAttachment(file: File) {
@@ -293,22 +329,32 @@ export function CrmTeamChatClient() {
     }
 
     setUploadingAttachment(true)
+    setAttachmentUpload({ name: file.name, progress: 0 })
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const response = await fetch(`/api/crm/internal-chat/threads/${selectedThreadId}/attachments`, {
-        method: 'POST',
-        body: formData,
+      const json = await uploadFileWithProgress<ChatAttachment>({
+        url: `/api/crm/internal-chat/threads/${selectedThreadId}/attachments`,
+        file,
+        onProgress: (progress) => {
+          setAttachmentUpload({ name: file.name, progress })
+        },
       })
-      const json = (await response.json().catch(() => ({}))) as JsonResponse<ChatAttachment>
       if (!json.success || !json.data) {
         alert(json.error || 'No se pudo subir el adjunto.')
         return
       }
 
-      setPendingAttachments((current) => [...current, json.data as ChatAttachment])
+      const uploadedAttachment = json.data as ChatAttachment
+      const sent = await sendMessage({
+        bodyText: messageDraft,
+        attachments: [uploadedAttachment],
+        suppressEmptyAlert: true,
+      })
+      if (!sent) {
+        setPendingAttachments((current) => [...current, uploadedAttachment])
+      }
     } finally {
       setUploadingAttachment(false)
+      setAttachmentUpload(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
@@ -506,7 +552,7 @@ export function CrmTeamChatClient() {
                   </div>
                 </div>
 
-                <div className="max-h-[520px] space-y-3 overflow-y-auto pr-1">
+                <div ref={messagesViewportRef} className="max-h-[520px] space-y-3 overflow-y-auto pr-1">
                   {selectedThread.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes en este chat.</p> : null}
                   {selectedThread.messages.map((message) => {
                     const isOwn = Boolean(currentUserId && message.sentByUserId === currentUserId)
@@ -517,7 +563,7 @@ export function CrmTeamChatClient() {
                           <span>{formatDate(message.occurredAt, 'Sin fecha')}</span>
                         </div>
                         {message.bodyText ? <p className="mt-2 whitespace-pre-wrap leading-6">{message.bodyText}</p> : null}
-                        {renderAttachments(message.attachments)}
+                        {renderAttachments(message.attachments, () => scrollMessagesToBottom('auto'))}
                       </div>
                     )
                   })}
@@ -557,6 +603,17 @@ export function CrmTeamChatClient() {
                       ))}
                     </div>
                   ) : null}
+                  {attachmentUpload ? (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-3 text-sm text-slate-700">
+                        <span className="truncate">Subiendo {attachmentUpload.name}</span>
+                        <span className="text-xs font-semibold text-sky-700">{attachmentUpload.progress}%</span>
+                      </div>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                        <div className="h-full rounded-full bg-sky-600 transition-[width] duration-150" style={{ width: `${attachmentUpload.progress}%` }} />
+                      </div>
+                    </div>
+                  ) : null}
                   {pendingAttachments.length > 0 ? (
                     <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3">
                       {pendingAttachments.map((attachment) => (
@@ -571,7 +628,7 @@ export function CrmTeamChatClient() {
                   ) : null}
                   <Textarea value={messageDraft} onChange={(event) => setMessageDraft(event.target.value)} rows={4} placeholder={selectedThread.type === 'GROUP' ? 'Escribe un mensaje para el grupo...' : 'Escribe un mensaje interno para el equipo...'} />
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs text-slate-500">{uploadingAttachment ? 'Subiendo adjunto...' : 'Puedes enviar texto, emojis, imágenes y documentos.'}</p>
+                    <p className="text-xs text-slate-500">{uploadingAttachment ? `Subiendo adjunto... ${attachmentUpload?.progress ?? 0}%` : 'Puedes enviar texto, emojis, imágenes y documentos.'}</p>
                     <Button className="rounded-xl" onClick={() => void handleSendMessage()} disabled={sending || uploadingAttachment}>
                       {sending ? 'Enviando...' : 'Enviar mensaje'}
                     </Button>

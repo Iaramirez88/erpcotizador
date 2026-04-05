@@ -32,6 +32,7 @@ import CotizacionPDF, { type CotizacionPdfData } from "@/lib/pdf-template.client
 import type { CotizacionTemplateSettings } from "@/lib/cotizacion-template"
 import { useI18n } from "@/components/providers/i18n-provider"
 import { buildWhatsAppWebUrl } from "@/lib/whatsapp-link"
+import { MobilePdfFallback, useIsMobileViewport } from '@/components/pdf/mobile-pdf-fallback'
 
 function PdfPreviewLoading() {
   const { t } = useI18n()
@@ -127,6 +128,7 @@ function getLitografiaItemIncludedIvaPct(raw: unknown): number | null {
 export default function CotizadorPage() {
   const { t, language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-MX'
+  const isMobileViewport = useIsMobileViewport()
 
   // La facturación electrónica aún no está habilitada: se muestran opciones, pero quedan deshabilitadas.
   const electronicBillingEnabled = false
@@ -1328,12 +1330,21 @@ export default function CotizadorPage() {
 
           {previewCotizacion ? (
             <div className="h-[70vh] w-full overflow-hidden rounded border">
-              <PDFViewer width="100%" height="100%">
-                <CotizacionPDF
-                  cotizacion={previewCotizacion}
-                  template={previewTemplate || undefined}
+              {isMobileViewport ? (
+                <MobilePdfFallback
+                  title={`Cotización ${previewCotizacion.numero}`}
+                  description="En móvil la vista previa embebida del PDF puede fallar. Aquí puedes abrirlo con el visor disponible, descargarlo o compartirlo."
+                  pdfUrl={`/api/cotizaciones/${previewCotizacion.id}/pdf`}
+                  downloadName={`Cotizacion-${previewCotizacion.numero}.pdf`}
                 />
-              </PDFViewer>
+              ) : (
+                <PDFViewer width="100%" height="100%">
+                  <CotizacionPDF
+                    cotizacion={previewCotizacion}
+                    template={previewTemplate || undefined}
+                  />
+                </PDFViewer>
+              )}
             </div>
           ) : null}
 

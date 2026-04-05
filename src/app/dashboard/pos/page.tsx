@@ -32,6 +32,7 @@ import { MobileActionsMenu } from '@/components/ui/mobile-actions-menu'
 import { formatCurrency, formatUnidadMedidaLabel } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useI18n } from '@/components/providers/i18n-provider'
+import { useIsMobileViewport } from '@/components/pdf/mobile-pdf-fallback'
 import { buildWhatsAppWebUrl } from '@/lib/whatsapp-link'
 import { CheckCircle, Download, Eye, History, Mail, MessageCircle, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 
@@ -409,6 +410,7 @@ type ClientePickerItem = {
 }
 
 export default function PosPage() {
+  const isMobileViewport = useIsMobileViewport()
   const { t, language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const searchParams = useSearchParams()
@@ -2062,7 +2064,12 @@ export default function PosPage() {
   }
 
   function openInvoicePdf(invoiceId: string) {
-    window.open(`/api/pos/facturas/${invoiceId}/pdf`, '_blank', 'noopener,noreferrer')
+    const url = `/api/pos/facturas/${invoiceId}/pdf`
+    if (isMobileViewport) {
+      window.location.assign(url)
+      return
+    }
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   async function openInvoiceEditorFromRow(invoiceId: string) {

@@ -37,6 +37,7 @@ import type { CotizacionTemplateSettings } from '@/lib/cotizacion-template';
 import { useI18n } from '@/components/providers/i18n-provider';
 import { buildWhatsAppWebUrl } from '@/lib/whatsapp-link';
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome';
+import { MobilePdfFallback, useIsMobileViewport } from '@/components/pdf/mobile-pdf-fallback';
 
 function PdfPreviewLoading() {
   const { t } = useI18n();
@@ -105,6 +106,7 @@ type AuditEvent = {
 export default function CotizacionesPage() {
   const { t, language } = useI18n();
   const locale = language === 'en' ? 'en-US' : 'es-MX';
+  const isMobileViewport = useIsMobileViewport();
 
   // La facturación electrónica aún no está habilitada: se muestran opciones, pero quedan deshabilitadas.
   const electronicBillingEnabled = false;
@@ -259,7 +261,7 @@ export default function CotizacionesPage() {
 
   const descargarPDF = async (id: string, numero: string) => {
     try {
-      const res = await fetch(`/api/cotizaciones/${id}/pdf`);
+      const res = await fetch(`/api/cotizaciones/${id}/pdf?download=1`);
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -1239,12 +1241,21 @@ export default function CotizacionesPage() {
           
           <div className="h-[600px] w-full overflow-hidden rounded border">
             {previewCotizacion ? (
-              <PDFViewer width="100%" height="100%">
-                <CotizacionPDF
-                  cotizacion={previewCotizacion}
-                  template={previewTemplate || undefined}
+              isMobileViewport ? (
+                <MobilePdfFallback
+                  title={`Cotización ${previewCotizacion.numero}`}
+                  description="En móvil usamos apertura externa o descarga del PDF para evitar fallos del visor embebido."
+                  pdfUrl={`/api/cotizaciones/${previewCotizacion.id}/pdf`}
+                  downloadName={`Cotizacion-${previewCotizacion.numero}.pdf`}
                 />
-              </PDFViewer>
+              ) : (
+                <PDFViewer width="100%" height="100%">
+                  <CotizacionPDF
+                    cotizacion={previewCotizacion}
+                    template={previewTemplate || undefined}
+                  />
+                </PDFViewer>
+              )
             ) : (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
                 {t('quotes.preview.loading')}

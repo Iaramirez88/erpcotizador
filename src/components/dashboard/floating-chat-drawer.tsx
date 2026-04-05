@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { uploadFileWithProgress } from '@/lib/upload-file-with-progress'
 
 type TeamUser = {
   id: string
@@ -100,6 +101,11 @@ type InboxAlert = {
 
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
 
+type UploadProgressState = {
+  name: string
+  progress: number
+}
+
 const EMOJI_CHOICES = ['😀', '😂', '😉', '😍', '🤝', '👏', '🔥', '✅', '🙏', '📌', '📎', '🚀']
 
 function formatDate(value: string | null | undefined, fallback: string) {
@@ -152,14 +158,14 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResp
   return (await response.json().catch(() => ({}))) as JsonResponse<T>
 }
 
-function renderAttachments(attachments: ChatAttachment[] | undefined) {
+function renderAttachments(attachments: ChatAttachment[] | undefined, onImageLoad?: () => void) {
   if (!attachments?.length) return null
   return (
     <div className="mt-3 space-y-2">
       {attachments.map((attachment) => (
         attachment.type === 'image' ? (
           <a key={`${attachment.url}-${attachment.name}`} href={attachment.url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            <img src={attachment.url} alt={attachment.name} className="max-h-60 w-full object-cover" />
+            <img src={attachment.url} alt={attachment.name} className="max-h-60 w-full object-cover" onLoad={onImageLoad} />
             <div className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">{attachment.name}</div>
           </a>
         ) : (
@@ -180,6 +186,8 @@ export default function FloatingChatDrawer() {
   const storageTabKey = 'sg_floating_chat_last_tab'
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const teamTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const crmMessagesRef = useRef<HTMLDivElement | null>(null)
+  const teamMessagesRef = useRef<HTMLDivElement | null>(null)
   const [open, setOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'updates' | 'crm' | 'team'>('updates')
   const [teamView, setTeamView] = useState<'direct' | 'groups'>('direct')
@@ -207,7 +215,15 @@ export default function FloatingChatDrawer() {
   const [crmMessageDraft, setCrmMessageDraft] = useState('')
   const [teamMessageDraft, setTeamMessageDraft] = useState('')
   const [pendingTeamAttachments, setPendingTeamAttachments] = useState<ChatAttachment[]>([])
+  const [teamAttachmentUpload, setTeamAttachmentUpload] = useState<UploadProgressState | null>(null)
   const [groupForm, setGroupForm] = useState({ title: '', participantUserIds: [] as string[] })
+
+  function scrollContainerToBottom(container: HTMLDivElement | null, behavior: ScrollBehavior = 'smooth') {
+    if (!container) return
+    window.requestAnimationFrame(() => {
+      container.scrollTo({ top: container.scrollHeight, behavior })
+    })
+  }
 
   useEffect(() => {
     try {
@@ -304,6 +320,7 @@ export default function FloatingChatDrawer() {
   useEffect(() => {
     if (activeTab !== 'team') {
       setPendingTeamAttachments([])
+      setTeamAttachmentUpload(null)
     }
   }, [activeTab])
 
@@ -319,6 +336,16 @@ export default function FloatingChatDrawer() {
     const nextHeight = Math.min(textarea.scrollHeight, 140)
     textarea.style.height = `${Math.max(nextHeight, 44)}px`
   }, [teamMessageDraft, selectedThreadId])
+
+  useEffect(() => {
+    if (activeTab !== 'crm' || !selectedConversation) return
+    scrollContainerToBottom(crmMessagesRef.current, 'auto')
+  }, [activeTab, selectedConversationId, selectedConversation?.messages.length])
+
+  useEffect(() => {
+    if (activeTab !== 'team' || !selectedThread) return
+    scrollContainerToBottom(teamMessagesRef.current, 'auto')
+  }, [activeTab, selectedThreadId, selectedThread?.messages.length])
 
   const filteredTeamUsers = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -471,32 +498,48 @@ export default function FloatingChatDrawer() {
     }
   }
 
-  async function handleSendTeamMessage() {
+  async function sendTeamMessage(options?: {
+    bodyText?: string
+    attachments?: ChatAttachment[]
+    suppressEmptyAlert?: boolean
+  }) {
     if (!selectedThreadId) {
-      alert('Selecciona un chat o grupo antes de enviar.')
-      return
+      if (!options?.suppressEmptyAlert) {
+        alert('Selecciona un chat o grupo antes de enviar.')
+      }
+      return false
     }
-    if (!teamMessageDraft.trim() && pendingTeamAttachments.length === 0) {
-      alert('Escribe un mensaje o agrega un adjunto.')
-      return
+    const bodyText = typeof options?.bodyText === 'string' ? options.bodyText : teamMessageDraft
+    const attachments = options?.attachments ?? pendingTeamAttachments
+    if (!bodyText.trim() && attachments.length === 0) {
+      if (!options?.suppressEmptyAlert) {
+        alert('Escribe un mensaje o agrega un adjunto.')
+      }
+      return false
     }
     setSendingTeam(true)
     try {
       const json = await requestJson(`/api/crm/internal-chat/threads/${selectedThreadId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bodyText: teamMessageDraft, attachments: pendingTeamAttachments }),
+        body: JSON.stringify({ bodyText, attachments }),
       })
       if (!json.success) {
         alert(json.error || 'No se pudo enviar el mensaje interno.')
-        return
+        return false
       }
       setTeamMessageDraft('')
       setPendingTeamAttachments([])
       await Promise.all([loadBase(), loadThreadDetail(selectedThreadId)])
+      scrollContainerToBottom(teamMessagesRef.current, 'smooth')
+      return true
     } finally {
       setSendingTeam(false)
     }
+  }
+
+  async function handleSendTeamMessage() {
+    await sendTeamMessage()
   }
 
   function openTeamAttachmentPicker(kind: 'image' | 'document') {
@@ -543,21 +586,31 @@ export default function FloatingChatDrawer() {
       return
     }
     setUploadingTeamAttachment(true)
+    setTeamAttachmentUpload({ name: file.name, progress: 0 })
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const response = await fetch(`/api/crm/internal-chat/threads/${selectedThreadId}/attachments`, {
-        method: 'POST',
-        body: formData,
+      const json = await uploadFileWithProgress<ChatAttachment>({
+        url: `/api/crm/internal-chat/threads/${selectedThreadId}/attachments`,
+        file,
+        onProgress: (progress) => {
+          setTeamAttachmentUpload({ name: file.name, progress })
+        },
       })
-      const json = (await response.json().catch(() => ({}))) as JsonResponse<ChatAttachment>
       if (!json.success || !json.data) {
         alert(json.error || 'No se pudo subir el adjunto.')
         return
       }
-      setPendingTeamAttachments((current) => [...current, json.data as ChatAttachment])
+      const uploadedAttachment = json.data as ChatAttachment
+      const sent = await sendTeamMessage({
+        bodyText: teamMessageDraft,
+        attachments: [uploadedAttachment],
+        suppressEmptyAlert: true,
+      })
+      if (!sent) {
+        setPendingTeamAttachments((current) => [...current, uploadedAttachment])
+      }
     } finally {
       setUploadingTeamAttachment(false)
+      setTeamAttachmentUpload(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
@@ -664,17 +717,16 @@ export default function FloatingChatDrawer() {
                 </Button>
               </div>
             </div>
-            {activeTab !== 'team' ? (
+            {activeTab === 'updates' ? (
               <div className="mt-2 space-y-2">
-                <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contacto, compañero, grupo o mensaje..." className="h-9 rounded-xl border-slate-200 bg-white text-sm" />
                 <div className="hidden grid-cols-3 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:grid">
-                  <button type="button" onClick={() => setActiveTab('updates')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'updates' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                  <button type="button" onClick={() => setActiveTab('updates')} className="rounded-xl bg-white px-3 py-1.5 text-[10px] font-medium text-slate-950 shadow-sm">
                     Novedades
                   </button>
-                  <button type="button" onClick={() => setActiveTab('crm')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'crm' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                  <button type="button" onClick={() => setActiveTab('crm')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                     CRM
                   </button>
-                  <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-sm font-medium text-slate-600">
+                  <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                     Equipo
                   </button>
                 </div>
@@ -712,9 +764,25 @@ export default function FloatingChatDrawer() {
             ) : null}
 
             {activeTab === 'crm' ? (
-              <div className="grid h-full min-h-0 overflow-hidden grid-rows-[minmax(210px,0.82fr)_minmax(0,1.18fr)] md:grid-cols-[minmax(300px,0.92fr)_minmax(340px,1.08fr)] md:grid-rows-1">
+              <div className="grid h-full min-h-0 overflow-hidden grid-rows-[minmax(220px,0.88fr)_minmax(0,1.12fr)] md:grid-cols-[minmax(300px,0.92fr)_minmax(340px,1.08fr)] md:grid-rows-1">
                 <div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-b border-slate-100 md:border-b-0 md:border-r">
-                  <div className="border-b border-slate-100 px-4 py-2 text-[13px] text-slate-600">Bandeja CRM</div>
+                  <div className="border-b border-slate-100 px-4 py-2.5">
+                    <div className="space-y-2">
+                      <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contacto, mensaje o canal..." className="h-9 rounded-xl border-slate-200 bg-white text-sm" />
+                      <div className="hidden grid-cols-3 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:grid">
+                        <button type="button" onClick={() => setActiveTab('updates')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                          Novedades
+                        </button>
+                        <button type="button" onClick={() => setActiveTab('crm')} className={cn('rounded-xl px-3 py-1.5 text-[10px] font-medium', activeTab === 'crm' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                          CRM
+                        </button>
+                        <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                          Equipo
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-3 text-[13px] text-slate-600">Bandeja CRM</div>
+                  </div>
                   <div className="min-h-0 overflow-y-auto overflow-x-hidden p-2.5">
                     <div className="space-y-2.5">
                       {filteredConversations.map((item) => (
@@ -738,7 +806,7 @@ export default function FloatingChatDrawer() {
                 <div className="grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden">
                   <div className="border-b border-slate-100 px-4 py-2 text-[13px] text-slate-600">Detalle de conversación</div>
                   <div className="shrink-0 px-4 pt-2.5">
-                    {crmLoading ? <p className="text-sm text-slate-500">Cargando conversación...</p> : null}
+                    {crmLoading ? <span className="sr-only">Cargando conversación...</span> : null}
                     {!crmLoading && !selectedConversation ? <p className="pb-3 text-sm text-slate-500">Selecciona un hilo CRM para responderlo aquí.</p> : null}
                     {selectedConversation ? (
                       <div className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-3">
@@ -750,7 +818,7 @@ export default function FloatingChatDrawer() {
                       </div>
                     ) : null}
                   </div>
-                  <div className="min-h-0 overflow-y-auto overflow-x-hidden px-3 py-2.5">
+                  <div ref={crmMessagesRef} className="min-h-0 overflow-y-auto overflow-x-hidden px-3 py-2.5">
                     {selectedConversation ? (
                       <div className="min-w-0 space-y-2.5">
                         {selectedConversation.messages.map((message) => (
@@ -767,16 +835,16 @@ export default function FloatingChatDrawer() {
                   </div>
                   <div className="shrink-0 border-t border-slate-100 p-3">
                     <div className="grid gap-2 rounded-[22px] border border-slate-200 bg-slate-50/80 p-3">
-                      <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-600">Responder al cliente</Label>
+                      <Label className="hidden text-xs font-semibold uppercase tracking-[0.14em] text-slate-600 sm:block">Responder al cliente</Label>
                       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
                         <Textarea
                           value={crmMessageDraft}
                           onChange={(event) => setCrmMessageDraft(event.target.value)}
                           rows={2}
                           placeholder="Escribe una respuesta rápida sin salir de la pantalla..."
-                          className="min-h-[64px] resize-none rounded-2xl bg-white text-sm leading-5"
+                          className="min-h-[52px] resize-none rounded-2xl bg-white text-sm leading-5 sm:min-h-[64px]"
                         />
-                        <Button size="sm" className="h-10 rounded-xl px-4" onClick={() => void handleSendCrmMessage()} disabled={sendingCrm || !selectedConversationId}>
+                        <Button size="sm" className="h-10 rounded-xl px-4 text-[10px]" onClick={() => void handleSendCrmMessage()} disabled={sendingCrm || !selectedConversationId}>
                           {sendingCrm ? 'Enviando...' : 'Enviar'}
                         </Button>
                       </div>
@@ -793,14 +861,14 @@ export default function FloatingChatDrawer() {
                     <button
                       type="button"
                       onClick={() => setTeamMobilePanel('options')}
-                      className={cn('rounded-xl px-3 py-2 text-sm font-medium', teamMobilePanel === 'options' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}
+                      className={cn('rounded-xl px-3 py-2 text-[10px] font-medium', teamMobilePanel === 'options' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}
                     >
                       Opciones
                     </button>
                     <button
                       type="button"
                       onClick={() => setTeamMobilePanel('chat')}
-                      className={cn('rounded-xl px-3 py-2 text-sm font-medium', teamMobilePanel === 'chat' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}
+                      className={cn('rounded-xl px-3 py-2 text-[10px] font-medium', teamMobilePanel === 'chat' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}
                     >
                       Chat
                     </button>
@@ -812,35 +880,35 @@ export default function FloatingChatDrawer() {
                     <div className="space-y-2">
                       <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contacto, compañero, grupo o mensaje..." className="h-9 rounded-xl border-slate-200 bg-white text-sm" />
                       <div className="hidden grid-cols-3 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:grid">
-                        <button type="button" onClick={() => setActiveTab('updates')} className="rounded-xl px-3 py-1.5 text-sm font-medium text-slate-600">
+                        <button type="button" onClick={() => setActiveTab('updates')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                           Novedades
                         </button>
-                        <button type="button" onClick={() => setActiveTab('crm')} className="rounded-xl px-3 py-1.5 text-sm font-medium text-slate-600">
+                        <button type="button" onClick={() => setActiveTab('crm')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                           CRM
                         </button>
-                        <button type="button" onClick={() => setActiveTab('team')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', activeTab === 'team' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                        <button type="button" onClick={() => setActiveTab('team')} className={cn('rounded-xl px-3 py-1.5 text-[10px] font-medium', activeTab === 'team' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
                           Equipo
                         </button>
                       </div>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                       <span className="text-[13px] text-slate-600">Equipo y grupos</span>
-                      <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-sm" onClick={() => setGroupDialogOpen(true)}>
+                      <Button variant="outline" size="sm" className="h-9 rounded-xl px-3 text-[10px]" onClick={() => setGroupDialogOpen(true)}>
                         <Plus className="mr-1.5 h-4 w-4" />
                         Nuevo grupo
                       </Button>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1">
-                      <button type="button" onClick={() => setTeamView('direct')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', teamView === 'direct' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                      <button type="button" onClick={() => setTeamView('direct')} className={cn('rounded-xl px-3 py-1.5 text-[10px] font-medium', teamView === 'direct' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
                         Directos
                       </button>
-                      <button type="button" onClick={() => setTeamView('groups')} className={cn('rounded-xl px-3 py-1.5 text-sm font-medium', teamView === 'groups' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                      <button type="button" onClick={() => setTeamView('groups')} className={cn('rounded-xl px-3 py-1.5 text-[10px] font-medium', teamView === 'groups' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
                         Grupos creados
                       </button>
                     </div>
                   </div>
 
-                  <div className="min-h-0 h-full overflow-y-auto p-2.5 md:h-[90%]">
+                  <div className="min-h-0 overflow-y-auto p-2.5">
                     {teamView === 'direct' ? (
                       <div className="space-y-3">
                         <div className="space-y-2">
@@ -851,7 +919,7 @@ export default function FloatingChatDrawer() {
                                 <p className="text-sm font-medium text-slate-950">{user.name || user.email || user.id}</p>
                                 <p className="text-xs text-slate-500">{user.email || 'Sin correo visible'}</p>
                               </div>
-                              <Button variant="outline" size="sm" className="h-8 rounded-xl px-3 text-xs" onClick={() => void handleStartTeamChat(user.id)} disabled={startingThread}>
+                              <Button variant="outline" size="sm" className="h-8 rounded-xl px-3 text-[10px]" onClick={() => void handleStartTeamChat(user.id)} disabled={startingThread}>
                                 Abrir
                               </Button>
                             </div>
@@ -899,7 +967,7 @@ export default function FloatingChatDrawer() {
                               </div>
                             </button>
                             <div className="mt-2 flex justify-end">
-                              <Button variant="outline" size="sm" className="h-8 rounded-xl px-3 text-xs text-rose-700 hover:text-rose-800" onClick={() => void handleDeleteGroup(item.id)} disabled={deletingGroupId === item.id}>
+                              <Button variant="outline" size="sm" className="h-8 rounded-xl px-3 text-[10px] text-rose-700 hover:text-rose-800" onClick={() => void handleDeleteGroup(item.id)} disabled={deletingGroupId === item.id}>
                                 <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                                 {deletingGroupId === item.id ? 'Eliminando...' : 'Eliminar'}
                               </Button>
@@ -915,13 +983,13 @@ export default function FloatingChatDrawer() {
                   <div className="border-b border-slate-100 px-4 py-2.5 text-sm text-slate-600">
                     <div className="flex items-center justify-between gap-2">
                       <span>{selectedThread ? formatThreadName(selectedThread) : 'Conversación interna'}</span>
-                      <button type="button" onClick={() => setTeamMobilePanel('options')} className="text-xs font-medium text-sky-700 md:hidden">
+                      <button type="button" onClick={() => setTeamMobilePanel('options')} className="text-[10px] font-medium text-sky-700 md:hidden">
                         Ver opciones
                       </button>
                     </div>
                   </div>
-                  <div className="min-h-0 overflow-hidden p-3 md:h-[90%]">
-                    {teamLoading ? <p className="text-sm text-slate-500">Cargando chat interno...</p> : null}
+                  <div className="min-h-0 overflow-hidden p-3">
+                    {teamLoading ? <span className="sr-only">Cargando chat interno...</span> : null}
                     {!teamLoading && !selectedThread ? <p className="text-sm text-slate-500">Selecciona un compañero o un grupo para abrir la conversación.</p> : null}
                     {selectedThread ? (
                       <div className="flex min-h-full min-w-0 flex-col gap-3">
@@ -941,7 +1009,7 @@ export default function FloatingChatDrawer() {
                           </div>
                         </div>
 
-                        <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
+                        <div ref={teamMessagesRef} className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
                           {selectedThread.messages.length === 0 ? <p className="text-sm text-slate-500">No hay mensajes en este chat.</p> : null}
                           {selectedThread.messages.map((message) => {
                             const isOwn = Boolean(currentUserId && message.sentByUserId === currentUserId)
@@ -952,7 +1020,7 @@ export default function FloatingChatDrawer() {
                                   <span>{formatDate(message.occurredAt, 'Sin fecha')}</span>
                                 </div>
                                 {message.bodyText ? <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-5">{message.bodyText}</p> : null}
-                                {renderAttachments(message.attachments)}
+                                {renderAttachments(message.attachments, () => scrollContainerToBottom(teamMessagesRef.current, 'auto'))}
                               </div>
                             )
                           })}
@@ -972,6 +1040,17 @@ export default function FloatingChatDrawer() {
                           if (file) void handleUploadTeamAttachment(file)
                         }}
                       />
+                      {teamAttachmentUpload ? (
+                        <div className="rounded-2xl border border-slate-200 bg-white p-2.5">
+                          <div className="flex items-center justify-between gap-3 text-xs text-slate-700">
+                            <span className="truncate">Subiendo {teamAttachmentUpload.name}</span>
+                            <span className="font-semibold text-sky-700">{teamAttachmentUpload.progress}%</span>
+                          </div>
+                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-full rounded-full bg-sky-600 transition-[width] duration-150" style={{ width: `${teamAttachmentUpload.progress}%` }} />
+                          </div>
+                        </div>
+                      ) : null}
 
                       {pendingTeamAttachments.length > 0 ? (
                         <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2.5">

@@ -28,6 +28,7 @@ const PDFViewer = dynamic(
 
 import { RemisionPDF } from '@/lib/remision-pdf-template.client'
 import { Download, Eye, Mail, MessageCircle, Trash2 } from 'lucide-react'
+import { MobilePdfFallback, useIsMobileViewport } from '@/components/pdf/mobile-pdf-fallback'
 
 type Warehouse = { id: string; nombre: string; codigo?: string | null; isDefault?: boolean }
 
@@ -69,6 +70,7 @@ function asString(value: unknown): string {
 }
 
 export default function RemisionesPage() {
+  const isMobileViewport = useIsMobileViewport()
   const [activeTab, setActiveTab] = useState<"listado" | "plantillas">("listado")
   const [tabPending, setTabPending] = useState(false)
   const tabTimerRef = useRef<number | null>(null)
@@ -742,37 +744,46 @@ export default function RemisionesPage() {
           
           {previewRemision && (
             <div className="h-[600px] w-full overflow-hidden rounded border">
-              <PDFViewer width="100%" height="100%">
-                <RemisionPDF
-                  remision={{
-                    numero: previewRemision.numero,
-                    createdAt: previewRemision.createdAt,
-                    status: previewRemision.status,
-                    clienteNombre: previewRemision.clienteNombre,
-                    note: previewRemision.note,
-                    warehouse: previewRemision.warehouse,
-                    items: previewRemision.items.map((item) => ({
-                      quantity: item.quantity,
-                      note: item.note,
-                      material: {
-                        nombre: item.material.nombre,
-                        unidadMedida: item.material.unidadMedida,
-                      },
-                    })),
-                    createdBy: previewRemision.createdBy ? {
-                      name: previewRemision.createdBy.name ?? null,
-                      email: previewRemision.createdBy.email ?? null,
-                    } : null,
-                  }}
-                  empresa={previewEmpresa ? {
-                    nombre: previewEmpresa.nombre,
-                    nit: previewEmpresa.nit || undefined,
-                    direccion: previewEmpresa.direccion || undefined,
-                    telefono: previewEmpresa.telefono || undefined,
-                    logo: previewEmpresa.logo || undefined,
-                  } : undefined}
+              {isMobileViewport ? (
+                <MobilePdfFallback
+                  title={`Remisión ${previewRemision.numero}`}
+                  description="En móvil abrimos la remisión con el visor disponible del dispositivo o la descargamos directamente."
+                  pdfUrl={`/api/remisiones/${previewRemision.id}/pdf`}
+                  downloadName={`Remision-${previewRemision.numero}.pdf`}
                 />
-              </PDFViewer>
+              ) : (
+                <PDFViewer width="100%" height="100%">
+                  <RemisionPDF
+                    remision={{
+                      numero: previewRemision.numero,
+                      createdAt: previewRemision.createdAt,
+                      status: previewRemision.status,
+                      clienteNombre: previewRemision.clienteNombre,
+                      note: previewRemision.note,
+                      warehouse: previewRemision.warehouse,
+                      items: previewRemision.items.map((item) => ({
+                        quantity: item.quantity,
+                        note: item.note,
+                        material: {
+                          nombre: item.material.nombre,
+                          unidadMedida: item.material.unidadMedida,
+                        },
+                      })),
+                      createdBy: previewRemision.createdBy ? {
+                        name: previewRemision.createdBy.name ?? null,
+                        email: previewRemision.createdBy.email ?? null,
+                      } : null,
+                    }}
+                    empresa={previewEmpresa ? {
+                      nombre: previewEmpresa.nombre,
+                      nit: previewEmpresa.nit || undefined,
+                      direccion: previewEmpresa.direccion || undefined,
+                      telefono: previewEmpresa.telefono || undefined,
+                      logo: previewEmpresa.logo || undefined,
+                    } : undefined}
+                  />
+                </PDFViewer>
+              )}
             </div>
           )}
         </DialogContent>
