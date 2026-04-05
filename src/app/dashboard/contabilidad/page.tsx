@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ErpPageHero, ErpSectionHeading } from '@/components/dashboard/erp-page-chrome'
+import { ContabilidadSubnav } from '@/components/dashboard/contabilidad-subnav'
 import { PIE_COLORS } from '@/lib/chart-colors'
 import type { AccountingAccountType, AccountingEventType } from '@prisma/client'
 
@@ -72,6 +73,9 @@ const EVENT_TYPE_LABEL: Record<AccountingEventType, string> = {
   COMPRA: 'Compra',
   COMPRA_PAGO: 'Compra - Pago',
   DIAN_DOCUMENT: 'DIAN',
+  PAYROLL_PERIOD: 'Nómina - Causación',
+  PAYROLL_PAYMENT: 'Nómina - Pago',
+  PAYROLL_SETTLEMENT: 'Nómina - Liquidación',
   MANUAL: 'Manual',
 }
 
@@ -260,14 +264,17 @@ export default function ContabilidadHomePage() {
       <ErpPageHero
         eyebrow="ERP financiero"
         title="Contabilidad"
-        description="Configura el plan de cuentas, centros de costo y reglas contables con una vista más clara del estado del módulo."
+        description="Centro contable para operación diaria, configuración estructural, cierres y control tributario, separado del resto del ERP como un área profesional propia."
         actions={
           <>
+            <Link href="/dashboard/contabilidad/comprobantes" className="inline-flex h-11 items-center rounded-2xl border border-slate-200 bg-white/80 px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white">
+              Comprobantes
+            </Link>
             <Link href="/dashboard/contabilidad/plan-de-cuentas" className="inline-flex h-11 items-center rounded-2xl border border-slate-200 bg-white/80 px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white">
               Plan de cuentas
             </Link>
-            <Link href="/dashboard/contabilidad/reglas" className="inline-flex h-11 items-center rounded-2xl border border-slate-200 bg-white/80 px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white">
-              Reglas
+            <Link href="/dashboard/contabilidad/conciliaciones" className="inline-flex h-11 items-center rounded-2xl border border-slate-200 bg-white/80 px-5 text-sm font-medium text-slate-700 shadow-sm hover:bg-white">
+              Conciliaciones
             </Link>
           </>
         }
@@ -278,21 +285,75 @@ export default function ContabilidadHomePage() {
         ]}
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Link href="/dashboard/contabilidad/plan-de-cuentas" className="rounded-lg border p-4 hover:bg-muted/50">
-          <div className="font-medium">Plan de cuentas</div>
-          <div className="text-sm text-muted-foreground">Cuentas contables por empresa.</div>
+      <ContabilidadSubnav />
+
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <Link href="/dashboard/contabilidad/comprobantes" className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.35)] hover:bg-slate-50/80">
+          <div className="font-medium text-slate-950">Comprobantes</div>
+          <div className="mt-1 text-sm text-slate-600">Ingreso, egreso, diario, ajustes, reversos y trazabilidad por estado.</div>
         </Link>
 
-        <Link href="/dashboard/contabilidad/centros-de-costo" className="rounded-lg border p-4 hover:bg-muted/50">
-          <div className="font-medium">Centros de costo</div>
-          <div className="text-sm text-muted-foreground">Dimensión opcional para asientos.</div>
+        <Link href="/dashboard/contabilidad/libros" className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.35)] hover:bg-slate-50/80">
+          <div className="font-medium text-slate-950">Libros y auxiliares</div>
+          <div className="mt-1 text-sm text-slate-600">Diario, mayor, balance de prueba y auxiliares por cuenta, tercero y centro.</div>
         </Link>
 
-        <Link href="/dashboard/contabilidad/reglas" className="rounded-lg border p-4 hover:bg-muted/50">
-          <div className="font-medium">Reglas</div>
-          <div className="text-sm text-muted-foreground">Evento → Regla → Asiento.</div>
+        <Link href="/dashboard/contabilidad/conciliaciones" className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.35)] hover:bg-slate-50/80">
+          <div className="font-medium text-slate-950">Conciliaciones</div>
+          <div className="mt-1 text-sm text-slate-600">Extractos, partidas pendientes, diferencias y cierre bancario mensual.</div>
         </Link>
+
+        <Link href="/dashboard/contabilidad/impuestos" className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.35)] hover:bg-slate-50/80">
+          <div className="font-medium text-slate-950">Impuestos</div>
+          <div className="mt-1 text-sm text-slate-600">IVA, retenciones y anexos tributarios frecuentes en Colombia.</div>
+        </Link>
+
+        <Link href="/dashboard/contabilidad/cierres" className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.35)] hover:bg-slate-50/80">
+          <div className="font-medium text-slate-950">Períodos y cierres</div>
+          <div className="mt-1 text-sm text-slate-600">Apertura, bloqueo mensual, cierre anual y control de ajustes finales.</div>
+        </Link>
+
+        <Link href="/dashboard/contabilidad/reglas" className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.35)] hover:bg-slate-50/80">
+          <div className="font-medium text-slate-950">Automatización y configuración</div>
+          <div className="mt-1 text-sm text-slate-600">Plan de cuentas, centros de costo y reglas evento → asiento.</div>
+        </Link>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
+        <div className="rounded-[26px] border border-slate-200 bg-white/90 p-5 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
+          <ErpSectionHeading title="Radar contable" description="En qué debe enfocarse el módulo para que sea realmente útil al contador." />
+          <div className="mt-4 space-y-3 text-sm text-slate-600">
+            {[
+              'Comprobantes con estados, consecutivo y aprobación.',
+              'Libros y auxiliares listos para revisión de saldos.',
+              'Conciliación bancaria con partidas pendientes.',
+              'IVA y retenciones con cruce por tercero y documento.',
+            ].map((item) => (
+              <div key={item} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">{item}</div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-[26px] border border-slate-200 bg-white/90 p-5 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
+          <ErpSectionHeading title="Configuración estructural" description="Base ya existente sobre la que vamos a construir la operación diaria." />
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Plan</div>
+              <div className="mt-2 text-2xl font-semibold text-slate-950">{accounts.length}</div>
+              <div className="text-sm text-slate-600">Cuentas configuradas</div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Centros</div>
+              <div className="mt-2 text-2xl font-semibold text-slate-950">{costCenters.length}</div>
+              <div className="text-sm text-slate-600">Dimensiones operativas</div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Reglas</div>
+              <div className="mt-2 text-2xl font-semibold text-slate-950">{rules.length}</div>
+              <div className="text-sm text-slate-600">Asientos automáticos</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="rounded-[26px] border border-slate-200 bg-white/90 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">

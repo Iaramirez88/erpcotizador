@@ -9,7 +9,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { buildPurchaseOrderPrefillHref } from '@/lib/purchase-order-prefill'
 
@@ -32,6 +34,7 @@ export default function ProveedoresPage() {
   const { t } = useI18n()
   const router = useRouter()
   const naText = t('common.na')
+  const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('proveedores.history', 'list')
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -235,12 +238,54 @@ export default function ProveedoresPage() {
               <CardTitle>{t('suppliers.list.title')}</CardTitle>
               <CardDescription>{t('suppliers.list.description')}</CardDescription>
             </div>
-            <div className="w-full max-w-md">
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('suppliers.list.searchPlaceholder')} />
+            <div className="flex w-full max-w-2xl items-center justify-end gap-3">
+              <div className="w-full max-w-md">
+                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('suppliers.list.searchPlaceholder')} />
+              </div>
+              <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
             </div>
           </div>
         </CardHeader>
         <CardContent>
+          {dataViewMode === 'grid' ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {items.map((p) => (
+                <Card key={p.id} className="rounded-2xl border bg-white shadow-sm">
+                  <CardContent className="p-4">
+                    <div>
+                      <p className="font-semibold text-foreground">{p.nombre}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{p.nit ?? naText}</p>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">{t('suppliers.table.columns.phone')}</p>
+                        <p className="font-medium text-foreground">{p.telefono ?? naText}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">{t('suppliers.table.columns.email')}</p>
+                        <p className="font-medium text-foreground break-all">{p.email ?? naText}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-muted-foreground">{t('suppliers.table.columns.address')}</p>
+                        <p className="font-medium text-foreground">{p.direccion ?? naText}</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex justify-end">
+                      <Button variant="outline" onClick={() => openSupplierOrder(p)}>
+                        {t('suppliers.actions.newOrder')}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {!loading && items.length === 0 ? (
+                <div className="md:col-span-2 xl:col-span-3 py-6 text-center text-muted-foreground">{t('common.noResults')}</div>
+              ) : null}
+              {loading ? (
+                <div className="md:col-span-2 xl:col-span-3 py-6 text-center text-muted-foreground">{t('common.loading')}</div>
+              ) : null}
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -285,6 +330,7 @@ export default function ProveedoresPage() {
               </tbody>
             </table>
           </div>
+          )}
         </CardContent>
       </Card>
     </div>

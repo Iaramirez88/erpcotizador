@@ -26,6 +26,8 @@ import {
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { ErpPageHero } from "@/components/dashboard/erp-page-chrome"
+import { DataViewToggle } from "@/components/dashboard/data-view-toggle"
+import { useDataViewMode } from "@/hooks/use-data-view-mode"
 
 type ScanStatus = "PENDIENTE" | "PROCESADO" | "FALLIDO" | "APROBADO"
 
@@ -116,6 +118,7 @@ function getAtPath(obj: Record<string, unknown>, path: string): unknown {
 export default function EscaneosPage() {
   const { data: session } = useSession()
   const router = useRouter()
+  const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode("escaneos.history", "list")
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -663,10 +666,15 @@ export default function EscaneosPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Historial</CardTitle>
-          <CardDescription>
-            {isLoading ? "Cargando..." : `Mostrando ${items.length} de ${total}`}
-          </CardDescription>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle>Historial</CardTitle>
+              <CardDescription>
+                {isLoading ? "Cargando..." : `Mostrando ${items.length} de ${total}`}
+              </CardDescription>
+            </div>
+            <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-2 pb-4 md:flex-row md:items-center md:justify-between">
@@ -725,6 +733,63 @@ export default function EscaneosPage() {
           ) : items.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-muted-foreground">Aún no hay escaneos</p>
+            </div>
+          ) : dataViewMode === "grid" ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {items.map((it) => (
+                <Card key={it.id} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            aria-label={`Seleccionar ${it.id}`}
+                            checked={!!selectedIds[it.id]}
+                            onChange={(e) => setSelectedIds((prev) => ({ ...prev, [it.id]: e.target.checked }))}
+                          />
+                          <p className="font-semibold text-foreground">{it.tipo}</p>
+                        </div>
+                        <p className="mt-1 truncate text-sm text-muted-foreground">{it.originalFileName || it.fileUrl}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{new Date(it.createdAt).toLocaleString()}</p>
+                      </div>
+                      <div className="text-right text-sm">
+                        <p className="font-medium text-foreground">{it.status}</p>
+                        <p className="text-muted-foreground">{it.approved ? "Aprobado" : "No aprobado"}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">Captación</p>
+                        <p className="font-medium text-foreground">{Math.round(it.capturePercent)}%</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Páginas</p>
+                        <p className="font-medium text-foreground">{it.pageCount}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap justify-end gap-2">
+                      <Button type="button" variant="outline" onClick={() => openDetails(it.id)}>
+                        Ver
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => requestDelete([it.id])}
+                      >
+                        Eliminar
+                      </Button>
+                      {!it.approved && it.status === "PROCESADO" ? (
+                        <Button type="button" onClick={() => approveScan(it.id)}>
+                          Aprobar
+                        </Button>
+                      ) : null}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           ) : (
             <div className="overflow-x-auto">

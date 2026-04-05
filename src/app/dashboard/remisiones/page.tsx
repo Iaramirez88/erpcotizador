@@ -16,7 +16,9 @@ import {
 } from "@/components/ui/dialog"
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import { MobileActionsMenu } from '@/components/ui/mobile-actions-menu'
+import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { formatUnidadMedidaLabel } from "@/lib/utils"
+import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import PlantillaRemisionesPage from "./plantilla/page"
 import dynamic from "next/dynamic"
 
@@ -71,6 +73,7 @@ function asString(value: unknown): string {
 
 export default function RemisionesPage() {
   const isMobileViewport = useIsMobileViewport()
+  const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('remisiones.history', 'list')
   const [activeTab, setActiveTab] = useState<"listado" | "plantillas">("listado")
   const [tabPending, setTabPending] = useState(false)
   const tabTimerRef = useRef<number | null>(null)
@@ -379,7 +382,8 @@ export default function RemisionesPage() {
         ) : null}
 
         <TabsContent value="listado" className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between gap-3">
+            <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
             <Button onClick={openNew}>Nueva remisión</Button>
           </div>
 
@@ -401,7 +405,8 @@ export default function RemisionesPage() {
             <div className="text-center py-8 text-muted-foreground">No hay remisiones.</div>
           ) : (
             <>
-            <div className="space-y-3 md:hidden">
+            {dataViewMode === 'grid' ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {filtered.map((r) => (
                 <Card key={r.id} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
                   <CardContent className="p-4">
@@ -496,7 +501,8 @@ export default function RemisionesPage() {
               ))}
             </div>
 
-            <div className="hidden overflow-x-auto rounded-xl border bg-white md:block">
+            ) : (
+            <div className="overflow-x-auto rounded-xl border bg-white">
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
@@ -608,6 +614,7 @@ export default function RemisionesPage() {
                 </tbody>
               </table>
             </div>
+            )}
             </>
           )}
         </CardContent>

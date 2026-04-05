@@ -71,6 +71,17 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
       </svg>
     ),
   },
+  {
+    name: 'Nómina',
+    href: "/dashboard/contabilidad/nomina",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5a2 2 0 002 2h2a2 2 0 002-2" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6M9 17h6M9 9h2" />
+      </svg>
+    ),
+  },
 
   // Comercial
   {
@@ -662,7 +673,15 @@ export default function Sidebar({ user }: SidebarProps) {
     return [
       {
         title: 'Centro de Control',
-        items: [get('/dashboard'), get('/dashboard/reportes'), get('/dashboard/plantillas'), get('/dashboard/contabilidad')].filter(Boolean) as NavItem[],
+        items: [get('/dashboard'), get('/dashboard/reportes'), get('/dashboard/plantillas')].filter(Boolean) as NavItem[],
+      },
+      {
+        title: 'Contabilidad',
+        items: [get('/dashboard/contabilidad')].filter(Boolean) as NavItem[],
+      },
+      {
+        title: 'Nómina',
+        items: [get('/dashboard/contabilidad/nomina')].filter(Boolean) as NavItem[],
       },
       {
         title: 'Comercial',

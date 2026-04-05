@@ -56,6 +56,9 @@ const EVENT_TYPES: { value: AccountingEventType; label: string }[] = [
   { value: 'COMPRA', label: 'Compra' },
   { value: 'COMPRA_PAGO', label: 'Compra - Pago' },
   { value: 'DIAN_DOCUMENT', label: 'DIAN' },
+  { value: 'PAYROLL_PERIOD', label: 'Nómina - Causación' },
+  { value: 'PAYROLL_PAYMENT', label: 'Nómina - Pago' },
+  { value: 'PAYROLL_SETTLEMENT', label: 'Nómina - Liquidación' },
   { value: 'MANUAL', label: 'Manual' },
 ]
 
@@ -71,6 +74,13 @@ const AMOUNT_KEYS: { value: AccountingAmountKey; label: string }[] = [
   { value: 'RETENCION', label: 'Retención' },
   { value: 'RETEICA', label: 'ReteICA' },
   { value: 'AUTORETENCION', label: 'Autoretención' },
+  { value: 'DEVENGADO', label: 'Devengado' },
+  { value: 'DEDUCCIONES', label: 'Deducciones' },
+  { value: 'NETO_PAGAR', label: 'Neto a pagar' },
+  { value: 'SEGURIDAD_SOCIAL_EMPLEADO', label: 'Seguridad social empleado' },
+  { value: 'SEGURIDAD_SOCIAL_EMPRESA', label: 'Seguridad social empresa' },
+  { value: 'PARAFISCALES', label: 'Parafiscales' },
+  { value: 'PROVISIONES', label: 'Provisiones' },
   { value: 'TOTAL', label: 'Total' },
 ]
 

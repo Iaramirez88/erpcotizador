@@ -14,6 +14,17 @@ export function moduleForDashboardHref(href: string): string | null {
     case '/dashboard/plantillas':
       return 'DASHBOARD'
     case '/dashboard/contabilidad':
+    case '/dashboard/contabilidad/comprobantes':
+    case '/dashboard/contabilidad/libros':
+    case '/dashboard/contabilidad/conciliaciones':
+    case '/dashboard/contabilidad/impuestos':
+    case '/dashboard/contabilidad/cierres':
+    case '/dashboard/contabilidad/nomina':
+    case '/dashboard/contabilidad/nomina/empleados':
+    case '/dashboard/contabilidad/nomina/periodos':
+    case '/dashboard/contabilidad/nomina/novedades':
+    case '/dashboard/contabilidad/nomina/liquidaciones':
+    case '/dashboard/contabilidad/nomina/reportes':
     case '/dashboard/contabilidad/plan-de-cuentas':
     case '/dashboard/contabilidad/centros-de-costo':
     case '/dashboard/contabilidad/reglas':
@@ -114,6 +125,7 @@ export function buildDashboardNavDefinitions(t: (key: string) => string): Dashbo
     { name: t('nav.reports'), href: '/dashboard/reportes' },
     { name: t('nav.templates'), href: '/dashboard/plantillas' },
     { name: t('nav.accounting'), href: '/dashboard/contabilidad' },
+    { name: 'Nómina', href: '/dashboard/contabilidad/nomina' },
     { name: t('nav.quote'), href: '/dashboard/cotizador' },
     { name: t('nav.quotes'), href: '/dashboard/cotizaciones' },
     { name: t('nav.deliveries'), href: '/dashboard/remisiones' },

@@ -240,7 +240,7 @@ Supuestos:
 2. tamano final: 50 x 70 cm
 3. impresion: 4/4
 4. numero total de colores modelados: 8
-5. desperdicio: 5%
+5. desperdicio porcentual por defecto: 0%
 6. sobrante minimo: 100
 7. papel modo: pliego
 8. pliego: 70 x 100 cm
@@ -254,10 +254,10 @@ Supuestos:
 
 ### Desarrollo Del Calculo
 
-1. extra por desperdicio = 1000 x 5% = 50
+1. extra por desperdicio porcentual = 1000 x 0% = 0
 2. se compara contra sobrante minimo = 100
 3. extra aplicado = 100
-4. cantidad con desperdicio = 1100
+4. cantidad con extra = 1100
 5. en un pliego 70 x 100 caben 2 afiches 50 x 70
 6. pliegos necesarios = 1100 / 2 = 550
 7. costo papel = 550 x 6500 = 3575000
@@ -322,8 +322,8 @@ Supuestos:
 3. tamano final cerrado: carta
 4. portada: propalcote, 4/1, plastificado
 5. internas: bond, 4/4
-6. desperdicio portada: 5%
-7. desperdicio internas: 5%
+6. desperdicio portada por defecto: 0%
+7. desperdicio internas por defecto: 0%
 8. sobrante minimo por parte: 100
 9. costo plancha por color: 20000 COP
 10. costo tinta por color: 8000 COP
@@ -377,29 +377,30 @@ Supuestos de internas:
 Calculo didactico:
 
 1. base interna = 2500
-2. desperdicio 5% = 125, que supera el sobrante minimo de 100
-3. total internas con extra = 2625
-4. rendimiento didactico del pliego = 6 internas por pliego
-5. pliegos internos = ceil(2625 / 6) = 438
-6. papel internas = 438 x 4500 = 1971000
-7. planchas internas = 8 x 20000 = 160000
-8. tinta internas = 8 x 8000 = 64000
-9. corte internas = 50000
+2. desperdicio porcentual por defecto = 0%, asi que no agrega unidades por porcentaje
+3. se aplica sobrante minimo = 100
+4. total internas con extra = 2600
+5. rendimiento didactico del pliego = 6 internas por pliego
+6. pliegos internos = ceil(2600 / 6) = 434
+7. papel internas = 434 x 4500 = 1953000
+8. planchas internas = 8 x 20000 = 160000
+9. tinta internas = 8 x 8000 = 64000
+10. corte internas = 50000
 
 Subtotal didactico internas:
 
-1. 1971000 + 160000 + 64000 + 50000 = 2245000
+1. 1953000 + 160000 + 64000 + 50000 = 2227000
 
 ### Consolidado Didactico Del Item Editorial
 
 Sin meter aun un valor manual de plastificado, compaginado o encuadernado:
 
 1. portada = 840000
-2. internas = 2245000
+2. internas = 2227000
 3. transporte = 20000
-4. costo base del item = 3105000
-5. precio de venta con 35% = 4191750
-6. precio unitario aproximado = 4191750 / 500 = 8383.5
+4. costo base del item = 3087000
+5. precio de venta con 35% = 4167450
+6. precio unitario aproximado = 4167450 / 500 = 8334.9
 
 ### Como Se Construye En El Sistema
 

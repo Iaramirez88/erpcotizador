@@ -11,7 +11,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { parsePurchaseOrderPrefillParam, type PurchaseWorkbenchMode } from '@/lib/purchase-order-prefill'
 
@@ -125,6 +127,7 @@ export default function ComprasPage() {
   const searchParams = useSearchParams()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = t('common.na')
+  const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('compras.history', 'list')
   const appliedPrefillRef = useRef<string | null>(null)
 
   const [loading, setLoading] = useState(false)
@@ -853,12 +856,59 @@ export default function ComprasPage() {
                 <CardTitle>{activeMode === 'order' ? t('purchases.list.ordersTitle') : t('purchases.list.title')}</CardTitle>
                 <CardDescription>{activeMode === 'order' ? t('purchases.list.ordersDescription') : t('purchases.list.description')}</CardDescription>
               </div>
-              <div className="w-full max-w-md">
-                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('purchases.list.searchPlaceholder')} />
+              <div className="flex w-full max-w-2xl items-center justify-end gap-3">
+                <div className="w-full max-w-md">
+                  <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('purchases.list.searchPlaceholder')} />
+                </div>
+                <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
               </div>
             </div>
           </CardHeader>
           <CardContent>
+            {dataViewMode === 'grid' ? (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {filteredCompras.map((c) => (
+                  <Card key={c.id} className="rounded-2xl border bg-white shadow-sm">
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-foreground">{c.proveedorNombre}</div>
+                          <div className="mt-1 text-sm text-muted-foreground">{new Date(c.fechaCompra).toLocaleDateString(locale)}</div>
+                          <div className="mt-1 text-xs text-muted-foreground">{getListDocumentValue(c)}</div>
+                        </div>
+                        <div className="text-xs text-muted-foreground">{getStatusLabel(c)}</div>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">{t('purchases.list.columns.total')}</p>
+                          <p className="font-semibold text-foreground">{formatCOP(c.total, locale)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">{t('purchases.list.columns.balance')}</p>
+                          <p className="font-medium text-foreground">{formatCOP(n(c.saldo, n(c.total, 0) - n(c.pagado, 0)), locale)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">{t('purchases.list.columns.paid')}</p>
+                          <p className="font-medium text-foreground">{formatCOP(n(c.pagado, 0), locale)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">{t('purchases.list.columns.authorized')}</p>
+                          <p className="font-medium text-foreground">{c.autorizado ? t('common.yes') : t('common.no')}</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap justify-end gap-2">
+                        {c.estado !== 'BORRADOR' ? <Button variant="outline" size="sm" onClick={() => openPagos(c)}>{t('purchases.actions.payments')}</Button> : null}
+                        <Button variant="outline" size="sm" onClick={() => openCompraPdf(c)}>{t('purchases.actions.print')}</Button>
+                        <Button variant="outline" size="sm" onClick={() => void downloadCompraPdf(c)}>{t('purchases.actions.downloadPdf')}</Button>
+                        <Button variant="outline" size="sm" onClick={() => loadCompraIntoForm(c, getCompraMode(c))}>{t('purchases.actions.edit')}</Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -1017,6 +1067,7 @@ export default function ComprasPage() {
                 </tbody>
               </table>
             </div>
+            )}
           </CardContent>
         </Card>
       </Tabs>

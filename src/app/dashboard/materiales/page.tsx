@@ -8,6 +8,7 @@
 import { useCallback, useMemo, useState, useEffect, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ImportDialog } from "@/components/import/import-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -32,6 +33,7 @@ import {
   type ProductTypeOption,
 } from "@/components/materiales/product-config-dialog"
 import { CatalogModuleTabs } from "@/components/inventory/catalog-module-tabs"
+import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { formatCurrency, formatUnidadMedidaLabel } from "@/lib/utils"
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200] as const
@@ -163,6 +165,7 @@ function parseFieldOptions(field: ProductCustomFieldDefinition): string[] {
 
 export default function ProductosPage() {
   const searchParams = useSearchParams()
+  const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('materiales.history', 'list')
   const [materiales, setMateriales] = useState<Material[]>([])
   const [bodegas, setBodegas] = useState<Bodega[]>([])
   const [bodegasFiltroList, setBodegasFiltroList] = useState<Bodega[]>([])
@@ -1482,6 +1485,7 @@ export default function ProductosPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
                   <div className="text-sm text-muted-foreground">Mostrar</div>
                   <select
                     value={String(pageSize)}
@@ -1557,6 +1561,102 @@ export default function ProductosPage() {
                 </div>
               </div>
 
+              {dataViewMode === 'grid' ? (
+              <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+                {materiales.map((material) => {
+                const tipoLabel = TIPOS_MATERIAL.find((t) => t.value === material.tipo)?.label || material.tipo
+                const tipoComercial = String(material.tipoNombre ?? '').trim()
+                const externalIdTrim = String(material.externalId ?? '').trim()
+                const materialNombreView = externalIdTrim ? `(${externalIdTrim}) ${material.nombre}` : material.nombre
+                const specs = [
+                  material.ancho ? `Ancho ${material.ancho}cm` : null,
+                  material.color ? `Color ${material.color}` : null,
+                ].filter(Boolean).join(" • ")
+
+                const wh = material.stocks?.[0]?.warehouse ?? null
+                const stockForView = bodegaFiltro ? (material.stocks?.[0]?.quantity ?? 0) : material.stockActual
+
+                const isChecked = selectionScope === 'all' ? true : selectedIds.has(material.id)
+                const isDisabled = selectionScope === 'all'
+
+                return (
+                  <Card key={material.id} className={`${!material.activo ? 'opacity-60' : ''} rounded-2xl border bg-white shadow-sm`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              disabled={isDisabled}
+                              onChange={() => toggleSelectId(material.id)}
+                              className="h-4 w-4 rounded border border-input"
+                              aria-label={`Seleccionar ${material.nombre}`}
+                            />
+                            <img
+                              src={material.imagenUrl || "/placeholder-product.svg"}
+                              alt={material.nombre}
+                              className="h-10 w-10 rounded border object-cover bg-white cursor-zoom-in"
+                              onClick={() => setPreviewUrl((material.imagenUrl || "/placeholder-product.svg").trim() || null)}
+                              onError={(e) => {
+                                e.currentTarget.src = "/placeholder-product.svg"
+                              }}
+                            />
+                            <div className="min-w-0">
+                              <div className="truncate font-medium text-foreground">{materialNombreView}</div>
+                              <div className="truncate text-xs text-muted-foreground">
+                                {tipoComercial || tipoLabel}
+                                {tipoComercial && tipoComercial !== tipoLabel ? ` · Base: ${tipoLabel}` : ""}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        {!material.activo ? (
+                          <span className="px-2 py-0.5 text-[10px] border rounded bg-muted">Inactivo</span>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-3 space-y-2 text-sm">
+                        <div className="text-xs text-muted-foreground">{material.categoria ? `${material.categoria}${specs ? ` • ${specs}` : ''}` : specs || 'Sin especificaciones'}</div>
+                        <div className="font-semibold text-blue-600">{getPrecioDisplay(material)}</div>
+                        <div className={`text-xs ${stockForView <= material.stockMinimo ? 'font-medium text-red-600' : 'text-muted-foreground'}`}>
+                          Stock: {stockForView} {formatUnidadMedidaLabel(material.unidadMedida)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Bodega: {wh ? `${wh.nombre}${wh.isDefault ? ' (Principal)' : ''}` : '—'}</div>
+                      </div>
+
+                      <div className="mt-4 flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEdit(material)}
+                          className="h-8 px-3"
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDuplicate(material)}
+                          className="h-8 px-3"
+                        >
+                          Duplicar
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDelete(material.id)}
+                          className="h-8 px-3 text-red-600"
+                        >
+                          Eliminar
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+              </div>
+              ) : (
               <div className="divide-y">
                 {materiales.map((material) => {
                 const tipoLabel = TIPOS_MATERIAL.find((t) => t.value === material.tipo)?.label || material.tipo
@@ -1681,6 +1781,7 @@ export default function ProductosPage() {
                 )
               })}
               </div>
+              )}
             </div>
           )}
         </CardContent>

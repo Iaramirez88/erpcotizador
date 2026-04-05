@@ -85,6 +85,15 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasProductCustomFieldDefinitionDelegate = typeof (prismaClient as any)?.productCustomFieldDefinition?.findMany === 'function'
   const hasWebsiteServiceDelegate = typeof (prismaClient as any)?.websiteService?.findMany === 'function'
   const hasWebsiteServiceModuleAccessDelegate = typeof (prismaClient as any)?.websiteServiceModuleAccess?.findMany === 'function'
+  const hasPayrollEmployeeDelegate = typeof (prismaClient as any)?.payrollEmployee?.findMany === 'function'
+  const hasPayrollContractDelegate = typeof (prismaClient as any)?.payrollContract?.findMany === 'function'
+  const hasPayrollPeriodDelegate = typeof (prismaClient as any)?.payrollPeriod?.findMany === 'function'
+  const hasPayrollNoveltyDelegate = typeof (prismaClient as any)?.payrollNovelty?.findMany === 'function'
+  const hasPayrollSettlementDelegate = typeof (prismaClient as any)?.payrollSettlement?.findMany === 'function'
+  const hasPayrollPayslipDelegate = typeof (prismaClient as any)?.payrollPayslip?.findMany === 'function'
+  const hasAccountingPeriodDelegate = typeof (prismaClient as any)?.accountingPeriod?.findMany === 'function'
+  const hasAccountingVoucherDelegate = typeof (prismaClient as any)?.accountingVoucher?.findMany === 'function'
+  const hasAccountingVoucherLineDelegate = typeof (prismaClient as any)?.accountingVoucherLine?.findMany === 'function'
 
   if (
     !hasTrialTier ||
@@ -126,7 +135,16 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasProductCategoryOptionDelegate ||
     !hasProductCustomFieldDefinitionDelegate ||
     !hasWebsiteServiceDelegate ||
-    !hasWebsiteServiceModuleAccessDelegate
+    !hasWebsiteServiceModuleAccessDelegate ||
+    !hasPayrollEmployeeDelegate ||
+    !hasPayrollContractDelegate ||
+    !hasPayrollPeriodDelegate ||
+    !hasPayrollNoveltyDelegate ||
+    !hasPayrollSettlementDelegate ||
+    !hasPayrollPayslipDelegate ||
+    !hasAccountingPeriodDelegate ||
+    !hasAccountingVoucherDelegate ||
+    !hasAccountingVoucherLineDelegate
   ) {
     prismaClient = undefined
   }

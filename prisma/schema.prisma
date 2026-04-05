@@ -146,6 +146,15 @@ model User {
 
   // Contabilidad
   accountingJournalEntriesCreated AccountingJournalEntry[] @relation("AccountingJournalEntryCreatedBy")
+  accountingPeriodsCreated       AccountingPeriod[]       @relation("AccountingPeriodCreatedBy")
+  accountingVouchersCreated      AccountingVoucher[]      @relation("AccountingVoucherCreatedBy")
+  accountingVouchersApproved     AccountingVoucher[]      @relation("AccountingVoucherApprovedBy")
+
+  // Nómina
+  payrollEmployeeProfile   PayrollEmployee?   @relation("PayrollEmployeeUser")
+  payrollNoveltiesCreated  PayrollNovelty[]   @relation("PayrollNoveltyCreatedBy")
+  payrollNoveltiesApproved PayrollNovelty[]   @relation("PayrollNoveltyApprovedBy")
+  payrollSettlementsCreated PayrollSettlement[] @relation("PayrollSettlementCreatedBy")
 
   // Productos personalizados (solicitudes)
   customProductRequestsCreated  CustomProductRequest[] @relation("CustomProductRequestCreatedBy")
@@ -693,9 +702,20 @@ model Empresa {
   accountingAccounts       AccountingAccount[]
   accountingCostCenters    AccountingCostCenter[]
   accountingRules          AccountingRule[]
+  accountingPeriods        AccountingPeriod[]
+  accountingVouchers       AccountingVoucher[]
   accountingJournalEntries AccountingJournalEntry[]
   treasuryBankAccounts     TreasuryBankAccount[]
   treasuryBankMovements    TreasuryBankMovement[]
+
+  // Nómina
+  payrollEmployees   PayrollEmployee[]
+  payrollContracts   PayrollContract[]
+  payrollPeriods     PayrollPeriod[]
+  payrollPeriodItems PayrollPeriodItem[]
+  payrollNovelties   PayrollNovelty[]
+  payrollSettlements PayrollSettlement[]
+  payrollPayslips    PayrollPayslip[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1498,6 +1518,9 @@ model Sede {
   teams         Team[]
   moduleAccess  UserModuleAccess[]
   notifications Notification[]
+  payrollEmployees PayrollEmployee[]
+  payrollContracts PayrollContract[]
+  payrollPeriods   PayrollPeriod[]
 
   cotizaciones      Cotizacion[]                @relation("SedeCotizaciones")
   ordenes           OrdenTrabajo[]              @relation("SedeOrdenes")
@@ -3587,6 +3610,9 @@ enum AccountingEventType {
   COMPRA
   COMPRA_PAGO
   DIAN_DOCUMENT
+  PAYROLL_PERIOD
+  PAYROLL_PAYMENT
+  PAYROLL_SETTLEMENT
   MANUAL
 }
 
@@ -3598,7 +3624,127 @@ enum AccountingAmountKey {
   RETENCION
   RETEICA
   AUTORETENCION
+  DEVENGADO
+  DEDUCCIONES
+  NETO_PAGAR
+  SEGURIDAD_SOCIAL_EMPLEADO
+  SEGURIDAD_SOCIAL_EMPRESA
+  PARAFISCALES
+  PROVISIONES
   TOTAL
+}
+
+enum AccountingPeriodStatus {
+  OPEN
+  CLOSED
+  LOCKED
+}
+
+enum AccountingVoucherType {
+  DIARIO
+  INGRESO
+  EGRESO
+  AJUSTE
+  CIERRE
+  APERTURA
+}
+
+enum AccountingVoucherStatus {
+  DRAFT
+  APPROVED
+  POSTED
+  VOIDED
+}
+
+enum PayrollEmployeeStatus {
+  ACTIVE
+  SUSPENDED
+  RETIRED
+}
+
+enum PayrollContractType {
+  INDEFINIDO
+  FIJO
+  OBRA_LABOR
+  APRENDIZAJE
+  PRESTACION
+}
+
+enum PayrollContractStatus {
+  ACTIVE
+  SUSPENDED
+  FINALIZED
+}
+
+enum PayrollFrequency {
+  QUINCENAL
+  MENSUAL
+  SEMANAL
+  JORNAL
+}
+
+enum PayrollPeriodStatus {
+  BORRADOR
+  CALCULADA
+  PAGADA
+  CERRADA
+}
+
+enum PayrollAccountingStatus {
+  PENDIENTE
+  CONTABILIZADA
+}
+
+enum PayrollNoveltyType {
+  INCAPACIDAD
+  HORA_EXTRA
+  AUSENCIA
+  LICENCIA
+  BONIFICACION
+  DESCUENTO
+  RECARGO
+  COMISION
+  EMBARGO
+  PRESTAMO
+  VACACIONES
+}
+
+enum PayrollNoveltyStatus {
+  RADICADA
+  VALIDADA
+  APLICADA
+  RECHAZADA
+}
+
+enum PayrollSettlementReason {
+  RENUNCIA
+  TERMINACION
+  MUTUO_ACUERDO
+  JUSTA_CAUSA
+  FIN_CONTRATO
+}
+
+enum PayrollSettlementStatus {
+  PENDIENTE
+  LIQUIDADA
+  PAGADA
+  ANULADA
+}
+
+enum PayrollConceptCategory {
+  DEVENGO
+  DEDUCCION
+  APORTE_EMPLEADO
+  APORTE_EMPRESA
+  PARAFISCAL
+  PROVISION
+}
+
+enum PayrollPayslipDeliveryChannel {
+  PORTAL
+  EMAIL
+  PDF
+  FISICO
 }
 
 model AccountingAccount {
@@ -3618,6 +3764,7 @@ model AccountingAccount {
 
   ruleLines      AccountingRuleLine[]
   journalLines   AccountingJournalLine[]
+  voucherLines   AccountingVoucherLine[]
   bankAccounts   TreasuryBankAccount[]
 
   // Cuenta auxiliar (posteable). Si es false, actúa como agrupadora.
@@ -3645,6 +3792,10 @@ model AccountingCostCenter {
 
   ruleLines    AccountingRuleLine[]
   journalLines AccountingJournalLine[]
+  voucherLines AccountingVoucherLine[]
+  payrollEmployees   PayrollEmployee[]
+  payrollContracts   PayrollContract[]
+  payrollPeriodItems PayrollPeriodItem[]
 
   isActive Boolean @default(true)
 
@@ -3734,6 +3885,8 @@ model AccountingJournalEntry {
 
   lines AccountingJournalLine[]
 
+  voucher AccountingVoucher?
+
   treasuryMovements TreasuryBankMovement[]
 
   createdAt DateTime @default(now())
@@ -3766,6 +3919,489 @@ model AccountingJournalLine {
   @@index([accountId])
   @@index([costCenterId])
   @@map("accounting_journal_lines")
+}
+
+model AccountingPeriod {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  code   String
+  label  String
+  status AccountingPeriodStatus @default(OPEN)
+
+  startsAt DateTime
+  endsAt   DateTime
+  lockedAt DateTime?
+  closedAt DateTime?
+
+  notes    String?
+  metadata Json @default("{}")
+
+  createdById String?
+  createdBy   User? @relation("AccountingPeriodCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  vouchers AccountingVoucher[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, code])
+  @@index([empresaId, status, startsAt])
+  @@map("accounting_periods")
+}
+
+model AccountingVoucher {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  periodId String?
+  period   AccountingPeriod? @relation(fields: [periodId], references: [id], onDelete: SetNull)
+
+  voucherType AccountingVoucherType
+  status      AccountingVoucherStatus @default(DRAFT)
+
+  code String
+  date DateTime
+
+  description        String
+  externalReference  String?
+  thirdPartyName     String?
+  thirdPartyDocument String?
+  currency           String @default("COP")
+
+  totalDebit  Float @default(0)
+  totalCredit Float @default(0)
+
+  journalEntryId String? @unique
+  journalEntry   AccountingJournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: SetNull)
+
+  notes    String?
+  metadata Json @default("{}")
+
+  createdById String?
+  createdBy   User? @relation("AccountingVoucherCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  approvedById String?
+  approvedBy   User? @relation("AccountingVoucherApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt   DateTime?
+
+  lines AccountingVoucherLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, code])
+  @@index([empresaId, voucherType, date])
+  @@index([empresaId, status, date])
+  @@index([periodId])
+  @@map("accounting_vouchers")
+}
+
+model AccountingVoucherLine {
+  id        String @id @default(cuid())
+  voucherId String
+  voucher   AccountingVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+
+  order Int @default(0)
+
+  accountId String
+  account   AccountingAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  costCenterId String?
+  costCenter   AccountingCostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+
+  thirdPartyName     String?
+  thirdPartyDocument String?
+
+  debit  Float @default(0)
+  credit Float @default(0)
+  memo   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([voucherId, order])
+  @@index([accountId])
+  @@index([costCenterId])
+  @@map("accounting_voucher_lines")
+}
+
+// ============================================
+// NÓMINA (BASE UI + PERSISTENCIA)
+// ============================================
+
+model PayrollEmployee {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  sedeId String
+  sede   Sede   @relation(fields: [sedeId], references: [id], onDelete: Restrict)
+
+  userId String? @unique
+  user   User?   @relation("PayrollEmployeeUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  costCenterId String?
+  costCenter   AccountingCostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+
+  code           String
+  documentType   String @default("CC")
+  documentNumber String
+  firstName      String
+  middleName     String?
+  lastName       String
+  secondLastName String?
+
+  personalEmail String?
+  phone         String?
+  address       String?
+  city          String?
+  jobTitle      String
+
+  hireDate       DateTime
+  retirementDate DateTime?
+  status         PayrollEmployeeStatus @default(ACTIVE)
+
+  bankName          String?
+  bankAccountType   String?
+  bankAccountNumber String?
+
+  epsEntity              String?
+  pensionEntity          String?
+  cesantiasEntity        String?
+  compensationFundEntity String?
+  arlEntity              String?
+  arlRiskClass           String?
+
+  notes    String?
+  metadata Json @default("{}")
+
+  contracts   PayrollContract[]
+  novelties   PayrollNovelty[]
+  periodItems PayrollPeriodItem[]
+  settlements PayrollSettlement[]
+  payslips    PayrollPayslip[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, code])
+  @@unique([empresaId, documentType, documentNumber])
+  @@index([empresaId, status])
+  @@index([sedeId, status])
+  @@index([costCenterId])
+  @@map("payroll_employees")
+}
+
+model PayrollContract {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   PayrollEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  sedeId String
+  sede   Sede   @relation(fields: [sedeId], references: [id], onDelete: Restrict)
+
+  costCenterId String?
+  costCenter   AccountingCostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+
+  contractType PayrollContractType
+  status       PayrollContractStatus @default(ACTIVE)
+  frequency    PayrollFrequency
+
+  startDate DateTime
+  endDate   DateTime?
+
+  baseSalary             Float
+  variableSalary         Boolean @default(false)
+  integralSalary         Boolean @default(false)
+  transportationAllowance Boolean @default(false)
+
+  payrollGroup String?
+  notes        String?
+  metadata     Json @default("{}")
+
+  novelties   PayrollNovelty[]
+  periodItems PayrollPeriodItem[]
+  settlements PayrollSettlement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([employeeId, status])
+  @@index([sedeId])
+  @@index([costCenterId])
+  @@map("payroll_contracts")
+}
+
+model PayrollPeriod {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  sedeId String?
+  sede   Sede?   @relation(fields: [sedeId], references: [id], onDelete: SetNull)
+
+  code      String
+  label     String
+  frequency PayrollFrequency
+  status    PayrollPeriodStatus @default(BORRADOR)
+
+  accountingStatus PayrollAccountingStatus @default(PENDIENTE)
+
+  startsAt    DateTime
+  endsAt      DateTime
+  paymentDate DateTime
+  closedAt    DateTime?
+
+  employeesCount       Int   @default(0)
+  grossTotal           Float @default(0)
+  deductionsTotal      Float @default(0)
+  netTotal             Float @default(0)
+  socialSecurityTotal  Float @default(0)
+  parafiscalesTotal    Float @default(0)
+  provisionsTotal      Float @default(0)
+
+  notes    String?
+  metadata Json @default("{}")
+
+  items      PayrollPeriodItem[]
+  novelties  PayrollNovelty[]
+  settlements PayrollSettlement[]
+  payslips   PayrollPayslip[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, code])
+  @@index([empresaId, frequency, startsAt])
+  @@index([empresaId, status])
+  @@index([sedeId])
+  @@map("payroll_periods")
+}
+
+model PayrollPeriodItem {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  periodId String
+  period   PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   PayrollEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  contractId String
+  contract   PayrollContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+
+  costCenterId String?
+  costCenter   AccountingCostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+
+  status PayrollPeriodStatus @default(BORRADOR)
+
+  workedDays Int   @default(0)
+  paidDays   Int   @default(0)
+
+  grossTotal                  Float @default(0)
+  deductionsTotal             Float @default(0)
+  netTotal                    Float @default(0)
+  employeeSocialSecurityTotal Float @default(0)
+  employerSocialSecurityTotal Float @default(0)
+  parafiscalesTotal           Float @default(0)
+  provisionsTotal             Float @default(0)
+
+  notes    String?
+  metadata Json @default("{}")
+
+  lines   PayrollConceptLine[]
+  payslip PayrollPayslip?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([periodId, employeeId])
+  @@index([empresaId, periodId])
+  @@index([employeeId])
+  @@index([contractId])
+  @@index([costCenterId])
+  @@map("payroll_period_items")
+}
+
+model PayrollConceptLine {
+  id           String  @id @default(cuid())
+  periodItemId String
+  periodItem   PayrollPeriodItem @relation(fields: [periodItemId], references: [id], onDelete: Cascade)
+
+  noveltyId String?
+  novelty   PayrollNovelty? @relation(fields: [noveltyId], references: [id], onDelete: SetNull)
+
+  order    Int @default(0)
+  category PayrollConceptCategory
+  code     String?
+  name     String
+
+  quantity   Float?
+  baseAmount Float?
+  rate       Float?
+  amount     Float
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([periodItemId, order])
+  @@index([noveltyId])
+  @@map("payroll_concept_lines")
+}
+
+model PayrollNovelty {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   PayrollEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  contractId String?
+  contract   PayrollContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  periodId String?
+  period   PayrollPeriod? @relation(fields: [periodId], references: [id], onDelete: SetNull)
+
+  type   PayrollNoveltyType
+  status PayrollNoveltyStatus @default(RADICADA)
+
+  source String @default("MANUAL")
+  detail String
+
+  amount Float?
+  quantity Float?
+  days   Float?
+
+  occurredOn DateTime?
+  startsAt   DateTime?
+  endsAt     DateTime?
+
+  supportNumber String?
+  supportUrl    String?
+
+  createdById String?
+  createdBy   User? @relation("PayrollNoveltyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  approvedById String?
+  approvedBy   User? @relation("PayrollNoveltyApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt   DateTime?
+
+  metadata Json @default("{}")
+
+  conceptLines PayrollConceptLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, type, status])
+  @@index([employeeId, createdAt])
+  @@index([periodId])
+  @@index([contractId])
+  @@map("payroll_novelties")
+}
+
+model PayrollSettlement {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   PayrollEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  contractId String?
+  contract   PayrollContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  periodId String?
+  period   PayrollPeriod? @relation(fields: [periodId], references: [id], onDelete: SetNull)
+
+  reason PayrollSettlementReason
+  status PayrollSettlementStatus @default(PENDIENTE)
+
+  retirementDate   DateTime
+  liquidationDate  DateTime?
+  paymentDate      DateTime?
+  workedDays       Int @default(0)
+  total            Float @default(0)
+  accountingStatus PayrollAccountingStatus @default(PENDIENTE)
+
+  notes String?
+
+  createdById String?
+  createdBy   User? @relation("PayrollSettlementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  metadata Json @default("{}")
+
+  lines PayrollSettlementLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([employeeId, retirementDate])
+  @@index([periodId])
+  @@map("payroll_settlements")
+}
+
+model PayrollSettlementLine {
+  id           String  @id @default(cuid())
+  settlementId String
+  settlement   PayrollSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+
+  order    Int @default(0)
+  category PayrollConceptCategory
+  code     String?
+  name     String
+  amount   Float
+  notes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([settlementId, order])
+  @@map("payroll_settlement_lines")
+}
+
+model PayrollPayslip {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   PayrollEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  periodId String
+  period   PayrollPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  periodItemId String? @unique
+  periodItem   PayrollPeriodItem? @relation(fields: [periodItemId], references: [id], onDelete: SetNull)
+
+  deliveryChannel PayrollPayslipDeliveryChannel @default(PORTAL)
+  generatedAt     DateTime @default(now())
+  deliveredAt     DateTime?
+  signedAt        DateTime?
+
+  fileUrl  String?
+  netTotal Float @default(0)
+  notes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([periodId, employeeId])
+  @@index([empresaId, generatedAt])
+  @@index([employeeId, generatedAt])
+  @@map("payroll_payslips")
 }
 
 // Tesorería (cuentas bancarias, movimientos y conciliación)

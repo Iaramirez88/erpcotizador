@@ -27,7 +27,9 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
+import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { MobileActionsMenu } from '@/components/ui/mobile-actions-menu'
 import { formatCurrency, formatUnidadMedidaLabel } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -414,6 +416,7 @@ export default function PosPage() {
   const { t, language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const searchParams = useSearchParams()
+  const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('pos.history', 'list')
 
   const dianSteps = useMemo(() => getDianSteps(t), [t])
   const dianDocTypes = useMemo(() => getDianDocTypes(t), [t])
@@ -2474,8 +2477,13 @@ export default function PosPage() {
         <TabsContent value="interna" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>{t('pos.invoices.recent.title')}</CardTitle>
-              <CardDescription>{t('pos.invoices.recent.description')}</CardDescription>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <CardTitle>{t('pos.invoices.recent.title')}</CardTitle>
+                  <CardDescription>{t('pos.invoices.recent.description')}</CardDescription>
+                </div>
+                <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
+              </div>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -2484,7 +2492,8 @@ export default function PosPage() {
                 <div className="text-sm text-gray-600">{t('pos.invoices.recent.empty')}</div>
               ) : (
                 <>
-                <div className="space-y-3 md:hidden">
+                {dataViewMode === 'grid' ? (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {invoices.map((inv) => (
                     <Card key={inv.id} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
                       <CardContent className="p-4">
@@ -2568,7 +2577,8 @@ export default function PosPage() {
                   ))}
                 </div>
 
-                <div className="hidden overflow-auto md:block">
+                ) : (
+                <div className="overflow-auto">
                   <table className="min-w-full text-sm">
                     <thead>
                       <tr className="text-left text-gray-600 border-b">
@@ -2695,6 +2705,7 @@ export default function PosPage() {
                     </tbody>
                   </table>
                 </div>
+                )}
                 </>
               )}
             </CardContent>
@@ -2702,14 +2713,54 @@ export default function PosPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>{t('pos.returns.recent.title')}</CardTitle>
-              <CardDescription>{t('pos.returns.recent.description')}</CardDescription>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <CardTitle>{t('pos.returns.recent.title')}</CardTitle>
+                  <CardDescription>{t('pos.returns.recent.description')}</CardDescription>
+                </div>
+                <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
+              </div>
             </CardHeader>
             <CardContent>
               {isLoading ? (
                 <div className="text-sm text-gray-600">{t('common.loading')}</div>
               ) : returns.length === 0 ? (
                 <div className="text-sm text-gray-600">{t('pos.returns.recent.empty')}</div>
+              ) : dataViewMode === 'grid' ? (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {returns.map((r) => (
+                    <Card key={r.id} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <button className="font-semibold text-blue-700 hover:underline" onClick={() => void openReturnDetail(r.id)}>
+                              {r.numero}
+                            </button>
+                            <p className="mt-1 text-sm text-muted-foreground">{new Date(r.createdAt).toLocaleString(locale)}</p>
+                            <p className="mt-2 text-sm font-medium text-foreground">{r.invoice?.numero || t('common.na')}</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">{t('pos.returns.columns.warehouse')}</p>
+                            <p className="font-medium text-foreground">{r.warehouse?.nombre || t('common.na')}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">{t('pos.returns.columns.total')}</p>
+                            <p className="font-semibold text-foreground">{formatCurrency(n(r.total, 0))}</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex justify-end">
+                          <Button type="button" size="sm" variant="outline" onClick={() => void openReturnDetail(r.id)}>
+                            {t('pos.actions.view')}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               ) : (
                 <div className="overflow-auto">
                   <table className="min-w-full text-sm">

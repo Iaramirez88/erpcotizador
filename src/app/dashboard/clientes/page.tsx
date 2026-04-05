@@ -12,7 +12,9 @@ import { ImportDialog } from "@/components/import/import-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { DataViewToggle } from "@/components/dashboard/data-view-toggle"
 import { ErpPageHero } from "@/components/dashboard/erp-page-chrome"
+import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { useI18n } from "@/components/providers/i18n-provider"
 import {
   Dialog,
@@ -87,6 +89,7 @@ export default function ClientesPage() {
   const { t, language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = t('common.na')
+  const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('clientes.history', 'list')
 
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -525,8 +528,13 @@ export default function ClientesPage() {
         {/* Lista (primero) */}
         <Card className="min-w-0">
           <CardHeader>
-            <CardTitle>{t('customers.list.title', { count: String(clientes.length) })}</CardTitle>
-            <CardDescription>{t('customers.list.subtitle')}</CardDescription>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <CardTitle>{t('customers.list.title', { count: String(clientes.length) })}</CardTitle>
+                <CardDescription>{t('customers.list.subtitle')}</CardDescription>
+              </div>
+              <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
+            </div>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2 flex-wrap mb-4">
@@ -556,7 +564,8 @@ export default function ClientesPage() {
               </div>
             ) : (
               <>
-              <div className="space-y-3 md:hidden">
+              {dataViewMode === 'grid' ? (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {clientes.map((cliente) => (
                   <Card key={cliente.id} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
                     <CardContent className="p-4">
@@ -626,7 +635,8 @@ export default function ClientesPage() {
                 ))}
               </div>
 
-              <div className="hidden max-w-full overflow-x-auto md:block">
+              ) : (
+              <div className="max-w-full overflow-x-auto">
                 <table className="min-w-[1400px] w-full">
                   <thead className="border-b">
                     <tr className="text-left">
@@ -715,6 +725,7 @@ export default function ClientesPage() {
                   </tbody>
                 </table>
               </div>
+              )}
               </>
             )}
           </CardContent>

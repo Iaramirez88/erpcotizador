@@ -27,6 +27,12 @@ type TutorialPrefs = {
   seen?: Record<string, boolean>
 }
 
+type DataViewPrefs = Record<string, 'list' | 'grid'>
+
+type StoredReportPrefs = ReportPrefs & {
+  dataView?: DataViewPrefs
+}
+
 function defaultPrefs() {
   const nav: NavPrefs = {}
   const report: ReportPrefs = {
@@ -34,8 +40,9 @@ function defaultPrefs() {
     charts: { ventasMensuales: true, documentosPorTipo: true, comprasPorProveedor: true },
   }
   const tutorial: TutorialPrefs = { seen: {} }
+  const dataView: DataViewPrefs = {}
   const language: UiLanguage = 'es'
-  return { nav, report, tutorial, language }
+  return { nav, report, tutorial, dataView, language }
 }
 
 async function resolveUserIdFromSession(session: { user?: { id?: string; email?: string | null } }) {
@@ -72,6 +79,7 @@ export async function GET() {
       nav: (pref?.nav as unknown) ?? defaults.nav,
       report: (pref?.report as unknown) ?? defaults.report,
       tutorial: (pref?.tutorial as unknown) ?? defaults.tutorial,
+      dataView: (pref?.report as Record<string, unknown> | null)?.dataView ?? defaults.dataView,
       language: (pref?.language as UiLanguage | null) ?? defaults.language,
     },
   })
@@ -94,22 +102,35 @@ export async function PUT(req: NextRequest) {
   const nav = isPlainObject(body.nav) ? (body.nav as NavPrefs) : undefined
   const report = isPlainObject(body.report) ? (body.report as ReportPrefs) : undefined
   const tutorial = isPlainObject(body.tutorial) ? (body.tutorial as TutorialPrefs) : undefined
+  const dataView = isPlainObject(body.dataView) ? (body.dataView as DataViewPrefs) : undefined
 
   const languageRaw = typeof body.language === 'string' ? body.language.trim().toLowerCase() : ''
   const language: UiLanguage | undefined = languageRaw === 'es' || languageRaw === 'en' ? (languageRaw as UiLanguage) : undefined
+
+  const current = await prisma.uiPreference.findUnique({
+    where: { userId },
+    select: { report: true },
+  })
+
+  const currentReport: StoredReportPrefs = isPlainObject(current?.report) ? (current.report as StoredReportPrefs) : { ...defaults.report, dataView: defaults.dataView }
+  const nextReport = {
+    ...currentReport,
+    ...(report ?? {}),
+    dataView: dataView ?? currentReport.dataView ?? defaults.dataView,
+  }
 
   const updated = await prisma.uiPreference.upsert({
     where: { userId },
     create: {
       userId,
       nav: (nav ?? defaults.nav) as never,
-      report: (report ?? defaults.report) as never,
+      report: nextReport as never,
       tutorial: (tutorial ?? defaults.tutorial) as never,
       language: language ?? defaults.language,
     },
     update: {
       nav: (nav ?? undefined) as never,
-      report: (report ?? undefined) as never,
+      report: nextReport as never,
       tutorial: (tutorial ?? undefined) as never,
       language: language ?? undefined,
     },
@@ -118,6 +139,12 @@ export async function PUT(req: NextRequest) {
 
   return NextResponse.json({
     success: true,
-    data: { nav: updated.nav, report: updated.report, tutorial: updated.tutorial, language: updated.language as UiLanguage },
+    data: {
+      nav: updated.nav,
+      report: updated.report,
+      tutorial: updated.tutorial,
+      dataView: (updated.report as Record<string, unknown> | null)?.dataView ?? defaults.dataView,
+      language: updated.language as UiLanguage,
+    },
   })
 }

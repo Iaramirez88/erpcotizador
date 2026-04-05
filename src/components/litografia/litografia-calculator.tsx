@@ -220,7 +220,7 @@ export function LitografiaCalculator() {
 
   const [cantidad, setCantidad] = useState("1000")
   const [colores] = useState("4")
-  const [desperdicioPct] = useState("3")
+  const [desperdicioPct] = useState("0")
 
   const [costoPlanchaPorColor, setCostoPlanchaPorColor] = useState("25000")
   const [costoTintaPorColor, setCostoTintaPorColor] = useState("15000")

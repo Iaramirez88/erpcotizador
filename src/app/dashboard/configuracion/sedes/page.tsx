@@ -13,7 +13,9 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { useDataViewMode } from '@/hooks/use-data-view-mode'
 
 type SedeRow = {
   id: string
@@ -25,6 +27,7 @@ type SedeRow = {
 type ApiResponse<T> = { success?: boolean; data?: T; error?: string }
 
 export default function SedesConfigPage() {
+  const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('configuracion.sedes.history', 'list')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -177,16 +180,51 @@ export default function SedesConfigPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Listado</CardTitle>
-          <CardDescription>
-            Si no existe ninguna, el sistema crea automáticamente una sede (Principal).
-          </CardDescription>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle>Listado</CardTitle>
+              <CardDescription>
+                Si no existe ninguna, el sistema crea automáticamente una sede (Principal).
+              </CardDescription>
+            </div>
+            <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="text-sm text-gray-600">Cargando…</div>
           ) : sorted.length === 0 ? (
             <div className="text-sm text-gray-600">No hay sedes aún.</div>
+          ) : dataViewMode === 'grid' ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {sorted.map((s) => (
+                <Card key={s.id} className="rounded-2xl border bg-white shadow-sm">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-gray-900">{s.nombre}</p>
+                        <p className="mt-1 text-sm text-gray-600">Código: {s.codigo || '—'}</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex justify-end gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={() => openEdit(s)}>
+                        Editar
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600"
+                        onClick={() => void deleteSede(s)}
+                        disabled={deletingId === s.id}
+                      >
+                        {deletingId === s.id ? 'Eliminando…' : 'Eliminar'}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           ) : (
             <div className="overflow-auto">
               <table className="min-w-full text-sm">

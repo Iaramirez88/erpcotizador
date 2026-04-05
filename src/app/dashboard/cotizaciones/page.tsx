@@ -37,7 +37,9 @@ import type { CotizacionTemplateSettings } from '@/lib/cotizacion-template';
 import { useI18n } from '@/components/providers/i18n-provider';
 import { buildWhatsAppWebUrl } from '@/lib/whatsapp-link';
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome';
+import { DataViewToggle } from '@/components/dashboard/data-view-toggle';
 import { MobilePdfFallback, useIsMobileViewport } from '@/components/pdf/mobile-pdf-fallback';
+import { useDataViewMode } from '@/hooks/use-data-view-mode';
 
 function PdfPreviewLoading() {
   const { t } = useI18n();
@@ -107,6 +109,7 @@ export default function CotizacionesPage() {
   const { t, language } = useI18n();
   const locale = language === 'en' ? 'en-US' : 'es-MX';
   const isMobileViewport = useIsMobileViewport();
+  const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('cotizaciones.history', 'list');
 
   // La facturación electrónica aún no está habilitada: se muestran opciones, pero quedan deshabilitadas.
   const electronicBillingEnabled = false;
@@ -849,7 +852,12 @@ export default function CotizacionesPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          <div className="space-y-3 md:hidden">
+          <div className="flex justify-end">
+            <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
+          </div>
+
+          {dataViewMode === 'grid' ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {cotizaciones.map((cot) => (
               <Card key={cot.id} className="overflow-hidden rounded-2xl border bg-white shadow-sm">
                 <CardContent className="p-4">
@@ -973,7 +981,8 @@ export default function CotizacionesPage() {
             ))}
           </div>
 
-          <div className="hidden overflow-x-auto rounded-xl border bg-white md:block">
+          ) : (
+          <div className="overflow-x-auto rounded-xl border bg-white">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-muted-foreground">
@@ -1172,6 +1181,7 @@ export default function CotizacionesPage() {
               </tbody>
             </table>
           </div>
+          )}
 
           {/* Paginación */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between pt-2">

@@ -2,7 +2,8 @@
 
 import Image from 'next/image'
 import { type ReactElement, useDeferredValue, useEffect, useRef, useState } from 'react'
-import { Check, ChevronRight, Copy, Download, Eye, FileText, Folder, FolderInput, FolderPlus, Grid2X2, ImageIcon, Link2, List, Music2, Pencil, Plus, Search, Share2, Trash2, Upload, Video } from 'lucide-react'
+import { Check, ChevronRight, Copy, Download, Eye, FileText, Folder, FolderInput, FolderPlus, ImageIcon, Link2, Music2, Pencil, Plus, Search, Share2, Trash2, Upload, Video } from 'lucide-react'
+import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,6 +11,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import type { CrmFileItem, CrmFilesSnapshot, CrmFilesTeamUser, CrmFolderNode, JsonResponse } from '@/components/crm/crm-files-types'
 
 function formatBytes(value: number) {
@@ -52,7 +54,7 @@ export function CrmFilesManagerClient() {
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'files' | 'history'>('files')
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const { mode: viewMode, setMode: setViewMode } = useDataViewMode('crm.files.history', 'list')
   const [search, setSearch] = useState('')
   const [folderDialogOpen, setFolderDialogOpen] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
@@ -407,12 +409,7 @@ export function CrmFilesManagerClient() {
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nombre" className="rounded-xl pl-9" />
                 </div>
-                <Button variant={viewMode === 'grid' ? 'default' : 'outline'} className="rounded-xl px-3" onClick={() => setViewMode('grid')}>
-                  <Grid2X2 className="h-4 w-4" />
-                </Button>
-                <Button variant={viewMode === 'list' ? 'default' : 'outline'} className="rounded-xl px-3" onClick={() => setViewMode('list')}>
-                  <List className="h-4 w-4" />
-                </Button>
+                <DataViewToggle mode={viewMode} onChange={setViewMode} />
               </div>
             </div>
           </CardHeader>

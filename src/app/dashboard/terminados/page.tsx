@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
+import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import {
   Dialog,
   DialogContent,
@@ -43,6 +45,7 @@ function normalizeUnidad(value: string) {
 }
 
 export default function TerminadosPage() {
+  const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('terminados.history', 'list')
   const [terminados, setTerminados] = useState<Terminado[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState("")
@@ -165,8 +168,13 @@ export default function TerminadosPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Lista de Terminados ({filtered.length})</CardTitle>
-          <CardDescription>Se aplican en el cotizador según unidad (m²/ml/unidad).</CardDescription>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle>Lista de Terminados ({filtered.length})</CardTitle>
+              <CardDescription>Se aplican en el cotizador según unidad (m²/ml/unidad).</CardDescription>
+            </div>
+            <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -174,6 +182,41 @@ export default function TerminadosPage() {
           ) : filtered.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No hay terminados. Crea el primero.
+            </div>
+          ) : dataViewMode === 'grid' ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {filtered.map((t) => (
+                <Card key={t.id} className="rounded-2xl border bg-white shadow-sm">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-foreground">{t.nombre}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">{t.unidadAplicacion}</p>
+                      </div>
+                      <span className={"text-xs px-2 py-1 rounded border " + (t.activo ? "bg-green-50 text-green-700 border-green-200" : "bg-slate-50 text-slate-700 border-slate-200")}>
+                        {t.activo ? "Activo" : "Inactivo"}
+                      </span>
+                    </div>
+                    <div className="mt-4 text-sm">
+                      <p className="text-muted-foreground">Precio</p>
+                      <p className="font-medium text-foreground">{formatCurrency(t.precioUnitario || 0)}</p>
+                    </div>
+                    <div className="mt-4 flex justify-end gap-2">
+                      <Button variant="outline" size="sm" onClick={() => openEdit(t)}>
+                        Editar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDelete(t.id)}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        Eliminar
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           ) : (
             <div className="overflow-x-auto">

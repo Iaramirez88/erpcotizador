@@ -13,6 +13,8 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
+import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { cn } from '@/lib/utils'
 
 type Bodega = {
@@ -28,6 +30,7 @@ type Bodega = {
 type ApiResponse<T> = { success?: boolean; data?: T; error?: string }
 
 export default function BodegasPage() {
+  const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('bodegas.history', 'list')
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -133,16 +136,44 @@ export default function BodegasPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Listado</CardTitle>
-          <CardDescription>
-            Si no existe ninguna, el sistema crea automáticamente una sede (Principal).
-          </CardDescription>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle>Listado</CardTitle>
+              <CardDescription>
+                Si no existe ninguna, el sistema crea automáticamente una sede (Principal).
+              </CardDescription>
+            </div>
+            <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="text-sm text-gray-600">Cargando…</div>
           ) : sorted.length === 0 ? (
             <div className="text-sm text-gray-600">No hay sedes aún.</div>
+          ) : dataViewMode === 'grid' ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {sorted.map((b) => (
+                <Card key={b.id} className="rounded-2xl border bg-white shadow-sm">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-gray-900">{b.nombre}</p>
+                        <p className="mt-1 text-sm text-gray-600">Código: {b.codigo || '—'}</p>
+                      </div>
+                      <span
+                        className={cn(
+                          'text-xs font-semibold px-2 py-1 rounded',
+                          b.isDefault ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-700'
+                        )}
+                      >
+                        {b.isDefault ? 'Principal' : 'Secundaria'}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           ) : (
             <div className="overflow-auto">
               <table className="min-w-full text-sm">

@@ -46,6 +46,13 @@ function isAmountKey(value: string): value is AccountingAmountKey {
     value === 'RETENCION' ||
     value === 'RETEICA' ||
     value === 'AUTORETENCION' ||
+    value === 'DEVENGADO' ||
+    value === 'DEDUCCIONES' ||
+    value === 'NETO_PAGAR' ||
+    value === 'SEGURIDAD_SOCIAL_EMPLEADO' ||
+    value === 'SEGURIDAD_SOCIAL_EMPRESA' ||
+    value === 'PARAFISCALES' ||
+    value === 'PROVISIONES' ||
     value === 'TOTAL'
   )
 }
@@ -56,6 +63,9 @@ function isEventType(value: string): value is AccountingEventType {
     value === 'COMPRA' ||
     value === 'COMPRA_PAGO' ||
     value === 'DIAN_DOCUMENT' ||
+    value === 'PAYROLL_PERIOD' ||
+    value === 'PAYROLL_PAYMENT' ||
+    value === 'PAYROLL_SETTLEMENT' ||
     value === 'MANUAL'
   )
 }

@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { useI18n } from '@/components/providers/i18n-provider'
 import {
   Dialog,
@@ -131,6 +133,7 @@ export default function SuperAdminUsersClient() {
   const { t, language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = t('common.na')
+  const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('superadmin.users.history', 'list')
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -372,8 +375,13 @@ export default function SuperAdminUsersClient() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{t('superAdmin.users.list.title')}</CardTitle>
-          <CardDescription>{t('superAdmin.users.list.subtitle')}</CardDescription>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle>{t('superAdmin.users.list.title')}</CardTitle>
+              <CardDescription>{t('superAdmin.users.list.subtitle')}</CardDescription>
+            </div>
+            <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
@@ -409,6 +417,66 @@ export default function SuperAdminUsersClient() {
             <div className="py-3 text-sm text-red-600">{error}</div>
           ) : items.length === 0 ? (
             <div className="py-6 text-sm text-muted-foreground">{t('superAdmin.users.empty')}</div>
+          ) : dataViewMode === 'grid' ? (
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {items.map((user) => (
+                <Card key={user.id} className="rounded-2xl border bg-white shadow-sm">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-foreground">{user.name || naText}</div>
+                        <div className="mt-1 text-sm text-muted-foreground break-all">{user.email}</div>
+                      </div>
+                      <div className="text-xs text-muted-foreground">{user.role}</div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {user.isNew ? (
+                        <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                          {t('superAdmin.users.badges.new')}
+                        </span>
+                      ) : null}
+                      {isFutureDate(user.empresa?.trialValidUntil) ? (
+                        <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                          {t('superAdmin.users.badges.trial')}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-4 space-y-2 text-sm">
+                      <div>
+                        <div className="text-muted-foreground">{t('superAdmin.users.columns.company')}</div>
+                        <div className="font-medium text-foreground">{user.empresa?.nombre ?? naText}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">{t('superAdmin.users.columns.plan')}</div>
+                        <div className="font-medium text-foreground">{user.empresa?.planTier ?? naText}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">{t('superAdmin.users.columns.createdAt')}</div>
+                        <div className="font-medium text-foreground">{fmtDate(user.createdAt, locale, naText)}</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex justify-end gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={() => void openEdit(user)}>
+                        {t('common.edit')}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700"
+                        disabled={deletingId === user.id}
+                        onClick={() => void deleteUser(user)}
+                      >
+                        {deletingId === user.id ? t('superAdmin.users.deleting') : t('common.delete')}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] sm:min-w-[900px] text-sm">

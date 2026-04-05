@@ -16,6 +16,9 @@ function isEventType(value: string): value is AccountingEventType {
     value === 'COMPRA' ||
     value === 'COMPRA_PAGO' ||
     value === 'DIAN_DOCUMENT' ||
+    value === 'PAYROLL_PERIOD' ||
+    value === 'PAYROLL_PAYMENT' ||
+    value === 'PAYROLL_SETTLEMENT' ||
     value === 'MANUAL'
   )
 }
