@@ -124,6 +124,8 @@ export function CrmTeamChatClient() {
   const messagesViewportRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const scrollTimersRef = useRef<number[]>([])
+  const shouldStickToBottomRef = useRef(true)
+  const previousThreadKeyRef = useRef<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [creatingThread, setCreatingThread] = useState(false)
@@ -168,6 +170,13 @@ export function CrmTeamChatClient() {
     scrollTimersRef.current = [80, 220, 420].map((delay) => window.setTimeout(() => {
       scrollMessagesToBottom('auto')
     }, delay))
+  }
+
+  function isNearBottom(threshold = 80) {
+    const container = messagesViewportRef.current
+    if (!container) return true
+    const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    return distanceToBottom <= threshold
   }
 
   async function loadBase() {
@@ -232,9 +241,22 @@ export function CrmTeamChatClient() {
   }, [selectedThreadId])
 
   useEffect(() => {
-    if (!selectedThread) return
-    scheduleScrollToBottom('auto')
-  }, [detailLoading, selectedThreadId, selectedThread?.id, selectedThread?.messages.length])
+    const threadKey = selectedThread
+      ? `${selectedThread.id}:${selectedThread.messages.at(-1)?.id ?? 'empty'}:${selectedThread.messages.length}`
+      : null
+    const threadChanged = previousThreadKeyRef.current !== threadKey
+    previousThreadKeyRef.current = threadKey
+
+    if (!selectedThread || !threadChanged) return
+    if (shouldStickToBottomRef.current) {
+      scheduleScrollToBottom('auto')
+    }
+  }, [selectedThread])
+
+  useEffect(() => {
+    if (!selectedThreadId) return
+    shouldStickToBottomRef.current = true
+  }, [selectedThreadId])
 
   const visibleUsers = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -335,6 +357,7 @@ export function CrmTeamChatClient() {
       setMessageDraft('')
       setPendingAttachments([])
       await Promise.all([loadBase(), loadDetail(selectedThreadId)])
+      shouldStickToBottomRef.current = true
       scheduleScrollToBottom('smooth')
       return true
     } finally {
@@ -576,7 +599,13 @@ export function CrmTeamChatClient() {
                   </div>
                 </div>
 
-                <div ref={messagesViewportRef} className="max-h-[520px] space-y-3 overflow-y-auto pr-1">
+                <div
+                  ref={messagesViewportRef}
+                  onScroll={() => {
+                    shouldStickToBottomRef.current = isNearBottom()
+                  }}
+                  className="max-h-[520px] space-y-3 overflow-y-auto pr-1"
+                >
                   {selectedThread.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes en este chat.</p> : null}
                   {selectedThread.messages.map((message) => {
                     const isOwn = Boolean(currentUserId && message.sentByUserId === currentUserId)

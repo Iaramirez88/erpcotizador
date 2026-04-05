@@ -192,6 +192,10 @@ export default function FloatingChatDrawer() {
   const teamMessagesEndRef = useRef<HTMLDivElement | null>(null)
   const crmScrollTimersRef = useRef<number[]>([])
   const teamScrollTimersRef = useRef<number[]>([])
+  const crmShouldStickToBottomRef = useRef(true)
+  const teamShouldStickToBottomRef = useRef(true)
+  const previousConversationKeyRef = useRef<string | null>(null)
+  const previousThreadKeyRef = useRef<string | null>(null)
   const [open, setOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<'updates' | 'crm' | 'team'>('updates')
   const [teamView, setTeamView] = useState<'direct' | 'groups'>('direct')
@@ -248,6 +252,12 @@ export default function FloatingChatDrawer() {
     timersRef.current = retries.map((delay) => window.setTimeout(() => {
       scrollContainerToBottom(container, endAnchor, 'auto')
     }, delay))
+  }
+
+  function isContainerNearBottom(container: HTMLDivElement | null, threshold = 80) {
+    if (!container) return true
+    const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    return distanceToBottom <= threshold
   }
 
   useEffect(() => {
@@ -371,14 +381,42 @@ export default function FloatingChatDrawer() {
   }, [teamMessageDraft, selectedThreadId])
 
   useEffect(() => {
-    if (!open || activeTab !== 'crm' || !selectedConversation) return
-    scheduleScrollToBottom(crmMessagesRef.current, crmMessagesEndRef.current, crmScrollTimersRef, 'auto')
-  }, [activeTab, open, crmLoading, selectedConversationId, selectedConversation?.id, selectedConversation?.messages.length])
+    const conversationKey = selectedConversation
+      ? `${selectedConversation.id}:${selectedConversation.messages.at(-1)?.id ?? 'empty'}:${selectedConversation.messages.length}`
+      : null
+    const conversationChanged = previousConversationKeyRef.current !== conversationKey
+    previousConversationKeyRef.current = conversationKey
+
+    if (!open || activeTab !== 'crm' || !selectedConversation || !conversationChanged) return
+    if (crmShouldStickToBottomRef.current || selectedConversationId !== selectedConversation.id) {
+      scheduleScrollToBottom(crmMessagesRef.current, crmMessagesEndRef.current, crmScrollTimersRef, 'auto')
+    }
+  }, [activeTab, open, selectedConversationId, selectedConversation])
 
   useEffect(() => {
-    if (!open || activeTab !== 'team' || !selectedThread) return
+    const threadKey = selectedThread
+      ? `${selectedThread.id}:${selectedThread.messages.at(-1)?.id ?? 'empty'}:${selectedThread.messages.length}`
+      : null
+    const threadChanged = previousThreadKeyRef.current !== threadKey
+    previousThreadKeyRef.current = threadKey
+
+    if (!open || activeTab !== 'team' || !selectedThread || !threadChanged) return
+    if (teamShouldStickToBottomRef.current || selectedThreadId !== selectedThread.id) {
+      scheduleScrollToBottom(teamMessagesRef.current, teamMessagesEndRef.current, teamScrollTimersRef, 'auto')
+    }
+  }, [activeTab, open, selectedThreadId, selectedThread])
+
+  useEffect(() => {
+    if (!open || activeTab !== 'crm') return
+    crmShouldStickToBottomRef.current = true
+    scheduleScrollToBottom(crmMessagesRef.current, crmMessagesEndRef.current, crmScrollTimersRef, 'auto')
+  }, [activeTab, open, selectedConversationId])
+
+  useEffect(() => {
+    if (!open || activeTab !== 'team') return
+    teamShouldStickToBottomRef.current = true
     scheduleScrollToBottom(teamMessagesRef.current, teamMessagesEndRef.current, teamScrollTimersRef, 'auto')
-  }, [activeTab, open, teamLoading, selectedThreadId, selectedThread?.id, selectedThread?.messages.length])
+  }, [activeTab, open, selectedThreadId])
 
   const filteredTeamUsers = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -564,6 +602,7 @@ export default function FloatingChatDrawer() {
       setTeamMessageDraft('')
       setPendingTeamAttachments([])
       await Promise.all([loadBase(), loadThreadDetail(selectedThreadId)])
+      teamShouldStickToBottomRef.current = true
       scheduleScrollToBottom(teamMessagesRef.current, teamMessagesEndRef.current, teamScrollTimersRef, 'smooth')
       return true
     } finally {
@@ -851,7 +890,13 @@ export default function FloatingChatDrawer() {
                       </div>
                     ) : null}
                   </div>
-                  <div ref={crmMessagesRef} className="min-h-0 overflow-y-auto overflow-x-hidden px-3 py-2.5">
+                  <div
+                    ref={crmMessagesRef}
+                    onScroll={() => {
+                      crmShouldStickToBottomRef.current = isContainerNearBottom(crmMessagesRef.current)
+                    }}
+                    className="min-h-0 overflow-y-auto overflow-x-hidden px-3 py-2.5"
+                  >
                     {selectedConversation ? (
                       <div className="min-w-0 space-y-2.5">
                         {selectedConversation.messages.map((message) => (
@@ -1043,7 +1088,13 @@ export default function FloatingChatDrawer() {
                           </div>
                         </div>
 
-                        <div ref={teamMessagesRef} className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
+                        <div
+                          ref={teamMessagesRef}
+                          onScroll={() => {
+                            teamShouldStickToBottomRef.current = isContainerNearBottom(teamMessagesRef.current)
+                          }}
+                          className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1"
+                        >
                           {selectedThread.messages.length === 0 ? <p className="text-sm text-slate-500">No hay mensajes en este chat.</p> : null}
                           {selectedThread.messages.map((message) => {
                             const isOwn = Boolean(currentUserId && message.sentByUserId === currentUserId)
