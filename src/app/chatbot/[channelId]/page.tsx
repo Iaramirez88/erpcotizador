@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { CrmPublicChatbotEmbed } from '@/components/crm/crm-public-chatbot-embed'
-import { getPublicChatbotSettings, getReferrerHost, getRequestHost, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
+import { getPublicChatbotSettings, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
+import { getReferrerHost, getRequestHost } from '@/lib/crm-public-chatbot-server'
 
 type PageProps = {
   params: Promise<{ channelId: string }>

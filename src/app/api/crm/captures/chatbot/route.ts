@@ -15,7 +15,17 @@ import {
   type ChatbotFlowStage,
   type ChatbotQuickAction,
 } from '@/lib/crm-chatbot-flow'
-import { extractHostFromUrl, getPublicChatbotSettings, getReferrerHost, getRequestHost, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
+import {
+  applyChatbotMessageCoherence,
+  getChatbotAutomationFlowById,
+  getDefaultChatbotAutomationFlowFromSettings,
+  getChatbotStudioSettings,
+  interpolateChatbotVariables,
+  resolveChatbotAutomationFlowByTrigger,
+  resolveChatbotAssignmentUserId,
+} from '@/lib/crm-chatbot-studio'
+import { extractHostFromUrl, getPublicChatbotSettings, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
+import { getReferrerHost, getRequestHost } from '@/lib/crm-public-chatbot-server'
 
 export const runtime = 'nodejs'
 
@@ -507,6 +517,7 @@ export async function POST(request: Request) {
     }
 
     const settings = getPublicChatbotSettings(channel.settingsJson)
+    const studioSettings = getChatbotStudioSettings(channel.settingsJson)
     const publicEmbedEnabled = settings.publicEmbedEnabled
     const expectedToken = getConnectionToken(channel.settingsJson, channel.verifyToken)
     if (expectedToken && !publicEmbedEnabled && providedToken !== expectedToken) {
@@ -530,6 +541,7 @@ export async function POST(request: Request) {
     const quickActionId = normalizeString(body?.quickActionId || payload.quickActionId)
     const responseOptionId = normalizeString(body?.responseOptionId || payload.responseOptionId)
     const currentStageId = normalizeString(body?.currentStageId || payload.currentStageId)
+    const currentFlowId = normalizeString(body?.currentFlowId || payload.currentFlowId || payload.chatFlowId)
 
     if (publicEmbedEnabled) {
       const requestHost = await getRequestHost()
@@ -541,8 +553,9 @@ export async function POST(request: Request) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      const flowStages = settings.flowStages
-      const quickActions = settings.quickActions
+      const defaultFlow = getDefaultChatbotAutomationFlowFromSettings(studioSettings)
+      const conversationFlow = getChatbotAutomationFlowById(studioSettings.automationFlows, currentFlowId) ?? defaultFlow
+      const flowVariables = studioSettings.flowVariables.filter((item: { enabled: boolean }) => item.enabled)
       const resolvedIdentity = resolveChatIdentity({ nombre, email, phone, requestedProduct, messageText, expectedField })
       const effectiveProduct = resolvedIdentity.requestedProduct
       const catalogInsight = await resolveCatalogInsight({
@@ -604,6 +617,24 @@ export async function POST(request: Request) {
 
       const leadQualified = Boolean((resolvedIdentity.email || resolvedIdentity.phone) && effectiveProduct && resolvedIdentity.quantity)
 
+      let activeFlow = conversationFlow
+      let matchedTrigger = requestHuman
+        ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'human_request', value: 'human_request' })
+        : leadQualified
+          ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'lead_qualified', value: 'lead_qualified' })
+          : responseOptionId
+            ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'response_option', value: responseOptionId })
+            : quickActionId
+              ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'quick_action', value: quickActionId })
+              : resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'message', value: messageText })
+
+      if (matchedTrigger.flow?.id) {
+        activeFlow = matchedTrigger.flow
+      }
+
+      const flowStages = activeFlow.flowStages.length ? activeFlow.flowStages : settings.flowStages
+      const quickActions = activeFlow.quickActions.length ? activeFlow.quickActions : settings.quickActions
+
       const assistantReply = buildAssistantReply({
         insight: catalogInsight,
         messageText,
@@ -622,8 +653,49 @@ export async function POST(request: Request) {
         quickActions,
       })
 
-      const stageQuickActions = getStageQuickActions(assistantReply.stage, quickActions)
-      const stageResponseOptions = getStageResponseOptions(assistantReply.stage)
+      const resolvedStage = matchedTrigger.matchedTrigger
+        ? findChatbotFlowStage(flowStages, matchedTrigger.matchedTrigger.targetStageId) ?? assistantReply.stage
+        : assistantReply.stage
+
+      const assistantContext = {
+        contact_name: resolvedIdentity.nombre,
+        contact_email: resolvedIdentity.email,
+        contact_phone: resolvedIdentity.phone,
+        product_name: effectiveProduct,
+        quantity: resolvedIdentity.quantity,
+        company_name: empresaNombre,
+        city: ciudad,
+        channel_name: channel.name,
+        assistant_name: settings.assistantName,
+      }
+
+      const assistantBodyTemplate = matchedTrigger.matchedTrigger?.assistantReply || assistantReply.body
+      const assistantBody = applyChatbotMessageCoherence({
+        body: interpolateChatbotVariables({
+          template: decorateAssistantReply(assistantBodyTemplate, resolvedStage, currentStageId, quickActionId),
+          variables: flowVariables,
+          context: assistantContext,
+        }),
+        coherence: studioSettings.messageCoherence,
+        variables: flowVariables,
+        context: assistantContext,
+      })
+
+      const assignedToUserIdCandidate = resolveChatbotAssignmentUserId({
+        rules: studioSettings.assignmentRules,
+        requestHuman,
+        leadQualified,
+        channelOwnerUserId: channel.createdBy.id,
+      })
+
+      const assignedToUser = assignedToUserIdCandidate === channel.createdBy.id
+        ? { id: channel.createdBy.id }
+        : await tx.user.findFirst({ where: { id: assignedToUserIdCandidate, empresaId: channel.empresaId }, select: { id: true } })
+
+      const assignedToUserId = assignedToUser?.id || channel.createdBy.id
+
+      const stageQuickActions = getStageQuickActions(resolvedStage, quickActions)
+      const stageResponseOptions = getStageResponseOptions(resolvedStage)
 
       await tx.crmMessage.create({
         data: {
@@ -634,7 +706,7 @@ export async function POST(request: Request) {
           direction: 'OUTBOUND',
           messageType: 'TEXT',
           status: 'SENT',
-          bodyText: assistantReply.body,
+          bodyText: assistantBody,
           payloadJson: {
             provider: 'WEB_CHATBOT',
             dispatch: 'guided-chatbot-autoreply',
@@ -642,11 +714,14 @@ export async function POST(request: Request) {
             alternativeMaterialIds: catalogInsight.alternatives.map((item) => item.id),
             catalogIntent: catalogInsight.catalogIntent,
             requestedProduct: effectiveProduct,
-            chatFlowNextField: assistantReply.nextField,
-            chatFlowStageId: assistantReply.stage?.id || null,
+            chatFlowNextField: resolvedStage?.nextField === 'none' ? null : (assistantReply.nextField ?? resolvedStage?.nextField ?? null),
+            chatFlowStageId: resolvedStage?.id || null,
+            chatFlowId: activeFlow.id,
+            chatFlowName: activeFlow.name,
             chatQuickActionIds: stageQuickActions.map((item) => item.id),
             chatFlowResponseOptionIds: stageResponseOptions.map((item) => item.id),
             quantity: resolvedIdentity.quantity,
+            matchedTriggerId: matchedTrigger.matchedTrigger?.id || null,
           },
           attachmentsJson: [catalogInsight.primary, ...catalogInsight.alternatives]
             .filter((item): item is MaterialMatch => Boolean(item?.imagenUrl))
@@ -659,6 +734,7 @@ export async function POST(request: Request) {
       await tx.crmConversation.update({
         where: { id: artifacts.conversation.id },
         data: {
+          assignedToUserId,
           status: requestHuman ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE',
           directionLastMessage: 'OUTBOUND',
           lastMessageAt: new Date(),
@@ -681,7 +757,7 @@ export async function POST(request: Request) {
           sedeId: channel.sedeId,
           type: 'OTHER',
           summary: catalogInsight.primary || catalogInsight.catalogIntent ? 'Respuesta automática del chatbot con catálogo e inventario' : 'Respuesta automática del chatbot',
-          details: assistantReply.body,
+          details: assistantBody,
           leadId: artifacts.lead.id,
           occurredAt: new Date(),
           createdById: channel.createdBy.id,

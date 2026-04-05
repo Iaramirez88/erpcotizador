@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { normalizeString } from '@/lib/crm'
-import { extractHostFromUrl, getPublicChatbotSettings, getReferrerHost, getRequestHost, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
+import { extractHostFromUrl, getPublicChatbotSettings, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
+import { getReferrerHost, getRequestHost } from '@/lib/crm-public-chatbot-server'
 
 export const runtime = 'nodejs'
 
