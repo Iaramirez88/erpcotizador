@@ -5,6 +5,8 @@ export type DashboardNavDefinition = {
 
 export function moduleForDashboardHref(href: string): string | null {
   switch (href) {
+    case '/dashboard/configuracion/servicios-web':
+      return null
     case '/dashboard':
       return 'DASHBOARD'
     case '/dashboard/reportes':
@@ -73,6 +75,7 @@ export function moduleForDashboardHref(href: string): string | null {
 }
 
 export function moduleForDashboardPath(pathname: string): string | null {
+  if (pathname.startsWith('/dashboard/configuracion/servicios-web')) return null
   if (pathname.startsWith('/dashboard/configuracion/plan')) return null
   if (pathname === '/dashboard') return 'DASHBOARD'
   if (pathname.startsWith('/dashboard/plantillas')) return 'DASHBOARD'
@@ -139,6 +142,7 @@ export function buildDashboardNavDefinitions(t: (key: string) => string): Dashbo
     { name: t('nav.users'), href: '/dashboard/configuracion/usuarios' },
     { name: t('nav.permissions'), href: '/dashboard/configuracion/permisos' },
     { name: t('nav.company'), href: '/dashboard/configuracion/empresa' },
+    { name: 'Servicios web', href: '/dashboard/configuracion/servicios-web' },
     { name: t('nav.plan'), href: '/dashboard/configuracion/plan' },
     { name: 'Super Admin', href: '/dashboard/configuracion/super-admin/modulos-por-plan' },
   ]

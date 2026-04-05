@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Image as ImageIcon, Paperclip, Plus, Smile, Trash2, Users, X } from 'lucide-react'
+import { ChevronDown, Image as ImageIcon, Paperclip, Plus, Smile, Trash2, Users, X } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -147,6 +147,7 @@ export function CrmTeamChatClient() {
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([])
   const [attachmentUpload, setAttachmentUpload] = useState<UploadProgressState | null>(null)
   const [groupForm, setGroupForm] = useState({ title: '', participantUserIds: [] as string[] })
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false)
 
   function clearScrollTimers() {
     scrollTimersRef.current.forEach((timerId) => window.clearTimeout(timerId))
@@ -177,6 +178,21 @@ export function CrmTeamChatClient() {
     if (!container) return true
     const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight
     return distanceToBottom <= threshold
+  }
+
+  function handleViewportScroll() {
+    const nearBottom = isNearBottom()
+    shouldStickToBottomRef.current = nearBottom
+    setShowScrollToBottom(!nearBottom)
+    if (!nearBottom) {
+      clearScrollTimers()
+    }
+  }
+
+  function jumpToBottom() {
+    shouldStickToBottomRef.current = true
+    setShowScrollToBottom(false)
+    scheduleScrollToBottom('smooth')
   }
 
   async function loadBase() {
@@ -256,6 +272,7 @@ export function CrmTeamChatClient() {
   useEffect(() => {
     if (!selectedThreadId) return
     shouldStickToBottomRef.current = true
+    setShowScrollToBottom(false)
   }, [selectedThreadId])
 
   const visibleUsers = useMemo(() => {
@@ -357,8 +374,7 @@ export function CrmTeamChatClient() {
       setMessageDraft('')
       setPendingAttachments([])
       await Promise.all([loadBase(), loadDetail(selectedThreadId)])
-      shouldStickToBottomRef.current = true
-      scheduleScrollToBottom('smooth')
+      jumpToBottom()
       return true
     } finally {
       setSending(false)
@@ -601,9 +617,7 @@ export function CrmTeamChatClient() {
 
                 <div
                   ref={messagesViewportRef}
-                  onScroll={() => {
-                    shouldStickToBottomRef.current = isNearBottom()
-                  }}
+                  onScroll={handleViewportScroll}
                   className="max-h-[520px] space-y-3 overflow-y-auto pr-1"
                 >
                   {selectedThread.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes en este chat.</p> : null}
@@ -616,12 +630,30 @@ export function CrmTeamChatClient() {
                           <span>{formatDate(message.occurredAt, 'Sin fecha')}</span>
                         </div>
                         {message.bodyText ? <p className="mt-2 whitespace-pre-wrap leading-6">{message.bodyText}</p> : null}
-                        {renderAttachments(message.attachments, () => scheduleScrollToBottom('auto'))}
+                        {renderAttachments(message.attachments, () => {
+                          if (shouldStickToBottomRef.current) {
+                            scheduleScrollToBottom('auto')
+                          }
+                        })}
                       </div>
                     )
                   })}
                   <div ref={messagesEndRef} aria-hidden="true" className="h-px w-full" />
                 </div>
+                {selectedThread && showScrollToBottom ? (
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-11 w-11 rounded-full border-sky-200 bg-white text-sky-700 shadow-[0_14px_30px_-18px_rgba(14,116,144,0.45)] hover:bg-sky-50"
+                      onClick={jumpToBottom}
+                      aria-label="Ir al último mensaje"
+                    >
+                      <ChevronDown className="h-5 w-5" />
+                    </Button>
+                  </div>
+                ) : null}
 
                 <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
                   <div className="flex items-center justify-between gap-3">

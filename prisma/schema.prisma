@@ -120,6 +120,11 @@ model User {
   // Videos de Ayuda
   helpVideos HelpVideo[]
 
+  // Servicios web privados
+  websiteServicesCreated WebsiteService[] @relation("WebsiteServiceCreatedBy")
+  websiteServicesUpdated WebsiteService[] @relation("WebsiteServiceUpdatedBy")
+  websiteServiceModuleAccesses WebsiteServiceModuleAccess[]
+
   // Inventario
   inventoryMovements InventoryMovement[]
 
@@ -667,6 +672,8 @@ model Empresa {
   notifications Notification[]
   workspaceAccessRequests WorkspaceAccessRequest[]
   billingReminderLogs BillingReminderLog[]
+  websiteServices WebsiteService[]
+  websiteServiceModuleAccesses WebsiteServiceModuleAccess[]
 
   // Tarifario global de Litografía (misma configuración para todas las sedes)
   litografiaPrintProfiles LitografiaPrintProfile[]
@@ -1681,6 +1688,69 @@ model UserGlobalAccess {
 
   @@index([empresaId])
   @@map("user_global_access")
+}
+
+model WebsiteService {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  nombre String
+  descripcion String? @db.Text
+
+  websiteUrl String?
+  domainName String?
+  hostedAt   String?
+
+  startedAt       DateTime?
+  domainExpiresAt DateTime?
+  hostingExpiresAt DateTime?
+
+  soldAmount Float @default(0)
+  isPaid     Boolean @default(false)
+  isCancelled Boolean @default(false)
+
+  loginUsername String?
+  loginPasswordEncrypted String?
+
+  contactName  String?
+  contactPhone String?
+
+  notes String? @db.Text
+
+  createdByUserId String?
+  createdByUser   User? @relation("WebsiteServiceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  updatedByUserId String?
+  updatedByUser   User? @relation("WebsiteServiceUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, createdAt])
+  @@index([empresaId, domainExpiresAt])
+  @@index([empresaId, hostingExpiresAt])
+  @@index([empresaId, isCancelled])
+  @@map("website_services")
+}
+
+model WebsiteServiceModuleAccess {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, userId])
+  @@index([empresaId])
+  @@index([userId])
+  @@map("website_service_module_access")
 }
 
 model PlanModuleSetting {

@@ -43,6 +43,7 @@ export default function Header({ user }: HeaderProps) {
   const [trialBadgeVisible, setTrialBadgeVisible] = useState(false)
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
   const [canManageBilling, setCanManageBilling] = useState(() => user.role === 'ADMIN')
+  const [canAccessWebsiteServices, setCanAccessWebsiteServices] = useState(false)
   const toggleMobileNav = useUiStore((s) => s.toggleMobileNav)
   const { hasCurrentTour, startCurrentTour, resetCurrentTour } = useTour()
 
@@ -109,10 +110,11 @@ export default function Header({ user }: HeaderProps) {
       try {
         const res = await fetch('/api/me', { cache: 'no-store' })
         const json = (await res.json().catch(() => null)) as
-          | { success?: boolean; data?: { canManageBilling?: boolean } | null }
+          | { success?: boolean; data?: { canManageBilling?: boolean; canAccessWebsiteServices?: boolean } | null }
           | null
         if (!cancelled && res.ok && json?.success) {
           setCanManageBilling(Boolean(json.data?.canManageBilling))
+          setCanAccessWebsiteServices(Boolean(json.data?.canAccessWebsiteServices))
         }
       } catch {
         // ignore
@@ -127,6 +129,9 @@ export default function Header({ user }: HeaderProps) {
   const navItems = useMemo(() => {
     const base = buildDashboardNavDefinitions(t)
     const withRbacGate = base.filter((it) => {
+      if (it.href === '/dashboard/configuracion/servicios-web') {
+        return canAccessWebsiteServices
+      }
       const moduleKey = moduleForDashboardHref(it.href)
       if (!moduleKey) return true
       if (!allowedModules) return true
@@ -138,7 +143,7 @@ export default function Header({ user }: HeaderProps) {
       if (!isSuperAdminRoute) return true
       return user.role === 'ADMIN'
     })
-  }, [canManageBilling, t, allowedModules, user.role])
+  }, [canAccessWebsiteServices, canManageBilling, t, allowedModules, user.role])
 
   async function saveNav(next: Record<string, boolean>) {
     setNavPrefs(next)

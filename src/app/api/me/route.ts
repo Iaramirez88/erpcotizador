@@ -6,6 +6,7 @@ import { AccessLevel, ModuleKey } from '@prisma/client'
 import { resolveUserIdFromSession } from '@/lib/session-user'
 import { isPlanOwnerForEmpresa } from '@/lib/plan-owner'
 import { isSuperAdminEmail } from '@/lib/super-admin'
+import { getWebsiteServicesAccessForUser } from '@/lib/website-services'
 
 export const runtime = 'nodejs'
 
@@ -65,6 +66,7 @@ export async function GET() {
   const isSystemSuperAdmin = isSuperAdminEmail(user?.email)
   const isPlanOwner = Boolean(empresaId && user?.id ? await isPlanOwnerForEmpresa({ empresaId, userId: user.id }) : false)
   const canManageBilling = isSystemSuperAdmin || isPlanOwner
+  const websiteServicesAccess = await getWebsiteServicesAccessForUser(userId)
 
   return NextResponse.json({
     success: true,
@@ -78,6 +80,8 @@ export async function GET() {
           empresaId,
           isPlanOwner,
           canManageBilling,
+          canAccessWebsiteServices: websiteServicesAccess.canAccess,
+          canManageWebsiteServicesAssignments: websiteServicesAccess.canManageAssignments,
         }
       : null,
   })

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Image as ImageIcon, MoreVertical, Paperclip, Plus, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
+import { ChevronDown, Image as ImageIcon, MoreVertical, Paperclip, Plus, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -225,6 +225,8 @@ export default function FloatingChatDrawer() {
   const [pendingTeamAttachments, setPendingTeamAttachments] = useState<ChatAttachment[]>([])
   const [teamAttachmentUpload, setTeamAttachmentUpload] = useState<UploadProgressState | null>(null)
   const [groupForm, setGroupForm] = useState({ title: '', participantUserIds: [] as string[] })
+  const [showCrmScrollToBottom, setShowCrmScrollToBottom] = useState(false)
+  const [showTeamScrollToBottom, setShowTeamScrollToBottom] = useState(false)
 
   function clearScrollTimers(timersRef: React.MutableRefObject<number[]>) {
     timersRef.current.forEach((timerId) => window.clearTimeout(timerId))
@@ -258,6 +260,36 @@ export default function FloatingChatDrawer() {
     if (!container) return true
     const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight
     return distanceToBottom <= threshold
+  }
+
+  function handleCrmViewportScroll() {
+    const nearBottom = isContainerNearBottom(crmMessagesRef.current)
+    crmShouldStickToBottomRef.current = nearBottom
+    setShowCrmScrollToBottom(!nearBottom)
+    if (!nearBottom) {
+      clearScrollTimers(crmScrollTimersRef)
+    }
+  }
+
+  function handleTeamViewportScroll() {
+    const nearBottom = isContainerNearBottom(teamMessagesRef.current)
+    teamShouldStickToBottomRef.current = nearBottom
+    setShowTeamScrollToBottom(!nearBottom)
+    if (!nearBottom) {
+      clearScrollTimers(teamScrollTimersRef)
+    }
+  }
+
+  function jumpCrmToBottom() {
+    crmShouldStickToBottomRef.current = true
+    setShowCrmScrollToBottom(false)
+    scheduleScrollToBottom(crmMessagesRef.current, crmMessagesEndRef.current, crmScrollTimersRef, 'smooth')
+  }
+
+  function jumpTeamToBottom() {
+    teamShouldStickToBottomRef.current = true
+    setShowTeamScrollToBottom(false)
+    scheduleScrollToBottom(teamMessagesRef.current, teamMessagesEndRef.current, teamScrollTimersRef, 'smooth')
   }
 
   useEffect(() => {
@@ -409,12 +441,14 @@ export default function FloatingChatDrawer() {
   useEffect(() => {
     if (!open || activeTab !== 'crm') return
     crmShouldStickToBottomRef.current = true
+    setShowCrmScrollToBottom(false)
     scheduleScrollToBottom(crmMessagesRef.current, crmMessagesEndRef.current, crmScrollTimersRef, 'auto')
   }, [activeTab, open, selectedConversationId])
 
   useEffect(() => {
     if (!open || activeTab !== 'team') return
     teamShouldStickToBottomRef.current = true
+    setShowTeamScrollToBottom(false)
     scheduleScrollToBottom(teamMessagesRef.current, teamMessagesEndRef.current, teamScrollTimersRef, 'auto')
   }, [activeTab, open, selectedThreadId])
 
@@ -564,6 +598,7 @@ export default function FloatingChatDrawer() {
       }
       setCrmMessageDraft('')
       await Promise.all([loadBase(), loadConversationDetail(selectedConversationId)])
+      jumpCrmToBottom()
     } finally {
       setSendingCrm(false)
     }
@@ -602,8 +637,7 @@ export default function FloatingChatDrawer() {
       setTeamMessageDraft('')
       setPendingTeamAttachments([])
       await Promise.all([loadBase(), loadThreadDetail(selectedThreadId)])
-      teamShouldStickToBottomRef.current = true
-      scheduleScrollToBottom(teamMessagesRef.current, teamMessagesEndRef.current, teamScrollTimersRef, 'smooth')
+      jumpTeamToBottom()
       return true
     } finally {
       setSendingTeam(false)
@@ -875,7 +909,7 @@ export default function FloatingChatDrawer() {
                     </div>
                   </div>
                 </div>
-                <div className="grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden">
+                <div className="relative grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden">
                   <div className="border-b border-slate-100 px-4 py-2 text-[13px] text-slate-600">Detalle de conversación</div>
                   <div className="shrink-0 px-4 pt-2.5">
                     {crmLoading ? <span className="sr-only">Cargando conversación...</span> : null}
@@ -892,9 +926,7 @@ export default function FloatingChatDrawer() {
                   </div>
                   <div
                     ref={crmMessagesRef}
-                    onScroll={() => {
-                      crmShouldStickToBottomRef.current = isContainerNearBottom(crmMessagesRef.current)
-                    }}
+                    onScroll={handleCrmViewportScroll}
                     className="min-h-0 overflow-y-auto overflow-x-hidden px-3 py-2.5"
                   >
                     {selectedConversation ? (
@@ -912,6 +944,16 @@ export default function FloatingChatDrawer() {
                       </div>
                     ) : null}
                   </div>
+                  {selectedConversation && showCrmScrollToBottom ? (
+                    <button
+                      type="button"
+                      onClick={jumpCrmToBottom}
+                      className="absolute bottom-[92px] right-4 z-10 inline-flex h-11 w-11 items-center justify-center rounded-full border border-sky-200 bg-white text-sky-700 shadow-[0_14px_30px_-18px_rgba(14,116,144,0.45)] transition hover:bg-sky-50"
+                      aria-label="Ir al último mensaje"
+                    >
+                      <ChevronDown className="h-5 w-5" />
+                    </button>
+                  ) : null}
                   <div className="shrink-0 border-t border-slate-100 p-3">
                     <div className="grid gap-2 rounded-[22px] border border-slate-200 bg-slate-50/80 p-3">
                       <Label className="hidden text-xs font-semibold uppercase tracking-[0.14em] text-slate-600 sm:block">Responder al cliente</Label>
@@ -1058,7 +1100,7 @@ export default function FloatingChatDrawer() {
                   </div>
                 </div>
 
-                <div className={cn('min-h-0 min-w-0 overflow-hidden', teamMobilePanel === 'options' ? 'hidden md:grid' : 'grid', 'grid-rows-[auto_minmax(0,1fr)_auto]')}>
+                <div className={cn('relative min-h-0 min-w-0 overflow-hidden', teamMobilePanel === 'options' ? 'hidden md:grid' : 'grid', 'grid-rows-[auto_minmax(0,1fr)_auto]')}>
                   <div className="border-b border-slate-100 px-4 py-2.5 text-sm text-slate-600">
                     <div className="flex items-center justify-between gap-2">
                       <span>{selectedThread ? formatThreadName(selectedThread) : 'Conversación interna'}</span>
@@ -1090,9 +1132,7 @@ export default function FloatingChatDrawer() {
 
                         <div
                           ref={teamMessagesRef}
-                          onScroll={() => {
-                            teamShouldStickToBottomRef.current = isContainerNearBottom(teamMessagesRef.current)
-                          }}
+                          onScroll={handleTeamViewportScroll}
                           className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1"
                         >
                           {selectedThread.messages.length === 0 ? <p className="text-sm text-slate-500">No hay mensajes en este chat.</p> : null}
@@ -1105,12 +1145,26 @@ export default function FloatingChatDrawer() {
                                   <span>{formatDate(message.occurredAt, 'Sin fecha')}</span>
                                 </div>
                                 {message.bodyText ? <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-5">{message.bodyText}</p> : null}
-                                {renderAttachments(message.attachments, () => scheduleScrollToBottom(teamMessagesRef.current, teamMessagesEndRef.current, teamScrollTimersRef, 'auto'))}
+                                {renderAttachments(message.attachments, () => {
+                                  if (teamShouldStickToBottomRef.current) {
+                                    scheduleScrollToBottom(teamMessagesRef.current, teamMessagesEndRef.current, teamScrollTimersRef, 'auto')
+                                  }
+                                })}
                               </div>
                             )
                           })}
                           <div ref={teamMessagesEndRef} aria-hidden="true" className="h-px w-full" />
                         </div>
+                        {showTeamScrollToBottom ? (
+                          <button
+                            type="button"
+                            onClick={jumpTeamToBottom}
+                            className="absolute bottom-[108px] right-4 z-10 inline-flex h-11 w-11 items-center justify-center rounded-full border border-sky-200 bg-white text-sky-700 shadow-[0_14px_30px_-18px_rgba(14,116,144,0.45)] transition hover:bg-sky-50"
+                            aria-label="Ir al último mensaje"
+                          >
+                            <ChevronDown className="h-5 w-5" />
+                          </button>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>

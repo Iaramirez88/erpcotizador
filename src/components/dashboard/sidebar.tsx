@@ -14,7 +14,7 @@ import { useUiStore } from "@/lib/ui-store"
 import { NavSettingsDialog, type NavSettingsItem } from "@/components/dashboard/nav-settings-dialog"
 import Image from "next/image"
 import { useI18n } from "@/components/providers/i18n-provider"
-import { buildDashboardNavDefinitions } from "@/lib/dashboard-navigation"
+import { buildDashboardNavDefinitions, moduleForDashboardHref } from "@/lib/dashboard-navigation"
 
 interface SidebarProps {
   user: {
@@ -30,77 +30,6 @@ interface NavItem {
   href: string
   icon: React.ReactElement
   badge?: string
-}
-
-function moduleForHref(href: string): string | null {
-  switch (href) {
-    case '/dashboard':
-      return 'DASHBOARD'
-    case '/dashboard/reportes':
-      return 'REPORTES'
-    case '/dashboard/plantillas':
-      return 'DASHBOARD'
-    case '/dashboard/contabilidad':
-    case '/dashboard/contabilidad/plan-de-cuentas':
-    case '/dashboard/contabilidad/centros-de-costo':
-    case '/dashboard/contabilidad/reglas':
-    case '/dashboard/contabilidad/asientos':
-    case '/dashboard/contabilidad/tesoreria':
-      return 'CONTABILIDAD'
-    case '/dashboard/cotizador':
-      return 'COTIZADOR'
-    case '/dashboard/cotizaciones':
-      return 'COTIZACIONES'
-    case '/dashboard/remisiones':
-      return 'REMISIONES'
-    case '/dashboard/pos':
-      return 'POS'
-    case '/dashboard/clientes':
-      return 'CLIENTES'
-    case '/dashboard/crm':
-    case '/dashboard/crm/agenda':
-    case '/dashboard/crm/chatbot':
-    case '/dashboard/crm/archivos':
-    case '/dashboard/crm/integraciones':
-    case '/dashboard/crm/leads':
-    case '/dashboard/crm/oportunidades':
-    case '/dashboard/crm/tareas':
-    case '/dashboard/chat':
-      return 'CRM'
-    case '/dashboard/espacios-trabajo':
-      return 'CRM'
-    case '/dashboard/ordenes':
-      return 'ORDENES'
-    case '/dashboard/litografia':
-      return 'COTIZADOR'
-    case '/dashboard/escaneos':
-      return 'ESCANEOS'
-    case '/dashboard/materiales':
-    case '/dashboard/productos':
-      return 'MATERIALES'
-    case '/dashboard/terminados':
-      return 'MATERIALES'
-    case '/dashboard/inventario':
-    case '/dashboard/inventario/traslados':
-    case '/dashboard/bodegas':
-      return 'INVENTARIO'
-    case '/dashboard/compras':
-      return 'COMPRAS'
-    case '/dashboard/proveedores':
-      return 'PROVEEDORES'
-    case '/dashboard/configuracion/sedes':
-    case '/dashboard/configuracion/usuarios':
-    case '/dashboard/configuracion/permisos':
-    case '/dashboard/configuracion/empresa':
-    case '/dashboard/configuracion/plan':
-    case '/dashboard/configuracion/desperdicios':
-    case '/dashboard/configuracion/super-admin/modulos-por-plan':
-    case '/dashboard/configuracion/super-admin/empresas':
-    case '/dashboard/configuracion/super-admin/usuarios':
-      return 'CONFIG'
-    default:
-      return null
-  }
 }
 
 function buildModuleNavigation(t: (key: string) => string): NavItem[] {
@@ -413,6 +342,16 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
+    name: "Servicios web",
+    href: "/dashboard/configuracion/servicios-web",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 17h16M7 4h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6" />
+      </svg>
+    ),
+  },
+  {
     name: t('nav.plan'),
     href: "/dashboard/configuracion/plan",
     icon: (
@@ -530,6 +469,7 @@ export default function Sidebar({ user }: SidebarProps) {
   const [planTier, setPlanTier] = useState<string | null>(null)
   const [isPersonal, setIsPersonal] = useState<boolean>(false)
   const [openSectionTitle, setOpenSectionTitle] = useState<string | null>(null)
+  const [canAccessWebsiteServices, setCanAccessWebsiteServices] = useState(false)
 
   useEffect(() => {
     if (user.role === 'ADMIN') setCanManageBilling(true)
@@ -601,10 +541,11 @@ export default function Sidebar({ user }: SidebarProps) {
       try {
         const res = await fetch('/api/me', { cache: 'no-store' })
         const json = (await res.json().catch(() => null)) as
-          | { success?: boolean; data?: { canManageBilling?: boolean } | null }
+          | { success?: boolean; data?: { canManageBilling?: boolean; canAccessWebsiteServices?: boolean } | null }
           | null
         if (!cancelled && res.ok && json?.success) {
           setCanManageBilling(Boolean(json.data?.canManageBilling))
+          setCanAccessWebsiteServices(Boolean(json.data?.canAccessWebsiteServices))
         }
       } catch {
         // ignore
@@ -643,7 +584,10 @@ export default function Sidebar({ user }: SidebarProps) {
   const visibleNavigation = useMemo(() => {
     const base = !navPrefs ? moduleNavigation : moduleNavigation.filter((it) => navPrefs[it.href] !== false)
     const withRbacGate = base.filter((it) => {
-      const moduleKey = moduleForHref(it.href)
+      if (it.href === '/dashboard/configuracion/servicios-web') {
+        return canAccessWebsiteServices
+      }
+      const moduleKey = moduleForDashboardHref(it.href)
       if (!moduleKey) return true
       if (!allowedModules) return true
       return allowedModules.has(moduleKey)
@@ -661,7 +605,7 @@ export default function Sidebar({ user }: SidebarProps) {
       return canManageBilling
     })
     return withBillingGate
-  }, [navPrefs, enabledModules, user?.role, canManageBilling, allowedModules, moduleNavigation])
+  }, [navPrefs, enabledModules, user?.role, canAccessWebsiteServices, canManageBilling, allowedModules, moduleNavigation])
 
   const visibleHrefs = useMemo(() => {
     return new Set(visibleNavigation.map((it) => it.href))
@@ -672,7 +616,7 @@ export default function Sidebar({ user }: SidebarProps) {
     if (!enabledModules) return new Set<string>()
     const blocked = new Set<string>()
     for (const it of moduleNavigation) {
-      const moduleKey = moduleForHref(it.href)
+      const moduleKey = moduleForDashboardHref(it.href)
       if (!moduleKey) continue
       if (!enabledModules.has(moduleKey)) blocked.add(it.href)
     }
@@ -682,7 +626,10 @@ export default function Sidebar({ user }: SidebarProps) {
   const navSettingsItems: NavSettingsItem[] = useMemo(() => {
     const base = dashboardNavDefinitions
       .filter((it) => {
-        const moduleKey = moduleForHref(it.href)
+        if (it.href === '/dashboard/configuracion/servicios-web') {
+          return canAccessWebsiteServices
+        }
+        const moduleKey = moduleForDashboardHref(it.href)
         if (!moduleKey) return true
         if (!allowedModules) return true
         return allowedModules.has(moduleKey)
@@ -698,7 +645,7 @@ export default function Sidebar({ user }: SidebarProps) {
       })
       .map((it) => ({ name: it.name, href: it.href }))
     return base
-  }, [canManageBilling, user?.role, allowedModules, dashboardNavDefinitions])
+  }, [canAccessWebsiteServices, canManageBilling, user?.role, allowedModules, dashboardNavDefinitions])
 
   async function saveNav(next: Record<string, boolean>) {
     setNavPrefs(next)
@@ -773,6 +720,7 @@ export default function Sidebar({ user }: SidebarProps) {
           get('/dashboard/configuracion/usuarios'),
           get('/dashboard/configuracion/permisos'),
           get('/dashboard/configuracion/empresa'),
+          get('/dashboard/configuracion/servicios-web'),
           get('/dashboard/configuracion/plan'),
         ].filter(Boolean) as NavItem[],
       },
