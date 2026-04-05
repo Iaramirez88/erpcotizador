@@ -810,7 +810,7 @@ export default function FloatingChatDrawer() {
       <div className="relative flex flex-col items-end">
         <div
           className={cn(
-            'pointer-events-auto absolute bottom-0 right-0 flex h-[88dvh] max-h-[88dvh] flex-col overflow-hidden rounded-t-[30px] border border-b-0 border-slate-200 bg-white shadow-[0_28px_70px_-36px_rgba(15,23,42,0.45)] transition-all duration-300',
+            'pointer-events-auto absolute bottom-0 right-0 flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden rounded-t-[30px] border border-b-0 border-slate-200 bg-white shadow-[0_28px_70px_-36px_rgba(15,23,42,0.45)] transition-all duration-300',
             'w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:w-[min(720px,calc(100vw-3rem))] lg:w-[min(820px,calc(100vw-4rem))]',
             open ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-[calc(100%+1.5rem)] opacity-0',
           )}
@@ -1132,11 +1132,11 @@ export default function FloatingChatDrawer() {
                       </button>
                     </div>
                   </div>
-                  <div className="min-h-0 overflow-hidden">
+                  <div className="min-h-0 h-full overflow-hidden">
                     {teamLoading ? <span className="sr-only">Cargando chat interno...</span> : null}
                     {!teamLoading && !selectedThread ? <p className="text-sm text-slate-500">Selecciona un compañero o un grupo para abrir la conversación.</p> : null}
                     {selectedThread ? (
-                      <div className="flex min-h-full min-w-0 flex-col gap-3 px-3 py-3">
+                      <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 px-3 py-3">
                         <div className="shrink-0 rounded-[22px] border border-slate-200 bg-slate-50/70 p-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
@@ -1156,7 +1156,7 @@ export default function FloatingChatDrawer() {
                         <div
                           ref={teamMessagesRef}
                           onScroll={handleTeamViewportScroll}
-                          className="min-h-0 flex-1 space-y-2.5 overflow-y-scroll pr-2"
+                          className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain pr-2"
                         >
                           {selectedThread.messages.length === 0 ? <p className="text-sm text-slate-500">No hay mensajes en este chat.</p> : null}
                           {selectedThread.messages.map((message) => {
