@@ -445,6 +445,9 @@ export type LitografiaMeta = {
   editorialPaginasPortadaContraportada?: string
   editorialCartasPorPlancha?: string
   editorialPaginasPorPliego?: string
+  editorialFinalFormatoKey?: string
+  editorialFinalCustomWidthCm?: string
+  editorialFinalCustomHeightCm?: string
 
   editorialParts?: {
     cover: EditorialPartState
@@ -559,6 +562,9 @@ export function LitografiaQuoteDialog(props: {
   const [editorialPaginasPortadaContraportada, setEditorialPaginasPortadaContraportada] = useState("2")
   const [editorialCartasPorPlancha, setEditorialCartasPorPlancha] = useState("2")
   const [editorialPaginasPorPliego, setEditorialPaginasPorPliego] = useState("4")
+  const [editorialFinalFormatoKey, setEditorialFinalFormatoKey] = useState("")
+  const [editorialFinalCustomWidthCm, setEditorialFinalCustomWidthCm] = useState("")
+  const [editorialFinalCustomHeightCm, setEditorialFinalCustomHeightCm] = useState("")
 
   const [editorialCover, setEditorialCover] = useState<EditorialPartState>(() => createDefaultEditorialPart())
   const [editorialInner, setEditorialInner] = useState<EditorialPartState>(() => createDefaultEditorialPart())
@@ -682,6 +688,9 @@ export function LitografiaQuoteDialog(props: {
       setEditorialPaginasPortadaContraportada("2")
       setEditorialCartasPorPlancha("2")
       setEditorialPaginasPorPliego("4")
+      setEditorialFinalFormatoKey("")
+      setEditorialFinalCustomWidthCm("")
+      setEditorialFinalCustomHeightCm("")
       setEditorialCover(createDefaultEditorialPart())
       setEditorialInner(createDefaultEditorialPart())
     }
@@ -1083,6 +1092,9 @@ export function LitografiaQuoteDialog(props: {
       editorialPaginasPortadaContraportada: editorialEnabled ? editorialPaginasPortadaContraportada : undefined,
       editorialCartasPorPlancha: editorialEnabled ? editorialCartasPorPlancha : undefined,
       editorialPaginasPorPliego: editorialEnabled ? editorialPaginasPorPliego : undefined,
+      editorialFinalFormatoKey: editorialEnabled ? editorialFinalFormatoKey : undefined,
+      editorialFinalCustomWidthCm: editorialEnabled ? editorialFinalCustomWidthCm : undefined,
+      editorialFinalCustomHeightCm: editorialEnabled ? editorialFinalCustomHeightCm : undefined,
 
       editorialParts: editorialEnabled
         ? {
@@ -1096,7 +1108,7 @@ export function LitografiaQuoteDialog(props: {
       selectedMachineWidthCm: primaryPlanchaProfile ? String(primaryMachineWidth) : undefined,
       selectedMachineHeightCm: primaryPlanchaProfile ? String(primaryMachineHeight) : undefined,
       selectedMachineGapCm: primaryPlanchaProfile ? String(primaryMachineGap) : undefined,
-      selectedFinalSizeName: selectedPreset?.nombre,
+      selectedFinalSizeName: editorialEnabled ? editorialFinalPreset?.nombre : selectedPreset?.nombre,
       customFormatoWidthCm,
       customFormatoHeightCm,
       impositionShort: activeProductionSummary?.short,
@@ -1237,6 +1249,9 @@ export function LitografiaQuoteDialog(props: {
     setEditorialPaginasPortadaContraportada(String(meta.editorialPaginasPortadaContraportada || "2"))
     setEditorialCartasPorPlancha(String(meta.editorialCartasPorPlancha || "2"))
     setEditorialPaginasPorPliego(String(meta.editorialPaginasPorPliego || "4"))
+    setEditorialFinalFormatoKey(String(meta.editorialFinalFormatoKey || ""))
+    setEditorialFinalCustomWidthCm(String(meta.editorialFinalCustomWidthCm || ""))
+    setEditorialFinalCustomHeightCm(String(meta.editorialFinalCustomHeightCm || ""))
 
     const parts = meta.editorialParts
     if (parts?.cover) setEditorialCover({ ...createDefaultEditorialPart(), ...parts.cover })
@@ -1277,6 +1292,18 @@ export function LitografiaQuoteDialog(props: {
     }
   }, [customFormatoWidthCm, customFormatoHeightCm])
 
+  const editorialFinalCustomSizeOption = useMemo(() => {
+    const widthCm = parsePositiveCm(editorialFinalCustomWidthCm)
+    const heightCm = parsePositiveCm(editorialFinalCustomHeightCm)
+    if (widthCm == null || heightCm == null) return null
+    return {
+      key: CUSTOM_PRINT_SIZE_KEY,
+      nombre: "Tamaño personalizado",
+      widthCm,
+      heightCm,
+    }
+  }, [editorialFinalCustomWidthCm, editorialFinalCustomHeightCm])
+
   const allSizeOptions = useMemo(() => {
     return [
       ...sizeOptions,
@@ -1298,9 +1325,20 @@ export function LitografiaQuoteDialog(props: {
     return sizeOptions.find((p) => p.key === normalizedKey) || null
   }, [customSizeOption, sizeOptions])
 
+  const resolveEditorialFinalSizeOption = useCallback((key: string) => {
+    const normalizedKey = String(key || "").trim()
+    if (!normalizedKey) return null
+    if (normalizedKey === CUSTOM_PRINT_SIZE_KEY) return editorialFinalCustomSizeOption
+    return sizeOptions.find((p) => p.key === normalizedKey) || null
+  }, [editorialFinalCustomSizeOption, sizeOptions])
+
   const selectedPreset = useMemo(() => {
     return resolveSizeOption(formatoKey)
   }, [formatoKey, resolveSizeOption])
+
+  const editorialFinalPreset = useMemo(() => {
+    return resolveEditorialFinalSizeOption(editorialFinalFormatoKey)
+  }, [editorialFinalFormatoKey, resolveEditorialFinalSizeOption])
 
   const activeProfiles = useMemo(() => profiles.filter((p) => p.activo), [profiles])
   const activePlanchaProfiles = useMemo(() => {
@@ -1810,23 +1848,25 @@ export function LitografiaQuoteDialog(props: {
     return innerPages + coverPages
   }, [editorialPaginasPortadaContraportada, editorialTotalPaginas])
 
-  const editorialFoldParts = useMemo(() => {
-    return Math.max(1, Math.trunc(parseFloat(editorialCartasPorPlancha) || 0) || 1)
-  }, [editorialCartasPorPlancha])
-
   const editorialOpenSize = useMemo(() => {
     return editorialCoverPreset || editorialInnerPreset || null
   }, [editorialCoverPreset, editorialInnerPreset])
 
   const editorialClosedSize = useMemo(() => {
-    if (!editorialOpenSize) return null
-    return deriveFoldedSize(editorialOpenSize.widthCm, editorialOpenSize.heightCm, editorialFoldParts)
-  }, [editorialOpenSize, editorialFoldParts])
+    if (editorialFinalPreset) {
+      return {
+        widthCm: editorialFinalPreset.widthCm,
+        heightCm: editorialFinalPreset.heightCm,
+      }
+    }
+    return null
+  }, [editorialFinalPreset])
 
   const editorialClosedSizeName = useMemo(() => {
+    if (editorialFinalPreset?.nombre) return editorialFinalPreset.nombre
     if (!editorialClosedSize) return null
     return findSizeNameByDimensions(sizeOptions, editorialClosedSize.widthCm, editorialClosedSize.heightCm)
-  }, [editorialClosedSize, sizeOptions])
+  }, [editorialFinalPreset, editorialClosedSize, sizeOptions])
 
   const editorialOpenSizeLabel = useMemo(() => {
     if (!editorialOpenSize) return null
@@ -1838,6 +1878,14 @@ export function LitografiaQuoteDialog(props: {
     const name = editorialClosedSizeName ? `${editorialClosedSizeName} ` : ""
     return `${name}(${formatCm(editorialClosedSize.widthCm)}×${formatCm(editorialClosedSize.heightCm)} cm)`
   }, [editorialClosedSize, editorialClosedSizeName])
+
+  useEffect(() => {
+    if (!props.open) return
+    if (!selectedEditorialProductoKey) return
+    if (String(editorialFinalFormatoKey || "").trim()) return
+    const nextFinalKey = editorialQuickFormats[0]?.key || sizeOptions[0]?.key || ""
+    if (nextFinalKey) setEditorialFinalFormatoKey(nextFinalKey)
+  }, [props.open, selectedEditorialProductoKey, editorialFinalFormatoKey, editorialQuickFormats, sizeOptions])
 
   useEffect(() => {
     if (!props.open) return
@@ -3290,26 +3338,23 @@ export function LitografiaQuoteDialog(props: {
                                   <div>
                                     <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">Paso 3</p>
                                     <p className="mt-1 text-sm font-semibold text-slate-950">Elige el formato final</p>
-                                    <p className="mt-1 text-xs text-slate-600">Selecciona un tamaño rápido para arrancar. Si ninguno aplica, usa tamaño personalizado o el selector completo.</p>
+                                    <p className="mt-1 text-xs text-slate-600">Este es el tamaño final que verá el cliente en la cotización. El tamaño abierto de impresión se define aparte más abajo.</p>
                                   </div>
-                                  {editorialCoverPreset ? (
+                                  {editorialFinalPreset ? (
                                     <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-medium text-slate-700">
-                                      Formato activo: {editorialCoverPreset.nombre} ({formatCm(editorialCoverPreset.widthCm)}×{formatCm(editorialCoverPreset.heightCm)} cm)
+                                      Tamaño final cliente: {editorialFinalPreset.nombre} ({formatCm(editorialFinalPreset.widthCm)}×{formatCm(editorialFinalPreset.heightCm)} cm)
                                     </div>
                                   ) : null}
                                 </div>
 
                                 <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
                                   {editorialQuickFormats.map((option) => {
-                                    const selected = editorialCover.formatoKey === option.key
+                                    const selected = editorialFinalFormatoKey === option.key
                                     return (
                                       <button
                                         key={option.key}
                                         type="button"
-                                        onClick={() => {
-                                          setEditorialCover((prev) => ({ ...prev, formatoKey: option.key }))
-                                          setEditorialInner((prev) => ({ ...prev, formatoKey: option.key }))
-                                        }}
+                                        onClick={() => setEditorialFinalFormatoKey(option.key)}
                                         className={cn(
                                           "rounded-xl border p-3 text-left transition-all",
                                           selected
@@ -3335,20 +3380,17 @@ export function LitografiaQuoteDialog(props: {
                                             }}
                                           />
                                         </div>
-                                        <p className="mt-3 text-[11px] leading-5 text-slate-600">Define el tamaño abierto de impresión. Si el trabajo se pliega, la cotización mostrará aparte el tamaño final cerrado del producto.</p>
+                                        <p className="mt-3 text-[11px] leading-5 text-slate-600">Define el tamaño final del producto que compra el cliente.</p>
                                       </button>
                                     )
                                   })}
 
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      setEditorialCover((prev) => ({ ...prev, formatoKey: CUSTOM_PRINT_SIZE_KEY }))
-                                      setEditorialInner((prev) => ({ ...prev, formatoKey: CUSTOM_PRINT_SIZE_KEY }))
-                                    }}
+                                    onClick={() => setEditorialFinalFormatoKey(CUSTOM_PRINT_SIZE_KEY)}
                                     className={cn(
                                       "rounded-xl border p-3 text-left transition-all",
-                                      editorialCover.formatoKey === CUSTOM_PRINT_SIZE_KEY
+                                      editorialFinalFormatoKey === CUSTOM_PRINT_SIZE_KEY
                                         ? "border-sky-400 bg-sky-50 shadow-[0_10px_26px_-18px_rgba(14,165,233,0.7)]"
                                         : "border-slate-200 bg-white hover:border-sky-200 hover:bg-slate-50"
                                     )}
@@ -3364,9 +3406,37 @@ export function LitografiaQuoteDialog(props: {
                                         <span className="rounded border border-slate-300 bg-white px-2 py-1">H</span>
                                       </div>
                                     </div>
-                                    <p className="mt-3 text-[11px] leading-5 text-slate-600">Úsalo cuando el trabajo no coincide con un formato estándar del taller.</p>
+                                    <p className="mt-3 text-[11px] leading-5 text-slate-600">Úsalo cuando el tamaño final del cliente no coincide con un formato estándar.</p>
                                   </button>
                                 </div>
+                                {editorialFinalFormatoKey === CUSTOM_PRINT_SIZE_KEY ? (
+                                  <div className="mt-3 grid grid-cols-2 gap-2">
+                                    <div>
+                                      <Label>Ancho final cliente (cm)</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        step="0.01"
+                                        min="0.01"
+                                        value={editorialFinalCustomWidthCm}
+                                        onChange={(e) => setEditorialFinalCustomWidthCm(e.target.value)}
+                                        placeholder="14"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>Alto final cliente (cm)</Label>
+                                      <Input
+                                        className={INPUT_COMPACT}
+                                        type="number"
+                                        step="0.01"
+                                        min="0.01"
+                                        value={editorialFinalCustomHeightCm}
+                                        onChange={(e) => setEditorialFinalCustomHeightCm(e.target.value)}
+                                        placeholder="21"
+                                      />
+                                    </div>
+                                  </div>
+                                ) : null}
                               </div>
 
                               <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
