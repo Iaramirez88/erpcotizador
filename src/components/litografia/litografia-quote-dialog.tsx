@@ -2980,8 +2980,6 @@ export function LitografiaQuoteDialog(props: {
         const opt = transporteOptions.find((o) => o.value === selectedTransporteKey)
         parts.push(`${t('printshopQuote.desc.transport')} ${opt?.label ?? ""}`.trim())
       }
-      if (activeProductionSummary?.short) parts.push(activeProductionSummary.short)
-      if (qtyShown > 0) parts.push(t('printshopQuote.desc.run', { qty: qtyShown }))
       return parts.join(" • ")
     }
 
@@ -3009,10 +3007,9 @@ export function LitografiaQuoteDialog(props: {
     }
     if (editorialEnabled && editorialClosedSizeLabel) parts.push(`Tamaño final ${editorialClosedSizeLabel}`)
     if (editorialEnabled && editorialOpenSizeLabel) parts.push(`Impresión abierta ${editorialOpenSizeLabel}`)
-    if (activeProductionSummary?.short) parts.push(activeProductionSummary.short)
 
     return parts.join(" • ")
-  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, calc, papelTipo, primaryPaper, selectedFinishes, selectedSpecialFinishNames, selectedTransporteKey, selectedPlastificado, selectedTroquelado, selectedTroquelada, selectedCorte, transporteOptions, t, editorialEnabled, editorialOptions, selectedEditorialProductoKey, selectedEditorialOption, editorialClosedSizeLabel, editorialOpenSizeLabel, activeProductionSummary])
+  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, calc, papelTipo, primaryPaper, selectedFinishes, selectedSpecialFinishNames, selectedTransporteKey, selectedPlastificado, selectedTroquelado, selectedTroquelada, selectedCorte, transporteOptions, t, editorialEnabled, editorialOptions, selectedEditorialProductoKey, selectedEditorialOption, editorialClosedSizeLabel, editorialOpenSizeLabel])
 
 
   const buildDescripcion = () => {

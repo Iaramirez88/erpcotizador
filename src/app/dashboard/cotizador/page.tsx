@@ -1819,7 +1819,6 @@ export default function CotizadorPage() {
                     }
                     if (tiraje > 0) detailParts.push(`Tiraje: ${tiraje}`)
                     if (meta?.selectedMachineName) detailParts.push(`Máquina: ${meta.selectedMachineName}`)
-                    if (meta?.impositionShort) detailParts.push(meta.impositionShort)
                     detailParts.push(`${t('quoteBuilder.fields.quantityLabel')}: ${item.cantidad}`)
                     const details = detailParts.join(" • ")
 
