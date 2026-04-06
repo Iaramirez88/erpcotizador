@@ -72,6 +72,30 @@ function buildPieceRects(args: {
   return rects
 }
 
+function fitLayoutWithin(args: {
+  availableWidth: number
+  availableHeight: number
+  pieceWidth: number
+  pieceHeight: number
+  gap: number
+  across: number
+  down: number
+}) {
+  const rawUsedWidth = args.across > 0 ? (args.across * args.pieceWidth) + (Math.max(0, args.across - 1) * args.gap) : 0
+  const rawUsedHeight = args.down > 0 ? (args.down * args.pieceHeight) + (Math.max(0, args.down - 1) * args.gap) : 0
+  const widthScale = rawUsedWidth > 0 ? args.availableWidth / rawUsedWidth : 1
+  const heightScale = rawUsedHeight > 0 ? args.availableHeight / rawUsedHeight : 1
+  const scale = Math.min(1, widthScale, heightScale)
+
+  return {
+    pieceWidth: args.pieceWidth * scale,
+    pieceHeight: args.pieceHeight * scale,
+    gap: args.gap * scale,
+    usedWidth: rawUsedWidth * scale,
+    usedHeight: rawUsedHeight * scale,
+  }
+}
+
 function resolveMachineSheetWithinParent(parentWidth: number, parentHeight: number, machineWidth: number, machineHeight: number) {
   const safeParentWidth = safePositive(parentWidth)
   const safeParentHeight = safePositive(parentHeight)
@@ -118,14 +142,30 @@ export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewPr
   const parentPieces = props.sheetPiecesPerParent ?? totalPieces
   const machinePieces = props.machinePiecesPerSheet ?? totalMachinePieces
 
-  const sheetUsedWidth = sheetPiecesAcross > 0 ? (sheetPiecesAcross * pieceWidth) + (Math.max(0, sheetPiecesAcross - 1) * gap) : 0
-  const sheetUsedHeight = sheetPiecesDown > 0 ? (sheetPiecesDown * pieceHeight) + (Math.max(0, sheetPiecesDown - 1) * gap) : 0
-  const sheetStartX = Math.max(0, (sheetWidth - Math.min(sheetUsedWidth, sheetWidth)) / 2)
-  const sheetStartY = Math.max(0, (sheetHeight - Math.min(sheetUsedHeight, sheetHeight)) / 2)
   const utilX = Math.max(0, (machineSheetWidth - utilWidth) / 2)
   const utilY = Math.max(0, (machineSheetHeight - utilHeight) / 2)
-  const usedWidth = machinePiecesAcross > 0 ? (machinePiecesAcross * pieceWidth) + (Math.max(0, machinePiecesAcross - 1) * gap) : 0
-  const usedHeight = machinePiecesDown > 0 ? (machinePiecesDown * pieceHeight) + (Math.max(0, machinePiecesDown - 1) * gap) : 0
+  const fittedSheetLayout = fitLayoutWithin({
+    availableWidth: sheetWidth,
+    availableHeight: sheetHeight,
+    pieceWidth,
+    pieceHeight,
+    gap,
+    across: sheetPiecesAcross,
+    down: sheetPiecesDown,
+  })
+  const fittedMachineLayout = fitLayoutWithin({
+    availableWidth: utilWidth,
+    availableHeight: utilHeight,
+    pieceWidth,
+    pieceHeight,
+    gap,
+    across: machinePiecesAcross,
+    down: machinePiecesDown,
+  })
+  const sheetStartX = Math.max(0, (sheetWidth - Math.min(fittedSheetLayout.usedWidth, sheetWidth)) / 2)
+  const sheetStartY = Math.max(0, (sheetHeight - Math.min(fittedSheetLayout.usedHeight, sheetHeight)) / 2)
+  const pieceStartX = Math.max(utilX, utilX + ((utilWidth - Math.min(fittedMachineLayout.usedWidth, utilWidth)) / 2))
+  const pieceStartY = Math.max(utilY, utilY + ((utilHeight - Math.min(fittedMachineLayout.usedHeight, utilHeight)) / 2))
 
   const machineRects = buildPieceRects({
     startX: 0,
@@ -139,29 +179,29 @@ export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewPr
   const sheetPieceRects = buildPieceRects({
     startX: sheetStartX,
     startY: sheetStartY,
-    pieceWidth,
-    pieceHeight,
-    gap,
+    pieceWidth: fittedSheetLayout.pieceWidth,
+    pieceHeight: fittedSheetLayout.pieceHeight,
+    gap: fittedSheetLayout.gap,
     across: sheetPiecesAcross,
     down: sheetPiecesDown,
   })
   const pieceRects = buildPieceRects({
-    startX: utilX,
-    startY: utilY,
-    pieceWidth,
-    pieceHeight,
-    gap,
+    startX: pieceStartX,
+    startY: pieceStartY,
+    pieceWidth: fittedMachineLayout.pieceWidth,
+    pieceHeight: fittedMachineLayout.pieceHeight,
+    gap: fittedMachineLayout.gap,
     across: machinePiecesAcross,
     down: machinePiecesDown,
   })
 
   return (
-    <div className={cn("rounded-lg border bg-background/70 p-3", props.className)}>
+    <div className={cn("min-w-0 overflow-hidden rounded-lg border bg-background/70 p-3", props.className)}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm font-medium">Resumen visual de imposición</p>
-          <p className="text-[11px] text-muted-foreground">{props.paperLabel}</p>
-          <p className="text-[11px] text-muted-foreground">{props.formatLabel}</p>
+          <p className="break-words text-[11px] text-muted-foreground">{props.paperLabel}</p>
+          <p className="break-words text-[11px] text-muted-foreground">{props.formatLabel}</p>
         </div>
         <div className="rounded-md border bg-muted/40 px-2 py-1 text-right text-[11px] text-muted-foreground">
           <div className="font-medium text-foreground">{parentPieces} por pliego</div>
@@ -171,10 +211,11 @@ export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewPr
       </div>
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-lg border bg-gradient-to-b from-slate-50 to-white p-3">
+        <div className="min-w-0 overflow-hidden rounded-lg border bg-gradient-to-b from-slate-50 to-white p-3">
           <p className="mb-2 text-[11px] font-medium text-foreground">Pliego comprado y cortes de máquina</p>
           <svg
             viewBox={`0 0 ${sheetWidth} ${sheetHeight}`}
+            preserveAspectRatio="xMidYMid meet"
             className="mx-auto block h-auto max-h-[260px] w-full"
             aria-label="Resumen visual del pliego comprado y cortes de máquina"
             role="img"
@@ -224,10 +265,11 @@ export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewPr
           </div>
         </div>
 
-        <div className="rounded-lg border bg-gradient-to-b from-slate-50 to-white p-3">
+        <div className="min-w-0 overflow-hidden rounded-lg border bg-gradient-to-b from-slate-50 to-white p-3">
           <p className="mb-2 text-[11px] font-medium text-foreground">Hoja activa de impresión</p>
           <svg
             viewBox={`0 0 ${machineSheetWidth} ${machineSheetHeight}`}
+            preserveAspectRatio="xMidYMid meet"
             className="mx-auto block h-auto max-h-[260px] w-full"
             aria-label="Hoja activa de impresión"
             role="img"
@@ -260,12 +302,12 @@ export function LitografiaImpositionPreview(props: LitografiaImpositionPreviewPr
                 strokeWidth={0.35}
               />
             ))}
-            {usedWidth > 0 && usedHeight > 0 ? (
+            {fittedMachineLayout.usedWidth > 0 && fittedMachineLayout.usedHeight > 0 ? (
               <rect
-                x={utilX}
-                y={utilY}
-                width={Math.min(usedWidth, utilWidth)}
-                height={Math.min(usedHeight, utilHeight)}
+                x={pieceStartX}
+                y={pieceStartY}
+                width={Math.min(fittedMachineLayout.usedWidth, utilWidth)}
+                height={Math.min(fittedMachineLayout.usedHeight, utilHeight)}
                 rx={1}
                 ry={1}
                 fill="none"

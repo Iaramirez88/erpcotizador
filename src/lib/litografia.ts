@@ -6,6 +6,7 @@ export type LitografiaParams = {
   // Sobrante mínimo (unidades) adicional al % de desperdicio.
   // Se usa como mínimo de unidades extra para cubrir desperdicio.
   sobranteMinimo?: number
+  sobranteMinimoUnidad?: "pieza_final" | "hoja_maquina"
 
   costoPlanchaPorColor: number
   costoTintaPorColor: number
@@ -157,9 +158,11 @@ export function computeLitografia(params: LitografiaParams): LitografiaResult {
   const k = clampNumber(Number(params.colores) || 1, 1, 12)
   const waste = clampNumber(Number(params.desperdicioPct) || 0, 0, 100)
   const sobranteMinimo = clampNumber(Number(params.sobranteMinimo) || 0, 0, 1_000_000_000)
+  const sobranteMinimoUnidad = params.sobranteMinimoUnidad === "hoja_maquina" ? "hoja_maquina" : "pieza_final"
   const extraFromPct = qty * (waste / 100)
-  const extra = Math.max(extraFromPct, sobranteMinimo)
-  const qtyConDesperdicio = qty + extra
+  let sobranteMinimoAplicado = sobranteMinimo
+  let extra = Math.max(extraFromPct, sobranteMinimoAplicado)
+  let qtyConDesperdicio = qty + extra
 
   const plancha = (Number(params.costoPlanchaPorColor) || 0) * k
   const tinta = (Number(params.costoTintaPorColor) || 0) * k
@@ -204,9 +207,18 @@ export function computeLitografia(params: LitografiaParams): LitografiaResult {
       const corteLayout = computePiecesPerSheet(pliegoW, pliegoH, hojaMaquinaW, hojaMaquinaH, 0)
       const machineLayout = computePiecesPerSheet(hojaMaquinaW, hojaMaquinaH, formatoW, formatoH, maquinaSeparacion)
       const machineSheetsPerParent = corteLayout.total >= 1 ? corteLayout.total : 1
+      const piezasPorHojaMaquinaCalculadas = machineLayout.total >= 1 ? machineLayout.total : 1
+      if (sobranteMinimoUnidad === "hoja_maquina") {
+        sobranteMinimoAplicado = sobranteMinimo * piezasPorHojaMaquinaCalculadas
+        extra = Math.max(extraFromPct, sobranteMinimoAplicado)
+        qtyConDesperdicio = qty + extra
+      }
+      const machineConstrainedPieces = machineLayout.total >= 1 ? machineLayout.total * machineSheetsPerParent : layout.total
+      const effectivePiecesPerPliego = Math.max(1, Math.min(layout.total, machineConstrainedPieces))
+      const usesMachineConstraint = effectivePiecesPerPliego < layout.total
 
-      piezasPorPliego = layout.total
-      pliegosNecesarios = Math.ceil(qtyConDesperdicio / layout.total)
+      piezasPorPliego = effectivePiecesPerPliego
+      pliegosNecesarios = Math.ceil(qtyConDesperdicio / effectivePiecesPerPliego)
       hojasMaquinaPorPliego = machineSheetsPerParent
       hojasMaquinaNecesarias = pliegosNecesarios * machineSheetsPerParent
       hojasMaquinaHorizontal = corteLayout.total >= 1 ? corteLayout.across : 1
@@ -219,9 +231,13 @@ export function computeLitografia(params: LitografiaParams): LitografiaResult {
       orientacionCorte = corteLayout.total >= 1 ? corteLayout.orientation : "normal"
       pliegoUtilWidthCm = pliegoW
       pliegoUtilHeightCm = pliegoH
-      piezasHorizontal = layout.across
-      piezasVertical = layout.down
-      orientacionImpresion = layout.orientation
+      piezasHorizontal = usesMachineConstraint && machineLayout.total >= 1
+        ? Math.max(1, machineLayout.across * (corteLayout.total >= 1 ? corteLayout.across : 1))
+        : layout.across
+      piezasVertical = usesMachineConstraint && machineLayout.total >= 1
+        ? Math.max(1, machineLayout.down * (corteLayout.total >= 1 ? corteLayout.down : 1))
+        : layout.down
+      orientacionImpresion = usesMachineConstraint && machineLayout.total >= 1 ? machineLayout.orientation : layout.orientation
       papel = pliegosNecesarios * costoPliego
     } else {
       papelModo = "unidad"
@@ -245,7 +261,7 @@ export function computeLitografia(params: LitografiaParams): LitografiaResult {
     qty,
     k,
     waste,
-    sobranteMinimo,
+    sobranteMinimo: sobranteMinimoAplicado,
     papelModo,
     papelTipo: paperType,
     qtyConDesperdicio,
