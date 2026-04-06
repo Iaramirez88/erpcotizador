@@ -7,9 +7,18 @@ import { getServerLanguage } from "@/lib/i18n/server";
 
 const inter = Inter({ subsets: ["latin"] });
 
+const facebookDomainVerification = process.env.NEXT_PUBLIC_FACEBOOK_DOMAIN_VERIFICATION?.trim();
+
 export const metadata: Metadata = {
   title: "Ordex",
   description: "Sistema de cotización y órdenes de trabajo",
+  verification: facebookDomainVerification
+    ? {
+        other: {
+          "facebook-domain-verification": [facebookDomainVerification],
+        },
+      }
+    : undefined,
 };
 
 export default async function RootLayout({
