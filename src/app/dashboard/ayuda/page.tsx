@@ -138,6 +138,22 @@ export default async function AyudaPage({
     revalidatePath('/dashboard/ayuda')
   }
 
+  async function deleteVideo(formData: FormData) {
+    'use server'
+    const session2 = await auth()
+    if (!session2?.user) redirect('/auth/login')
+    if (!isSuperAdminEmail(session2.user.email)) redirect('/dashboard/ayuda')
+
+    const helpVideoDelegate2 = (prisma as unknown as { helpVideo?: any }).helpVideo
+    if (!helpVideoDelegate2) redirect('/dashboard/ayuda?error=video')
+
+    const id = String(formData.get('id') ?? '').trim()
+    if (!id) redirect('/dashboard/ayuda?error=video')
+
+    await helpVideoDelegate2.delete({ where: { id } })
+    revalidatePath('/dashboard/ayuda')
+  }
+
   return (
     <div className="p-3 sm:p-4 lg:p-6 space-y-4">
       <ErpPageHero
@@ -225,7 +241,17 @@ export default async function AyudaPage({
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {videos.map((v: HelpVideoRow) => (
                 <div key={v.id} className="space-y-2">
-                  <div className="text-sm font-medium">{v.title}</div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="text-sm font-medium">{v.title}</div>
+                    {isSuperAdmin ? (
+                      <form action={deleteVideo}>
+                        <input type="hidden" name="id" value={v.id} />
+                        <Button type="submit" variant="outline" size="sm" className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700">
+                          Borrar
+                        </Button>
+                      </form>
+                    ) : null}
+                  </div>
                   <iframe
                     title={v.title}
                     src={v.embedUrl}
