@@ -1066,8 +1066,8 @@ export function LitografiaQuoteDialog(props: {
       selectedFinalSizeName: selectedPreset?.nombre,
       customFormatoWidthCm,
       customFormatoHeightCm,
-      impositionShort: currentImpositionSummary?.short,
-      impositionSummary: currentImpositionSummary?.detail,
+      impositionShort: activeProductionSummary?.short,
+      impositionSummary: activeProductionSummary?.detail,
     }
   }
 
@@ -1778,8 +1778,8 @@ export function LitografiaQuoteDialog(props: {
     if (!props.open) return
     if (!selectedEditorialProductoKey) return
 
-    const defaultPaperId = primaryPaperId || activePapers[0]?.id || ""
-    const defaultFormatoKey = formatoKey || sizeOptions[0]?.key || ""
+    const defaultPaperId = activePapers[0]?.id || ""
+    const defaultFormatoKey = editorialQuickFormats[0]?.key || sizeOptions[0]?.key || ""
     const defaults = editorialSplitCalc
 
     setEditorialCover((prev) => {
@@ -1801,7 +1801,7 @@ export function LitografiaQuoteDialog(props: {
       next.desperdicioPct = "0"
       return next
     })
-  }, [props.open, selectedEditorialProductoKey, editorialSplitCalc, primaryPaperId, activePapers, sobranteMinimo, formatoKey, sizeOptions])
+  }, [props.open, selectedEditorialProductoKey, editorialSplitCalc, activePapers, sobranteMinimo, editorialQuickFormats, sizeOptions])
 
   useEffect(() => {
     if (!props.open) return
@@ -2481,6 +2481,7 @@ export function LitografiaQuoteDialog(props: {
   const currentComputed = isAdmin ? calc : fallbackCalc
 
   const currentImpositionSummary = useMemo(() => {
+    if (editorialEnabled) return null
     if (!currentComputed || currentComputed.papelModo !== "pliego") return null
 
     const runQty = Math.max(0, Math.trunc(parseFloat(cantidad) || 0))
@@ -2523,6 +2524,7 @@ export function LitografiaQuoteDialog(props: {
       machineLabel,
     }
   }, [
+    editorialEnabled,
     currentComputed,
     cantidad,
     sobranteMinimo,
@@ -2533,6 +2535,66 @@ export function LitografiaQuoteDialog(props: {
     primaryMachineWidth,
     primaryMachineHeight,
   ])
+
+  const currentEditorialSummary = useMemo(() => {
+    if (!editorialEnabled) return null
+
+    const productLabel = selectedEditorialOption?.label || "Producto editorial"
+    const coverSheets = editorialCoverSheetsPreview?.pliegosNecesarios ?? 0
+    const innerSheets = editorialInnerSheetsPreview?.pliegosNecesarios ?? 0
+    const totalSheets = coverSheets + innerSheets
+
+    const coverFormatLabel = editorialCoverPreset
+      ? `${editorialCoverPreset.nombre} (${formatCm(editorialCoverPreset.widthCm)}×${formatCm(editorialCoverPreset.heightCm)} cm)`
+      : null
+    const innerFormatLabel = editorialInnerPreset
+      ? `${editorialInnerPreset.nombre} (${formatCm(editorialInnerPreset.widthCm)}×${formatCm(editorialInnerPreset.heightCm)} cm)`
+      : null
+    const coverPaperLabel = editorialCoverPaper
+      ? `${editorialCoverPaper.nombre}${editorialCoverPaper.gramaje ? ` ${editorialCoverPaper.gramaje}g` : ""} ${formatCm(editorialCoverPaper.pliegoWidthCm)}×${formatCm(editorialCoverPaper.pliegoHeightCm)} cm`
+      : null
+    const innerPaperLabel = editorialInnerPaper
+      ? `${editorialInnerPaper.nombre}${editorialInnerPaper.gramaje ? ` ${editorialInnerPaper.gramaje}g` : ""} ${formatCm(editorialInnerPaper.pliegoWidthCm)}×${formatCm(editorialInnerPaper.pliegoHeightCm)} cm`
+      : null
+
+    const shortParts = [productLabel]
+    if (coverPaperLabel || coverFormatLabel) {
+      shortParts.push(`Portada: ${[coverFormatLabel, coverPaperLabel, coverSheets > 0 ? `${coverSheets} pliegos` : null].filter(Boolean).join(" • ")}`)
+    }
+    if (innerPaperLabel || innerFormatLabel) {
+      shortParts.push(`Internas: ${[innerFormatLabel, innerPaperLabel, innerSheets > 0 ? `${innerSheets} pliegos` : null].filter(Boolean).join(" • ")}`)
+    }
+
+    const detailParts = [
+      `cliente recibe ${productLabel.toLowerCase()} de ${editorialTotalCustomerPages} páginas`,
+      editorialCoverSheetsPreview
+        ? `portada: ${[coverFormatLabel, coverPaperLabel].filter(Boolean).join(" • ")}; producción = tiraje ${editorialCoverSheetsPreview.runQty} × pliegos/unidad ${editorialCoverSheetsPreview.pliegosPorUnidad} = ${editorialCoverSheetsPreview.qtyForCompute}; pliegos papel = ${editorialCoverSheetsPreview.pliegosNecesarios ?? "—"}`
+        : null,
+      editorialInnerSheetsPreview
+        ? `internas: ${[innerFormatLabel, innerPaperLabel].filter(Boolean).join(" • ")}; producción = tiraje ${editorialInnerSheetsPreview.runQty} × pliegos/unidad ${editorialInnerSheetsPreview.pliegosPorUnidad} = ${editorialInnerSheetsPreview.qtyForCompute}; pliegos papel = ${editorialInnerSheetsPreview.pliegosNecesarios ?? "—"}`
+        : null,
+      totalSheets > 0 ? `total pliegos papel = portada ${coverSheets} + internas ${innerSheets} = ${totalSheets}` : null,
+    ].filter(Boolean)
+
+    if (shortParts.length <= 1 && detailParts.length <= 1) return null
+
+    return {
+      short: shortParts.join(" • "),
+      detail: detailParts.join(" • "),
+    }
+  }, [
+    editorialEnabled,
+    selectedEditorialOption,
+    editorialTotalCustomerPages,
+    editorialCoverSheetsPreview,
+    editorialInnerSheetsPreview,
+    editorialCoverPreset,
+    editorialInnerPreset,
+    editorialCoverPaper,
+    editorialInnerPaper,
+  ])
+
+  const activeProductionSummary = editorialEnabled ? currentEditorialSummary : currentImpositionSummary
 
   const estimatedQuoteAmounts = buildLitografiaQuoteAmounts(fallbackCalc)
   const adminQuoteAmounts = buildLitografiaQuoteAmounts(calc)
@@ -2694,7 +2756,7 @@ export function LitografiaQuoteDialog(props: {
         const opt = transporteOptions.find((o) => o.value === selectedTransporteKey)
         parts.push(`${t('printshopQuote.desc.transport')} ${opt?.label ?? ""}`.trim())
       }
-      if (!editorialEnabled && currentImpositionSummary?.short) parts.push(currentImpositionSummary.short)
+      if (activeProductionSummary?.short) parts.push(activeProductionSummary.short)
       if (qtyShown > 0) parts.push(t('printshopQuote.desc.run', { qty: qtyShown }))
       return parts.join(" • ")
     }
@@ -2716,11 +2778,15 @@ export function LitografiaQuoteDialog(props: {
       parts.push(`${t('printshopQuote.desc.paper')} ${papelTipo}`)
       parts.push(`${formatoLabel}`)
       if (pl > 0 && pzas > 0) parts.push(t('printshopQuote.desc.sheetsSummary', { pl, pzas }))
-      if (currentImpositionSummary?.short) parts.push(currentImpositionSummary.short)
     }
 
+    if (editorialEnabled && selectedEditorialOption?.label) {
+      parts.push(selectedEditorialOption.label)
+    }
+    if (activeProductionSummary?.short) parts.push(activeProductionSummary.short)
+
     return parts.join(" • ")
-  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, calc, papelTipo, primaryPaper, selectedFinishes, selectedSpecialFinishNames, selectedTransporteKey, selectedPlastificado, selectedTroquelado, selectedTroquelada, selectedCorte, transporteOptions, t, editorialEnabled, editorialOptions, selectedEditorialProductoKey, currentImpositionSummary])
+  }, [titulo, isAdmin, selectedPreset, formatoKey, tintas, cantidad, calc, papelTipo, primaryPaper, selectedFinishes, selectedSpecialFinishNames, selectedTransporteKey, selectedPlastificado, selectedTroquelado, selectedTroquelada, selectedCorte, transporteOptions, t, editorialEnabled, editorialOptions, selectedEditorialProductoKey, selectedEditorialOption, activeProductionSummary])
 
 
   const buildDescripcion = () => {
@@ -5097,9 +5163,9 @@ export function LitografiaQuoteDialog(props: {
                             </div>
                           </div>
 
-                          {currentImpositionSummary ? (
+                          {activeProductionSummary ? (
                             <div className={`${BOX_BLUR_MUTED} bg-muted/10 p-3 text-xs text-muted-foreground`}>
-                              {currentImpositionSummary.detail}
+                              {activeProductionSummary.detail}
                             </div>
                           ) : null}
 
@@ -5157,9 +5223,9 @@ export function LitografiaQuoteDialog(props: {
                             </div>
                           ) : null}
 
-                          {currentImpositionSummary ? (
+                          {activeProductionSummary ? (
                             <div className={`${BOX_BLUR_MUTED} bg-muted/10 p-3 text-xs text-muted-foreground`}>
-                              {currentImpositionSummary.detail}
+                              {activeProductionSummary.detail}
                             </div>
                           ) : null}
 
