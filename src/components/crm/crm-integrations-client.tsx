@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bar,
   BarChart,
@@ -142,6 +142,15 @@ type ReadinessItem = {
   done: boolean
   hint: string
 }
+
+type MetaConnectionFeedback = {
+  status: 'connected' | 'error'
+  message: string
+}
+
+type MetaOnboardingState = 'idle' | 'waiting' | 'success' | 'error'
+
+type MetaSelectionTarget = 'phone' | 'page' | 'instagram' | null
 
 type WebFormBuilderState = Pick<ChannelFormState,
   'publicEmbedEnabled'
@@ -858,6 +867,149 @@ function getMetaConnectionState(settingsJson: Record<string, unknown> | null | u
   }
 }
 
+function isPublicAppUrl(baseUrl: string) {
+  return Boolean(baseUrl) && !/localhost|127\.0\.0\.1/i.test(baseUrl)
+}
+
+function hasManualMetaConfiguration(form: ChannelFormState) {
+  return Boolean(
+    form.externalAccountId.trim()
+    || form.externalPageId.trim()
+    || form.externalPhoneNumberId.trim()
+    || form.whatsappAccessToken.trim()
+    || form.whatsappApiVersion.trim() !== 'v23.0'
+  )
+}
+
+function getMetaWizardChecklist(form: ChannelFormState, baseUrl: string): ReadinessItem[] {
+  const isWhatsApp = form.provider === 'WHATSAPP_CLOUD' || form.provider === 'WHATSAPP_SANDBOX'
+
+  return [
+    {
+      label: 'Canal en modo de prueba o activo',
+      done: form.status === 'TESTING' || form.status === 'ACTIVE',
+      hint: 'Meta y el webhook operan mejor cuando el canal ya quedó en TESTING o ACTIVE.',
+    },
+    {
+      label: 'Token de verificación listo',
+      done: Boolean(form.testingToken.trim()),
+      hint: 'Úsalo para pruebas, validaciones iniciales y fallback de verificación por canal.',
+    },
+    {
+      label: 'URL base detectada',
+      done: Boolean(baseUrl),
+      hint: isPublicAppUrl(baseUrl) ? 'La URL detectada parece pública y sirve como base para callback y webhook.' : 'Si vas a conectar clientes externos, cambia localhost por un dominio público en HTTPS.',
+    },
+    {
+      label: isWhatsApp ? 'OAuth recomendado antes de credenciales manuales' : 'OAuth recomendado antes de IDs manuales',
+      done: !hasManualMetaConfiguration(form),
+      hint: isWhatsApp ? 'Primero conecta Meta; deja Business Account, Phone Number ID y Access Token manuales solo para casos especiales.' : 'Primero conecta Meta; deja Account ID o Page ID manuales solo como respaldo.',
+    },
+  ]
+}
+
+function getMetaSelectionGuide(channel: ChannelConnection, metaState: ReturnType<typeof getMetaConnectionState>) {
+  if (channel.provider === 'WHATSAPP_CLOUD' || channel.provider === 'WHATSAPP_SANDBOX') {
+    if (!metaState.whatsappAssets.length) {
+      return {
+        tone: 'amber' as const,
+        title: 'Meta ya respondió, pero aún no hay números sincronizados',
+        description: 'Pulsa Sincronizar Meta y confirma que la cuenta conectada sí tenga acceso al WhatsApp Business Account y al número correcto.',
+      }
+    }
+
+    if (!metaState.selectedPhoneNumberId && !channel.externalPhoneNumberId) {
+      return {
+        tone: 'amber' as const,
+        title: 'Falta elegir el número activo',
+        description: 'La cuenta ya quedó conectada. El siguiente paso es seleccionar el número sincronizado y pulsar Aplicar número activo.',
+      }
+    }
+
+    return {
+      tone: 'emerald' as const,
+      title: 'Número activo aplicado',
+      description: 'El canal ya tiene un número seleccionado. Ahora solo falta validar webhook y hacer una prueba real de conversación.',
+    }
+  }
+
+  if (channel.provider === 'INSTAGRAM_DM') {
+    if (!metaState.pages.some((item) => item.instagramAccountId)) {
+      return {
+        tone: 'amber' as const,
+        title: 'No se encontró una cuenta de Instagram sincronizada',
+        description: 'Revisa permisos de Meta y vuelve a sincronizar para traer la cuenta de Instagram vinculada a la página correcta.',
+      }
+    }
+
+    if (!metaState.selectedInstagramAccountId && !channel.externalAccountId) {
+      return {
+        tone: 'amber' as const,
+        title: 'Falta elegir la cuenta activa',
+        description: 'Selecciona la cuenta de Instagram sincronizada y pulsa Aplicar cuenta activa para terminar el enlace del canal.',
+      }
+    }
+
+    return {
+      tone: 'emerald' as const,
+      title: 'Cuenta de Instagram aplicada',
+      description: 'El canal ya quedó apuntando al activo correcto. Continúa con webhook y una prueba de DM real.',
+    }
+  }
+
+  if (!metaState.pages.length) {
+    return {
+      tone: 'amber' as const,
+      title: 'Meta ya respondió, pero aún no hay páginas sincronizadas',
+      description: 'Pulsa Sincronizar Meta y confirma que la cuenta conectada sí tenga acceso a la página que quieres llevar al inbox.',
+    }
+  }
+
+  if (!metaState.selectedPageId && !channel.externalPageId) {
+    return {
+      tone: 'amber' as const,
+      title: 'Falta elegir la página activa',
+      description: 'Selecciona la página sincronizada y pulsa Aplicar página activa para terminar el enlace del canal.',
+    }
+  }
+
+  return {
+    tone: 'emerald' as const,
+    title: 'Página activa aplicada',
+    description: 'El activo principal ya quedó seleccionado. Continúa con webhook y una prueba real desde Meta.',
+  }
+}
+
+function getMetaOnboardingChecklist(channel: ChannelConnection, baseUrl: string): ReadinessItem[] {
+  const settings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
+  const token = getTokenFromSettings(settings)
+
+  return [
+    {
+      label: 'Canal en TESTING o ACTIVE',
+      done: channel.status === 'TESTING' || channel.status === 'ACTIVE',
+      hint: 'El webhook y las pruebas reales operan mejor cuando el canal ya está listo para test controlado.',
+    },
+    {
+      label: 'Token del canal disponible',
+      done: Boolean(token || channel.verifyTokenPreview),
+      hint: 'Sirve como respaldo para verificaciones y pruebas internas del canal.',
+    },
+    {
+      label: 'Ruta base detectada',
+      done: Boolean(baseUrl),
+      hint: isPublicAppUrl(baseUrl) ? 'La URL actual parece pública y sirve bien para callback y webhook.' : 'Estás en localhost. Funciona para pruebas internas, pero no para onboarding externo de clientes.',
+    },
+  ]
+}
+
+function getMetaSelectionTarget(provider: CrmChannelProvider): MetaSelectionTarget {
+  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') return 'phone'
+  if (provider === 'INSTAGRAM_DM') return 'instagram'
+  if (provider === 'FACEBOOK_PAGE' || provider === 'MESSENGER') return 'page'
+  return null
+}
+
 function getChannelReadiness(channel: ChannelConnection, baseUrl: string) {
   const settings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
   const token = getTokenFromSettings(settings)
@@ -1094,6 +1246,12 @@ export function CrmIntegrationsClient() {
   const [activeAssetTab, setActiveAssetTab] = useState('overview')
   const [goalTargets, setGoalTargets] = useState<ChannelGoalTargets>({ operational: '', captures: '', conversations: '' })
   const [createForm, setCreateForm] = useState<ChannelFormState>(getInitialChannelForm())
+  const [wizardMetaAdvancedOpen, setWizardMetaAdvancedOpen] = useState(false)
+  const [metaConnectionFeedback, setMetaConnectionFeedback] = useState<MetaConnectionFeedback | null>(null)
+  const [metaOnboardingOpen, setMetaOnboardingOpen] = useState(false)
+  const [metaOnboardingState, setMetaOnboardingState] = useState<MetaOnboardingState>('idle')
+  const [metaOnboardingMessage, setMetaOnboardingMessage] = useState('')
+  const [metaSelectionFocusTarget, setMetaSelectionFocusTarget] = useState<MetaSelectionTarget>(null)
   const [chatbotBuilderDraft, setChatbotBuilderDraft] = useState<ChatbotBuilderState>(getChatbotBuilderState(null))
   const [chatbotBuilderModalOpen, setChatbotBuilderModalOpen] = useState(false)
   const [savingChatbotBuilder, setSavingChatbotBuilder] = useState(false)
@@ -1108,6 +1266,11 @@ export function CrmIntegrationsClient() {
   const [floatingPreviewOpen, setFloatingPreviewOpen] = useState(false)
   const [wizardChatPreviewMode, setWizardChatPreviewMode] = useState<ChatbotPreviewMode>('floating')
   const [wizardChatPreviewViewport, setWizardChatPreviewViewport] = useState<ChatbotPreviewViewport>('desktop')
+  const metaPopupRef = useRef<Window | null>(null)
+  const metaPopupIntervalRef = useRef<number | null>(null)
+  const metaPhoneSelectionRef = useRef<HTMLDivElement | null>(null)
+  const metaPageSelectionRef = useRef<HTMLDivElement | null>(null)
+  const metaInstagramSelectionRef = useRef<HTMLDivElement | null>(null)
 
   const loadChannels = useCallback(async () => {
     setLoading(true)
@@ -1153,6 +1316,41 @@ export function CrmIntegrationsClient() {
   }, [copiedKey])
 
   useEffect(() => {
+    return () => {
+      if (metaPopupIntervalRef.current) {
+        window.clearInterval(metaPopupIntervalRef.current)
+      }
+      metaPopupIntervalRef.current = null
+      metaPopupRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!metaSelectionFocusTarget) return
+
+    const target = metaSelectionFocusTarget === 'phone'
+      ? metaPhoneSelectionRef.current
+      : metaSelectionFocusTarget === 'page'
+        ? metaPageSelectionRef.current
+        : metaInstagramSelectionRef.current
+
+    if (!target) return
+
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const timeout = window.setTimeout(() => setMetaSelectionFocusTarget(null), 2600)
+    return () => window.clearTimeout(timeout)
+  }, [metaSelectionFocusTarget, selectedChannelId])
+
+  useEffect(() => {
+    if (metaConnectionFeedback?.status !== 'connected' || metaSelectionFocusTarget) return
+    const currentChannel = channels.find((item) => item.id === selectedChannelId) ?? null
+    if (!currentChannel) return
+    const target = getMetaSelectionTarget(currentChannel.provider)
+    if (!target) return
+    setMetaSelectionFocusTarget(target)
+  }, [channels, metaConnectionFeedback?.status, metaSelectionFocusTarget, selectedChannelId])
+
+  useEffect(() => {
     if (typeof window === 'undefined') return
     const search = new URLSearchParams(window.location.search)
     const channelId = search.get('channelId')
@@ -1164,9 +1362,16 @@ export function CrmIntegrationsClient() {
     }
 
     if (metaStatus === 'connected') {
+      setMetaConnectionFeedback({
+        status: 'connected',
+        message: 'Meta quedó conectada. Revisa los activos sincronizados y aplica el número, página o cuenta correcta antes de pasar a producción.',
+      })
       window.history.replaceState({}, '', window.location.pathname)
     } else if (metaStatus === 'error') {
-      alert(message || 'No se pudo completar la conexión con Meta.')
+      setMetaConnectionFeedback({
+        status: 'error',
+        message: message || 'No se pudo completar la conexión con Meta.',
+      })
       window.history.replaceState({}, '', window.location.pathname)
     }
   }, [])
@@ -1330,6 +1535,9 @@ export function CrmIntegrationsClient() {
   const selectedChatbotAccent = getAccentColor(selectedSettings)
   const selectedReadiness = useMemo(() => selectedChannel ? getChannelReadiness(selectedChannel, baseUrl) : null, [baseUrl, selectedChannel])
   const selectedMeta = useMemo(() => getMetaConnectionState(selectedSettings), [selectedSettings])
+  const wizardMetaChecklist = useMemo(() => createUsesWebhook && usesMetaProvider(createForm.provider) ? getMetaWizardChecklist(createForm, baseUrl) : [], [baseUrl, createForm, createUsesWebhook])
+  const selectedMetaGuide = useMemo(() => selectedChannel && usesMetaProvider(selectedChannel.provider) ? getMetaSelectionGuide(selectedChannel, selectedMeta) : null, [selectedChannel, selectedMeta])
+  const selectedMetaOnboardingChecklist = useMemo(() => selectedChannel && usesMetaProvider(selectedChannel.provider) ? getMetaOnboardingChecklist(selectedChannel, baseUrl) : [], [baseUrl, selectedChannel])
   const selectedIsChatbot = selectedChannel?.provider === 'WEB_CHATBOT'
   const selectedIsPublicWebForm = selectedChannel?.provider === 'WEB_FORM' && selectedBridgeKind === 'GENERIC'
   const selectedChatbotFlowStage = useMemo(() => chatbotBuilderDraft.flowStages.find((item) => item.id === selectedChatbotStageId) ?? chatbotBuilderDraft.flowStages[0] ?? null, [chatbotBuilderDraft.flowStages, selectedChatbotStageId])
@@ -1418,6 +1626,7 @@ export function CrmIntegrationsClient() {
   function applyTemplate(templateKey: string) {
     const preset = TEMPLATE_PRESETS.find((item) => item.key === templateKey)
     if (!preset) return
+    setWizardMetaAdvancedOpen(false)
     setCreateForm((prev) => ({
       ...prev,
       templateKey,
@@ -1433,6 +1642,7 @@ export function CrmIntegrationsClient() {
   function openCreateWizard() {
     setEditingChannelId(null)
     setCreateForm(getInitialChannelForm())
+    setWizardMetaAdvancedOpen(false)
     setWizardChatPreviewMode('floating')
     setWizardChatPreviewViewport('desktop')
     setWizardStep('template')
@@ -1445,6 +1655,7 @@ export function CrmIntegrationsClient() {
     const templateMatch = TEMPLATE_PRESETS.find((preset) => preset.provider === channel.provider && (preset.bridgeKind ?? 'GENERIC') === (bridgeKind || 'GENERIC'))
 
     setEditingChannelId(channel.id)
+  setWizardMetaAdvancedOpen(Boolean(channel.externalAccountId || channel.externalPageId || channel.externalPhoneNumberId || getWhatsAppAccessToken(settings) || getWhatsAppApiVersion(settings) !== 'v23.0'))
     setCreateForm({
       templateKey: templateMatch?.key ?? (channel.provider === 'WEB_CHATBOT' ? 'web-chatbot' : 'web-form'),
       name: channel.name,
@@ -1529,6 +1740,97 @@ export function CrmIntegrationsClient() {
     setCopiedKey(key)
   }
 
+  function stopMetaPopupTracking() {
+    if (metaPopupIntervalRef.current) {
+      window.clearInterval(metaPopupIntervalRef.current)
+    }
+    metaPopupIntervalRef.current = null
+    metaPopupRef.current = null
+  }
+
+  function openMetaOnboarding(channel: ChannelConnection) {
+    setMetaOnboardingOpen(true)
+    setMetaOnboardingState('idle')
+    setMetaOnboardingMessage('')
+
+    if (channel.status !== 'TESTING' && channel.status !== 'ACTIVE') {
+      setMetaOnboardingState('error')
+      setMetaOnboardingMessage('Pon el canal en TESTING o ACTIVE antes de iniciar la conexión guiada con Meta.')
+      return
+    }
+  }
+
+  async function launchMetaPopup(channel: ChannelConnection) {
+    stopMetaPopupTracking()
+    setMetaOnboardingState('waiting')
+    setMetaOnboardingMessage('Esperando autorización en Meta. Completa el flujo en la ventana emergente y vuelve aquí.')
+
+    const popup = window.open(`/api/crm/channels/${channel.id}/meta/connect`, 'sgdigital-meta-connect', 'popup=yes,width=720,height=820,left=120,top=80')
+    if (!popup) {
+      setMetaOnboardingState('error')
+      setMetaOnboardingMessage('El navegador bloqueó la ventana emergente. Permite popups para continuar con Facebook.')
+      setMetaConnectionFeedback({
+        status: 'error',
+        message: 'El navegador bloqueó la ventana emergente de Meta. Permite popups e intenta de nuevo.',
+      })
+      return
+    }
+
+    metaPopupRef.current = popup
+    popup.focus()
+
+    metaPopupIntervalRef.current = window.setInterval(async () => {
+      const currentPopup = metaPopupRef.current
+      if (!currentPopup) {
+        stopMetaPopupTracking()
+        return
+      }
+
+      if (currentPopup.closed) {
+        stopMetaPopupTracking()
+        setMetaOnboardingState('idle')
+        setMetaOnboardingMessage('La ventana se cerró antes de devolver el resultado. Puedes volver a lanzarla cuando quieras.')
+        return
+      }
+
+      try {
+        const href = currentPopup.location.href
+        if (!href || !href.startsWith(window.location.origin)) return
+
+        const url = new URL(href)
+        const metaStatus = url.searchParams.get('meta')
+        const message = url.searchParams.get('message') || ''
+        const channelId = url.searchParams.get('channelId') || channel.id
+
+        if (url.pathname !== '/dashboard/crm/integraciones' || (metaStatus !== 'connected' && metaStatus !== 'error')) {
+          return
+        }
+
+        currentPopup.close()
+        stopMetaPopupTracking()
+
+        if (metaStatus === 'connected') {
+          setMetaOnboardingState('success')
+          setMetaOnboardingMessage('Meta devolvió autorización y el canal ya se sincronizó. Revisa abajo si quedó autoaplicado el activo o si debes elegirlo manualmente.')
+          setMetaConnectionFeedback({
+            status: 'connected',
+            message: 'Meta quedó conectada. Revisa los activos sincronizados y aplica el número, página o cuenta correcta antes de pasar a producción.',
+          })
+          await loadChannels()
+          setSelectedChannelId(channelId)
+          return
+        }
+
+        const errorMessage = message || 'No se pudo completar la conexión con Meta.'
+        setMetaOnboardingState('error')
+        setMetaOnboardingMessage(errorMessage)
+        setMetaConnectionFeedback({ status: 'error', message: errorMessage })
+      } catch {
+        // Mientras el popup esté en dominio de Meta, leer location lanzará error cross-origin.
+      }
+    }, 700)
+  }
+
   async function syncMeta(channelId: string, selection?: { externalAccountId?: string; externalPageId?: string; externalPhoneNumberId?: string }) {
     setUpdatingChannelId(channelId)
     try {
@@ -1538,9 +1840,13 @@ export function CrmIntegrationsClient() {
         body: JSON.stringify(selection ?? {}),
       })
       if (!json.success) {
-        alert(json.error || 'No se pudo sincronizar Meta.')
+        setMetaConnectionFeedback({
+          status: 'error',
+          message: json.error || 'No se pudo sincronizar Meta.',
+        })
         return
       }
+      setMetaConnectionFeedback(null)
       await loadChannels()
       setSelectedChannelId(channelId)
     } finally {
@@ -1566,9 +1872,13 @@ export function CrmIntegrationsClient() {
     try {
       const json = await requestJson<ChannelConnection>(`/api/crm/channels/${channelId}/meta/disconnect`, { method: 'POST' })
       if (!json.success) {
-        alert(json.error || 'No se pudo desconectar Meta.')
+        setMetaConnectionFeedback({
+          status: 'error',
+          message: json.error || 'No se pudo desconectar Meta.',
+        })
         return
       }
+      setMetaConnectionFeedback(null)
       await loadChannels()
       setSelectedChannelId(channelId)
     } finally {
@@ -2532,7 +2842,7 @@ export function CrmIntegrationsClient() {
                         </Button>
                         {selectedChannel.provider === 'WEB_CHATBOT' ? <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"><Link href="/dashboard/crm/chatbot">Panel chatbot</Link></Button> : null}
                         {selectedChannel.provider === 'WEB_CHATBOT' && selectedChatbotEmbedUrl ? <Button asChild variant="outline" className="rounded-xl"><Link href={selectedChatbotEmbedUrl}>Ver iframe</Link></Button> : null}
-                        {usesMetaProvider(selectedChannel.provider) ? <Button asChild variant="outline" className="rounded-xl border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100"><Link href={`/api/crm/channels/${selectedChannel.id}/meta/connect`}>{selectedMeta.hasConnection ? 'Reconectar Meta' : 'Conectar con Meta'}</Link></Button> : null}
+                        {usesMetaProvider(selectedChannel.provider) ? <Button type="button" variant="outline" className="rounded-xl border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100" onClick={() => openMetaOnboarding(selectedChannel)}><Facebook className="mr-2 h-4 w-4" />{selectedMeta.hasConnection ? 'Reconectar con Facebook' : 'Continuar con Facebook'}</Button> : null}
                         {usesMetaProvider(selectedChannel.provider) ? <Button variant="outline" className="rounded-xl" onClick={() => void syncMeta(selectedChannel.id)} disabled={updatingChannelId === selectedChannel.id || !selectedMeta.hasConnection}>{updatingChannelId === selectedChannel.id ? 'Sincronizando...' : 'Sincronizar Meta'}</Button> : null}
                         {usesMetaProvider(selectedChannel.provider) ? <Button variant="outline" className="rounded-xl border-amber-200 text-amber-800 hover:bg-amber-50" onClick={() => void disconnectMeta(selectedChannel.id)} disabled={updatingChannelId === selectedChannel.id || !selectedMeta.hasConnection}>Desconectar Meta</Button> : null}
                         <Button variant="outline" className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => setDeleteCandidate(selectedChannel)} disabled={deletingChannelId === selectedChannel.id}>
@@ -2545,14 +2855,51 @@ export function CrmIntegrationsClient() {
                     {usesMetaProvider(selectedChannel.provider) ? (
                       <div className="rounded-[26px] border border-sky-200 bg-sky-50/60 p-4">
                         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">Conexión real con Meta</p>
+                        <div className="mt-4 rounded-2xl border border-sky-200 bg-white/80 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">Onboarding guiado</p>
+                              <p className="mt-1 text-sm leading-6 text-slate-600">Lanza el flujo en una ventana controlada, vuelve al panel automáticamente y termina aquí mismo la selección del activo.</p>
+                            </div>
+                            <Button type="button" className="rounded-xl bg-[#1877f2] text-white hover:bg-[#166fe0]" onClick={() => openMetaOnboarding(selectedChannel)}>
+                              <Facebook className="mr-2 h-4 w-4" />
+                              {selectedMeta.hasConnection ? 'Reconectar con Facebook' : 'Continuar con Facebook'}
+                            </Button>
+                          </div>
+                          <div className="mt-4 grid gap-2">
+                            {selectedMetaOnboardingChecklist.map((item) => (
+                              <div key={item.label} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2">
+                                <span className={item.done ? 'mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-700' : 'mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-[11px] font-bold text-amber-700'}>{item.done ? 'OK' : '!'}</span>
+                                <div>
+                                  <p className="text-sm font-medium text-slate-900">{item.label}</p>
+                                  <p className="text-xs leading-5 text-slate-500">{item.hint}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        {metaConnectionFeedback ? (
+                          <div className={metaConnectionFeedback.status === 'error' ? 'mt-4 flex items-start justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50/80 p-3 text-sm text-rose-900' : 'mt-4 flex items-start justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3 text-sm text-emerald-900'}>
+                            <p>{metaConnectionFeedback.message}</p>
+                            <Button type="button" variant="ghost" className={metaConnectionFeedback.status === 'error' ? 'h-auto rounded-lg px-2 py-1 text-xs text-rose-800 hover:bg-rose-100' : 'h-auto rounded-lg px-2 py-1 text-xs text-emerald-800 hover:bg-emerald-100'} onClick={() => setMetaConnectionFeedback(null)}>
+                              Ocultar
+                            </Button>
+                          </div>
+                        ) : null}
                         {selectedMeta.hasConnection ? (
                           <div className="mt-4 space-y-3 text-sm text-slate-700">
                             <p><span className="font-semibold text-slate-900">Cuenta conectada:</span> {selectedMeta.connectedUserName || 'Meta conectada'}</p>
                             <p><span className="font-semibold text-slate-900">Conectado:</span> {formatDate(selectedMeta.connectedAt)}</p>
                             <p><span className="font-semibold text-slate-900">Última sincronización:</span> {formatDate(selectedMeta.lastSyncAt)}</p>
                             <p><span className="font-semibold text-slate-900">Expira token:</span> {formatDate(selectedMeta.tokenExpiresAt)}</p>
+                            {selectedMetaGuide ? (
+                              <div className={selectedMetaGuide.tone === 'amber' ? 'rounded-2xl border border-amber-200 bg-amber-50/90 p-3 text-amber-900' : 'rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3 text-emerald-900'}>
+                                <p className="font-semibold">{selectedMetaGuide.title}</p>
+                                <p className="mt-1 text-sm leading-6">{selectedMetaGuide.description}</p>
+                              </div>
+                            ) : null}
                             {selectedChannel.provider === 'WHATSAPP_CLOUD' || selectedChannel.provider === 'WHATSAPP_SANDBOX' ? (
-                              <div className="grid gap-2 rounded-2xl border border-sky-200 bg-white/70 p-3">
+                              <div ref={metaPhoneSelectionRef} className={metaSelectionFocusTarget === 'phone' ? 'grid gap-2 rounded-2xl border-2 border-emerald-300 bg-emerald-50/90 p-3 shadow-[0_0_0_4px_rgba(16,185,129,0.12)] transition' : 'grid gap-2 rounded-2xl border border-sky-200 bg-white/70 p-3 transition'}>
                                 <Label>Número sincronizado</Label>
                                 <Select value={metaSelectionDraft.selectedPhoneNumberId || '__none__'} onValueChange={(value) => setMetaSelectionDraft((current) => ({ ...current, selectedPhoneNumberId: value === '__none__' ? '' : value }))}>
                                   <SelectTrigger className="h-10 rounded-xl bg-white"><SelectValue /></SelectTrigger>
@@ -2571,7 +2918,7 @@ export function CrmIntegrationsClient() {
                               </div>
                             ) : null}
                             {selectedChannel.provider === 'FACEBOOK_PAGE' || selectedChannel.provider === 'MESSENGER' ? (
-                              <div className="grid gap-2 rounded-2xl border border-sky-200 bg-white/70 p-3">
+                              <div ref={metaPageSelectionRef} className={metaSelectionFocusTarget === 'page' ? 'grid gap-2 rounded-2xl border-2 border-emerald-300 bg-emerald-50/90 p-3 shadow-[0_0_0_4px_rgba(16,185,129,0.12)] transition' : 'grid gap-2 rounded-2xl border border-sky-200 bg-white/70 p-3 transition'}>
                                 <Label>Página sincronizada</Label>
                                 <Select value={metaSelectionDraft.selectedPageId || '__none__'} onValueChange={(value) => setMetaSelectionDraft((current) => ({ ...current, selectedPageId: value === '__none__' ? '' : value }))}>
                                   <SelectTrigger className="h-10 rounded-xl bg-white"><SelectValue /></SelectTrigger>
@@ -2588,7 +2935,7 @@ export function CrmIntegrationsClient() {
                               </div>
                             ) : null}
                             {selectedChannel.provider === 'INSTAGRAM_DM' ? (
-                              <div className="grid gap-2 rounded-2xl border border-sky-200 bg-white/70 p-3">
+                              <div ref={metaInstagramSelectionRef} className={metaSelectionFocusTarget === 'instagram' ? 'grid gap-2 rounded-2xl border-2 border-emerald-300 bg-emerald-50/90 p-3 shadow-[0_0_0_4px_rgba(16,185,129,0.12)] transition' : 'grid gap-2 rounded-2xl border border-sky-200 bg-white/70 p-3 transition'}>
                                 <Label>Cuenta de Instagram sincronizada</Label>
                                 <Select value={metaSelectionDraft.selectedInstagramAccountId || '__none__'} onValueChange={(value) => {
                                   const nextValue = value === '__none__' ? '' : value
@@ -3788,45 +4135,62 @@ export function CrmIntegrationsClient() {
                   <>
                     {usesMetaProvider(createForm.provider) ? (
                       <div className="rounded-2xl border border-sky-200 bg-sky-50/80 p-4 text-sm text-sky-900 md:col-span-2">
-                        <p className="font-semibold">Conexión Meta en esta versión</p>
+                        <p className="font-semibold">Conexión Meta recomendada para este canal</p>
                         <p className="mt-2 leading-6">
-                          Este canal ya soporta OAuth real con Meta, callback seguro, sincronización de páginas, cuentas de Instagram y assets de WhatsApp.
-                          Además, el inbox puede operar salida productiva en WhatsApp Cloud y salida básica por Meta Send API en Messenger e Instagram cuando el canal ya quedó sincronizado.
+                          Primero crea el canal y usa OAuth con Meta. Después selecciona el número, página o cuenta sincronizada desde el panel del canal. La configuración manual queda solo como respaldo.
                         </p>
-                        <p className="mt-2 leading-6">
-                          Si el cliente todavía no autoriza OAuth, puedes seguir cargando manualmente Account ID, Page ID o Phone Number ID, token de verificación y, para WhatsApp Cloud, Access Token.
-                        </p>
+                        <div className="mt-4 grid gap-2">
+                          {wizardMetaChecklist.map((item) => (
+                            <div key={item.label} className="flex items-start gap-3 rounded-2xl border border-sky-100 bg-white/80 px-3 py-2">
+                              <span className={item.done ? 'mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-700' : 'mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-[11px] font-bold text-amber-700'}>{item.done ? 'OK' : '!'}</span>
+                              <div>
+                                <p className="font-medium text-slate-900">{item.label}</p>
+                                <p className="text-xs leading-5 text-slate-600">{item.hint}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-4 flex flex-wrap items-center gap-3">
+                          <Button type="button" variant="outline" className="rounded-xl border-sky-200 bg-white text-sky-800 hover:bg-sky-100" onClick={() => setWizardMetaAdvancedOpen((current) => !current)}>
+                            {wizardMetaAdvancedOpen ? 'Ocultar configuración manual avanzada' : 'Mostrar configuración manual avanzada'}
+                          </Button>
+                          <p className="text-xs leading-5 text-slate-600">Úsala solo si el cliente aún no autoriza OAuth o si necesitas cargar un identificador puntual para una prueba controlada.</p>
+                        </div>
                       </div>
                     ) : null}
-                    <div className="grid gap-2">
-                      <Label>{createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? 'Business Account ID' : 'Account ID'}</Label>
-                      <Input value={createForm.externalAccountId} onChange={(e) => setCreateForm((prev) => ({ ...prev, externalAccountId: e.target.value }))} className="h-11 rounded-xl" placeholder="Cuenta conectada" />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>{createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? 'Phone Number ID' : 'Page ID / Inbox ID'}</Label>
-                      <Input
-                        value={createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? createForm.externalPhoneNumberId : createForm.externalPageId}
-                        onChange={(e) => setCreateForm((prev) => ({
-                          ...prev,
-                          ...(createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX'
-                            ? { externalPhoneNumberId: e.target.value }
-                            : { externalPageId: e.target.value }),
-                        }))}
-                        className="h-11 rounded-xl"
-                        placeholder="Identificador del canal"
-                      />
-                    </div>
-                    {createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? (
+                    {(!usesMetaProvider(createForm.provider) || wizardMetaAdvancedOpen) ? (
                       <>
-                        <div className="grid gap-2 md:col-span-2">
-                          <Label>Access Token Cloud API</Label>
-                          <Input value={createForm.whatsappAccessToken} onChange={(e) => setCreateForm((prev) => ({ ...prev, whatsappAccessToken: e.target.value }))} className="h-11 rounded-xl" placeholder="EAAG..." />
-                          <p className="text-xs leading-5 text-slate-500">Si lo dejas vacío, el inbox seguirá operando en modo demo local para mensajes salientes.</p>
+                        <div className="grid gap-2">
+                          <Label>{createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? 'Business Account ID' : 'Account ID'}</Label>
+                          <Input value={createForm.externalAccountId} onChange={(e) => setCreateForm((prev) => ({ ...prev, externalAccountId: e.target.value }))} className="h-11 rounded-xl" placeholder="Cuenta conectada" />
                         </div>
                         <div className="grid gap-2">
-                          <Label>Versión Graph API</Label>
-                          <Input value={createForm.whatsappApiVersion} onChange={(e) => setCreateForm((prev) => ({ ...prev, whatsappApiVersion: e.target.value }))} className="h-11 rounded-xl" placeholder="v23.0" />
+                          <Label>{createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? 'Phone Number ID' : 'Page ID / Inbox ID'}</Label>
+                          <Input
+                            value={createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? createForm.externalPhoneNumberId : createForm.externalPageId}
+                            onChange={(e) => setCreateForm((prev) => ({
+                              ...prev,
+                              ...(createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX'
+                                ? { externalPhoneNumberId: e.target.value }
+                                : { externalPageId: e.target.value }),
+                            }))}
+                            className="h-11 rounded-xl"
+                            placeholder="Identificador del canal"
+                          />
                         </div>
+                        {createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? (
+                          <>
+                            <div className="grid gap-2 md:col-span-2">
+                              <Label>Access Token Cloud API</Label>
+                              <Input value={createForm.whatsappAccessToken} onChange={(e) => setCreateForm((prev) => ({ ...prev, whatsappAccessToken: e.target.value }))} className="h-11 rounded-xl" placeholder="EAAG..." />
+                              <p className="text-xs leading-5 text-slate-500">Si lo dejas vacío, el inbox seguirá operando en modo demo local para mensajes salientes.</p>
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>Versión Graph API</Label>
+                              <Input value={createForm.whatsappApiVersion} onChange={(e) => setCreateForm((prev) => ({ ...prev, whatsappApiVersion: e.target.value }))} className="h-11 rounded-xl" placeholder="v23.0" />
+                            </div>
+                          </>
+                        ) : null}
                       </>
                     ) : null}
                   </>
@@ -4266,6 +4630,13 @@ export function CrmIntegrationsClient() {
                           <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Proveedor</p>
                           <p className="mt-2 text-sm font-semibold text-slate-900">{createForm.provider}</p>
                         </div>
+                        {usesMetaProvider(createForm.provider) ? (
+                          <div className="rounded-2xl border border-sky-200 bg-sky-50/70 p-3 sm:col-span-2">
+                            <p className="text-[11px] uppercase tracking-[0.14em] text-sky-700">Siguiente paso después de crear</p>
+                            <p className="mt-2 text-sm font-semibold text-sky-900">Conecta Meta y aplica el activo sincronizado</p>
+                            <p className="mt-2 text-xs leading-5 text-sky-800">Después de guardar el canal, usa Conectar con Meta. Cuando vuelvas, selecciona el número, página o cuenta correcta desde el bloque Conexión real con Meta.</p>
+                          </div>
+                        ) : null}
                         <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:col-span-2">
                           <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Endpoint o ruta</p>
                           <p className="mt-2 break-all text-sm font-semibold text-slate-900">{wizardPreview.endpointPreview}</p>
@@ -4303,6 +4674,77 @@ export function CrmIntegrationsClient() {
                 </Button>
               </DialogFooter>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={metaOnboardingOpen} onOpenChange={(open) => {
+        setMetaOnboardingOpen(open)
+        if (!open && metaOnboardingState !== 'waiting') {
+          setMetaOnboardingState('idle')
+          setMetaOnboardingMessage('')
+        }
+      }}>
+        <DialogContent className="max-w-2xl rounded-[30px] border-sky-200 bg-white p-0 shadow-[0_28px_80px_-42px_rgba(14,165,233,0.32)]">
+          <div className="rounded-t-[30px] bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,.18),transparent_40%),linear-gradient(180deg,#eff6ff,#ffffff)] p-6">
+            <DialogHeader>
+              <DialogTitle>Onboarding guiado de Meta</DialogTitle>
+              <DialogDescription>Conecta el canal sin salir del contexto del CRM y vuelve al panel para confirmar el activo sincronizado.</DialogDescription>
+            </DialogHeader>
+          </div>
+
+          <div className="space-y-5 p-6 pt-4">
+            {selectedChannel && usesMetaProvider(selectedChannel.provider) ? (
+              <>
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Canal</p>
+                  <p className="mt-2 text-lg font-semibold text-slate-950">{selectedChannel.name}</p>
+                  <p className="mt-1 text-sm text-slate-600">{getChannelProviderLabel(selectedChannel.provider, selectedBridgeKind as CrmBridgeKind)}</p>
+                </div>
+
+                <div className="grid gap-2">
+                  {selectedMetaOnboardingChecklist.map((item) => (
+                    <div key={item.label} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                      <span className={item.done ? 'mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-700' : 'mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-[11px] font-bold text-amber-700'}>{item.done ? 'OK' : '!'}</span>
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">{item.label}</p>
+                        <p className="text-xs leading-5 text-slate-500">{item.hint}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded-[24px] border border-sky-200 bg-sky-50/70 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">Ruta guiada</p>
+                  <div className="mt-3 space-y-2 text-sm text-slate-700">
+                    <p>1. Valida las condiciones previas del canal.</p>
+                    <p>2. Pulsa Continuar con Facebook para abrir Meta en una ventana controlada.</p>
+                    <p>3. Autoriza el acceso y espera el regreso automático al CRM.</p>
+                    <p>4. Si Meta devuelve varios activos, selecciónalos abajo en el bloque Conexión real con Meta.</p>
+                  </div>
+                </div>
+
+                {metaOnboardingMessage ? (
+                  <div className={metaOnboardingState === 'error' ? 'rounded-[24px] border border-rose-200 bg-rose-50/80 p-4 text-sm text-rose-900' : metaOnboardingState === 'success' ? 'rounded-[24px] border border-emerald-200 bg-emerald-50/80 p-4 text-sm text-emerald-900' : 'rounded-[24px] border border-sky-200 bg-sky-50/80 p-4 text-sm text-sky-900'}>
+                    {metaOnboardingMessage}
+                  </div>
+                ) : null}
+
+                <DialogFooter className="border-t border-slate-100 pt-4">
+                  <Button variant="outline" className="rounded-xl" onClick={() => setMetaOnboardingOpen(false)} disabled={metaOnboardingState === 'waiting'}>
+                    {metaOnboardingState === 'success' ? 'Cerrar' : 'Cancelar'}
+                  </Button>
+                  <Button type="button" className="rounded-xl bg-[#1877f2] text-white hover:bg-[#166fe0]" onClick={() => void launchMetaPopup(selectedChannel)} disabled={metaOnboardingState === 'waiting'}>
+                    <Facebook className="mr-2 h-4 w-4" />
+                    {metaOnboardingState === 'waiting' ? 'Esperando autorización...' : selectedMeta.hasConnection ? 'Reconectar con Facebook' : 'Continuar con Facebook'}
+                  </Button>
+                </DialogFooter>
+              </>
+            ) : (
+              <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-900">
+                Selecciona primero un canal Meta para iniciar este onboarding.
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

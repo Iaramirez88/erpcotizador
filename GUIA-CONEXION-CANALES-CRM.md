@@ -295,9 +295,7 @@ Este canal usa el webhook global de Meta y puede apoyarse en OAuth para dejar ID
    - Version Graph API.
 6. Guarda el canal.
 
-EAAP3tmpaxvcBRK24G8TodZC6TGiBSm2GyON7fcy9MF0dXhWbZBSRvzd0hDcQSbgCwEZCQKdU0GmfAmib88GyQ73aHtOXLpc007rDPphneuAEWfMUXFCAZAKORx7I2xltnM5h3qbBQXjBopNTykwo2BtXZCQp00Ve9ulDxRpu3HIQ2WP51BpRLqHCfjL1HXYVMPHL8AUm6sAgQ3UYLqSACzM5a8KrHWIPH7HnAB1yrwrDdIWZAlZCKvI4BV2kf2UZB691kY9pqNVNm23nSCf3ZATLRt4wZD
-
-EAAP3tmpaxvcBRK24G8TodZC6TGiBSm2GyON7fcy9MF0dXhWbZBSRvzd0hDcQSbgCwEZCQKdU0GmfAmib88GyQ73aHtOXLpc007rDPphneuAEWfMUXFCAZAKORx7I2xltnM5h3qbBQXjBopNTykwo2BtXZCQp00Ve9ulDxRpu3HIQ2WP51BpRLqHCfjL1HXYVMPHL8AUm6sAgQ3UYLqSACzM5a8KrHWIPH7HnAB1yrwrDdIWZAlZCKvI4BV2kf2UZB691kY9pqNVNm23nSCf3ZATLRt4wZD
+Nunca pegues access tokens reales en esta guia ni en capturas. Si ya se expuso uno, debes rotarlo inmediatamente en Meta.
 
 ### 8.2 Forma recomendada de conectarlo
 
@@ -310,6 +308,183 @@ Despues de crear el canal:
 5. Si hace falta, pulsa Sincronizar Meta.
 
 Con eso el sistema puede completar datos reales del canal y dejar sincronizados los assets de WhatsApp.
+
+### 8.2.1 Si Meta muestra "La app no esta activa"
+
+Ese mensaje no apunta primero al webhook. Normalmente significa que la app de Meta no esta lista para que terceros la usen.
+
+Las causas mas comunes son estas:
+
+1. La app esta en modo desarrollo y la cuenta que intenta conectarse no es admin, developer o tester de la app.
+2. La app todavia no fue pasada a modo live para uso publico.
+3. Faltan datos basicos de publicacion en Meta, por ejemplo politica de privacidad o configuracion comercial incompleta.
+4. La empresa de Meta o la app todavia no tienen los permisos y accesos necesarios para onboarding productivo de WhatsApp.
+5. La app fue restringida, quedo deshabilitada o tiene una incidencia de cumplimiento pendiente.
+
+Regla operativa importante para un SaaS:
+
+1. Si solo tu equipo interno va a probar, la app puede seguir en desarrollo y basta con agregar a las cuentas de prueba como roles de la app.
+2. Si clientes externos van a conectar sus propios activos, la app debe quedar operativa para publico y no solo para roles internos.
+
+### 8.2.2 Checklist minimo para que el OAuth funcione en SaaS
+
+Del lado de SGDigital:
+
+1. APP_URL o NEXTAUTH_URL publico, estable y en HTTPS.
+2. META_APP_ID y META_APP_SECRET correctos en el entorno.
+3. Callback OAuth habilitado en /api/oauth/meta/callback.
+4. Webhook global habilitado en /api/webhooks/meta.
+5. META_WEBHOOK_VERIFY_TOKEN definido si quieres una verificacion global desacoplada por app.
+6. Canal creado en CRM con estado TESTING o ACTIVE.
+
+Del lado de Meta:
+
+1. La app no debe estar limitada a uso solo interno si vas a conectar clientes externos.
+2. La cuenta que conecta debe tener permisos reales sobre el Business Manager, WABA y numero.
+3. El negocio debe tener el activo de WhatsApp realmente disponible para el flujo de conexion.
+4. La configuracion de la app debe tener politica de privacidad, datos basicos y modo operativo coherente con el tipo de uso.
+
+### 8.2.3 Por que SendPulse se siente mas facil
+
+SendPulse se siente mas facil porque oculta complejidad que hoy SGDigital todavia deja visible.
+
+En la practica, ellos suelen combinar varias cosas:
+
+1. Un onboarding guiado de una sola ruta, sin mostrar tantos campos tecnicos al usuario final.
+2. Una integracion mas empaquetada con Meta para alta del numero, permisos y activos en una experiencia continua.
+3. Un modelo donde el proveedor controla mejor billing, plantillas, numeros y soporte operativo.
+4. Menos decision tecnica para el cliente durante la conexion.
+
+SGDigital hoy opera con un modelo mas directo:
+
+1. Creas el canal en el CRM.
+2. Pulsas Conectar con Meta.
+3. Meta devuelve autorizacion al callback global.
+4. El CRM sincroniza cuentas, paginas, Instagram o numeros.
+5. Luego eliges el asset activo dentro del canal.
+
+Eso funciona, pero no es aun el flujo embebido y ultra guiado de plataformas tipo SendPulse.
+
+### 8.2.4 Dos formas reales de ofrecer WhatsApp en un SaaS
+
+#### Opcion A: Conexion directa con Meta en tu propio producto
+
+Es la opcion que mas se parece a lo que hoy ya existe en SGDigital.
+
+Ventajas:
+
+1. Mantienes control directo del canal en tu plataforma.
+2. No dependes de un tercero para la recepcion de conversaciones.
+3. Tu inbox CRM puede trabajar sobre tu propio modelo multiempresa.
+
+Desventajas:
+
+1. Requiere que tu app de Meta este bien configurada para produccion.
+2. El onboarding del cliente es mas sensible a permisos, roles, verificacion y estados de la app.
+3. Debes resolver soporte operativo y cumplimiento directamente.
+
+#### Opcion B: Modelo tipo partner o tipo BSP mas asistido
+
+Es el enfoque que se siente parecido a SendPulse.
+
+Ventajas:
+
+1. El alta del canal puede ser mucho mas guiada.
+2. El cliente ve menos campos tecnicos.
+3. Parte del peso operativo puede quedar del lado del partner.
+
+Desventajas:
+
+1. Dependes de un tercero o de un programa mas exigente de Meta.
+2. Puedes perder control sobre billing, numeracion o soporte.
+3. La arquitectura del inbox y la trazabilidad multiempresa se vuelven mas condicionadas por el proveedor.
+
+### 8.2.5 Recomendacion pragmatica para SGDigital
+
+Si quieres vender esto como SaaS, el camino sano es por fases.
+
+Fase 1, inmediata:
+
+1. Mantener el flujo actual de OAuth + webhook global.
+2. Ocultar campos avanzados por defecto en el wizard.
+3. Mostrar un checklist visual antes de lanzar a Meta.
+4. Guiar al usuario para elegir el numero activo cuando vuelva del OAuth.
+5. Documentar claramente el caso "app no activa".
+
+Fase 2, experiencia mas simple:
+
+1. Implementar un onboarding embebido dentro del panel para Meta.
+2. Reducir el proceso a un boton tipo Continuar con Facebook.
+3. Capturar y aplicar automaticamente el numero o activo sugerido al volver.
+4. Mostrar validaciones previas antes de abrir el flujo externo.
+
+Fase 3, experiencia tipo SendPulse:
+
+1. Evaluar integracion como partner mas asistido o un flujo embebido formal de WhatsApp onboarding.
+2. Resolver politica comercial: quien factura la mensajeria, quien administra plantillas y quien responde soporte del canal.
+3. Convertir el wizard en un onboarding de una sola ruta para clientes no tecnicos.
+
+### 8.2.6 Tutorial paso a paso para dejar WhatsApp operativo en SGDigital
+
+Este es el paso a paso recomendado para tu SaaS hoy, con la arquitectura actual del repo.
+
+#### Paso 1. Preparar tu app de Meta
+
+1. En Meta for Developers, completa configuracion basica de la app.
+2. Asegura que la app tenga politica de privacidad y datos de negocio consistentes.
+3. Si estas en pruebas internas, agrega como roles a las cuentas que van a conectar.
+4. Si vas a conectar clientes externos, deja la app lista para uso publico segun el modelo comercial que vayas a operar.
+
+#### Paso 2. Preparar SGDigital
+
+1. Configura APP_URL o NEXTAUTH_URL con una URL publica.
+2. Configura META_APP_ID.
+3. Configura META_APP_SECRET.
+4. Configura META_WEBHOOK_VERIFY_TOKEN si vas a usar verificacion global.
+5. Verifica que /api/oauth/meta/callback y /api/webhooks/meta respondan en tu dominio publico.
+
+#### Paso 3. Crear el canal dentro del CRM
+
+1. Entra a /dashboard/crm/integraciones.
+2. Crea un canal WhatsApp Cloud.
+3. Ponlo en TESTING.
+4. Guarda el canal.
+
+#### Paso 4. Lanzar la conexion con Meta
+
+1. Abre el canal.
+2. Pulsa Conectar con Meta.
+3. Inicia sesion con la cuenta que realmente tenga acceso al negocio y al numero.
+4. Acepta permisos.
+5. Espera el regreso automatico al CRM.
+
+#### Paso 5. Sincronizar y elegir activo
+
+1. Verifica que el canal muestre Meta conectada.
+2. Si hace falta, pulsa Sincronizar Meta.
+3. Selecciona el numero sincronizado.
+4. Guarda el numero activo en el canal.
+
+#### Paso 6. Configurar webhook en Meta
+
+1. Usa como callback URL la ruta global /api/webhooks/meta.
+2. Usa como verify token el valor global si definiste META_WEBHOOK_VERIFY_TOKEN.
+3. Suscribete a eventos de mensajes del activo correcto.
+
+#### Paso 7. Hacer prueba real
+
+1. Envia un mensaje al numero.
+2. Verifica que entre al inbox omnicanal.
+3. Verifica lead, conversacion, mensaje y captura.
+4. Cuando todo funcione, cambia el canal a ACTIVE.
+
+#### Paso 8. Si vuelve a salir "app no activa"
+
+1. Revisa si la cuenta que hace login esta agregada como rol de la app.
+2. Revisa si la app sigue limitada a desarrollo.
+3. Revisa si falta configuracion de publicacion en Meta.
+4. Revisa si el negocio y el numero realmente pertenecen a la cuenta que autoriza.
+5. Repite la prueba solo despues de corregir eso.
 
 ### 8.3 Si prefieres configuracion manual
 
@@ -786,6 +961,3 @@ Desde esta version, Meta queda separado en dos flujos:
 Eso significa que el webhook ya no debe usarse como redirect URI de OAuth.
 
 Tambien significa que puedes definir META_WEBHOOK_VERIFY_TOKEN en entorno para que la verificacion inicial del webhook quede desacoplada de los tokens por canal.
-
-
-docker compose -f docker-compose.prod.yml run --rm migrate npx prisma migrate resolve --rolled-back 20260325120000_add_crm_plan_tier
