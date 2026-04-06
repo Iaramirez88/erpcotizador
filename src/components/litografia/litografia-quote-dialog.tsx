@@ -228,6 +228,24 @@ function deriveOpenSizeFromFinal(widthCm: number, heightCm: number, foldParts: n
   }
 }
 
+function computeEditorialProductionQty(args: {
+  runQty: number
+  pliegosPorUnidad: number
+  partKey: "cover" | "inner"
+  piezasFinalesPorHojaAbierta?: number
+}) {
+  const runQty = Math.max(0, Math.trunc(Number(args.runQty) || 0))
+  const pliegosPorUnidad = Math.max(1, Math.trunc(Number(args.pliegosPorUnidad) || 0) || 1)
+  if (runQty <= 0) return 0
+
+  const piezasFinalesPorHojaAbierta = Math.max(1, Math.trunc(Number(args.piezasFinalesPorHojaAbierta) || 0) || 1)
+  const piezasBase = args.partKey === "cover"
+    ? Math.ceil(runQty / piezasFinalesPorHojaAbierta)
+    : runQty
+
+  return piezasBase * pliegosPorUnidad
+}
+
 function findSizeNameByDimensions(
   options: Array<{ nombre: string; widthCm: number; heightCm: number }>,
   widthCm: number,
@@ -1784,7 +1802,7 @@ export function LitografiaQuoteDialog(props: {
     })
   }, [props.open, editorialEnabled, isEditorialCartilla, compaginadoFinish])
 
-  const computeEditorialSheetsPreview = useCallback((part: EditorialPartState, pliegosPorUnidad: number) => {
+  const computeEditorialSheetsPreview = useCallback((partKey: "cover" | "inner", part: EditorialPartState, pliegosPorUnidad: number) => {
     const runQty = Math.max(0, Math.trunc(parseFloat(cantidad) || 0))
     if (runQty <= 0) return null
     const paper = papers.find((p) => p.id === String(part.paperId || "").trim()) || null
@@ -1797,7 +1815,12 @@ export function LitografiaQuoteDialog(props: {
     const sobranteLocal = parseFloat(String(part.sobranteMinimo))
     const sobranteInput = Number.isFinite(sobranteLocal) ? sobranteLocal : sobranteDefault
 
-    const qtyForCompute = runQty * Math.max(1, Math.trunc(Number(pliegosPorUnidad) || 0) || 1)
+    const qtyForCompute = computeEditorialProductionQty({
+      runQty,
+      pliegosPorUnidad,
+      partKey,
+      piezasFinalesPorHojaAbierta: editorialFoldParts,
+    })
     const r = computeLitografia({
       cantidad: qtyForCompute,
       colores: 1,
@@ -1857,18 +1880,18 @@ export function LitografiaQuoteDialog(props: {
       orientacionImpresion: r.orientacionImpresion,
       orientacionCorte: r.orientacionCorte,
     }
-  }, [cantidad, papers, profiles, sobranteMinimo, resolveSizeOption])
+  }, [cantidad, papers, profiles, sobranteMinimo, resolveSizeOption, editorialFoldParts])
 
   const editorialCoverSheetsPreview = useMemo(() => {
     if (!editorialEnabled) return null
     const pliegos = editorialSplitCalc?.coverPliegosPorUnidad ?? 0
-    return computeEditorialSheetsPreview(editorialCover, pliegos)
+    return computeEditorialSheetsPreview("cover", editorialCover, pliegos)
   }, [editorialEnabled, editorialSplitCalc?.coverPliegosPorUnidad, computeEditorialSheetsPreview, editorialCover])
 
   const editorialInnerSheetsPreview = useMemo(() => {
     if (!editorialEnabled) return null
     const pliegos = editorialSplitCalc?.innerPliegosPorUnidad ?? 0
-    return computeEditorialSheetsPreview(editorialInner, pliegos)
+    return computeEditorialSheetsPreview("inner", editorialInner, pliegos)
   }, [editorialEnabled, editorialSplitCalc?.innerPliegosPorUnidad, computeEditorialSheetsPreview, editorialInner])
 
   const editorialCoverPreset = useMemo(
@@ -2129,7 +2152,12 @@ export function LitografiaQuoteDialog(props: {
         const corteQtyLocal = Math.max(1, Math.trunc(parseFloat(String(part.corteQty)) || 0) || 1)
         const corteCostLocal = corteOpt && getGrupo(corteOpt) === "CORTE" ? (Number(corteOpt.valor) || 0) * corteQtyLocal : 0
 
-        const qtyForCompute = runQty * Math.max(1, pliegosPorUnidad)
+        const qtyForCompute = computeEditorialProductionQty({
+          runQty,
+          pliegosPorUnidad,
+          partKey,
+          piezasFinalesPorHojaAbierta: editorialFoldParts,
+        })
         return computeLitografia({
           cantidad: qtyForCompute,
           colores: tintasLocal,
@@ -2371,6 +2399,7 @@ export function LitografiaQuoteDialog(props: {
     sizeOptions,
     allSizeOptions,
     resolveSizeOption,
+    editorialFoldParts,
     tintas,
   ])
 
@@ -2448,7 +2477,12 @@ export function LitografiaQuoteDialog(props: {
         const corteQtyLocal = Math.max(1, Math.trunc(parseFloat(String(part.corteQty)) || 0) || 1)
         const corteCostLocal = corteOpt && getGrupo(corteOpt) === "CORTE" ? (Number(corteOpt.valor) || 0) * corteQtyLocal : 0
 
-        const qtyForCompute = runQty * Math.max(1, pliegosPorUnidad)
+        const qtyForCompute = computeEditorialProductionQty({
+          runQty,
+          pliegosPorUnidad,
+          partKey,
+          piezasFinalesPorHojaAbierta: editorialFoldParts,
+        })
         return computeLitografia({
           cantidad: qtyForCompute,
           colores: tintasLocal,
@@ -2656,6 +2690,7 @@ export function LitografiaQuoteDialog(props: {
     sizeOptions,
     allSizeOptions,
     resolveSizeOption,
+    editorialFoldParts,
     tintas,
   ])
 
@@ -2752,7 +2787,7 @@ export function LitografiaQuoteDialog(props: {
       `cliente recibe ${productLabel.toLowerCase()} de ${editorialTotalCustomerPages} páginas${editorialClosedSizeLabel ? ` en tamaño final ${editorialClosedSizeLabel}` : ""}`,
       editorialOpenSizeLabel ? `tamaño abierto de impresión ${editorialOpenSizeLabel}` : null,
       editorialCoverSheetsPreview
-        ? `portada: ${[coverFormatLabel, coverPaperLabel].filter(Boolean).join(" • ")}; producción = tiraje ${editorialCoverSheetsPreview.runQty} × pliegos/unidad ${editorialCoverSheetsPreview.pliegosPorUnidad} = ${editorialCoverSheetsPreview.qtyForCompute}; pliegos papel = ${editorialCoverSheetsPreview.pliegosNecesarios ?? "—"}`
+        ? `portada: ${[coverFormatLabel, coverPaperLabel].filter(Boolean).join(" • ")}; producción = ⌈tiraje ${editorialCoverSheetsPreview.runQty} / ${editorialFoldParts}⌉ × pliegos/unidad ${editorialCoverSheetsPreview.pliegosPorUnidad} = ${editorialCoverSheetsPreview.qtyForCompute}; pliegos papel = ${editorialCoverSheetsPreview.pliegosNecesarios ?? "—"}`
         : null,
       editorialInnerSheetsPreview
         ? `internas: ${[innerFormatLabel, innerPaperLabel].filter(Boolean).join(" • ")}; producción = tiraje ${editorialInnerSheetsPreview.runQty} × pliegos/unidad ${editorialInnerSheetsPreview.pliegosPorUnidad} = ${editorialInnerSheetsPreview.qtyForCompute}; pliegos papel = ${editorialInnerSheetsPreview.pliegosNecesarios ?? "—"}`
@@ -2778,6 +2813,7 @@ export function LitografiaQuoteDialog(props: {
     editorialInnerPreset,
     editorialCoverPaper,
     editorialInnerPaper,
+    editorialFoldParts,
   ])
 
   const activeProductionSummary = editorialEnabled ? currentEditorialSummary : currentImpositionSummary
@@ -3194,12 +3230,12 @@ export function LitografiaQuoteDialog(props: {
                                     </p>
                                     {editorialInnerSheetsPreview ? (
                                       <p className={HELP_TEXT}>
-                                        Internas: piezas = tiraje ({editorialInnerSheetsPreview.runQty}) × pliegos/unidad ({editorialInnerSheetsPreview.pliegosPorUnidad}) = {editorialInnerSheetsPreview.qtyForCompute}. Sobrante = {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobranteInput || 0))} hojas de máquina = {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobrantePiezas || 0))} piezas. Pliegos = ⌈(piezas + sobrante {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobrantePiezas || 0))}) / {editorialInnerSheetsPreview.piezasPorPliego ?? "—"}⌉ = {editorialInnerSheetsPreview.pliegosNecesarios ?? "—"}.
+                                        Internas: piezas impresas = tiraje ({editorialInnerSheetsPreview.runQty}) × pliegos/unidad ({editorialInnerSheetsPreview.pliegosPorUnidad}) = {editorialInnerSheetsPreview.qtyForCompute}. Sobrante = {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobranteInput || 0))} hojas de máquina = {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobrantePiezas || 0))} piezas. Pliegos = ⌈(piezas + sobrante {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobrantePiezas || 0))}) / {editorialInnerSheetsPreview.piezasPorPliego ?? "—"}⌉ = {editorialInnerSheetsPreview.pliegosNecesarios ?? "—"}.
                                       </p>
                                     ) : null}
                                     {editorialCoverSheetsPreview ? (
                                       <p className={HELP_TEXT}>
-                                        Portada: piezas = tiraje ({editorialCoverSheetsPreview.runQty}) × pliegos/unidad ({editorialCoverSheetsPreview.pliegosPorUnidad}) = {editorialCoverSheetsPreview.qtyForCompute}. Sobrante = {Math.max(0, Math.trunc(editorialCoverSheetsPreview.sobranteInput || 0))} hojas de máquina = {Math.max(0, Math.trunc(editorialCoverSheetsPreview.sobrantePiezas || 0))} piezas. Pliegos = ⌈(piezas + sobrante {Math.max(0, Math.trunc(editorialCoverSheetsPreview.sobrantePiezas || 0))}) / {editorialCoverSheetsPreview.piezasPorPliego ?? "—"}⌉ = {editorialCoverSheetsPreview.pliegosNecesarios ?? "—"}.
+                                        Portada: piezas impresas = ⌈tiraje ({editorialCoverSheetsPreview.runQty}) / {editorialFoldParts}⌉ × pliegos/unidad ({editorialCoverSheetsPreview.pliegosPorUnidad}) = {editorialCoverSheetsPreview.qtyForCompute}. Sobrante = {Math.max(0, Math.trunc(editorialCoverSheetsPreview.sobranteInput || 0))} hojas de máquina = {Math.max(0, Math.trunc(editorialCoverSheetsPreview.sobrantePiezas || 0))} piezas. Pliegos = ⌈(piezas + sobrante {Math.max(0, Math.trunc(editorialCoverSheetsPreview.sobrantePiezas || 0))}) / {editorialCoverSheetsPreview.piezasPorPliego ?? "—"}⌉ = {editorialCoverSheetsPreview.pliegosNecesarios ?? "—"}.
                                       </p>
                                     ) : null}
                                     <p className={HELP_TEXT}>
@@ -3530,6 +3566,18 @@ export function LitografiaQuoteDialog(props: {
                                   />
                                   <p className={HELP_TEXT}>Normalmente 2 o 4 páginas según el proyecto.</p>
                                 </div>
+                                <div>
+                                  <Label>Ejemplares finales por hoja abierta de portada</Label>
+                                  <Input
+                                    className={INPUT_COMPACT}
+                                    type="number"
+                                    step="1"
+                                    min={1}
+                                    value={editorialCartasPorPlancha}
+                                    onChange={(e) => setEditorialCartasPorPlancha(e.target.value)}
+                                  />
+                                  <p className={HELP_TEXT}>Si una hoja abierta de portada, al plegarse, entrega 2 ejemplares finales, usa 2. Este factor evita duplicar papel.</p>
+                                </div>
                               </div>
                             </div>
 
@@ -3782,7 +3830,7 @@ export function LitografiaQuoteDialog(props: {
                                           </div>
                                         </div>
                                         <p className={HELP_TEXT}>
-                                          Para {editorialCoverSheetsPreview.runQty} unidades: {editorialCoverSheetsPreview.qtyForCompute} piezas finales. El papel se calcula con {editorialCoverSheetsPreview.piezasPorPliego ?? "—"} piezas por pliego; la maquina trabaja a {editorialCoverSheetsPreview.piezasPorHojaMaquina ?? "—"} piezas por hoja y no debe reemplazar ese rendimiento.
+                                          Para {editorialCoverSheetsPreview.runQty} unidades: la portada imprime {editorialCoverSheetsPreview.qtyForCompute} hojas abiertas usando ⌈tiraje / {editorialFoldParts}⌉. El papel se calcula con {editorialCoverSheetsPreview.piezasPorPliego ?? "—"} piezas por pliego; la maquina trabaja a {editorialCoverSheetsPreview.piezasPorHojaMaquina ?? "—"} piezas por hoja y no debe reemplazar ese rendimiento.
                                         </p>
                                         <LitografiaImpositionPreview
                                           sheetWidthCm={editorialCoverSheetsPreview.sheetWidthCm}
