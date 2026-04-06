@@ -1727,10 +1727,10 @@ export function LitografiaQuoteDialog(props: {
 
     // Nota: el selector Frente/Reverso ajusta automáticamente multiplicadores y sobrante mínimo.
     // En Editorial, puedes seguir ajustando manualmente “Cantidad” en Plancha/Tinta si lo necesitas.
-    const innerPlanchas = totalPaginas > 0 ? 1 : 0
-    const coverPlanchas = coverPaginas > 0 ? 1 : 0
     const innerPliegosPorUnidad = totalPaginas > 0 ? Math.ceil(totalPaginas / paginasPorPliego) : 0
     const coverPliegosPorUnidad = coverPaginas > 0 ? Math.ceil(coverPaginas / paginasPorPliego) : 0
+    const innerPlanchas = innerPliegosPorUnidad
+    const coverPlanchas = coverPliegosPorUnidad
 
     return {
       innerPlanchas,
@@ -1911,37 +1911,7 @@ export function LitografiaQuoteDialog(props: {
     return editorialCoverPreset || editorialInnerPreset || null
   }, [editorialCoverPreset, editorialInnerPreset])
 
-  const editorialOpenMatchesRecommended = useMemo(() => {
-    if (!editorialOpenSize || !editorialRecommendedOpenPreset) return false
-    return (
-      (nearlyEqualCm(editorialOpenSize.widthCm, editorialRecommendedOpenPreset.widthCm) && nearlyEqualCm(editorialOpenSize.heightCm, editorialRecommendedOpenPreset.heightCm)) ||
-      (nearlyEqualCm(editorialOpenSize.widthCm, editorialRecommendedOpenPreset.heightCm) && nearlyEqualCm(editorialOpenSize.heightCm, editorialRecommendedOpenPreset.widthCm))
-    )
-  }, [editorialOpenSize, editorialRecommendedOpenPreset])
-
-  const editorialOpenLooksLikeMachineSheet = useMemo(() => {
-    if (!editorialOpenSize) return false
-    const profilesToCheck = [editorialCoverPlanchaProfile, editorialInnerPlanchaProfile].filter(Boolean)
-    return profilesToCheck.some((profile) => {
-      if (!profile) return false
-      return (
-        (nearlyEqualCm(editorialOpenSize.widthCm, profile.anchoUtilCm) && nearlyEqualCm(editorialOpenSize.heightCm, profile.altoUtilCm)) ||
-        (nearlyEqualCm(editorialOpenSize.widthCm, profile.altoUtilCm) && nearlyEqualCm(editorialOpenSize.heightCm, profile.anchoUtilCm))
-      )
-    })
-  }, [editorialOpenSize, editorialCoverPlanchaProfile, editorialInnerPlanchaProfile])
-
   const editorialPrimaryPlanchaProfile = editorialCoverPlanchaProfile || editorialInnerPlanchaProfile || null
-
-  const applyEditorialRecommendedOpenSize = useCallback(() => {
-    if (!editorialRecommendedOpenPreset) return
-    if (editorialRecommendedOpenPreset.key === CUSTOM_PRINT_SIZE_KEY) {
-      setCustomFormatoWidthCm(String(editorialRecommendedOpenPreset.widthCm))
-      setCustomFormatoHeightCm(String(editorialRecommendedOpenPreset.heightCm))
-    }
-    setEditorialCover((prev) => ({ ...prev, formatoKey: editorialRecommendedOpenPreset.key }))
-    setEditorialInner((prev) => ({ ...prev, formatoKey: editorialRecommendedOpenPreset.key }))
-  }, [editorialRecommendedOpenPreset, setCustomFormatoWidthCm, setCustomFormatoHeightCm])
 
   const editorialClosedSize = useMemo(() => {
     if (editorialFinalPreset) {
@@ -2011,15 +1981,6 @@ export function LitografiaQuoteDialog(props: {
       return next
     })
   }, [props.open, selectedEditorialProductoKey, editorialSplitCalc, activePapers, sobranteMinimo, editorialQuickFormats, sizeOptions, editorialRecommendedOpenPreset])
-
-  useEffect(() => {
-    if (!props.open) return
-    if (!editorialEnabled) return
-    if (!editorialRecommendedOpenPreset) return
-    if (editorialOpenMatchesRecommended) return
-    if (!editorialOpenLooksLikeMachineSheet) return
-    applyEditorialRecommendedOpenSize()
-  }, [props.open, editorialEnabled, editorialRecommendedOpenPreset, editorialOpenMatchesRecommended, editorialOpenLooksLikeMachineSheet, applyEditorialRecommendedOpenSize])
 
   useEffect(() => {
     if (!props.open) return
@@ -3682,6 +3643,9 @@ export function LitografiaQuoteDialog(props: {
                                   Hoja máquina/corte actual: {editorialPrimaryPlanchaProfile.nombre} ({formatCm(editorialPrimaryPlanchaProfile.anchoUtilCm)}×{formatCm(editorialPrimaryPlanchaProfile.altoUtilCm)} cm).
                                 </p>
                               ) : null}
+                              <p className={HELP_TEXT}>
+                                El tamaño abierto que selecciones aquí se conserva. La hoja de máquina solo limita la salida operativa y el rendimiento; no reemplaza este tamaño.
+                              </p>
                               {editorialCover.formatoKey === CUSTOM_PRINT_SIZE_KEY ? (
                                 <div className="mt-2 grid grid-cols-2 gap-2">
                                   <div>
