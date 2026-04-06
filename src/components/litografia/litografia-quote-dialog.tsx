@@ -205,6 +205,29 @@ function deriveFoldedSize(widthCm: number, heightCm: number, foldParts: number) 
   }
 }
 
+function deriveOpenSizeFromFinal(widthCm: number, heightCm: number, foldParts: number) {
+  if (!Number.isFinite(widthCm) || !Number.isFinite(heightCm) || widthCm <= 0 || heightCm <= 0) return null
+  const parts = Math.max(1, Math.trunc(Number(foldParts) || 0) || 1)
+
+  let smaller = Math.min(widthCm, heightCm)
+  let larger = Math.max(widthCm, heightCm)
+  let remaining = parts
+
+  while (remaining > 1) {
+    smaller *= 2
+    const nextSmaller = Math.min(smaller, larger)
+    const nextLarger = Math.max(smaller, larger)
+    smaller = nextSmaller
+    larger = nextLarger
+    remaining = Math.ceil(remaining / 2)
+  }
+
+  return {
+    widthCm: Math.min(smaller, larger),
+    heightCm: Math.max(smaller, larger),
+  }
+}
+
 function findSizeNameByDimensions(
   options: Array<{ nombre: string; widthCm: number; heightCm: number }>,
   widthCm: number,
@@ -1340,6 +1363,32 @@ export function LitografiaQuoteDialog(props: {
     return resolveEditorialFinalSizeOption(editorialFinalFormatoKey)
   }, [editorialFinalFormatoKey, resolveEditorialFinalSizeOption])
 
+  const editorialFoldParts = useMemo(() => {
+    return Math.max(1, Math.trunc(parseFloat(editorialCartasPorPlancha) || 0) || 1)
+  }, [editorialCartasPorPlancha])
+
+  const editorialRecommendedOpenSize = useMemo(() => {
+    if (!editorialFinalPreset) return null
+    return deriveOpenSizeFromFinal(editorialFinalPreset.widthCm, editorialFinalPreset.heightCm, editorialFoldParts)
+  }, [editorialFinalPreset, editorialFoldParts])
+
+  const editorialRecommendedOpenPreset = useMemo(() => {
+    if (!editorialRecommendedOpenSize) return null
+    const found = sizeOptions.find((option) => {
+      return (
+        (nearlyEqualCm(option.widthCm, editorialRecommendedOpenSize.widthCm) && nearlyEqualCm(option.heightCm, editorialRecommendedOpenSize.heightCm)) ||
+        (nearlyEqualCm(option.widthCm, editorialRecommendedOpenSize.heightCm) && nearlyEqualCm(option.heightCm, editorialRecommendedOpenSize.widthCm))
+      )
+    })
+    if (found) return found
+    return {
+      key: CUSTOM_PRINT_SIZE_KEY,
+      nombre: "Tamaño abierto recomendado",
+      widthCm: editorialRecommendedOpenSize.widthCm,
+      heightCm: editorialRecommendedOpenSize.heightCm,
+    }
+  }, [editorialRecommendedOpenSize, sizeOptions])
+
   const activeProfiles = useMemo(() => profiles.filter((p) => p.activo), [profiles])
   const activePlanchaProfiles = useMemo(() => {
     const filtered = activeProfiles.filter((p) => (p.costoPlanchaPorColor ?? 0) > 0)
@@ -1832,6 +1881,16 @@ export function LitografiaQuoteDialog(props: {
     [editorialInner.formatoKey, resolveSizeOption]
   )
 
+  const editorialCoverPlanchaProfile = useMemo(
+    () => profiles.find((p) => p.id === String(editorialCover.planchaProfileId || "").trim()) || null,
+    [editorialCover.planchaProfileId, profiles]
+  )
+
+  const editorialInnerPlanchaProfile = useMemo(
+    () => profiles.find((p) => p.id === String(editorialInner.planchaProfileId || "").trim()) || null,
+    [editorialInner.planchaProfileId, profiles]
+  )
+
   const editorialCoverPaper = useMemo(
     () => papers.find((p) => p.id === String(editorialCover.paperId || "").trim()) || null,
     [editorialCover.paperId, papers]
@@ -1851,6 +1910,38 @@ export function LitografiaQuoteDialog(props: {
   const editorialOpenSize = useMemo(() => {
     return editorialCoverPreset || editorialInnerPreset || null
   }, [editorialCoverPreset, editorialInnerPreset])
+
+  const editorialOpenMatchesRecommended = useMemo(() => {
+    if (!editorialOpenSize || !editorialRecommendedOpenPreset) return false
+    return (
+      (nearlyEqualCm(editorialOpenSize.widthCm, editorialRecommendedOpenPreset.widthCm) && nearlyEqualCm(editorialOpenSize.heightCm, editorialRecommendedOpenPreset.heightCm)) ||
+      (nearlyEqualCm(editorialOpenSize.widthCm, editorialRecommendedOpenPreset.heightCm) && nearlyEqualCm(editorialOpenSize.heightCm, editorialRecommendedOpenPreset.widthCm))
+    )
+  }, [editorialOpenSize, editorialRecommendedOpenPreset])
+
+  const editorialOpenLooksLikeMachineSheet = useMemo(() => {
+    if (!editorialOpenSize) return false
+    const profilesToCheck = [editorialCoverPlanchaProfile, editorialInnerPlanchaProfile].filter(Boolean)
+    return profilesToCheck.some((profile) => {
+      if (!profile) return false
+      return (
+        (nearlyEqualCm(editorialOpenSize.widthCm, profile.anchoUtilCm) && nearlyEqualCm(editorialOpenSize.heightCm, profile.altoUtilCm)) ||
+        (nearlyEqualCm(editorialOpenSize.widthCm, profile.altoUtilCm) && nearlyEqualCm(editorialOpenSize.heightCm, profile.anchoUtilCm))
+      )
+    })
+  }, [editorialOpenSize, editorialCoverPlanchaProfile, editorialInnerPlanchaProfile])
+
+  const editorialPrimaryPlanchaProfile = editorialCoverPlanchaProfile || editorialInnerPlanchaProfile || null
+
+  const applyEditorialRecommendedOpenSize = useCallback(() => {
+    if (!editorialRecommendedOpenPreset) return
+    if (editorialRecommendedOpenPreset.key === CUSTOM_PRINT_SIZE_KEY) {
+      setCustomFormatoWidthCm(String(editorialRecommendedOpenPreset.widthCm))
+      setCustomFormatoHeightCm(String(editorialRecommendedOpenPreset.heightCm))
+    }
+    setEditorialCover((prev) => ({ ...prev, formatoKey: editorialRecommendedOpenPreset.key }))
+    setEditorialInner((prev) => ({ ...prev, formatoKey: editorialRecommendedOpenPreset.key }))
+  }, [editorialRecommendedOpenPreset, setCustomFormatoWidthCm, setCustomFormatoHeightCm])
 
   const editorialClosedSize = useMemo(() => {
     if (editorialFinalPreset) {
@@ -1892,8 +1983,13 @@ export function LitografiaQuoteDialog(props: {
     if (!selectedEditorialProductoKey) return
 
     const defaultPaperId = activePapers[0]?.id || ""
-    const defaultFormatoKey = editorialQuickFormats[0]?.key || sizeOptions[0]?.key || ""
+    const defaultFormatoKey = editorialRecommendedOpenPreset?.key || editorialQuickFormats[0]?.key || sizeOptions[0]?.key || ""
     const defaults = editorialSplitCalc
+
+    if (defaultFormatoKey === CUSTOM_PRINT_SIZE_KEY && editorialRecommendedOpenPreset) {
+      setCustomFormatoWidthCm(String(editorialRecommendedOpenPreset.widthCm))
+      setCustomFormatoHeightCm(String(editorialRecommendedOpenPreset.heightCm))
+    }
 
     setEditorialCover((prev) => {
       const next: EditorialPartState = { ...prev }
@@ -1914,7 +2010,16 @@ export function LitografiaQuoteDialog(props: {
       next.desperdicioPct = "0"
       return next
     })
-  }, [props.open, selectedEditorialProductoKey, editorialSplitCalc, activePapers, sobranteMinimo, editorialQuickFormats, sizeOptions])
+  }, [props.open, selectedEditorialProductoKey, editorialSplitCalc, activePapers, sobranteMinimo, editorialQuickFormats, sizeOptions, editorialRecommendedOpenPreset])
+
+  useEffect(() => {
+    if (!props.open) return
+    if (!editorialEnabled) return
+    if (!editorialRecommendedOpenPreset) return
+    if (editorialOpenMatchesRecommended) return
+    if (!editorialOpenLooksLikeMachineSheet) return
+    applyEditorialRecommendedOpenSize()
+  }, [props.open, editorialEnabled, editorialRecommendedOpenPreset, editorialOpenMatchesRecommended, editorialOpenLooksLikeMachineSheet, applyEditorialRecommendedOpenSize])
 
   useEffect(() => {
     if (!props.open) return
@@ -3484,6 +3589,7 @@ export function LitografiaQuoteDialog(props: {
                                       <p className="font-semibold text-slate-950">Portada</p>
                                       <p className="mt-1">Impresión abierta: {editorialCoverPreset.nombre} · {formatCm(editorialCoverPreset.widthCm)}×{formatCm(editorialCoverPreset.heightCm)} cm</p>
                                       {editorialClosedSizeLabel ? <p className="mt-1">Cliente: {editorialClosedSizeLabel}</p> : null}
+                                      {editorialCoverPlanchaProfile ? <p className="mt-1">Hoja máquina/corte: {editorialCoverPlanchaProfile.nombre} · {formatCm(editorialCoverPlanchaProfile.anchoUtilCm)}×{formatCm(editorialCoverPlanchaProfile.altoUtilCm)} cm</p> : null}
                                       <p className="mt-1">Papel: {editorialCoverPaper.nombre} · {formatCm(editorialCoverPaper.pliegoWidthCm)}×{formatCm(editorialCoverPaper.pliegoHeightCm)} cm</p>
                                       {editorialCoverSheetsPreview ? <p className="mt-1">Despiece: {editorialCoverSheetsPreview.piezasPorPliego ?? "—"} pzas/pliego • {editorialCoverSheetsPreview.piezasPorHojaMaquina ?? "—"} pzas/hoja • {editorialCoverSheetsPreview.hojasMaquinaPorPliego ?? "—"} cortes/pliego</p> : null}
                                     </div>
@@ -3493,6 +3599,7 @@ export function LitografiaQuoteDialog(props: {
                                       <p className="font-semibold text-slate-950">Internas</p>
                                       <p className="mt-1">Impresión abierta: {editorialInnerPreset.nombre} · {formatCm(editorialInnerPreset.widthCm)}×{formatCm(editorialInnerPreset.heightCm)} cm</p>
                                       {editorialClosedSizeLabel ? <p className="mt-1">Cliente: {editorialClosedSizeLabel}</p> : null}
+                                      {editorialInnerPlanchaProfile ? <p className="mt-1">Hoja máquina/corte: {editorialInnerPlanchaProfile.nombre} · {formatCm(editorialInnerPlanchaProfile.anchoUtilCm)}×{formatCm(editorialInnerPlanchaProfile.altoUtilCm)} cm</p> : null}
                                       <p className="mt-1">Papel: {editorialInnerPaper.nombre} · {formatCm(editorialInnerPaper.pliegoWidthCm)}×{formatCm(editorialInnerPaper.pliegoHeightCm)} cm</p>
                                       {editorialInnerSheetsPreview ? <p className="mt-1">Despiece: {editorialInnerSheetsPreview.piezasPorPliego ?? "—"} pzas/pliego • {editorialInnerSheetsPreview.piezasPorHojaMaquina ?? "—"} pzas/hoja • {editorialInnerSheetsPreview.hojasMaquinaPorPliego ?? "—"} cortes/pliego</p> : null}
                                     </div>
@@ -3510,7 +3617,7 @@ export function LitografiaQuoteDialog(props: {
                               </div>
                             </div>
                             <div>
-                              <Label className={requiredLabelClass(validation.missingFormato)}>Tamaño abierto de impresión (global)</Label>
+                              <Label className={requiredLabelClass(validation.missingFormato)}>Tamaño abierto de la pieza (global)</Label>
                               <div className="mt-2 flex flex-wrap gap-2">
                                 <Button
                                   type="button"
@@ -3558,17 +3665,43 @@ export function LitografiaQuoteDialog(props: {
                                 ))}
                               </select>
                               <p className={HELP_TEXT}>
-                                Este selector define el pliego abierto que entra a impresión. El tamaño final que verá el cliente se calcula aparte cuando el producto se pliega.
+                                Este selector define la pieza abierta que se imprime y luego puede doblarse. No uses aquí la hoja de máquina o corte; esa sale de la plancha seleccionada en portada e internas.
                               </p>
                               {editorialClosedSizeLabel ? (
                                 <p className={HELP_TEXT}>
                                   Tamaño final cerrado para el cliente: {editorialClosedSizeLabel}.
                                 </p>
                               ) : null}
+                              {editorialRecommendedOpenPreset ? (
+                                <p className={HELP_TEXT}>
+                                  Tamaño abierto recomendado según el tamaño final y el doblez: {editorialRecommendedOpenPreset.nombre} ({formatCm(editorialRecommendedOpenPreset.widthCm)}×{formatCm(editorialRecommendedOpenPreset.heightCm)} cm).
+                                </p>
+                              ) : null}
+                              {editorialPrimaryPlanchaProfile ? (
+                                <p className={HELP_TEXT}>
+                                  Hoja máquina/corte actual: {editorialPrimaryPlanchaProfile.nombre} ({formatCm(editorialPrimaryPlanchaProfile.anchoUtilCm)}×{formatCm(editorialPrimaryPlanchaProfile.altoUtilCm)} cm).
+                                </p>
+                              ) : null}
+                              {editorialRecommendedOpenPreset && !editorialOpenMatchesRecommended ? (
+                                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                                  <p>
+                                    La pieza abierta no coincide con el tamaño recomendado para el doblez actual. Si buscas media carta final con hoja cuarto 35×50, aquí normalmente debe ir carta 21×28 y no cuarto.
+                                  </p>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="mt-2 h-8"
+                                    onClick={applyEditorialRecommendedOpenSize}
+                                  >
+                                    Usar tamaño abierto recomendado
+                                  </Button>
+                                </div>
+                              ) : null}
                               {editorialCover.formatoKey === CUSTOM_PRINT_SIZE_KEY ? (
                                 <div className="mt-2 grid grid-cols-2 gap-2">
                                   <div>
-                                    <Label>Ancho final (cm)</Label>
+                                    <Label>Ancho abierto (cm)</Label>
                                     <Input
                                       className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
                                       type="number"
@@ -3580,7 +3713,7 @@ export function LitografiaQuoteDialog(props: {
                                     />
                                   </div>
                                   <div>
-                                    <Label>Alto final (cm)</Label>
+                                    <Label>Alto abierto (cm)</Label>
                                     <Input
                                       className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
                                       type="number"
@@ -3611,15 +3744,18 @@ export function LitografiaQuoteDialog(props: {
                                     {(() => {
                                       const formato = resolveSizeOption(String(editorialCover.formatoKey || "").trim())
                                       const paper = papers.find((p) => p.id === String(editorialCover.paperId || "").trim())
+                                      const machine = profiles.find((p) => p.id === String(editorialCover.planchaProfileId || "").trim())
                                       const pliegos = editorialSplitCalc?.coverPliegosPorUnidad ?? 0
                                       const caras = editorialSplitCalc?.coverPlanchas ?? 0
                                       const formatoLabel = formato ? `${formato.nombre} (${formato.widthCm}×${formato.heightCm} cm)` : "—"
+                                      const finalLabel = editorialClosedSizeLabel || "—"
+                                      const machineLabel = machine ? `${machine.nombre} (${formatCm(machine.anchoUtilCm)}×${formatCm(machine.altoUtilCm)} cm)` : "—"
                                       const paperLabel = paper ? `${paper.nombre}${paper.gramaje ? ` ${paper.gramaje}g` : ""}` : "—"
                                       const preview = editorialCoverSheetsPreview
                                       const despiece = preview
                                         ? ` • Despiece: ${preview.piezasPorPliego ?? "—"} pzas/pliego · ${preview.piezasPorHojaMaquina ?? "—"} pzas/hoja · ${preview.hojasMaquinaPorPliego ?? "—"} cortes/pliego`
                                         : ""
-                                      return `Tamaño: ${formatoLabel} • Papel: ${paperLabel} • Planchas CMYK: ${caras * 4} • Pliegos/unidad: ${pliegos}${despiece}`
+                                      return `Pieza abierta: ${formatoLabel} • Cliente: ${finalLabel} • Hoja máquina: ${machineLabel} • Papel: ${paperLabel} • Planchas CMYK: ${caras * 4} • Pliegos/unidad: ${pliegos}${despiece}`
                                     })()}
                                   </p>
                                 <div className="mt-3 grid grid-cols-1 gap-3">
@@ -4020,15 +4156,18 @@ export function LitografiaQuoteDialog(props: {
                                   {(() => {
                                     const formato = resolveSizeOption(String(editorialInner.formatoKey || "").trim())
                                     const paper = papers.find((p) => p.id === String(editorialInner.paperId || "").trim())
+                                      const machine = profiles.find((p) => p.id === String(editorialInner.planchaProfileId || "").trim())
                                     const pliegos = editorialSplitCalc?.innerPliegosPorUnidad ?? 0
                                     const caras = editorialSplitCalc?.innerPlanchas ?? 0
                                     const formatoLabel = formato ? `${formato.nombre} (${formato.widthCm}×${formato.heightCm} cm)` : "—"
+                                      const finalLabel = editorialClosedSizeLabel || "—"
+                                      const machineLabel = machine ? `${machine.nombre} (${formatCm(machine.anchoUtilCm)}×${formatCm(machine.altoUtilCm)} cm)` : "—"
                                     const paperLabel = paper ? `${paper.nombre}${paper.gramaje ? ` ${paper.gramaje}g` : ""}` : "—"
                                       const preview = editorialInnerSheetsPreview
                                       const despiece = preview
                                         ? ` • Despiece: ${preview.piezasPorPliego ?? "—"} pzas/pliego · ${preview.piezasPorHojaMaquina ?? "—"} pzas/hoja · ${preview.hojasMaquinaPorPliego ?? "—"} cortes/pliego`
                                         : ""
-                                      return `Tamaño: ${formatoLabel} • Papel: ${paperLabel} • Planchas CMYK: ${caras * 4} • Pliegos/unidad: ${pliegos}${despiece}`
+                                      return `Pieza abierta: ${formatoLabel} • Cliente: ${finalLabel} • Hoja máquina: ${machineLabel} • Papel: ${paperLabel} • Planchas CMYK: ${caras * 4} • Pliegos/unidad: ${pliegos}${despiece}`
                                   })()}
                                 </p>
                                 <div className="mt-3 grid grid-cols-1 gap-3">
