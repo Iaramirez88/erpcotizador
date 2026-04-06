@@ -3682,22 +3682,6 @@ export function LitografiaQuoteDialog(props: {
                                   Hoja máquina/corte actual: {editorialPrimaryPlanchaProfile.nombre} ({formatCm(editorialPrimaryPlanchaProfile.anchoUtilCm)}×{formatCm(editorialPrimaryPlanchaProfile.altoUtilCm)} cm).
                                 </p>
                               ) : null}
-                              {editorialRecommendedOpenPreset && !editorialOpenMatchesRecommended ? (
-                                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                                  <p>
-                                    La pieza abierta no coincide con el tamaño recomendado para el doblez actual. Si buscas media carta final con hoja cuarto 35×50, aquí normalmente debe ir carta 21×28 y no cuarto.
-                                  </p>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    className="mt-2 h-8"
-                                    onClick={applyEditorialRecommendedOpenSize}
-                                  >
-                                    Usar tamaño abierto recomendado
-                                  </Button>
-                                </div>
-                              ) : null}
                               {editorialCover.formatoKey === CUSTOM_PRINT_SIZE_KEY ? (
                                 <div className="mt-2 grid grid-cols-2 gap-2">
                                   <div>
