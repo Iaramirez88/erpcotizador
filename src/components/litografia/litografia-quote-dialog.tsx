@@ -1747,8 +1747,8 @@ export function LitografiaQuoteDialog(props: {
     // En Editorial, puedes seguir ajustando manualmente “Cantidad” en Plancha/Tinta si lo necesitas.
     const innerPliegosPorUnidad = totalPaginas > 0 ? Math.ceil(totalPaginas / paginasPorPliego) : 0
     const coverPliegosPorUnidad = coverPaginas > 0 ? Math.ceil(coverPaginas / paginasPorPliego) : 0
-    const innerPlanchas = innerPliegosPorUnidad
-    const coverPlanchas = coverPliegosPorUnidad
+    const innerPlanchas = totalPaginas > 0 ? 1 : 0
+    const coverPlanchas = coverPaginas > 0 ? 1 : 0
 
     return {
       innerPlanchas,
