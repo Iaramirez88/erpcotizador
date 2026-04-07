@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyBoldWebhookSignature } from '@/lib/bold'
-import { PlanTier, BillingCycle } from '@prisma/client'
+import { PlanTier, BillingCycle, ModuleKey } from '@prisma/client'
+import { saveEmpresaModuleOverride } from '@/lib/plan-modules'
+
+function parseQuotedModules(value: unknown): ModuleKey[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is ModuleKey => typeof item === 'string' && item.trim().length > 0)
+}
 
 export const runtime = 'nodejs'
 
@@ -108,6 +114,14 @@ export async function POST(request: Request) {
         paymentMethod,
       },
     })
+
+    const quotedModules = parseQuotedModules(updated.quotedModulesJson)
+    if (updated.externalReference.startsWith('ADDON-')) {
+      await Promise.all(
+        quotedModules.map((moduleKey) => saveEmpresaModuleOverride({ empresaId: updated.empresaId, module: moduleKey, enabled: true }))
+      )
+      return NextResponse.json({ ok: true })
+    }
 
     const empresa = await prisma.empresa.findUnique({ where: { id: updated.empresaId }, select: { planValidUntil: true } })
     const baseDate = empresa?.planValidUntil && empresa.planValidUntil > now ? empresa.planValidUntil : now

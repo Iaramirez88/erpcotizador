@@ -19,6 +19,7 @@ type WebsiteServiceRecord = {
   loginPasswordEncrypted: string | null
   contactName: string | null
   contactPhone: string | null
+  contactEmail: string | null
   notes: string | null
   createdAt: Date
   updatedAt: Date
@@ -125,6 +126,7 @@ export function serializeWebsiteService(service: WebsiteServiceRecord) {
     hasPassword: hasWebsiteServicePassword(service.loginPasswordEncrypted),
     contactName: service.contactName,
     contactPhone: service.contactPhone,
+    contactEmail: service.contactEmail,
     notes: service.notes,
     createdAt: service.createdAt.toISOString(),
     updatedAt: service.updatedAt.toISOString(),

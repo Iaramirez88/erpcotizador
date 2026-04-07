@@ -171,6 +171,8 @@ type CreateBoldLinkResponse =
   | { ok: true; url: string }
   | { ok?: false; error?: string }
 
+type PurchaseMode = 'PLAN' | 'ADDON'
+
 type LastInvoice = {
   id: string
   provider: string
@@ -191,6 +193,7 @@ type LastInvoice = {
 export default function PlanPage() {
   const searchParams = useSearchParams()
   const blockedModule = searchParams?.get('blockedModule') ?? null
+  const purchaseMode = searchParams?.get('purchaseMode') === 'ADDON' ? 'ADDON' : 'PLAN'
 
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
 
@@ -324,6 +327,16 @@ export default function PlanPage() {
 
   const modularQuote = useMemo(() => getModularPlanQuote({ selectedModules, cycle, modulePriceMap }), [selectedModules, cycle, modulePriceMap])
   const recommendedPrice = modularQuote.totalCOP
+  const addonMonthlyTotal = useMemo(() => {
+    return selectedModules.reduce((sum, moduleKey) => {
+      const item = pricedCatalog.find((module) => module.module === moduleKey)
+      return sum + (item?.activationPriceMonthlyCOP ?? 0)
+    }, 0)
+  }, [pricedCatalog, selectedModules])
+  const addonTotal = useMemo(() => {
+    if (cycle === 'MONTHLY') return addonMonthlyTotal
+    return Math.round(addonMonthlyTotal * 12 * 0.9)
+  }, [addonMonthlyTotal, cycle])
 
   const includedModulesForRecommendedTier = useMemo(() => {
     return new Set(getDefaultEnabledModulesForPlan(recommendedTier))
@@ -339,6 +352,11 @@ export default function PlanPage() {
   useEffect(() => {
     if (!current || selectedModules.length > 0) return
 
+    if (purchaseMode === 'ADDON' && blockedModule && pricedCatalog.some((item) => item.module === blockedModule)) {
+      setSelectedModules([blockedModule as (typeof PLAN_MODULE_CATALOG)[number]["module"]])
+      return
+    }
+
     const initialModules = pricedCatalog
       .map((item) => item.module)
       .filter((moduleKey) => getDefaultEnabledModulesForPlan(current.tier).includes(moduleKey))
@@ -349,7 +367,7 @@ export default function PlanPage() {
     }
 
     setSelectedModules(initialModules)
-  }, [blockedModule, current, pricedCatalog, selectedModules.length])
+  }, [blockedModule, current, pricedCatalog, purchaseMode, selectedModules.length])
 
   function renderAvailability(value: boolean | string) {
     if (typeof value === 'string') return <span className="font-medium text-slate-800">{value}</span>
@@ -363,14 +381,14 @@ export default function PlanPage() {
     })
   }
 
-  async function startPayment(tier: PlanTier, modules: (typeof PLAN_MODULE_CATALOG)[number]["module"][] = []) {
+  async function startPayment(tier: PlanTier, modules: (typeof PLAN_MODULE_CATALOG)[number]["module"][] = [], mode: PurchaseMode = 'PLAN') {
     setIsPaying(true)
     setError(null)
     try {
       const res = await fetch("/api/billing/bold/link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier, cycle, selectedModules: modules }),
+        body: JSON.stringify({ tier, cycle, selectedModules: modules, purchaseMode: mode }),
       })
 
       const json = (await res.json().catch(() => ({}))) as CreateBoldLinkResponse
@@ -416,7 +434,11 @@ export default function PlanPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-sm text-gray-700">Selecciona un plan superior para activarlo.</div>
+            <div className="text-sm text-gray-700">
+              {purchaseMode === 'ADDON'
+                ? 'Estás cotizando este módulo como adicional independiente. Si prefieres que quede cubierto por un plan superior, cambia a modo upgrade desde el dashboard.'
+                : 'Selecciona un plan superior para activarlo o vuelve al dashboard para comprarlo como adicional independiente.'}
+            </div>
           </CardContent>
         </Card>
       ) : null}
@@ -622,33 +644,43 @@ export default function PlanPage() {
 
         <Card className="border-slate-200 bg-slate-950 text-white">
           <CardHeader>
-            <CardTitle>Resumen de cotización</CardTitle>
+            <CardTitle>{purchaseMode === 'ADDON' ? 'Resumen del adicional' : 'Resumen de cotización'}</CardTitle>
             <CardDescription className="text-slate-300">
-              La plataforma se cobra por plan. La calculadora encuentra el tier mínimo que soporta tu combinación actual.
+              {purchaseMode === 'ADDON'
+                ? 'Este modo conserva tu plan actual y solo cobra los módulos adicionales que decidas activar.'
+                : 'La plataforma se cobra por plan. La calculadora encuentra el tier mínimo que soporta tu combinación actual.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="rounded-2xl bg-white/10 p-4">
-              <div className="text-xs uppercase tracking-[0.2em] text-slate-300">Plan recomendado</div>
-              <div className="mt-2 text-3xl font-bold">{recommendedPlan?.nombre ?? recommendedTier}</div>
-              <div className="mt-1 text-sm text-slate-300">{recommendedPlan?.descripcion ?? 'Configuración recomendada según tus módulos.'}</div>
-              <div className="mt-4 text-4xl font-black">{formatCOP(recommendedPrice)}</div>
+              <div className="text-xs uppercase tracking-[0.2em] text-slate-300">
+                {purchaseMode === 'ADDON' ? 'Compra adicional' : 'Plan recomendado'}
+              </div>
+              <div className="mt-2 text-3xl font-bold">
+                {purchaseMode === 'ADDON' ? `Mantener ${current?.nombre ?? current?.tier ?? 'tu plan actual'}` : recommendedPlan?.nombre ?? recommendedTier}
+              </div>
+              <div className="mt-1 text-sm text-slate-300">
+                {purchaseMode === 'ADDON'
+                  ? 'El módulo se activa aparte y se habilita para tu empresa al confirmarse el pago.'
+                  : recommendedPlan?.descripcion ?? 'Configuración recomendada según tus módulos.'}
+              </div>
+              <div className="mt-4 text-4xl font-black">{formatCOP(purchaseMode === 'ADDON' ? addonTotal : recommendedPrice)}</div>
               <div className="text-sm text-slate-300">{cycle === 'YEARLY' ? 'COP / año' : 'COP / mes'}</div>
             </div>
 
             <div className="grid gap-2 rounded-2xl border border-white/10 p-4 text-sm">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-slate-300">Base del plan {recommendedPlan?.nombre ?? recommendedTier}</span>
-                <span>{formatCOP(cycle === 'YEARLY' ? getPlanPriceCOP(recommendedTier, 'YEARLY') : modularQuote.basePriceMonthlyCOP)}</span>
+                <span className="text-slate-300">{purchaseMode === 'ADDON' ? 'Base del plan actual' : `Base del plan ${recommendedPlan?.nombre ?? recommendedTier}`}</span>
+                <span>{formatCOP(purchaseMode === 'ADDON' ? 0 : cycle === 'YEARLY' ? getPlanPriceCOP(recommendedTier, 'YEARLY') : modularQuote.basePriceMonthlyCOP)}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-slate-300">Activación de módulos</span>
-                <span>{formatCOP(cycle === 'YEARLY' ? recommendedPrice - getPlanPriceCOP(recommendedTier, 'YEARLY') : modularQuote.modulesSubtotalMonthlyCOP)}</span>
+                <span>{formatCOP(purchaseMode === 'ADDON' ? addonTotal : cycle === 'YEARLY' ? recommendedPrice - getPlanPriceCOP(recommendedTier, 'YEARLY') : modularQuote.modulesSubtotalMonthlyCOP)}</span>
               </div>
               {cycle === 'YEARLY' ? (
                 <div className="flex items-center justify-between gap-3 text-emerald-300">
                   <span>Descuento anual aplicado</span>
-                  <span>{modularQuote.annualDiscountPct}%</span>
+                  <span>{purchaseMode === 'ADDON' ? 10 : modularQuote.annualDiscountPct}%</span>
                 </div>
               ) : null}
             </div>
@@ -673,29 +705,43 @@ export default function PlanPage() {
             </div>
 
             <div className="space-y-2 rounded-2xl border border-white/10 p-4">
-              <div className="text-sm font-semibold">Cobertura del plan {recommendedPlan?.nombre ?? recommendedTier}</div>
-              <div className="text-sm text-slate-300">
-                {selectedModules.every((moduleKey) => includedModulesForRecommendedTier.has(moduleKey))
-                  ? 'Todos los módulos elegidos quedan cubiertos en este plan.'
-                  : 'Tu selección requiere un plan superior para cubrir todos los módulos.'}
+              <div className="text-sm font-semibold">
+                {purchaseMode === 'ADDON' ? 'Qué pasa después del pago' : `Cobertura del plan ${recommendedPlan?.nombre ?? recommendedTier}`}
               </div>
-              {typeof currentRecommendedDifference === 'number' ? (
-                <div className="text-sm text-slate-200">
-                  {currentRecommendedDifference > 0
-                    ? `Sube ${formatCOP(currentRecommendedDifference)} frente a tu plan actual en este ciclo.`
-                    : `Baja ${formatCOP(Math.abs(currentRecommendedDifference))} frente a tu plan actual en este ciclo.`}
-                </div>
-              ) : current?.tier === recommendedTier ? (
-                <div className="text-sm text-emerald-300">Tu plan actual ya cubre esta combinación.</div>
-              ) : null}
+              {purchaseMode === 'ADDON' ? (
+                <div className="text-sm text-slate-300">El sistema marcará estos módulos como habilitados para tu empresa una vez Bold confirme el pago.</div>
+              ) : (
+                <>
+                  <div className="text-sm text-slate-300">
+                    {selectedModules.every((moduleKey) => includedModulesForRecommendedTier.has(moduleKey))
+                      ? 'Todos los módulos elegidos quedan cubiertos en este plan.'
+                      : 'Tu selección requiere un plan superior para cubrir todos los módulos.'}
+                  </div>
+                  {typeof currentRecommendedDifference === 'number' ? (
+                    <div className="text-sm text-slate-200">
+                      {currentRecommendedDifference > 0
+                        ? `Sube ${formatCOP(currentRecommendedDifference)} frente a tu plan actual en este ciclo.`
+                        : `Baja ${formatCOP(Math.abs(currentRecommendedDifference))} frente a tu plan actual en este ciclo.`}
+                    </div>
+                  ) : current?.tier === recommendedTier ? (
+                    <div className="text-sm text-emerald-300">Tu plan actual ya cubre esta combinación.</div>
+                  ) : null}
+                </>
+              )}
             </div>
 
             <Button
               className="w-full bg-white text-slate-950 hover:bg-slate-100"
-              disabled={isPaying || !recommendedPlan}
-              onClick={() => recommendedPlan ? startPayment(recommendedPlan.tier, selectedModules) : undefined}
+              disabled={isPaying || (purchaseMode === 'PLAN' && !recommendedPlan) || (purchaseMode === 'ADDON' && !current)}
+              onClick={() => purchaseMode === 'ADDON'
+                ? current ? startPayment(current.tier, selectedModules, 'ADDON') : undefined
+                : recommendedPlan ? startPayment(recommendedPlan.tier, selectedModules, 'PLAN') : undefined}
             >
-              {isPaying ? 'Redirigiendo…' : `Continuar con ${recommendedPlan?.nombre ?? recommendedTier}`}
+              {isPaying
+                ? 'Redirigiendo…'
+                : purchaseMode === 'ADDON'
+                  ? `Pagar ${selectedModules.length > 1 ? 'módulos adicionales' : 'módulo adicional'}`
+                  : `Continuar con ${recommendedPlan?.nombre ?? recommendedTier}`}
             </Button>
           </CardContent>
         </Card>

@@ -13,6 +13,7 @@ import { revalidatePath } from 'next/cache'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { DEFAULT_NOTIFICATION_ACTION_LABEL } from '@/lib/notifications'
+import NotificationSelectAllToggle from './notification-select-all-toggle'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -274,8 +275,9 @@ export default async function NotificacionesPage({ searchParams }: PageProps) {
             <div className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-4 md:flex-row md:items-center md:justify-between">
               <p className="text-sm text-muted-foreground">{t('notifications.selectionHint')}</p>
               <div className="flex flex-wrap items-center gap-2">
-                <Button type="submit" formAction={markSelectedRead} variant="outline">
-                  {t('notifications.actions.markSelectedRead')}
+                <NotificationSelectAllToggle />
+                <Button type="submit" formAction={markAllRead} variant="outline" disabled={unreadCount === 0}>
+                  {t('notifications.actions.markAllRead')}
                 </Button>
                 <Button type="submit" formAction={archiveSelected} variant="outline">
                   {t('notifications.actions.archiveSelected')}

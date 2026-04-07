@@ -683,6 +683,9 @@ model Empresa {
   billingReminderLogs BillingReminderLog[]
   websiteServices WebsiteService[]
   websiteServiceModuleAccesses WebsiteServiceModuleAccess[]
+  websiteServiceReminderSetting WebsiteServiceReminderSetting?
+  websiteServiceReminderLogs WebsiteServiceReminderLog[]
+  websiteServiceMessageTemplates WebsiteServiceMessageTemplate[]
 
   // Tarifario global de Litografía (misma configuración para todas las sedes)
   litografiaPrintProfiles LitografiaPrintProfile[]
@@ -1740,6 +1743,7 @@ model WebsiteService {
 
   contactName  String?
   contactPhone String?
+  contactEmail String?
 
   notes String? @db.Text
 
@@ -1749,6 +1753,8 @@ model WebsiteService {
   updatedByUserId String?
   updatedByUser   User? @relation("WebsiteServiceUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
 
+  reminderLogs WebsiteServiceReminderLog[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1757,6 +1763,74 @@ model WebsiteService {
   @@index([empresaId, hostingExpiresAt])
   @@index([empresaId, isCancelled])
   @@map("website_services")
+}
+
+model WebsiteServiceReminderSetting {
+  id String @id @default(cuid())
+
+  empresaId String @unique
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  daysBefore Int @default(30)
+  emailSubjectTemplate String @db.Text
+  emailBodyTemplate String @db.Text
+  whatsappTemplate String @db.Text
+  isEmailEnabled Boolean @default(true)
+  isWhatsAppEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("website_service_reminder_settings")
+}
+
+model WebsiteServiceReminderLog {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  websiteServiceId String
+  websiteService   WebsiteService @relation(fields: [websiteServiceId], references: [id], onDelete: Cascade)
+
+  dueKind String
+  dueAt   DateTime
+  daysBefore Int
+  channel String
+  sentAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@unique([websiteServiceId, dueKind, dueAt, daysBefore, channel])
+  @@index([empresaId])
+  @@index([websiteServiceId])
+  @@map("website_service_reminder_logs")
+}
+
+model WebsiteServiceMessageTemplate {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  nombre String
+  descripcion String? @db.Text
+  serviceKind String @default("WEBSITE_SERVICE")
+  triggerKind String @default("EXPIRATION_REMINDER")
+  daysBefore Int @default(30)
+  emailSubjectTemplate String @db.Text
+  emailBodyTemplate String @db.Text
+  whatsappTemplate String @db.Text
+  isEmailEnabled Boolean @default(true)
+  isWhatsAppEnabled Boolean @default(true)
+  isActive Boolean @default(true)
+  isDefault Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, serviceKind, triggerKind, isActive])
+  @@index([empresaId, isDefault])
+  @@map("website_service_message_templates")
 }
 
 model WebsiteServiceModuleAccess {

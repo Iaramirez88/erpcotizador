@@ -2,12 +2,12 @@ import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { resolveUserIdFromSession } from '@/lib/session-user'
 import { getWebsiteServicesAccessForUser } from '@/lib/website-services'
-import WebsiteServicesClient from './website-services-client'
-import WebsiteServicesModuleTabs from './website-services-module-tabs'
+import WebsiteServicesModuleTabs from '../website-services-module-tabs'
+import WebsiteServiceTemplatesClient from './website-service-templates-client'
 
 export const runtime = 'nodejs'
 
-export default async function WebsiteServicesPage() {
+export default async function WebsiteServiceTemplatesPage() {
   const session = await auth()
   if (!session?.user) redirect('/auth/login')
 
@@ -22,7 +22,7 @@ export default async function WebsiteServicesPage() {
   return (
     <div className="space-y-4">
       <WebsiteServicesModuleTabs />
-      <WebsiteServicesClient />
+      <WebsiteServiceTemplatesClient />
     </div>
   )
 }

@@ -17,6 +17,7 @@ type Body = {
   tier: PlanTier
   cycle: BillingCycle
   selectedModules?: ModuleKey[]
+  purchaseMode?: 'PLAN' | 'ADDON'
 }
 
 function isPlanTier(value: unknown): value is PlanTier {
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
 
     const tier = body.tier
     const cycle = body.cycle
+    const purchaseMode = body.purchaseMode === 'ADDON' ? 'ADDON' : 'PLAN'
 
     const selectedModules = Array.isArray(body.selectedModules)
       ? body.selectedModules.filter((moduleKey): moduleKey is ModuleKey => isModuleKey(moduleKey))
@@ -82,11 +84,22 @@ export async function POST(request: Request) {
 
     const modulePriceMap = selectedModules.length ? await getPlanModulePriceMap() : undefined
     const modularQuote = selectedModules.length ? getModularPlanQuote({ selectedModules, cycle, modulePriceMap }) : null
-    const amountCOP = modularQuote?.totalCOP ?? getPlanPriceCOP(tier, cycle)
-    const discountPct = modularQuote?.annualDiscountPct ?? (cycle === 'YEARLY' ? ANNUAL_DISCOUNT_PCT : 0)
+    const addonMonthlyCOP = selectedModules.reduce((sum, moduleKey) => {
+      const price = modulePriceMap?.[moduleKey] ?? 0
+      return sum + price
+    }, 0)
+    const addonTotalCOP = cycle === 'YEARLY'
+      ? Math.round(addonMonthlyCOP * 12 * (1 - ANNUAL_DISCOUNT_PCT / 100))
+      : addonMonthlyCOP
+    const amountCOP = purchaseMode === 'ADDON'
+      ? addonTotalCOP
+      : modularQuote?.totalCOP ?? getPlanPriceCOP(tier, cycle)
+    const discountPct = purchaseMode === 'ADDON'
+      ? (cycle === 'YEARLY' ? ANNUAL_DISCOUNT_PCT : 0)
+      : modularQuote?.annualDiscountPct ?? (cycle === 'YEARLY' ? ANNUAL_DISCOUNT_PCT : 0)
 
     const ts = Date.now()
-    const reference = `PLAN-${empresaId.slice(0, 8)}-${tier}-${cycle}-${ts}`.slice(0, 60)
+    const reference = `${purchaseMode === 'ADDON' ? 'ADDON' : 'PLAN'}-${empresaId.slice(0, 8)}-${tier}-${cycle}-${ts}`.slice(0, 60)
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
     const expirationNanoseconds = Math.floor(expiresAt.getTime() * 1e6)
@@ -97,8 +110,10 @@ export async function POST(request: Request) {
     const { paymentLinkId, url } = await createBoldPaymentLink({
       reference,
       amountCOP,
-      description: modularQuote
-        ? `SGDigital - Plan ${tier} + ${selectedModules.length} módulos (${cycle === 'YEARLY' ? 'Anual' : 'Mensual'})`
+      description: purchaseMode === 'ADDON'
+        ? `SGDigital - ${selectedModules.length} módulo(s) adicional(es) (${cycle === 'YEARLY' ? 'Anual' : 'Mensual'})`
+        : modularQuote
+          ? `SGDigital - Plan ${tier} + ${selectedModules.length} módulos (${cycle === 'YEARLY' ? 'Anual' : 'Mensual'})`
         : `SGDigital - Plan ${tier} (${cycle === 'YEARLY' ? 'Anual' : 'Mensual'})`,
       payerEmail: user?.email ?? undefined,
       callbackUrl,

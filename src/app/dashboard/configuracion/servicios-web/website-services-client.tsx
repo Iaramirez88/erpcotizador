@@ -32,6 +32,7 @@ type WebsiteServiceItem = {
   hasPassword: boolean
   contactName: string | null
   contactPhone: string | null
+  contactEmail: string | null
   notes: string | null
   createdAt: string
   updatedAt: string
@@ -76,6 +77,21 @@ type AccessUsersResponse = {
   users?: Array<{ id: string; name: string | null; email: string | null; role: string }>
 }
 
+type WebsiteServiceReminderSettings = {
+  daysBefore: number
+  emailSubjectTemplate: string
+  emailBodyTemplate: string
+  whatsappTemplate: string
+  isEmailEnabled: boolean
+  isWhatsAppEnabled: boolean
+}
+
+type ReminderSettingsResponse = {
+  ok: boolean
+  error?: string
+  settings?: WebsiteServiceReminderSettings
+}
+
 type ServiceForm = {
   nombre: string
   descripcion: string
@@ -92,6 +108,7 @@ type ServiceForm = {
   loginPassword: string
   contactName: string
   contactPhone: string
+  contactEmail: string
   notes: string
 }
 
@@ -111,6 +128,7 @@ const EMPTY_FORM: ServiceForm = {
   loginPassword: '',
   contactName: '',
   contactPhone: '',
+  contactEmail: '',
   notes: '',
 }
 
@@ -207,6 +225,7 @@ export default function WebsiteServicesClient() {
         item.hostedAt,
         item.contactName,
         item.contactPhone,
+        item.contactEmail,
       ]
         .filter(Boolean)
         .join(' ')
@@ -239,6 +258,7 @@ export default function WebsiteServicesClient() {
       loginPassword: '',
       contactName: item.contactName ?? '',
       contactPhone: item.contactPhone ?? '',
+      contactEmail: item.contactEmail ?? '',
       notes: item.notes ?? '',
     })
     setDialogOpen(true)
@@ -412,7 +432,7 @@ export default function WebsiteServicesClient() {
                         <div><span className="font-medium text-slate-900">Alojado en:</span> {item.hostedAt || 'Sin dato'}</div>
                         <div><span className="font-medium text-slate-900">Creado:</span> {formatDate(item.startedAt)}</div>
                         <div><span className="font-medium text-slate-900">Valor vendido:</span> {formatCurrency(item.soldAmount || 0)}</div>
-                        <div><span className="font-medium text-slate-900">Contacto:</span> {item.contactName || 'Sin contacto'}{item.contactPhone ? ` · ${item.contactPhone}` : ''}</div>
+                        <div><span className="font-medium text-slate-900">Contacto:</span> {item.contactName || 'Sin contacto'}{item.contactPhone ? ` · ${item.contactPhone}` : ''}{item.contactEmail ? ` · ${item.contactEmail}` : ''}</div>
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2 xl:justify-end">
@@ -479,7 +499,6 @@ export default function WebsiteServicesClient() {
               ))}
             </CardContent>
           </Card>
-
           {canManageAssignments ? (
             <Card className="rounded-[26px] border-slate-200 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)]">
               <CardHeader className="border-b border-slate-100 pb-4">
@@ -571,6 +590,10 @@ export default function WebsiteServicesClient() {
             <div className="grid gap-2">
               <Label>Número de contacto</Label>
               <Input value={form.contactPhone} onChange={(e) => setForm((current) => ({ ...current, contactPhone: e.target.value }))} placeholder="Celular o WhatsApp" />
+            </div>
+            <div className="grid gap-2">
+              <Label>Correo del contacto</Label>
+              <Input type="email" value={form.contactEmail} onChange={(e) => setForm((current) => ({ ...current, contactEmail: e.target.value }))} placeholder="correo@cliente.com" />
             </div>
             <div className="grid gap-2 md:col-span-2">
               <Label>Descripción</Label>

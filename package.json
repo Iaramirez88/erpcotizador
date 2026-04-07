@@ -25,6 +25,7 @@
     "perf:apply-indexes": "tsx scripts/apply-performance-indexes.ts",
     "backfill:inventory-stock": "tsx scripts/backfill-inventory-stock-default-warehouse.ts",
     "billing:reminders": "tsx scripts/send-plan-expiration-reminders.ts",
+    "website-services:reminders": "tsx scripts/send-website-service-expiration-reminders.ts",
     "migrate:users-to-sgdigital": "tsx scripts/migrate-users-to-sgdigital.ts"
   },
   "dependencies": {
