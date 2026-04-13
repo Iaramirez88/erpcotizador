@@ -366,12 +366,19 @@ type SpecialFinishRow = { finishId: string; qty: string }
 
 type EditorialPartState = {
   formatoKey: string
+  customFormatoWidthCm: string
+  customFormatoHeightCm: string
+  machineProfileId: string
   paperId: string
   planchas: string
   planchaProfileId: string
   planchaProfileQty: string
+  planchaProfileIds: string[]
+  planchaProfileQtys: string[]
   tintaProfileId: string
   tintaProfileQty: string
+  tintaProfileIds: string[]
+  tintaProfileQtys: string[]
   sobranteMinimo: string
   finishId: string
   specialFinishId: string
@@ -389,16 +396,47 @@ type EditorialPartState = {
   desperdicioPct?: string
 }
 
-function createDefaultEditorialPart(): EditorialPartState {
+function normalizeProfileRowIds(values: unknown, legacyValue = "") {
+  const normalized = Array.isArray(values)
+    ? values.map((value) => String(value || "").trim()).filter(Boolean)
+    : []
+  if (normalized.length) return normalized
+  const legacy = String(legacyValue || "").trim()
+  return legacy ? [legacy] : [""]
+}
+
+function normalizeProfileRowQty(value: unknown, min = 1) {
+  const n = Math.trunc(parseFloat(String(value ?? "").trim()) || 0)
+  return String(Math.max(min, Number.isFinite(n) ? n : min))
+}
+
+function normalizeProfileRowQtys(values: unknown, rowCount: number, legacyValue = "1") {
+  const normalized = Array.isArray(values)
+    ? values.map((value) => normalizeProfileRowQty(value)).slice(0, rowCount)
+    : []
+  while (normalized.length < rowCount) {
+    normalized.push(normalized.length === 0 ? normalizeProfileRowQty(legacyValue) : "1")
+  }
+  return normalized.length ? normalized : ["1"]
+}
+
+function createDefaultEditorialPart(partKey: "cover" | "inner" = "cover"): EditorialPartState {
   return {
     formatoKey: "",
+    customFormatoWidthCm: "",
+    customFormatoHeightCm: "",
+    machineProfileId: "",
     paperId: "",
     planchas: "",
     planchaProfileId: "",
     planchaProfileQty: "1",
+    planchaProfileIds: [""],
+    planchaProfileQtys: ["1"],
     tintaProfileId: "",
     tintaProfileQty: "1",
-    sobranteMinimo: "100",
+    tintaProfileIds: [""],
+    tintaProfileQtys: ["1"],
+    sobranteMinimo: "120",
     finishId: "",
     specialFinishId: "",
     specialFinishQty: "0",
@@ -411,8 +449,42 @@ function createDefaultEditorialPart(): EditorialPartState {
     corteId: "",
     corteQty: "1",
     printInkFront: "4",
-    printInkBack: "1",
+    printInkBack: partKey === "inner" ? "4" : "1",
     desperdicioPct: "0",
+  }
+}
+
+function createNormalizedEditorialPart(
+  partKey: "cover" | "inner",
+  value?: Partial<EditorialPartState> | null,
+): EditorialPartState {
+  const base = createDefaultEditorialPart(partKey)
+  const merged = { ...base, ...(value ?? {}) }
+  const planchaProfileIds = normalizeProfileRowIds(merged.planchaProfileIds, merged.planchaProfileId)
+  const tintaProfileIds = normalizeProfileRowIds(merged.tintaProfileIds, merged.tintaProfileId)
+
+  return {
+    ...merged,
+    customFormatoWidthCm: String(merged.customFormatoWidthCm ?? ""),
+    customFormatoHeightCm: String(merged.customFormatoHeightCm ?? ""),
+    machineProfileId: String(merged.machineProfileId || merged.planchaProfileId || planchaProfileIds[0] || ""),
+    planchaProfileId: String(merged.planchaProfileId || planchaProfileIds[0] || ""),
+    planchaProfileQty: normalizeProfileRowQty(merged.planchaProfileQty),
+    planchaProfileIds,
+    planchaProfileQtys: normalizeProfileRowQtys(merged.planchaProfileQtys, planchaProfileIds.length, merged.planchaProfileQty),
+    tintaProfileId: String(merged.tintaProfileId || tintaProfileIds[0] || ""),
+    tintaProfileQty: normalizeProfileRowQty(merged.tintaProfileQty),
+    tintaProfileIds,
+    tintaProfileQtys: normalizeProfileRowQtys(merged.tintaProfileQtys, tintaProfileIds.length, merged.tintaProfileQty),
+    sobranteMinimo: String(merged.sobranteMinimo || base.sobranteMinimo),
+    specialFinishQty: String(merged.specialFinishQty || base.specialFinishQty),
+    plastificadoQty: normalizeProfileRowQty(merged.plastificadoQty),
+    troqueladoQty: normalizeProfileRowQty(merged.troqueladoQty),
+    troqueladaQty: normalizeProfileRowQty(merged.troqueladaQty),
+    corteQty: normalizeProfileRowQty(merged.corteQty),
+    printInkFront: String(merged.printInkFront || base.printInkFront) as PrintInkKey,
+    printInkBack: String(merged.printInkBack || base.printInkBack) as PrintInkKey,
+    desperdicioPct: String(merged.desperdicioPct || base.desperdicioPct || "0"),
   }
 }
 
@@ -449,6 +521,7 @@ export type LitografiaMeta = {
   pliegoH: string
   selectedPlanchaProfileId: string
   selectedTintaProfileId: string
+  selectedMachineProfileId?: string
   selectedPaperId: string
   selectedPlanchaProfileIds?: string[]
   selectedPlanchaProfileQtys?: string[]
@@ -561,6 +634,7 @@ export function LitografiaQuoteDialog(props: {
   const [sizes, setSizes] = useState<PrintSize[]>([])
   const [paperRequestOpen, setPaperRequestOpen] = useState(false)
   const [configError, setConfigError] = useState<string | null>(null)
+  const [selectedMachineProfileId, setSelectedMachineProfileId] = useState<string>("")
   const [selectedPlanchaProfileIds, setSelectedPlanchaProfileIds] = useState<string[]>([""])
   const [selectedPlanchaProfileQtys, setSelectedPlanchaProfileQtys] = useState<string[]>(["1"])
   const [selectedTintaProfileIds, setSelectedTintaProfileIds] = useState<string[]>([""])
@@ -607,8 +681,8 @@ export function LitografiaQuoteDialog(props: {
   const [editorialFinalCustomWidthCm, setEditorialFinalCustomWidthCm] = useState("")
   const [editorialFinalCustomHeightCm, setEditorialFinalCustomHeightCm] = useState("")
 
-  const [editorialCover, setEditorialCover] = useState<EditorialPartState>(() => createDefaultEditorialPart())
-  const [editorialInner, setEditorialInner] = useState<EditorialPartState>(() => createDefaultEditorialPart())
+  const [editorialCover, setEditorialCover] = useState<EditorialPartState>(() => createDefaultEditorialPart("cover"))
+  const [editorialInner, setEditorialInner] = useState<EditorialPartState>(() => createDefaultEditorialPart("inner"))
 
   const [costoCorte, setCostoCorte] = useState("0")
   const [costoAcabados, setCostoAcabados] = useState("0")
@@ -623,7 +697,7 @@ export function LitografiaQuoteDialog(props: {
 
   const [attemptedSubmit, setAttemptedSubmit] = useState(false)
 
-  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(true)
   const [showRunQtyDetails, setShowRunQtyDetails] = useState(false)
 
   const [customFields, setCustomFields] = useState<CustomField[]>([])
@@ -640,6 +714,91 @@ export function LitografiaQuoteDialog(props: {
   const primaryPlanchaProfileId = planchaIdsNormalized[0] ?? ""
   const primaryTintaProfileId = tintaIdsNormalized[0] ?? ""
   const primaryPaperId = String(paperRows[0]?.paperId ?? "").trim()
+
+  const updateEditorialPart = useCallback(
+    (partKey: "cover" | "inner", updater: (prev: EditorialPartState) => EditorialPartState) => {
+      const setter = partKey === "cover" ? setEditorialCover : setEditorialInner
+      setter((prev) => createNormalizedEditorialPart(partKey, updater(prev)))
+    },
+    [],
+  )
+
+  const addEditorialProfileRow = useCallback(
+    (partKey: "cover" | "inner", profileType: "plancha" | "tinta") => {
+      updateEditorialPart(partKey, (prev) => {
+        if (profileType === "plancha") {
+          return {
+            ...prev,
+            planchaProfileIds: [...prev.planchaProfileIds, ""],
+            planchaProfileQtys: [...prev.planchaProfileQtys, "1"],
+          }
+        }
+        return {
+          ...prev,
+          tintaProfileIds: [...prev.tintaProfileIds, ""],
+          tintaProfileQtys: [...prev.tintaProfileQtys, "1"],
+        }
+      })
+    },
+    [updateEditorialPart],
+  )
+
+  const removeEditorialProfileRow = useCallback(
+    (partKey: "cover" | "inner", profileType: "plancha" | "tinta", index: number) => {
+      updateEditorialPart(partKey, (prev) => {
+        if (profileType === "plancha") {
+          const nextIds = prev.planchaProfileIds.filter((_, idx) => idx !== index)
+          const nextQtys = prev.planchaProfileQtys.filter((_, idx) => idx !== index)
+          return {
+            ...prev,
+            planchaProfileIds: nextIds.length ? nextIds : [""],
+            planchaProfileQtys: nextQtys.length ? nextQtys : ["1"],
+          }
+        }
+        const nextIds = prev.tintaProfileIds.filter((_, idx) => idx !== index)
+        const nextQtys = prev.tintaProfileQtys.filter((_, idx) => idx !== index)
+        return {
+          ...prev,
+          tintaProfileIds: nextIds.length ? nextIds : [""],
+          tintaProfileQtys: nextQtys.length ? nextQtys : ["1"],
+        }
+      })
+    },
+    [updateEditorialPart],
+  )
+
+  const updateEditorialProfileRow = useCallback(
+    (partKey: "cover" | "inner", profileType: "plancha" | "tinta", index: number, value: string) => {
+      updateEditorialPart(partKey, (prev) => {
+        const normalized = String(value || "").trim()
+        if (profileType === "plancha") {
+          const nextIds = [...prev.planchaProfileIds]
+          nextIds[index] = normalized
+          return { ...prev, planchaProfileIds: nextIds }
+        }
+        const nextIds = [...prev.tintaProfileIds]
+        nextIds[index] = normalized
+        return { ...prev, tintaProfileIds: nextIds }
+      })
+    },
+    [updateEditorialPart],
+  )
+
+  const updateEditorialProfileQty = useCallback(
+    (partKey: "cover" | "inner", profileType: "plancha" | "tinta", index: number, qty: string) => {
+      updateEditorialPart(partKey, (prev) => {
+        if (profileType === "plancha") {
+          const nextQtys = [...prev.planchaProfileQtys]
+          nextQtys[index] = qty
+          return { ...prev, planchaProfileQtys: nextQtys }
+        }
+        const nextQtys = [...prev.tintaProfileQtys]
+        nextQtys[index] = qty
+        return { ...prev, tintaProfileQtys: nextQtys }
+      })
+    },
+    [updateEditorialPart],
+  )
 
   const editorialMode = quoteMode === "editorial"
   const editorialEnabled = editorialMode && Boolean(String(selectedEditorialProductoKey || "").trim())
@@ -664,7 +823,7 @@ export function LitografiaQuoteDialog(props: {
       return
     }
 
-    setShowAdvanced(false)
+    setShowAdvanced(true)
     setShowRunQtyDetails(false)
 
     const prev = prevQuoteModeRef.current
@@ -675,7 +834,7 @@ export function LitografiaQuoteDialog(props: {
 
       setCantidad("1000")
       setColores("1")
-      setSobranteMinimo("100")
+      setSobranteMinimo("120")
       setPrintInkFront("4")
       setPrintInkBack("1")
 
@@ -687,6 +846,7 @@ export function LitografiaQuoteDialog(props: {
 
       setConfigError(null)
 
+      setSelectedMachineProfileId("")
       setSelectedPlanchaProfileIds([""])
       setSelectedPlanchaProfileQtys(["1"])
       setSelectedTintaProfileIds([""])
@@ -704,7 +864,7 @@ export function LitografiaQuoteDialog(props: {
       setCostoPapelUnidad("80")
       setSelectedPaperTipo("")
       setSelectedPaperGramaje("")
-      setSobranteMinimo("100")
+      setSobranteMinimo("120")
 
       setSelectedFinishIds([""])
       setSpecialFinishRows([{ finishId: "", qty: "1" }])
@@ -732,14 +892,14 @@ export function LitografiaQuoteDialog(props: {
       setEditorialFinalFormatoKey("")
       setEditorialFinalCustomWidthCm("")
       setEditorialFinalCustomHeightCm("")
-      setEditorialCover(createDefaultEditorialPart())
-      setEditorialInner(createDefaultEditorialPart())
+      setEditorialCover(createDefaultEditorialPart("cover"))
+      setEditorialInner(createDefaultEditorialPart("inner"))
     }
 
     prevQuoteModeRef.current = quoteMode
   }, [props.open, quoteMode])
 
-  const SOBRANTE_MINIMO_BASE_DEFAULT = 100
+  const SOBRANTE_MINIMO_BASE_DEFAULT = 120
 
   const isTwoSided = useMemo(() => baseInkCount(printInkBack) > 0, [printInkBack])
   const isCmykFront = useMemo(() => baseInkCount(printInkFront) >= 4, [printInkFront])
@@ -1098,6 +1258,7 @@ export function LitografiaQuoteDialog(props: {
       pliegoH,
       selectedPlanchaProfileId: primaryPlanchaProfileId,
       selectedTintaProfileId: primaryTintaProfileId,
+      selectedMachineProfileId,
       selectedPaperId: primaryPaperId,
       selectedPlanchaProfileIds,
       selectedPlanchaProfileQtys,
@@ -1145,10 +1306,10 @@ export function LitografiaQuoteDialog(props: {
         : undefined,
       costoProduccion: computed?.costoProduccion,
       precioVenta: quoteAmounts?.subtotalSinIva ?? computed?.precioVenta,
-      selectedMachineName: primaryPlanchaProfile?.nombre,
-      selectedMachineWidthCm: primaryPlanchaProfile ? String(primaryMachineWidth) : undefined,
-      selectedMachineHeightCm: primaryPlanchaProfile ? String(primaryMachineHeight) : undefined,
-      selectedMachineGapCm: primaryPlanchaProfile ? String(primaryMachineGap) : undefined,
+      selectedMachineName: primaryMachineProfile?.nombre,
+      selectedMachineWidthCm: primaryMachineProfile ? String(primaryMachineWidth) : undefined,
+      selectedMachineHeightCm: primaryMachineProfile ? String(primaryMachineHeight) : undefined,
+      selectedMachineGapCm: primaryMachineProfile ? String(primaryMachineGap) : undefined,
       selectedFinalSizeName: editorialEnabled ? editorialFinalPreset?.nombre : selectedPreset?.nombre,
       customFormatoWidthCm,
       customFormatoHeightCm,
@@ -1202,6 +1363,7 @@ export function LitografiaQuoteDialog(props: {
 
     const planchaLegacy = String(meta.selectedPlanchaProfileId ?? "").trim()
     const tintaLegacy = String(meta.selectedTintaProfileId ?? "").trim()
+    const machineLegacy = String(meta.selectedMachineProfileId ?? "").trim()
     const paperLegacy = String(meta.selectedPaperId ?? "").trim()
 
     const planchaIds = Array.isArray(meta.selectedPlanchaProfileIds) ? meta.selectedPlanchaProfileIds : []
@@ -1225,6 +1387,7 @@ export function LitografiaQuoteDialog(props: {
 
     setSelectedPlanchaProfileIds(nextPlanchasIds)
     setSelectedTintaProfileIds(nextTintasIds)
+    setSelectedMachineProfileId(machineLegacy || nextPlanchasIds[0] || "")
     setSelectedPlanchaProfileQtys(nextPlanchasIds.map((_, i) => normalizeQty(planchaQtys[i] ?? "1")))
     setSelectedTintaProfileQtys(nextTintasIds.map((_, i) => normalizeQty(tintaQtys[i] ?? "1")))
 
@@ -1295,10 +1458,10 @@ export function LitografiaQuoteDialog(props: {
     setEditorialFinalCustomHeightCm(String(meta.editorialFinalCustomHeightCm || ""))
 
     const parts = meta.editorialParts
-    if (parts?.cover) setEditorialCover({ ...createDefaultEditorialPart(), ...parts.cover })
-    else setEditorialCover(createDefaultEditorialPart())
-    if (parts?.inner) setEditorialInner({ ...createDefaultEditorialPart(), ...parts.inner })
-    else setEditorialInner(createDefaultEditorialPart())
+    if (parts?.cover) setEditorialCover(createNormalizedEditorialPart("cover", parts.cover))
+    else setEditorialCover(createDefaultEditorialPart("cover"))
+    if (parts?.inner) setEditorialInner(createNormalizedEditorialPart("inner", parts.inner))
+    else setEditorialInner(createDefaultEditorialPart("inner"))
   }
 
   useEffect(() => {
@@ -1358,6 +1521,26 @@ export function LitografiaQuoteDialog(props: {
       },
     ]
   }, [sizeOptions, customSizeOption])
+
+  const resolveEditorialPartSizeOption = useCallback(
+    (part: EditorialPartState) => {
+      const normalizedKey = String(part.formatoKey || "").trim()
+      if (!normalizedKey) return null
+      if (normalizedKey === CUSTOM_PRINT_SIZE_KEY) {
+        const widthCm = parsePositiveCm(part.customFormatoWidthCm)
+        const heightCm = parsePositiveCm(part.customFormatoHeightCm)
+        if (widthCm == null || heightCm == null) return null
+        return {
+          key: CUSTOM_PRINT_SIZE_KEY,
+          nombre: `Tamaño personalizado (${formatCm(widthCm)}×${formatCm(heightCm)} cm)`,
+          widthCm,
+          heightCm,
+        }
+      }
+      return sizeOptions.find((option) => option.key === normalizedKey) || null
+    },
+    [sizeOptions],
+  )
 
   const resolveSizeOption = useCallback((key: string) => {
     const normalizedKey = String(key || "").trim()
@@ -1524,9 +1707,12 @@ export function LitografiaQuoteDialog(props: {
 
   const primaryPlanchaProfile = selectedPlanchaProfiles[0] ?? null
   const primaryTintaProfile = selectedTintaProfiles[0] ?? null
+  const primaryMachineProfile = selectedMachineProfileId
+    ? profiles.find((profile) => profile.id === selectedMachineProfileId) || null
+    : null
   const primaryPaper = (primaryPaperId ? papers.find((p) => p.id === primaryPaperId) || null : null)
-  const primaryMachineWidth = Number(primaryPlanchaProfile?.anchoUtilCm) || 0
-  const primaryMachineHeight = Number(primaryPlanchaProfile?.altoUtilCm) || 0
+  const primaryMachineWidth = Number(primaryMachineProfile?.anchoUtilCm) || 0
+  const primaryMachineHeight = Number(primaryMachineProfile?.altoUtilCm) || 0
   const primaryMachineGap = 0
 
   const planchaCostConfigured = useMemo(() => {
@@ -1604,6 +1790,13 @@ export function LitografiaQuoteDialog(props: {
 
   useEffect(() => {
     if (!props.open) return
+    if (!selectedMachineProfileId && activePlanchaProfiles.length) {
+      setSelectedMachineProfileId(activePlanchaProfiles[0]!.id)
+    }
+  }, [props.open, activePlanchaProfiles, selectedMachineProfileId])
+
+  useEffect(() => {
+    if (!props.open) return
     if (!primaryPlanchaProfileId && activePlanchaProfiles.length) {
       setSelectedPlanchaProfileIds([activePlanchaProfiles[0]!.id])
       setSelectedPlanchaProfileQtys(["1"])
@@ -1644,12 +1837,38 @@ export function LitografiaQuoteDialog(props: {
     if (!editorialMode) return
 
     if (activePlanchaProfiles.length) {
-      setEditorialCover((prev) => (prev.planchaProfileId ? prev : { ...prev, planchaProfileId: activePlanchaProfiles[0]!.id }))
-      setEditorialInner((prev) => (prev.planchaProfileId ? prev : { ...prev, planchaProfileId: activePlanchaProfiles[0]!.id }))
+      setEditorialCover((prev) => createNormalizedEditorialPart("cover", prev.machineProfileId || prev.planchaProfileIds[0]
+        ? prev
+        : {
+          ...prev,
+          machineProfileId: activePlanchaProfiles[0]!.id,
+          planchaProfileIds: [activePlanchaProfiles[0]!.id],
+          planchaProfileQtys: ["1"],
+        }))
+      setEditorialInner((prev) => createNormalizedEditorialPart("inner", prev.machineProfileId || prev.planchaProfileIds[0]
+        ? prev
+        : {
+          ...prev,
+          machineProfileId: activePlanchaProfiles[0]!.id,
+          planchaProfileIds: [activePlanchaProfiles[0]!.id],
+          planchaProfileQtys: ["1"],
+        }))
     }
     if (activeTintaProfiles.length) {
-      setEditorialCover((prev) => (prev.tintaProfileId ? prev : { ...prev, tintaProfileId: activeTintaProfiles[0]!.id }))
-      setEditorialInner((prev) => (prev.tintaProfileId ? prev : { ...prev, tintaProfileId: activeTintaProfiles[0]!.id }))
+      setEditorialCover((prev) => createNormalizedEditorialPart("cover", prev.tintaProfileIds[0]
+        ? prev
+        : {
+          ...prev,
+          tintaProfileIds: [activeTintaProfiles[0]!.id],
+          tintaProfileQtys: ["1"],
+        }))
+      setEditorialInner((prev) => createNormalizedEditorialPart("inner", prev.tintaProfileIds[0]
+        ? prev
+        : {
+          ...prev,
+          tintaProfileIds: [activeTintaProfiles[0]!.id],
+          tintaProfileQtys: ["1"],
+        }))
     }
     if (activePapers.length) {
       setEditorialCover((prev) => (prev.paperId ? prev : { ...prev, paperId: activePapers[0]!.id }))
@@ -1759,12 +1978,12 @@ export function LitografiaQuoteDialog(props: {
   }, [props.open, selectedEditorialProductoKey, editorialTotalPaginas, editorialPaginasPortadaContraportada, editorialPaginasPorPliego])
 
   const editorialInnerCompaginadoQty = useMemo(() => {
-    if (!editorialEnabled || !isEditorialCartilla) return 0
+    if (!editorialEnabled) return 0
     const runQty = Math.max(0, Math.trunc(parseFloat(cantidad) || 0))
-    const pliegosPorUnidad = Math.max(0, editorialSplitCalc?.innerPliegosPorUnidad ?? 0)
-    if (runQty <= 0 || pliegosPorUnidad <= 0) return 0
-    return runQty * pliegosPorUnidad
-  }, [cantidad, editorialEnabled, editorialSplitCalc, isEditorialCartilla])
+    const hojasInternasPorUnidad = Math.max(0, Math.ceil((Math.max(0, Math.trunc(parseFloat(editorialTotalPaginas) || 0))) / 2))
+    if (runQty <= 0 || hojasInternasPorUnidad <= 0) return 0
+    return runQty * hojasInternasPorUnidad
+  }, [cantidad, editorialEnabled, editorialTotalPaginas])
 
   useEffect(() => {
     if (!props.open) return
@@ -1807,9 +2026,9 @@ export function LitografiaQuoteDialog(props: {
     if (runQty <= 0) return null
     const paper = papers.find((p) => p.id === String(part.paperId || "").trim()) || null
     if (!paper) return null
-    const preset = resolveSizeOption(String(part.formatoKey || "").trim())
+    const preset = resolveEditorialPartSizeOption(part)
     if (!preset) return null
-    const planchaProfile = profiles.find((p) => p.id === String(part.planchaProfileId || "").trim()) || null
+    const machineProfile = profiles.find((p) => p.id === String(part.machineProfileId || part.planchaProfileId || "").trim()) || null
 
     const sobranteDefault = parseFloat(sobranteMinimo) || 0
     const sobranteLocal = parseFloat(String(part.sobranteMinimo))
@@ -1836,8 +2055,8 @@ export function LitografiaQuoteDialog(props: {
       papelPliegoHeightCm: paper.pliegoHeightCm ?? 0,
       papelFormatoWidthCm: preset.widthCm ?? 0,
       papelFormatoHeightCm: preset.heightCm ?? 0,
-      maquinaPliegoWidthCm: Number(planchaProfile?.anchoUtilCm) || 0,
-      maquinaPliegoHeightCm: Number(planchaProfile?.altoUtilCm) || 0,
+      maquinaPliegoWidthCm: Number(machineProfile?.anchoUtilCm) || 0,
+      maquinaPliegoHeightCm: Number(machineProfile?.altoUtilCm) || 0,
       maquinaSeparacionCm: 0,
       costoPliego: 1,
       costoCorte: 0,
@@ -1855,15 +2074,15 @@ export function LitografiaQuoteDialog(props: {
       sobrantePiezas: r.sobranteMinimo,
       paperLabel: `${paper.nombre}${paper.gramaje ? ` ${paper.gramaje}g` : ""} • ${formatCm(paper.pliegoWidthCm)}×${formatCm(paper.pliegoHeightCm)} cm`,
       formatLabel: `${preset.nombre} (${formatCm(preset.widthCm)}×${formatCm(preset.heightCm)} cm)`,
-      machineLabel: planchaProfile
-        ? `${planchaProfile.nombre} (${formatCm(planchaProfile.anchoUtilCm)}×${formatCm(planchaProfile.altoUtilCm)} cm)`
+      machineLabel: machineProfile
+        ? `${machineProfile.nombre} (${formatCm(machineProfile.anchoUtilCm)}×${formatCm(machineProfile.altoUtilCm)} cm)`
         : "Maquina sin perfil",
       sheetWidthCm: paper.pliegoWidthCm ?? 0,
       sheetHeightCm: paper.pliegoHeightCm ?? 0,
-      machineSheetWidthCm: r.hojaMaquinaWidthCm ?? (Number(planchaProfile?.anchoUtilCm) || 0),
-      machineSheetHeightCm: r.hojaMaquinaHeightCm ?? (Number(planchaProfile?.altoUtilCm) || 0),
-      utilWidthCm: Number(planchaProfile?.anchoUtilCm) || paper.pliegoWidthCm || 0,
-      utilHeightCm: Number(planchaProfile?.altoUtilCm) || paper.pliegoHeightCm || 0,
+      machineSheetWidthCm: r.hojaMaquinaWidthCm ?? (Number(machineProfile?.anchoUtilCm) || 0),
+      machineSheetHeightCm: r.hojaMaquinaHeightCm ?? (Number(machineProfile?.altoUtilCm) || 0),
+      utilWidthCm: Number(machineProfile?.anchoUtilCm) || paper.pliegoWidthCm || 0,
+      utilHeightCm: Number(machineProfile?.altoUtilCm) || paper.pliegoHeightCm || 0,
       pieceWidthCm: preset.widthCm ?? 0,
       pieceHeightCm: preset.heightCm ?? 0,
       piezasPorPliego: r.piezasPorPliego,
@@ -1880,7 +2099,7 @@ export function LitografiaQuoteDialog(props: {
       orientacionImpresion: r.orientacionImpresion,
       orientacionCorte: r.orientacionCorte,
     }
-  }, [cantidad, papers, profiles, sobranteMinimo, resolveSizeOption, editorialFoldParts])
+  }, [cantidad, papers, profiles, sobranteMinimo, resolveEditorialPartSizeOption, editorialFoldParts])
 
   const editorialCoverSheetsPreview = useMemo(() => {
     if (!editorialEnabled) return null
@@ -1895,23 +2114,23 @@ export function LitografiaQuoteDialog(props: {
   }, [editorialEnabled, editorialSplitCalc?.innerPliegosPorUnidad, computeEditorialSheetsPreview, editorialInner])
 
   const editorialCoverPreset = useMemo(
-    () => resolveSizeOption(String(editorialCover.formatoKey || "").trim()),
-    [editorialCover.formatoKey, resolveSizeOption]
+    () => resolveEditorialPartSizeOption(editorialCover),
+    [editorialCover, resolveEditorialPartSizeOption]
   )
 
   const editorialInnerPreset = useMemo(
-    () => resolveSizeOption(String(editorialInner.formatoKey || "").trim()),
-    [editorialInner.formatoKey, resolveSizeOption]
+    () => resolveEditorialPartSizeOption(editorialInner),
+    [editorialInner, resolveEditorialPartSizeOption]
   )
 
   const editorialCoverPlanchaProfile = useMemo(
-    () => profiles.find((p) => p.id === String(editorialCover.planchaProfileId || "").trim()) || null,
-    [editorialCover.planchaProfileId, profiles]
+    () => profiles.find((p) => p.id === String(editorialCover.machineProfileId || editorialCover.planchaProfileId || "").trim()) || null,
+    [editorialCover.machineProfileId, editorialCover.planchaProfileId, profiles]
   )
 
   const editorialInnerPlanchaProfile = useMemo(
-    () => profiles.find((p) => p.id === String(editorialInner.planchaProfileId || "").trim()) || null,
-    [editorialInner.planchaProfileId, profiles]
+    () => profiles.find((p) => p.id === String(editorialInner.machineProfileId || editorialInner.planchaProfileId || "").trim()) || null,
+    [editorialInner.machineProfileId, editorialInner.planchaProfileId, profiles]
   )
 
   const editorialCoverPaper = useMemo(
@@ -1953,9 +2172,23 @@ export function LitografiaQuoteDialog(props: {
   }, [editorialFinalPreset, editorialClosedSize, sizeOptions])
 
   const editorialOpenSizeLabel = useMemo(() => {
-    if (!editorialOpenSize) return null
-    return `${editorialOpenSize.nombre} (${formatCm(editorialOpenSize.widthCm)}×${formatCm(editorialOpenSize.heightCm)} cm)`
-  }, [editorialOpenSize])
+    const coverLabel = editorialCoverPreset
+      ? `Portada ${editorialCoverPreset.nombre} (${formatCm(editorialCoverPreset.widthCm)}×${formatCm(editorialCoverPreset.heightCm)} cm)`
+      : null
+    const innerLabel = editorialInnerPreset
+      ? `Internas ${editorialInnerPreset.nombre} (${formatCm(editorialInnerPreset.widthCm)}×${formatCm(editorialInnerPreset.heightCm)} cm)`
+      : null
+    if (coverLabel && innerLabel) {
+      if (
+        nearlyEqualCm(editorialCoverPreset!.widthCm, editorialInnerPreset!.widthCm) &&
+        nearlyEqualCm(editorialCoverPreset!.heightCm, editorialInnerPreset!.heightCm)
+      ) {
+        return `${editorialCoverPreset!.nombre} (${formatCm(editorialCoverPreset!.widthCm)}×${formatCm(editorialCoverPreset!.heightCm)} cm)`
+      }
+      return `${coverLabel} • ${innerLabel}`
+    }
+    return coverLabel || innerLabel
+  }, [editorialCoverPreset, editorialInnerPreset])
 
   const editorialClosedSizeLabel = useMemo(() => {
     if (!editorialClosedSize) return null
@@ -1979,19 +2212,17 @@ export function LitografiaQuoteDialog(props: {
     const defaultFormatoKey = editorialRecommendedOpenPreset?.key || editorialQuickFormats[0]?.key || sizeOptions[0]?.key || ""
     const defaults = editorialSplitCalc
 
-    if (defaultFormatoKey === CUSTOM_PRINT_SIZE_KEY && editorialRecommendedOpenPreset) {
-      setCustomFormatoWidthCm(String(editorialRecommendedOpenPreset.widthCm))
-      setCustomFormatoHeightCm(String(editorialRecommendedOpenPreset.heightCm))
-    }
-
     setEditorialCover((prev) => {
       const next: EditorialPartState = { ...prev }
       if (!String(next.paperId || "").trim()) next.paperId = defaultPaperId
       if (!String(next.formatoKey || "").trim()) next.formatoKey = defaultFormatoKey
       if (!String(next.sobranteMinimo || "").trim()) next.sobranteMinimo = sobranteMinimo
+      if (!String(next.machineProfileId || "").trim()) next.machineProfileId = activePlanchaProfiles[0]?.id || ""
+      if (!String(next.planchaProfileIds[0] || "").trim()) next.planchaProfileIds = [activePlanchaProfiles[0]?.id || ""]
+      if (!String(next.tintaProfileIds[0] || "").trim()) next.tintaProfileIds = [activeTintaProfiles[0]?.id || ""]
       if (!String(next.planchas || "").trim() && defaults) next.planchas = String(defaults.coverPlanchas || 0)
       next.desperdicioPct = "0"
-      return next
+      return createNormalizedEditorialPart("cover", next)
     })
 
     setEditorialInner((prev) => {
@@ -1999,22 +2230,15 @@ export function LitografiaQuoteDialog(props: {
       if (!String(next.paperId || "").trim()) next.paperId = defaultPaperId
       if (!String(next.formatoKey || "").trim()) next.formatoKey = defaultFormatoKey
       if (!String(next.sobranteMinimo || "").trim()) next.sobranteMinimo = sobranteMinimo
+      if (!String(next.machineProfileId || "").trim()) next.machineProfileId = activePlanchaProfiles[0]?.id || ""
+      if (!String(next.planchaProfileIds[0] || "").trim()) next.planchaProfileIds = [activePlanchaProfiles[0]?.id || ""]
+      if (!String(next.tintaProfileIds[0] || "").trim()) next.tintaProfileIds = [activeTintaProfiles[0]?.id || ""]
       if (!String(next.planchas || "").trim() && defaults) next.planchas = String(defaults.innerPlanchas || 0)
+      if (next.printInkFront === "4" && next.printInkBack === "1") next.printInkBack = "4"
       next.desperdicioPct = "0"
-      return next
+      return createNormalizedEditorialPart("inner", next)
     })
-  }, [props.open, selectedEditorialProductoKey, editorialSplitCalc, activePapers, sobranteMinimo, editorialQuickFormats, sizeOptions, editorialRecommendedOpenPreset])
-
-  useEffect(() => {
-    if (!props.open) return
-    if (!editorialEnabled) return
-    const coverKey = String(editorialCover.formatoKey || "").trim()
-    const innerKey = String(editorialInner.formatoKey || "").trim()
-    const next = coverKey || innerKey
-    if (!next) return
-    if (coverKey !== next) setEditorialCover((prev) => ({ ...prev, formatoKey: next }))
-    if (innerKey !== next) setEditorialInner((prev) => ({ ...prev, formatoKey: next }))
-  }, [props.open, editorialEnabled, editorialCover.formatoKey, editorialInner.formatoKey])
+  }, [props.open, selectedEditorialProductoKey, editorialSplitCalc, activePapers, activePlanchaProfiles, activeTintaProfiles, sobranteMinimo, editorialQuickFormats, sizeOptions, editorialRecommendedOpenPreset])
 
   useEffect(() => {
     const load = async () => {
@@ -2090,7 +2314,6 @@ export function LitografiaQuoteDialog(props: {
       const defaults = editorialSplitCalc
       if (!defaults) return null
 
-      const presetByKey = new Map(allSizeOptions.map((s) => [s.key, resolveSizeOption(s.key)] as const))
       const profileById = new Map(profiles.map((p) => [p.id, p] as const))
 
       const transporte = parseFloat(costoTransporte) || 0
@@ -2114,23 +2337,30 @@ export function LitografiaQuoteDialog(props: {
         const paper = papers.find((p) => p.id === String(part.paperId || "").trim()) || null
         if (!paper) return null
 
-        const preset = presetByKey.get(String(part.formatoKey || "").trim()) || null
+        const preset = resolveEditorialPartSizeOption(part)
         if (!preset) return null
 
-        const planchaProfile = part.planchaProfileId ? profileById.get(String(part.planchaProfileId || "").trim()) || null : null
-        const tintaProfile = part.tintaProfileId ? profileById.get(String(part.tintaProfileId || "").trim()) || null : null
-        const planchaProfileQty = Math.max(1, Math.trunc(parseFloat(String(part.planchaProfileQty || "1")) || 0) || 1)
-        const tintaProfileQty = Math.max(1, Math.trunc(parseFloat(String(part.tintaProfileQty || "1")) || 0) || 1)
-        const planchaCostPorColor = (Number(planchaProfile?.costoPlanchaPorColor) || 0) * planchaProfileQty
-        const tintaCostPorColor = (Number(tintaProfile?.costoTintaPorColor) || 0) * tintaProfileQty
+        const machineProfile = part.machineProfileId ? profileById.get(String(part.machineProfileId || "").trim()) || null : null
+        const planchaCostPorColor = part.planchaProfileIds.reduce((total, id, index) => {
+          const profile = profileById.get(String(id || "").trim())
+          if (!profile) return total
+          const qty = Math.max(1, Math.trunc(parseFloat(String(part.planchaProfileQtys[index] || "1")) || 0) || 1)
+          return total + ((Number(profile.costoPlanchaPorColor) || 0) * qty)
+        }, 0)
+        const tintaCostPorColor = part.tintaProfileIds.reduce((total, id, index) => {
+          const profile = profileById.get(String(id || "").trim())
+          if (!profile) return total
+          const qty = Math.max(1, Math.trunc(parseFloat(String(part.tintaProfileQtys[index] || "1")) || 0) || 1)
+          return total + ((Number(profile.costoTintaPorColor) || 0) * qty)
+        }, 0)
 
         const tintasLocal: 1 | 2 | 4 = 4
         const planchasLocal = Math.max(0, Math.trunc(Number(planchasPorUnidad) || 0))
         const sobranteLocal = parseFloat(String(part.sobranteMinimo))
 
         const finish = part.finishId ? finishes.find((f) => f.id === part.finishId) || null : null
-        const finishMultiplier = finish && isEditorialCartilla && partKey === "inner" && isCompaginadoFinish(finish)
-          ? Math.max(1, runQty * Math.max(1, pliegosPorUnidad))
+        const finishMultiplier = finish && partKey === "inner" && isCompaginadoFinish(finish)
+          ? Math.max(1, editorialInnerCompaginadoQty)
           : 1
         const finishesCost = finish && !finish.especial && getGrupo(finish) === "ACABADO"
           ? (Number(finish.valor) || 0) * finishMultiplier
@@ -2147,6 +2377,10 @@ export function LitografiaQuoteDialog(props: {
         const troq = part.troqueladoId ? finishes.find((f) => f.id === part.troqueladoId) || null : null
         const troqQty = Math.max(1, Math.trunc(parseFloat(String(part.troqueladoQty)) || 0) || 1)
         const troqCost = troq && getGrupo(troq) === "TROQUELADO" ? (Number(troq.valor) || 0) * troqQty : 0
+
+        const troquelada = part.troqueladaId ? finishes.find((f) => f.id === part.troqueladaId) || null : null
+        const troqueladaQty = Math.max(1, Math.trunc(parseFloat(String(part.troqueladaQty)) || 0) || 1)
+        const troqueladaCost = troquelada && getGrupo(troquelada) === "TROQUELADO" ? (Number(troquelada.valor) || 0) * troqueladaQty : 0
 
         const corteOpt = part.corteId ? finishes.find((f) => f.id === part.corteId) || null : null
         const corteQtyLocal = Math.max(1, Math.trunc(parseFloat(String(part.corteQty)) || 0) || 1)
@@ -2173,12 +2407,12 @@ export function LitografiaQuoteDialog(props: {
           papelPliegoHeightCm: paper.pliegoHeightCm ?? 0,
           papelFormatoWidthCm: preset.widthCm ?? 0,
           papelFormatoHeightCm: preset.heightCm ?? 0,
-          maquinaPliegoWidthCm: Number(planchaProfile?.anchoUtilCm) || 0,
-          maquinaPliegoHeightCm: Number(planchaProfile?.altoUtilCm) || 0,
+          maquinaPliegoWidthCm: Number(machineProfile?.anchoUtilCm) || 0,
+          maquinaPliegoHeightCm: Number(machineProfile?.altoUtilCm) || 0,
           maquinaSeparacionCm: 0,
           costoPliego: paper.costoPliego ?? 0,
           costoCorte: corteCostLocal,
-          costoAcabados: finishesCost + specialCost + plastCost + troqCost,
+          costoAcabados: finishesCost + specialCost + plastCost + troqCost + troqueladaCost,
           costoTransporte: 0,
           margenPct: 0,
         })
@@ -2236,6 +2470,7 @@ export function LitografiaQuoteDialog(props: {
       colores: tintas,
       desperdicioPct: 0,
       sobranteMinimo: sobrante,
+      sobranteMinimoUnidad: papelPorPliego ? "hoja_maquina" : "pieza_final",
       costoPlanchaPorColor: toPerColorCost(planchaCostForCompute, tintas),
       costoTintaPorColor: toPerColorCost(tintaCostForCompute, tintas),
       costoPapelUnidad: parseFloat(costoPapelUnidad) || 0,
@@ -2282,6 +2517,7 @@ export function LitografiaQuoteDialog(props: {
         colores: tintas,
         desperdicioPct: 0,
         sobranteMinimo: sobrante,
+        sobranteMinimoUnidad: "hoja_maquina",
         costoPlanchaPorColor: toPerColorCost(planchaCostForCompute, tintas),
         costoTintaPorColor: toPerColorCost(tintaCostForCompute, tintas),
         costoPapelUnidad: 0,
@@ -2321,6 +2557,7 @@ export function LitografiaQuoteDialog(props: {
           colores: tintas,
           desperdicioPct: 0,
           sobranteMinimo: sobrante,
+          sobranteMinimoUnidad: "hoja_maquina",
           costoPlanchaPorColor: 0,
           costoTintaPorColor: 0,
           costoPapelUnidad: 0,
@@ -2415,7 +2652,6 @@ export function LitografiaQuoteDialog(props: {
       const defaults = editorialSplitCalc
       if (!defaults) return null
 
-      const presetByKey = new Map(allSizeOptions.map((s) => [s.key, resolveSizeOption(s.key)] as const))
       const profileById = new Map(profiles.map((p) => [p.id, p] as const))
 
       const transporte = parseFloat(costoTransporte) || 0
@@ -2439,23 +2675,30 @@ export function LitografiaQuoteDialog(props: {
         const paper = papers.find((p) => p.id === String(part.paperId || "").trim()) || null
         if (!paper) return null
 
-        const preset = presetByKey.get(String(part.formatoKey || "").trim()) || null
+        const preset = resolveEditorialPartSizeOption(part)
         if (!preset) return null
 
-        const planchaProfile = part.planchaProfileId ? profileById.get(String(part.planchaProfileId || "").trim()) || null : null
-        const tintaProfile = part.tintaProfileId ? profileById.get(String(part.tintaProfileId || "").trim()) || null : null
-        const planchaProfileQty = Math.max(1, Math.trunc(parseFloat(String(part.planchaProfileQty || "1")) || 0) || 1)
-        const tintaProfileQty = Math.max(1, Math.trunc(parseFloat(String(part.tintaProfileQty || "1")) || 0) || 1)
-        const planchaCostPorColor = (Number(planchaProfile?.costoPlanchaPorColor) || 0) * planchaProfileQty
-        const tintaCostPorColor = (Number(tintaProfile?.costoTintaPorColor) || 0) * tintaProfileQty
+        const machineProfile = part.machineProfileId ? profileById.get(String(part.machineProfileId || "").trim()) || null : null
+        const planchaCostPorColor = part.planchaProfileIds.reduce((total, id, index) => {
+          const profile = profileById.get(String(id || "").trim())
+          if (!profile) return total
+          const qty = Math.max(1, Math.trunc(parseFloat(String(part.planchaProfileQtys[index] || "1")) || 0) || 1)
+          return total + ((Number(profile.costoPlanchaPorColor) || 0) * qty)
+        }, 0)
+        const tintaCostPorColor = part.tintaProfileIds.reduce((total, id, index) => {
+          const profile = profileById.get(String(id || "").trim())
+          if (!profile) return total
+          const qty = Math.max(1, Math.trunc(parseFloat(String(part.tintaProfileQtys[index] || "1")) || 0) || 1)
+          return total + ((Number(profile.costoTintaPorColor) || 0) * qty)
+        }, 0)
 
         const tintasLocal: 1 | 2 | 4 = 4
         const planchasLocal = Math.max(0, Math.trunc(Number(planchasPorUnidad) || 0))
         const sobranteLocal = parseFloat(String(part.sobranteMinimo))
 
         const finish = part.finishId ? finishes.find((f) => f.id === part.finishId) || null : null
-        const finishMultiplier = finish && isEditorialCartilla && partKey === "inner" && isCompaginadoFinish(finish)
-          ? Math.max(1, runQty * Math.max(1, pliegosPorUnidad))
+        const finishMultiplier = finish && partKey === "inner" && isCompaginadoFinish(finish)
+          ? Math.max(1, editorialInnerCompaginadoQty)
           : 1
         const finishesCost = finish && !finish.especial && getGrupo(finish) === "ACABADO"
           ? (Number(finish.valor) || 0) * finishMultiplier
@@ -2472,6 +2715,10 @@ export function LitografiaQuoteDialog(props: {
         const troq = part.troqueladoId ? finishes.find((f) => f.id === part.troqueladoId) || null : null
         const troqQty = Math.max(1, Math.trunc(parseFloat(String(part.troqueladoQty)) || 0) || 1)
         const troqCost = troq && getGrupo(troq) === "TROQUELADO" ? (Number(troq.valor) || 0) * troqQty : 0
+
+        const troquelada = part.troqueladaId ? finishes.find((f) => f.id === part.troqueladaId) || null : null
+        const troqueladaQty = Math.max(1, Math.trunc(parseFloat(String(part.troqueladaQty)) || 0) || 1)
+        const troqueladaCost = troquelada && getGrupo(troquelada) === "TROQUELADO" ? (Number(troquelada.valor) || 0) * troqueladaQty : 0
 
         const corteOpt = part.corteId ? finishes.find((f) => f.id === part.corteId) || null : null
         const corteQtyLocal = Math.max(1, Math.trunc(parseFloat(String(part.corteQty)) || 0) || 1)
@@ -2498,12 +2745,12 @@ export function LitografiaQuoteDialog(props: {
           papelPliegoHeightCm: paper.pliegoHeightCm ?? 0,
           papelFormatoWidthCm: preset.widthCm ?? 0,
           papelFormatoHeightCm: preset.heightCm ?? 0,
-          maquinaPliegoWidthCm: Number(planchaProfile?.anchoUtilCm) || 0,
-          maquinaPliegoHeightCm: Number(planchaProfile?.altoUtilCm) || 0,
+          maquinaPliegoWidthCm: Number(machineProfile?.anchoUtilCm) || 0,
+          maquinaPliegoHeightCm: Number(machineProfile?.altoUtilCm) || 0,
           maquinaSeparacionCm: 0,
           costoPliego: paper.costoPliego ?? 0,
           costoCorte: corteCostLocal,
-          costoAcabados: finishesCost + specialCost + plastCost + troqCost,
+          costoAcabados: finishesCost + specialCost + plastCost + troqCost + troqueladaCost,
           costoTransporte: 0,
           margenPct: 0,
         })
@@ -2562,6 +2809,7 @@ export function LitografiaQuoteDialog(props: {
       colores: tintas,
       desperdicioPct: 0,
       sobranteMinimo: parseFloat(sobranteMinimo) || 0,
+      sobranteMinimoUnidad: "hoja_maquina",
         costoPlanchaPorColor: toPerColorCost(planchaCostForCompute, tintas),
         costoTintaPorColor: toPerColorCost(tintaCostForCompute, tintas),
       costoPapelUnidad: 0,
@@ -2591,6 +2839,7 @@ export function LitografiaQuoteDialog(props: {
         colores: tintas,
         desperdicioPct: 0,
         sobranteMinimo: parseFloat(sobranteMinimo) || 0,
+        sobranteMinimoUnidad: "hoja_maquina",
         costoPlanchaPorColor: toPerColorCost(planchaCostForCompute, tintas),
         costoTintaPorColor: toPerColorCost(tintaCostForCompute, tintas),
         costoPapelUnidad: 0,
@@ -2630,6 +2879,7 @@ export function LitografiaQuoteDialog(props: {
           colores: tintas,
           desperdicioPct: 0,
           sobranteMinimo: parseFloat(sobranteMinimo) || 0,
+          sobranteMinimoUnidad: "hoja_maquina",
           costoPlanchaPorColor: 0,
           costoTintaPorColor: 0,
           costoPapelUnidad: 0,
@@ -2709,8 +2959,8 @@ export function LitografiaQuoteDialog(props: {
     const paperLabel = primaryPaper
       ? `${primaryPaper.nombre} ${formatCm(primaryPaper.pliegoWidthCm)}×${formatCm(primaryPaper.pliegoHeightCm)} cm`
       : `${formatCm(currentComputed.papelPliegoWidthCm)}×${formatCm(currentComputed.papelPliegoHeightCm)} cm`
-    const machineLabel = primaryPlanchaProfile
-      ? `${primaryPlanchaProfile.nombre} (${formatCm(primaryMachineWidth)}×${formatCm(primaryMachineHeight)} cm)`
+    const machineLabel = primaryMachineProfile
+      ? `${primaryMachineProfile.nombre} (${formatCm(primaryMachineWidth)}×${formatCm(primaryMachineHeight)} cm)`
       : "Perfil no configurado"
     const hojasMaquinaPorPliego = Math.max(0, Math.trunc(Number(currentComputed.hojasMaquinaPorPliego) || 0))
     const hojasMaquinaNecesarias = Math.max(0, Math.trunc(Number(currentComputed.hojasMaquinaNecesarias) || 0))
@@ -2719,8 +2969,8 @@ export function LitografiaQuoteDialog(props: {
       : null
     const orientation = currentComputed.orientacionImpresion === "girada" ? "girado" : "normal"
     const short = arrangement && (currentComputed.piezasPorPliego ?? 0) > 0
-      ? `Cliente recibe ${formatoLabel}; impresión en ${primaryPlanchaProfile?.nombre ?? "Máquina"}: ${currentComputed.piezasPorPliego} pzas por pliego base (${arrangement}, ${orientation}), ${currentComputed.pliegosNecesarios ?? "—"} pliegos.`
-      : `Cliente recibe ${formatoLabel}; impresión en ${primaryPlanchaProfile?.nombre ?? "Máquina"}: ${currentComputed.piezasPorPliego ?? "—"} pzas por pliego base, ${currentComputed.pliegosNecesarios ?? "—"} pliegos.`
+      ? `Cliente recibe ${formatoLabel}; impresión en ${primaryMachineProfile?.nombre ?? "Máquina"}: ${currentComputed.piezasPorPliego} pzas por pliego base (${arrangement}, ${orientation}), ${currentComputed.pliegosNecesarios ?? "—"} pliegos.`
+      : `Cliente recibe ${formatoLabel}; impresión en ${primaryMachineProfile?.nombre ?? "Máquina"}: ${currentComputed.piezasPorPliego ?? "—"} pzas por pliego base, ${currentComputed.pliegosNecesarios ?? "—"} pliegos.`
     const detail = [
       `cliente recibe ${formatoLabel}`,
       `papel ${paperLabel}`,
@@ -2747,7 +2997,7 @@ export function LitografiaQuoteDialog(props: {
     selectedPreset,
     formatoKey,
     primaryPaper,
-    primaryPlanchaProfile,
+    primaryMachineProfile,
     primaryMachineWidth,
     primaryMachineHeight,
   ])
@@ -2828,9 +3078,8 @@ export function LitografiaQuoteDialog(props: {
     const coverRequired = Boolean(editorialEnabled && (editorialSplitCalc?.coverPliegosPorUnidad ?? 0) > 0)
     const innerRequired = Boolean(editorialEnabled && (editorialSplitCalc?.innerPliegosPorUnidad ?? 0) > 0)
 
-    const presetByKey = new Map(allSizeOptions.map((s) => [s.key, resolveSizeOption(s.key)] as const))
-    const coverPreset = coverRequired ? (presetByKey.get(String(editorialCover.formatoKey || "").trim()) || null) : null
-    const innerPreset = innerRequired ? (presetByKey.get(String(editorialInner.formatoKey || "").trim()) || null) : null
+    const coverPreset = coverRequired ? resolveEditorialPartSizeOption(editorialCover) : null
+    const innerPreset = innerRequired ? resolveEditorialPartSizeOption(editorialInner) : null
     const missingEditorialFormato = (coverRequired && !coverPreset) || (innerRequired && !innerPreset)
     const missingFormato = editorialMode
       ? (editorialEnabled ? missingEditorialFormato : true)
@@ -2845,10 +3094,13 @@ export function LitografiaQuoteDialog(props: {
         ? missingEditorialPaper
         : (!primaryPaperId && activePapers.length > 0)
     const missingPlancha = editorialEnabled
-      ? (activePlanchaProfiles.length > 0 && ((coverRequired && !String(editorialCover.planchaProfileId || "").trim()) || (innerRequired && !String(editorialInner.planchaProfileId || "").trim())))
-      : (!primaryPlanchaProfileId && activePlanchaProfiles.length > 0)
+      ? (activePlanchaProfiles.length > 0 && (
+        (coverRequired && (!String(editorialCover.machineProfileId || "").trim() || !String(editorialCover.planchaProfileIds[0] || "").trim())) ||
+        (innerRequired && (!String(editorialInner.machineProfileId || "").trim() || !String(editorialInner.planchaProfileIds[0] || "").trim()))
+      ))
+      : ((!selectedMachineProfileId || !primaryPlanchaProfileId) && activePlanchaProfiles.length > 0)
     const missingTinta = editorialEnabled
-      ? (activeTintaProfiles.length > 0 && ((coverRequired && !String(editorialCover.tintaProfileId || "").trim()) || (innerRequired && !String(editorialInner.tintaProfileId || "").trim())))
+      ? (activeTintaProfiles.length > 0 && ((coverRequired && !String(editorialCover.tintaProfileIds[0] || "").trim()) || (innerRequired && !String(editorialInner.tintaProfileIds[0] || "").trim())))
       : (!primaryTintaProfileId && activeTintaProfiles.length > 0)
     const missingPricing = !isAdmin && !fallbackCalc
 
@@ -2872,6 +3124,7 @@ export function LitografiaQuoteDialog(props: {
     sizeOptions,
     allSizeOptions,
     resolveSizeOption,
+    resolveEditorialPartSizeOption,
     primaryPaperId,
     activePapers.length,
     selectedEditorialProductoKey,
@@ -2882,10 +3135,13 @@ export function LitografiaQuoteDialog(props: {
     editorialInner.paperId,
     editorialCover.formatoKey,
     editorialInner.formatoKey,
-    editorialCover.planchaProfileId,
-    editorialInner.planchaProfileId,
-    editorialCover.tintaProfileId,
-    editorialInner.tintaProfileId,
+    editorialCover.machineProfileId,
+    editorialInner.machineProfileId,
+    editorialCover.planchaProfileIds,
+    editorialInner.planchaProfileIds,
+    editorialCover.tintaProfileIds,
+    editorialInner.tintaProfileIds,
+    selectedMachineProfileId,
     primaryPlanchaProfileId,
     activePlanchaProfiles.length,
     primaryTintaProfileId,
@@ -2934,8 +3190,8 @@ export function LitografiaQuoteDialog(props: {
       ? `${computed.piezasHorizontal} × ${computed.piezasVertical}`
       : null
     const orientation = computed.orientacionImpresion === "girada" ? "girado" : "normal"
-    const machineLabel = primaryPlanchaProfile
-      ? `${primaryPlanchaProfile.nombre} (${formatCm(primaryMachineWidth)}×${formatCm(primaryMachineHeight)} cm)`
+    const machineLabel = primaryMachineProfile
+      ? `${primaryMachineProfile.nombre} (${formatCm(primaryMachineWidth)}×${formatCm(primaryMachineHeight)} cm)`
       : "sin perfil configurado"
 
     return {
@@ -2943,7 +3199,7 @@ export function LitografiaQuoteDialog(props: {
       line2: `Impresión en: ${machineLabel}. Aprovechamiento del pliego base: ${arrangement ? `${arrangement} (${orientation}) = ${pzasPorPliego} piezas finales por pliego.` : `${pzasPorPliego || "—"} piezas finales por pliego.`}`,
       line3: `Cálculo interno: producción = tiraje cliente (${runQty}) + sobrante (${sobrante}) = ${piezas}; pliegos papel = ⌈${piezas} / ${pzasPorPliego || "—"}⌉ = ${pliegos}.${hojasMaquinaPorPliego > 1 ? ` Hojas de máquina referenciales: ${hojasMaquinaNecesarias || "—"}.` : ""}`,
     }
-  }, [isAdmin, calc, fallbackCalc, cantidad, sobranteMinimo, selectedPreset, formatoKey, pliegoW, pliegoH, primaryPaper, primaryPlanchaProfile, primaryMachineWidth, primaryMachineHeight])
+  }, [isAdmin, calc, fallbackCalc, cantidad, sobranteMinimo, selectedPreset, formatoKey, pliegoW, pliegoH, primaryPaper, primaryMachineProfile, primaryMachineWidth, primaryMachineHeight])
 
   const defaultDescripcion = useMemo(() => {
     const defaultTitle = t('printshopQuote.defaultTitle')
@@ -3143,17 +3399,6 @@ export function LitografiaQuoteDialog(props: {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2 flex items-center justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowAdvanced((v) => !v)}
-                    >
-                      {showAdvanced ? 'Ocultar opciones avanzadas' : 'Opciones avanzadas'}
-                    </Button>
-                  </div>
-
                   <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <Label>{t('printshopQuote.fields.nameRef')}</Label>
@@ -3227,7 +3472,7 @@ export function LitografiaQuoteDialog(props: {
                                     </p>
                                     {editorialInnerSheetsPreview ? (
                                       <p className={HELP_TEXT}>
-                                        Internas: piezas impresas = tiraje ({editorialInnerSheetsPreview.runQty}) × pliegos/unidad ({editorialInnerSheetsPreview.pliegosPorUnidad}) = {editorialInnerSheetsPreview.qtyForCompute}. Sobrante = {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobranteInput || 0))} hojas de máquina = {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobrantePiezas || 0))} piezas. Pliegos = ⌈(piezas + sobrante {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobrantePiezas || 0))}) / {editorialInnerSheetsPreview.piezasPorPliego ?? "—"}⌉ = {editorialInnerSheetsPreview.pliegosNecesarios ?? "—"}.
+                                        Internas: piezas impresas = tiraje ({editorialInnerSheetsPreview.runQty}) × pliegos/unidad ({editorialInnerSheetsPreview.pliegosPorUnidad}) = {editorialInnerSheetsPreview.qtyForCompute}. Compaginado = hojas internas finales por libro ({Math.max(0, Math.ceil((Math.max(0, Math.trunc(parseFloat(editorialTotalPaginas) || 0))) / 2))}) × tiraje = {editorialInnerCompaginadoQty}. Sobrante = {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobranteInput || 0))} hojas de máquina = {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobrantePiezas || 0))} piezas. Pliegos = ⌈(piezas + sobrante {Math.max(0, Math.trunc(editorialInnerSheetsPreview.sobrantePiezas || 0))}) / {editorialInnerSheetsPreview.piezasPorPliego ?? "—"}⌉ = {editorialInnerSheetsPreview.pliegosNecesarios ?? "—"}.
                                       </p>
                                     ) : null}
                                     {editorialCoverSheetsPreview ? (
@@ -3564,7 +3809,7 @@ export function LitografiaQuoteDialog(props: {
                                   <p className={HELP_TEXT}>Normalmente 2 o 4 páginas según el proyecto.</p>
                                 </div>
                                 <div>
-                                  <Label>Ejemplares finales por hoja abierta de portada</Label>
+                                  <Label>Libros finales que salen de una portada abierta</Label>
                                   <Input
                                     className={INPUT_COMPACT}
                                     type="number"
@@ -3573,7 +3818,7 @@ export function LitografiaQuoteDialog(props: {
                                     value={editorialCartasPorPlancha}
                                     onChange={(e) => setEditorialCartasPorPlancha(e.target.value)}
                                   />
-                                  <p className={HELP_TEXT}>Si una hoja abierta de portada, al plegarse, entrega 2 ejemplares finales, usa 2. Este factor evita duplicar papel.</p>
+                                  <p className={HELP_TEXT}>Si una portada abierta al doblarse entrega 2 libros finales, usa 2. Ejemplo: 500 libros y factor 2 requieren 250 portadas abiertas antes de sumar sobrante.</p>
                                 </div>
                               </div>
                             </div>
@@ -3622,102 +3867,157 @@ export function LitografiaQuoteDialog(props: {
                                 <p className="mt-1 text-xs text-slate-600">Cada bloque ya resume tamaño, papel y salida operativa para que el impresor lea rápido qué va en portada y qué va en internas.</p>
                               </div>
                             </div>
-                            <div>
-                              <Label className={requiredLabelClass(validation.missingFormato)}>Tamaño abierto de la pieza (global)</Label>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                <Button
-                                  type="button"
-                                  variant={editorialCover.formatoKey === CUSTOM_PRINT_SIZE_KEY ? "default" : "outline"}
-                                  size="sm"
-                                  onClick={() => {
-                                    setEditorialCover((prev) => ({ ...prev, formatoKey: CUSTOM_PRINT_SIZE_KEY }))
-                                    setEditorialInner((prev) => ({ ...prev, formatoKey: CUSTOM_PRINT_SIZE_KEY }))
-                                  }}
-                                >
-                                  Usar tamaño personalizado
-                                </Button>
-                                {editorialCover.formatoKey === CUSTOM_PRINT_SIZE_KEY ? (
+                            <div className="sm:col-span-2 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                              <div>
+                                <Label className={requiredLabelClass(validation.missingFormato)}>Tamaño abierto de portada</Label>
+                                <div className="mt-2 flex flex-wrap gap-2">
                                   <Button
                                     type="button"
-                                    variant="ghost"
+                                    variant={editorialCover.formatoKey === CUSTOM_PRINT_SIZE_KEY ? "default" : "outline"}
                                     size="sm"
-                                    onClick={() => {
-                                      const first = sizeOptions[0]?.key || ""
-                                      setEditorialCover((prev) => ({ ...prev, formatoKey: first }))
-                                      setEditorialInner((prev) => ({ ...prev, formatoKey: first }))
-                                    }}
+                                    onClick={() => updateEditorialPart("cover", (prev) => ({ ...prev, formatoKey: CUSTOM_PRINT_SIZE_KEY }))}
                                   >
-                                    Volver a tamaños predefinidos
+                                    Personalizado
                                   </Button>
+                                  {editorialCover.formatoKey === CUSTOM_PRINT_SIZE_KEY ? (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => updateEditorialPart("cover", (prev) => ({ ...prev, formatoKey: sizeOptions[0]?.key || "" }))}
+                                    >
+                                      Volver a predefinidos
+                                    </Button>
+                                  ) : null}
+                                </div>
+                                <select
+                                  className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
+                                  value={editorialCover.formatoKey}
+                                  onChange={(e) => updateEditorialPart("cover", (prev) => ({ ...prev, formatoKey: e.target.value }))}
+                                  disabled={!allSizeOptions.length}
+                                >
+                                  <option value="" disabled>
+                                    {allSizeOptions.length ? t('printshopQuote.select.size') : t('printshopQuote.select.noSizesConfigured')}
+                                  </option>
+                                  {allSizeOptions.map((p) => (
+                                    <option key={p.key} value={p.key}>
+                                      {p.key === CUSTOM_PRINT_SIZE_KEY ? p.nombre : `${p.nombre} (${p.widthCm}×${p.heightCm} cm)`}
+                                    </option>
+                                  ))}
+                                </select>
+                                <p className={HELP_TEXT}>Define la pieza abierta de portada que realmente se imprime.</p>
+                                {editorialCover.formatoKey === CUSTOM_PRINT_SIZE_KEY ? (
+                                  <div className="mt-2 grid grid-cols-2 gap-2">
+                                    <div>
+                                      <Label>Ancho abierto portada (cm)</Label>
+                                      <Input
+                                        className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
+                                        type="number"
+                                        step="0.01"
+                                        min="0.01"
+                                        value={editorialCover.customFormatoWidthCm}
+                                        onChange={(e) => updateEditorialPart("cover", (prev) => ({ ...prev, customFormatoWidthCm: e.target.value }))}
+                                        placeholder="21.6"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>Alto abierto portada (cm)</Label>
+                                      <Input
+                                        className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
+                                        type="number"
+                                        step="0.01"
+                                        min="0.01"
+                                        value={editorialCover.customFormatoHeightCm}
+                                        onChange={(e) => updateEditorialPart("cover", (prev) => ({ ...prev, customFormatoHeightCm: e.target.value }))}
+                                        placeholder="27.9"
+                                      />
+                                    </div>
+                                  </div>
                                 ) : null}
                               </div>
-                              <select
-                                className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
-                                value={editorialCover.formatoKey}
-                                onChange={(e) => {
-                                  const next = e.target.value
-                                  setEditorialCover((prev) => ({ ...prev, formatoKey: next }))
-                                  setEditorialInner((prev) => ({ ...prev, formatoKey: next }))
-                                }}
-                                disabled={!allSizeOptions.length}
-                              >
-                                <option value="" disabled>
-                                  {allSizeOptions.length ? t('printshopQuote.select.size') : t('printshopQuote.select.noSizesConfigured')}
-                                </option>
-                                {allSizeOptions.map((p) => (
-                                  <option key={p.key} value={p.key}>
-                                    {p.key === CUSTOM_PRINT_SIZE_KEY ? p.nombre : `${p.nombre} (${p.widthCm}×${p.heightCm} cm)`}
+
+                              <div>
+                                <Label className={requiredLabelClass(validation.missingFormato)}>Tamaño abierto de internas</Label>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  <Button
+                                    type="button"
+                                    variant={editorialInner.formatoKey === CUSTOM_PRINT_SIZE_KEY ? "default" : "outline"}
+                                    size="sm"
+                                    onClick={() => updateEditorialPart("inner", (prev) => ({ ...prev, formatoKey: CUSTOM_PRINT_SIZE_KEY }))}
+                                  >
+                                    Personalizado
+                                  </Button>
+                                  {editorialInner.formatoKey === CUSTOM_PRINT_SIZE_KEY ? (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => updateEditorialPart("inner", (prev) => ({ ...prev, formatoKey: editorialRecommendedOpenPreset?.key || sizeOptions[0]?.key || "" }))}
+                                    >
+                                      Volver a predefinidos
+                                    </Button>
+                                  ) : null}
+                                </div>
+                                <select
+                                  className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
+                                  value={editorialInner.formatoKey}
+                                  onChange={(e) => updateEditorialPart("inner", (prev) => ({ ...prev, formatoKey: e.target.value }))}
+                                  disabled={!allSizeOptions.length}
+                                >
+                                  <option value="" disabled>
+                                    {allSizeOptions.length ? t('printshopQuote.select.size') : t('printshopQuote.select.noSizesConfigured')}
                                   </option>
-                                ))}
-                              </select>
-                              <p className={HELP_TEXT}>
-                                Este selector define la pieza abierta que se imprime y luego puede doblarse. No uses aquí la hoja de máquina o corte; esa sale de la plancha seleccionada en portada e internas.
-                              </p>
+                                  {allSizeOptions.map((p) => (
+                                    <option key={p.key} value={p.key}>
+                                      {p.key === CUSTOM_PRINT_SIZE_KEY ? p.nombre : `${p.nombre} (${p.widthCm}×${p.heightCm} cm)`}
+                                    </option>
+                                  ))}
+                                </select>
+                                <p className={HELP_TEXT}>Define la pieza abierta de internas. Aquí puede ser distinta a portada.</p>
+                                {editorialInner.formatoKey === CUSTOM_PRINT_SIZE_KEY ? (
+                                  <div className="mt-2 grid grid-cols-2 gap-2">
+                                    <div>
+                                      <Label>Ancho abierto internas (cm)</Label>
+                                      <Input
+                                        className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
+                                        type="number"
+                                        step="0.01"
+                                        min="0.01"
+                                        value={editorialInner.customFormatoWidthCm}
+                                        onChange={(e) => updateEditorialPart("inner", (prev) => ({ ...prev, customFormatoWidthCm: e.target.value }))}
+                                        placeholder="21.6"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>Alto abierto internas (cm)</Label>
+                                      <Input
+                                        className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
+                                        type="number"
+                                        step="0.01"
+                                        min="0.01"
+                                        value={editorialInner.customFormatoHeightCm}
+                                        onChange={(e) => updateEditorialPart("inner", (prev) => ({ ...prev, customFormatoHeightCm: e.target.value }))}
+                                        placeholder="27.9"
+                                      />
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </div>
+
                               {editorialClosedSizeLabel ? (
-                                <p className={HELP_TEXT}>
+                                <p className={`${HELP_TEXT} lg:col-span-2`}>
                                   Tamaño final cerrado para el cliente: {editorialClosedSizeLabel}.
                                 </p>
                               ) : null}
                               {editorialRecommendedOpenPreset ? (
-                                <p className={HELP_TEXT}>
-                                  Tamaño abierto recomendado según el tamaño final y el doblez: {editorialRecommendedOpenPreset.nombre} ({formatCm(editorialRecommendedOpenPreset.widthCm)}×{formatCm(editorialRecommendedOpenPreset.heightCm)} cm).
+                                <p className={`${HELP_TEXT} lg:col-span-2`}>
+                                  Tamaño abierto recomendado para las internas según el tamaño final y el doblez: {editorialRecommendedOpenPreset.nombre} ({formatCm(editorialRecommendedOpenPreset.widthCm)}×{formatCm(editorialRecommendedOpenPreset.heightCm)} cm).
                                 </p>
                               ) : null}
                               {editorialPrimaryPlanchaProfile ? (
-                                <p className={HELP_TEXT}>
-                                  Hoja máquina/corte actual: {editorialPrimaryPlanchaProfile.nombre} ({formatCm(editorialPrimaryPlanchaProfile.anchoUtilCm)}×{formatCm(editorialPrimaryPlanchaProfile.altoUtilCm)} cm).
+                                <p className={`${HELP_TEXT} lg:col-span-2`}>
+                                  El área útil de máquina se define aparte. Referencia actual: {editorialPrimaryPlanchaProfile.nombre} ({formatCm(editorialPrimaryPlanchaProfile.anchoUtilCm)}×{formatCm(editorialPrimaryPlanchaProfile.altoUtilCm)} cm).
                                 </p>
-                              ) : null}
-                              <p className={HELP_TEXT}>
-                                El tamaño abierto que selecciones aquí se conserva. La hoja de máquina solo limita la salida operativa y el rendimiento; no reemplaza este tamaño.
-                              </p>
-                              {editorialCover.formatoKey === CUSTOM_PRINT_SIZE_KEY ? (
-                                <div className="mt-2 grid grid-cols-2 gap-2">
-                                  <div>
-                                    <Label>Ancho abierto (cm)</Label>
-                                    <Input
-                                      className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
-                                      type="number"
-                                      step="0.01"
-                                      min="0.01"
-                                      value={customFormatoWidthCm}
-                                      onChange={(e) => setCustomFormatoWidthCm(e.target.value)}
-                                      placeholder="21.6"
-                                    />
-                                  </div>
-                                  <div>
-                                    <Label>Alto abierto (cm)</Label>
-                                    <Input
-                                      className={`${INPUT_COMPACT} ${requiredFieldClass(validation.missingFormato)}`}
-                                      type="number"
-                                      step="0.01"
-                                      min="0.01"
-                                      value={customFormatoHeightCm}
-                                      onChange={(e) => setCustomFormatoHeightCm(e.target.value)}
-                                      placeholder="27.9"
-                                    />
-                                  </div>
-                                </div>
                               ) : null}
                             </div>
 
@@ -3735,9 +4035,9 @@ export function LitografiaQuoteDialog(props: {
                                 <p className="text-sm font-medium">Portada / Contraportada</p>
                                   <p className={HELP_TEXT}>
                                     {(() => {
-                                      const formato = resolveSizeOption(String(editorialCover.formatoKey || "").trim())
+                                      const formato = resolveEditorialPartSizeOption(editorialCover)
                                       const paper = papers.find((p) => p.id === String(editorialCover.paperId || "").trim())
-                                      const machine = profiles.find((p) => p.id === String(editorialCover.planchaProfileId || "").trim())
+                                      const machine = profiles.find((p) => p.id === String(editorialCover.machineProfileId || editorialCover.planchaProfileId || "").trim())
                                       const pliegos = editorialSplitCalc?.coverPliegosPorUnidad ?? 0
                                       const caras = editorialSplitCalc?.coverPlanchas ?? 0
                                       const formatoLabel = formato ? `${formato.nombre} (${formato.widthCm}×${formato.heightCm} cm)` : "—"
@@ -3748,7 +4048,7 @@ export function LitografiaQuoteDialog(props: {
                                       const despiece = preview
                                         ? ` • Despiece: ${preview.piezasPorPliego ?? "—"} pzas/pliego · ${preview.piezasPorHojaMaquina ?? "—"} pzas/hoja · ${preview.hojasMaquinaPorPliego ?? "—"} cortes/pliego`
                                         : ""
-                                      return `Pieza abierta: ${formatoLabel} • Cliente: ${finalLabel} • Hoja máquina: ${machineLabel} • Papel: ${paperLabel} • Planchas CMYK: ${caras * 4} • Pliegos/unidad: ${pliegos}${despiece}`
+                                      return `Pieza abierta: ${formatoLabel} • Cliente: ${finalLabel} • Área útil: ${machineLabel} • Papel: ${paperLabel} • Planchas CMYK base: ${caras * 4} • Pliegos/unidad: ${pliegos}${despiece}`
                                     })()}
                                   </p>
                                 <div className="mt-3 grid grid-cols-1 gap-3">
@@ -3861,71 +4161,95 @@ export function LitografiaQuoteDialog(props: {
 
                                   {!showAdvanced ? null : (
                                     <>
-                                      <div className="grid grid-cols-2 gap-3">
-                                        <div>
+                                      <div>
+                                        <Label className={requiredLabelClass(validation.missingPlancha)}>Área útil de impresión</Label>
+                                        <select
+                                          className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPlancha)}`}
+                                          value={editorialCover.machineProfileId}
+                                          onChange={(e) => updateEditorialPart("cover", (prev) => ({ ...prev, machineProfileId: e.target.value }))}
+                                          disabled={!activePlanchaProfiles.length}
+                                        >
+                                          <option value="">Seleccionar área…</option>
+                                          {activePlanchaProfiles.map((p) => (
+                                            <option key={p.id} value={p.id}>
+                                              {p.nombre} ({formatCm(p.anchoUtilCm)}×{formatCm(p.altoUtilCm)} cm)
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <p className={HELP_TEXT}>Esta área útil manda el rendimiento sobre el papel. Las planchas se cargan aparte como costo.</p>
+                                      </div>
+
+                                      <div>
+                                        <div className="flex items-center justify-between gap-2">
                                           <Label className={requiredLabelClass(validation.missingPlancha)}>{t('printshopQuote.fields.platesCost')}</Label>
-                                          <select
-                                            className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPlancha)}`}
-                                            value={editorialCover.planchaProfileId}
-                                            onChange={(e) => setEditorialCover((prev) => ({ ...prev, planchaProfileId: e.target.value }))}
-                                            disabled={!activePlanchaProfiles.length}
-                                          >
-                                            <option value="">{t('printshopQuote.select.nonePlates')}</option>
-                                            {activePlanchaProfiles.map((p) => (
-                                              <option key={p.id} value={p.id}>
-                                                {p.nombre}
-                                              </option>
-                                            ))}
-                                          </select>
+                                          <Button type="button" variant="outline" size="sm" onClick={() => addEditorialProfileRow("cover", "plancha")}>Agregar otra</Button>
                                         </div>
-                                        <div>
-                                          <Label>Cantidad</Label>
-                                          <Input
-                                            className={INPUT_COMPACT}
-                                            type="number"
-                                            min={1}
-                                            step="1"
-                                            value={editorialCover.planchaProfileQty}
-                                            onChange={(e) => setEditorialCover((prev) => ({ ...prev, planchaProfileQty: e.target.value }))}
-                                            placeholder={t('printshopQuote.placeholders.qtyShort')}
-                                          />
-                                          <p className={HELP_TEXT}>
-                                            Multiplica el perfil de planchas (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.planchaProfileQty || "1")) || 0) || 1)}).
-                                          </p>
+                                        <div className="mt-2 space-y-2">
+                                          {editorialCover.planchaProfileIds.map((id, idx) => (
+                                            <div key={`cover-plancha-${idx}-${id}`} className="flex items-center gap-2">
+                                              <select
+                                                className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPlancha)}`}
+                                                value={id}
+                                                onChange={(e) => updateEditorialProfileRow("cover", "plancha", idx, e.target.value)}
+                                                disabled={!activePlanchaProfiles.length}
+                                              >
+                                                <option value="">{t('printshopQuote.select.nonePlates')}</option>
+                                                {activePlanchaProfiles.map((p) => (
+                                                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                                                ))}
+                                              </select>
+                                              <Input
+                                                className={`${INPUT_COMPACT} w-24 shrink-0`}
+                                                type="number"
+                                                min={1}
+                                                step="1"
+                                                value={editorialCover.planchaProfileQtys[idx] ?? "1"}
+                                                onChange={(e) => updateEditorialProfileQty("cover", "plancha", idx, e.target.value)}
+                                              />
+                                              {editorialCover.planchaProfileIds.length > 1 ? (
+                                                <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => removeEditorialProfileRow("cover", "plancha", idx)}>
+                                                  {t('common.remove')}
+                                                </Button>
+                                              ) : null}
+                                            </div>
+                                          ))}
                                         </div>
                                       </div>
 
-                                      <div className="grid grid-cols-2 gap-3">
-                                        <div>
+                                      <div>
+                                        <div className="flex items-center justify-between gap-2">
                                           <Label className={requiredLabelClass(validation.missingTinta)}>{t('printshopQuote.fields.inkCost')}</Label>
-                                          <select
-                                            className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingTinta)}`}
-                                            value={editorialCover.tintaProfileId}
-                                            onChange={(e) => setEditorialCover((prev) => ({ ...prev, tintaProfileId: e.target.value }))}
-                                            disabled={!activeTintaProfiles.length}
-                                          >
-                                            <option value="">{t('printshopQuote.select.noneInks')}</option>
-                                            {activeTintaProfiles.map((p) => (
-                                              <option key={p.id} value={p.id}>
-                                                {p.nombre}
-                                              </option>
-                                            ))}
-                                          </select>
+                                          <Button type="button" variant="outline" size="sm" onClick={() => addEditorialProfileRow("cover", "tinta")}>Agregar otra</Button>
                                         </div>
-                                        <div>
-                                          <Label>Cantidad</Label>
-                                          <Input
-                                            className={INPUT_COMPACT}
-                                            type="number"
-                                            min={1}
-                                            step="1"
-                                            value={editorialCover.tintaProfileQty}
-                                            onChange={(e) => setEditorialCover((prev) => ({ ...prev, tintaProfileQty: e.target.value }))}
-                                            placeholder={t('printshopQuote.placeholders.qtyShort')}
-                                          />
-                                          <p className={HELP_TEXT}>
-                                            Multiplica el perfil de impresión (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.tintaProfileQty || "1")) || 0) || 1)}).
-                                          </p>
+                                        <div className="mt-2 space-y-2">
+                                          {editorialCover.tintaProfileIds.map((id, idx) => (
+                                            <div key={`cover-tinta-${idx}-${id}`} className="flex items-center gap-2">
+                                              <select
+                                                className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingTinta)}`}
+                                                value={id}
+                                                onChange={(e) => updateEditorialProfileRow("cover", "tinta", idx, e.target.value)}
+                                                disabled={!activeTintaProfiles.length}
+                                              >
+                                                <option value="">{t('printshopQuote.select.noneInks')}</option>
+                                                {activeTintaProfiles.map((p) => (
+                                                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                                                ))}
+                                              </select>
+                                              <Input
+                                                className={`${INPUT_COMPACT} w-24 shrink-0`}
+                                                type="number"
+                                                min={1}
+                                                step="1"
+                                                value={editorialCover.tintaProfileQtys[idx] ?? "1"}
+                                                onChange={(e) => updateEditorialProfileQty("cover", "tinta", idx, e.target.value)}
+                                              />
+                                              {editorialCover.tintaProfileIds.length > 1 ? (
+                                                <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => removeEditorialProfileRow("cover", "tinta", idx)}>
+                                                  {t('common.remove')}
+                                                </Button>
+                                              ) : null}
+                                            </div>
+                                          ))}
                                         </div>
                                       </div>
                                     </>
@@ -4105,6 +4429,40 @@ export function LitografiaQuoteDialog(props: {
 
                                         <div className="grid grid-cols-2 gap-3">
                                           <div>
+                                            <Label>Troquelada</Label>
+                                            <select
+                                              className={SELECT_COMPACT}
+                                              value={editorialCover.troqueladaId}
+                                              onChange={(e) => updateEditorialPart("cover", (prev) => ({ ...prev, troqueladaId: e.target.value }))}
+                                              disabled={!activeTroqueladas.length}
+                                            >
+                                              <option value="">Ninguna</option>
+                                              {activeTroqueladas.map((f) => (
+                                                <option key={f.id} value={f.id}>
+                                                  {f.nombre}
+                                                </option>
+                                              ))}
+                                            </select>
+                                            <p className={HELP_TEXT}>Se suma como valor × cantidad.</p>
+                                          </div>
+                                          <div>
+                                            <Label>Cantidad</Label>
+                                            <Input
+                                              className={INPUT_COMPACT}
+                                              type="number"
+                                              step="1"
+                                              min={1}
+                                              value={editorialCover.troqueladaQty}
+                                              onChange={(e) => updateEditorialPart("cover", (prev) => ({ ...prev, troqueladaQty: e.target.value }))}
+                                            />
+                                            <p className={HELP_TEXT}>
+                                              Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialCover.troqueladaQty || "1")) || 0) || 1)}).
+                                            </p>
+                                          </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                          <div>
                                             <Label>Corte</Label>
                                             <select
                                               className={SELECT_COMPACT}
@@ -4147,9 +4505,9 @@ export function LitografiaQuoteDialog(props: {
                                 <p className="text-sm font-medium">Internas</p>
                                 <p className={HELP_TEXT}>
                                   {(() => {
-                                    const formato = resolveSizeOption(String(editorialInner.formatoKey || "").trim())
+                                    const formato = resolveEditorialPartSizeOption(editorialInner)
                                     const paper = papers.find((p) => p.id === String(editorialInner.paperId || "").trim())
-                                      const machine = profiles.find((p) => p.id === String(editorialInner.planchaProfileId || "").trim())
+                                      const machine = profiles.find((p) => p.id === String(editorialInner.machineProfileId || editorialInner.planchaProfileId || "").trim())
                                     const pliegos = editorialSplitCalc?.innerPliegosPorUnidad ?? 0
                                     const caras = editorialSplitCalc?.innerPlanchas ?? 0
                                     const formatoLabel = formato ? `${formato.nombre} (${formato.widthCm}×${formato.heightCm} cm)` : "—"
@@ -4160,7 +4518,7 @@ export function LitografiaQuoteDialog(props: {
                                       const despiece = preview
                                         ? ` • Despiece: ${preview.piezasPorPliego ?? "—"} pzas/pliego · ${preview.piezasPorHojaMaquina ?? "—"} pzas/hoja · ${preview.hojasMaquinaPorPliego ?? "—"} cortes/pliego`
                                         : ""
-                                      return `Pieza abierta: ${formatoLabel} • Cliente: ${finalLabel} • Hoja máquina: ${machineLabel} • Papel: ${paperLabel} • Planchas CMYK: ${caras * 4} • Pliegos/unidad: ${pliegos}${despiece}`
+                                      return `Pieza abierta: ${formatoLabel} • Cliente: ${finalLabel} • Área útil: ${machineLabel} • Papel: ${paperLabel} • Planchas CMYK base: ${caras * 4} • Pliegos/unidad: ${pliegos}${despiece}`
                                   })()}
                                 </p>
                                 <div className="mt-3 grid grid-cols-1 gap-3">
@@ -4273,71 +4631,95 @@ export function LitografiaQuoteDialog(props: {
 
                                   {!showAdvanced ? null : (
                                     <>
-                                      <div className="grid grid-cols-2 gap-3">
-                                        <div>
+                                      <div>
+                                        <Label className={requiredLabelClass(validation.missingPlancha)}>Área útil de impresión</Label>
+                                        <select
+                                          className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPlancha)}`}
+                                          value={editorialInner.machineProfileId}
+                                          onChange={(e) => updateEditorialPart("inner", (prev) => ({ ...prev, machineProfileId: e.target.value }))}
+                                          disabled={!activePlanchaProfiles.length}
+                                        >
+                                          <option value="">Seleccionar área…</option>
+                                          {activePlanchaProfiles.map((p) => (
+                                            <option key={p.id} value={p.id}>
+                                              {p.nombre} ({formatCm(p.anchoUtilCm)}×{formatCm(p.altoUtilCm)} cm)
+                                            </option>
+                                          ))}
+                                        </select>
+                                        <p className={HELP_TEXT}>Esta área útil manda el rendimiento de internas sobre el papel. Las planchas van aparte como costo.</p>
+                                      </div>
+
+                                      <div>
+                                        <div className="flex items-center justify-between gap-2">
                                           <Label className={requiredLabelClass(validation.missingPlancha)}>{t('printshopQuote.fields.platesCost')}</Label>
-                                          <select
-                                            className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPlancha)}`}
-                                            value={editorialInner.planchaProfileId}
-                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, planchaProfileId: e.target.value }))}
-                                            disabled={!activePlanchaProfiles.length}
-                                          >
-                                            <option value="">{t('printshopQuote.select.nonePlates')}</option>
-                                            {activePlanchaProfiles.map((p) => (
-                                              <option key={p.id} value={p.id}>
-                                                {p.nombre}
-                                              </option>
-                                            ))}
-                                          </select>
+                                          <Button type="button" variant="outline" size="sm" onClick={() => addEditorialProfileRow("inner", "plancha")}>Agregar otra</Button>
                                         </div>
-                                        <div>
-                                          <Label>Cantidad</Label>
-                                          <Input
-                                            className={INPUT_COMPACT}
-                                            type="number"
-                                            min={1}
-                                            step="1"
-                                            value={editorialInner.planchaProfileQty}
-                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, planchaProfileQty: e.target.value }))}
-                                            placeholder={t('printshopQuote.placeholders.qtyShort')}
-                                          />
-                                          <p className={HELP_TEXT}>
-                                            Multiplica el perfil de planchas (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.planchaProfileQty || "1")) || 0) || 1)}).
-                                          </p>
+                                        <div className="mt-2 space-y-2">
+                                          {editorialInner.planchaProfileIds.map((id, idx) => (
+                                            <div key={`inner-plancha-${idx}-${id}`} className="flex items-center gap-2">
+                                              <select
+                                                className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPlancha)}`}
+                                                value={id}
+                                                onChange={(e) => updateEditorialProfileRow("inner", "plancha", idx, e.target.value)}
+                                                disabled={!activePlanchaProfiles.length}
+                                              >
+                                                <option value="">{t('printshopQuote.select.nonePlates')}</option>
+                                                {activePlanchaProfiles.map((p) => (
+                                                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                                                ))}
+                                              </select>
+                                              <Input
+                                                className={`${INPUT_COMPACT} w-24 shrink-0`}
+                                                type="number"
+                                                min={1}
+                                                step="1"
+                                                value={editorialInner.planchaProfileQtys[idx] ?? "1"}
+                                                onChange={(e) => updateEditorialProfileQty("inner", "plancha", idx, e.target.value)}
+                                              />
+                                              {editorialInner.planchaProfileIds.length > 1 ? (
+                                                <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => removeEditorialProfileRow("inner", "plancha", idx)}>
+                                                  {t('common.remove')}
+                                                </Button>
+                                              ) : null}
+                                            </div>
+                                          ))}
                                         </div>
                                       </div>
 
-                                      <div className="grid grid-cols-2 gap-3">
-                                        <div>
+                                      <div>
+                                        <div className="flex items-center justify-between gap-2">
                                           <Label className={requiredLabelClass(validation.missingTinta)}>{t('printshopQuote.fields.inkCost')}</Label>
-                                          <select
-                                            className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingTinta)}`}
-                                            value={editorialInner.tintaProfileId}
-                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, tintaProfileId: e.target.value }))}
-                                            disabled={!activeTintaProfiles.length}
-                                          >
-                                            <option value="">{t('printshopQuote.select.noneInks')}</option>
-                                            {activeTintaProfiles.map((p) => (
-                                              <option key={p.id} value={p.id}>
-                                                {p.nombre}
-                                              </option>
-                                            ))}
-                                          </select>
+                                          <Button type="button" variant="outline" size="sm" onClick={() => addEditorialProfileRow("inner", "tinta")}>Agregar otra</Button>
                                         </div>
-                                        <div>
-                                          <Label>Cantidad</Label>
-                                          <Input
-                                            className={INPUT_COMPACT}
-                                            type="number"
-                                            min={1}
-                                            step="1"
-                                            value={editorialInner.tintaProfileQty}
-                                            onChange={(e) => setEditorialInner((prev) => ({ ...prev, tintaProfileQty: e.target.value }))}
-                                            placeholder={t('printshopQuote.placeholders.qtyShort')}
-                                          />
-                                          <p className={HELP_TEXT}>
-                                            Multiplica el perfil de impresión (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.tintaProfileQty || "1")) || 0) || 1)}).
-                                          </p>
+                                        <div className="mt-2 space-y-2">
+                                          {editorialInner.tintaProfileIds.map((id, idx) => (
+                                            <div key={`inner-tinta-${idx}-${id}`} className="flex items-center gap-2">
+                                              <select
+                                                className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingTinta)}`}
+                                                value={id}
+                                                onChange={(e) => updateEditorialProfileRow("inner", "tinta", idx, e.target.value)}
+                                                disabled={!activeTintaProfiles.length}
+                                              >
+                                                <option value="">{t('printshopQuote.select.noneInks')}</option>
+                                                {activeTintaProfiles.map((p) => (
+                                                  <option key={p.id} value={p.id}>{p.nombre}</option>
+                                                ))}
+                                              </select>
+                                              <Input
+                                                className={`${INPUT_COMPACT} w-24 shrink-0`}
+                                                type="number"
+                                                min={1}
+                                                step="1"
+                                                value={editorialInner.tintaProfileQtys[idx] ?? "1"}
+                                                onChange={(e) => updateEditorialProfileQty("inner", "tinta", idx, e.target.value)}
+                                              />
+                                              {editorialInner.tintaProfileIds.length > 1 ? (
+                                                <Button type="button" variant="ghost" size="sm" className="text-red-600" onClick={() => removeEditorialProfileRow("inner", "tinta", idx)}>
+                                                  {t('common.remove')}
+                                                </Button>
+                                              ) : null}
+                                            </div>
+                                          ))}
                                         </div>
                                       </div>
                                     </>
@@ -4405,9 +4787,9 @@ export function LitografiaQuoteDialog(props: {
                                         <p className={HELP_TEXT}>
                                           Se suma al total (valor fijo del acabado).
                                         </p>
-                                          {isEditorialCartilla && compaginadoFinish?.id === editorialInner.finishId ? (
+                                          {compaginadoFinish?.id === editorialInner.finishId ? (
                                             <p className={HELP_TEXT}>
-                                              Compaginado automático: {Math.max(0, editorialSplitCalc?.innerPliegosPorUnidad ?? 0)} pliegos internos por cartilla x {Math.max(0, Math.trunc(parseFloat(cantidad) || 0))} unidades = {editorialInnerCompaginadoQty}.
+                                              Compaginado automático: {Math.max(0, Math.ceil((Math.max(0, Math.trunc(parseFloat(editorialTotalPaginas) || 0))) / 2))} hojas internas finales por ejemplar × {Math.max(0, Math.trunc(parseFloat(cantidad) || 0))} ejemplares = {editorialInnerCompaginadoQty}.
                                             </p>
                                           ) : null}
                                       </div>
@@ -4522,6 +4904,40 @@ export function LitografiaQuoteDialog(props: {
 
                                       <div className="grid grid-cols-2 gap-3">
                                         <div>
+                                          <Label>Troquelada</Label>
+                                          <select
+                                            className={SELECT_COMPACT}
+                                            value={editorialInner.troqueladaId}
+                                            onChange={(e) => updateEditorialPart("inner", (prev) => ({ ...prev, troqueladaId: e.target.value }))}
+                                            disabled={!activeTroqueladas.length}
+                                          >
+                                            <option value="">Ninguna</option>
+                                            {activeTroqueladas.map((f) => (
+                                              <option key={f.id} value={f.id}>
+                                                {f.nombre}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <p className={HELP_TEXT}>Se suma como valor × cantidad.</p>
+                                        </div>
+                                        <div>
+                                          <Label>Cantidad</Label>
+                                          <Input
+                                            className={INPUT_COMPACT}
+                                            type="number"
+                                            step="1"
+                                            min={1}
+                                            value={editorialInner.troqueladaQty}
+                                            onChange={(e) => updateEditorialPart("inner", (prev) => ({ ...prev, troqueladaQty: e.target.value }))}
+                                          />
+                                          <p className={HELP_TEXT}>
+                                            Total = valor × cantidad (x{Math.max(1, Math.trunc(parseFloat(String(editorialInner.troqueladaQty || "1")) || 0) || 1)}).
+                                          </p>
+                                        </div>
+                                      </div>
+
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div>
                                           <Label>Corte</Label>
                                           <select
                                             className={SELECT_COMPACT}
@@ -4570,11 +4986,11 @@ export function LitografiaQuoteDialog(props: {
                       <div className="sm:col-span-2">
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <div>
-                            <Label className={requiredLabelClass(validation.missingPlancha)}>Se imprime en</Label>
+                            <Label className={requiredLabelClass(validation.missingPlancha)}>Área útil de impresión</Label>
                             <select
                               className={`${SELECT_COMPACT} ${requiredFieldClass(validation.missingPlancha)}`}
-                              value={primaryPlanchaProfileId}
-                              onChange={(e) => updatePlanchaRow(0, e.target.value)}
+                              value={selectedMachineProfileId}
+                              onChange={(e) => setSelectedMachineProfileId(e.target.value)}
                               disabled={!activePlanchaProfiles.length}
                             >
                               <option value="">Seleccionar formato…</option>
@@ -4585,7 +5001,7 @@ export function LitografiaQuoteDialog(props: {
                               ))}
                             </select>
                             <p className={HELP_TEXT}>
-                              Aquí defines el tamaño real en que se imprimirá el trabajo. Desde aquí se toma la referencia base de planchas.
+                              Aquí defines solamente el área útil de impresión de la máquina. El cálculo de papel usa esta área contra el papel elegido; el costo de planchas se configura aparte más abajo.
                             </p>
                           </div>
 
@@ -4673,7 +5089,7 @@ export function LitografiaQuoteDialog(props: {
                               finalWidthCm={selectedPreset.widthCm}
                               finalHeightCm={selectedPreset.heightCm}
                               finalLabel={`${selectedPreset.nombre} ${formatCm(selectedPreset.widthCm)}x${formatCm(selectedPreset.heightCm)} cm`}
-                              printSheetLabel={primaryPlanchaProfile?.nombre}
+                              printSheetLabel={primaryMachineProfile?.nombre}
                               runQty={Math.max(0, Math.trunc(parseFloat(cantidad) || 0))}
                               extraQty={Math.max(0, Math.trunc(parseFloat(sobranteMinimo) || 0))}
                               gapCm={primaryMachineGap}
@@ -4738,14 +5154,14 @@ export function LitografiaQuoteDialog(props: {
                         <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
                           {primaryPlanchaProfile ? (
                             <>
-                              {t('printshopQuote.summary.totalPlates', { total: formatCurrency(planchaCostConfigured) })} Tamaño de impresión: {formatCm(primaryMachineWidth)}×{formatCm(primaryMachineHeight)} cm.
+                              {t('printshopQuote.summary.totalPlates', { total: formatCurrency(planchaCostConfigured) })} Área útil elegida: {formatCm(primaryMachineWidth)}×{formatCm(primaryMachineHeight)} cm.
                             </>
                           ) : (
                             <>{t('printshopQuote.help.selectPlates')}</>
                           )}
                         </p>
                         <p className={HELP_TEXT}>
-                          La primera fila queda sincronizada con “Se imprime en”. Si agregas varias filas, sus planchas se suman y cada “Cantidad” multiplica ese perfil.
+                          Estas filas solo suman costo de planchas. El área útil de impresión se define arriba y ya no depende de esta primera fila.
                         </p>
                       </div>
                       ) : null}
