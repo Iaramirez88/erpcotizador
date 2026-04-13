@@ -246,6 +246,14 @@ function computeEditorialProductionQty(args: {
   return piezasBase * pliegosPorUnidad
 }
 
+function computeEditorialSheetsPerUnit(totalPages: number, pagesPerSheetFront: number, printInkBack?: PrintInkKey) {
+  const pages = Math.max(0, Math.trunc(Number(totalPages) || 0))
+  const frontCapacity = Math.max(1, Math.trunc(Number(pagesPerSheetFront) || 0) || 1)
+  const isTwoSided = baseInkCount(printInkBack || "0") > 0
+  const effectiveCapacity = frontCapacity * (isTwoSided ? 2 : 1)
+  return pages > 0 ? Math.ceil(pages / effectiveCapacity) : 0
+}
+
 function findSizeNameByDimensions(
   options: Array<{ nombre: string; widthCm: number; heightCm: number }>,
   widthCm: number,
@@ -1964,8 +1972,8 @@ export function LitografiaQuoteDialog(props: {
 
     // Nota: el selector Frente/Reverso ajusta automáticamente multiplicadores y sobrante mínimo.
     // En Editorial, puedes seguir ajustando manualmente “Cantidad” en Plancha/Tinta si lo necesitas.
-    const innerPliegosPorUnidad = totalPaginas > 0 ? Math.ceil(totalPaginas / paginasPorPliego) : 0
-    const coverPliegosPorUnidad = coverPaginas > 0 ? Math.ceil(coverPaginas / paginasPorPliego) : 0
+    const innerPliegosPorUnidad = computeEditorialSheetsPerUnit(totalPaginas, paginasPorPliego, editorialInner.printInkBack)
+    const coverPliegosPorUnidad = computeEditorialSheetsPerUnit(coverPaginas, paginasPorPliego, editorialCover.printInkBack)
     const innerPlanchas = totalPaginas > 0 ? 1 : 0
     const coverPlanchas = coverPaginas > 0 ? 1 : 0
 
@@ -1975,7 +1983,15 @@ export function LitografiaQuoteDialog(props: {
       innerPliegosPorUnidad,
       coverPliegosPorUnidad,
     }
-  }, [props.open, selectedEditorialProductoKey, editorialTotalPaginas, editorialPaginasPortadaContraportada, editorialPaginasPorPliego])
+  }, [
+    props.open,
+    selectedEditorialProductoKey,
+    editorialTotalPaginas,
+    editorialPaginasPortadaContraportada,
+    editorialPaginasPorPliego,
+    editorialInner.printInkBack,
+    editorialCover.printInkBack,
+  ])
 
   const editorialInnerCompaginadoQty = useMemo(() => {
     if (!editorialEnabled) return 0
