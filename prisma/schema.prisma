@@ -1746,6 +1746,7 @@ model WebsiteService {
   contactEmail String?
 
   notes String? @db.Text
+  customFieldsJson Json @default("[]")
 
   createdByUserId String?
   createdByUser   User? @relation("WebsiteServiceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)

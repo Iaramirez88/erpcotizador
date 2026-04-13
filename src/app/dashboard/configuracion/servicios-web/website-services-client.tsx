@@ -1,14 +1,26 @@
 "use client"
 
-import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Eye, EyeOff, Globe, HardDrive, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
+import Image from 'next/image'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, Eye, EyeOff, FileText, Globe, HardDrive, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
+import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { formatCurrency } from '@/lib/utils'
+import { useDataViewMode } from '@/hooks/use-data-view-mode'
+import {
+  createWebsiteServiceFieldId,
+  formatWebsiteServiceAttachmentSize,
+  normalizeWebsiteServiceCustomFields,
+  websiteServiceAttachmentAccept,
+  type WebsiteServiceAttachment,
+  type WebsiteServiceCustomField,
+  type WebsiteServiceCustomFieldType,
+} from '@/lib/website-service-fields'
+import { cn, formatCurrency } from '@/lib/utils'
 
 type ExpiryInfo = {
   kind: 'none' | 'ok' | 'warning' | 'expired'
@@ -34,6 +46,7 @@ type WebsiteServiceItem = {
   contactPhone: string | null
   contactEmail: string | null
   notes: string | null
+  customFieldsJson: WebsiteServiceCustomField[]
   createdAt: string
   updatedAt: string
   createdByUser: { id: string; name: string | null; email: string | null } | null
@@ -77,21 +90,6 @@ type AccessUsersResponse = {
   users?: Array<{ id: string; name: string | null; email: string | null; role: string }>
 }
 
-type WebsiteServiceReminderSettings = {
-  daysBefore: number
-  emailSubjectTemplate: string
-  emailBodyTemplate: string
-  whatsappTemplate: string
-  isEmailEnabled: boolean
-  isWhatsAppEnabled: boolean
-}
-
-type ReminderSettingsResponse = {
-  ok: boolean
-  error?: string
-  settings?: WebsiteServiceReminderSettings
-}
-
 type ServiceForm = {
   nombre: string
   descripcion: string
@@ -110,26 +108,46 @@ type ServiceForm = {
   contactPhone: string
   contactEmail: string
   notes: string
+  customFieldsJson: WebsiteServiceCustomField[]
 }
 
-const EMPTY_FORM: ServiceForm = {
-  nombre: '',
-  descripcion: '',
-  websiteUrl: '',
-  domainName: '',
-  hostedAt: '',
-  startedAt: '',
-  domainExpiresAt: '',
-  hostingExpiresAt: '',
-  soldAmount: '',
-  isPaid: false,
-  isCancelled: false,
-  loginUsername: '',
-  loginPassword: '',
-  contactName: '',
-  contactPhone: '',
-  contactEmail: '',
-  notes: '',
+type CustomFieldDraft = {
+  label: string
+  type: WebsiteServiceCustomFieldType
+  textValue: string
+  file: WebsiteServiceAttachment | null
+}
+
+function createEmptyForm(): ServiceForm {
+  return {
+    nombre: '',
+    descripcion: '',
+    websiteUrl: '',
+    domainName: '',
+    hostedAt: '',
+    startedAt: '',
+    domainExpiresAt: '',
+    hostingExpiresAt: '',
+    soldAmount: '',
+    isPaid: false,
+    isCancelled: false,
+    loginUsername: '',
+    loginPassword: '',
+    contactName: '',
+    contactPhone: '',
+    contactEmail: '',
+    notes: '',
+    customFieldsJson: [],
+  }
+}
+
+function createEmptyFieldDraft(): CustomFieldDraft {
+  return {
+    label: '',
+    type: 'TEXT',
+    textValue: '',
+    file: null,
+  }
 }
 
 function formatDate(value: string | null | undefined) {
@@ -149,7 +167,6 @@ function toDateInput(value: string | null | undefined) {
 function expiryLabel(info: ExpiryInfo) {
   if (info.kind === 'none') return 'Sin fecha'
   if (info.kind === 'expired') return `Vencido hace ${Math.abs(info.days ?? 0)} días`
-  if (info.kind === 'warning') return `Vence en ${info.days ?? 0} días`
   return `Vence en ${info.days ?? 0} días`
 }
 
@@ -160,7 +177,49 @@ function expiryBadgeClass(info: ExpiryInfo) {
   return 'bg-slate-100 text-slate-600 border-slate-200'
 }
 
+function normalizeServiceItem(item: WebsiteServiceItem): WebsiteServiceItem {
+  return {
+    ...item,
+    customFieldsJson: normalizeWebsiteServiceCustomFields(item.customFieldsJson),
+  }
+}
+
+function fieldSummary(field: WebsiteServiceCustomField) {
+  if (field.type === 'TEXT') return field.textValue || 'Sin valor'
+  return field.file?.name || 'Sin archivo'
+}
+
+function renderFieldValue(field: WebsiteServiceCustomField) {
+  if (field.type === 'TEXT') {
+    return <p className="text-sm text-slate-600">{field.textValue || 'Sin valor'}</p>
+  }
+
+  if (!field.file) {
+    return <p className="text-sm text-slate-400">Sin archivo</p>
+  }
+
+  return (
+    <div className="space-y-2">
+      {field.file.type === 'image' ? (
+        <div className="relative h-28 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+          <Image src={field.file.url} alt={field.file.name} fill className="object-cover" unoptimized sizes="240px" />
+        </div>
+      ) : (
+        <div className="flex h-28 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500">
+          <FileText className="h-6 w-6" />
+        </div>
+      )}
+      <a href={field.file.url} target="_blank" rel="noreferrer" className="inline-flex text-sm font-medium text-sky-700 hover:text-sky-900">
+        {field.file.name}
+      </a>
+      <p className="text-xs text-slate-500">{formatWebsiteServiceAttachmentSize(field.file.sizeBytes)}</p>
+    </div>
+  )
+}
+
 export default function WebsiteServicesClient() {
+  const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('website-services.history', 'list')
+
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savingAccess, setSavingAccess] = useState(false)
@@ -174,12 +233,16 @@ export default function WebsiteServicesClient() {
   const [assignableUsers, setAssignableUsers] = useState<Array<{ id: string; name: string | null; email: string | null; role: string }>>([])
   const [assignedUserIds, setAssignedUserIds] = useState<string[]>([])
   const [editing, setEditing] = useState<WebsiteServiceItem | null>(null)
-  const [form, setForm] = useState<ServiceForm>(EMPTY_FORM)
+  const [form, setForm] = useState<ServiceForm>(createEmptyForm())
+  const [customFieldDraft, setCustomFieldDraft] = useState<CustomFieldDraft>(createEmptyFieldDraft())
+  const [customFieldUploadTarget, setCustomFieldUploadTarget] = useState<string | 'new' | null>(null)
+  const [uploadingFieldFile, setUploadingFieldFile] = useState(false)
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, string>>({})
   const [revealDialogOpen, setRevealDialogOpen] = useState(false)
   const [serviceToReveal, setServiceToReveal] = useState<WebsiteServiceItem | null>(null)
   const [userPasswordConfirmation, setUserPasswordConfirmation] = useState('')
   const [revealingPasswordId, setRevealingPasswordId] = useState<string | null>(null)
+  const customFieldFileInputRef = useRef<HTMLInputElement | null>(null)
 
   async function load() {
     setLoading(true)
@@ -191,7 +254,7 @@ export default function WebsiteServicesClient() {
         return
       }
 
-      setServices(json.items ?? [])
+      setServices((json.items ?? []).map(normalizeServiceItem))
       setSummary(json.summary ?? null)
       setAlerts(json.alerts ?? [])
       setCanManageAssignments(Boolean(json.access?.canManageAssignments))
@@ -226,6 +289,7 @@ export default function WebsiteServicesClient() {
         item.contactName,
         item.contactPhone,
         item.contactEmail,
+        ...item.customFieldsJson.map((field) => `${field.label} ${fieldSummary(field)}`),
       ]
         .filter(Boolean)
         .join(' ')
@@ -234,9 +298,15 @@ export default function WebsiteServicesClient() {
     })
   }, [search, services])
 
+  function resetDialogState() {
+    setCustomFieldDraft(createEmptyFieldDraft())
+    setCustomFieldUploadTarget(null)
+  }
+
   function openCreateDialog() {
     setEditing(null)
-    setForm(EMPTY_FORM)
+    setForm(createEmptyForm())
+    resetDialogState()
     setDialogOpen(true)
   }
 
@@ -260,7 +330,9 @@ export default function WebsiteServicesClient() {
       contactPhone: item.contactPhone ?? '',
       contactEmail: item.contactEmail ?? '',
       notes: item.notes ?? '',
+      customFieldsJson: normalizeWebsiteServiceCustomFields(item.customFieldsJson),
     })
+    resetDialogState()
     setDialogOpen(true)
   }
 
@@ -308,6 +380,75 @@ export default function WebsiteServicesClient() {
     }
   }
 
+  async function uploadCustomFieldFile(file: File) {
+    setUploadingFieldFile(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch('/api/servicios-web/uploads', {
+        method: 'POST',
+        body: formData,
+      })
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; data?: WebsiteServiceAttachment } | null
+      if (!res.ok || !json?.ok || !json.data) {
+        alert(json?.error || 'No se pudo subir el archivo del campo.')
+        return null
+      }
+
+      return json.data
+    } finally {
+      setUploadingFieldFile(false)
+    }
+  }
+
+  async function handleCustomFieldFile(file: File | null) {
+    if (!file) return
+    const uploaded = await uploadCustomFieldFile(file)
+    if (!uploaded) return
+
+    if (!customFieldUploadTarget || customFieldUploadTarget === 'new') {
+      setCustomFieldDraft((current) => ({ ...current, type: 'FILE', file: uploaded }))
+      setCustomFieldUploadTarget(null)
+      return
+    }
+
+    setForm((current) => ({
+      ...current,
+      customFieldsJson: current.customFieldsJson.map((field) => (
+        field.id === customFieldUploadTarget ? { ...field, type: 'FILE', file: uploaded, textValue: null } : field
+      )),
+    }))
+    setCustomFieldUploadTarget(null)
+  }
+
+  function addCustomField() {
+    const label = customFieldDraft.label.trim()
+    if (!label) {
+      alert('El campo especial debe tener un nombre.')
+      return
+    }
+    if (customFieldDraft.type === 'FILE' && !customFieldDraft.file) {
+      alert('Sube el archivo o imagen para este campo especial.')
+      return
+    }
+
+    setForm((current) => ({
+      ...current,
+      customFieldsJson: [
+        ...current.customFieldsJson,
+        {
+          id: createWebsiteServiceFieldId('field'),
+          label,
+          type: customFieldDraft.type,
+          textValue: customFieldDraft.type === 'TEXT' ? customFieldDraft.textValue.trim() || null : null,
+          file: customFieldDraft.type === 'FILE' ? customFieldDraft.file : null,
+        },
+      ],
+    }))
+    setCustomFieldDraft(createEmptyFieldDraft())
+  }
+
   async function saveService() {
     if (!form.nombre.trim()) {
       alert('El nombre del servicio es obligatorio.')
@@ -329,8 +470,9 @@ export default function WebsiteServicesClient() {
         return
       }
       setDialogOpen(false)
-      setForm(EMPTY_FORM)
+      setForm(createEmptyForm())
       setEditing(null)
+      resetDialogState()
       await load()
     } finally {
       setSaving(false)
@@ -378,7 +520,7 @@ export default function WebsiteServicesClient() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Vista privada</p>
           <h1 className="mt-1 text-2xl font-semibold text-slate-950">Servicios de páginas web</h1>
-          <p className="mt-1 max-w-3xl text-sm text-slate-600">Centraliza fecha de creación, dominio, hosting, URL, alojamiento, valor vendido, estado de pago, credenciales y contactos en una sola pantalla privada.</p>
+          <p className="mt-1 max-w-3xl text-sm text-slate-600">Centraliza dominios, hosting, credenciales, contactos y ahora también campos especiales por servicio en una sola pantalla privada.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="rounded-xl" onClick={() => void load()} disabled={loading}>
@@ -404,74 +546,199 @@ export default function WebsiteServicesClient() {
       <div className="grid gap-4 xl:grid-cols-[1.45fr_0.55fr]">
         <Card className="rounded-[26px] border-slate-200 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)]">
           <CardHeader className="border-b border-slate-100 pb-4">
-            <CardTitle>Servicios centralizados</CardTitle>
-            <CardDescription>Busca por nombre, dominio, URL, hosting o contacto.</CardDescription>
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <CardTitle>Servicios centralizados</CardTitle>
+                <CardDescription>Busca por nombre, dominio, URL, hosting, contacto o campos especiales.</CardDescription>
+              </div>
+              <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
+            </div>
             <div className="pt-2">
-              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar servicio, dominio, URL o contacto..." className="rounded-xl" />
+              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar servicio, dominio, URL, contacto o campo..." className="rounded-xl" />
             </div>
           </CardHeader>
           <CardContent className="space-y-3 p-4 md:p-5">
             {loading ? <p className="text-sm text-slate-500">Cargando servicios web...</p> : null}
             {!loading && filteredServices.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">No hay servicios registrados con ese filtro.</p> : null}
-            {filteredServices.map((item) => {
-              const revealedPassword = revealedPasswords[item.id]
-              const showPassword = revealedPassword !== undefined
-              return (
-                <div key={item.id} className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-4 shadow-sm">
-                  <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-lg font-semibold text-slate-950">{item.nombre}</h3>
-                        {item.isPaid ? <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">Pagado</span> : <span className="rounded-full border border-amber-200 bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">Pendiente</span>}
-                        {item.isCancelled ? <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">Cancelado</span> : null}
-                      </div>
-                      <p className="text-sm text-slate-600">{item.descripcion || 'Sin descripción comercial.'}</p>
-                      <div className="grid gap-2 text-sm text-slate-700 md:grid-cols-2 xl:grid-cols-3">
-                        <div><span className="font-medium text-slate-900">URL:</span> {item.websiteUrl ? <a href={item.websiteUrl} target="_blank" rel="noreferrer" className="text-sky-700 underline underline-offset-4">{item.websiteUrl}</a> : 'Sin URL'}</div>
-                        <div><span className="font-medium text-slate-900">Dominio:</span> {item.domainName || 'Sin dominio'}</div>
-                        <div><span className="font-medium text-slate-900">Alojado en:</span> {item.hostedAt || 'Sin dato'}</div>
-                        <div><span className="font-medium text-slate-900">Creado:</span> {formatDate(item.startedAt)}</div>
-                        <div><span className="font-medium text-slate-900">Valor vendido:</span> {formatCurrency(item.soldAmount || 0)}</div>
-                        <div><span className="font-medium text-slate-900">Contacto:</span> {item.contactName || 'Sin contacto'}{item.contactPhone ? ` · ${item.contactPhone}` : ''}{item.contactEmail ? ` · ${item.contactEmail}` : ''}</div>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2 xl:justify-end">
-                      <Button variant="outline" className="rounded-xl" onClick={() => openEditDialog(item)}>Editar</Button>
-                      <Button variant="outline" className="rounded-xl text-rose-700 hover:text-rose-800" onClick={() => void deleteService(item)} disabled={deletingId === item.id}>
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        {deletingId === item.id ? 'Eliminando...' : 'Eliminar'}
-                      </Button>
-                    </div>
-                  </div>
 
-                  <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-3">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Globe className="h-4 w-4 text-sky-700" /> Dominio</div>
-                      <div className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${expiryBadgeClass(item.domainExpiry)}`}>{expiryLabel(item.domainExpiry)}</div>
-                      <p className="mt-2 text-sm text-slate-600">Fecha: {formatDate(item.domainExpiresAt)}</p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 bg-white p-3">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><HardDrive className="h-4 w-4 text-sky-700" /> Hosting</div>
-                      <div className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${expiryBadgeClass(item.hostingExpiry)}`}>{expiryLabel(item.hostingExpiry)}</div>
-                      <p className="mt-2 text-sm text-slate-600">Fecha: {formatDate(item.hostingExpiresAt)}</p>
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 bg-white p-3">
-                      <div className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-900">
-                        <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-sky-700" /> Credenciales</span>
-                        <button type="button" className="text-slate-500 hover:text-slate-800" onClick={() => requestRevealPassword(item)} disabled={!item.hasPassword || revealingPasswordId === item.id}>
-                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
+            {!loading && filteredServices.length > 0 && dataViewMode === 'grid' ? (
+              <div className="grid gap-3 xl:grid-cols-2">
+                {filteredServices.map((item) => {
+                  const revealedPassword = revealedPasswords[item.id]
+                  const showPassword = revealedPassword !== undefined
+                  return (
+                    <div key={item.id} className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-4 shadow-sm">
+                      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="min-w-0 space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-lg font-semibold text-slate-950">{item.nombre}</h3>
+                            <span className={cn('rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide', item.isPaid ? 'border-emerald-200 bg-emerald-100 text-emerald-800' : 'border-amber-200 bg-amber-100 text-amber-800')}>
+                              {item.isPaid ? 'Pagado' : 'Pendiente'}
+                            </span>
+                            {item.isCancelled ? <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">Cancelado</span> : null}
+                          </div>
+                          <p className="line-clamp-2 text-sm text-slate-600">{item.descripcion || 'Sin descripción comercial.'}</p>
+                          <div className="grid gap-2 text-sm text-slate-700 md:grid-cols-2">
+                            <div><span className="font-medium text-slate-900">URL:</span> {item.websiteUrl ? <a href={item.websiteUrl} target="_blank" rel="noreferrer" className="text-sky-700 underline underline-offset-4">{item.websiteUrl}</a> : 'Sin URL'}</div>
+                            <div><span className="font-medium text-slate-900">Dominio:</span> {item.domainName || 'Sin dominio'}</div>
+                            <div><span className="font-medium text-slate-900">Hosting:</span> {item.hostedAt || 'Sin dato'}</div>
+                            <div><span className="font-medium text-slate-900">Valor:</span> {formatCurrency(item.soldAmount || 0)}</div>
+                            <div><span className="font-medium text-slate-900">Creado:</span> {formatDate(item.startedAt)}</div>
+                            <div><span className="font-medium text-slate-900">Contacto:</span> {item.contactName || 'Sin contacto'}{item.contactPhone ? ` · ${item.contactPhone}` : ''}</div>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2 xl:justify-end">
+                          <Button variant="outline" className="rounded-xl" onClick={() => openEditDialog(item)}>Editar</Button>
+                          <Button variant="outline" className="rounded-xl text-rose-700 hover:text-rose-800" onClick={() => void deleteService(item)} disabled={deletingId === item.id}>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            {deletingId === item.id ? 'Eliminando...' : 'Eliminar'}
+                          </Button>
+                        </div>
                       </div>
-                      <p className="mt-2 text-sm text-slate-600"><span className="font-medium text-slate-900">Usuario:</span> {item.loginUsername || 'Sin usuario'}</p>
-                      <p className="mt-1 break-all text-sm text-slate-600"><span className="font-medium text-slate-900">Contraseña:</span> {!item.hasPassword ? 'Sin contraseña' : showPassword ? (revealedPassword || 'Sin contraseña') : '••••••••'}</p>
-                      {item.hasPassword ? <p className="mt-1 text-xs text-slate-500">Para verla se pedirá tu contraseña de usuario.</p> : null}
-                    </div>
-                  </div>
 
-                  {item.notes ? <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600"><span className="font-medium text-slate-900">Notas:</span> {item.notes}</div> : null}
-                </div>
-              )
-            })}
+                      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                        <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Globe className="h-4 w-4 text-sky-700" /> Dominio</div>
+                          <div className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${expiryBadgeClass(item.domainExpiry)}`}>{expiryLabel(item.domainExpiry)}</div>
+                          <p className="mt-2 text-sm text-slate-600">Fecha: {formatDate(item.domainExpiresAt)}</p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900"><HardDrive className="h-4 w-4 text-sky-700" /> Hosting</div>
+                          <div className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${expiryBadgeClass(item.hostingExpiry)}`}>{expiryLabel(item.hostingExpiry)}</div>
+                          <p className="mt-2 text-sm text-slate-600">Fecha: {formatDate(item.hostingExpiresAt)}</p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                          <div className="flex items-center justify-between gap-2 text-sm font-semibold text-slate-900">
+                            <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-sky-700" /> Credenciales</span>
+                            <button type="button" className="text-slate-500 hover:text-slate-800" onClick={() => requestRevealPassword(item)} disabled={!item.hasPassword || revealingPasswordId === item.id}>
+                              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
+                          <p className="mt-2 text-sm text-slate-600"><span className="font-medium text-slate-900">Usuario:</span> {item.loginUsername || 'Sin usuario'}</p>
+                          <p className="mt-1 break-all text-sm text-slate-600"><span className="font-medium text-slate-900">Contraseña:</span> {!item.hasPassword ? 'Sin contraseña' : showPassword ? (revealedPassword || 'Sin contraseña') : '••••••••'}</p>
+                        </div>
+                      </div>
+
+                      {item.customFieldsJson.length ? (
+                        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-sm font-semibold text-slate-900">Campos especiales</p>
+                            <span className="text-xs text-slate-500">{item.customFieldsJson.length} elemento(s)</span>
+                          </div>
+                          <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            {item.customFieldsJson.slice(0, 4).map((field) => (
+                              <div key={field.id} className="rounded-2xl border border-slate-200 bg-white p-3">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{field.label}</p>
+                                <div className="mt-2">{renderFieldValue(field)}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {item.notes ? <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600"><span className="font-medium text-slate-900">Notas:</span> {item.notes}</div> : null}
+                    </div>
+                  )
+                })}
+              </div>
+            ) : null}
+
+            {!loading && filteredServices.length > 0 && dataViewMode === 'list' ? (
+              <div className="max-w-full overflow-x-auto">
+                <table className="min-w-[1280px] w-full">
+                  <thead className="border-b border-slate-200">
+                    <tr className="text-left text-sm text-slate-500">
+                      <th className="pb-3 font-medium">Servicio</th>
+                      <th className="pb-3 font-medium">Dominio y URL</th>
+                      <th className="pb-3 font-medium">Hosting</th>
+                      <th className="pb-3 font-medium">Fechas</th>
+                      <th className="pb-3 font-medium">Contacto</th>
+                      <th className="pb-3 font-medium">Campos</th>
+                      <th className="pb-3 font-medium">Estado</th>
+                      <th className="pb-3 font-medium text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredServices.map((item) => {
+                      const revealedPassword = revealedPasswords[item.id]
+                      const showPassword = revealedPassword !== undefined
+                      return (
+                        <tr key={item.id} className="border-b border-slate-100 align-top last:border-0">
+                          <td className="py-4 pr-4">
+                            <div className="min-w-[220px] space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold text-slate-950">{item.nombre}</p>
+                                <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide', item.isPaid ? 'border-emerald-200 bg-emerald-100 text-emerald-800' : 'border-amber-200 bg-amber-100 text-amber-800')}>
+                                  {item.isPaid ? 'Pagado' : 'Pendiente'}
+                                </span>
+                                {item.isCancelled ? <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">Cancelado</span> : null}
+                              </div>
+                              <p className="line-clamp-2 text-sm text-slate-600">{item.descripcion || 'Sin descripción comercial.'}</p>
+                              <p className="text-sm font-medium text-slate-900">{formatCurrency(item.soldAmount || 0)}</p>
+                            </div>
+                          </td>
+                          <td className="py-4 pr-4 text-sm text-slate-600">
+                            <div className="min-w-[220px] space-y-1">
+                              <p><span className="font-medium text-slate-900">Dominio:</span> {item.domainName || 'Sin dominio'}</p>
+                              <p className="break-all"><span className="font-medium text-slate-900">URL:</span> {item.websiteUrl ? <a href={item.websiteUrl} target="_blank" rel="noreferrer" className="text-sky-700 underline underline-offset-4">{item.websiteUrl}</a> : 'Sin URL'}</p>
+                            </div>
+                          </td>
+                          <td className="py-4 pr-4 text-sm text-slate-600">
+                            <div className="min-w-[180px] space-y-1">
+                              <p><span className="font-medium text-slate-900">Proveedor:</span> {item.hostedAt || 'Sin dato'}</p>
+                              <p><span className="font-medium text-slate-900">Usuario:</span> {item.loginUsername || 'Sin usuario'}</p>
+                              <button type="button" className="inline-flex items-center gap-2 text-sky-700 hover:text-sky-900" onClick={() => requestRevealPassword(item)} disabled={!item.hasPassword || revealingPasswordId === item.id}>
+                                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                {!item.hasPassword ? 'Sin contraseña' : showPassword ? (revealedPassword || 'Sin contraseña') : 'Ver contraseña'}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-4 pr-4 text-sm text-slate-600">
+                            <div className="min-w-[170px] space-y-1">
+                              <p><span className="font-medium text-slate-900">Alta:</span> {formatDate(item.startedAt)}</p>
+                              <p><span className="font-medium text-slate-900">Dominio:</span> {formatDate(item.domainExpiresAt)}</p>
+                              <p><span className="font-medium text-slate-900">Hosting:</span> {formatDate(item.hostingExpiresAt)}</p>
+                            </div>
+                          </td>
+                          <td className="py-4 pr-4 text-sm text-slate-600">
+                            <div className="min-w-[190px] space-y-1">
+                              <p className="font-medium text-slate-900">{item.contactName || 'Sin contacto'}</p>
+                              <p>{item.contactPhone || 'Sin teléfono'}</p>
+                              <p className="break-all">{item.contactEmail || 'Sin correo'}</p>
+                            </div>
+                          </td>
+                          <td className="py-4 pr-4 text-sm text-slate-600">
+                            <div className="min-w-[210px] space-y-2">
+                              <p className="font-medium text-slate-900">{item.customFieldsJson.length} campo(s)</p>
+                              {item.customFieldsJson.length ? item.customFieldsJson.slice(0, 2).map((field) => (
+                                <div key={field.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{field.label}</p>
+                                  <p className="text-sm text-slate-700">{fieldSummary(field)}</p>
+                                </div>
+                              )) : <p className="text-slate-400">Sin campos especiales</p>}
+                            </div>
+                          </td>
+                          <td className="py-4 pr-4 text-sm text-slate-600">
+                            <div className="min-w-[180px] space-y-2">
+                              <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${expiryBadgeClass(item.domainExpiry)}`}>Dominio: {expiryLabel(item.domainExpiry)}</span>
+                              <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${expiryBadgeClass(item.hostingExpiry)}`}>Hosting: {expiryLabel(item.hostingExpiry)}</span>
+                            </div>
+                          </td>
+                          <td className="py-4">
+                            <div className="flex justify-end gap-2">
+                              <Button variant="outline" size="sm" onClick={() => openEditDialog(item)}>Editar</Button>
+                              <Button variant="outline" size="sm" className="text-rose-700 hover:text-rose-800" onClick={() => void deleteService(item)} disabled={deletingId === item.id}>
+                                {deletingId === item.id ? 'Eliminando...' : 'Eliminar'}
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -536,13 +803,28 @@ export default function WebsiteServicesClient() {
         </div>
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-4xl">
+      <Dialog open={dialogOpen} onOpenChange={(nextOpen) => {
+        setDialogOpen(nextOpen)
+        if (!nextOpen) resetDialogState()
+      }}>
+        <DialogContent className="max-w-5xl">
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar servicio web' : 'Nuevo servicio web'}</DialogTitle>
-            <DialogDescription>Registra dominio, hosting, URL, estado comercial, credenciales y datos de contacto en una sola ficha.</DialogDescription>
+            <DialogDescription>Registra dominio, hosting, URL, credenciales y también campos especiales como texto, imágenes o archivos propios del servicio.</DialogDescription>
           </DialogHeader>
-          <div className="grid max-h-[70vh] gap-4 overflow-y-auto py-2 md:grid-cols-2">
+
+          <input
+            ref={customFieldFileInputRef}
+            type="file"
+            accept={websiteServiceAttachmentAccept()}
+            className="hidden"
+            onChange={(event) => {
+              void handleCustomFieldFile(event.target.files?.[0] || null)
+              event.currentTarget.value = ''
+            }}
+          />
+
+          <div className="grid max-h-[78vh] gap-4 overflow-y-auto py-2 md:grid-cols-2">
             <div className="grid gap-2">
               <Label>Nombre del servicio</Label>
               <Input value={form.nombre} onChange={(e) => setForm((current) => ({ ...current, nombre: e.target.value }))} placeholder="Ejemplo: Web corporativa SGDigital" />
@@ -591,7 +873,7 @@ export default function WebsiteServicesClient() {
               <Label>Número de contacto</Label>
               <Input value={form.contactPhone} onChange={(e) => setForm((current) => ({ ...current, contactPhone: e.target.value }))} placeholder="Celular o WhatsApp" />
             </div>
-            <div className="grid gap-2">
+            <div className="grid gap-2 md:col-span-2">
               <Label>Correo del contacto</Label>
               <Input type="email" value={form.contactEmail} onChange={(e) => setForm((current) => ({ ...current, contactEmail: e.target.value }))} placeholder="correo@cliente.com" />
             </div>
@@ -611,6 +893,111 @@ export default function WebsiteServicesClient() {
               <input id="website-service-cancelled" type="checkbox" checked={form.isCancelled} onChange={(e) => setForm((current) => ({ ...current, isCancelled: e.target.checked }))} />
               <Label htmlFor="website-service-cancelled">Servicio finalizado o cancelado por el cliente</Label>
             </div>
+
+            <Card className="md:col-span-2 rounded-[28px] border-dashed border-slate-300 bg-slate-50/70 shadow-none">
+              <CardHeader>
+                <CardTitle className="text-base">Campos especiales</CardTitle>
+                <CardDescription>Agrega datos flexibles dentro del servicio: texto, valor, una imagen, un PDF, una hoja de cálculo o cualquier archivo soportado.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-[1fr_160px_1fr_140px] md:items-end">
+                  <div className="grid gap-2">
+                    <Label>Nombre del campo</Label>
+                    <Input value={customFieldDraft.label} onChange={(event) => setCustomFieldDraft((current) => ({ ...current, label: event.target.value }))} placeholder="Ejemplo: Logo, ficha técnica, observación, acceso cPanel" />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Tipo</Label>
+                    <select
+                      value={customFieldDraft.type}
+                      onChange={(event) => setCustomFieldDraft((current) => ({
+                        ...current,
+                        type: event.target.value as WebsiteServiceCustomFieldType,
+                        textValue: event.target.value === 'TEXT' ? current.textValue : '',
+                        file: event.target.value === 'FILE' ? current.file : null,
+                      }))}
+                      className="h-10 rounded-md border bg-background px-3 text-sm"
+                    >
+                      <option value="TEXT">Texto</option>
+                      <option value="FILE">Archivo o imagen</option>
+                    </select>
+                  </div>
+                  {customFieldDraft.type === 'TEXT' ? (
+                    <div className="grid gap-2">
+                      <Label>Valor</Label>
+                      <Input value={customFieldDraft.textValue} onChange={(event) => setCustomFieldDraft((current) => ({ ...current, textValue: event.target.value }))} placeholder="Contenido del campo" />
+                    </div>
+                  ) : (
+                    <div className="grid gap-2">
+                      <Label>Archivo</Label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button variant="outline" onClick={() => { setCustomFieldUploadTarget('new'); customFieldFileInputRef.current?.click() }} disabled={uploadingFieldFile}>
+                          {customFieldDraft.file ? 'Reemplazar archivo' : uploadingFieldFile ? 'Subiendo...' : 'Subir archivo'}
+                        </Button>
+                        {customFieldDraft.file ? <span className="text-xs text-slate-500">{customFieldDraft.file.name}</span> : null}
+                      </div>
+                    </div>
+                  )}
+                  <Button onClick={addCustomField}>Agregar campo</Button>
+                </div>
+
+                <div className="space-y-3">
+                  {form.customFieldsJson.map((field) => (
+                    <div key={field.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="grid gap-3 lg:grid-cols-[1fr_170px_1fr_110px] lg:items-start">
+                        <div className="grid gap-2">
+                          <Label>Nombre del campo</Label>
+                          <Input value={field.label} onChange={(event) => setForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? { ...item, label: event.target.value } : item) }))} />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Tipo</Label>
+                          <select
+                            value={field.type}
+                            onChange={(event) => setForm((current) => ({
+                              ...current,
+                              customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? {
+                                ...item,
+                                type: event.target.value as WebsiteServiceCustomFieldType,
+                                textValue: event.target.value === 'TEXT' ? item.textValue || '' : null,
+                                file: event.target.value === 'FILE' ? item.file || null : null,
+                              } : item),
+                            }))}
+                            className="h-10 rounded-md border bg-background px-3 text-sm"
+                          >
+                            <option value="TEXT">Texto</option>
+                            <option value="FILE">Archivo o imagen</option>
+                          </select>
+                        </div>
+                        {field.type === 'TEXT' ? (
+                          <div className="grid gap-2">
+                            <Label>Valor</Label>
+                            <Input value={field.textValue || ''} onChange={(event) => setForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? { ...item, textValue: event.target.value } : item) }))} />
+                          </div>
+                        ) : (
+                          <div className="grid gap-2">
+                            <Label>Archivo</Label>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Button variant="outline" onClick={() => { setCustomFieldUploadTarget(field.id); customFieldFileInputRef.current?.click() }} disabled={uploadingFieldFile}>
+                                {field.file ? 'Reemplazar' : uploadingFieldFile ? 'Subiendo...' : 'Subir'}
+                              </Button>
+                              {field.file ? <Button variant="outline" onClick={() => setForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? { ...item, file: null } : item) }))}>Quitar archivo</Button> : null}
+                            </div>
+                            {field.file ? (
+                              <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+                                {renderFieldValue(field)}
+                              </div>
+                            ) : <span className="text-sm text-slate-400">Sin archivo</span>}
+                          </div>
+                        )}
+                        <div className="pt-0 lg:pt-7">
+                          <Button variant="outline" onClick={() => setForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.filter((item) => item.id !== field.id) }))}>Quitar</Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {!form.customFieldsJson.length ? <p className="text-sm text-slate-400">No hay campos especiales todavía.</p> : null}
+                </div>
+              </CardContent>
+            </Card>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>

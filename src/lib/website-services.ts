@@ -1,6 +1,7 @@
 import { decryptChannelSecret } from '@/lib/crm-channel-secrets'
 import { prisma } from '@/lib/prisma'
 import { isSuperAdminEmail } from '@/lib/super-admin'
+import { normalizeWebsiteServiceCustomFields } from '@/lib/website-service-fields'
 
 type WebsiteServiceRecord = {
   id: string
@@ -21,6 +22,7 @@ type WebsiteServiceRecord = {
   contactPhone: string | null
   contactEmail: string | null
   notes: string | null
+  customFieldsJson?: unknown
   createdAt: Date
   updatedAt: Date
   createdByUser?: { id: string; name: string | null; email: string | null } | null
@@ -128,6 +130,7 @@ export function serializeWebsiteService(service: WebsiteServiceRecord) {
     contactPhone: service.contactPhone,
     contactEmail: service.contactEmail,
     notes: service.notes,
+    customFieldsJson: normalizeWebsiteServiceCustomFields(service.customFieldsJson),
     createdAt: service.createdAt.toISOString(),
     updatedAt: service.updatedAt.toISOString(),
     createdByUser: service.createdByUser

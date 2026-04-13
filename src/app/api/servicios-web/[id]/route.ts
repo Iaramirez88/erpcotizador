@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { auth } from '@/lib/auth'
 import { resolveUserIdFromSession } from '@/lib/session-user'
 import { encryptWebsiteServicePassword, getWebsiteServicesAccessForUser, serializeWebsiteService } from '@/lib/website-services'
+import { normalizeWebsiteServiceCustomFields } from '@/lib/website-service-fields'
 
 export const runtime = 'nodejs'
 
@@ -90,6 +91,7 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
         contactPhone: normalizeString(body?.contactPhone),
         contactEmail: normalizeString(body?.contactEmail),
         notes: normalizeString(body?.notes),
+        customFieldsJson: normalizeWebsiteServiceCustomFields(body?.customFieldsJson),
         updatedByUserId: guard.userId,
       },
       select: {
@@ -111,6 +113,7 @@ export async function PUT(req: NextRequest, context: { params: Promise<{ id: str
         contactPhone: true,
         contactEmail: true,
         notes: true,
+        customFieldsJson: true,
         createdAt: true,
         updatedAt: true,
         createdByUser: { select: { id: true, name: true, email: true } },
