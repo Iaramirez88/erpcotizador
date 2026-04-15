@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Eye, EyeOff, FileText, Globe, HardDrive, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowDownAZ, ArrowUpAZ, Eye, EyeOff, FileText, Globe, HardDrive, Plus, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -118,6 +118,8 @@ type CustomFieldDraft = {
   file: WebsiteServiceAttachment | null
 }
 
+type ExpirySortOrder = 'default' | 'asc' | 'desc'
+
 function createEmptyForm(): ServiceForm {
   return {
     nombre: '',
@@ -217,6 +219,22 @@ function renderFieldValue(field: WebsiteServiceCustomField) {
   )
 }
 
+function getServiceNextExpiryTimestamp(item: WebsiteServiceItem) {
+  const timestamps = [item.domainExpiresAt, item.hostingExpiresAt]
+    .filter(Boolean)
+    .map((value) => new Date(String(value)).getTime())
+    .filter((value) => Number.isFinite(value))
+
+  if (timestamps.length === 0) return null
+  return Math.min(...timestamps)
+}
+
+function getNextExpirySortLabel(order: ExpirySortOrder) {
+  if (order === 'asc') return 'Más próximos primero'
+  if (order === 'desc') return 'Más lejanos primero'
+  return 'Orden normal'
+}
+
 export default function WebsiteServicesClient() {
   const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('website-services.history', 'list')
 
@@ -226,6 +244,7 @@ export default function WebsiteServicesClient() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [expirySortOrder, setExpirySortOrder] = useState<ExpirySortOrder>('default')
   const [services, setServices] = useState<WebsiteServiceItem[]>([])
   const [summary, setSummary] = useState<WebsiteServicesResponse['summary'] | null>(null)
   const [alerts, setAlerts] = useState<NonNullable<WebsiteServicesResponse['alerts']>>([])
@@ -242,6 +261,8 @@ export default function WebsiteServicesClient() {
   const [serviceToReveal, setServiceToReveal] = useState<WebsiteServiceItem | null>(null)
   const [userPasswordConfirmation, setUserPasswordConfirmation] = useState('')
   const [revealingPasswordId, setRevealingPasswordId] = useState<string | null>(null)
+  const [alertsDialogOpen, setAlertsDialogOpen] = useState(false)
+  const [accessDialogOpen, setAccessDialogOpen] = useState(false)
   const customFieldFileInputRef = useRef<HTMLInputElement | null>(null)
 
   async function load() {
@@ -297,6 +318,32 @@ export default function WebsiteServicesClient() {
       return haystack.includes(term)
     })
   }, [search, services])
+
+  const visibleServices = useMemo(() => {
+    if (expirySortOrder === 'default') return filteredServices
+
+    const sorted = [...filteredServices]
+    sorted.sort((left, right) => {
+      const leftExpiry = getServiceNextExpiryTimestamp(left)
+      const rightExpiry = getServiceNextExpiryTimestamp(right)
+
+      if (leftExpiry === null && rightExpiry === null) return left.nombre.localeCompare(right.nombre)
+      if (leftExpiry === null) return 1
+      if (rightExpiry === null) return -1
+
+      return expirySortOrder === 'asc' ? leftExpiry - rightExpiry : rightExpiry - leftExpiry
+    })
+
+    return sorted
+  }, [expirySortOrder, filteredServices])
+
+  function cycleExpirySortOrder() {
+    setExpirySortOrder((current) => {
+      if (current === 'default') return 'asc'
+      if (current === 'asc') return 'desc'
+      return 'default'
+    })
+  }
 
   function resetDialogState() {
     setCustomFieldDraft(createEmptyFieldDraft())
@@ -543,15 +590,28 @@ export default function WebsiteServicesClient() {
         <Card className="rounded-[24px]"><CardContent className="p-4"><div className="text-xs uppercase tracking-wide text-slate-500">Vencidos</div><div className="mt-2 text-2xl font-semibold text-rose-700">{(summary?.expiredDomains ?? 0) + (summary?.expiredHosting ?? 0)}</div></CardContent></Card>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.45fr_0.55fr]">
-        <Card className="rounded-[26px] border-slate-200 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)]">
+      <Card className="rounded-[26px] border-slate-200 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)]">
           <CardHeader className="border-b border-slate-100 pb-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <CardTitle>Servicios centralizados</CardTitle>
                 <CardDescription>Busca por nombre, dominio, URL, hosting, contacto o campos especiales.</CardDescription>
               </div>
-              <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
+              <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
+                <Button variant="outline" className="rounded-xl" onClick={() => setAlertsDialogOpen(true)}>
+                  <AlertTriangle className="mr-2 h-4 w-4 text-amber-600" />
+                  Alertas
+                  {alerts.length ? <span className="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{alerts.length}</span> : null}
+                </Button>
+                {canManageAssignments ? (
+                  <Button variant="outline" className="rounded-xl" onClick={() => setAccessDialogOpen(true)}>
+                    <ShieldCheck className="mr-2 h-4 w-4 text-sky-700" />
+                    Usuarios de acceso
+                    <span className="ml-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">{assignedUserIds.length}</span>
+                  </Button>
+                ) : null}
+              </div>
             </div>
             <div className="pt-2">
               <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar servicio, dominio, URL, contacto o campo..." className="rounded-xl" />
@@ -559,11 +619,11 @@ export default function WebsiteServicesClient() {
           </CardHeader>
           <CardContent className="space-y-3 p-4 md:p-5">
             {loading ? <p className="text-sm text-slate-500">Cargando servicios web...</p> : null}
-            {!loading && filteredServices.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">No hay servicios registrados con ese filtro.</p> : null}
+            {!loading && visibleServices.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">No hay servicios registrados con ese filtro.</p> : null}
 
-            {!loading && filteredServices.length > 0 && dataViewMode === 'grid' ? (
+            {!loading && visibleServices.length > 0 && dataViewMode === 'grid' ? (
               <div className="grid gap-3 xl:grid-cols-2">
-                {filteredServices.map((item) => {
+                {visibleServices.map((item) => {
                   const revealedPassword = revealedPasswords[item.id]
                   const showPassword = revealedPassword !== undefined
                   return (
@@ -643,28 +703,40 @@ export default function WebsiteServicesClient() {
               </div>
             ) : null}
 
-            {!loading && filteredServices.length > 0 && dataViewMode === 'list' ? (
-              <div className="max-w-full overflow-x-auto">
-                <table className="min-w-[1280px] w-full">
+            {!loading && visibleServices.length > 0 && dataViewMode === 'list' ? (
+              <div className="max-w-full overflow-x-auto rounded-2xl border border-slate-200 px-4 py-4 md:px-5 md:py-5">
+                  <table className="min-w-[1320px] w-full bg-white">
                   <thead className="border-b border-slate-200">
                     <tr className="text-left text-sm text-slate-500">
-                      <th className="pb-3 font-medium">Servicio</th>
-                      <th className="pb-3 font-medium">Dominio y URL</th>
-                      <th className="pb-3 font-medium">Hosting</th>
-                      <th className="pb-3 font-medium">Fechas</th>
-                      <th className="pb-3 font-medium">Contacto</th>
-                      <th className="pb-3 font-medium">Campos</th>
-                      <th className="pb-3 font-medium">Estado</th>
-                      <th className="pb-3 font-medium text-right">Acciones</th>
+                      <th className="px-4 pb-4 font-medium first:pl-2">Servicio</th>
+                      <th className="px-4 pb-4 font-medium">Dominio y URL</th>
+                      <th className="px-4 pb-4 font-medium">Hosting</th>
+                      <th className="px-4 pb-4 font-medium">Fechas</th>
+                      <th className="px-4 pb-4 font-medium">Contacto</th>
+                      <th className="px-4 pb-4 font-medium">Campos</th>
+                      <th className="px-4 pb-4 font-medium">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-2 rounded-full border border-transparent px-2 py-1 text-left transition hover:border-slate-200 hover:bg-slate-50"
+                          onClick={cycleExpirySortOrder}
+                          title={getNextExpirySortLabel(expirySortOrder)}
+                        >
+                          <span>Estado</span>
+                          {expirySortOrder === 'asc' ? <ArrowUpAZ className="h-4 w-4 text-sky-700" /> : null}
+                          {expirySortOrder === 'desc' ? <ArrowDownAZ className="h-4 w-4 text-sky-700" /> : null}
+                          {expirySortOrder === 'default' ? <span className="text-[11px] text-slate-400">Normal</span> : null}
+                        </button>
+                      </th>
+                      <th className="px-4 pb-4 font-medium text-right last:pr-2">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredServices.map((item) => {
+                    {visibleServices.map((item) => {
                       const revealedPassword = revealedPasswords[item.id]
                       const showPassword = revealedPassword !== undefined
                       return (
                         <tr key={item.id} className="border-b border-slate-100 align-top last:border-0">
-                          <td className="py-4 pr-4">
+                          <td className="px-4 py-5 pr-5 first:pl-2">
                             <div className="min-w-[220px] space-y-1">
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="font-semibold text-slate-950">{item.nombre}</p>
@@ -677,13 +749,13 @@ export default function WebsiteServicesClient() {
                               <p className="text-sm font-medium text-slate-900">{formatCurrency(item.soldAmount || 0)}</p>
                             </div>
                           </td>
-                          <td className="py-4 pr-4 text-sm text-slate-600">
+                          <td className="px-4 py-5 pr-5 text-sm text-slate-600">
                             <div className="min-w-[220px] space-y-1">
                               <p><span className="font-medium text-slate-900">Dominio:</span> {item.domainName || 'Sin dominio'}</p>
                               <p className="break-all"><span className="font-medium text-slate-900">URL:</span> {item.websiteUrl ? <a href={item.websiteUrl} target="_blank" rel="noreferrer" className="text-sky-700 underline underline-offset-4">{item.websiteUrl}</a> : 'Sin URL'}</p>
                             </div>
                           </td>
-                          <td className="py-4 pr-4 text-sm text-slate-600">
+                          <td className="px-4 py-5 pr-5 text-sm text-slate-600">
                             <div className="min-w-[180px] space-y-1">
                               <p><span className="font-medium text-slate-900">Proveedor:</span> {item.hostedAt || 'Sin dato'}</p>
                               <p><span className="font-medium text-slate-900">Usuario:</span> {item.loginUsername || 'Sin usuario'}</p>
@@ -693,21 +765,21 @@ export default function WebsiteServicesClient() {
                               </button>
                             </div>
                           </td>
-                          <td className="py-4 pr-4 text-sm text-slate-600">
+                          <td className="px-4 py-5 pr-5 text-sm text-slate-600">
                             <div className="min-w-[170px] space-y-1">
                               <p><span className="font-medium text-slate-900">Alta:</span> {formatDate(item.startedAt)}</p>
                               <p><span className="font-medium text-slate-900">Dominio:</span> {formatDate(item.domainExpiresAt)}</p>
                               <p><span className="font-medium text-slate-900">Hosting:</span> {formatDate(item.hostingExpiresAt)}</p>
                             </div>
                           </td>
-                          <td className="py-4 pr-4 text-sm text-slate-600">
+                          <td className="px-4 py-5 pr-5 text-sm text-slate-600">
                             <div className="min-w-[190px] space-y-1">
                               <p className="font-medium text-slate-900">{item.contactName || 'Sin contacto'}</p>
                               <p>{item.contactPhone || 'Sin teléfono'}</p>
                               <p className="break-all">{item.contactEmail || 'Sin correo'}</p>
                             </div>
                           </td>
-                          <td className="py-4 pr-4 text-sm text-slate-600">
+                          <td className="px-4 py-5 pr-5 text-sm text-slate-600">
                             <div className="min-w-[210px] space-y-2">
                               <p className="font-medium text-slate-900">{item.customFieldsJson.length} campo(s)</p>
                               {item.customFieldsJson.length ? item.customFieldsJson.slice(0, 2).map((field) => (
@@ -718,13 +790,13 @@ export default function WebsiteServicesClient() {
                               )) : <p className="text-slate-400">Sin campos especiales</p>}
                             </div>
                           </td>
-                          <td className="py-4 pr-4 text-sm text-slate-600">
+                          <td className="px-4 py-5 pr-5 text-sm text-slate-600">
                             <div className="min-w-[180px] space-y-2">
                               <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${expiryBadgeClass(item.domainExpiry)}`}>Dominio: {expiryLabel(item.domainExpiry)}</span>
                               <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${expiryBadgeClass(item.hostingExpiry)}`}>Hosting: {expiryLabel(item.hostingExpiry)}</span>
                             </div>
                           </td>
-                          <td className="py-4">
+                          <td className="px-4 py-5 text-right last:pr-2">
                             <div className="flex justify-end gap-2">
                               <Button variant="outline" size="sm" onClick={() => openEditDialog(item)}>Editar</Button>
                               <Button variant="outline" size="sm" className="text-rose-700 hover:text-rose-800" onClick={() => void deleteService(item)} disabled={deletingId === item.id}>
@@ -740,68 +812,72 @@ export default function WebsiteServicesClient() {
               </div>
             ) : null}
           </CardContent>
-        </Card>
+      </Card>
 
-        <div className="space-y-4">
-          <Card className="rounded-[26px] border-slate-200 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)]">
-            <CardHeader className="border-b border-slate-100 pb-4">
-              <CardTitle className="flex items-center gap-2"><AlertTriangle className="h-4.5 w-4.5 text-amber-600" /> Alertas de vencimiento</CardTitle>
-              <CardDescription>Dominios y hosting que ya vencieron o que vencen en los próximos 30 días.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 p-4">
-              {alerts.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-500">No hay vencimientos cercanos en este momento.</p> : null}
-              {alerts.map((alert) => (
-                <div key={`${alert.kind}-${alert.serviceId}-${alert.dueDate}`} className={alert.status === 'expired' ? 'rounded-2xl border border-rose-200 bg-rose-50 p-3' : 'rounded-2xl border border-amber-200 bg-amber-50 p-3'}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-950">{alert.serviceName}</p>
-                      <p className="text-xs uppercase tracking-wide text-slate-600">{alert.kind === 'DOMAIN' ? 'Dominio' : 'Hosting'}</p>
-                    </div>
-                    <span className={alert.status === 'expired' ? 'rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-800' : 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800'}>
-                      {alert.status === 'expired' ? `Vencido ${Math.abs(alert.days)}d` : `Vence ${alert.days}d`}
-                    </span>
+      <Dialog open={alertsDialogOpen} onOpenChange={setAlertsDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-4.5 w-4.5 text-amber-600" /> Alertas de vencimiento</DialogTitle>
+            <DialogDescription>Dominios y hosting que ya vencieron o que vencen en los próximos 30 días.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
+            {alerts.length === 0 ? <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-500">No hay vencimientos cercanos en este momento.</p> : null}
+            {alerts.map((alert) => (
+              <div key={`${alert.kind}-${alert.serviceId}-${alert.dueDate}`} className={alert.status === 'expired' ? 'rounded-2xl border border-rose-200 bg-rose-50 p-3' : 'rounded-2xl border border-amber-200 bg-amber-50 p-3'}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-950">{alert.serviceName}</p>
+                    <p className="text-xs uppercase tracking-wide text-slate-600">{alert.kind === 'DOMAIN' ? 'Dominio' : 'Hosting'}</p>
                   </div>
-                  <p className="mt-2 text-sm text-slate-600">Fecha: {formatDate(alert.dueDate)}</p>
+                  <span className={alert.status === 'expired' ? 'rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-800' : 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800'}>
+                    {alert.status === 'expired' ? `Vencido ${Math.abs(alert.days)}d` : `Vence ${alert.days}d`}
+                  </span>
                 </div>
-              ))}
-            </CardContent>
-          </Card>
-          {canManageAssignments ? (
-            <Card className="rounded-[26px] border-slate-200 shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)]">
-              <CardHeader className="border-b border-slate-100 pb-4">
-                <CardTitle>Usuarios con acceso al módulo</CardTitle>
-                <CardDescription>Solo el superusuario puede asignar quién más puede ver y usar esta vista.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3 p-4">
-                <div className="space-y-2">
-                  {assignableUsers.map((user) => {
-                    const selected = assignedUserIds.includes(user.id)
-                    return (
-                      <label key={user.id} className={selected ? 'flex cursor-pointer items-start gap-3 rounded-2xl border border-sky-300 bg-sky-50/80 p-3' : 'flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-3'}>
-                        <input
-                          type="checkbox"
-                          className="mt-1"
-                          checked={selected}
-                          onChange={(event) => {
-                            setAssignedUserIds((current) => event.target.checked ? [...current, user.id] : current.filter((id) => id !== user.id))
-                          }}
-                        />
-                        <div>
-                          <p className="text-sm font-medium text-slate-950">{user.name || user.email || user.id}</p>
-                          <p className="text-xs text-slate-500">{user.email || 'Sin correo'} · {user.role}</p>
-                        </div>
-                      </label>
-                    )
-                  })}
-                </div>
-                <Button className="w-full rounded-xl" onClick={() => void saveAccessUsers()} disabled={savingAccess}>
-                  {savingAccess ? 'Guardando acceso...' : 'Guardar accesos'}
-                </Button>
-              </CardContent>
-            </Card>
-          ) : null}
-        </div>
-      </div>
+                <p className="mt-2 text-sm text-slate-600">Fecha: {formatDate(alert.dueDate)}</p>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {canManageAssignments ? (
+        <Dialog open={accessDialogOpen} onOpenChange={setAccessDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Usuarios con acceso al módulo</DialogTitle>
+              <DialogDescription>Solo el superusuario puede asignar quién más puede ver y usar esta vista.</DialogDescription>
+            </DialogHeader>
+            <div className="max-h-[65vh] space-y-3 overflow-y-auto pr-1">
+              <div className="space-y-2">
+                {assignableUsers.map((user) => {
+                  const selected = assignedUserIds.includes(user.id)
+                  return (
+                    <label key={user.id} className={selected ? 'flex cursor-pointer items-start gap-3 rounded-2xl border border-sky-300 bg-sky-50/80 p-3' : 'flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-3'}>
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={selected}
+                        onChange={(event) => {
+                          setAssignedUserIds((current) => event.target.checked ? [...current, user.id] : current.filter((id) => id !== user.id))
+                        }}
+                      />
+                      <div>
+                        <p className="text-sm font-medium text-slate-950">{user.name || user.email || user.id}</p>
+                        <p className="text-xs text-slate-500">{user.email || 'Sin correo'} · {user.role}</p>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button className="w-full rounded-xl sm:w-auto" onClick={() => void saveAccessUsers()} disabled={savingAccess}>
+                {savingAccess ? 'Guardando acceso...' : 'Guardar accesos'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       <Dialog open={dialogOpen} onOpenChange={(nextOpen) => {
         setDialogOpen(nextOpen)
