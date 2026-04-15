@@ -21,23 +21,26 @@ export async function GET() {
   const userId = await resolveUserIdFromSession(session)
   if (!userId) return NextResponse.json({ success: false, error: 'Sesión inválida' }, { status: 401 })
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      image: true,
-      empresaId: true,
-      telefono: true,
-      cargo: true,
-      sedeDefaultId: true,
-      sedeDefault: { select: { id: true, nombre: true, codigo: true } },
-      createdAt: true,
-      updatedAt: true,
-    },
-  })
+  const [user, websiteServicesAccess] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        image: true,
+        empresaId: true,
+        telefono: true,
+        cargo: true,
+        sedeDefaultId: true,
+        sedeDefault: { select: { id: true, nombre: true, codigo: true } },
+        createdAt: true,
+        updatedAt: true,
+      },
+    }),
+    getWebsiteServicesAccessForUser(userId),
+  ])
 
   // Para UI: incluir acceso efectivo (por sede) a CONFIG
   let configAccess: AccessLevel = 'NONE'
@@ -46,13 +49,18 @@ export async function GET() {
   let canManageCustomProductRequests = false
   try {
     const sede = await getActiveSedeForUser(userId)
-    configAccess = await getEffectiveAccess({ userId, sedeId: sede.id, module: ModuleKey.CONFIG })
-    ordersAccess = await getEffectiveAccess({ userId, sedeId: sede.id, module: ModuleKey.ORDENES })
-    materialsAccess = await getEffectiveAccess({ userId, sedeId: sede.id, module: ModuleKey.MATERIALES })
-    const membership = await prisma.sedeMembership.findUnique({
-      where: { sedeId_userId: { sedeId: sede.id, userId } },
-      select: { role: true },
-    })
+    const [nextConfigAccess, nextOrdersAccess, nextMaterialsAccess, membership] = await Promise.all([
+      getEffectiveAccess({ userId, sedeId: sede.id, module: ModuleKey.CONFIG }),
+      getEffectiveAccess({ userId, sedeId: sede.id, module: ModuleKey.ORDENES }),
+      getEffectiveAccess({ userId, sedeId: sede.id, module: ModuleKey.MATERIALES }),
+      prisma.sedeMembership.findUnique({
+        where: { sedeId_userId: { sedeId: sede.id, userId } },
+        select: { role: true },
+      }),
+    ])
+    configAccess = nextConfigAccess
+    ordersAccess = nextOrdersAccess
+    materialsAccess = nextMaterialsAccess
     canManageCustomProductRequests = membership?.role === 'ADMIN' || membership?.role === 'MANAGER'
   } catch {
     // si algo falla (sede no resuelta, etc), dejamos NONE
@@ -66,7 +74,6 @@ export async function GET() {
   const isSystemSuperAdmin = isSuperAdminEmail(user?.email)
   const isPlanOwner = Boolean(empresaId && user?.id ? await isPlanOwnerForEmpresa({ empresaId, userId: user.id }) : false)
   const canManageBilling = isSystemSuperAdmin || isPlanOwner
-  const websiteServicesAccess = await getWebsiteServicesAccessForUser(userId)
 
   return NextResponse.json({
     success: true,

@@ -32,6 +32,8 @@ interface HeaderProps {
     role?: string
     image?: string | null
     allowedModules?: string[] | null
+    canManageBilling?: boolean
+    canAccessWebsiteServices?: boolean
   }
 }
 
@@ -42,14 +44,10 @@ export default function Header({ user }: HeaderProps) {
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null)
   const [trialBadgeVisible, setTrialBadgeVisible] = useState(false)
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
-  const [canManageBilling, setCanManageBilling] = useState(() => user.role === 'ADMIN')
-  const [canAccessWebsiteServices, setCanAccessWebsiteServices] = useState(false)
+  const [canManageBilling] = useState(Boolean(user.canManageBilling))
+  const [canAccessWebsiteServices] = useState(Boolean(user.canAccessWebsiteServices))
   const toggleMobileNav = useUiStore((s) => s.toggleMobileNav)
   const { hasCurrentTour, startCurrentTour, resetCurrentTour } = useTour()
-
-  useEffect(() => {
-    if (user.role === 'ADMIN') setCanManageBilling(true)
-  }, [user.role])
 
   const allowedModules = useMemo(() => {
     if (!user.allowedModules) return null
@@ -99,28 +97,6 @@ export default function Header({ user }: HeaderProps) {
     }
 
     void load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    async function loadBillingAccess() {
-      try {
-        const res = await fetch('/api/me', { cache: 'no-store' })
-        const json = (await res.json().catch(() => null)) as
-          | { success?: boolean; data?: { canManageBilling?: boolean; canAccessWebsiteServices?: boolean } | null }
-          | null
-        if (!cancelled && res.ok && json?.success) {
-          setCanManageBilling(Boolean(json.data?.canManageBilling))
-          setCanAccessWebsiteServices(Boolean(json.data?.canAccessWebsiteServices))
-        }
-      } catch {
-        // ignore
-      }
-    }
-    void loadBillingAccess()
     return () => {
       cancelled = true
     }

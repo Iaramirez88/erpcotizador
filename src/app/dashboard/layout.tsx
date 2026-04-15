@@ -10,15 +10,15 @@ import Sidebar from "@/components/dashboard/sidebar"
 import Header from "@/components/dashboard/header"
 import { TourProvider } from "@/components/tour/tour-provider"
 import PlanModuleGate from "@/components/dashboard/plan-module-gate"
-import PlanPaywallModal from "@/components/dashboard/plan-paywall-modal"
-import PlanLimitFetchInterceptor from "@/components/dashboard/plan-limit-fetch-interceptor"
-import PlanLimitModal from "@/components/dashboard/plan-limit-modal"
 import RouteLoadingIndicator from "@/components/dashboard/route-loading-indicator"
 import RouteLoadingStartListener from "@/components/dashboard/route-loading-start-listener"
-import LastDashboardRouteTracker from "@/components/dashboard/last-dashboard-route-tracker"
-import FloatingChatDrawer from "@/components/dashboard/floating-chat-drawer"
 import { getActiveSedeForUser, getEffectiveAccessMap, NAV_MODULES } from "@/lib/rbac"
 import { resolveUserIdFromSession } from "@/lib/session-user"
+import { prisma } from "@/lib/prisma"
+import { isSuperAdminEmail } from "@/lib/super-admin"
+import { isPlanOwnerForEmpresa } from "@/lib/plan-owner"
+import { getWebsiteServicesAccessForUser } from "@/lib/website-services"
+import DashboardDeferredWidgets from "@/components/dashboard/dashboard-deferred-widgets"
 
 export default async function DashboardLayout({
   children,
@@ -34,11 +34,29 @@ export default async function DashboardLayout({
 
   const userId = await resolveUserIdFromSession(session)
   let allowedModules: string[] | null = null
+  let canManageBilling = false
+  let canAccessWebsiteServices = false
   try {
     if (userId) {
-      const sede = await getActiveSedeForUser(userId)
+      const [sede, layoutUser, websiteServicesAccess] = await Promise.all([
+        getActiveSedeForUser(userId),
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, email: true, empresaId: true },
+        }),
+        getWebsiteServicesAccessForUser(userId),
+      ])
       const access = await getEffectiveAccessMap({ userId, sedeId: sede.id, modules: NAV_MODULES })
       allowedModules = NAV_MODULES.filter((m) => (access[m] ?? 'NONE') !== 'NONE')
+      canAccessWebsiteServices = websiteServicesAccess.canAccess
+
+      const isSystemSuperAdmin = isSuperAdminEmail(layoutUser?.email)
+      const isPlanOwner = Boolean(
+        layoutUser?.empresaId && layoutUser.id
+          ? await isPlanOwnerForEmpresa({ empresaId: layoutUser.empresaId, userId: layoutUser.id })
+          : false
+      )
+      canManageBilling = isSystemSuperAdmin || isPlanOwner
     }
   } catch {
     allowedModules = null
@@ -50,16 +68,14 @@ export default async function DashboardLayout({
     role: session.user.role,
     image: session.user.image ?? null,
     allowedModules,
+    canManageBilling,
+    canAccessWebsiteServices,
   }
 
   return (
     <TourProvider>
       <PlanModuleGate />
-      <PlanPaywallModal />
-      <PlanLimitFetchInterceptor />
-      <PlanLimitModal />
       <RouteLoadingStartListener />
-      {userId ? <LastDashboardRouteTracker userId={userId} /> : null}
       <div className="flex h-screen bg-[#eef3ef]">
         {/* Sidebar */}
         <Sidebar user={user} />
@@ -77,10 +93,10 @@ export default async function DashboardLayout({
               <RouteLoadingIndicator />
               {children}
             </div>
-            <FloatingChatDrawer />
           </main>
         </div>
       </div>
+      <DashboardDeferredWidgets userId={userId} />
     </TourProvider>
   )
 }

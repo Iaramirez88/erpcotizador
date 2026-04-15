@@ -109,11 +109,6 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             numero: true,
-            _count: {
-              select: {
-                items: true,
-              },
-            },
           },
         },
         posInvoice: {
