@@ -127,8 +127,11 @@ type ChatbotCanvasConnection = {
   id: string
   fromStageId: string
   toStageId: string
+  optionId: string
   label: string
   path: string
+  labelX: number
+  labelY: number
 }
 
 type ChannelGoalTargets = {
@@ -1171,13 +1174,14 @@ function getResponseMatchModeLabel(mode: ChatbotFlowResponseMatchMode) {
 function buildChatbotCanvasModel(stages: ChatbotFlowStage[]) {
   const nodeWidth = 268
   const nodeHeight = 152
-  const colGap = 110
+  const columns = stages.length <= 4 ? 2 : 3
+  const colGap = 92
   const rowGap = 72
   const padding = 24
   const nodes: ChatbotCanvasNode[] = stages.map((stage, index) => {
-    const row = Math.floor(index / 2)
-    const isRightColumn = index % 2 === 1
-    const x = padding + (isRightColumn ? nodeWidth + colGap : 0)
+    const row = Math.floor(index / columns)
+    const column = index % columns
+    const x = padding + column * (nodeWidth + colGap)
     const y = padding + row * (nodeHeight + rowGap)
     return { stage, x, y, width: nodeWidth, height: nodeHeight }
   })
@@ -1202,8 +1206,11 @@ function buildChatbotCanvasModel(stages: ChatbotFlowStage[]) {
           id: `${node.stage.id}-${option.id}`,
           fromStageId: node.stage.id,
           toStageId: targetNode.stage.id,
+          optionId: option.id,
           label: option.label,
           path: `M ${startX} ${startY} C ${loopX} ${startY}, ${loopX} ${loopY}, ${startX - 10} ${loopY} C ${startX - 54} ${loopY}, ${startX - 54} ${startY + 28}, ${startX} ${startY + 28}`,
+          labelX: startX - 18,
+          labelY: loopY - 16,
         })
         return
       }
@@ -1213,15 +1220,18 @@ function buildChatbotCanvasModel(stages: ChatbotFlowStage[]) {
         id: `${node.stage.id}-${option.id}`,
         fromStageId: node.stage.id,
         toStageId: targetNode.stage.id,
+        optionId: option.id,
         label: option.label,
         path: `M ${startX} ${startY} C ${startX + delta} ${startY}, ${endX - delta} ${endY}, ${endX} ${endY}`,
+        labelX: startX + (endX - startX) / 2,
+        labelY: startY + (endY - startY) / 2 - 14,
       })
     })
   })
 
   const maxY = nodes.length ? Math.max(...nodes.map((node) => node.y + node.height)) : 0
   return {
-    width: padding * 2 + nodeWidth * 2 + colGap,
+    width: padding * 2 + nodeWidth * columns + colGap * Math.max(0, columns - 1),
     height: maxY + padding,
     nodes,
     connections,
@@ -1259,6 +1269,7 @@ export function CrmIntegrationsClient() {
   const [chatbotBuilderPreviewViewport, setChatbotBuilderPreviewViewport] = useState<ChatbotPreviewViewport>('desktop')
   const [chatbotBuilderSection, setChatbotBuilderSection] = useState<ChatbotBuilderSection>('flow')
   const [selectedChatbotStageId, setSelectedChatbotStageId] = useState<ChatbotFlowStageId>('welcome')
+  const [selectedChatbotConnectionId, setSelectedChatbotConnectionId] = useState<string | null>(null)
   const [webFormBuilderDraft, setWebFormBuilderDraft] = useState<WebFormBuilderState>(getWebFormBuilderState(null))
   const [webFormBuilderModalOpen, setWebFormBuilderModalOpen] = useState(false)
   const [savingWebFormBuilder, setSavingWebFormBuilder] = useState(false)
@@ -1542,6 +1553,18 @@ export function CrmIntegrationsClient() {
   const selectedIsPublicWebForm = selectedChannel?.provider === 'WEB_FORM' && selectedBridgeKind === 'GENERIC'
   const selectedChatbotFlowStage = useMemo(() => chatbotBuilderDraft.flowStages.find((item) => item.id === selectedChatbotStageId) ?? chatbotBuilderDraft.flowStages[0] ?? null, [chatbotBuilderDraft.flowStages, selectedChatbotStageId])
   const chatbotCanvasModel = useMemo(() => buildChatbotCanvasModel(chatbotBuilderDraft.flowStages), [chatbotBuilderDraft.flowStages])
+  const selectedChatbotConnection = useMemo(
+    () => chatbotCanvasModel.connections.find((item) => item.id === selectedChatbotConnectionId) ?? null,
+    [chatbotCanvasModel.connections, selectedChatbotConnectionId],
+  )
+  const selectedChatbotConnectionSourceStage = useMemo(
+    () => selectedChatbotConnection ? chatbotBuilderDraft.flowStages.find((item) => item.id === selectedChatbotConnection.fromStageId) ?? null : null,
+    [chatbotBuilderDraft.flowStages, selectedChatbotConnection],
+  )
+  const selectedChatbotConnectionOption = useMemo(
+    () => selectedChatbotConnectionSourceStage?.responseOptions.find((item) => item.id === selectedChatbotConnection?.optionId) ?? null,
+    [selectedChatbotConnection?.optionId, selectedChatbotConnectionSourceStage],
+  )
 
   useEffect(() => {
     setMetaSelectionDraft({
@@ -1558,6 +1581,13 @@ export function CrmIntegrationsClient() {
   useEffect(() => {
     setSelectedChatbotStageId((current) => chatbotBuilderDraft.flowStages.some((item) => item.id === current) ? current : chatbotBuilderDraft.flowStages[0]?.id ?? 'welcome')
   }, [chatbotBuilderDraft.flowStages])
+
+  useEffect(() => {
+    if (!selectedChatbotConnectionId) return
+    if (!chatbotCanvasModel.connections.some((item) => item.id === selectedChatbotConnectionId)) {
+      setSelectedChatbotConnectionId(null)
+    }
+  }, [chatbotCanvasModel.connections, selectedChatbotConnectionId])
 
   useEffect(() => {
     if (!selectedIsChatbot) {
@@ -2055,6 +2085,34 @@ export function CrmIntegrationsClient() {
       ],
     }))
     setSelectedChatbotStageId(nextStageId)
+    setSelectedChatbotConnectionId(null)
+  }
+
+  function addConnectedChatbotStage(sourceStageId: ChatbotFlowStageId, optionId: string) {
+    const nextStageId = createChatbotStageId(chatbotBuilderDraft.flowStages)
+    setChatbotBuilderDraft((current) => ({
+      ...current,
+      flowStages: [
+        ...current.flowStages.map((stage) => {
+          if (stage.id !== sourceStageId) return stage
+          return {
+            ...stage,
+            responseOptions: stage.responseOptions.map((option) => option.id === optionId ? { ...option, targetStageId: nextStageId } : option),
+          }
+        }),
+        {
+          id: nextStageId,
+          title: 'Nueva etapa conectada',
+          description: 'Etapa creada desde una rama visual del flujo.',
+          prompt: 'Escribe aquí el mensaje que continuará esta ruta del chatbot.',
+          nextField: 'none',
+          quickActionIds: [],
+          responseOptions: [],
+        },
+      ],
+    }))
+    setSelectedChatbotStageId(nextStageId)
+    setSelectedChatbotConnectionId(null)
   }
 
   function deleteChatbotStage(stageId: ChatbotFlowStageId) {
@@ -2071,6 +2129,7 @@ export function CrmIntegrationsClient() {
         })),
     }))
     setSelectedChatbotStageId(fallbackStageId)
+    setSelectedChatbotConnectionId(null)
   }
 
   function moveChatbotStage(stageId: ChatbotFlowStageId, direction: -1 | 1) {
@@ -2098,6 +2157,7 @@ export function CrmIntegrationsClient() {
         }
       }),
     }))
+    setSelectedChatbotConnectionId(null)
   }
 
   function addChatbotResponseOption(stageId: ChatbotFlowStageId) {
@@ -2158,6 +2218,7 @@ export function CrmIntegrationsClient() {
         }
       }),
     }))
+    setSelectedChatbotConnectionId((current) => current === `${stageId}-${optionId}` ? null : current)
   }
 
   function updateChatbotQuickAction(actionId: string, patch: Partial<ChatbotQuickAction>) {
@@ -3437,26 +3498,53 @@ export function CrmIntegrationsClient() {
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-sm font-semibold text-slate-900">Canvas del flujo</p>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">Vista tipo nodos para entender de inmediato cómo una respuesta lleva a otra etapa.</p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">Ahora el mapa también sirve para editar ramas: selecciona una conexión para cambiar el destino, crear una etapa nueva conectada o quitar el vínculo.</p>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-semibold text-violet-800">Rama por respuesta</span>
                           <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-800">Nodo activo</span>
+                          <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-semibold text-sky-800">Conexión editable</span>
                         </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-medium text-slate-600">
+                        <span className="rounded-full bg-white px-2.5 py-1 text-slate-700">Haz clic en un nodo para editar su contenido</span>
+                        <span className="rounded-full bg-white px-2.5 py-1 text-slate-700">Haz clic en una rama para editar a dónde termina la respuesta</span>
+                        <Button type="button" variant="outline" className="h-7 rounded-xl px-2.5 text-[11px]" onClick={() => selectedChatbotFlowStage ? addChatbotResponseOption(selectedChatbotFlowStage.id as ChatbotFlowStageId) : null} disabled={!selectedChatbotFlowStage}>Agregar respuesta a la etapa activa</Button>
                       </div>
 
                       <div className="mt-4 overflow-auto rounded-[22px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,.08),transparent_28%),linear-gradient(180deg,#f8fffc,#ffffff)] p-3">
                         <div className="relative" style={{ width: chatbotCanvasModel.width, height: chatbotCanvasModel.height }}>
                           <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${chatbotCanvasModel.width} ${chatbotCanvasModel.height}`} fill="none">
                             {chatbotCanvasModel.connections.map((connection) => {
-                              const isSelected = connection.fromStageId === selectedChatbotStageId
+                              const isSelected = connection.id === selectedChatbotConnectionId
                               return (
                                 <g key={connection.id}>
-                                  <path d={connection.path} stroke={isSelected ? '#7c3aed' : '#94a3b8'} strokeWidth={isSelected ? 2.5 : 1.6} strokeDasharray={isSelected ? '0' : '6 6'} strokeLinecap="round" />
+                                  <path d={connection.path} stroke={isSelected ? '#0ea5e9' : '#94a3b8'} strokeWidth={isSelected ? 3 : 1.6} strokeDasharray={isSelected ? '0' : '6 6'} strokeLinecap="round" />
                                 </g>
                               )
                             })}
                           </svg>
+
+                          {chatbotCanvasModel.connections.map((connection) => {
+                            const isSelected = connection.id === selectedChatbotConnectionId
+                            const targetTitle = chatbotBuilderDraft.flowStages.find((stage) => stage.id === connection.toStageId)?.title || connection.toStageId
+                            return (
+                              <button
+                                key={`${connection.id}-label`}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedChatbotConnectionId(connection.id)
+                                  setSelectedChatbotStageId(connection.fromStageId as ChatbotFlowStageId)
+                                }}
+                                className={isSelected ? 'absolute z-10 rounded-full border border-sky-300 bg-sky-100 px-2.5 py-1 text-[10px] font-semibold text-sky-800 shadow-sm' : 'absolute z-10 rounded-full border border-violet-200 bg-white/95 px-2.5 py-1 text-[10px] font-semibold text-violet-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50'}
+                                style={{ left: connection.labelX, top: connection.labelY, transform: 'translate(-50%, -50%)' }}
+                                title={`Editar rama hacia ${targetTitle}`}
+                              >
+                                {connection.label}
+                              </button>
+                            )
+                          })}
 
                           {chatbotCanvasModel.nodes.map((node, index) => {
                             const isSelected = node.stage.id === selectedChatbotStageId
@@ -3464,7 +3552,10 @@ export function CrmIntegrationsClient() {
                               <button
                                 key={node.stage.id}
                                 type="button"
-                                onClick={() => setSelectedChatbotStageId(node.stage.id as ChatbotFlowStageId)}
+                                onClick={() => {
+                                  setSelectedChatbotStageId(node.stage.id as ChatbotFlowStageId)
+                                  setSelectedChatbotConnectionId(null)
+                                }}
                                 className={isSelected ? 'absolute rounded-[24px] border border-emerald-300 bg-emerald-50/95 p-4 text-left shadow-[0_18px_46px_-28px_rgba(16,185,129,.45)]' : 'absolute rounded-[24px] border border-slate-200 bg-white/95 p-4 text-left shadow-[0_16px_40px_-30px_rgba(15,23,42,.24)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(15,23,42,.28)]'}
                                 style={{ left: node.x, top: node.y, width: node.width, minHeight: node.height }}
                               >
@@ -3483,13 +3574,17 @@ export function CrmIntegrationsClient() {
                                   <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-700">{node.stage.quickActionIds.length} quick actions</span>
                                 </div>
                                 {node.stage.responseOptions.length ? (
-                                  <div className="mt-3 flex flex-wrap gap-2">
-                                    {node.stage.responseOptions.slice(0, 3).map((option) => (
-                                      <span key={option.id} className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-semibold text-violet-800">
-                                        {option.label}
-                                      </span>
-                                    ))}
-                                    {node.stage.responseOptions.length > 3 ? <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600">+{node.stage.responseOptions.length - 3}</span> : null}
+                                  <div className="mt-3 space-y-1.5">
+                                    {node.stage.responseOptions.slice(0, 3).map((option) => {
+                                      const targetTitle = chatbotBuilderDraft.flowStages.find((stage) => stage.id === option.targetStageId)?.title || option.targetStageId
+                                      return (
+                                        <div key={option.id} className="flex items-center justify-between gap-2 rounded-2xl border border-violet-100 bg-violet-50/70 px-2.5 py-1.5 text-[10px] text-violet-900">
+                                          <span className="font-semibold">{option.label}</span>
+                                          <span className="truncate text-right text-violet-700">{targetTitle}</span>
+                                        </div>
+                                      )
+                                    })}
+                                    {node.stage.responseOptions.length > 3 ? <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold text-slate-600">+{node.stage.responseOptions.length - 3} ramas más</span> : null}
                                   </div>
                                 ) : null}
                               </button>
@@ -3497,6 +3592,59 @@ export function CrmIntegrationsClient() {
                           })}
                         </div>
                       </div>
+
+                      {selectedChatbotConnection && selectedChatbotConnectionSourceStage && selectedChatbotConnectionOption ? (
+                        <div className="mt-4 rounded-[22px] border border-sky-200 bg-sky-50/80 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">Rama seleccionada</p>
+                              <p className="mt-1 text-sm font-semibold text-slate-900">{selectedChatbotConnectionOption.label}</p>
+                              <p className="mt-1 text-xs text-slate-600">Sale desde {selectedChatbotConnectionSourceStage.title} y actualmente termina en {chatbotBuilderDraft.flowStages.find((stage) => stage.id === selectedChatbotConnection.toStageId)?.title || selectedChatbotConnection.toStageId}.</p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Button type="button" variant="outline" className="h-8 rounded-xl px-3 text-xs" onClick={() => setSelectedChatbotStageId(selectedChatbotConnection.toStageId as ChatbotFlowStageId)}>
+                                Ir al nodo destino
+                              </Button>
+                              <Button type="button" variant="outline" className="h-8 rounded-xl px-3 text-xs" onClick={() => addConnectedChatbotStage(selectedChatbotConnection.fromStageId as ChatbotFlowStageId, selectedChatbotConnection.optionId)}>
+                                Crear etapa y conectar
+                              </Button>
+                              <Button type="button" variant="outline" className="h-8 rounded-xl border-rose-200 px-3 text-xs text-rose-700" onClick={() => removeChatbotResponseOption(selectedChatbotConnection.fromStageId as ChatbotFlowStageId, selectedChatbotConnection.optionId)}>
+                                Quitar vínculo
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 grid gap-3 md:grid-cols-2">
+                            <div className="grid gap-2">
+                              <Label>La respuesta termina en</Label>
+                              <Select value={selectedChatbotConnection.toStageId} onValueChange={(value) => updateChatbotResponseOption(selectedChatbotConnection.fromStageId as ChatbotFlowStageId, selectedChatbotConnection.optionId, { targetStageId: value })}>
+                                <SelectTrigger className="h-11 rounded-xl bg-white">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {chatbotBuilderDraft.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="grid gap-2">
+                              <Label>Match de esta lógica</Label>
+                              <Select value={selectedChatbotConnectionOption.matchMode} onValueChange={(value) => updateChatbotResponseOption(selectedChatbotConnection.fromStageId as ChatbotFlowStageId, selectedChatbotConnection.optionId, { matchMode: value as ChatbotFlowResponseMatchMode })}>
+                                <SelectTrigger className="h-11 rounded-xl bg-white">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="contains">Contiene palabras</SelectItem>
+                                  <SelectItem value="exact">Coincidencia exacta</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="grid gap-2 md:col-span-2">
+                              <Label>Frases que activan esta rama</Label>
+                              <Textarea value={selectedChatbotConnectionOption.matchValue} onChange={(event) => updateChatbotResponseOption(selectedChatbotConnection.fromStageId as ChatbotFlowStageId, selectedChatbotConnection.optionId, { matchValue: event.target.value })} rows={2} className="rounded-2xl bg-white" />
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="rounded-[24px] border border-slate-200 bg-white/80 p-4">

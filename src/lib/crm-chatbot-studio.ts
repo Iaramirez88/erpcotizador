@@ -15,6 +15,16 @@ export type ChatbotMessageTone = 'consultivo' | 'directo' | 'amable'
 export type ChatbotAutomationProvider = 'WEB_CHATBOT' | 'WHATSAPP_CLOUD' | 'INSTAGRAM_DM' | 'FACEBOOK_PAGE' | 'MESSENGER'
 export type ChatbotStudioNodeLayout = Record<string, { x: number; y: number }>
 
+export type ChatbotStudioPauseNode = {
+  id: string
+  title: string
+  description: string
+  durationMinutes: number
+  sourceStageId: string
+  targetStageId: string
+  enabled: boolean
+}
+
 export type ChatbotStudioViewport = {
   x: number
   y: number
@@ -42,6 +52,7 @@ export type ChatbotAutomationFlow = {
   quickActions: ChatbotQuickAction[]
   flowStages: ChatbotFlowStage[]
   flowTriggers: ChatbotFlowTrigger[]
+  pauseNodes: ChatbotStudioPauseNode[]
   studioNodeLayout: ChatbotStudioNodeLayout
   studioViewport: ChatbotStudioViewport
 }
@@ -189,9 +200,30 @@ export function getDefaultChatbotAutomationFlow(): ChatbotAutomationFlow {
     quickActions: getDefaultChatbotQuickActions(),
     flowStages: getDefaultChatbotFlowStages(),
     flowTriggers: getDefaultChatbotFlowTriggers(),
+    pauseNodes: [],
     studioNodeLayout: {},
     studioViewport: { x: 48, y: 36, scale: 0.88 },
   }
+}
+
+export function normalizeChatbotStudioPauseNodes(value: unknown): ChatbotStudioPauseNode[] {
+  const items = Array.isArray(value) ? value : []
+  return items
+    .map((item) => {
+      const record = asRecord(item)
+      if (!record) return null
+      const durationMinutes = typeof record.durationMinutes === 'number' ? Math.max(1, Math.round(record.durationMinutes)) : 60
+      return {
+        id: normalizeString(record.id),
+        title: normalizeString(record.title) || 'Pausa',
+        description: asText(record.description),
+        durationMinutes,
+        sourceStageId: normalizeString(record.sourceStageId),
+        targetStageId: normalizeString(record.targetStageId),
+        enabled: asBoolean(record.enabled, true),
+      } satisfies ChatbotStudioPauseNode
+    })
+    .filter((item): item is ChatbotStudioPauseNode => Boolean(item?.id))
 }
 
 export function getDefaultChatbotFlowVariables(): ChatbotFlowVariable[] {
@@ -287,7 +319,7 @@ export function normalizeChatbotFlowTriggers(value: unknown): ChatbotFlowTrigger
   return [...mergedDefaults, ...extra]
 }
 
-export function normalizeChatbotAutomationFlows(value: unknown, fallback?: { quickActions?: unknown; flowStages?: unknown; flowTriggers?: unknown; studioNodeLayout?: unknown; studioViewport?: unknown }): ChatbotAutomationFlow[] {
+export function normalizeChatbotAutomationFlows(value: unknown, fallback?: { quickActions?: unknown; flowStages?: unknown; flowTriggers?: unknown; pauseNodes?: unknown; studioNodeLayout?: unknown; studioViewport?: unknown }): ChatbotAutomationFlow[] {
   const items = Array.isArray(value) ? value : []
   const normalized = items
     .map((item, index) => {
@@ -307,6 +339,7 @@ export function normalizeChatbotAutomationFlows(value: unknown, fallback?: { qui
         quickActions: normalizeChatbotQuickActions(record.quickActions),
         flowStages: normalizeChatbotFlowStages(record.flowStages),
         flowTriggers: normalizeChatbotFlowTriggers(record.flowTriggers),
+        pauseNodes: normalizeChatbotStudioPauseNodes(record.pauseNodes),
         studioNodeLayout: normalizeStudioNodeLayout(record.studioNodeLayout),
         studioViewport: normalizeStudioViewport(record.studioViewport),
       } satisfies ChatbotAutomationFlow
@@ -323,6 +356,7 @@ export function normalizeChatbotAutomationFlows(value: unknown, fallback?: { qui
     quickActions: normalizeChatbotQuickActions(fallback?.quickActions),
     flowStages: normalizeChatbotFlowStages(fallback?.flowStages),
     flowTriggers: normalizeChatbotFlowTriggers(fallback?.flowTriggers),
+    pauseNodes: normalizeChatbotStudioPauseNodes(fallback?.pauseNodes),
     studioNodeLayout: normalizeStudioNodeLayout(fallback?.studioNodeLayout),
     studioViewport: normalizeStudioViewport(fallback?.studioViewport),
   }]
@@ -386,6 +420,7 @@ export function getChatbotStudioSettings(settingsJson: unknown): ChatbotStudioSe
     quickActions: record.quickActions,
     flowStages: record.flowStages,
     flowTriggers: record.flowTriggers,
+    pauseNodes: record.pauseNodes,
     studioNodeLayout: record.studioNodeLayout,
     studioViewport: record.studioViewport,
   })

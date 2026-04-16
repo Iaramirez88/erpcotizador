@@ -92,6 +92,10 @@ export async function GET(request: Request, context: RouteContext) {
                 responseOptionIds: Array.isArray(message.payloadJson.chatFlowResponseOptionIds)
                   ? message.payloadJson.chatFlowResponseOptionIds.filter((item): item is string => typeof item === 'string')
                   : [],
+                  pauseNodeId: typeof message.payloadJson.chatPauseNodeId === 'string' ? message.payloadJson.chatPauseNodeId : null,
+                  pauseDurationMinutes: typeof message.payloadJson.chatPauseDurationMinutes === 'number' ? message.payloadJson.chatPauseDurationMinutes : null,
+                  pauseDescription: typeof message.payloadJson.chatPauseDescription === 'string' ? message.payloadJson.chatPauseDescription : null,
+                  pauseUntil: typeof message.payloadJson.chatPauseUntil === 'string' ? message.payloadJson.chatPauseUntil : null,
               }
             : undefined,
         })),

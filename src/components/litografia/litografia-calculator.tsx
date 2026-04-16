@@ -160,6 +160,14 @@ function getApiErrorMessage(env: ApiEnvelope, fallback: string) {
   return typeof env.error === "string" ? env.error : fallback
 }
 
+function normalizePaperName(value: string) {
+  return String(value || "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+}
+
 function getDefaultCostoPliego(tipo: PapelTipo) {
   // Valores por defecto (ajustables por el usuario)
   switch (tipo) {
@@ -1311,17 +1319,50 @@ export function LitografiaCalculator() {
 
   const createPaper = async () => {
     setConfigError(null)
+    const nombre = newPaperNombre.trim()
+    const tipo = newPaperTipo.trim()
+    const gramaje = newPaperGramaje.trim()
+    const parsedGramaje = gramaje ? parseInt(gramaje, 10) : null
+    const parsedPliegoW = parseFloat(newPaperPliegoW)
+    const parsedPliegoH = parseFloat(newPaperPliegoH)
+    const parsedCostoPliego = parseFloat(newPaperCostoPliego)
+
+    if (!nombre) {
+      setConfigError("El nombre del papel es obligatorio")
+      return
+    }
+
+    if (papers.some((paper) => normalizePaperName(paper.nombre) === normalizePaperName(nombre))) {
+      setConfigError(`Ya existe un papel con el nombre \"${nombre}\"`)
+      return
+    }
+
+    if (gramaje && (parsedGramaje === null || parsedGramaje <= 0)) {
+      setConfigError("El gramaje debe ser mayor a 0")
+      return
+    }
+
+    if (!Number.isFinite(parsedPliegoW) || parsedPliegoW <= 0 || !Number.isFinite(parsedPliegoH) || parsedPliegoH <= 0) {
+      setConfigError("El pliego base debe tener ancho y alto mayores a 0")
+      return
+    }
+
+    if (!Number.isFinite(parsedCostoPliego) || parsedCostoPliego < 0) {
+      setConfigError("El costo por pliego no puede ser negativo")
+      return
+    }
+
     try {
       const res = await fetch("/api/litografia/papeles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          nombre: newPaperNombre,
-          tipo: newPaperTipo,
-          gramaje: newPaperGramaje ? parseInt(newPaperGramaje, 10) : null,
-          pliegoWidthCm: parseFloat(newPaperPliegoW) || 70,
-          pliegoHeightCm: parseFloat(newPaperPliegoH) || 100,
-          costoPliego: parseFloat(newPaperCostoPliego) || 0,
+          nombre,
+          tipo: tipo || null,
+          gramaje: parsedGramaje,
+          pliegoWidthCm: parsedPliegoW,
+          pliegoHeightCm: parsedPliegoH,
+          costoPliego: parsedCostoPliego,
           activo: true,
         }),
       })

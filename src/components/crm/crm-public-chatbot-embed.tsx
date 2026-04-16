@@ -20,7 +20,16 @@ type PublicChatbotMessage = {
   at: string
   author?: string | null
   attachments?: Array<{ type?: string | null; url?: string | null; alt?: string | null }>
-  meta?: { nextField?: string | null; stageId?: string | null; quickActionIds?: string[]; responseOptionIds?: string[] }
+  meta?: {
+    nextField?: string | null
+    stageId?: string | null
+    quickActionIds?: string[]
+    responseOptionIds?: string[]
+    pauseNodeId?: string | null
+    pauseDurationMinutes?: number | null
+    pauseDescription?: string | null
+    pauseUntil?: string | null
+  }
 }
 
 type PublicChatbotEmbedProps = {
@@ -77,6 +86,14 @@ function makeSessionId(channelId: string) {
 
 function nowIso() {
   return new Date().toISOString()
+}
+
+function formatRemainingPause(ms: number) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes > 0) return `${minutes} min ${seconds.toString().padStart(2, '0')} s`
+  return `${seconds} s`
 }
 
 function buildWelcomeMessage(prompt: string, stage: ChatbotFlowStage | null, quickActions: ChatbotQuickAction[]): PublicChatbotMessage {
@@ -257,6 +274,7 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
   const [connectionState, setConnectionState] = useState<'connecting' | 'online' | 'error'>('connecting')
   const [messages, setMessages] = useState<PublicChatbotMessage[]>([buildWelcomeMessage(props.prompt, initialStage, props.quickActions)])
   const [panelOpen, setPanelOpen] = useState(!props.floatingLauncherEnabled)
+  const [clockTick, setClockTick] = useState(() => Date.now())
 
   const accentStyle = useMemo(() => ({ ['--chat-accent' as string]: props.accentColor, ['--chat-background' as string]: props.backgroundColor, ['--chat-page-background' as string]: props.pageBackgroundColor, fontFamily: props.fontFamily }), [props.accentColor, props.backgroundColor, props.pageBackgroundColor, props.fontFamily])
   const launcherMetrics = useMemo(() => getLauncherMetrics(props.launcherSize), [props.launcherSize])
@@ -264,9 +282,24 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
     const assistantMessages = [...messages].reverse().find((item) => item.role === 'assistant' && item.meta?.nextField)
     return assistantMessages?.meta?.nextField || null
   }, [messages])
-  const activeAssistantMeta = useMemo(() => [...messages].reverse().find((item) => item.role === 'assistant' && item.meta)?.meta, [messages])
+  const activeAssistantMessage = useMemo(() => [...messages].reverse().find((item) => item.role === 'assistant' && item.meta) ?? null, [messages])
+  const activeAssistantMeta = activeAssistantMessage?.meta
   const activeStage = useMemo(() => findChatbotFlowStage(props.flowStages, activeAssistantMeta?.stageId || initialStage?.id || null) ?? initialStage, [activeAssistantMeta?.stageId, initialStage, props.flowStages])
   const activeStageTheme = useMemo(() => getStageTheme(activeStage?.id, props.accentColor), [activeStage?.id, props.accentColor])
+  const activePause = useMemo(() => {
+    if (!activeAssistantMessage?.meta?.pauseUntil) return null
+    const pauseUntilMs = Date.parse(activeAssistantMessage.meta.pauseUntil)
+    if (!Number.isFinite(pauseUntilMs)) return null
+    const remainingMs = pauseUntilMs - clockTick
+    if (remainingMs <= 0) return null
+    return {
+      pauseUntilMs,
+      remainingMs,
+      description: activeAssistantMessage.meta.pauseDescription || '',
+      durationMinutes: activeAssistantMessage.meta.pauseDurationMinutes || null,
+    }
+  }, [activeAssistantMessage, clockTick])
+  const interactionLocked = Boolean(activePause)
   const activeQuickActions = useMemo(() => {
     const ids = Array.isArray(activeAssistantMeta?.quickActionIds) ? activeAssistantMeta.quickActionIds : []
     if (ids.length) {
@@ -320,6 +353,14 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
     const identityKey = `sgd-crm-chatbot:${props.channelId}:${identityStorageSuffix}`
     window.localStorage.setItem(identityKey, JSON.stringify(identity))
   }, [identity, props.channelId, ready])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setClockTick(Date.now())
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [])
 
   const syncConversation = useCallback(async () => {
     if (!sessionId) return
@@ -600,7 +641,7 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
                         key={option.id}
                         type="button"
                         onClick={() => triggerResponseOption(option)}
-                        disabled={sending || !ready}
+                        disabled={sending || !ready || interactionLocked}
                         className={`rounded-2xl border px-3 py-2 text-left text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${visual.className}`}
                       >
                         <span className="flex items-center gap-2">
@@ -626,7 +667,7 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
                     key={action.id}
                     type="button"
                     onClick={() => triggerQuickAction(action)}
-                    disabled={sending || !ready}
+                    disabled={sending || !ready || interactionLocked}
                     className={`rounded-2xl border px-3 py-2 text-left text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${visual.className}`}
                   >
                     <span className="flex items-center gap-2">
@@ -642,16 +683,30 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
                 ))}
               </div>
             ) : null}
+            {activePause ? (
+              <div className="rounded-[22px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">Pausa en ejecución</p>
+                    <p className="mt-1 font-semibold">El flujo continuará automáticamente cuando termine la espera.</p>
+                  </div>
+                  <div className="rounded-full border border-sky-300 bg-white px-3 py-1 text-[11px] font-semibold text-sky-800">
+                    {formatRemainingPause(activePause.remainingMs)}
+                  </div>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-sky-800">{activePause.description || `Pausa automática configurada por ${activePause.durationMinutes || 0} min antes del siguiente bloque.`}</p>
+              </div>
+            ) : null}
             <div className="grid gap-1.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{props.messageLabel}</p>
-              <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} placeholder={props.messagePlaceholder} className="rounded-2xl border-slate-200" />
+              <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} placeholder={interactionLocked ? 'Espera a que termine la pausa para continuar.' : props.messagePlaceholder} className="rounded-2xl border-slate-200" disabled={interactionLocked} />
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button className="flex-1 rounded-xl text-white" style={{ backgroundColor: props.accentColor }} onClick={submitDraft} disabled={sending || !ready}>
-                {sending ? 'Enviando...' : 'Responder'}
+              <Button className="flex-1 rounded-xl text-white" style={{ backgroundColor: props.accentColor }} onClick={submitDraft} disabled={sending || !ready || interactionLocked}>
+                {interactionLocked ? 'Pausa activa...' : sending ? 'Enviando...' : 'Responder'}
               </Button>
               {props.allowHumanHandoff ? (
-                <Button variant="outline" className="rounded-xl border-slate-200" onClick={requestHumanSupport} disabled={sending || !ready}>
+                <Button variant="outline" className="rounded-xl border-slate-200" onClick={requestHumanSupport} disabled={sending || !ready || interactionLocked}>
                   Pedir asesor
                 </Button>
               ) : null}

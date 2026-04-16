@@ -23,6 +23,7 @@ import {
   interpolateChatbotVariables,
   resolveChatbotAutomationFlowByTrigger,
   resolveChatbotAssignmentUserId,
+  type ChatbotStudioPauseNode,
 } from '@/lib/crm-chatbot-studio'
 import { extractHostFromUrl, getPublicChatbotSettings, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
 import { getReferrerHost, getRequestHost } from '@/lib/crm-public-chatbot-server'
@@ -332,6 +333,23 @@ function decorateAssistantReply(baseBody: string, stage: ChatbotFlowStage | null
   return `${stage.prompt}\n\n${baseBody}`
 }
 
+function resolveChatPauseNode(args: {
+  currentStageId: string
+  resolvedStage: ChatbotFlowStage | null
+  pauseNodes: ChatbotStudioPauseNode[]
+}) {
+  if (!args.currentStageId || !args.resolvedStage?.id || args.currentStageId === args.resolvedStage.id) return null
+  return args.pauseNodes.find((item) => item.enabled && item.sourceStageId === args.currentStageId && item.targetStageId === args.resolvedStage?.id) ?? null
+}
+
+function appendPauseCopy(baseBody: string, pauseNode: ChatbotStudioPauseNode | null) {
+  if (!pauseNode) return baseBody
+  const pauseSummary = pauseNode.description.trim()
+    ? `${pauseNode.description.trim()}\nDuracion estimada: ${pauseNode.durationMinutes} min.`
+    : `Haré una pausa automática de ${pauseNode.durationMinutes} min antes de continuar con el siguiente paso.`
+  return [baseBody.trim(), pauseSummary].filter(Boolean).join('\n\n')
+}
+
 function buildAssistantReply(args: {
   insight: CatalogInsight
   messageText: string
@@ -634,6 +652,7 @@ export async function POST(request: Request) {
 
       const flowStages = activeFlow.flowStages.length ? activeFlow.flowStages : settings.flowStages
       const quickActions = activeFlow.quickActions.length ? activeFlow.quickActions : settings.quickActions
+      const pauseNodes = activeFlow.pauseNodes
 
       const assistantReply = buildAssistantReply({
         insight: catalogInsight,
@@ -656,6 +675,14 @@ export async function POST(request: Request) {
       const resolvedStage = matchedTrigger.matchedTrigger
         ? findChatbotFlowStage(flowStages, matchedTrigger.matchedTrigger.targetStageId) ?? assistantReply.stage
         : assistantReply.stage
+      const resolvedPauseNode = resolveChatPauseNode({
+        currentStageId,
+        resolvedStage,
+        pauseNodes,
+      })
+      const pauseUntil = resolvedPauseNode
+        ? new Date(Date.now() + (resolvedPauseNode.durationMinutes * 60 * 1000)).toISOString()
+        : null
 
       const assistantContext = {
         contact_name: resolvedIdentity.nombre,
@@ -672,7 +699,9 @@ export async function POST(request: Request) {
       const assistantBodyTemplate = matchedTrigger.matchedTrigger?.assistantReply || assistantReply.body
       const assistantBody = applyChatbotMessageCoherence({
         body: interpolateChatbotVariables({
-          template: decorateAssistantReply(assistantBodyTemplate, resolvedStage, currentStageId, quickActionId),
+          template: resolvedPauseNode
+            ? appendPauseCopy(assistantBodyTemplate, resolvedPauseNode)
+            : decorateAssistantReply(assistantBodyTemplate, resolvedStage, currentStageId, quickActionId),
           variables: flowVariables,
           context: assistantContext,
         }),
@@ -720,6 +749,10 @@ export async function POST(request: Request) {
             chatFlowName: activeFlow.name,
             chatQuickActionIds: stageQuickActions.map((item) => item.id),
             chatFlowResponseOptionIds: stageResponseOptions.map((item) => item.id),
+            chatPauseNodeId: resolvedPauseNode?.id || null,
+            chatPauseDurationMinutes: resolvedPauseNode?.durationMinutes || null,
+            chatPauseDescription: resolvedPauseNode?.description || null,
+            chatPauseUntil: pauseUntil,
             quantity: resolvedIdentity.quantity,
             matchedTriggerId: matchedTrigger.matchedTrigger?.id || null,
           },

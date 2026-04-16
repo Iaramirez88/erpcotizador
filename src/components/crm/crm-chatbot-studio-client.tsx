@@ -42,6 +42,7 @@ import {
   type ChatbotFlowVariableSource,
   type ChatbotMessageCoherence,
   type ChatbotMessageTone,
+  type ChatbotStudioPauseNode,
 } from '@/lib/crm-chatbot-studio'
 import { getPublicChatbotSettings } from '@/lib/crm-public-chatbot'
 
@@ -112,6 +113,7 @@ type BuilderState = {
   quickActions: ChatbotQuickAction[]
   flowStages: ChatbotFlowStage[]
   flowTriggers: ChatbotFlowTrigger[]
+  pauseNodes: ChatbotStudioPauseNode[]
   flowVariables: ChatbotFlowVariable[]
   assignmentRules: ChatbotAssignmentRules
   messageCoherence: ChatbotMessageCoherence
@@ -128,7 +130,7 @@ type StudioViewport = {
 }
 
 type StudioFocusNode = {
-  kind: 'stage' | 'trigger' | 'action'
+  kind: 'stage' | 'trigger' | 'action' | 'pause'
   id: string
 }
 
@@ -164,6 +166,32 @@ type StudioGraphNode = {
   toneClass: string
 }
 
+type StudioConnectionDraft = {
+  fromId: string
+  fromKind: StudioGraphNode['kind']
+  sourceOptionId?: string
+  sourceLabel?: string
+  startX: number
+  startY: number
+  currentX: number
+  currentY: number
+}
+
+type StudioCreateMenuTarget = {
+  sourceNode?: StudioFocusNode
+  sourceOptionId?: string
+}
+
+type StudioContextMenuState = {
+  mode: 'node' | 'canvas' | 'create'
+  node?: StudioFocusNode
+  createTarget?: StudioCreateMenuTarget
+  x: number
+  y: number
+}
+
+type StudioPaletteKind = 'stage' | 'action' | 'trigger' | 'pause'
+
 type StudioGraphEdge = {
   id: string
   fromId: string
@@ -178,6 +206,33 @@ const AUTOMATION_PROVIDER_OPTIONS: Array<{ value: ChatbotAutomationProvider; lab
   { value: 'INSTAGRAM_DM', label: 'Instagram' },
   { value: 'FACEBOOK_PAGE', label: 'Facebook' },
   { value: 'MESSENGER', label: 'Messenger' },
+]
+
+const STUDIO_PALETTE_ITEMS: Array<{ kind: StudioPaletteKind; label: string; description: string; className: string }> = [
+  {
+    kind: 'stage',
+    label: 'Mensaje',
+    description: 'Bloque principal del flujo conversacional.',
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-950 hover:border-emerald-300',
+  },
+  {
+    kind: 'action',
+    label: 'Accion',
+    description: 'Ejecuta una respuesta rapida o una accion auxiliar.',
+    className: 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-950 hover:border-fuchsia-300',
+  },
+  {
+    kind: 'trigger',
+    label: 'Filtro',
+    description: 'Evalua palabras, eventos o condiciones antes de enrutar.',
+    className: 'border-amber-200 bg-amber-50 text-amber-950 hover:border-amber-300',
+  },
+  {
+    kind: 'pause',
+    label: 'Pausa',
+    description: 'Inserta una espera visible entre dos mensajes del flujo.',
+    className: 'border-sky-200 bg-sky-50 text-sky-950 hover:border-sky-300',
+  },
 ]
 
 function makeId(prefix: string) {
@@ -235,6 +290,54 @@ function toDomId(kind: StudioFocusNode['kind'], id: string) {
   return `studio-${kind}-${id}`
 }
 
+function getNodeTypeLabel(kind: StudioGraphNode['kind']) {
+  if (kind === 'stage') return 'Mensaje'
+  if (kind === 'trigger') return 'Filtro'
+  if (kind === 'action') return 'Accion'
+  if (kind === 'pause') return 'Pausa'
+  return 'Inicio'
+}
+
+function getNodeAnchorX(node: StudioGraphNode, side: 'left' | 'right') {
+  return side === 'left' ? node.x : node.x + node.width
+}
+
+function getNodeAnchorY(node: StudioGraphNode) {
+  return node.y + 52
+}
+
+function duplicateResponseOption(option: ChatbotFlowResponseOption): ChatbotFlowResponseOption {
+  return {
+    ...option,
+    id: makeId('option'),
+    label: `${option.label} copia`,
+  }
+}
+
+function reorderItems<T extends { id: string }>(items: T[], itemId: string, direction: -1 | 1) {
+  const index = items.findIndex((item) => item.id === itemId)
+  if (index < 0) return items
+  const nextIndex = index + direction
+  if (nextIndex < 0 || nextIndex >= items.length) return items
+  const nextItems = [...items]
+  const [item] = nextItems.splice(index, 1)
+  nextItems.splice(nextIndex, 0, item)
+  return nextItems
+}
+
+function removeNodeLayoutEntry(layout: StudioNodeLayout, nodeId: string) {
+  const nextLayout = { ...layout }
+  delete nextLayout[nodeId]
+  return nextLayout
+}
+
+function getNodeKindLabel(kind: StudioFocusNode['kind']) {
+  if (kind === 'stage') return 'Mensaje'
+  if (kind === 'action') return 'Accion'
+  if (kind === 'trigger') return 'Filtro'
+  return 'Pausa'
+}
+
 function summarizeMatchValue(value: string, fallback: string) {
   const items = value
     .split(/[\n,;|]+/)
@@ -249,6 +352,7 @@ function buildStudioGraph(builder: BuilderState) {
   const laneY = {
     triggers: 28,
     stages: 250,
+    pauses: 392,
     actions: 520,
   }
   const startNode: StudioGraphNode = {
@@ -331,7 +435,26 @@ function buildStudioGraph(builder: BuilderState) {
     }
   })
 
-  const nodes = [startNode, ...triggerNodes, ...stageNodes, ...actionNodes]
+  const pauseNodes: StudioGraphNode[] = builder.pauseNodes.map((pause, index) => {
+    const id = `pause:${pause.id}`
+    const layout = builder.studioNodeLayout[id]
+    const sourceIndex = stageIndexById.get(pause.sourceStageId) ?? index
+    return {
+      id,
+      domId: toDomId('pause', pause.id),
+      kind: 'pause',
+      title: pause.title || `Pausa ${index + 1}`,
+      subtitle: `${pause.durationMinutes} min`,
+      description: pause.description || 'Espera antes de continuar con el siguiente mensaje.',
+      x: layout?.x ?? 340 + (sourceIndex * stageSpacing),
+      y: layout?.y ?? laneY.pauses + ((index % 2) * 88),
+      width: 190,
+      accentClass: pause.enabled ? 'border-sky-200 bg-sky-50 text-sky-950' : 'border-slate-200 bg-slate-100 text-slate-500',
+      toneClass: pause.enabled ? 'stroke-sky-400' : 'stroke-slate-300',
+    }
+  })
+
+  const nodes = [startNode, ...triggerNodes, ...stageNodes, ...pauseNodes, ...actionNodes]
   const edges: StudioGraphEdge[] = []
 
   if (stageNodes[0]) {
@@ -363,7 +486,7 @@ function buildStudioGraph(builder: BuilderState) {
         id: `${sourceId}-action-${actionId}`,
         fromId: sourceId,
         toId: `action:${actionId}`,
-        label: 'acción',
+        label: 'accion',
         toneClass: 'stroke-fuchsia-300',
       })
     })
@@ -378,6 +501,28 @@ function buildStudioGraph(builder: BuilderState) {
       label: trigger.event === 'message' ? 'salto' : trigger.event.replaceAll('_', ' '),
       toneClass: trigger.enabled ? 'stroke-amber-300' : 'stroke-slate-300',
     })
+  })
+
+  builder.pauseNodes.forEach((pause) => {
+    const pauseNodeId = `pause:${pause.id}`
+    if (stageIndexById.has(pause.sourceStageId)) {
+      edges.push({
+        id: `stage-${pause.sourceStageId}-to-pause-${pause.id}`,
+        fromId: `stage:${pause.sourceStageId}`,
+        toId: pauseNodeId,
+        label: `espera ${pause.durationMinutes} min`,
+        toneClass: pause.enabled ? 'stroke-sky-300' : 'stroke-slate-300',
+      })
+    }
+    if (stageIndexById.has(pause.targetStageId)) {
+      edges.push({
+        id: `pause-${pause.id}-to-stage-${pause.targetStageId}`,
+        fromId: pauseNodeId,
+        toId: `stage:${pause.targetStageId}`,
+        label: 'continua',
+        toneClass: pause.enabled ? 'stroke-sky-300' : 'stroke-slate-300',
+      })
+    }
   })
 
   const contentWidth = Math.max(...nodes.map((node) => node.x + node.width), 1200) + 120
@@ -398,6 +543,7 @@ function applySelectedFlowToBuilder(base: BuilderState, flowId?: string) {
     quickActions: selectedFlow.quickActions,
     flowStages: selectedFlow.flowStages,
     flowTriggers: selectedFlow.flowTriggers,
+    pauseNodes: selectedFlow.pauseNodes,
     studioNodeLayout: selectedFlow.studioNodeLayout,
     studioViewport: selectedFlow.studioViewport,
   }
@@ -420,6 +566,7 @@ function materializeSelectedFlow(current: BuilderState) {
           quickActions: current.quickActions,
           flowStages: current.flowStages,
           flowTriggers: current.flowTriggers,
+          pauseNodes: current.pauseNodes,
           studioNodeLayout: current.studioNodeLayout,
           studioViewport: current.studioViewport,
         }
@@ -447,6 +594,7 @@ function hydrateBuilder(channel?: ChannelConnection | null): BuilderState {
     quickActions: defaultFlow.quickActions,
     flowStages: defaultFlow.flowStages,
     flowTriggers: defaultFlow.flowTriggers,
+    pauseNodes: defaultFlow.pauseNodes,
     flowVariables: studioSettings.flowVariables,
     assignmentRules: studioSettings.assignmentRules,
     messageCoherence: studioSettings.messageCoherence,
@@ -461,6 +609,7 @@ function buildSettingsPayload(state: BuilderState) {
     quickActions: state.quickActions,
     flowStages: state.flowStages,
     flowTriggers: state.flowTriggers,
+    pauseNodes: state.pauseNodes,
     studioNodeLayout: state.studioNodeLayout,
     studioViewport: state.studioViewport,
   }
@@ -479,6 +628,7 @@ function buildSettingsPayload(state: BuilderState) {
     quickActions: defaultFlow.quickActions,
     flowStages: defaultFlow.flowStages,
     flowTriggers: defaultFlow.flowTriggers,
+    pauseNodes: defaultFlow.pauseNodes,
     flowVariables: state.flowVariables,
     assignmentRules: state.assignmentRules,
     messageCoherence: state.messageCoherence,
@@ -508,10 +658,20 @@ export function CrmChatbotStudioClient() {
   const [assignmentModalOpen, setAssignmentModalOpen] = useState(false)
   const [dragState, setDragState] = useState<StudioDragState | null>(null)
   const [panState, setPanState] = useState<StudioPanState | null>(null)
+  const [connectionDraft, setConnectionDraft] = useState<StudioConnectionDraft | null>(null)
+  const [contextMenu, setContextMenu] = useState<StudioContextMenuState | null>(null)
+  const [paletteDragKind, setPaletteDragKind] = useState<StudioPaletteKind | null>(null)
+  const [mapFullscreen, setMapFullscreen] = useState(false)
+  const [inspectorOpen, setInspectorOpen] = useState(true)
+  const [minimapOpen, setMinimapOpen] = useState(true)
+  const [studioMounted, setStudioMounted] = useState(false)
+  const [boardViewportSize, setBoardViewportSize] = useState({ width: 0, height: 0 })
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const dragMovedRef = useRef(false)
   const boardViewportRef = useRef<HTMLDivElement | null>(null)
+  const pinchStateRef = useRef<{ initialDistance: number; initialScale: number; centerX: number; centerY: number } | null>(null)
+  const minimapDraggingRef = useRef(false)
 
   const selectedChannel = useMemo(() => channels.find((item) => item.id === selectedChannelId) ?? null, [channels, selectedChannelId])
   const selectedFlow = useMemo(() => builder.automationFlows.find((flow) => flow.id === builder.selectedFlowId) ?? null, [builder.automationFlows, builder.selectedFlowId])
@@ -756,9 +916,333 @@ export function CrmChatbotStudioClient() {
   const editingStage = editingNode?.kind === 'stage' ? builder.flowStages.find((stage) => stage.id === editingNode.id) ?? null : null
   const editingTrigger = editingNode?.kind === 'trigger' ? builder.flowTriggers.find((trigger) => trigger.id === editingNode.id) ?? null : null
   const editingAction = editingNode?.kind === 'action' ? builder.quickActions.find((action) => action.id === editingNode.id) ?? null : null
+  const editingPause = editingNode?.kind === 'pause' ? builder.pauseNodes.find((pause) => pause.id === editingNode.id) ?? null : null
+  const selectedStage = focusedNode?.kind === 'stage' ? builder.flowStages.find((stage) => stage.id === focusedNode.id) ?? null : null
+  const selectedTrigger = focusedNode?.kind === 'trigger' ? builder.flowTriggers.find((trigger) => trigger.id === focusedNode.id) ?? null : null
+  const selectedAction = focusedNode?.kind === 'action' ? builder.quickActions.find((action) => action.id === focusedNode.id) ?? null : null
+  const selectedPause = focusedNode?.kind === 'pause' ? builder.pauseNodes.find((pause) => pause.id === focusedNode.id) ?? null : null
+
+  function getNodeDeletionBlocker(node: StudioFocusNode) {
+    if (node.kind === 'stage' && builder.flowStages.length <= 1) {
+      return 'No puedes eliminar este mensaje porque el flujo debe conservar al menos un bloque principal.'
+    }
+    return null
+  }
+
+  function deleteNodeWithFeedback(node: StudioFocusNode) {
+    const blocker = getNodeDeletionBlocker(node)
+    if (blocker) {
+      setError(blocker)
+      setNotice(null)
+      return
+    }
+    deleteNode(node)
+  }
+
+  function getVisibleInsertPosition() {
+    const rect = boardViewportRef.current?.getBoundingClientRect()
+    if (!rect) {
+      return { x: 320, y: 240 }
+    }
+
+    const visibleX = ((rect.width * 0.38) - builder.studioViewport.x) / builder.studioViewport.scale
+    const visibleY = ((rect.height * 0.32) - builder.studioViewport.y) / builder.studioViewport.scale
+    return {
+      x: Math.max(32, Math.round(visibleX)),
+      y: Math.max(32, Math.round(visibleY)),
+    }
+  }
+
+  function queueNodeFocus(node: StudioFocusNode) {
+    setFocusedNode(node)
+    setEditingNode(node)
+    setContextMenu(null)
+  }
+
+  function createStage(args?: { sourceNode?: StudioFocusNode; sourceOptionId?: string; position?: { x: number; y: number } }) {
+    const nextStageId = makeId('stage')
+    const position = args?.position ?? getVisibleInsertPosition()
+    setBuilder((current) => {
+      const nextStage: ChatbotFlowStage = {
+        id: nextStageId,
+        title: 'Nuevo mensaje',
+        description: 'Describe el objetivo de este bloque.',
+        prompt: 'Mensaje del asistente.',
+        nextField: 'none',
+        quickActionIds: [],
+        responseOptions: [],
+      }
+
+      const nextFlowStages = [...current.flowStages, nextStage].map((stage) => {
+        if (args?.sourceNode?.kind === 'stage' && stage.id === args.sourceNode.id) {
+          if (args.sourceOptionId) {
+            return {
+              ...stage,
+              responseOptions: stage.responseOptions.map((option) => option.id === args.sourceOptionId ? { ...option, targetStageId: nextStageId } : option),
+            }
+          }
+          return {
+            ...stage,
+            responseOptions: [...stage.responseOptions, { id: makeId('option'), label: 'Nueva rama', userMessage: 'Continuar', assistantReply: '', matchMode: 'contains' as const, matchValue: '', targetStageId: nextStageId }],
+          }
+        }
+        return stage
+      })
+
+      return updateSelectedFlowInBuilder(current, {
+        flowStages: nextFlowStages,
+        flowTriggers: args?.sourceNode?.kind === 'trigger'
+          ? current.flowTriggers.map((trigger) => trigger.id === args.sourceNode?.id ? { ...trigger, targetStageId: nextStageId } : trigger)
+          : current.flowTriggers,
+        pauseNodes: args?.sourceNode?.kind === 'pause'
+          ? current.pauseNodes.map((pause) => pause.id === args.sourceNode?.id ? { ...pause, targetStageId: nextStageId } : pause)
+          : current.pauseNodes,
+        studioNodeLayout: {
+          ...current.studioNodeLayout,
+          [`stage:${nextStageId}`]: position,
+        },
+      })
+    })
+    queueNodeFocus({ kind: 'stage', id: nextStageId })
+    setNotice('Nuevo bloque de mensaje creado.')
+  }
+
+  function createAction(args?: { sourceNode?: StudioFocusNode; position?: { x: number; y: number } }) {
+    const nextActionId = makeId('action')
+    const position = args?.position ?? getVisibleInsertPosition()
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      quickActions: [...current.quickActions, { id: nextActionId, label: 'Nueva accion', kind: 'message', message: 'Mensaje de accion rapida.', enabled: true }],
+      flowStages: args?.sourceNode?.kind === 'stage'
+        ? current.flowStages.map((stage) => stage.id === args.sourceNode?.id ? { ...stage, quickActionIds: [...stage.quickActionIds, nextActionId] } : stage)
+        : current.flowStages,
+      studioNodeLayout: {
+        ...current.studioNodeLayout,
+        [`action:${nextActionId}`]: position,
+      },
+    }))
+    queueNodeFocus({ kind: 'action', id: nextActionId })
+    setNotice('Nueva accion creada.')
+  }
+
+  function createTrigger(args?: { position?: { x: number; y: number } }) {
+    const nextTriggerId = makeId('trigger')
+    const position = args?.position ?? getVisibleInsertPosition()
+    const defaultStageId = builder.flowStages[0]?.id || 'welcome'
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      flowTriggers: [...current.flowTriggers, { id: nextTriggerId, label: 'Nuevo filtro', event: 'message', matchMode: 'contains', matchValue: '', targetStageId: current.flowStages[0]?.id || defaultStageId, assistantReply: '', enabled: true }],
+      studioNodeLayout: {
+        ...current.studioNodeLayout,
+        [`trigger:${nextTriggerId}`]: position,
+      },
+    }))
+    queueNodeFocus({ kind: 'trigger', id: nextTriggerId })
+    setNotice('Nuevo filtro creado.')
+  }
+
+  function createPause(args?: { sourceNode?: StudioFocusNode; position?: { x: number; y: number } }) {
+    const nextPauseId = makeId('pause')
+    const position = args?.position ?? getVisibleInsertPosition()
+    const defaultSourceStageId = builder.flowStages[0]?.id || ''
+    const defaultTargetStageId = builder.flowStages[1]?.id || builder.flowStages[0]?.id || ''
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      pauseNodes: [...current.pauseNodes, {
+        id: nextPauseId,
+        title: 'Nueva pausa',
+        description: 'Espera antes del siguiente mensaje.',
+        durationMinutes: 60,
+        sourceStageId: args?.sourceNode?.kind === 'stage' ? args.sourceNode.id : (current.flowStages[0]?.id || defaultSourceStageId),
+        targetStageId: current.flowStages[1]?.id || current.flowStages[0]?.id || defaultTargetStageId,
+        enabled: true,
+      }],
+      studioNodeLayout: {
+        ...current.studioNodeLayout,
+        [`pause:${nextPauseId}`]: position,
+      },
+    }))
+    queueNodeFocus({ kind: 'pause', id: nextPauseId })
+    setNotice('Nueva pausa creada.')
+  }
+
+  function addStageFromPalette() {
+    createStage()
+  }
+
+  function addActionFromPalette() {
+    createAction()
+  }
+
+  function addTriggerFromPalette() {
+    createTrigger()
+  }
+
+  function addPauseFromPalette() {
+    createPause()
+  }
+
+  function updatePauseNode(pauseId: string, patch: Partial<ChatbotStudioPauseNode>) {
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      pauseNodes: current.pauseNodes.map((item) => item.id === pauseId ? { ...item, ...patch } : item),
+    }))
+  }
+
+  function offsetNodeLayout(nodeId: string) {
+    const currentLayout = builder.studioNodeLayout[nodeId]
+    return currentLayout ? { x: currentLayout.x + 36, y: currentLayout.y + 28 } : undefined
+  }
+
+  function duplicateNode(node: StudioFocusNode) {
+    if (node.kind === 'stage') {
+      const stage = builder.flowStages.find((item) => item.id === node.id)
+      if (!stage) return
+      const nextStageId = makeId('stage')
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        flowStages: [...current.flowStages, {
+          ...stage,
+          id: nextStageId,
+          title: `${stage.title} copia`,
+          responseOptions: stage.responseOptions.map(duplicateResponseOption),
+        }],
+        studioNodeLayout: {
+          ...current.studioNodeLayout,
+          [`stage:${nextStageId}`]: offsetNodeLayout(`stage:${stage.id}`) ?? { x: 360, y: 280 },
+        },
+      }))
+      setNotice('Bloque de mensaje duplicado.')
+      return
+    }
+
+    if (node.kind === 'action') {
+      const action = builder.quickActions.find((item) => item.id === node.id)
+      if (!action) return
+      const nextActionId = makeId('action')
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        quickActions: [...current.quickActions, { ...action, id: nextActionId, label: `${action.label} copia` }],
+        studioNodeLayout: {
+          ...current.studioNodeLayout,
+          [`action:${nextActionId}`]: offsetNodeLayout(`action:${action.id}`) ?? { x: 360, y: 520 },
+        },
+      }))
+      setNotice('Accion duplicada.')
+      return
+    }
+
+    if (node.kind === 'trigger') {
+      const trigger = builder.flowTriggers.find((item) => item.id === node.id)
+      if (!trigger) return
+      const nextTriggerId = makeId('trigger')
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        flowTriggers: [...current.flowTriggers, { ...trigger, id: nextTriggerId, label: `${trigger.label} copia` }],
+        studioNodeLayout: {
+          ...current.studioNodeLayout,
+          [`trigger:${nextTriggerId}`]: offsetNodeLayout(`trigger:${trigger.id}`) ?? { x: 360, y: 60 },
+        },
+      }))
+      setNotice('Filtro duplicado.')
+      return
+    }
+
+    const pause = builder.pauseNodes.find((item) => item.id === node.id)
+    if (!pause) return
+    const nextPauseId = makeId('pause')
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      pauseNodes: [...current.pauseNodes, { ...pause, id: nextPauseId, title: `${pause.title} copia` }],
+      studioNodeLayout: {
+        ...current.studioNodeLayout,
+        [`pause:${nextPauseId}`]: offsetNodeLayout(`pause:${pause.id}`) ?? { x: 380, y: 392 },
+      },
+    }))
+    setNotice('Pausa duplicada.')
+  }
+
+  function deleteNode(node: StudioFocusNode) {
+    if (node.kind === 'stage') {
+      if (builder.flowStages.length <= 1) {
+        setError('Debe existir al menos un bloque de mensaje en el flujo.')
+        return
+      }
+      const remainingStages = builder.flowStages.filter((item) => item.id !== node.id)
+      const fallbackStageId = remainingStages[0]?.id || ''
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        flowStages: current.flowStages
+          .filter((item) => item.id !== node.id)
+          .map((stage) => ({
+            ...stage,
+            responseOptions: stage.responseOptions
+              .filter((option) => option.targetStageId !== node.id)
+              .map((option) => ({ ...option, targetStageId: option.targetStageId || fallbackStageId })),
+          })),
+        flowTriggers: current.flowTriggers.map((trigger) => trigger.targetStageId === node.id ? { ...trigger, targetStageId: fallbackStageId } : trigger),
+        pauseNodes: current.pauseNodes.filter((pause) => pause.sourceStageId !== node.id && pause.targetStageId !== node.id),
+          studioNodeLayout: removeNodeLayoutEntry(current.studioNodeLayout, `stage:${node.id}`),
+      }))
+      setFocusedNode(null)
+      setEditingNode(null)
+      setNotice('Bloque de mensaje eliminado.')
+      return
+    }
+
+    if (node.kind === 'action') {
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        quickActions: current.quickActions.filter((item) => item.id !== node.id),
+        flowStages: current.flowStages.map((stage) => ({
+          ...stage,
+          quickActionIds: stage.quickActionIds.filter((actionId) => actionId !== node.id),
+        })),
+        studioNodeLayout: removeNodeLayoutEntry(current.studioNodeLayout, `action:${node.id}`),
+      }))
+      setFocusedNode(null)
+      setEditingNode(null)
+      setNotice('Accion eliminada.')
+      return
+    }
+
+    if (node.kind === 'trigger') {
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        flowTriggers: current.flowTriggers.filter((item) => item.id !== node.id),
+        studioNodeLayout: removeNodeLayoutEntry(current.studioNodeLayout, `trigger:${node.id}`),
+      }))
+      setFocusedNode(null)
+      setEditingNode(null)
+      setNotice('Filtro eliminado.')
+      return
+    }
+
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      pauseNodes: current.pauseNodes.filter((item) => item.id !== node.id),
+      studioNodeLayout: removeNodeLayoutEntry(current.studioNodeLayout, `pause:${node.id}`),
+    }))
+    setFocusedNode(null)
+    setEditingNode(null)
+    setNotice('Pausa eliminada.')
+  }
+
+  function reorderNode(node: StudioFocusNode, direction: -1 | 1) {
+    if (node.kind === 'stage') {
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        flowStages: reorderItems(current.flowStages, node.id, direction),
+      }))
+      return
+    }
+    if (node.kind === 'action') {
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        quickActions: reorderItems(current.quickActions, node.id, direction),
+      }))
+      return
+    }
+    if (node.kind === 'trigger') {
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        flowTriggers: reorderItems(current.flowTriggers, node.id, direction),
+      }))
+      return
+    }
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      pauseNodes: reorderItems(current.pauseNodes, node.id, direction),
+    }))
+  }
 
   function focusStudioNode(node: StudioFocusNode) {
     setFocusedNode(node)
+    setInspectorOpen(true)
     if (typeof document === 'undefined') return
     document.getElementById(toDomId(node.kind, node.id))?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
@@ -768,9 +1252,178 @@ export function CrmChatbotStudioClient() {
     setEditingNode(node)
   }
 
+  function canConnectNodes(sourceKind: StudioGraphNode['kind'], targetKind: StudioGraphNode['kind']) {
+    if (sourceKind === 'start') return targetKind === 'stage'
+    if (sourceKind === 'stage') return targetKind === 'stage' || targetKind === 'action' || targetKind === 'pause'
+    if (sourceKind === 'trigger') return targetKind === 'stage'
+    if (sourceKind === 'pause') return targetKind === 'stage'
+    return false
+  }
+
+  function applyConnection(sourceNode: StudioGraphNode, targetNode: StudioGraphNode, sourceOptionId?: string) {
+    const canConnect = sourceOptionId
+      ? sourceNode.kind === 'stage' && targetNode.kind === 'stage'
+      : canConnectNodes(sourceNode.kind, targetNode.kind)
+    if (!canConnect) return
+
+    const sourceId = sourceNode.id.split(':')[1] || ''
+    const targetId = targetNode.id.split(':')[1] || ''
+
+    if (sourceNode.kind === 'start' && targetNode.kind === 'stage') {
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        flowStages: [
+          ...current.flowStages.filter((stage) => stage.id === targetId),
+          ...current.flowStages.filter((stage) => stage.id !== targetId),
+        ],
+      }))
+      setNotice('Nodo inicial conectado al mensaje principal.')
+      return
+    }
+
+    if (sourceNode.kind === 'stage' && targetNode.kind === 'stage') {
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        flowStages: current.flowStages.map((stage) => {
+          if (stage.id !== sourceId) return stage
+          const existingOption = sourceOptionId
+            ? stage.responseOptions.find((option) => option.id === sourceOptionId)
+            : stage.responseOptions[0]
+          if (existingOption) {
+            return {
+              ...stage,
+              responseOptions: stage.responseOptions.map((option) => option.id === existingOption.id ? { ...option, targetStageId: targetId } : option),
+            }
+          }
+          return {
+            ...stage,
+            responseOptions: [...stage.responseOptions, { id: makeId('option'), label: 'Siguiente mensaje', userMessage: 'Continuar', assistantReply: '', matchMode: 'contains', matchValue: '', targetStageId: targetId }],
+          }
+        }),
+      }))
+      setNotice(sourceOptionId ? 'Rama del mensaje reconectada.' : 'Ruta entre mensajes actualizada.')
+      return
+    }
+
+    if (sourceNode.kind === 'stage' && targetNode.kind === 'action') {
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        flowStages: current.flowStages.map((stage) => stage.id === sourceId
+          ? { ...stage, quickActionIds: stage.quickActionIds.includes(targetId) ? stage.quickActionIds : [...stage.quickActionIds, targetId] }
+          : stage),
+      }))
+      setNotice('Accion enlazada al mensaje.')
+      return
+    }
+
+    if (sourceNode.kind === 'stage' && targetNode.kind === 'pause') {
+      updatePauseNode(targetId, { sourceStageId: sourceId })
+      setNotice('Pausa conectada desde el mensaje origen.')
+      return
+    }
+
+    if (sourceNode.kind === 'trigger' && targetNode.kind === 'stage') {
+      updateTrigger(sourceId, { targetStageId: targetId })
+      setNotice('Filtro conectado al mensaje destino.')
+      return
+    }
+
+    if (sourceNode.kind === 'pause' && targetNode.kind === 'stage') {
+      updatePauseNode(sourceId, { targetStageId: targetId })
+      setNotice('Pausa conectada al siguiente mensaje.')
+    }
+  }
+
+  function handleConnectionStart(event: React.PointerEvent<HTMLButtonElement>, node: StudioGraphNode, sourceOptionId?: string, sourceLabel?: string) {
+    if (event.button !== 0 || node.kind === 'action') return
+    event.stopPropagation()
+    const rect = boardViewportRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const startX = (event.clientX - rect.left - builder.studioViewport.x) / builder.studioViewport.scale
+    const startY = (event.clientY - rect.top - builder.studioViewport.y) / builder.studioViewport.scale
+    setConnectionDraft({
+      fromId: node.id,
+      fromKind: node.kind,
+      sourceOptionId,
+      sourceLabel,
+      startX,
+      startY,
+      currentX: startX,
+      currentY: startY,
+    })
+  }
+
+  function handleConnectionDrop(event: React.PointerEvent<HTMLButtonElement>, node: StudioGraphNode) {
+    if (!connectionDraft) return
+    event.stopPropagation()
+    const sourceNode = studioGraph.nodes.find((item) => item.id === connectionDraft.fromId)
+    if (!sourceNode || sourceNode.id === node.id) {
+      setConnectionDraft(null)
+      return
+    }
+    applyConnection(sourceNode, node, connectionDraft.sourceOptionId)
+    setConnectionDraft(null)
+  }
+
+  function openContextMenu(node: StudioFocusNode, x: number, y: number) {
+    setContextMenu({ mode: 'node', node, x, y })
+  }
+
+  function openCanvasMenu(x: number, y: number) {
+    setContextMenu({ mode: 'canvas', x, y })
+  }
+
+  function openCreateMenu(args: { x: number; y: number; target?: StudioCreateMenuTarget }) {
+    setContextMenu({ mode: 'create', x: args.x, y: args.y, createTarget: args.target })
+  }
+
+  function handleCreateFromMenu(kind: StudioPaletteKind) {
+    const position = contextMenu ? { x: contextMenu.x, y: contextMenu.y } : getVisibleInsertPosition()
+    const target = contextMenu?.createTarget
+    if (kind === 'stage') {
+      createStage({ sourceNode: target?.sourceNode, sourceOptionId: target?.sourceOptionId, position })
+      return
+    }
+    if (kind === 'action') {
+      createAction({ sourceNode: target?.sourceNode, position })
+      return
+    }
+    if (kind === 'trigger') {
+      createTrigger({ position })
+      return
+    }
+    createPause({ sourceNode: target?.sourceNode, position })
+  }
+
+  function createNodeFromPalette(kind: StudioPaletteKind, position: { x: number; y: number }) {
+    if (kind === 'stage') {
+      createStage({ position })
+      return
+    }
+    if (kind === 'action') {
+      createAction({ position })
+      return
+    }
+    if (kind === 'trigger') {
+      createTrigger({ position })
+      return
+    }
+    createPause({ position })
+  }
+
   function handleBoardNodePointerDown(event: React.PointerEvent<HTMLDivElement>, node: StudioGraphNode) {
     if (event.button !== 0) return
     event.stopPropagation()
+    setContextMenu(null)
+
+    if (event.pointerType === 'touch') {
+      const target = event.target instanceof HTMLElement ? event.target : null
+      const touchDragHandle = target?.closest('[data-node-drag-handle="true"]')
+      if (!touchDragHandle) {
+        if (node.kind !== 'start') {
+          focusStudioNode({ kind: node.kind, id: node.id.split(':')[1] || '' })
+        }
+        return
+      }
+    }
+
     dragMovedRef.current = false
     setDragState({
       nodeId: node.id,
@@ -783,6 +1436,7 @@ export function CrmChatbotStudioClient() {
 
   function handleBoardBackgroundPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return
+    setContextMenu(null)
     dragMovedRef.current = false
     setPanState({
       startPointerX: event.clientX,
@@ -790,6 +1444,49 @@ export function CrmChatbotStudioClient() {
       originX: builder.studioViewport.x,
       originY: builder.studioViewport.y,
     })
+  }
+
+  function handleBoardBackgroundContextMenu(event: React.MouseEvent<HTMLDivElement>) {
+    event.preventDefault()
+    const rect = boardViewportRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const x = Math.max(32, Math.round((event.clientX - rect.left - builder.studioViewport.x) / builder.studioViewport.scale))
+    const y = Math.max(32, Math.round((event.clientY - rect.top - builder.studioViewport.y) / builder.studioViewport.scale))
+    openCanvasMenu(x, y)
+  }
+
+  function getCanvasPointFromClient(clientX: number, clientY: number) {
+    const rect = boardViewportRef.current?.getBoundingClientRect()
+    if (!rect) return getVisibleInsertPosition()
+    return {
+      x: Math.max(32, Math.round((clientX - rect.left - builder.studioViewport.x) / builder.studioViewport.scale)),
+      y: Math.max(32, Math.round((clientY - rect.top - builder.studioViewport.y) / builder.studioViewport.scale)),
+    }
+  }
+
+  function handlePaletteDragStart(event: React.DragEvent<HTMLButtonElement>, kind: StudioPaletteKind) {
+    event.dataTransfer.effectAllowed = 'copy'
+    event.dataTransfer.setData('text/plain', kind)
+    setPaletteDragKind(kind)
+  }
+
+  function handlePaletteDragEnd() {
+    setPaletteDragKind(null)
+  }
+
+  function handleBoardDragOver(event: React.DragEvent<HTMLDivElement>) {
+    if (!paletteDragKind) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'copy'
+  }
+
+  function handleBoardDrop(event: React.DragEvent<HTMLDivElement>) {
+    const kind = (event.dataTransfer.getData('text/plain') || paletteDragKind) as StudioPaletteKind
+    if (!kind) return
+    event.preventDefault()
+    const position = getCanvasPointFromClient(event.clientX, event.clientY)
+    createNodeFromPalette(kind, position)
+    setPaletteDragKind(null)
   }
 
   function setStudioScale(nextScale: number, origin?: { clientX: number; clientY: number }) {
@@ -831,6 +1528,904 @@ export function CrmChatbotStudioClient() {
       studioNodeLayout: {},
       studioViewport: { x: 48, y: 36, scale: 0.88 },
     }))
+  }
+
+  function centerStudioOnPoint(contentX: number, contentY: number) {
+    const rect = boardViewportRef.current?.getBoundingClientRect()
+    if (!rect) return
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      studioViewport: {
+        ...current.studioViewport,
+        x: (rect.width / 2) - (contentX * current.studioViewport.scale),
+        y: (rect.height / 2) - (contentY * current.studioViewport.scale),
+      },
+    }))
+  }
+
+  function centerStudioFromMinimapClient(clientX: number, clientY: number, rect: DOMRect, minimapScale: number) {
+    const localX = Math.max(0, Math.min(rect.width, clientX - rect.left))
+    const localY = Math.max(0, Math.min(rect.height, clientY - rect.top))
+    centerStudioOnPoint(localX / minimapScale, localY / minimapScale)
+  }
+
+  function getTouchMetrics(touches: React.TouchList) {
+    if (touches.length < 2) return null
+    const firstTouch = touches[0]
+    const secondTouch = touches[1]
+    const deltaX = secondTouch.clientX - firstTouch.clientX
+    const deltaY = secondTouch.clientY - firstTouch.clientY
+    return {
+      distance: Math.hypot(deltaX, deltaY),
+      centerX: (firstTouch.clientX + secondTouch.clientX) / 2,
+      centerY: (firstTouch.clientY + secondTouch.clientY) / 2,
+    }
+  }
+
+  function isTypingElement(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) return false
+    const tagName = target.tagName.toLowerCase()
+    return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable
+  }
+
+  function renderInspectorDrawer(overlay = false) {
+    if (overlay) return null
+    if (!focusedNode) return null
+
+    const deletionBlocker = getNodeDeletionBlocker(focusedNode)
+
+    return (
+      <>
+        <button
+          type="button"
+          aria-label="Cerrar inspector"
+          onClick={() => setInspectorOpen(false)}
+          className={`absolute inset-0 z-20 bg-slate-950/8 transition duration-300 ${inspectorOpen ? 'opacity-100' : 'pointer-events-none opacity-0'} ${overlay ? '' : 'lg:bg-slate-950/6'}`}
+        />
+        <aside className={`absolute inset-y-3 left-3 z-30 w-[min(292px,calc(100%-24px))] transition-all duration-300 ease-out ${inspectorOpen ? 'translate-x-0 opacity-100' : '-translate-x-[calc(100%+16px)] opacity-0'}`}>
+          <div className="flex h-full flex-col rounded-[22px] border border-slate-200/90 bg-white p-3 shadow-[0_28px_70px_-32px_rgba(15,23,42,0.42)]">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Bloque activo</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900">{getNodeKindLabel(focusedNode.kind)}</div>
+                <div className="text-xs text-slate-500">Panel fijo para editar sin mover la vista.</div>
+              </div>
+              <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => setInspectorOpen(false)}>Cerrar</Button>
+            </div>
+
+            <div className="mt-3 flex-1 space-y-3 overflow-y-auto pr-1">
+              {selectedStage ? (
+                <>
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">Mensaje</div>
+                    <div className="mt-1 truncate text-sm font-semibold text-slate-900">{selectedStage.title}</div>
+                    <div className="mt-1 line-clamp-2 text-xs text-slate-600">{selectedStage.description}</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
+                    <div className="font-semibold text-slate-900">Prompt</div>
+                    <div className="mt-1.5 line-clamp-4 whitespace-pre-wrap text-xs leading-5">{selectedStage.prompt || 'Sin prompt definido.'}</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-semibold text-slate-900">Rutas</div>
+                      <div className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">{selectedStage.responseOptions.length}</div>
+                    </div>
+                    <div className="mt-2 space-y-1.5">
+                      {selectedStage.responseOptions.length ? selectedStage.responseOptions.map((option) => (
+                        <div key={option.id} className="rounded-xl bg-slate-50 px-2.5 py-2">
+                          <div className="truncate font-medium text-slate-900">{option.label}</div>
+                          <div className="truncate text-[11px] text-slate-500">Va a {stageMap[option.targetStageId]?.title || option.targetStageId}</div>
+                        </div>
+                      )) : <div className="text-[11px] text-slate-500">Este mensaje no tiene rutas configuradas.</div>}
+                    </div>
+                  </div>
+                </>
+              ) : null}
+
+              {selectedAction ? (
+                <>
+                  <div className="rounded-2xl border border-fuchsia-200 bg-fuchsia-50/70 px-3 py-2.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-fuchsia-700">Accion</div>
+                    <div className="mt-1 truncate text-sm font-semibold text-slate-900">{selectedAction.label}</div>
+                    <div className="mt-1 text-xs text-slate-600">Tipo: {selectedAction.kind}</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
+                    <div className="font-semibold text-slate-900">Mensaje</div>
+                    <div className="mt-1.5 line-clamp-5 whitespace-pre-wrap leading-5">{selectedAction.message || 'Sin mensaje definido.'}</div>
+                  </div>
+                </>
+              ) : null}
+
+              {selectedTrigger ? (
+                <>
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/70 px-3 py-2.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-700">Filtro</div>
+                    <div className="mt-1 truncate text-sm font-semibold text-slate-900">{selectedTrigger.label}</div>
+                    <div className="mt-1 text-xs text-slate-600">{selectedTrigger.event} · {selectedTrigger.matchMode}</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
+                    <div className="font-semibold text-slate-900">Destino</div>
+                    <div className="mt-1.5 truncate">{stageMap[selectedTrigger.targetStageId]?.title || selectedTrigger.targetStageId}</div>
+                  </div>
+                </>
+              ) : null}
+
+              {selectedPause ? (
+                <>
+                  <div className="rounded-2xl border border-sky-200 bg-sky-50/70 px-3 py-2.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">Pausa</div>
+                    <div className="mt-1 truncate text-sm font-semibold text-slate-900">{selectedPause.title}</div>
+                    <div className="mt-1 text-xs text-slate-600">{selectedPause.durationMinutes} min de espera</div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
+                    <div className="font-semibold text-slate-900">Recorrido</div>
+                    <div className="mt-1.5 text-xs leading-5">{stageMap[selectedPause.sourceStageId]?.title || 'Sin origen'} → {stageMap[selectedPause.targetStageId]?.title || 'Sin destino'}</div>
+                  </div>
+                </>
+              ) : null}
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-3">
+              <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => openEditor(focusedNode)}>Editar</Button>
+              <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => duplicateNode(focusedNode)}>Duplicar</Button>
+              <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => reorderNode(focusedNode, -1)}>Subir</Button>
+              <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => reorderNode(focusedNode, 1)}>Bajar</Button>
+              <Button type="button" variant="outline" size="sm" className="col-span-2 h-8 border-rose-200 text-xs text-rose-700" onClick={() => deleteNodeWithFeedback(focusedNode)}>Eliminar bloque</Button>
+            </div>
+
+            {deletionBlocker ? (
+              <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-900">
+                {deletionBlocker}
+              </div>
+            ) : null}
+          </div>
+        </aside>
+      </>
+    )
+  }
+
+  function renderFullscreenShortcutHint() {
+    if (!mapFullscreen) return null
+
+    return (
+      <div className="absolute right-4 top-4 z-20 hidden rounded-[18px] border border-slate-200 bg-white/95 px-3 py-2 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.38)] lg:block">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Atajos</div>
+        <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-slate-600">
+          <span className="rounded-full bg-slate-100 px-2 py-1">I Inspector</span>
+          <span className="rounded-full bg-slate-100 px-2 py-1">0 Centrar</span>
+          <span className="rounded-full bg-slate-100 px-2 py-1">Esc Salir</span>
+          {!minimapOpen ? (
+            <button
+              type="button"
+              onClick={() => setMinimapOpen(true)}
+              className="rounded-full bg-slate-900 px-2 py-1 text-[11px] font-medium text-white"
+            >
+              Mostrar minimapa
+            </button>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
+
+  function renderFullscreenPropertiesInspector() {
+    if (!focusedNode) {
+      return (
+        <div className="space-y-4 rounded-[24px] border border-slate-200/80 bg-white/95 p-4 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.25)]">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Inspector</div>
+            <div className="mt-1 text-sm font-semibold text-slate-900">Sin bloque seleccionado</div>
+            <div className="mt-1 text-sm text-slate-600">Selecciona una caja del flujo para editar sus propiedades desde este panel.</div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+            <div className="font-semibold text-slate-900">Atajo rápido</div>
+            <div className="mt-2">Haz click en un bloque del canvas para abrir sus propiedades aquí.</div>
+          </div>
+        </div>
+      )
+    }
+
+    const deletionBlocker = getNodeDeletionBlocker(focusedNode)
+
+    return (
+      <div className="space-y-4 rounded-[24px] border border-slate-200/80 bg-white/95 p-4 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.25)]">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-4">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Inspector</div>
+            <div className="mt-1 text-sm font-semibold text-slate-900">{getNodeKindLabel(focusedNode.kind)}</div>
+            <div className="mt-1 text-xs text-slate-500">Propiedades del bloque seleccionado.</div>
+          </div>
+          <Switch checked={focusedNode.kind === 'stage' ? true : focusedNode.kind === 'action' ? Boolean(selectedAction?.enabled) : focusedNode.kind === 'trigger' ? Boolean(selectedTrigger?.enabled) : Boolean(selectedPause?.enabled)} onCheckedChange={(checked) => {
+            if (focusedNode.kind === 'action' && selectedAction) updateQuickAction(selectedAction.id, { enabled: checked })
+            if (focusedNode.kind === 'trigger' && selectedTrigger) updateTrigger(selectedTrigger.id, { enabled: checked })
+            if (focusedNode.kind === 'pause' && selectedPause) updatePauseNode(selectedPause.id, { enabled: checked })
+          }} disabled={focusedNode.kind === 'stage'} />
+        </div>
+
+        {selectedStage ? (
+          <div className="space-y-4">
+            <div className="grid gap-2">
+              <Label>Título</Label>
+              <Input value={selectedStage.title} onChange={(event) => updateStage(selectedStage.id, { title: event.target.value })} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Descripción</Label>
+              <Textarea value={selectedStage.description} onChange={(event) => updateStage(selectedStage.id, { description: event.target.value })} rows={2} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Prompt</Label>
+              <Textarea value={selectedStage.prompt} onChange={(event) => updateStage(selectedStage.id, { prompt: event.target.value })} rows={5} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Dato esperado</Label>
+              <Select value={selectedStage.nextField} onValueChange={(value) => updateStage(selectedStage.id, { nextField: value as ChatbotFlowNextField })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Ninguno</SelectItem>
+                  <SelectItem value="name">Nombre</SelectItem>
+                  <SelectItem value="email">Correo</SelectItem>
+                  <SelectItem value="phone">Teléfono</SelectItem>
+                  <SelectItem value="product">Producto</SelectItem>
+                  <SelectItem value="quantity">Cantidad</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
+              <div className="font-semibold text-slate-900">Resumen</div>
+              <div className="mt-2">{selectedStage.responseOptions.length} rutas configuradas</div>
+              <div className="mt-1">{selectedStage.quickActionIds.length} acciones rápidas enlazadas</div>
+            </div>
+          </div>
+        ) : null}
+
+        {selectedAction ? (
+          <div className="space-y-4">
+            <div className="grid gap-2">
+              <Label>Nombre</Label>
+              <Input value={selectedAction.label} onChange={(event) => updateQuickAction(selectedAction.id, { label: event.target.value })} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Tipo</Label>
+              <Select value={selectedAction.kind} onValueChange={(value) => updateQuickAction(selectedAction.id, { kind: value as ChatbotQuickActionKind })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="message">Mensaje</SelectItem>
+                  <SelectItem value="assign_human">Asignar humano</SelectItem>
+                  <SelectItem value="tag_lead">Etiquetar lead</SelectItem>
+                  <SelectItem value="open_crm">Abrir CRM</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Mensaje</Label>
+              <Textarea value={selectedAction.message} onChange={(event) => updateQuickAction(selectedAction.id, { message: event.target.value })} rows={5} />
+            </div>
+          </div>
+        ) : null}
+
+        {selectedTrigger ? (
+          <div className="space-y-4">
+            <div className="grid gap-2">
+              <Label>Nombre</Label>
+              <Input value={selectedTrigger.label} onChange={(event) => updateTrigger(selectedTrigger.id, { label: event.target.value })} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Evento</Label>
+              <Select value={selectedTrigger.event} onValueChange={(value) => updateTrigger(selectedTrigger.id, { event: value as ChatbotFlowTriggerEvent })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="message">Mensaje recibido</SelectItem>
+                  <SelectItem value="conversation_started">Conversación iniciada</SelectItem>
+                  <SelectItem value="lead_created">Lead creado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Regla de coincidencia</Label>
+              <Select value={selectedTrigger.matchMode} onValueChange={(value) => updateTrigger(selectedTrigger.id, { matchMode: value as ChatbotFlowTriggerMatchMode })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="contains">Contiene</SelectItem>
+                  <SelectItem value="equals">Es igual a</SelectItem>
+                  <SelectItem value="starts_with">Empieza por</SelectItem>
+                  <SelectItem value="regex">Regex</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Valor</Label>
+              <Textarea value={selectedTrigger.matchValue} onChange={(event) => updateTrigger(selectedTrigger.id, { matchValue: event.target.value })} rows={3} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Destino</Label>
+              <Select value={selectedTrigger.targetStageId} onValueChange={(value) => updateTrigger(selectedTrigger.id, { targetStageId: value })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        ) : null}
+
+        {selectedPause ? (
+          <div className="space-y-4">
+            <div className="grid gap-2">
+              <Label>Título</Label>
+              <Input value={selectedPause.title} onChange={(event) => updatePauseNode(selectedPause.id, { title: event.target.value })} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Descripción</Label>
+              <Textarea value={selectedPause.description} onChange={(event) => updatePauseNode(selectedPause.id, { description: event.target.value })} rows={3} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Duración en minutos</Label>
+              <Input type="number" min={1} value={String(selectedPause.durationMinutes)} onChange={(event) => updatePauseNode(selectedPause.id, { durationMinutes: Math.max(1, Number(event.target.value) || 1) })} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Mensaje origen</Label>
+              <Select value={selectedPause.sourceStageId} onValueChange={(value) => updatePauseNode(selectedPause.id, { sourceStageId: value })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Mensaje destino</Label>
+              <Select value={selectedPause.targetStageId} onValueChange={(value) => updatePauseNode(selectedPause.id, { targetStageId: value })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="grid grid-cols-2 gap-2 border-t border-slate-200 pt-4">
+          <Button type="button" variant="outline" size="sm" onClick={() => openEditor(focusedNode)}>Edición avanzada</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => duplicateNode(focusedNode)}>Duplicar</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => reorderNode(focusedNode, -1)}>Subir</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => reorderNode(focusedNode, 1)}>Bajar</Button>
+          <Button type="button" variant="outline" size="sm" className="col-span-2 border-rose-200 text-rose-700" onClick={() => deleteNodeWithFeedback(focusedNode)}>Eliminar bloque</Button>
+        </div>
+
+        {deletionBlocker ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-900">
+            {deletionBlocker}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
+  function renderFullscreenPaletteRail() {
+    return (
+      <div className="hidden h-full rounded-[26px] border border-slate-200 bg-white/96 p-3 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.25)] xl:flex xl:flex-col xl:items-center xl:gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
+          <GitBranch className="h-5 w-5" />
+        </div>
+        <div className="w-full border-t border-slate-200 pt-3" />
+        {STUDIO_PALETTE_ITEMS.map((item) => {
+          const Icon = item.kind === 'stage' ? Bot : item.kind === 'action' ? Zap : item.kind === 'trigger' ? GitBranch : History
+          return (
+            <button
+              key={`rail-${item.kind}`}
+              type="button"
+              draggable
+              onDragStart={(event) => handlePaletteDragStart(event, item.kind)}
+              onDragEnd={handlePaletteDragEnd}
+              onClick={() => handleCreateFromMenu(item.kind)}
+              className={`group flex w-full flex-col items-center gap-2 rounded-[18px] border px-2 py-3 text-center transition ${item.className} ${paletteDragKind === item.kind ? 'scale-[1.02] shadow-sm ring-2 ring-slate-900/10' : ''}`}
+              title={item.label}
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-current/15 bg-white/85">
+                <Icon className="h-4.5 w-4.5" />
+              </div>
+              <div className="text-[11px] font-semibold leading-4">{item.label}</div>
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
+  function renderFullscreenMinimap() {
+    if (!mapFullscreen || !minimapOpen || !boardViewportSize.width || !boardViewportSize.height) return null
+
+    const minimapWidth = 196
+    const minimapHeight = 132
+    const minimapScale = Math.min(minimapWidth / studioGraph.contentWidth, minimapHeight / studioGraph.contentHeight)
+    const viewportStartX = Math.max(0, -builder.studioViewport.x / builder.studioViewport.scale)
+    const viewportStartY = Math.max(0, -builder.studioViewport.y / builder.studioViewport.scale)
+    const viewportEndX = Math.min(studioGraph.contentWidth, (boardViewportSize.width - builder.studioViewport.x) / builder.studioViewport.scale)
+    const viewportEndY = Math.min(studioGraph.contentHeight, (boardViewportSize.height - builder.studioViewport.y) / builder.studioViewport.scale)
+    const viewportWidth = Math.max(24, (viewportEndX - viewportStartX) * minimapScale)
+    const viewportHeight = Math.max(18, (viewportEndY - viewportStartY) * minimapScale)
+
+    return (
+      <div
+        aria-label="Minimapa del flujo"
+        onPointerDown={(event) => {
+          const element = event.currentTarget
+          const rect = element.getBoundingClientRect()
+          minimapDraggingRef.current = true
+          centerStudioFromMinimapClient(event.clientX, event.clientY, rect, minimapScale)
+
+          const handlePointerMove = (moveEvent: PointerEvent) => {
+            if (!minimapDraggingRef.current) return
+            centerStudioFromMinimapClient(moveEvent.clientX, moveEvent.clientY, rect, minimapScale)
+          }
+
+          const stopDragging = () => {
+            minimapDraggingRef.current = false
+            window.removeEventListener('pointermove', handlePointerMove)
+            window.removeEventListener('pointerup', stopDragging)
+          }
+
+          window.addEventListener('pointermove', handlePointerMove)
+          window.addEventListener('pointerup', stopDragging)
+        }}
+        className="absolute bottom-4 right-4 z-20 hidden w-[196px] rounded-[20px] border border-slate-200/90 bg-white/96 p-2 text-left shadow-[0_18px_42px_-24px_rgba(15,23,42,0.38)] xl:block"
+      >
+        <div className="flex items-center justify-between gap-2 px-1 pb-2">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Minimapa</div>
+          <div className="flex items-center gap-2">
+            <div className="text-[10px] text-slate-400">Arrastra para navegar</div>
+            <button
+              type="button"
+              aria-label="Cerrar minimapa"
+              onPointerDown={(event) => {
+                event.stopPropagation()
+              }}
+              onClick={(event) => {
+                event.stopPropagation()
+                setMinimapOpen(false)
+              }}
+              className="flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-[11px] font-semibold text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#f8fafc,#eef2f7)]" style={{ width: `${minimapWidth}px`, height: `${minimapHeight}px` }}>
+          {studioGraph.edges.map((edge) => {
+            const source = studioGraph.nodes.find((node) => node.id === edge.fromId)
+            const target = studioGraph.nodes.find((node) => node.id === edge.toId)
+            if (!source || !target) return null
+            return (
+              <svg key={edge.id} className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${minimapWidth} ${minimapHeight}`} fill="none">
+                <path
+                  d={`M ${getNodeAnchorX(source, 'right') * minimapScale} ${getNodeAnchorY(source) * minimapScale} C ${(getNodeAnchorX(source, 'right') + 34) * minimapScale} ${getNodeAnchorY(source) * minimapScale}, ${(getNodeAnchorX(target, 'left') - 34) * minimapScale} ${getNodeAnchorY(target) * minimapScale}, ${getNodeAnchorX(target, 'left') * minimapScale} ${getNodeAnchorY(target) * minimapScale}`}
+                  className="fill-none stroke-slate-300 stroke-[1.4]"
+                />
+              </svg>
+            )
+          })}
+          {studioGraph.nodes.map((node) => {
+            const nodeKey = node.id.split(':')[1]
+            const active = focusedNode?.id === nodeKey && focusedNode?.kind === node.kind
+            return (
+              <div
+                key={`minimap-${node.id}`}
+                className={`absolute rounded-md border ${active ? 'border-slate-900 bg-slate-900/80' : 'border-slate-300 bg-white/90'}`}
+                style={{
+                  left: `${node.x * minimapScale}px`,
+                  top: `${node.y * minimapScale}px`,
+                  width: `${Math.max(10, node.width * minimapScale)}px`,
+                  height: `${Math.max(8, 60 * minimapScale)}px`,
+                }}
+              />
+            )
+          })}
+          <div
+            className="pointer-events-none absolute rounded-xl border-2 border-emerald-400 bg-emerald-300/10"
+            style={{
+              left: `${viewportStartX * minimapScale}px`,
+              top: `${viewportStartY * minimapScale}px`,
+              width: `${viewportWidth}px`,
+              height: `${viewportHeight}px`,
+            }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  function renderMapWorkspace(overlay = false) {
+    return (
+      <Card className={overlay ? 'flex h-full flex-col border-0 bg-transparent shadow-none' : ''}>
+        <CardContent className={overlay ? 'flex-1 overflow-hidden px-0 pb-0 pt-0' : 'overflow-hidden pt-0'}>
+          <div className={`grid gap-4 rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.08),_transparent_28%),linear-gradient(180deg,_rgba(248,250,252,0.98),_rgba(241,245,249,0.96))] p-3 md:p-4 ${overlay ? 'h-full min-h-0 xl:grid-cols-[84px_minmax(0,1fr)_300px]' : 'lg:grid-cols-[minmax(0,1fr)_260px]'}`}>
+            {overlay ? renderFullscreenPaletteRail() : null}
+            <div className="relative min-w-0 space-y-2 overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200/80 bg-white/80 px-3 py-2 text-xs text-slate-500">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">Zoom {(builder.studioViewport.scale * 100).toFixed(0)}%</span>
+                  <span>Pan X {Math.round(builder.studioViewport.x)} · Y {Math.round(builder.studioViewport.y)}</span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {focusedNode ? (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setInspectorOpen((current) => !current)}>
+                      {inspectorOpen ? 'Inspector' : 'Mostrar inspector'}
+                    </Button>
+                  ) : null}
+                  <Button type="button" variant="outline" size="sm" onClick={() => setStudioScale(builder.studioViewport.scale - 0.1)}>Zoom -</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setStudioScale(builder.studioViewport.scale + 0.1)}>Zoom +</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={resetStudioViewport}>Centrar vista</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={clearStudioLayout}>Auto ordenar</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setMapFullscreen((current) => !current)}>
+                    {overlay ? 'Cerrar' : 'Pantalla completa'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="relative min-h-0 flex-1">
+                <div
+                  ref={boardViewportRef}
+                  onPointerDown={handleBoardBackgroundPointerDown}
+                  onTouchStart={(event) => {
+                    const metrics = getTouchMetrics(event.touches)
+                    if (!metrics) return
+                    event.preventDefault()
+                    setPanState(null)
+                    setDragState(null)
+                    pinchStateRef.current = {
+                      initialDistance: metrics.distance,
+                      initialScale: builder.studioViewport.scale,
+                      centerX: metrics.centerX,
+                      centerY: metrics.centerY,
+                    }
+                  }}
+                  onTouchMove={(event) => {
+                    if (!pinchStateRef.current || event.touches.length < 2) return
+                    const metrics = getTouchMetrics(event.touches)
+                    if (!metrics) return
+                    event.preventDefault()
+                    setStudioScale(pinchStateRef.current.initialScale * (metrics.distance / pinchStateRef.current.initialDistance), {
+                      clientX: metrics.centerX,
+                      clientY: metrics.centerY,
+                    })
+                  }}
+                  onTouchEnd={(event) => {
+                    if (event.touches.length < 2) {
+                      pinchStateRef.current = null
+                    }
+                  }}
+                  onDragOver={handleBoardDragOver}
+                  onDrop={handleBoardDrop}
+                  onContextMenu={handleBoardBackgroundContextMenu}
+                  onWheel={(event) => {
+                    event.preventDefault()
+                    const direction = event.deltaY > 0 ? -0.08 : 0.08
+                    setStudioScale(builder.studioViewport.scale + direction, { clientX: event.clientX, clientY: event.clientY })
+                  }}
+                  className={`relative ${overlay ? 'h-[calc(100vh-250px)] min-h-[560px] md:h-[calc(100vh-220px)]' : 'h-[calc(100vh-320px)] min-h-[480px] md:h-[calc(100vh-280px)] md:min-h-[760px]'} touch-none overflow-hidden rounded-[24px] border border-slate-200/80 bg-[linear-gradient(rgba(148,163,184,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.12)_1px,transparent_1px)] bg-[size:32px_32px] ${panState ? 'cursor-grabbing' : 'cursor-grab'} ${paletteDragKind ? 'ring-2 ring-emerald-300 ring-offset-2' : ''}`}
+                >
+                  {overlay ? renderFullscreenShortcutHint() : null}
+                  {paletteDragKind ? (
+                    <div className="pointer-events-none absolute inset-x-4 top-4 z-10 rounded-2xl border border-dashed border-emerald-300 bg-white/90 px-4 py-3 text-sm font-medium text-emerald-800 shadow-sm">
+                      Suelta aqui para crear un bloque de {STUDIO_PALETTE_ITEMS.find((item) => item.kind === paletteDragKind)?.label.toLowerCase()}.
+                    </div>
+                  ) : null}
+                  <div
+                    className="absolute left-0 top-0 will-change-transform"
+                    style={{
+                      width: `${studioGraph.contentWidth}px`,
+                      height: `${studioGraph.contentHeight}px`,
+                      transform: `translate(${builder.studioViewport.x}px, ${builder.studioViewport.y}px) scale(${builder.studioViewport.scale})`,
+                      transformOrigin: '0 0',
+                    }}
+                  >
+                    <div className="relative" style={{ width: `${studioGraph.contentWidth}px`, height: `${studioGraph.contentHeight}px` }}>
+                      <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${studioGraph.contentWidth} ${studioGraph.contentHeight}`} fill="none">
+                        {studioGraph.edges.map((edge) => {
+                          const source = studioGraph.nodes.find((node) => node.id === edge.fromId)
+                          const target = studioGraph.nodes.find((node) => node.id === edge.toId)
+                          if (!source || !target) return null
+                          const startX = getNodeAnchorX(source, 'right')
+                          const startY = getNodeAnchorY(source)
+                          const endX = getNodeAnchorX(target, 'left')
+                          const endY = getNodeAnchorY(target)
+                          const deltaX = Math.max((endX - startX) / 2, 56)
+                          const path = `M ${startX} ${startY} C ${startX + deltaX} ${startY}, ${endX - deltaX} ${endY}, ${endX} ${endY}`
+                          const labelX = startX + ((endX - startX) / 2)
+                          const labelY = startY + ((endY - startY) / 2) - 12
+                          return (
+                            <g key={edge.id}>
+                              <path d={path} className={`${edge.toneClass} fill-none stroke-[2.5]`} strokeDasharray={edge.label === 'accion' ? '6 6' : undefined} />
+                              <text x={labelX} y={labelY} textAnchor="middle" className="fill-slate-500 text-[11px] font-medium">{edge.label}</text>
+                            </g>
+                          )
+                        })}
+                        {connectionDraft ? (() => {
+                          const source = studioGraph.nodes.find((node) => node.id === connectionDraft.fromId)
+                          if (!source) return null
+                          const startX = getNodeAnchorX(source, 'right')
+                          const startY = getNodeAnchorY(source)
+                          const endX = connectionDraft.currentX
+                          const endY = connectionDraft.currentY
+                          const deltaX = Math.max((endX - startX) / 2, 56)
+                          const path = `M ${startX} ${startY} C ${startX + deltaX} ${startY}, ${endX - deltaX} ${endY}, ${endX} ${endY}`
+                          return <path d={path} className="fill-none stroke-slate-400 stroke-[2.5]" strokeDasharray="8 6" />
+                        })() : null}
+                      </svg>
+
+                      {studioGraph.nodes.map((node) => {
+                        const nodeKey = node.id.split(':')[1]
+                        const active = node.kind !== 'start' && focusedNode?.kind === node.kind && focusedNode.id === nodeKey
+                        const canStartConnection = node.kind !== 'action'
+                        const validTarget = connectionDraft
+                          ? node.id !== connectionDraft.fromId && (connectionDraft.sourceOptionId ? connectionDraft.fromKind === 'stage' && node.kind === 'stage' : canConnectNodes(connectionDraft.fromKind, node.kind))
+                          : false
+                        const responseHandles = node.kind === 'stage'
+                          ? (stageMap[nodeKey]?.responseOptions ?? []).slice(0, 5)
+                          : []
+                        return (
+                          <div
+                            key={node.id}
+                            onContextMenu={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              if (node.kind === 'start') return
+                              openContextMenu({ kind: node.kind, id: nodeKey }, node.x + node.width + 14, node.y + 18)
+                            }}
+                            onPointerDown={(event) => handleBoardNodePointerDown(event, node)}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              if (node.kind !== 'start') {
+                                focusStudioNode({ kind: node.kind, id: nodeKey })
+                              }
+                            }}
+                            className={`group absolute cursor-grab rounded-[22px] border px-3 py-2.5 text-left shadow-sm transition active:cursor-grabbing ${node.accentClass} ${active ? 'ring-2 ring-slate-900/15 shadow-lg' : 'hover:-translate-y-0.5'} ${validTarget ? 'ring-2 ring-sky-300 ring-offset-2' : ''}`}
+                            style={{ left: `${node.x}px`, top: `${node.y}px`, width: `${node.width}px` }}
+                          >
+                            {node.kind !== 'start' ? (
+                              <button
+                                type="button"
+                                aria-label={`Agregar bloque desde ${node.title}`}
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  if (node.kind !== 'start') {
+                                    openCreateMenu({ x: node.x + node.width + 24, y: node.y + 20, target: { sourceNode: { kind: node.kind, id: nodeKey } } })
+                                  }
+                                }}
+                                className="absolute -right-3 -top-3 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 opacity-100 shadow transition hover:border-emerald-300 hover:text-emerald-700 lg:opacity-0 lg:group-hover:opacity-100"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                aria-label="Agregar mensaje inicial"
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  openCreateMenu({ x: node.x + node.width + 24, y: node.y + 20, target: { sourceNode: { kind: 'stage', id: builder.flowStages[0]?.id || '' } } })
+                                }}
+                                className="absolute -right-3 -top-3 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 opacity-100 shadow transition hover:border-emerald-300 hover:text-emerald-700 lg:opacity-0 lg:group-hover:opacity-100"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              aria-label={`Conectar hacia ${node.title}`}
+                              onPointerDown={(event) => {
+                                event.stopPropagation()
+                              }}
+                              onPointerUp={(event) => handleConnectionDrop(event, node)}
+                              className={`absolute -left-2.5 top-[40px] h-5 w-5 rounded-full border bg-white shadow ${validTarget ? 'border-sky-400' : 'border-slate-300'}`}
+                            />
+                            {node.kind === 'stage' && responseHandles.length ? (
+                              <div className="absolute -right-10 top-7 space-y-2">
+                                {responseHandles.map((option, index) => (
+                                  <button
+                                    key={option.id}
+                                    type="button"
+                                    aria-label={`Reconectar rama ${option.label}`}
+                                    onPointerDown={(event) => handleConnectionStart(event, node, option.id, option.label)}
+                                    onContextMenu={(event) => {
+                                      event.preventDefault()
+                                      event.stopPropagation()
+                                      openCreateMenu({ x: node.x + node.width + 30, y: node.y + 50 + (index * 26), target: { sourceNode: { kind: 'stage', id: nodeKey }, sourceOptionId: option.id } })
+                                    }}
+                                    className={`flex items-center gap-2 rounded-full border bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 shadow ${connectionDraft?.sourceOptionId === option.id ? 'border-sky-400' : 'border-slate-300'}`}
+                                    style={{ transform: `translateY(${index * 2}px)` }}
+                                  >
+                                    <span className="inline-block h-3 w-3 rounded-full border border-slate-300 bg-white" />
+                                    <span className="max-w-[84px] truncate">{option.label}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null}
+                            {canStartConnection ? (
+                              <button
+                                type="button"
+                                aria-label={`Crear conexion desde ${node.title}`}
+                                onPointerDown={(event) => handleConnectionStart(event, node)}
+                                className="absolute -right-2.5 top-[40px] h-5 w-5 rounded-full border border-slate-300 bg-white shadow"
+                              />
+                            ) : null}
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="inline-flex rounded-full bg-white/85 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] opacity-80">{getNodeTypeLabel(node.kind)}</div>
+                                <div className="mt-2 truncate text-sm font-semibold">{node.title}</div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <div data-node-drag-handle="true" className="rounded-full border border-current/15 bg-white/80 p-1 opacity-70"><GripVertical className="h-3.5 w-3.5" /></div>
+                                {active ? <div className="rounded-full bg-white/80 px-2 py-1 text-[10px] font-semibold text-slate-700">Activo</div> : null}
+                              </div>
+                            </div>
+                            <div className="mt-1 line-clamp-2 text-xs opacity-80">{node.subtitle}</div>
+                            <div className="mt-2 line-clamp-3 text-[11px] leading-5 opacity-70">{node.description}</div>
+                            {node.kind === 'stage' && stageMap[nodeKey]?.responseOptions.length ? (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {stageMap[nodeKey]?.responseOptions.slice(0, 3).map((option) => (
+                                  <span key={option.id} className="rounded-full border border-white/70 bg-white/80 px-2 py-1 text-[10px] font-semibold text-slate-700">
+                                    {option.label}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      })}
+
+                      {contextMenu ? (
+                        <div
+                          className="absolute z-20 min-w-[200px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.3)]"
+                          style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+                        >
+                          {contextMenu.mode === 'node' && contextMenu.node ? (
+                            <>
+                              <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Menu del bloque</div>
+                              <button type="button" onClick={() => { openEditor(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                <span>Editar bloque</span>
+                                <span>✎</span>
+                              </button>
+                              <button type="button" onClick={() => openCreateMenu({ x: contextMenu.x + 18, y: contextMenu.y + 12, target: { sourceNode: contextMenu.node } })} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                <span>Crear desde aqui</span>
+                                <Plus className="h-4 w-4" />
+                              </button>
+                              <button type="button" onClick={() => { duplicateNode(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                <span>Duplicar bloque</span>
+                                <span>+</span>
+                              </button>
+                              <button type="button" onClick={() => { reorderNode(contextMenu.node!, -1); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                <span>Mover antes</span>
+                                <span>↑</span>
+                              </button>
+                              <button type="button" onClick={() => { reorderNode(contextMenu.node!, 1); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                <span>Mover despues</span>
+                                <span>↓</span>
+                              </button>
+                              <button type="button" onClick={() => { deleteNodeWithFeedback(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-rose-700 transition hover:bg-rose-50">
+                                <span>Eliminar bloque</span>
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </>
+                          ) : null}
+                          {contextMenu.mode === 'canvas' ? (
+                            <>
+                              <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Crear bloque</div>
+                              {[
+                                { kind: 'stage', label: 'Nuevo mensaje' },
+                                { kind: 'action', label: 'Nueva accion' },
+                                { kind: 'trigger', label: 'Nuevo filtro' },
+                                { kind: 'pause', label: 'Nueva pausa' },
+                              ].map((item) => (
+                                <button key={item.kind} type="button" onClick={() => handleCreateFromMenu(item.kind as 'stage' | 'action' | 'trigger' | 'pause')} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                  <span>{item.label}</span>
+                                  <Plus className="h-4 w-4" />
+                                </button>
+                              ))}
+                            </>
+                          ) : null}
+                          {contextMenu.mode === 'create' ? (
+                            <>
+                              <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Que quieres agregar</div>
+                              {[
+                                { kind: 'stage', label: 'Mensaje' },
+                                { kind: 'action', label: 'Accion' },
+                                { kind: 'trigger', label: 'Filtro' },
+                                { kind: 'pause', label: 'Pausa' },
+                              ].map((item) => (
+                                <button key={item.kind} type="button" onClick={() => handleCreateFromMenu(item.kind as 'stage' | 'action' | 'trigger' | 'pause')} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                  <span>{item.label}</span>
+                                  <Plus className="h-4 w-4" />
+                                </button>
+                              ))}
+                            </>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {renderInspectorDrawer(overlay)}
+                  {overlay ? renderFullscreenMinimap() : null}
+                </div>
+              </div>
+            </div>
+
+            {overlay ? (
+              <div className="space-y-4">
+                {renderFullscreenPropertiesInspector()}
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                  <div className="font-semibold text-slate-900">Gestos táctiles</div>
+                  <div className="mt-2">Un dedo sobre fondo → desplaza el canvas</div>
+                  <div className="mt-1">Dos dedos → zoom con pinch</div>
+                  <div className="mt-1">Para mover una caja en tablet usa el asa de puntos</div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 rounded-[24px] border border-slate-200/80 bg-white/90 p-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Panel de bloques</div>
+                  <div className="mt-1 text-sm text-slate-600">Arrastra un bloque al canvas o haz clic derecho donde quieras crearlo.</div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                  {STUDIO_PALETTE_ITEMS.map((item) => (
+                    <button
+                      key={item.kind}
+                      type="button"
+                      draggable
+                      onDragStart={(event) => handlePaletteDragStart(event, item.kind)}
+                      onDragEnd={handlePaletteDragEnd}
+                      onClick={() => handleCreateFromMenu(item.kind)}
+                      className={`rounded-2xl border px-4 py-3 text-left transition ${item.className} ${paletteDragKind === item.kind ? 'scale-[1.02] shadow-sm ring-2 ring-slate-900/10' : ''}`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-semibold">{item.label}</div>
+                        <div className="rounded-full border border-current/20 bg-white/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">Drag</div>
+                      </div>
+                      <div className="mt-1 text-xs opacity-85">{item.description}</div>
+                    </button>
+                  ))}
+                </div>
+                <div className="rounded-[22px] border border-slate-200 bg-[linear-gradient(180deg,#f8fafc,#ffffff)] p-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Referencia visual</div>
+                  <svg viewBox="0 0 240 170" className="mt-3 h-auto w-full">
+                    <rect x="10" y="58" width="62" height="42" rx="14" className="fill-emerald-50 stroke-emerald-300" />
+                    <text x="22" y="77" className="fill-emerald-950 text-[10px] font-semibold">Mensaje</text>
+                    <text x="22" y="90" className="fill-slate-500 text-[8px]">Recibe y guía</text>
+
+                    <rect x="90" y="16" width="62" height="42" rx="14" className="fill-amber-50 stroke-amber-300" />
+                    <text x="107" y="35" className="fill-amber-950 text-[10px] font-semibold">Filtro</text>
+                    <text x="100" y="48" className="fill-slate-500 text-[8px]">Decide la ruta</text>
+
+                    <rect x="168" y="58" width="62" height="42" rx="14" className="fill-fuchsia-50 stroke-fuchsia-300" />
+                    <text x="183" y="77" className="fill-fuchsia-950 text-[10px] font-semibold">Accion</text>
+                    <text x="176" y="90" className="fill-slate-500 text-[8px]">Responde o escala</text>
+
+                    <rect x="90" y="112" width="62" height="42" rx="14" className="fill-sky-50 stroke-sky-300" />
+                    <text x="106" y="131" className="fill-sky-950 text-[10px] font-semibold">Pausa</text>
+                    <text x="101" y="144" className="fill-slate-500 text-[8px]">Espera y sigue</text>
+
+                    <path d="M 72 79 C 86 79, 84 40, 90 37" className="fill-none stroke-amber-300 stroke-[2]" />
+                    <path d="M 152 37 C 166 37, 160 79, 168 79" className="fill-none stroke-fuchsia-300 stroke-[2]" />
+                    <path d="M 72 79 C 92 79, 76 132, 90 132" className="fill-none stroke-sky-300 stroke-[2]" />
+                    <circle cx="72" cy="79" r="3" className="fill-emerald-400" />
+                    <circle cx="90" cy="37" r="3" className="fill-amber-400" />
+                    <circle cx="168" cy="79" r="3" className="fill-fuchsia-400" />
+                    <circle cx="90" cy="132" r="3" className="fill-sky-400" />
+                  </svg>
+                  <div className="mt-2 text-[11px] leading-5 text-slate-500">Mensaje inicia la conversación, Filtro decide, Accion ejecuta algo y Pausa espera antes de continuar.</div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                  <div className="font-semibold text-slate-900">Reglas de conexion</div>
+                  <div className="mt-2">Mensaje → Mensaje, Accion o Pausa</div>
+                  <div className="mt-1">Filtro → Mensaje</div>
+                  <div className="mt-1">Pausa → Mensaje</div>
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    )
   }
 
   useEffect(() => {
@@ -909,6 +2504,90 @@ export function CrmChatbotStudioClient() {
     }
   }, [panState])
 
+  useEffect(() => {
+    if (!connectionDraft) return
+    const activeDraft = connectionDraft
+
+    function handlePointerMove(event: PointerEvent) {
+      const rect = boardViewportRef.current?.getBoundingClientRect()
+      if (!rect) return
+      setConnectionDraft({
+        ...activeDraft,
+        currentX: (event.clientX - rect.left - builder.studioViewport.x) / builder.studioViewport.scale,
+        currentY: (event.clientY - rect.top - builder.studioViewport.y) / builder.studioViewport.scale,
+      })
+    }
+
+    function handlePointerUp() {
+      setConnectionDraft(null)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    document.body.style.userSelect = 'none'
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      document.body.style.userSelect = ''
+    }
+  }, [builder.studioViewport.scale, builder.studioViewport.x, builder.studioViewport.y, connectionDraft])
+
+  useEffect(() => {
+    setStudioMounted(true)
+  }, [])
+
+  useEffect(() => {
+    const element = boardViewportRef.current
+    if (!element) return
+
+    const updateSize = () => {
+      setBoardViewportSize({
+        width: element.clientWidth,
+        height: element.clientHeight,
+      })
+    }
+
+    updateSize()
+    const resizeObserver = new ResizeObserver(updateSize)
+    resizeObserver.observe(element)
+
+    return () => {
+      resizeObserver.disconnect()
+    }
+  }, [activeStudioPanel, mapFullscreen])
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (activeStudioPanel !== 'map') return
+      if (isTypingElement(event.target)) return
+
+      const key = event.key.toLowerCase()
+
+      if (key === 'i' && focusedNode) {
+        event.preventDefault()
+        setInspectorOpen((current) => !current)
+        return
+      }
+
+      if (event.key === '0') {
+        event.preventDefault()
+        resetStudioViewport()
+        return
+      }
+
+      if (event.key === 'Escape' && mapFullscreen) {
+        event.preventDefault()
+        setMapFullscreen(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [activeStudioPanel, focusedNode, mapFullscreen])
+
   return (
     <div className="space-y-6">
       <ErpPageHero
@@ -959,7 +2638,17 @@ export function CrmChatbotStudioClient() {
         </TabsList>
 
         <TabsContent value="studio" className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
+          {!studioMounted ? (
+            <Card>
+              <CardContent className="flex min-h-[420px] items-center justify-center pt-6">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-500">
+                  Cargando studio del flujo...
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+          <div className={`grid gap-4 ${activeStudioPanel === 'map' ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[280px_minmax(0,1fr)]'}`}>
+            {activeStudioPanel !== 'map' ? (
             <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
               <Card>
                 <CardHeader>
@@ -1009,6 +2698,7 @@ export function CrmChatbotStudioClient() {
                 </CardContent>
               </Card>
             </div>
+            ) : null}
 
             <div className="min-w-0 space-y-4">
               {activeStudioPanel === 'library' ? (
@@ -1141,148 +2831,44 @@ export function CrmChatbotStudioClient() {
                 </Card>
               ) : null}
 
-              {activeStudioPanel === 'map' ? (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><GitBranch className="h-4 w-4" /> Mapa visual del flujo</CardTitle>
-                    <CardDescription>Vista tipo constructor con conectores entre disparadores, etapas y acciones rápidas.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700">Etapas</span>
-                      <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-700">Disparadores</span>
-                      <span className="rounded-full border border-fuchsia-200 bg-fuchsia-50 px-3 py-1 text-fuchsia-700">Acciones</span>
-                      <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sky-700">Conectores de ruta</span>
-                      <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">Arrastra libremente cada nodo</span>
-                      <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-600">Arrastra el fondo para mover el lienzo</span>
-                    </div>
-                    <div className="space-y-3 rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.08),_transparent_28%),linear-gradient(180deg,_rgba(248,250,252,0.98),_rgba(241,245,249,0.96))] p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200/80 bg-white/80 px-3 py-2 text-xs text-slate-500">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">Zoom {(builder.studioViewport.scale * 100).toFixed(0)}%</span>
-                          <span>Pan X {Math.round(builder.studioViewport.x)} · Y {Math.round(builder.studioViewport.y)}</span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button type="button" variant="outline" size="sm" onClick={() => setStudioScale(builder.studioViewport.scale - 0.1)}>Zoom -</Button>
-                          <Button type="button" variant="outline" size="sm" onClick={() => setStudioScale(builder.studioViewport.scale + 0.1)}>Zoom +</Button>
-                          <Button type="button" variant="outline" size="sm" onClick={resetStudioViewport}>Centrar vista</Button>
-                          <Button type="button" variant="outline" size="sm" onClick={clearStudioLayout}>Auto ordenar</Button>
-                        </div>
-                      </div>
-                      <div
-                        ref={boardViewportRef}
-                        onPointerDown={handleBoardBackgroundPointerDown}
-                        onWheel={(event) => {
-                          event.preventDefault()
-                          const direction = event.deltaY > 0 ? -0.08 : 0.08
-                          setStudioScale(builder.studioViewport.scale + direction, { clientX: event.clientX, clientY: event.clientY })
-                        }}
-                        className={`relative h-[760px] overflow-hidden rounded-[24px] border border-slate-200/80 bg-[linear-gradient(rgba(148,163,184,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.12)_1px,transparent_1px)] bg-[size:32px_32px] ${panState ? 'cursor-grabbing' : 'cursor-grab'}`}
-                      >
-                        <div
-                          className="absolute left-0 top-0 will-change-transform"
-                          style={{
-                            width: `${studioGraph.contentWidth}px`,
-                            height: `${studioGraph.contentHeight}px`,
-                            transform: `translate(${builder.studioViewport.x}px, ${builder.studioViewport.y}px) scale(${builder.studioViewport.scale})`,
-                            transformOrigin: '0 0',
-                          }}
-                        >
-                          <div className="relative" style={{ width: `${studioGraph.contentWidth}px`, height: `${studioGraph.contentHeight}px` }}>
-                            <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${studioGraph.contentWidth} ${studioGraph.contentHeight}`} fill="none">
-                              {studioGraph.edges.map((edge) => {
-                                const source = studioGraph.nodes.find((node) => node.id === edge.fromId)
-                                const target = studioGraph.nodes.find((node) => node.id === edge.toId)
-                                if (!source || !target) return null
-                                const startX = source.x + source.width
-                                const startY = source.y + 48
-                                const endX = target.x
-                                const endY = target.y + 48
-                                const deltaX = Math.max((endX - startX) / 2, 56)
-                                const path = `M ${startX} ${startY} C ${startX + deltaX} ${startY}, ${endX - deltaX} ${endY}, ${endX} ${endY}`
-                                const labelX = startX + ((endX - startX) / 2)
-                                const labelY = startY + ((endY - startY) / 2) - 12
-                                return (
-                                  <g key={edge.id}>
-                                    <path d={path} className={`${edge.toneClass} fill-none stroke-[2.5]`} strokeDasharray={edge.label === 'acción' ? '6 6' : undefined} />
-                                    <text x={labelX} y={labelY} textAnchor="middle" className="fill-slate-500 text-[11px] font-medium">{edge.label}</text>
-                                  </g>
-                                )
-                              })}
-                            </svg>
-
-                            {studioGraph.nodes.map((node) => {
-                              const nodeKey = node.id.split(':')[1]
-                              const active = node.kind !== 'start' && focusedNode?.kind === node.kind && focusedNode.id === nodeKey
-                              return (
-                                <div
-                                  key={node.id}
-                                  onPointerDown={(event) => handleBoardNodePointerDown(event, node)}
-                                  className={`absolute cursor-grab rounded-[24px] border px-4 py-3 text-left shadow-sm transition active:cursor-grabbing ${node.accentClass} ${active ? 'ring-2 ring-slate-900/15 shadow-lg' : 'hover:-translate-y-0.5'}`}
-                                  style={{ left: `${node.x}px`, top: `${node.y}px`, width: `${node.width}px` }}
-                                >
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">{node.kind === 'start' ? 'Inicio' : node.kind}</div>
-                                      <div className="mt-1 text-sm font-semibold">{node.title}</div>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <div className="rounded-full border border-current/15 bg-white/70 p-1 opacity-60"><GripVertical className="h-3.5 w-3.5" /></div>
-                                      {node.kind !== 'start' ? (
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          variant="secondary"
-                                          className="h-7 rounded-full px-2"
-                                          onPointerDown={(event) => event.stopPropagation()}
-                                          onClick={(event) => {
-                                            event.stopPropagation()
-                                            if (node.kind !== 'start') {
-                                              openEditor({ kind: node.kind, id: nodeKey })
-                                            }
-                                          }}
-                                        >
-                                          Editar
-                                        </Button>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                  <div className="mt-1 text-xs opacity-80">{node.subtitle}</div>
-                                  <div className="mt-3 text-xs opacity-70">{node.description}</div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : null}
+              {activeStudioPanel === 'map' && !mapFullscreen ? renderMapWorkspace() : null}
 
               {activeStudioPanel === 'flow' ? (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2"><GitBranch className="h-4 w-4" /> Flujo y mensajes</CardTitle>
-                    <CardDescription>Cada etapa o acción se abre en su propio modal.</CardDescription>
+                    <CardDescription>Cada bloque de Mensaje, Accion o Pausa se abre en su propio modal.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-sm text-slate-500">{builder.flowStages.length} etapas · {builder.quickActions.length} acciones</div>
+                      <div className="text-sm text-slate-500">{builder.flowStages.length} mensajes · {builder.quickActions.length} acciones · {builder.pauseNodes.length} pausas</div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setBuilder((current) => updateSelectedFlowInBuilder(current, { flowStages: [...current.flowStages, { id: makeId('stage'), title: 'Nueva etapa', description: 'Describe el objetivo de esta etapa.', prompt: 'Mensaje inicial de la etapa.', nextField: 'none', quickActionIds: [], responseOptions: [] }] }))}>Agregar etapa</Button>
-                        <Button variant="outline" size="sm" onClick={() => setBuilder((current) => updateSelectedFlowInBuilder(current, { quickActions: [...current.quickActions, { id: makeId('action'), label: 'Nueva acción', kind: 'message', message: 'Mensaje de acción rápida.', enabled: true }] }))}>Agregar acción</Button>
+                        <Button variant="outline" size="sm" onClick={addStageFromPalette}>Agregar mensaje</Button>
+                        <Button variant="outline" size="sm" onClick={addActionFromPalette}>Agregar accion</Button>
+                        <Button variant="outline" size="sm" onClick={addPauseFromPalette}>Agregar pausa</Button>
                       </div>
                     </div>
                     <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
                       <div className="space-y-2">
-                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Etapas del flujo</div>
+                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Mensajes del flujo</div>
                         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                           {builder.flowStages.map((stage) => (
                             <button key={stage.id} type="button" onClick={() => openEditor({ kind: 'stage', id: stage.id })} className={`rounded-2xl border px-4 py-3 text-left ${focusedNode?.kind === 'stage' && focusedNode.id === stage.id ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
                               <div className="text-sm font-semibold text-slate-900">{stage.title}</div>
                               <div className="mt-1 text-xs text-slate-500">{stage.nextField === 'none' ? 'Mensaje libre' : `Captura ${stage.nextField}`}</div>
                               <div className="mt-2 text-xs text-slate-500">{stage.responseOptions.length} rutas · {stage.quickActionIds.length} acciones</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Pausas del flujo</div>
+                        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                          {builder.pauseNodes.map((pause) => (
+                            <button key={pause.id} type="button" onClick={() => openEditor({ kind: 'pause', id: pause.id })} className={`rounded-2xl border px-4 py-3 text-left ${focusedNode?.kind === 'pause' && focusedNode.id === pause.id ? 'border-sky-300 bg-sky-50' : 'border-slate-200 bg-white'}`}>
+                              <div className="text-sm font-semibold text-slate-900">{pause.title}</div>
+                              <div className="mt-1 text-xs text-slate-500">{pause.durationMinutes} min de espera</div>
+                              <div className="mt-2 text-xs text-slate-500">{stageMap[pause.sourceStageId]?.title || 'Sin origen'} → {stageMap[pause.targetStageId]?.title || 'Sin destino'}</div>
                             </button>
                           ))}
                         </div>
@@ -1430,6 +3016,17 @@ export function CrmChatbotStudioClient() {
                         ))}
                       </div>
                     </div>
+                    <div className="rounded-2xl border border-slate-200 p-4">
+                      <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Pausas visibles</div>
+                      <div className="mt-3 space-y-2">
+                        {builder.pauseNodes.length ? builder.pauseNodes.map((pause) => (
+                          <div key={pause.id} className="rounded-xl bg-slate-50 px-3 py-2">
+                            <div className="font-medium text-slate-900">{pause.title}</div>
+                            <div className="text-xs text-slate-500">{pause.durationMinutes} min · {stageMap[pause.sourceStageId]?.title || 'Sin origen'} → {stageMap[pause.targetStageId]?.title || 'Sin destino'}</div>
+                          </div>
+                        )) : <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">No hay pausas definidas en este flujo.</div>}
+                      </div>
+                    </div>
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                       <div className="text-xs uppercase tracking-[0.16em] text-emerald-700">Vista de coherencia</div>
                       <div className="mt-2 whitespace-pre-wrap text-sm text-emerald-900">{builder.messageCoherence.greetingTemplate}\n\n{builder.chatbotPrompt}\n\n{builder.messageCoherence.closingTemplate}</div>
@@ -1444,6 +3041,7 @@ export function CrmChatbotStudioClient() {
               ) : null}
             </div>
           </div>
+          )}
         </TabsContent>
 
         <TabsContent value="historial" className="space-y-4">
@@ -1533,6 +3131,14 @@ export function CrmChatbotStudioClient() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={mapFullscreen} onOpenChange={setMapFullscreen}>
+        <DialogContent className="h-[calc(100vh-24px)] w-[calc(100vw-24px)] max-w-none overflow-hidden border-none bg-white/98 p-4 shadow-[0_30px_90px_-32px_rgba(15,23,42,0.5)]">
+          <div className="h-full overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.08),_transparent_24%),linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] p-3 md:p-4">
+            {activeStudioPanel === 'map' ? renderMapWorkspace(true) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(editingNode)} onOpenChange={(open) => { if (!open) setEditingNode(null) }}>
         <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-3xl">
@@ -1738,6 +3344,61 @@ export function CrmChatbotStudioClient() {
                     <div className="text-xs text-slate-500">Si la desactivas, deja de aparecer como opción operativa.</div>
                   </div>
                   <Switch checked={editingAction.enabled} onCheckedChange={(checked) => updateQuickAction(editingAction.id, { enabled: checked })} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingNode(null)}>Cerrar</Button>
+              </DialogFooter>
+            </>
+          ) : null}
+
+          {editingPause ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Editar pausa</DialogTitle>
+                <DialogDescription>Define la espera visible entre el mensaje origen y el siguiente mensaje del flujo.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-2">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label>Titulo</Label>
+                    <Input value={editingPause.title} onChange={(event) => updatePauseNode(editingPause.id, { title: event.target.value })} />
+                  </div>
+                  <div className="flex items-center justify-between rounded-2xl border border-slate-200 px-3 py-2.5">
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">Pausa habilitada</div>
+                      <div className="text-xs text-slate-500">Si la desactivas, queda visible pero sin aplicacion operativa.</div>
+                    </div>
+                    <Switch checked={editingPause.enabled} onCheckedChange={(checked) => updatePauseNode(editingPause.id, { enabled: checked })} />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Mensaje origen</Label>
+                    <Select value={editingPause.sourceStageId || '__none__'} onValueChange={(value) => updatePauseNode(editingPause.id, { sourceStageId: value === '__none__' ? '' : value })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Sin origen</SelectItem>
+                        {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Mensaje destino</Label>
+                    <Select value={editingPause.targetStageId || '__none__'} onValueChange={(value) => updatePauseNode(editingPause.id, { targetStageId: value === '__none__' ? '' : value })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Sin destino</SelectItem>
+                        {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Duracion en minutos</Label>
+                  <Input type="number" min={1} value={editingPause.durationMinutes} onChange={(event) => updatePauseNode(editingPause.id, { durationMinutes: Math.max(1, Number(event.target.value) || 1) })} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Descripcion operativa</Label>
+                  <Textarea value={editingPause.description} onChange={(event) => updatePauseNode(editingPause.id, { description: event.target.value })} rows={3} />
                 </div>
               </div>
               <DialogFooter>
