@@ -57,15 +57,6 @@ export async function GET(request: NextRequest) {
   const access = await requireApiAccess(ModuleKey.CONFIG, 'WRITE')
   if (!access.ok) return access.response
 
-  const me = await prisma.user.findUnique({
-    where: { id: access.userId },
-    select: { role: true },
-  })
-
-  if (me?.role !== 'ADMIN') {
-    return NextResponse.json({ ok: false, error: 'Solo los administradores pueden revisar solicitudes.' }, { status: 403 })
-  }
-
   const { searchParams } = new URL(request.url)
   const statusRaw = asString(searchParams.get('status')).toUpperCase()
   const status = statusRaw === 'APPROVED' || statusRaw === 'REJECTED' || statusRaw === 'PENDING' ? statusRaw : 'PENDING'

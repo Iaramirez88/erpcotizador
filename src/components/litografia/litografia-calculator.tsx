@@ -216,7 +216,6 @@ export function LitografiaCalculator() {
 
   const [meLoaded, setMeLoaded] = useState(false)
   const [canConfigWrite, setCanConfigWrite] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
   const [paperRequestsOpen, setPaperRequestsOpen] = useState(false)
 
   useEffect(() => {
@@ -1019,7 +1018,6 @@ export function LitografiaCalculator() {
         const env = asApiEnvelope((await res.json().catch(() => null)) as unknown)
         const data = (env.data && typeof env.data === "object" ? (env.data as Record<string, unknown>) : {})
         setCanConfigWrite(Boolean(data.canConfigWrite))
-        setIsAdmin(String(data.role || "").toUpperCase() === "ADMIN")
       } finally {
         setMeLoaded(true)
       }
@@ -3299,10 +3297,10 @@ export function LitografiaCalculator() {
                 </div>
                 <div className="md:col-span-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button type="button" onClick={createPaper} disabled={!isAdmin || !newPaperNombre.trim()}>
+                    <Button type="button" onClick={createPaper} disabled={!meLoaded || !canConfigWrite || !newPaperNombre.trim()}>
                       Agregar papel
                     </Button>
-                    {isAdmin ? (
+                    {canConfigWrite ? (
                       <Button type="button" variant="outline" onClick={() => setPaperRequestsOpen(true)}>
                         Solicitudes de papeles
                       </Button>

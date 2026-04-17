@@ -23,15 +23,6 @@ export async function POST(request: Request, context: RouteContext) {
     const access = await requireApiAccess(ModuleKey.CONFIG, 'WRITE')
     if (!access.ok) return access.response
 
-    const me = await prisma.user.findUnique({
-      where: { id: access.userId },
-      select: { role: true },
-    })
-
-    if (me?.role !== 'ADMIN') {
-      return NextResponse.json({ ok: false, error: 'Solo los administradores pueden decidir solicitudes.' }, { status: 403 })
-    }
-
     const { id } = await context.params
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
     const action = asString(body?.action).trim().toUpperCase()

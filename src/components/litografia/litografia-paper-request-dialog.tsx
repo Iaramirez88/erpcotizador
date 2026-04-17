@@ -42,12 +42,12 @@ type ApiEnvelope = {
 export function LitografiaPaperRequestDialog({
   open,
   onOpenChange,
-  isAdmin,
+  canCreateDirectly,
   onSubmitted,
 }: {
   open: boolean
   onOpenChange: (next: boolean) => void
-  isAdmin: boolean
+  canCreateDirectly: boolean
   onSubmitted?: (result: SubmitResult) => void
 }) {
   const { toast } = useToast()
@@ -99,7 +99,7 @@ export function LitografiaPaperRequestDialog({
 
     setSaving(true)
     try {
-      const endpoint = isAdmin ? '/api/litografia/papeles' : '/api/litografia/papeles/solicitudes'
+      const endpoint = canCreateDirectly ? '/api/litografia/papeles' : '/api/litografia/papeles/solicitudes'
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -151,9 +151,9 @@ export function LitografiaPaperRequestDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>{isAdmin ? 'Agregar papel' : 'Solicitar papel personalizado'}</DialogTitle>
+          <DialogTitle>{canCreateDirectly ? 'Agregar papel' : 'Solicitar papel personalizado'}</DialogTitle>
           <DialogDescription>
-            {isAdmin
+            {canCreateDirectly
               ? 'El papel se agregará de inmediato al tarifario litográfico.'
               : 'Tu solicitud se enviará a los administradores para que agreguen el papel al tarifario.'}
           </DialogDescription>
@@ -196,7 +196,7 @@ export function LitografiaPaperRequestDialog({
             Cerrar
           </Button>
           <Button type="button" onClick={() => void submit()} disabled={saving}>
-            {saving ? 'Guardando…' : isAdmin ? 'Agregar papel' : 'Enviar solicitud'}
+            {saving ? 'Guardando…' : canCreateDirectly ? 'Agregar papel' : 'Enviar solicitud'}
           </Button>
         </DialogFooter>
       </DialogContent>

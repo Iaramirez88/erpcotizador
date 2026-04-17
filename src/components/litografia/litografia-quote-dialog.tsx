@@ -612,6 +612,7 @@ export function LitografiaQuoteDialog(props: {
 
   const [meLoaded, setMeLoaded] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [canConfigWrite, setCanConfigWrite] = useState(false)
 
   const [titulo, setTitulo] = useState("")
   const [descripcion, setDescripcion] = useState("")
@@ -2272,6 +2273,7 @@ export function LitografiaQuoteDialog(props: {
         const meData = (meEnv.data && typeof meEnv.data === "object" ? (meEnv.data as Record<string, unknown>) : {})
         const role = String(meData.role || "").toUpperCase()
         setIsAdmin(role === "ADMIN")
+        setCanConfigWrite(Boolean(meData.canConfigWrite))
         setMeLoaded(true)
 
         const env1 = asApiEnvelope((await r1.json().catch(() => null)) as unknown)
@@ -3370,7 +3372,7 @@ export function LitografiaQuoteDialog(props: {
         <LitografiaPaperRequestDialog
           open={paperRequestOpen}
           onOpenChange={setPaperRequestOpen}
-          isAdmin={isAdmin}
+          canCreateDirectly={canConfigWrite}
           onSubmitted={handlePaperSubmitted}
         />
         <div className="flex flex-col max-h-[90vh]">
