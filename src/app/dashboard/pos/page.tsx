@@ -3,6 +3,41 @@
  * - Listar facturas
  * - Crear factura (PAID por defecto)
  * - Ver detalle básico
+        const globalAdjustments = dianGlobalAdjustments
+          .map((line, index) => ({
+            lineNumber: String(line.lineNumber || index + 1).trim() || String(index + 1),
+            type: line.type,
+            code: String(line.code || '00').trim() || '00',
+            description: String(line.description || '').trim(),
+            percentage: Math.max(0, n(line.percentage, 0)),
+            value: Math.max(0, parseMoneyInput(line.value, 0)),
+          }))
+          .filter((line) => line.description || line.percentage > 0 || line.value > 0)
+
+        const advances = dianAdvanceLines
+          .map((line, index) => ({
+            number: String(line.number || index + 1).trim() || String(index + 1),
+            value: Math.max(0, parseMoneyInput(line.value, 0)),
+            receivedAt: String(line.receivedAt || '').trim(),
+          }))
+          .filter((line) => line.value > 0 || line.receivedAt)
+
+        const references = dianReferenceLines
+          .map((line, index) => ({
+            number: String(line.number || index + 1).trim() || String(index + 1),
+            documentType: String(line.documentType || '').trim(),
+            reference: String(line.reference || '').trim(),
+            documentNumber: String(line.documentNumber || '').trim(),
+            referenceDate: String(line.referenceDate || '').trim(),
+          }))
+          .filter((line) => line.documentType || line.reference || line.documentNumber || line.referenceDate)
+
+        const notes = (() => {
+          const businessLine = String(dianNotes.businessLine || '').trim()
+          const description = String(dianNotes.description || '').trim()
+          return businessLine || description ? { businessLine, description } : null
+        })()
+
  * - Anular factura (si aplica)
  */
 
@@ -411,6 +446,110 @@ type ClientePickerItem = {
   email: string | null
 }
 
+type DianCreateItem = {
+  descripcion: string
+  quantity: string
+  unitPrice: string
+  ivaPct: string
+  unitCode: string
+  discountValue: string
+  discountPct: string
+  surchargeValue: string
+  surchargePct: string
+  isFree: boolean
+  commercialValue: string
+}
+
+type DianGlobalAdjustmentType = 'descuento' | 'recargo'
+
+type DianGlobalAdjustment = {
+  lineNumber: string
+  type: DianGlobalAdjustmentType
+  code: string
+  description: string
+  percentage: string
+  value: string
+}
+
+type DianAdvanceLine = {
+  number: string
+  value: string
+  receivedAt: string
+}
+
+type DianReferenceLine = {
+  number: string
+  documentType: string
+  reference: string
+  documentNumber: string
+  referenceDate: string
+}
+
+type DianNotesForm = {
+  businessLine: string
+  description: string
+}
+
+const DIAN_GLOBAL_ADJUSTMENT_CODES = [
+  { value: '00', label: '00 - Descuento por impuesto asumido' },
+  { value: '01', label: '01 - Pague uno lleve otro' },
+  { value: '02', label: '02 - Descuentos contractuales' },
+  { value: '03', label: '03 - Descuento por pronto pago' },
+  { value: '04', label: '04 - Envío gratis' },
+  { value: '05', label: '05 - Descuentos específicos por inventarios' },
+  { value: '06', label: '06 - Descuento por monto de compras' },
+  { value: '07', label: '07 - Descuento de temporada' },
+  { value: '08', label: '08 - Descuento por actualización de productos / servicios' },
+  { value: '09', label: '09 - Descuento general' },
+  { value: '10', label: '10 - Descuento por volumen' },
+  { value: '11', label: '11 - Otro descuento' },
+] as const
+
+function createDefaultDianItem(): DianCreateItem {
+  return {
+    descripcion: '',
+    quantity: '1',
+    unitPrice: '',
+    ivaPct: '0',
+    unitCode: 'NIU',
+    discountValue: '0',
+    discountPct: '0',
+    surchargeValue: '0',
+    surchargePct: '0',
+    isFree: false,
+    commercialValue: '0',
+  }
+}
+
+function createDefaultGlobalAdjustment(): DianGlobalAdjustment {
+  return {
+    lineNumber: '',
+    type: 'descuento',
+    code: '00',
+    description: '',
+    percentage: '0',
+    value: '0',
+  }
+}
+
+function createDefaultAdvanceLine(): DianAdvanceLine {
+  return {
+    number: '',
+    value: '0',
+    receivedAt: '',
+  }
+}
+
+function createDefaultReferenceLine(): DianReferenceLine {
+  return {
+    number: '',
+    documentType: '',
+    reference: '',
+    documentNumber: '',
+    referenceDate: '',
+  }
+}
+
 export default function PosPage() {
   const isMobileViewport = useIsMobileViewport()
   const { t, language } = useI18n()
@@ -580,9 +719,11 @@ export default function PosPage() {
     documento: '',
     email: '',
   })
-  const [dianCreateItems, setDianCreateItems] = useState<Array<{ descripcion: string; quantity: string; unitPrice: string; ivaPct: string }>>([
-    { descripcion: '', quantity: '1', unitPrice: '', ivaPct: '0' },
-  ])
+  const [dianCreateItems, setDianCreateItems] = useState<DianCreateItem[]>([createDefaultDianItem()])
+  const [dianGlobalAdjustments, setDianGlobalAdjustments] = useState<DianGlobalAdjustment[]>([createDefaultGlobalAdjustment()])
+  const [dianAdvanceLines, setDianAdvanceLines] = useState<DianAdvanceLine[]>([createDefaultAdvanceLine()])
+  const [dianReferenceLines, setDianReferenceLines] = useState<DianReferenceLine[]>([createDefaultReferenceLine()])
+  const [dianNotes, setDianNotes] = useState<DianNotesForm>({ businessLine: '', description: '' })
   const [dianLotesNumeros, setDianLotesNumeros] = useState('')
 
   const [dianCreatePosInvoiceId, setDianCreatePosInvoiceId] = useState('')
@@ -1153,8 +1294,15 @@ export default function PosPage() {
                 quantity: String(n(it.quantity, 0)),
                 unitPrice: String(n(it.unitPrice, 0)),
                 ivaPct: String(n(inv.ivaPct, 0)),
+                unitCode: 'NIU',
+                discountValue: '0',
+                discountPct: '0',
+                surchargeValue: '0',
+                surchargePct: '0',
+                isFree: false,
+                commercialValue: '0',
               }))
-            : [{ descripcion: '', quantity: '1', unitPrice: '', ivaPct: String(n(inv.ivaPct, 0)) }]
+            : [{ ...createDefaultDianItem(), ivaPct: String(n(inv.ivaPct, 0)) }]
         )
 
         if (!dianCreateNumero.trim()) {
@@ -1218,6 +1366,41 @@ export default function PosPage() {
       setDianCreating(true)
       setDianError(null)
       try {
+        const globalAdjustments = dianGlobalAdjustments
+          .map((line, index) => ({
+            lineNumber: String(line.lineNumber || index + 1).trim() || String(index + 1),
+            type: line.type,
+            code: String(line.code || '00').trim() || '00',
+            description: String(line.description || '').trim(),
+            percentage: Math.max(0, n(line.percentage, 0)),
+            value: Math.max(0, parseMoneyInput(line.value, 0)),
+          }))
+          .filter((line) => line.description || line.percentage > 0 || line.value > 0)
+
+        const advances = dianAdvanceLines
+          .map((line, index) => ({
+            number: String(line.number || index + 1).trim() || String(index + 1),
+            value: Math.max(0, parseMoneyInput(line.value, 0)),
+            receivedAt: String(line.receivedAt || '').trim(),
+          }))
+          .filter((line) => line.value > 0 || line.receivedAt)
+
+        const references = dianReferenceLines
+          .map((line, index) => ({
+            number: String(line.number || index + 1).trim() || String(index + 1),
+            documentType: String(line.documentType || '').trim(),
+            reference: String(line.reference || '').trim(),
+            documentNumber: String(line.documentNumber || '').trim(),
+            referenceDate: String(line.referenceDate || '').trim(),
+          }))
+          .filter((line) => line.documentType || line.reference || line.documentNumber || line.referenceDate)
+
+        const notes = (() => {
+          const businessLine = String(dianNotes.businessLine || '').trim()
+          const description = String(dianNotes.description || '').trim()
+          return businessLine || description ? { businessLine, description } : null
+        })()
+
         const res = await fetch('/api/dian/documentos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1241,8 +1424,19 @@ export default function PosPage() {
                       quantity: Number(item.quantity ?? 0),
                       unitPrice: Number(item.unitPrice ?? 0),
                       ivaPct: Number(inv.ivaPct ?? 0),
+                      unitCode: 'NIU',
+                      discountValue: 0,
+                      discountPct: 0,
+                      surchargeValue: 0,
+                      surchargePct: 0,
+                      isFree: false,
+                      commercialValue: 0,
                     }))
                   : [],
+                globalAdjustments: globalAdjustments,
+                advances: advances,
+                references: references,
+                notes: notes,
                 totals: {
                   subtotal: Number(inv.subtotal ?? 0),
                   iva: Number(inv.iva ?? 0),
@@ -1281,6 +1475,10 @@ export default function PosPage() {
       dianCreateNumero,
       dianCreatePosInvoice,
       dianCreating,
+      dianAdvanceLines,
+      dianGlobalAdjustments,
+      dianNotes,
+      dianReferenceLines,
       loadDianDetail,
       loadDianDocs,
       loadPosInvoiceIntoDian,
@@ -1295,10 +1493,58 @@ export default function PosPage() {
         const quantity = Math.max(0, n(it.quantity, 0))
         const unitPrice = Math.max(0, n(it.unitPrice, 0))
         const ivaPct = Math.max(0, n(it.ivaPct, 0))
-        return { descripcion, quantity, unitPrice, ivaPct }
+        const unitCode = String(it.unitCode || 'NIU').trim() || 'NIU'
+        const discountValue = Math.max(0, parseMoneyInput(it.discountValue, 0))
+        const discountPct = Math.max(0, n(it.discountPct, 0))
+        const surchargeValue = Math.max(0, parseMoneyInput(it.surchargeValue, 0))
+        const surchargePct = Math.max(0, n(it.surchargePct, 0))
+        const commercialValue = Math.max(0, parseMoneyInput(it.commercialValue, 0))
+        const isFree = Boolean(it.isFree)
+        return { descripcion, quantity, unitPrice, ivaPct, unitCode, discountValue, discountPct, surchargeValue, surchargePct, isFree, commercialValue }
       })
       .filter((it) => it.descripcion && it.quantity > 0)
   }, [dianCreateItems])
+
+  const normalizedDianGlobalAdjustments = useMemo(() => {
+    return dianGlobalAdjustments
+      .map((line, index) => ({
+        lineNumber: String(line.lineNumber || index + 1).trim() || String(index + 1),
+        type: line.type,
+        code: String(line.code || '00').trim() || '00',
+        description: String(line.description || '').trim(),
+        percentage: Math.max(0, n(line.percentage, 0)),
+        value: Math.max(0, parseMoneyInput(line.value, 0)),
+      }))
+      .filter((line) => line.description || line.percentage > 0 || line.value > 0)
+  }, [dianGlobalAdjustments])
+
+  const normalizedDianAdvanceLines = useMemo(() => {
+    return dianAdvanceLines
+      .map((line, index) => ({
+        number: String(line.number || index + 1).trim() || String(index + 1),
+        value: Math.max(0, parseMoneyInput(line.value, 0)),
+        receivedAt: String(line.receivedAt || '').trim(),
+      }))
+      .filter((line) => line.value > 0 || line.receivedAt)
+  }, [dianAdvanceLines])
+
+  const normalizedDianReferenceLines = useMemo(() => {
+    return dianReferenceLines
+      .map((line, index) => ({
+        number: String(line.number || index + 1).trim() || String(index + 1),
+        documentType: String(line.documentType || '').trim(),
+        reference: String(line.reference || '').trim(),
+        documentNumber: String(line.documentNumber || '').trim(),
+        referenceDate: String(line.referenceDate || '').trim(),
+      }))
+      .filter((line) => line.documentType || line.reference || line.documentNumber || line.referenceDate)
+  }, [dianReferenceLines])
+
+  const normalizedDianNotes = useMemo(() => {
+    const businessLine = String(dianNotes.businessLine || '').trim()
+    const description = String(dianNotes.description || '').trim()
+    return businessLine || description ? { businessLine, description } : null
+  }, [dianNotes])
 
   const createDianDocFromCrear = useCallback(
     async (args: { dianType: DianType; subType: string }) => {
@@ -1341,6 +1587,10 @@ export default function PosPage() {
               email: dianCreateBuyer.email.trim() || undefined,
             },
             items: normalizedDianCreateItems,
+            globalAdjustments: normalizedDianGlobalAdjustments,
+            advances: normalizedDianAdvanceLines,
+            references: normalizedDianReferenceLines,
+            notes: normalizedDianNotes,
           },
         },
       })
@@ -1349,7 +1599,18 @@ export default function PosPage() {
         await bumpAndPersistDianActual({ tipoDoc, numero })
       }
     },
-    [bumpAndPersistDianActual, createDianDocFromUi, dianCreateBuyer, dianCreateNumero, normalizedDianCreateItems, validateDianNumeroAgainstSettings]
+    [
+      bumpAndPersistDianActual,
+      createDianDocFromUi,
+      dianCreateBuyer,
+      dianCreateNumero,
+      normalizedDianAdvanceLines,
+      normalizedDianCreateItems,
+      normalizedDianGlobalAdjustments,
+      normalizedDianNotes,
+      normalizedDianReferenceLines,
+      validateDianNumeroAgainstSettings,
+    ]
   )
 
   const createDianDocsLotes = useCallback(async () => {
@@ -1400,6 +1661,10 @@ export default function PosPage() {
                   email: dianCreateBuyer.email.trim() || undefined,
                 },
                 items: normalizedDianCreateItems,
+                globalAdjustments: normalizedDianGlobalAdjustments,
+                advances: normalizedDianAdvanceLines,
+                references: normalizedDianReferenceLines,
+                notes: normalizedDianNotes,
               },
             },
           }),
@@ -1416,7 +1681,18 @@ export default function PosPage() {
     } finally {
       setDianCreating(false)
     }
-  }, [dianCreateBuyer, dianCreating, dianLotesNumeros, loadDianDocs, normalizedDianCreateItems, t])
+  }, [
+    dianCreateBuyer,
+    dianCreating,
+    dianLotesNumeros,
+    loadDianDocs,
+    normalizedDianAdvanceLines,
+    normalizedDianCreateItems,
+    normalizedDianGlobalAdjustments,
+    normalizedDianNotes,
+    normalizedDianReferenceLines,
+    t,
+  ])
 
   const updateDianNumeracionItem = useCallback((idx: number, patch: Partial<NonNullable<DianSettings['numeracion']>[number]>) => {
     setDianSettings((prev) => {
@@ -2465,9 +2741,13 @@ export default function PosPage() {
         }}
         className="w-full"
       >
-        <TabsList>
-          <TabsTrigger value="interna">{t('pos.tabs.internal')}</TabsTrigger>
-          <TabsTrigger value="dian">{t('pos.tabs.dian')}</TabsTrigger>
+        <TabsList className="gap-1">
+          <TabsTrigger value="interna" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-md">
+            {t('pos.tabs.internal')}
+          </TabsTrigger>
+          <TabsTrigger value="dian" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white data-[state=active]:shadow-md">
+            {t('pos.tabs.dian')}
+          </TabsTrigger>
         </TabsList>
 
         {tabPending ? (
@@ -3010,21 +3290,34 @@ export default function PosPage() {
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div className="overflow-auto">
-                        <table className="min-w-full text-sm">
+                        <table className="min-w-[1500px] text-sm">
                           <thead>
-                            <tr className="text-left text-gray-600 border-b">
-                              <th className="py-2 pr-3">{t('pos.dian.create.items.columns.description')}</th>
-                              <th className="py-2 pr-3">{t('pos.dian.create.items.columns.quantity')}</th>
-                              <th className="py-2 pr-3">{t('pos.dian.create.items.columns.unitValue')}</th>
-                              <th className="py-2 pr-3">{t('pos.dian.create.items.columns.vatPercent')}</th>
-                              <th className="py-2 pr-2"></th>
+                            <tr className="border-b text-left text-gray-700">
+                              <th rowSpan={2} className="py-2 pr-3 align-middle font-semibold whitespace-nowrap">Nro.</th>
+                              <th rowSpan={2} className="py-2 pr-3 align-middle font-semibold whitespace-nowrap">{t('pos.dian.create.items.columns.description')}</th>
+                              <th rowSpan={2} className="py-2 pr-3 align-middle font-semibold whitespace-nowrap">U/M</th>
+                              <th rowSpan={2} className="py-2 pr-3 align-middle font-semibold whitespace-nowrap">Cantidad</th>
+                              <th rowSpan={2} className="py-2 pr-3 align-middle font-semibold whitespace-nowrap">Precio unitario</th>
+                              <th colSpan={2} className="py-2 pr-3 text-center font-semibold whitespace-nowrap">Descuento</th>
+                              <th colSpan={2} className="py-2 pr-3 text-center font-semibold whitespace-nowrap">Recargo</th>
+                              <th rowSpan={2} className="py-2 pr-3 align-middle font-semibold whitespace-nowrap">Valor de venta por ítem</th>
+                              <th rowSpan={2} className="py-2 pr-3 align-middle font-semibold whitespace-nowrap">{t('pos.dian.create.items.columns.vatPercent')}</th>
+                              <th rowSpan={2} className="py-2 pr-3 align-middle font-semibold whitespace-nowrap">Gratis</th>
+                              <th rowSpan={2} className="py-2 pr-2 align-middle"></th>
+                            </tr>
+                            <tr className="border-b text-left text-xs text-muted-foreground">
+                              <th className="py-2 pr-3 font-medium whitespace-nowrap">Valor</th>
+                              <th className="py-2 pr-3 font-medium whitespace-nowrap">%</th>
+                              <th className="py-2 pr-3 font-medium whitespace-nowrap">Valor</th>
+                              <th className="py-2 pr-3 font-medium whitespace-nowrap">%</th>
                             </tr>
                           </thead>
                           <tbody>
                             {dianCreateItems.map((it, idx) => (
-                              <tr key={idx} className="border-b last:border-b-0">
-                                <td className="py-2 pr-3">
-                                  <div className="flex gap-2 items-center">
+                              <tr key={idx} className="border-b last:border-b-0 align-top">
+                                <td className="py-2 pr-3 align-middle font-semibold text-slate-700">{idx + 1}</td>
+                                <td className="py-2 pr-3 min-w-[320px]">
+                                  <div className="flex min-w-[290px] items-center gap-2">
                                     <div className="min-w-0 flex-1">
                                       <Input
                                         value={it.descripcion}
@@ -3043,10 +3336,21 @@ export default function PosPage() {
                                         setProductoPickerOpen(true)
                                       }}
                                       title={t('pos.productPicker.openTitle')}
+                                      className="shrink-0"
                                     >
                                       <Search className="h-4 w-4" />
                                     </Button>
                                   </div>
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <Input
+                                    value={it.unitCode}
+                                    onChange={(e) =>
+                                      setDianCreateItems((prev) => prev.map((x, i) => (i === idx ? { ...x, unitCode: e.target.value } : x)))
+                                    }
+                                    placeholder="NIU"
+                                    className="w-20"
+                                  />
                                 </td>
                                 <td className="py-2 pr-3">
                                   <Input
@@ -3068,12 +3372,62 @@ export default function PosPage() {
                                 </td>
                                 <td className="py-2 pr-3">
                                   <Input
+                                    value={it.discountValue}
+                                    onChange={(e) =>
+                                      setDianCreateItems((prev) => prev.map((x, i) => (i === idx ? { ...x, discountValue: e.target.value } : x)))
+                                    }
+                                    className="w-32"
+                                  />
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <Input
+                                    value={it.discountPct}
+                                    onChange={(e) =>
+                                      setDianCreateItems((prev) => prev.map((x, i) => (i === idx ? { ...x, discountPct: e.target.value } : x)))
+                                    }
+                                    className="w-24"
+                                  />
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <Input
+                                    value={it.surchargeValue}
+                                    onChange={(e) =>
+                                      setDianCreateItems((prev) => prev.map((x, i) => (i === idx ? { ...x, surchargeValue: e.target.value } : x)))
+                                    }
+                                    className="w-32"
+                                  />
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <Input
+                                    value={it.surchargePct}
+                                    onChange={(e) =>
+                                      setDianCreateItems((prev) => prev.map((x, i) => (i === idx ? { ...x, surchargePct: e.target.value } : x)))
+                                    }
+                                    className="w-24"
+                                  />
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <Input
+                                    value={it.commercialValue}
+                                    onChange={(e) =>
+                                      setDianCreateItems((prev) => prev.map((x, i) => (i === idx ? { ...x, commercialValue: e.target.value } : x)))
+                                    }
+                                    className="w-52"
+                                  />
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <Input
                                     value={it.ivaPct}
                                     onChange={(e) =>
                                       setDianCreateItems((prev) => prev.map((x, i) => (i === idx ? { ...x, ivaPct: e.target.value } : x)))
                                     }
                                     className="w-24"
                                   />
+                                </td>
+                                <td className="py-2 pr-3 align-middle">
+                                  <label className="flex h-10 items-center justify-center rounded-md border px-3">
+                                    <input type="checkbox" checked={it.isFree} onChange={(e) => setDianCreateItems((prev) => prev.map((x, i) => (i === idx ? { ...x, isFree: e.target.checked } : x)))} />
+                                  </label>
                                 </td>
                                 <td className="py-2 pr-2">
                                   <Button
@@ -3083,7 +3437,7 @@ export default function PosPage() {
                                     onClick={() =>
                                       setDianCreateItems((prev) => {
                                         const next = prev.filter((_, i) => i !== idx)
-                                        return next.length ? next : [{ descripcion: '', quantity: '1', unitPrice: '', ivaPct: '0' }]
+                                        return next.length ? next : [createDefaultDianItem()]
                                       })
                                     }
                                   >
@@ -3101,11 +3455,166 @@ export default function PosPage() {
                           type="button"
                           variant="outline"
                           onClick={() =>
-                            setDianCreateItems((prev) => [...prev, { descripcion: '', quantity: '1', unitPrice: '', ivaPct: '0' }])
+                            setDianCreateItems((prev) => [...prev, createDefaultDianItem()])
                           }
                         >
                           {t('pos.dian.create.items.addItem')}
                         </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Descuentos y recargos globales</CardTitle>
+                      <CardDescription>Líneas globales aplicadas al documento DIAN.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="overflow-auto">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-gray-600 border-b">
+                              <th className="py-2 pr-3">LinDR</th>
+                              <th className="py-2 pr-3">Tipo</th>
+                              <th className="py-2 pr-3">Código</th>
+                              <th className="py-2 pr-3">Descripción</th>
+                              <th className="py-2 pr-3">% Porcentaje</th>
+                              <th className="py-2 pr-3">Valor</th>
+                              <th className="py-2 pr-2"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dianGlobalAdjustments.map((line, idx) => (
+                              <tr key={idx} className="border-b last:border-b-0">
+                                <td className="py-2 pr-3"><Input value={line.lineNumber} onChange={(e) => setDianGlobalAdjustments((prev) => prev.map((item, i) => (i === idx ? { ...item, lineNumber: e.target.value } : item)))} className="w-20" /></td>
+                                <td className="py-2 pr-3">
+                                  <select className="h-10 w-36 rounded-md border px-3 text-sm" value={line.type} onChange={(e) => setDianGlobalAdjustments((prev) => prev.map((item, i) => (i === idx ? { ...item, type: e.target.value as DianGlobalAdjustmentType } : item)))}>
+                                    <option value="descuento">descuento</option>
+                                    <option value="recargo">recargo</option>
+                                  </select>
+                                </td>
+                                <td className="py-2 pr-3">
+                                  <select className="h-10 w-[280px] rounded-md border px-3 text-sm" value={line.code} onChange={(e) => setDianGlobalAdjustments((prev) => prev.map((item, i) => (i === idx ? { ...item, code: e.target.value } : item)))}>
+                                    {DIAN_GLOBAL_ADJUSTMENT_CODES.map((option) => (
+                                      <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="py-2 pr-3"><Input value={line.description} onChange={(e) => setDianGlobalAdjustments((prev) => prev.map((item, i) => (i === idx ? { ...item, description: e.target.value } : item)))} className="w-60" /></td>
+                                <td className="py-2 pr-3"><Input value={line.percentage} onChange={(e) => setDianGlobalAdjustments((prev) => prev.map((item, i) => (i === idx ? { ...item, percentage: e.target.value } : item)))} className="w-24" /></td>
+                                <td className="py-2 pr-3"><Input value={line.value} onChange={(e) => setDianGlobalAdjustments((prev) => prev.map((item, i) => (i === idx ? { ...item, value: e.target.value } : item)))} className="w-28" /></td>
+                                <td className="py-2 pr-2">
+                                  <Button type="button" size="sm" variant="outline" onClick={() => setDianGlobalAdjustments((prev) => {
+                                    const next = prev.filter((_, i) => i !== idx)
+                                    return next.length ? next : [createDefaultGlobalAdjustment()]
+                                  })}>
+                                    {t('common.remove')}
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <Button type="button" variant="outline" onClick={() => setDianGlobalAdjustments((prev) => [...prev, createDefaultGlobalAdjustment()])}>Agregar línea</Button>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Anticipos</CardTitle>
+                      <CardDescription>Registra anticipos asociados al documento.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="overflow-auto">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-gray-600 border-b">
+                              <th className="py-2 pr-3">Nro</th>
+                              <th className="py-2 pr-3">Valor</th>
+                              <th className="py-2 pr-3">Fecha recibido</th>
+                              <th className="py-2 pr-2"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dianAdvanceLines.map((line, idx) => (
+                              <tr key={idx} className="border-b last:border-b-0">
+                                <td className="py-2 pr-3"><Input value={line.number} onChange={(e) => setDianAdvanceLines((prev) => prev.map((item, i) => (i === idx ? { ...item, number: e.target.value } : item)))} className="w-24" /></td>
+                                <td className="py-2 pr-3"><Input value={line.value} onChange={(e) => setDianAdvanceLines((prev) => prev.map((item, i) => (i === idx ? { ...item, value: e.target.value } : item)))} className="w-32" /></td>
+                                <td className="py-2 pr-3"><Input type="date" value={line.receivedAt} onChange={(e) => setDianAdvanceLines((prev) => prev.map((item, i) => (i === idx ? { ...item, receivedAt: e.target.value } : item)))} className="w-44" /></td>
+                                <td className="py-2 pr-2">
+                                  <Button type="button" size="sm" variant="outline" onClick={() => setDianAdvanceLines((prev) => {
+                                    const next = prev.filter((_, i) => i !== idx)
+                                    return next.length ? next : [createDefaultAdvanceLine()]
+                                  })}>
+                                    {t('common.remove')}
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <Button type="button" variant="outline" onClick={() => setDianAdvanceLines((prev) => [...prev, createDefaultAdvanceLine()])}>Agregar línea</Button>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Referencia a documentos</CardTitle>
+                      <CardDescription>Relaciona documentos de soporte o referencia.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="overflow-auto">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-gray-600 border-b">
+                              <th className="py-2 pr-3">Nro</th>
+                              <th className="py-2 pr-3">Tipo de Documento</th>
+                              <th className="py-2 pr-3">Referencia</th>
+                              <th className="py-2 pr-3">Número</th>
+                              <th className="py-2 pr-3">Fecha Referencia</th>
+                              <th className="py-2 pr-2"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dianReferenceLines.map((line, idx) => (
+                              <tr key={idx} className="border-b last:border-b-0">
+                                <td className="py-2 pr-3"><Input value={line.number} onChange={(e) => setDianReferenceLines((prev) => prev.map((item, i) => (i === idx ? { ...item, number: e.target.value } : item)))} className="w-20" /></td>
+                                <td className="py-2 pr-3"><Input value={line.documentType} onChange={(e) => setDianReferenceLines((prev) => prev.map((item, i) => (i === idx ? { ...item, documentType: e.target.value } : item)))} className="w-44" /></td>
+                                <td className="py-2 pr-3"><Input value={line.reference} onChange={(e) => setDianReferenceLines((prev) => prev.map((item, i) => (i === idx ? { ...item, reference: e.target.value } : item)))} className="w-40" /></td>
+                                <td className="py-2 pr-3"><Input value={line.documentNumber} onChange={(e) => setDianReferenceLines((prev) => prev.map((item, i) => (i === idx ? { ...item, documentNumber: e.target.value } : item)))} className="w-32" /></td>
+                                <td className="py-2 pr-3"><Input type="date" value={line.referenceDate} onChange={(e) => setDianReferenceLines((prev) => prev.map((item, i) => (i === idx ? { ...item, referenceDate: e.target.value } : item)))} className="w-40" /></td>
+                                <td className="py-2 pr-2">
+                                  <Button type="button" size="sm" variant="outline" onClick={() => setDianReferenceLines((prev) => {
+                                    const next = prev.filter((_, i) => i !== idx)
+                                    return next.length ? next : [createDefaultReferenceLine()]
+                                  })}>
+                                    {t('common.remove')}
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <Button type="button" variant="outline" onClick={() => setDianReferenceLines((prev) => [...prev, createDefaultReferenceLine()])}>Agregar línea</Button>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Notas</CardTitle>
+                      <CardDescription>Notas complementarias para el documento.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div>
+                        <Label>Línea de negocio</Label>
+                        <Input value={dianNotes.businessLine} onChange={(e) => setDianNotes((prev) => ({ ...prev, businessLine: e.target.value }))} />
+                      </div>
+                      <div>
+                        <Label>Descripción</Label>
+                        <Input value={dianNotes.description} onChange={(e) => setDianNotes((prev) => ({ ...prev, description: e.target.value }))} />
                       </div>
                     </CardContent>
                   </Card>

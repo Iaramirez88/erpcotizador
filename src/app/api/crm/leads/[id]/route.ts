@@ -3,6 +3,7 @@ import { AccessLevel, CrmLeadSource, CrmLeadStatus, ModuleKey } from '@prisma/cl
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
+import { syncCrmLeadFollowUpTaskById } from '@/lib/crm-follow-up'
 import { requireSedeAccess } from '@/lib/rbac'
 
 export const runtime = 'nodejs'
@@ -27,6 +28,55 @@ function parseLeadSource(value: unknown): CrmLeadSource | null {
 function parseTags(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return Array.from(new Set(value.map((item) => normalizeString(item)).filter(Boolean)))
+}
+
+function normalizePhone(value: unknown): string {
+  return normalizeString(value).replace(/[^\d]+/g, '')
+}
+
+async function findConflictingLead(args: {
+  empresaId: string
+  documento?: string | null
+  email?: string | null
+  telefono?: string | null
+  excludeLeadId?: string | null
+}) {
+  const documento = normalizeString(args.documento)
+  const email = normalizeString(args.email).toLowerCase()
+  const telefono = normalizePhone(args.telefono)
+  const conditions: Array<Record<string, unknown>> = []
+
+  if (documento) conditions.push({ documento })
+  if (email) conditions.push({ email })
+  if (telefono) {
+    conditions.push({ telefono })
+    conditions.push({ celular: telefono })
+    if (telefono.length >= 8) {
+      const suffix = telefono.slice(-10)
+      conditions.push({ telefono: { endsWith: suffix } })
+      conditions.push({ celular: { endsWith: suffix } })
+    }
+  }
+
+  if (!conditions.length) return null
+
+  return prisma.crmLead.findFirst({
+    where: {
+      empresaId: args.empresaId,
+      ...(args.excludeLeadId ? { id: { not: args.excludeLeadId } } : {}),
+      OR: conditions,
+    },
+    select: {
+      id: true,
+      nombre: true,
+      documento: true,
+      email: true,
+      telefono: true,
+      celular: true,
+      status: true,
+    },
+    orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+  })
 }
 
 async function ensureLeadAccess(args: {
@@ -113,6 +163,10 @@ export async function PATCH(request: Request, context: RouteContext) {
     const nextSedeId = normalizeString(body?.sedeId)
     const nextOwnerUserId = normalizeString(body?.ownerUserId)
     const nombre = normalizeString(body?.nombre)
+    const nextDocumento = Object.prototype.hasOwnProperty.call(body ?? {}, 'documento') ? normalizeString(body?.documento) : result.lead.documento || ''
+    const nextEmail = Object.prototype.hasOwnProperty.call(body ?? {}, 'email') ? normalizeString(body?.email).toLowerCase() : result.lead.email || ''
+    const nextTelefono = Object.prototype.hasOwnProperty.call(body ?? {}, 'telefono') ? normalizePhone(body?.telefono) : normalizePhone(result.lead.telefono)
+    const nextCelular = Object.prototype.hasOwnProperty.call(body ?? {}, 'celular') ? normalizePhone(body?.celular) : normalizePhone(result.lead.celular)
     const status = Object.prototype.hasOwnProperty.call(body ?? {}, 'status') ? parseLeadStatus(body?.status) : undefined
     const source = Object.prototype.hasOwnProperty.call(body ?? {}, 'source') ? parseLeadSource(body?.source) : undefined
 
@@ -145,31 +199,53 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
     }
 
-    const lead = await prisma.crmLead.update({
-      where: { id },
-      data: {
-        ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'nombre') ? { nombre: nombre || result.lead.nombre } : {}),
-        ...(status ? { status } : {}),
-        ...(source ? { source } : {}),
-        ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'empresaNombre') ? { empresaNombre: normalizeString(body?.empresaNombre) || null } : {}),
-        ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'documento') ? { documento: normalizeString(body?.documento) || null } : {}),
-        ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'email') ? { email: normalizeString(body?.email) || null } : {}),
-        ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'telefono') ? { telefono: normalizeString(body?.telefono) || null } : {}),
-        ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'celular') ? { celular: normalizeString(body?.celular) || null } : {}),
-        ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'direccion') ? { direccion: normalizeString(body?.direccion) || null } : {}),
-        ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'ciudad') ? { ciudad: normalizeString(body?.ciudad) || null } : {}),
-        ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'notes') ? { notes: normalizeString(body?.notes) || null } : {}),
-        ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'tags') ? { tags: parseTags(body?.tags) } : {}),
-        ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeId') ? { sedeId: nextSedeId || null } : {}),
-        ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'ownerUserId') ? { ownerUserId: nextOwnerUserId || null } : {}),
-      },
-      include: {
-        sede: { select: { id: true, nombre: true, codigo: true } },
-        ownerUser: { select: { id: true, name: true, email: true } },
-        createdBy: { select: { id: true, name: true, email: true } },
-        convertedCliente: { select: { id: true, nombre: true, documento: true } },
-        _count: { select: { opportunities: true, activities: true, tasks: true } },
-      },
+    const conflictingLead = await findConflictingLead({
+      empresaId: access.empresaId,
+      documento: nextDocumento,
+      email: nextEmail,
+      telefono: nextTelefono || nextCelular,
+      excludeLeadId: id,
+    })
+    if (conflictingLead) {
+      return NextResponse.json({ error: `Ya existe un prospecto similar: ${conflictingLead.nombre}` }, { status: 409 })
+    }
+
+    const lead = await prisma.$transaction(async (tx) => {
+      const updated = await tx.crmLead.update({
+        where: { id },
+        data: {
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'nombre') ? { nombre: nombre || result.lead.nombre } : {}),
+          ...(status ? { status } : {}),
+          ...(source ? { source } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'empresaNombre') ? { empresaNombre: normalizeString(body?.empresaNombre) || null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'documento') ? { documento: nextDocumento || null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'email') ? { email: nextEmail || null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'telefono') ? { telefono: nextTelefono || null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'celular') ? { celular: nextCelular || null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'direccion') ? { direccion: normalizeString(body?.direccion) || null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'ciudad') ? { ciudad: normalizeString(body?.ciudad) || null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'notes') ? { notes: normalizeString(body?.notes) || null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'tags') ? { tags: parseTags(body?.tags) } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeId') ? { sedeId: nextSedeId || null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'ownerUserId') ? { ownerUserId: nextOwnerUserId || null } : {}),
+        },
+        include: {
+          sede: { select: { id: true, nombre: true, codigo: true } },
+          ownerUser: { select: { id: true, name: true, email: true } },
+          createdBy: { select: { id: true, name: true, email: true } },
+          convertedCliente: { select: { id: true, nombre: true, documento: true } },
+          _count: { select: { opportunities: true, activities: true, tasks: true } },
+        },
+      })
+
+      await syncCrmLeadFollowUpTaskById({
+        client: tx,
+        empresaId: access.empresaId,
+        actorUserId: access.userId,
+        leadId: updated.id,
+      })
+
+      return updated
     })
 
     return NextResponse.json({ success: true, data: lead })

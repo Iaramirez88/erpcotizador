@@ -10,6 +10,7 @@ import {
   parseOptionalInt,
   parseOpportunityStage,
 } from '@/lib/crm'
+import { syncCrmOpportunityFollowUpTaskById } from '@/lib/crm-follow-up'
 import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 
 export const runtime = 'nodejs'
@@ -198,6 +199,13 @@ export async function PATCH(request: Request, context: RouteContext) {
           },
         })
       }
+
+      await syncCrmOpportunityFollowUpTaskById({
+        client: tx,
+        empresaId: access.empresaId,
+        actorUserId: access.userId,
+        opportunityId: updated.id,
+      })
 
       return updated
     })

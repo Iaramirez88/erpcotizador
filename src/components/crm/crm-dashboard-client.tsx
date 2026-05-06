@@ -47,8 +47,10 @@ type Lead = {
   id: string
   nombre: string
   empresaNombre?: string | null
+  documento?: string | null
   email?: string | null
   telefono?: string | null
+  celular?: string | null
   status: LeadStatus
   source: LeadSource
   originKey?: CrmOriginKey
@@ -221,20 +223,99 @@ function getProbabilitySurface(probabilityPct: number) {
   return 'bg-slate-100 text-slate-700 border-slate-200'
 }
 
+function getOpportunityScore(opportunity: Opportunity) {
+  let score = 0
+  if (opportunity.probabilityPct >= 70) score += 35
+  else if (opportunity.probabilityPct >= 45) score += 20
+  else score += 8
+
+  if ((opportunity.expectedValue || 0) >= 10000000) score += 25
+  else if ((opportunity.expectedValue || 0) >= 3000000) score += 16
+  else if ((opportunity.expectedValue || 0) > 0) score += 8
+
+  if (opportunity.cotizacion?.id) score += 15
+  if ((opportunity._count?.activities || 0) >= 3) score += 10
+  if ((opportunity._count?.tasks || 0) >= 1) score += 5
+
+  if (opportunity.expectedCloseAt) {
+    const closeTime = new Date(opportunity.expectedCloseAt).getTime()
+    const diffDays = Math.ceil((closeTime - Date.now()) / 86400000)
+    if (!Number.isNaN(diffDays) && diffDays <= 7) score += 10
+  }
+
+  return Math.max(0, Math.min(100, score))
+}
+
+function getOpportunityRiskMeta(opportunity: Opportunity) {
+  const score = getOpportunityScore(opportunity)
+  const updatedAt = new Date(opportunity.updatedAt).getTime()
+  const stale = !Number.isNaN(updatedAt) && updatedAt < (Date.now() - (1000 * 60 * 60 * 24 * 5))
+  const overdue = opportunity.expectedCloseAt ? new Date(opportunity.expectedCloseAt).getTime() < Date.now() : false
+
+  if (overdue || (opportunity.probabilityPct < 45 && stale)) {
+    return { label: 'Riesgo alto', className: 'border-rose-200 bg-rose-50 text-rose-700' }
+  }
+  if (score >= 70 && !stale) {
+    return { label: 'Saludable', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' }
+  }
+  return { label: 'Riesgo medio', className: 'border-amber-200 bg-amber-50 text-amber-700' }
+}
+
+function getLeadFollowUpPriority(lead: Lead) {
+  const lastTouch = new Date(lead.lastActivityAt || lead.createdAt).getTime()
+  const daysWithoutTouch = Number.isNaN(lastTouch) ? 0 : Math.max(0, Math.floor((Date.now() - lastTouch) / 86400000))
+  if (daysWithoutTouch >= 5) return 'alta'
+  if (daysWithoutTouch >= 2) return 'media'
+  return 'baja'
+}
+
+function normalizeLeadMatchValue(value: string | null | undefined) {
+  return (value || '').trim().toLowerCase()
+}
+
+function normalizeLeadPhone(value: string | null | undefined) {
+  return (value || '').replace(/[^\d]+/g, '')
+}
+
+function getSuggestedOpportunityPreset(lead: Lead) {
+  const lastTouch = new Date(lead.lastActivityAt || lead.createdAt).getTime()
+  const daysSinceTouch = Number.isNaN(lastTouch) ? 0 : Math.max(0, Math.floor((Date.now() - lastTouch) / 86400000))
+
+  if (lead.source === 'REFERIDO') {
+    return { stage: 'QUALIFIED' as OpportunityStage, probabilityPct: '65', expectedValue: '3500000' }
+  }
+
+  if (lead.source === 'WHATSAPP' || lead.source === 'LLAMADA') {
+    return { stage: 'QUALIFIED' as OpportunityStage, probabilityPct: '55', expectedValue: '2500000' }
+  }
+
+  if (daysSinceTouch <= 2) {
+    return { stage: 'QUALIFIED' as OpportunityStage, probabilityPct: '45', expectedValue: '1800000' }
+  }
+
+  return { stage: 'NEW' as OpportunityStage, probabilityPct: '30', expectedValue: '1200000' }
+}
+
 async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
   const res = await fetch(url, init)
   return (await res.json().catch(() => ({}))) as JsonResponse<T>
 }
 
-export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportunities' | 'tasks' }) {
+type CrmDashboardClientProps = {
+  initialTab?: 'leads' | 'opportunities' | 'tasks'
+  mode?: 'overview' | 'opportunities'
+}
+
+export function CrmDashboardClient(props?: CrmDashboardClientProps) {
   const searchParams = useSearchParams()
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = '—'
   const opportunityOrderStorageKey = 'crm-opportunity-stage-order'
+  const isFocusedOpportunities = props?.mode === 'opportunities'
 
-  const [activeTab, setActiveTab] = useState<'leads' | 'opportunities' | 'tasks'>(props?.initialTab ?? 'leads')
-  const [opportunityView, setOpportunityView] = useState<'list' | 'pipeline'>('list')
+  const [activeTab, setActiveTab] = useState<'leads' | 'opportunities' | 'tasks'>(isFocusedOpportunities ? 'opportunities' : props?.initialTab ?? 'leads')
+  const [opportunityView, setOpportunityView] = useState<'list' | 'pipeline'>(isFocusedOpportunities ? 'pipeline' : 'list')
   const [draggingOpportunityId, setDraggingOpportunityId] = useState<string | null>(null)
   const [draggingOpportunityStage, setDraggingOpportunityStage] = useState<OpportunityStage | null>(null)
   const [dragTargetStage, setDragTargetStage] = useState<OpportunityStage | null>(null)
@@ -269,8 +350,10 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
   const [leadForm, setLeadForm] = useState({
     nombre: '',
     empresaNombre: '',
+    documento: '',
     email: '',
     telefono: '',
+    celular: '',
     ciudad: '',
     source: 'OTRO' as LeadSource,
     status: 'NEW' as LeadStatus,
@@ -301,6 +384,8 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
+      await requestJson('/api/crm/follow-up/reconcile', { method: 'POST' }).catch(() => null)
+
       const leadParams = new URLSearchParams()
       const opportunityParams = new URLSearchParams()
       const taskParams = new URLSearchParams()
@@ -344,12 +429,18 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
   }, [loadData])
 
   useEffect(() => {
+    if (isFocusedOpportunities) return
     if (!requestedTaskId || !tasks.length) return
     const task = tasks.find((item) => item.id === requestedTaskId)
     if (!task) return
     setActiveTab('tasks')
     openEditTaskDialog(task)
-  }, [requestedTaskId, tasks])
+  }, [isFocusedOpportunities, requestedTaskId, tasks])
+
+  useEffect(() => {
+    if (!isFocusedOpportunities) return
+    setActiveTab('opportunities')
+  }, [isFocusedOpportunities])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -427,8 +518,180 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
     }
   }, [opportunities])
 
+  const priorities = useMemo(() => {
+    const now = Date.now()
+    const startOfToday = new Date()
+    startOfToday.setHours(0, 0, 0, 0)
+    const endOfToday = new Date(startOfToday)
+    endOfToday.setHours(23, 59, 59, 999)
+    const nextWeek = new Date(endOfToday)
+    nextWeek.setDate(nextWeek.getDate() + 7)
+    const staleThreshold = now - (1000 * 60 * 60 * 48)
+
+    const overdueTasks = tasks.filter((task) => {
+      if (task.status === 'DONE' || task.status === 'CANCELED' || !task.dueAt) return false
+      const due = new Date(task.dueAt).getTime()
+      return !Number.isNaN(due) && due < startOfToday.getTime()
+    })
+
+    const todayTasks = tasks.filter((task) => {
+      if (task.status === 'DONE' || task.status === 'CANCELED' || !task.dueAt) return false
+      const due = new Date(task.dueAt).getTime()
+      return !Number.isNaN(due) && due >= startOfToday.getTime() && due <= endOfToday.getTime()
+    })
+
+    const staleLeads = leads.filter((lead) => {
+      if (lead.status === 'CONVERTED' || lead.status === 'LOST') return false
+      const reference = lead.lastActivityAt || lead.createdAt
+      const activityTime = new Date(reference).getTime()
+      return !Number.isNaN(activityTime) && activityTime < staleThreshold
+    })
+
+    const urgentClosings = opportunities.filter((opportunity) => {
+      if (opportunity.stage === 'WON' || opportunity.stage === 'LOST' || !opportunity.expectedCloseAt) return false
+      const closeTime = new Date(opportunity.expectedCloseAt).getTime()
+      return !Number.isNaN(closeTime) && closeTime <= nextWeek.getTime()
+    })
+
+    return [
+      {
+        key: 'overdueTasks',
+        title: 'Tareas vencidas',
+        count: overdueTasks.length,
+        tone: overdueTasks.length ? 'border-rose-200 bg-rose-50/80 text-rose-900' : 'border-slate-200 bg-white text-slate-900',
+        hint: overdueTasks[0]?.title || 'Sin tareas atrasadas por ahora.',
+        action: () => {
+          setActiveTab('tasks')
+          setTaskStatusFilter('OPEN')
+        },
+      },
+      {
+        key: 'todayTasks',
+        title: 'Pendientes de hoy',
+        count: todayTasks.length,
+        tone: todayTasks.length ? 'border-amber-200 bg-amber-50/80 text-amber-900' : 'border-slate-200 bg-white text-slate-900',
+        hint: todayTasks[0]?.title || 'No hay vencimientos para hoy.',
+        action: () => {
+          setActiveTab('tasks')
+          setTaskStatusFilter('OPEN')
+        },
+      },
+      {
+        key: 'staleLeads',
+        title: 'Leads sin seguimiento',
+        count: staleLeads.length,
+        tone: staleLeads.length ? 'border-sky-200 bg-sky-50/80 text-sky-900' : 'border-slate-200 bg-white text-slate-900',
+        hint: staleLeads[0]?.nombre || 'Todos los leads tienen actividad reciente.',
+        action: () => {
+          setActiveTab('leads')
+          setLeadStatusFilter('ALL')
+        },
+      },
+      {
+        key: 'urgentClosings',
+        title: 'Cierres urgentes',
+        count: urgentClosings.length,
+        tone: urgentClosings.length ? 'border-emerald-200 bg-emerald-50/80 text-emerald-900' : 'border-slate-200 bg-white text-slate-900',
+        hint: urgentClosings[0]?.title || 'No hay cierres próximos en los siguientes 7 días.',
+        action: () => {
+          setActiveTab('opportunities')
+          setOpportunityStageFilter('ALL')
+        },
+      },
+    ]
+  }, [leads, opportunities, tasks])
+
+  const leadFollowUpQueue = useMemo(() => {
+    return leads
+      .filter((lead) => lead.status !== 'CONVERTED' && lead.status !== 'LOST')
+      .map((lead) => {
+        const lastTouch = lead.lastActivityAt || lead.createdAt
+        const lastTouchTime = new Date(lastTouch).getTime()
+        const daysWithoutTouch = Number.isNaN(lastTouchTime) ? 0 : Math.max(0, Math.floor((Date.now() - lastTouchTime) / 86400000))
+        return {
+          lead,
+          daysWithoutTouch,
+          priority: getLeadFollowUpPriority(lead),
+        }
+      })
+      .filter((item) => item.daysWithoutTouch >= 2)
+      .sort((left, right) => right.daysWithoutTouch - left.daysWithoutTouch)
+      .slice(0, 6)
+  }, [leads])
+
+  const activeOpportunityByLeadId = useMemo(() => {
+    const next = new Map<string, Opportunity>()
+    opportunities.forEach((opportunity) => {
+      const leadId = opportunity.lead?.id
+      if (!leadId || opportunity.stage === 'WON' || opportunity.stage === 'LOST' || next.has(leadId)) return
+      next.set(leadId, opportunity)
+    })
+    return next
+  }, [opportunities])
+
+  const leadDuplicateSignals = useMemo(() => {
+    const emailMap = new Map<string, string[]>()
+    const phoneMap = new Map<string, string[]>()
+    const documentMap = new Map<string, string[]>()
+
+    for (const lead of leads) {
+      const email = normalizeLeadMatchValue(lead.email)
+      const phone = normalizeLeadPhone(lead.telefono || lead.celular)
+      const document = normalizeLeadMatchValue(lead.documento)
+
+      if (email) emailMap.set(email, [...(emailMap.get(email) || []), lead.id])
+      if (phone) phoneMap.set(phone, [...(phoneMap.get(phone) || []), lead.id])
+      if (document) documentMap.set(document, [...(documentMap.get(document) || []), lead.id])
+    }
+
+    const next = new Map<string, string[]>()
+    for (const lead of leads) {
+      const reasons = new Set<string>()
+      const email = normalizeLeadMatchValue(lead.email)
+      const phone = normalizeLeadPhone(lead.telefono || lead.celular)
+      const document = normalizeLeadMatchValue(lead.documento)
+
+      if (document && (documentMap.get(document)?.length || 0) > 1) reasons.add('Coincidencia por documento')
+      if (email && (emailMap.get(email)?.length || 0) > 1) reasons.add('Coincidencia por email')
+      if (phone && (phoneMap.get(phone)?.length || 0) > 1) reasons.add('Coincidencia por teléfono')
+      if (lead.convertedCliente) reasons.add('Ya existe como cliente ERP')
+      if ((lead._count?.opportunities || 0) > 0) reasons.add('Ya tiene historial en pipeline')
+
+      next.set(lead.id, [...reasons])
+    }
+
+    return next
+  }, [leads])
+
+  const leadFormDuplicateSignals = useMemo(() => {
+    const reasons = new Set<string>()
+    const document = normalizeLeadMatchValue(leadForm.documento)
+    const email = normalizeLeadMatchValue(leadForm.email)
+    const phone = normalizeLeadPhone(leadForm.telefono || leadForm.celular)
+
+    const matchingLead = leads.find((lead) => {
+      if (editingLeadId && lead.id === editingLeadId) return false
+      const leadDocument = normalizeLeadMatchValue(lead.documento)
+      const leadEmail = normalizeLeadMatchValue(lead.email)
+      const leadPhone = normalizeLeadPhone(lead.telefono || lead.celular)
+      return Boolean(
+        (document && leadDocument && leadDocument === document)
+        || (email && leadEmail && leadEmail === email)
+        || (phone && leadPhone && leadPhone === phone)
+      )
+    })
+
+    if (!matchingLead) return []
+    if (document && normalizeLeadMatchValue(matchingLead.documento) === document) reasons.add(`Documento ya usado por ${matchingLead.nombre}`)
+    if (email && normalizeLeadMatchValue(matchingLead.email) === email) reasons.add(`Email ya usado por ${matchingLead.nombre}`)
+    if (phone && normalizeLeadPhone(matchingLead.telefono || matchingLead.celular) === phone) reasons.add(`Teléfono ya usado por ${matchingLead.nombre}`)
+    if (matchingLead.convertedCliente) reasons.add('Ese registro ya existe como cliente ERP')
+
+    return [...reasons]
+  }, [editingLeadId, leadForm.celular, leadForm.documento, leadForm.email, leadForm.telefono, leads])
+
   function resetLeadForm() {
-    setLeadForm({ nombre: '', empresaNombre: '', email: '', telefono: '', ciudad: '', source: 'OTRO', status: 'NEW', notes: '' })
+    setLeadForm({ nombre: '', empresaNombre: '', documento: '', email: '', telefono: '', celular: '', ciudad: '', source: 'OTRO', status: 'NEW', notes: '' })
   }
 
   function resetOpportunityForm(stage?: OpportunityStage) {
@@ -461,15 +724,38 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
 
   function openCreateOpportunityForLead(args: { leadId: string; leadName: string; companyName?: string | null; notes?: string | null }) {
     setEditingOpportunityId(null)
-    resetOpportunityForm()
+    const lead = leads.find((item) => item.id === args.leadId)
+    const suggested = lead ? getSuggestedOpportunityPreset(lead) : null
+    resetOpportunityForm(suggested?.stage)
     setOpportunityForm((current) => ({
       ...current,
       leadId: args.leadId,
       title: buildOpportunityTitleFromLead({ nombre: args.leadName, empresaNombre: args.companyName, notes: args.notes }),
+      stage: suggested?.stage ?? current.stage,
+      probabilityPct: suggested?.probabilityPct ?? current.probabilityPct,
+      expectedValue: suggested?.expectedValue ?? current.expectedValue,
     }))
     setOpportunityDialogOpen(true)
     setActiveTab('opportunities')
     setOpportunityView('pipeline')
+  }
+
+  function openLeadInPipeline(lead: Lead) {
+    const activeOpportunity = activeOpportunityByLeadId.get(lead.id)
+    if (activeOpportunity) {
+      setActiveTab('opportunities')
+      setOpportunityView('pipeline')
+      setOpportunityStageFilter(activeOpportunity.stage)
+      void openEditOpportunityDialog(activeOpportunity)
+      return
+    }
+
+    openCreateOpportunityForLead({
+      leadId: lead.id,
+      leadName: lead.nombre,
+      companyName: lead.empresaNombre,
+      notes: null,
+    })
   }
 
   async function openEditLeadDialog(lead: Lead) {
@@ -484,8 +770,10 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
     setLeadForm({
       nombre: row.nombre,
       empresaNombre: row.empresaNombre || '',
+      documento: row.documento || '',
       email: row.email || '',
       telefono: row.telefono || '',
+      celular: row.celular || '',
       ciudad: row.ciudad || '',
       source: row.source,
       status: row.status,
@@ -805,115 +1093,574 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
     if (!success) await loadData()
   }
 
-  return (
-    <div className="space-y-6 pb-6">
-      <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,116,144,0.18),_transparent_32%),linear-gradient(135deg,_#fffdf8_0%,_#f8fbff_48%,_#f2f7f4_100%)] shadow-[0_24px_60px_-36px_rgba(15,23,42,0.35)]">
-        <div className="grid gap-6 p-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)] xl:items-start lg:p-8">
-          <div className="space-y-4">
-            <ErpBreadcrumbs
-              items={[
-                { label: 'Dashboard', href: '/dashboard' },
-                { label: 'CRM' },
-              ]}
-            />
-            <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700 backdrop-blur">
-              CRM Comercial
+  const opportunitiesWorkspace = (
+    <div className={isFocusedOpportunities ? 'space-y-5' : 'space-y-4 pt-4'}>
+      {isFocusedOpportunities ? (
+        <Card className="rounded-[26px] border-slate-200 bg-white/95 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.24)]">
+          <CardContent className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Vistas de oportunidades</p>
+              <h2 className="text-lg font-semibold text-slate-950">Pipeline con prioridad visual</h2>
+              <p className="text-sm text-slate-600">En esta ruta el pipeline tiene el protagonismo y la lista queda como vista secundaria para revisión puntual.</p>
             </div>
-            <div className="space-y-2">
-              <h1 className="max-w-2xl text-3xl font-semibold tracking-tight text-slate-950 lg:text-4xl">Visibilidad comercial clara para leads, oportunidades y seguimiento.</h1>
-              <p className="max-w-2xl text-sm leading-6 text-slate-600 lg:text-base">Centraliza prospección, pipeline y tareas en una sola vista con contexto ERP, cotizaciones vinculadas y señales de cierre más claras.</p>
-            </div>
-            <div className="flex flex-col gap-2">
-              <div className="relative min-w-0 max-w-xl flex-1">
-                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por lead, oportunidad o cliente..." className="h-12 rounded-2xl border-slate-200 bg-white/90 pr-4 shadow-sm" />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button asChild variant="outline" className="h-12 rounded-2xl border-emerald-200 bg-emerald-50/80 px-5 text-emerald-800 hover:bg-emerald-100">
-                  <Link href="/dashboard/crm/chatbot">Panel chatbot</Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
+                <Button variant={opportunityView === 'pipeline' ? 'default' : 'ghost'} className="rounded-xl px-4" onClick={() => setOpportunityView('pipeline')}>
+                  Pipeline
                 </Button>
-                <Button asChild variant="outline" className="h-12 rounded-2xl border-slate-200 bg-white/80 px-5">
-                  <Link href="/dashboard/crm/conversations">Bandeja omnicanal</Link>
+                <Button variant={opportunityView === 'list' ? 'default' : 'ghost'} className="rounded-xl px-4" onClick={() => setOpportunityView('list')}>
+                  Lista
                 </Button>
-                <Button asChild variant="outline" className="h-12 rounded-2xl border-slate-200 bg-white/80 px-5">
-                  <Link href="/dashboard/crm/integraciones">Integraciones</Link>
-                </Button>
-                <Button variant="outline" className="h-12 rounded-2xl border-slate-200 bg-white/80 px-5" onClick={openStageDialog}>Configurar pipeline</Button>
-                <Button variant="outline" className="h-12 rounded-2xl border-slate-200 bg-white/80 px-5" onClick={() => void loadData()}>Refrescar</Button>
               </div>
+              <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => openCreateOpportunityDialog()}>
+                Nuevo deal
+              </Button>
+              <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={openStageDialog}>
+                Configurar pipeline
+              </Button>
+              <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void loadData()}>
+                Refrescar
+              </Button>
             </div>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3 xl:self-start">
-            <div className="min-w-0 rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Leads activos</p>
-              <p className="mt-3 text-3xl font-semibold text-slate-950">{stats.activeLeads}</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">Prospectos en seguimiento comercial.</p>
-            </div>
-            <div className="min-w-0 rounded-2xl border border-emerald-200/80 bg-[linear-gradient(180deg,_rgba(236,253,245,0.95),_rgba(255,255,255,0.9))] p-4 shadow-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Pipeline estimado</p>
-              <p className="mt-3 text-3xl font-semibold text-emerald-950">{formatMoney(stats.pipelineValue, locale)}</p>
-              <p className="mt-1 text-xs leading-5 text-emerald-700/80">Valor proyectado de oportunidades activas.</p>
-            </div>
-            <div className="min-w-0 rounded-2xl border border-amber-200/80 bg-[linear-gradient(180deg,_rgba(255,251,235,0.96),_rgba(255,255,255,0.9))] p-4 shadow-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Tareas abiertas</p>
-              <p className="mt-3 text-3xl font-semibold text-amber-950">{stats.openTasks}</p>
-              <p className="mt-1 text-xs leading-5 text-amber-700/80">Pendientes que requieren acción del equipo.</p>
-            </div>
-            <div className="sm:col-span-3 min-w-0 rounded-2xl border border-slate-200/80 bg-white/85 p-4 shadow-sm backdrop-blur">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Origen principal de leads</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {topOrigins.length === 0 ? <span className="text-xs text-slate-500">Sin datos de origen aún.</span> : null}
-                {topOrigins.map((item) => <span key={item.label} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">{item.label} · {item.count}</span>)}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="flex items-center justify-end gap-2">
+          <Button variant={opportunityView === 'list' ? 'default' : 'outline'} className="rounded-xl" onClick={() => setOpportunityView('list')}>
+            Lista
+          </Button>
+          <Button variant={opportunityView === 'pipeline' ? 'default' : 'outline'} className="rounded-xl" onClick={() => setOpportunityView('pipeline')}>
+            Pipeline
+          </Button>
+        </div>
+      )}
+
+      {opportunityView === 'pipeline' ? (
+        <div className="space-y-4">
+          <Card className="rounded-[26px] border-slate-200 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
+            <CardContent className="grid gap-3 p-4 md:grid-cols-4 md:p-5">
+              <div className="rounded-2xl border border-slate-200 bg-white/85 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Oportunidades abiertas</p>
+                <p className="mt-2 text-3xl font-semibold text-slate-950">{pipelineSummary.openCount}</p>
+                <p className="mt-1 text-xs text-slate-500">Negocios en movimiento dentro del embudo.</p>
               </div>
-            </div>
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Valor ponderado</p>
+                <p className="mt-2 text-3xl font-semibold text-emerald-950">{formatMoney(pipelineSummary.weightedValue, locale)}</p>
+                <p className="mt-1 text-xs text-emerald-700/80">Proyección ajustada por probabilidad de cierre.</p>
+              </div>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/75 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Cierres vencidos</p>
+                <p className="mt-2 text-3xl font-semibold text-amber-950">{pipelineSummary.overdueCount}</p>
+                <p className="mt-1 text-xs text-amber-700/80">Oportunidades que requieren reacción inmediata.</p>
+              </div>
+              <div className="rounded-2xl border border-sky-200 bg-sky-50/75 p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">Con cotización</p>
+                <p className="mt-2 text-3xl font-semibold text-sky-950">{pipelineSummary.quotedCount}</p>
+                <p className="mt-1 text-xs text-sky-700/80">Negocios con propuesta formal vinculada.</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className={isFocusedOpportunities ? 'grid grid-flow-col auto-cols-[minmax(320px,1fr)] gap-4 overflow-x-auto pb-3' : 'grid grid-flow-col auto-cols-[minmax(280px,1fr)] gap-4 overflow-x-auto pb-2'}>
+              {opportunitiesByStage.map((column) => (
+                <Card
+                  key={column.key}
+                  className={`min-w-0 overflow-hidden rounded-[24px] border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)] transition-all ${dragTargetStage === column.key ? 'ring-2 ring-sky-400 shadow-[0_24px_50px_-30px_rgba(14,165,233,0.35)]' : ''}`}
+                  onDragOver={(event) => {
+                    event.preventDefault()
+                    if (draggingOpportunityId) {
+                      setDragTargetStage(column.key)
+                      setDragTargetOpportunityId(null)
+                    }
+                  }}
+                  onDragLeave={() => {
+                    if (dragTargetStage === column.key) {
+                      setDragTargetStage(null)
+                    }
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    void handleOpportunityDrop(column.key, null)
+                  }}
+                >
+                  <CardHeader className="border-b border-slate-100 px-4 pb-3 pt-4" style={{ background: `linear-gradient(180deg, ${withAlpha(column.color, '16', 'rgba(148,163,184,0.12)')}, rgba(255,255,255,0.98))` }}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1.5">
+                        <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                          <CircleDot className="h-3.5 w-3.5" style={{ color: column.color || '#64748b' }} />
+                          {column.label}
+                        </div>
+                        <CardDescription>{formatMoney(column.total, locale)} proyectado</CardDescription>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <button
+                          type="button"
+                          className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:text-sky-700"
+                          onClick={() => openCreateOpportunityDialog(column.key)}
+                          title={`Nueva carta en ${column.label}`}
+                          aria-label={`Nueva carta en ${column.label}`}
+                        >
+                          <Plus className="h-5 w-5" />
+                        </button>
+                        <div className="rounded-2xl bg-white/85 px-3 py-1.5 text-right shadow-sm">
+                          <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Deals</p>
+                          <p className="text-base font-semibold text-slate-900">{column.items.length}</p>
+                        </div>
+                      </div>
+                    </div>
+                    {dragTargetStage === column.key ? (
+                      <div className="mt-2 rounded-2xl border border-dashed border-sky-300 bg-sky-50/80 px-3 py-2 text-xs font-medium text-sky-700">
+                        Suelta aquí para mover la oportunidad a {column.label.toLowerCase()}.
+                      </div>
+                    ) : null}
+                  </CardHeader>
+                  <CardContent className="space-y-2.5 p-3">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-center gap-2 rounded-[18px] border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800"
+                      onClick={() => openCreateOpportunityDialog(column.key)}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Agregar carta en {column.label.toLowerCase()}
+                    </button>
+                    {column.items.length === 0 ? (
+                      <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
+                        <p className="text-sm font-medium text-slate-600">Sin oportunidades en esta etapa</p>
+                        <p className="mt-1 text-xs text-slate-500">Arrastra una tarjeta hasta aquí para actualizar el pipeline.</p>
+                      </div>
+                    ) : null}
+                    {column.items.map((row) => {
+                      const relationName = row.cliente?.nombre || row.lead?.nombre || 'Sin relación'
+                      const assigneeName = row.assignedTo?.name || row.assignedTo?.email || 'Sin responsable'
+                      const quoteLabel = row.cotizacion?.numero || 'Sin cotización'
+                      const riskMeta = getOpportunityRiskMeta(row)
+                      const score = getOpportunityScore(row)
+                      const origin = row.originKey && row.originLabel
+                        ? { key: row.originKey, label: row.originLabel }
+                        : row.lead?.source
+                          ? getLeadSourceFallbackMeta(row.lead.source)
+                          : null
+                      return (
+                        <div
+                          key={row.id}
+                          className={row.id === draggingOpportunityId
+                            ? 'rounded-[22px] border border-dashed border-sky-300 bg-sky-50/70 p-3.5 opacity-75'
+                            : 'rounded-[22px] border border-slate-200 bg-white p-3.5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md'}
+                          draggable
+                          onClick={() => void openOpportunityDealPanel(row)}
+                          onDragStart={(event) => handleOpportunityDragStart(row.id, event)}
+                          onDragEnd={handleOpportunityDragEnd}
+                          onDragOver={(event) => {
+                            event.preventDefault()
+                            if (draggingOpportunityId) {
+                              setDragTargetStage(column.key)
+                              setDragTargetOpportunityId(row.id)
+                            }
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault()
+                            void handleOpportunityDrop(column.key, row.id)
+                          }}
+                        >
+                          <div className="space-y-3">
+                            {dragTargetStage === column.key && dragTargetOpportunityId === row.id && draggingOpportunityId !== row.id ? (
+                              <div className="rounded-full border border-dashed border-sky-300 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">
+                                Insertar antes de esta tarjeta
+                              </div>
+                            ) : null}
+                            <div className="flex items-start gap-3">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-[11px] font-semibold text-white shadow-sm">
+                                {getInitials(relationName)}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold leading-tight text-slate-950">{row.title}</p>
+                                    <p className="mt-0.5 truncate text-xs text-slate-500">{relationName}</p>
+                                  </div>
+                                  <div className="flex items-center gap-1 text-slate-400">
+                                    <GripVertical className="h-4 w-4" />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="rounded-xl bg-slate-50 px-3 py-2">
+                                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Valor</p>
+                                <p className="mt-1 text-sm font-semibold text-slate-950">{formatMoney(row.expectedValue, locale)}</p>
+                              </div>
+                              <div className={`rounded-xl border px-3 py-2 ${getProbabilitySurface(row.probabilityPct)}`}>
+                                <p className="text-[11px] uppercase tracking-[0.14em]">Probabilidad</p>
+                                <p className="mt-1 text-sm font-semibold">{row.probabilityPct}%</p>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Score</p>
+                                <p className="mt-1 text-sm font-semibold text-slate-950">{score}/100</p>
+                              </div>
+                              <div className={`rounded-xl border px-3 py-2 ${riskMeta.className}`}>
+                                <p className="text-[11px] uppercase tracking-[0.14em]">Riesgo</p>
+                                <p className="mt-1 text-sm font-semibold">{riskMeta.label}</p>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-1.5 text-[11px] text-slate-600">
+                              {origin ? <OriginBadge originKey={origin.key} label={origin.label} /> : null}
+                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
+                                <CalendarClock className="h-3.5 w-3.5 text-slate-400" />
+                                {getDaysToCloseLabel(row.expectedCloseAt, locale)}
+                              </span>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
+                                <UserRound className="h-3.5 w-3.5 text-slate-400" />
+                                {assigneeName}
+                              </span>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
+                                <Sparkles className="h-3.5 w-3.5 text-slate-400" />
+                                {row._count?.tasks ?? 0} tareas · {row._count?.activities ?? 0} actividades
+                              </span>
+                            </div>
+
+                            <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2 text-[11px] text-slate-600">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="truncate">{quoteLabel}</span>
+                                <span className="truncate text-slate-400">Actualizada {formatDate(row.updatedAt, locale, naText)}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                              {row.cotizacion ? (
+                                <Button asChild variant="ghost" className="h-8 rounded-full border border-sky-200 px-3 text-xs text-sky-700 hover:bg-sky-50 hover:text-sky-800" onClick={(event) => event.stopPropagation()}>
+                                  <Link href={`/dashboard/cotizador?id=${row.cotizacion.id}`}>
+                                    Ver cotización
+                                    <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
+                                  </Link>
+                                </Button>
+                              ) : row.cliente ? (
+                                <Button asChild variant="ghost" className="h-8 rounded-full border border-sky-200 px-3 text-xs text-sky-700 hover:bg-sky-50 hover:text-sky-800" onClick={(event) => event.stopPropagation()}>
+                                  <Link href={`/dashboard/cotizador?crmOpportunityId=${row.id}&clienteId=${row.cliente.id}&opportunityTitle=${encodeURIComponent(row.title)}`}>
+                                    Crear cotización
+                                    <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
+                                  </Link>
+                                </Button>
+                              ) : null}
+                              <Button variant="ghost" className="h-8 rounded-full border border-slate-200 px-3 text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-900" onClick={(event) => { event.stopPropagation(); void openEditOpportunityDialog(row) }}>
+                                Editar deal
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </CardContent>
+                </Card>
+              ))}
           </div>
         </div>
-      </section>
+      ) : null}
 
-      <Card className="rounded-[26px] border-slate-200 bg-white/90 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.35)]">
-        <CardContent className="grid gap-3 p-4 md:grid-cols-4 md:p-5">
-          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
-            <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estado lead</Label>
-            <Select value={leadStatusFilter} onValueChange={(value) => setLeadStatusFilter(value as 'ALL' | LeadStatus)}>
-              <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todos</SelectItem>
-                {LEAD_STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
-            <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Etapa oportunidad</Label>
-            <Select value={opportunityStageFilter} onValueChange={(value) => setOpportunityStageFilter(value as 'ALL' | OpportunityStage)}>
-              <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todas</SelectItem>
-                {stageSettings.map((item) => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
-            <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estado tarea</Label>
-            <Select value={taskStatusFilter} onValueChange={(value) => setTaskStatusFilter(value as 'ALL' | TaskStatus)}>
-              <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todas</SelectItem>
-                {TASK_STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-end rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3">
-            <Button variant="outline" className="h-11 w-full rounded-xl border-slate-200 bg-white" onClick={clearFilters}>Limpiar filtros</Button>
-          </div>
-        </CardContent>
-      </Card>
+      {opportunityView === 'list' ? (
+        <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
+          <CardHeader className="border-b border-slate-100 pb-5">
+            <CardTitle className="text-xl">Oportunidades ({opportunities.length})</CardTitle>
+            <CardDescription>Pipeline comercial con valor esperado, probabilidad y acceso directo al cotizador.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-4 md:p-5">
+            <div className="space-y-3">
+              {loading ? <p className="text-sm text-muted-foreground">Cargando...</p> : null}
+              {!loading && opportunities.length === 0 ? <p className="text-sm text-muted-foreground">No hay oportunidades para mostrar.</p> : null}
+              {opportunities.map((row) => {
+                const riskMeta = getOpportunityRiskMeta(row)
+                const score = getOpportunityScore(row)
+                const origin = row.originKey && row.originLabel
+                  ? { key: row.originKey, label: row.originLabel }
+                  : row.lead?.source
+                    ? getLeadSourceFallbackMeta(row.lead.source)
+                    : null
+                return <div key={row.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-lg font-semibold text-slate-900">{row.title}</span>
+                        <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ backgroundColor: `${getStageColor(row.stage) || '#f59e0b'}22`, color: getStageColor(row.stage) || '#b45309' }}>
+                          {getStageLabel(row.stage)}
+                        </span>
+                        {origin ? <OriginBadge originKey={origin.key} label={origin.label} /> : null}
+                      </div>
+                      <p className="text-sm text-slate-600">{row.lead?.nombre || row.cliente?.nombre || 'Sin relación'} · cierre estimado {formatDate(row.expectedCloseAt, locale, 'Sin fecha')}</p>
+                      <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                        <span>Actualizada: {formatDate(row.updatedAt, locale, naText)}</span>
+                        <span>Probabilidad: {row.probabilityPct}%</span>
+                        <span>Score: {score}/100</span>
+                        <span className={`rounded-full border px-2.5 py-1 font-semibold ${riskMeta.className}`}>{riskMeta.label}</span>
+                      </div>
+                    </div>
+                    <div className="min-w-[220px] rounded-2xl bg-slate-50 p-4 text-right">
+                      <p className="text-xs uppercase tracking-wide text-slate-400">Valor esperado</p>
+                      <p className="mt-2 text-2xl font-semibold text-slate-950">{formatMoney(row.expectedValue, locale)}</p>
+                      {row.cotizacion ? (
+                        <Button asChild variant="ghost" className="mt-3 h-auto p-0 text-sky-700 hover:text-sky-800">
+                          <Link href={`/dashboard/cotizador?id=${row.cotizacion.id}`}>Abrir {row.cotizacion.numero}</Link>
+                        </Button>
+                      ) : row.cliente ? (
+                        <Button asChild variant="ghost" className="mt-3 h-auto p-0 text-sky-700 hover:text-sky-800">
+                          <Link href={`/dashboard/cotizador?crmOpportunityId=${row.id}&clienteId=${row.cliente.id}&opportunityTitle=${encodeURIComponent(row.title)}`}>
+                            Crear cotización
+                          </Link>
+                        </Button>
+                      ) : (
+                        <p className="mt-3 text-xs text-amber-600">Convierte el lead a cliente para cotizar.</p>
+                      )}
+                      <Button variant="ghost" className="mt-2 h-auto p-0 text-slate-600 hover:text-slate-900" onClick={() => void openEditOpportunityDialog(row)}>Editar</Button>
+                    </div>
+                  </div>
+                </div>
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  )
 
+  return (
+    <div className="space-y-4.5 pb-4">
+      {isFocusedOpportunities ? (
+        <>
+          <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,116,144,0.18),_transparent_32%),linear-gradient(135deg,_#fffdf8_0%,_#f8fbff_48%,_#f2f7f4_100%)] shadow-[0_22px_52px_-36px_rgba(15,23,42,0.3)]">
+            <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(380px,0.85fr)] xl:items-start lg:p-6">
+              <div className="space-y-3">
+                <ErpBreadcrumbs
+                  items={[
+                    { label: 'Dashboard', href: '/dashboard' },
+                    { label: 'CRM', href: '/dashboard/crm' },
+                    { label: 'Oportunidades' },
+                  ]}
+                />
+                <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700 backdrop-blur">
+                  Pipeline CRM
+                </div>
+                <div className="space-y-1.5">
+                  <h1 className="max-w-2xl text-2xl font-semibold tracking-tight text-slate-950 lg:text-3xl">Oportunidades y pipeline comercial</h1>
+                  <p className="max-w-2xl text-[13px] leading-5 text-slate-600">Vista dedicada para consultar el embudo, mover deals, reaccionar a cierres vencidos y abrir cada oportunidad con menos ruido alrededor.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button asChild variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/85 px-4">
+                    <Link href="/dashboard/crm">Volver al panel comercial</Link>
+                  </Button>
+                  <Button asChild variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/85 px-4">
+                    <Link href="/dashboard/crm/conversations">Inbox omnicanal</Link>
+                  </Button>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:self-start">
+                <div className="min-w-0 rounded-xl border border-slate-200/80 bg-white/85 p-3.5 shadow-sm backdrop-blur">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Deals abiertos</p>
+                  <p className="mt-2.5 text-2xl font-semibold text-slate-950">{pipelineSummary.openCount}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">Negocios activos dentro del pipeline.</p>
+                </div>
+                <div className="min-w-0 rounded-xl border border-emerald-200/80 bg-[linear-gradient(180deg,_rgba(236,253,245,0.95),_rgba(255,255,255,0.9))] p-3.5 shadow-sm">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Valor ponderado</p>
+                  <p className="mt-2.5 text-2xl font-semibold text-emerald-950">{formatMoney(pipelineSummary.weightedValue, locale)}</p>
+                  <p className="mt-1 text-xs leading-5 text-emerald-700/80">Proyección priorizada por probabilidad.</p>
+                </div>
+                <div className="min-w-0 rounded-xl border border-amber-200/80 bg-[linear-gradient(180deg,_rgba(255,251,235,0.96),_rgba(255,255,255,0.9))] p-3.5 shadow-sm">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Cierres vencidos</p>
+                  <p className="mt-2.5 text-2xl font-semibold text-amber-950">{pipelineSummary.overdueCount}</p>
+                  <p className="mt-1 text-xs leading-5 text-amber-700/80">Deals que necesitan reacción inmediata.</p>
+                </div>
+                <div className="min-w-0 rounded-xl border border-sky-200/80 bg-[linear-gradient(180deg,_rgba(239,246,255,0.98),_rgba(255,255,255,0.9))] p-3.5 shadow-sm">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">Con cotización</p>
+                  <p className="mt-2.5 text-2xl font-semibold text-sky-950">{pipelineSummary.quotedCount}</p>
+                  <p className="mt-1 text-xs leading-5 text-sky-700/80">Oportunidades ya conectadas con propuesta.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <Card className="rounded-[26px] border-slate-200 bg-white/90 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.2)]">
+            <CardContent className="grid gap-2.5 p-3 md:grid-cols-[minmax(0,1.5fr)_220px_180px] md:p-4">
+              <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
+                <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Buscar deal</Label>
+                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por oportunidad, lead o cliente..." className="h-9 rounded-lg border-slate-200 bg-white" />
+              </div>
+              <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
+                <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Etapa</Label>
+                <Select value={opportunityStageFilter} onValueChange={(value) => setOpportunityStageFilter(value as 'ALL' | OpportunityStage)}>
+                  <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todas</SelectItem>
+                    {stageSettings.map((item) => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-end rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-2.5">
+                <Button variant="outline" className="h-9 w-full rounded-lg border-slate-200 bg-white" onClick={clearFilters}>Limpiar filtros</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      ) : (
+        <>
+          <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,116,144,0.18),_transparent_32%),linear-gradient(135deg,_#fffdf8_0%,_#f8fbff_48%,_#f2f7f4_100%)] shadow-[0_22px_52px_-36px_rgba(15,23,42,0.3)]">
+            <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(340px,0.8fr)] xl:items-start lg:p-6">
+              <div className="space-y-3">
+                <ErpBreadcrumbs
+                  items={[
+                    { label: 'Dashboard', href: '/dashboard' },
+                    { label: 'CRM' },
+                  ]}
+                />
+                <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700 backdrop-blur">
+                  Frente comercial
+                </div>
+                <div className="space-y-1.5">
+                  <h1 className="max-w-2xl text-2xl font-semibold tracking-tight text-slate-950 lg:text-3xl">Un solo embudo comercial: captación, pipeline y seguimiento.</h1>
+                  <p className="max-w-2xl text-[13px] leading-5 text-slate-600">La lógica sigue separada entre leads y oportunidades, pero la operación se lee como un mismo flujo: captar, calificar, convertir y cerrar con contexto ERP.</p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <div className="relative min-w-0 max-w-xl flex-1">
+                    <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por lead, oportunidad o cliente..." className="h-10 rounded-xl border-slate-200 bg-white/90 pr-4 shadow-sm" />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button asChild variant="outline" className="h-9 rounded-xl border-emerald-200 bg-emerald-50/80 px-4 text-emerald-800 hover:bg-emerald-100">
+                      <Link href="/dashboard/crm/chatbot">Panel chatbot</Link>
+                    </Button>
+                    <Button asChild variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/80 px-4">
+                      <Link href="/dashboard/crm/conversations">Bandeja omnicanal</Link>
+                    </Button>
+                    <Button asChild variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/80 px-4">
+                      <Link href="/dashboard/crm/integraciones">Integraciones</Link>
+                    </Button>
+                    <Button variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/80 px-4" onClick={openStageDialog}>Configurar pipeline</Button>
+                    <Button variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/80 px-4" onClick={() => void loadData()}>Refrescar</Button>
+                  </div>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3 xl:self-start">
+                <div className="min-w-0 rounded-xl border border-slate-200/80 bg-white/85 p-3.5 shadow-sm backdrop-blur">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Captación activa</p>
+                  <p className="mt-2.5 text-2xl font-semibold text-slate-950">{stats.activeLeads}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">Prospectos todavía en calificación.</p>
+                </div>
+                <div className="min-w-0 rounded-xl border border-emerald-200/80 bg-[linear-gradient(180deg,_rgba(236,253,245,0.95),_rgba(255,255,255,0.9))] p-3.5 shadow-sm">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Pipeline estimado</p>
+                  <p className="mt-2.5 text-2xl font-semibold text-emerald-950">{formatMoney(stats.pipelineValue, locale)}</p>
+                  <p className="mt-1 text-xs leading-5 text-emerald-700/80">Valor proyectado de oportunidades activas.</p>
+                </div>
+                <div className="min-w-0 rounded-xl border border-amber-200/80 bg-[linear-gradient(180deg,_rgba(255,251,235,0.96),_rgba(255,255,255,0.9))] p-3.5 shadow-sm">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Tareas abiertas</p>
+                  <p className="mt-2.5 text-2xl font-semibold text-amber-950">{stats.openTasks}</p>
+                  <p className="mt-1 text-xs leading-5 text-amber-700/80">Pendientes que requieren acción del equipo.</p>
+                </div>
+                <div className="sm:col-span-3 min-w-0 rounded-xl border border-slate-200/80 bg-white/85 p-3.5 shadow-sm backdrop-blur">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Origen principal de captación</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {topOrigins.length === 0 ? <span className="text-xs text-slate-500">Sin datos de origen aún.</span> : null}
+                    {topOrigins.map((item) => <span key={item.label} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">{item.label} · {item.count}</span>)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <Card className="rounded-[26px] border-slate-200 bg-white/90 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.35)]">
+            <CardContent className="grid gap-2.5 p-3 md:grid-cols-4 md:p-4">
+              <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
+                <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estado lead</Label>
+                <Select value={leadStatusFilter} onValueChange={(value) => setLeadStatusFilter(value as 'ALL' | LeadStatus)}>
+                  <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todos</SelectItem>
+                    {LEAD_STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
+                <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Etapa oportunidad</Label>
+                <Select value={opportunityStageFilter} onValueChange={(value) => setOpportunityStageFilter(value as 'ALL' | OpportunityStage)}>
+                  <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todas</SelectItem>
+                    {stageSettings.map((item) => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
+                <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estado tarea</Label>
+                <Select value={taskStatusFilter} onValueChange={(value) => setTaskStatusFilter(value as 'ALL' | TaskStatus)}>
+                  <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todas</SelectItem>
+                    {TASK_STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-end rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-2.5">
+                <Button variant="outline" className="h-9 w-full rounded-lg border-slate-200 bg-white" onClick={clearFilters}>Limpiar filtros</Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[26px] border-slate-200 bg-white/95 shadow-[0_20px_44px_-34px_rgba(15,23,42,0.3)]">
+            <CardHeader className="border-b border-slate-100 pb-4">
+              <CardTitle className="text-base">Prioridades de hoy</CardTitle>
+              <CardDescription>Vista rápida para que el equipo comercial sepa dónde actuar primero sin recorrer todas las vistas del embudo.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
+              {priorities.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={item.action}
+                  className={`grid gap-2 rounded-2xl border p-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${item.tone}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-70">{item.title}</p>
+                      <p className="mt-2 text-2xl font-semibold">{item.count}</p>
+                    </div>
+                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-current/10 bg-white/70 text-xs font-semibold">
+                      <ArrowUpRight className="h-4 w-4" />
+                    </span>
+                  </div>
+                  <p className="text-sm leading-5 opacity-80">{item.hint}</p>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {isFocusedOpportunities ? opportunitiesWorkspace : (
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'leads' | 'opportunities' | 'tasks')}>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <TabsList className="h-auto rounded-2xl border border-slate-200 bg-slate-50 p-1">
-            <TabsTrigger value="leads" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">Leads</TabsTrigger>
-            <TabsTrigger value="opportunities" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">Oportunidades</TabsTrigger>
-            <TabsTrigger value="tasks" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">Tareas</TabsTrigger>
-          </TabsList>
+        <div className="space-y-3">
+          <div className="grid gap-2.5 rounded-[24px] border border-slate-200 bg-white/90 p-3.5 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.25)] md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">01 · Captación</p>
+              <p className="mt-2 text-sm font-semibold text-slate-950">Leads aún en validación comercial.</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Aquí se limpia origen, datos, prioridad y se decide si el prospecto merece pasar al pipeline.</p>
+            </div>
+            <div className="rounded-2xl border border-emerald-200 bg-[linear-gradient(180deg,_rgba(236,253,245,0.92),_#ffffff)] p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">02 · Pipeline</p>
+              <p className="mt-2 text-sm font-semibold text-slate-950">Oportunidades con valor, probabilidad y cierre.</p>
+              <p className="mt-1 text-xs leading-5 text-slate-600">Aquí vive la configuración del pipeline, el forecast y la conexión con cotizaciones.</p>
+            </div>
+            <div className="rounded-2xl border border-amber-200 bg-[linear-gradient(180deg,_rgba(255,251,235,0.95),_#ffffff)] p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">03 · Seguimiento</p>
+              <p className="mt-2 text-sm font-semibold text-slate-950">Tareas y pendientes que mueven el embudo.</p>
+              <p className="mt-1 text-xs leading-5 text-slate-600">No compite con captación ni pipeline: sirve para ejecutar lo que cada etapa exige.</p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <TabsList className="h-auto rounded-2xl border border-slate-200 bg-slate-50 p-1">
+              <TabsTrigger value="leads" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">Captación</TabsTrigger>
+              <TabsTrigger value="opportunities" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">Pipeline</TabsTrigger>
+              <TabsTrigger value="tasks" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">Seguimiento</TabsTrigger>
+            </TabsList>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
               <Link href="/dashboard/crm/agenda">Agenda CRM</Link>
@@ -930,16 +1677,55 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
             <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
               <Link href="/dashboard/crm/conversations">Inbox omnicanal</Link>
             </Button>
-            <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={openCreateLeadDialog}>Nuevo lead</Button>
-            <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={openCreateTaskDialog}>Nueva tarea</Button>
+            <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={openCreateLeadDialog}>Nuevo prospecto</Button>
+            <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={openCreateTaskDialog}>Nuevo seguimiento</Button>
+          </div>
           </div>
         </div>
 
         <TabsContent value="leads" className="space-y-4 pt-4">
+          <Card className="rounded-[26px] border-slate-200 bg-white/95 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.28)]">
+            <CardHeader className="border-b border-slate-100 pb-4">
+              <CardTitle className="text-base">Cola de captación priorizada</CardTitle>
+              <CardDescription>Prospectos que todavía están en calificación y ya piden una llamada, mensaje o tarea por falta de contacto reciente.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+              {leadFollowUpQueue.length === 0 ? <p className="text-sm text-slate-500">No hay leads sin contacto relevante en este momento.</p> : null}
+              {leadFollowUpQueue.map(({ lead, daysWithoutTouch, priority }) => (
+                <div key={lead.id} className="rounded-2xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] p-3.5 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <Link href={`/dashboard/crm/leads/${lead.id}`} className="text-sm font-semibold text-sky-700 hover:text-sky-800 hover:underline">
+                        {lead.nombre}
+                      </Link>
+                      <p className="mt-1 text-xs text-slate-500">{lead.empresaNombre || lead.email || lead.telefono || 'Sin dato principal'}</p>
+                    </div>
+                    <span className={priority === 'alta' ? 'rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-700' : priority === 'media' ? 'rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700' : 'rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700'}>
+                      {priority}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">{daysWithoutTouch} d sin contacto</span>
+                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">{lead._count?.opportunities ?? 0} oportunidades</span>
+                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">{lead._count?.tasks ?? 0} tareas</span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button asChild variant="outline" className="h-8 rounded-full px-3 text-xs">
+                      <Link href={`/dashboard/crm/agenda?leadId=${lead.id}`}>Agendar</Link>
+                    </Button>
+                    <Button variant="outline" className="h-8 rounded-full px-3 text-xs" onClick={() => void openEditLeadDialog(lead)}>
+                      Editar
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
           <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
             <CardHeader className="border-b border-slate-100 pb-5">
-              <CardTitle className="text-xl">Leads ({leads.length})</CardTitle>
-              <CardDescription>Prospectos comerciales con acceso rápido al detalle, timeline y conversión.</CardDescription>
+              <CardTitle className="text-xl">Captación ({leads.length})</CardTitle>
+              <CardDescription>Prospectos comerciales en pre-calificación, con acceso rápido al detalle, timeline y paso al pipeline.</CardDescription>
             </CardHeader>
             <CardContent className="p-4 md:p-5">
               <div className="space-y-3">
@@ -947,6 +1733,8 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
                 {!loading && leads.length === 0 ? <p className="text-sm text-muted-foreground">No hay leads para mostrar.</p> : null}
                 {leads.map((lead) => {
                   const origin = lead.originKey && lead.originLabel ? { key: lead.originKey, label: lead.originLabel } : getLeadSourceFallbackMeta(lead.source)
+                  const duplicateSignals = leadDuplicateSignals.get(lead.id) || []
+                  const activeOpportunity = activeOpportunityByLeadId.get(lead.id)
                   return (
                     <div key={lead.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -962,6 +1750,15 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
                             <p>{lead.empresaNombre || 'Sin empresa'} · {lead.email || lead.telefono || lead.ciudad || naText}</p>
                             <p>Última actividad: {formatDate(lead.lastActivityAt || lead.createdAt, locale, naText)}</p>
                           </div>
+                          {duplicateSignals.length ? (
+                            <div className="flex flex-wrap gap-2 pt-1">
+                              {duplicateSignals.map((signal) => (
+                                <span key={signal} className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800">
+                                  {signal}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 lg:flex-nowrap">
                           <div className="grid min-w-[132px] grid-cols-[auto_1fr] items-center gap-x-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
@@ -986,7 +1783,14 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
                             className="h-10 rounded-xl border border-slate-200 px-3 text-sky-700 hover:bg-sky-50 hover:text-sky-800"
                             onClick={() => void openEditLeadDialog(lead)}
                           >
-                            Editar lead
+                            Editar prospecto
+                          </Button>
+                          <Button
+                            variant={activeOpportunity ? 'outline' : 'default'}
+                            className={activeOpportunity ? 'h-10 rounded-xl border-emerald-200 bg-emerald-50 px-3 text-emerald-800 hover:bg-emerald-100' : 'h-10 rounded-xl bg-slate-950 px-3 text-white hover:bg-slate-800'}
+                            onClick={() => openLeadInPipeline(lead)}
+                          >
+                            {activeOpportunity ? 'Abrir en pipeline' : 'Promover a pipeline'}
                           </Button>
                         </div>
                       </div>
@@ -998,294 +1802,13 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
           </Card>
         </TabsContent>
 
-        <TabsContent value="opportunities" className="space-y-4 pt-4">
-          <div className="flex items-center justify-end gap-2">
-            <Button variant={opportunityView === 'list' ? 'default' : 'outline'} className="rounded-xl" onClick={() => setOpportunityView('list')}>
-              Lista
-            </Button>
-            <Button variant={opportunityView === 'pipeline' ? 'default' : 'outline'} className="rounded-xl" onClick={() => setOpportunityView('pipeline')}>
-              Pipeline
-            </Button>
-          </div>
-
-          {opportunityView === 'pipeline' ? (
-            <div className="space-y-4">
-              <Card className="rounded-[26px] border-slate-200 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
-                <CardContent className="grid gap-3 p-4 md:grid-cols-4 md:p-5">
-                  <div className="rounded-2xl border border-slate-200 bg-white/85 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Oportunidades abiertas</p>
-                    <p className="mt-2 text-3xl font-semibold text-slate-950">{pipelineSummary.openCount}</p>
-                    <p className="mt-1 text-xs text-slate-500">Negocios en movimiento dentro del embudo.</p>
-                  </div>
-                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Valor ponderado</p>
-                    <p className="mt-2 text-3xl font-semibold text-emerald-950">{formatMoney(pipelineSummary.weightedValue, locale)}</p>
-                    <p className="mt-1 text-xs text-emerald-700/80">Proyección ajustada por probabilidad de cierre.</p>
-                  </div>
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50/75 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Cierres vencidos</p>
-                    <p className="mt-2 text-3xl font-semibold text-amber-950">{pipelineSummary.overdueCount}</p>
-                    <p className="mt-1 text-xs text-amber-700/80">Oportunidades que requieren reacción inmediata.</p>
-                  </div>
-                  <div className="rounded-2xl border border-sky-200 bg-sky-50/75 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">Con cotización</p>
-                    <p className="mt-2 text-3xl font-semibold text-sky-950">{pipelineSummary.quotedCount}</p>
-                    <p className="mt-1 text-xs text-sky-700/80">Negocios con propuesta formal vinculada.</p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="grid grid-flow-col auto-cols-[minmax(280px,1fr)] gap-4 overflow-x-auto pb-2">
-                  {opportunitiesByStage.map((column) => (
-                    <Card
-                      key={column.key}
-                      className={`min-w-0 overflow-hidden rounded-[24px] border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)] transition-all ${dragTargetStage === column.key ? 'ring-2 ring-sky-400 shadow-[0_24px_50px_-30px_rgba(14,165,233,0.35)]' : ''}`}
-                      onDragOver={(event) => {
-                        event.preventDefault()
-                        if (draggingOpportunityId) {
-                          setDragTargetStage(column.key)
-                          setDragTargetOpportunityId(null)
-                        }
-                      }}
-                      onDragLeave={() => {
-                        if (dragTargetStage === column.key) {
-                          setDragTargetStage(null)
-                        }
-                      }}
-                      onDrop={(event) => {
-                        event.preventDefault()
-                        void handleOpportunityDrop(column.key, null)
-                      }}
-                    >
-                      <CardHeader className="border-b border-slate-100 px-4 pb-3 pt-4" style={{ background: `linear-gradient(180deg, ${withAlpha(column.color, '16', 'rgba(148,163,184,0.12)')}, rgba(255,255,255,0.98))` }}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="space-y-1.5">
-                            <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-                              <CircleDot className="h-3.5 w-3.5" style={{ color: column.color || '#64748b' }} />
-                              {column.label}
-                            </div>
-                            <CardDescription>{formatMoney(column.total, locale)} proyectado</CardDescription>
-                          </div>
-                          <div className="flex items-start gap-2">
-                            <button
-                              type="button"
-                              className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:text-sky-700"
-                              onClick={() => openCreateOpportunityDialog(column.key)}
-                              title={`Nueva carta en ${column.label}`}
-                              aria-label={`Nueva carta en ${column.label}`}
-                            >
-                              <Plus className="h-5 w-5" />
-                            </button>
-                            <div className="rounded-2xl bg-white/85 px-3 py-1.5 text-right shadow-sm">
-                              <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Deals</p>
-                              <p className="text-base font-semibold text-slate-900">{column.items.length}</p>
-                            </div>
-                          </div>
-                        </div>
-                        {dragTargetStage === column.key ? (
-                          <div className="mt-2 rounded-2xl border border-dashed border-sky-300 bg-sky-50/80 px-3 py-2 text-xs font-medium text-sky-700">
-                            Suelta aquí para mover la oportunidad a {column.label.toLowerCase()}.
-                          </div>
-                        ) : null}
-                      </CardHeader>
-                      <CardContent className="space-y-2.5 p-3">
-                        <button
-                          type="button"
-                          className="flex w-full items-center justify-center gap-2 rounded-[18px] border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800"
-                          onClick={() => openCreateOpportunityDialog(column.key)}
-                        >
-                          <Plus className="h-4 w-4" />
-                          Agregar carta en {column.label.toLowerCase()}
-                        </button>
-                        {column.items.length === 0 ? (
-                          <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-                            <p className="text-sm font-medium text-slate-600">Sin oportunidades en esta etapa</p>
-                            <p className="mt-1 text-xs text-slate-500">Arrastra una tarjeta hasta aquí para actualizar el pipeline.</p>
-                          </div>
-                        ) : null}
-                        {column.items.map((row) => {
-                          const relationName = row.cliente?.nombre || row.lead?.nombre || 'Sin relación'
-                          const assigneeName = row.assignedTo?.name || row.assignedTo?.email || 'Sin responsable'
-                          const quoteLabel = row.cotizacion?.numero || 'Sin cotización'
-                          const origin = row.originKey && row.originLabel
-                            ? { key: row.originKey, label: row.originLabel }
-                            : row.lead?.source
-                              ? getLeadSourceFallbackMeta(row.lead.source)
-                              : null
-                          return (
-                            <div
-                              key={row.id}
-                              className={row.id === draggingOpportunityId
-                                ? 'rounded-[22px] border border-dashed border-sky-300 bg-sky-50/70 p-3.5 opacity-75'
-                                : 'rounded-[22px] border border-slate-200 bg-white p-3.5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md'}
-                              draggable
-                              onClick={() => void openOpportunityDealPanel(row)}
-                              onDragStart={(event) => handleOpportunityDragStart(row.id, event)}
-                              onDragEnd={handleOpportunityDragEnd}
-                              onDragOver={(event) => {
-                                event.preventDefault()
-                                if (draggingOpportunityId) {
-                                  setDragTargetStage(column.key)
-                                  setDragTargetOpportunityId(row.id)
-                                }
-                              }}
-                              onDrop={(event) => {
-                                event.preventDefault()
-                                void handleOpportunityDrop(column.key, row.id)
-                              }}
-                            >
-                              <div className="space-y-3">
-                                {dragTargetStage === column.key && dragTargetOpportunityId === row.id && draggingOpportunityId !== row.id ? (
-                                  <div className="rounded-full border border-dashed border-sky-300 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">
-                                    Insertar antes de esta tarjeta
-                                  </div>
-                                ) : null}
-                                <div className="flex items-start gap-3">
-                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-[11px] font-semibold text-white shadow-sm">
-                                    {getInitials(relationName)}
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0">
-                                        <p className="truncate text-sm font-semibold leading-tight text-slate-950">{row.title}</p>
-                                        <p className="mt-0.5 truncate text-xs text-slate-500">{relationName}</p>
-                                      </div>
-                                      <div className="flex items-center gap-1 text-slate-400">
-                                        <GripVertical className="h-4 w-4" />
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div className="rounded-xl bg-slate-50 px-3 py-2">
-                                    <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Valor</p>
-                                    <p className="mt-1 text-sm font-semibold text-slate-950">{formatMoney(row.expectedValue, locale)}</p>
-                                  </div>
-                                  <div className={`rounded-xl border px-3 py-2 ${getProbabilitySurface(row.probabilityPct)}`}>
-                                    <p className="text-[11px] uppercase tracking-[0.14em]">Probabilidad</p>
-                                    <p className="mt-1 text-sm font-semibold">{row.probabilityPct}%</p>
-                                  </div>
-                                </div>
-
-                                <div className="flex flex-wrap gap-1.5 text-[11px] text-slate-600">
-                                  {origin ? <OriginBadge originKey={origin.key} label={origin.label} /> : null}
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
-                                    <CalendarClock className="h-3.5 w-3.5 text-slate-400" />
-                                    {getDaysToCloseLabel(row.expectedCloseAt, locale)}
-                                  </span>
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
-                                    <UserRound className="h-3.5 w-3.5 text-slate-400" />
-                                    {assigneeName}
-                                  </span>
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
-                                    <Sparkles className="h-3.5 w-3.5 text-slate-400" />
-                                    {row._count?.tasks ?? 0} tareas · {row._count?.activities ?? 0} actividades
-                                  </span>
-                                </div>
-
-                                <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2 text-[11px] text-slate-600">
-                                  <div className="flex items-center justify-between gap-3">
-                                    <span className="truncate">{quoteLabel}</span>
-                                    <span className="truncate text-slate-400">Actualizada {formatDate(row.updatedAt, locale, naText)}</span>
-                                  </div>
-                                </div>
-
-                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                  {row.cotizacion ? (
-                                    <Button asChild variant="ghost" className="h-8 rounded-full border border-sky-200 px-3 text-xs text-sky-700 hover:bg-sky-50 hover:text-sky-800" onClick={(event) => event.stopPropagation()}>
-                                      <Link href={`/dashboard/cotizador?id=${row.cotizacion.id}`}>
-                                        Ver cotización
-                                        <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
-                                      </Link>
-                                    </Button>
-                                  ) : row.cliente ? (
-                                    <Button asChild variant="ghost" className="h-8 rounded-full border border-sky-200 px-3 text-xs text-sky-700 hover:bg-sky-50 hover:text-sky-800" onClick={(event) => event.stopPropagation()}>
-                                      <Link href={`/dashboard/cotizador?crmOpportunityId=${row.id}&clienteId=${row.cliente.id}&opportunityTitle=${encodeURIComponent(row.title)}`}>
-                                        Crear cotización
-                                        <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
-                                      </Link>
-                                    </Button>
-                                  ) : null}
-                                  <Button variant="ghost" className="h-8 rounded-full border border-slate-200 px-3 text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-900" onClick={(event) => { event.stopPropagation(); void openEditOpportunityDialog(row) }}>
-                                    Editar deal
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </CardContent>
-                    </Card>
-                  ))}
-              </div>
-            </div>
-          ) : null}
-
-          {opportunityView === 'list' ? (
-            <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
-              <CardHeader className="border-b border-slate-100 pb-5">
-                <CardTitle className="text-xl">Oportunidades ({opportunities.length})</CardTitle>
-                <CardDescription>Pipeline comercial con valor esperado, probabilidad y acceso directo al cotizador.</CardDescription>
-              </CardHeader>
-              <CardContent className="p-4 md:p-5">
-                <div className="space-y-3">
-                  {loading ? <p className="text-sm text-muted-foreground">Cargando...</p> : null}
-                  {!loading && opportunities.length === 0 ? <p className="text-sm text-muted-foreground">No hay oportunidades para mostrar.</p> : null}
-                  {opportunities.map((row) => {
-                    const origin = row.originKey && row.originLabel
-                      ? { key: row.originKey, label: row.originLabel }
-                      : row.lead?.source
-                        ? getLeadSourceFallbackMeta(row.lead.source)
-                        : null
-                    return <div key={row.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
-                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-lg font-semibold text-slate-900">{row.title}</span>
-                            <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ backgroundColor: `${getStageColor(row.stage) || '#f59e0b'}22`, color: getStageColor(row.stage) || '#b45309' }}>
-                              {getStageLabel(row.stage)}
-                            </span>
-                            {origin ? <OriginBadge originKey={origin.key} label={origin.label} /> : null}
-                          </div>
-                          <p className="text-sm text-slate-600">{row.lead?.nombre || row.cliente?.nombre || 'Sin relación'} · cierre estimado {formatDate(row.expectedCloseAt, locale, 'Sin fecha')}</p>
-                          <div className="flex flex-wrap gap-4 text-xs text-slate-500">
-                            <span>Actualizada: {formatDate(row.updatedAt, locale, naText)}</span>
-                            <span>Probabilidad: {row.probabilityPct}%</span>
-                          </div>
-                        </div>
-                        <div className="min-w-[220px] rounded-2xl bg-slate-50 p-4 text-right">
-                          <p className="text-xs uppercase tracking-wide text-slate-400">Valor esperado</p>
-                          <p className="mt-2 text-2xl font-semibold text-slate-950">{formatMoney(row.expectedValue, locale)}</p>
-                          {row.cotizacion ? (
-                            <Button asChild variant="ghost" className="mt-3 h-auto p-0 text-sky-700 hover:text-sky-800">
-                              <Link href={`/dashboard/cotizador?id=${row.cotizacion.id}`}>Abrir {row.cotizacion.numero}</Link>
-                            </Button>
-                          ) : row.cliente ? (
-                            <Button asChild variant="ghost" className="mt-3 h-auto p-0 text-sky-700 hover:text-sky-800">
-                              <Link href={`/dashboard/cotizador?crmOpportunityId=${row.id}&clienteId=${row.cliente.id}&opportunityTitle=${encodeURIComponent(row.title)}`}>
-                                Crear cotización
-                              </Link>
-                            </Button>
-                          ) : (
-                            <p className="mt-3 text-xs text-amber-600">Convierte el lead a cliente para cotizar.</p>
-                          )}
-                          <Button variant="ghost" className="mt-2 h-auto p-0 text-slate-600 hover:text-slate-900" onClick={() => void openEditOpportunityDialog(row)}>Editar</Button>
-                        </div>
-                      </div>
-                    </div>
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          ) : null}
-        </TabsContent>
+        <TabsContent value="opportunities">{opportunitiesWorkspace}</TabsContent>
 
         <TabsContent value="tasks" className="space-y-4 pt-4">
           <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
             <CardHeader className="border-b border-slate-100 pb-5">
-              <CardTitle className="text-xl">Tareas ({tasks.length})</CardTitle>
-              <CardDescription>Seguimiento comercial pendiente, reprogramación y cierre de pendientes.</CardDescription>
+              <CardTitle className="text-xl">Seguimiento ({tasks.length})</CardTitle>
+              <CardDescription>Tareas comerciales que empujan captación y pipeline sin mezclar ambas lógicas.</CardDescription>
             </CardHeader>
             <CardContent className="p-4 md:p-5">
               <div className="space-y-3">
@@ -1332,6 +1855,7 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
           </Card>
         </TabsContent>
       </Tabs>
+      )}
 
       <Dialog open={opportunityDealOpen} onOpenChange={setOpportunityDealOpen}>
         <DialogContent className="ml-auto h-[100vh] max-h-[100vh] w-full max-w-2xl rounded-none rounded-l-[30px] border-l border-slate-200 bg-white/98 p-0 shadow-[0_28px_80px_-30px_rgba(15,23,42,0.38)] sm:max-w-2xl">
@@ -1456,7 +1980,19 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
               <Label>Empresa</Label>
               <Input value={leadForm.empresaNombre} onChange={(e) => setLeadForm((prev) => ({ ...prev, empresaNombre: e.target.value }))} />
             </div>
+            {leadFormDuplicateSignals.length ? (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3 text-sm text-amber-900 md:col-span-2">
+                <p className="font-semibold">Posible duplicado detectado</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {leadFormDuplicateSignals.map((signal) => <span key={signal} className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-xs font-semibold text-amber-800">{signal}</span>)}
+                </div>
+              </div>
+            ) : null}
             <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label>Documento</Label>
+                <Input value={leadForm.documento} onChange={(e) => setLeadForm((prev) => ({ ...prev, documento: e.target.value }))} />
+              </div>
               <div className="grid gap-2">
                 <Label>Email</Label>
                 <Input value={leadForm.email} onChange={(e) => setLeadForm((prev) => ({ ...prev, email: e.target.value }))} />
@@ -1464,6 +2000,10 @@ export function CrmDashboardClient(props?: { initialTab?: 'leads' | 'opportuniti
               <div className="grid gap-2">
                 <Label>Teléfono</Label>
                 <Input value={leadForm.telefono} onChange={(e) => setLeadForm((prev) => ({ ...prev, telefono: e.target.value }))} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Celular</Label>
+                <Input value={leadForm.celular} onChange={(e) => setLeadForm((prev) => ({ ...prev, celular: e.target.value }))} />
               </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">

@@ -359,7 +359,7 @@ export function CrmFilesManagerClient() {
   }
 
   return (
-    <div className="space-y-6 pb-6">
+    <div className="space-y-4.5 pb-4">
       <ErpPageHero
         breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'CRM', href: '/dashboard/crm' }, { label: 'Administrador de archivos' }]}
         eyebrow="Repositorio operativo"

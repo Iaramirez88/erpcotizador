@@ -17,7 +17,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { LucideIcon } from 'lucide-react'
-import { Activity, BarChart3, Bot, Facebook, Globe, Goal, Instagram, Mail, MessageCircle, Sparkles, Target, TrendingUp } from 'lucide-react'
+import { Activity, BarChart3, Bot, Download, Eye, Facebook, Globe, Goal, Instagram, Mail, MessageCircle, Sparkles, Target, TrendingUp, Upload } from 'lucide-react'
 import { ErpPageHero, ErpSectionHeading } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -54,6 +54,14 @@ import {
   type CrmBridgeKind,
   type CrmChannelProvider,
 } from '@/lib/crm-integration-assets'
+import {
+  createWebFormEntityId,
+  normalizeWebFormCustomFields,
+  normalizeWebFormVariables,
+  type WebFormCustomField,
+  type WebFormCustomFieldType,
+  type WebFormVariable,
+} from '@/lib/crm-web-form-schema'
 
 type ChannelStatus = 'DRAFT' | 'TESTING' | 'ACTIVE' | 'DISABLED' | 'ERROR'
 
@@ -110,10 +118,31 @@ type WizardStep = 'template' | 'config' | 'review'
 type ChatbotPreviewMode = 'floating' | 'compact' | 'expanded'
 type ChatbotPreviewViewport = 'desktop' | 'mobile'
 type CrmWorkspaceView = 'operations' | 'metrics'
+type CrmOperationsPanelView = 'preview' | 'readiness' | 'assets'
 type LauncherPosition = 'right' | 'left'
 type LauncherSize = 'compact' | 'standard' | 'large'
 type PanelShadowPreset = 'soft' | 'medium' | 'strong'
 type ChatbotBuilderSection = 'brand' | 'flow' | 'launcher' | 'copy'
+type ChatbotWizardSection = 'base' | 'brand' | 'launcher' | 'copy'
+type WebFormConfigSection = 'base' | 'styles' | 'fields' | 'variables' | 'size' | 'texts' | 'terms' | 'technical'
+
+type GoogleSheetsActionState = {
+  loadingPreview: boolean
+  loadingImport: boolean
+  previewResult: null | {
+    csvUrl: string
+    totalRows: number
+    headers: string[]
+    preview: Array<Record<string, unknown>>
+  }
+  importResult: null | {
+    importedRows: number
+    skippedRows: number
+    opportunitiesCreated: number
+    processedRows: number
+  }
+  error: string
+}
 
 type ChatbotCanvasNode = {
   stage: ChatbotFlowStage
@@ -199,6 +228,13 @@ type WebFormBuilderState = Pick<ChannelFormState,
   | 'productPlaceholder'
   | 'messageLabel'
   | 'messagePlaceholder'
+  | 'webFormCustomFields'
+  | 'webFormVariables'
+  | 'termsEnabled'
+  | 'termsRequired'
+  | 'termsLabel'
+  | 'termsLinkText'
+  | 'termsLinkUrl'
 >
 
 type ChatbotBuilderState = Pick<ChannelFormState,
@@ -233,6 +269,38 @@ type ChatbotBuilderState = Pick<ChannelFormState,
 
 type ChatbotFlowStageId = ChannelFormState['flowStages'][number]['id']
 
+const WEB_FORM_SECTION_OPTIONS: Array<{ id: WebFormConfigSection; label: string }> = [
+  { id: 'base', label: 'Base del canal' },
+  { id: 'styles', label: 'Estilos' },
+  { id: 'fields', label: 'Campos' },
+  { id: 'variables', label: 'Variables' },
+  { id: 'size', label: 'Tamaño' },
+  { id: 'texts', label: 'Textos' },
+  { id: 'terms', label: 'Términos' },
+  { id: 'technical', label: 'Configuración técnica' },
+]
+
+const WEB_FORM_CUSTOM_FIELD_TYPE_OPTIONS: Array<{ value: WebFormCustomFieldType; label: string }> = [
+  { value: 'input', label: 'Input' },
+  { value: 'textarea', label: 'Textarea' },
+  { value: 'phone', label: 'Phone' },
+  { value: 'email', label: 'Email' },
+  { value: 'select', label: 'Select' },
+  { value: 'check', label: 'Check' },
+  { value: 'file', label: 'File' },
+]
+
+const CHATBOT_WIZARD_SECTION_OPTIONS: Array<{ id: ChatbotWizardSection; label: string }> = [
+  { id: 'base', label: 'Base del canal' },
+  { id: 'brand', label: 'Marca y panel' },
+  { id: 'launcher', label: 'Launcher' },
+  { id: 'copy', label: 'Captura y copy' },
+]
+
+function getWebFormFieldTypeLabel(type: WebFormCustomFieldType) {
+  return WEB_FORM_CUSTOM_FIELD_TYPE_OPTIONS.find((item) => item.value === type)?.label ?? type
+}
+
 function getInitialChannelForm() {
   return {
     templateKey: 'web-form',
@@ -241,6 +309,12 @@ function getInitialChannelForm() {
     status: 'TESTING' as ChannelStatus,
     testingToken: makeDemoToken(),
     bridgeKind: 'GENERIC' as CrmBridgeKind,
+    googleSheetsSpreadsheetId: '',
+    googleSheetsSheetName: 'Leads',
+    googleSheetsPublishedCsvUrl: '',
+    googleSheetsRowLimit: '200',
+    googleSheetsImportMode: 'LEADS_ONLY' as 'LEADS_ONLY' | 'LEADS_AND_OPPORTUNITIES',
+    googleSheetsOpportunityStage: 'QUALIFIED',
     externalAccountId: '',
     externalPageId: '',
     externalPhoneNumberId: '',
@@ -305,6 +379,23 @@ function getInitialChannelForm() {
     productPlaceholder: '¿Qué producto necesitas?',
     messageLabel: 'Mensaje',
     messagePlaceholder: 'Cuéntanos qué necesitas y para cuándo.',
+    webFormCustomFields: [] as WebFormCustomField[],
+    webFormVariables: [] as WebFormVariable[],
+    termsEnabled: false,
+    termsRequired: true,
+    termsLabel: 'Acepto el tratamiento de datos personales.',
+    termsLinkText: 'Leer términos',
+    termsLinkUrl: '',
+  }
+}
+
+function getInitialGoogleSheetsActionState(): GoogleSheetsActionState {
+  return {
+    loadingPreview: false,
+    loadingImport: false,
+    previewResult: null,
+    importResult: null,
+    error: '',
   }
 }
 
@@ -320,6 +411,7 @@ const TEMPLATE_PRESETS: TemplatePreset[] = [
   { key: 'instagram-dm', name: 'Instagram DM', provider: 'INSTAGRAM_DM', description: 'Captura mensajes de Instagram y llévalos al inbox del CRM.', connectionModel: 'Webhook nativo', readiness: 'Demo avanzada', focus: 'DMs y campañas de performance' },
   { key: 'gmail-bridge', name: 'Gmail Inbox Bridge', provider: 'WEB_FORM', bridgeKind: 'GMAIL', description: 'Apps Script para empujar correos comerciales al inbox omnicanal.', connectionModel: 'Bridge Apps Script', readiness: 'Operativo hoy', focus: 'Correos de prospectos a CRM' },
   { key: 'outlook-bridge', name: 'Outlook Inbox Bridge', provider: 'WEB_FORM', bridgeKind: 'OUTLOOK', description: 'Bridge operativo para Power Automate y Microsoft 365.', connectionModel: 'Bridge Power Automate', readiness: 'Operativo hoy', focus: 'Inbox comercial de Microsoft' },
+  { key: 'google-sheets-bridge', name: 'Google Sheets Bridge', provider: 'WEB_FORM', bridgeKind: 'GOOGLE_SHEETS', description: 'Importa y exporta leads desde hojas comerciales sin crear otro módulo.', connectionModel: 'CSV bridge', readiness: 'Operativo hoy', focus: 'Backoffice comercial y campañas' },
   { key: 'tiktok-bridge', name: 'TikTok Lead Bridge', provider: 'WEB_FORM', bridgeKind: 'TIKTOK', description: 'Usa Make/Zapier o webhook para llevar leads al CRM.', connectionModel: 'Bridge automation', readiness: 'Demo guiada', focus: 'Lead Ads y formularios externos' },
   { key: 'youtube-bridge', name: 'YouTube Lead Bridge', provider: 'WEB_FORM', bridgeKind: 'YOUTUBE', description: 'Bridge para formularios, comentarios o capturas desde campañas.', connectionModel: 'Bridge automation', readiness: 'Demo guiada', focus: 'Captura desde video y campañas' },
 ]
@@ -327,6 +419,12 @@ const TEMPLATE_PRESETS: TemplatePreset[] = [
 const MANAGED_CHANNEL_SETTING_KEYS = new Set([
   'testingToken',
   'bridgeKind',
+  'googleSheetsSpreadsheetId',
+  'googleSheetsSheetName',
+  'googleSheetsPublishedCsvUrl',
+  'googleSheetsRowLimit',
+  'googleSheetsImportMode',
+  'googleSheetsOpportunityStage',
   'whatsappAccessToken',
   'whatsappApiVersion',
   'formSelector',
@@ -387,6 +485,13 @@ const MANAGED_CHANNEL_SETTING_KEYS = new Set([
   'productPlaceholder',
   'messageLabel',
   'messagePlaceholder',
+  'webFormCustomFields',
+  'webFormVariables',
+  'termsEnabled',
+  'termsRequired',
+  'termsLabel',
+  'termsLinkText',
+  'termsLinkUrl',
   'quickActions',
   'flowStages',
   'allowHumanHandoff',
@@ -436,6 +541,7 @@ function getTemplatePresetIcon(preset: TemplatePreset): LucideIcon {
   if (preset.provider === 'INSTAGRAM_DM') return Instagram
   if (preset.provider === 'FACEBOOK_PAGE' || preset.provider === 'MESSENGER') return Facebook
   if (preset.provider === 'WEB_CHATBOT') return Bot
+  if (preset.bridgeKind === 'GOOGLE_SHEETS') return BarChart3
   if (preset.bridgeKind === 'GMAIL' || preset.bridgeKind === 'OUTLOOK') return Mail
   return Globe
 }
@@ -491,6 +597,16 @@ function getTemplatePresetSurface(preset: TemplatePreset) {
     }
   }
 
+  if (preset.bridgeKind === 'GOOGLE_SHEETS') {
+    return {
+      card: 'border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.92),rgba(255,255,255,0.98))]',
+      selected: 'border-emerald-300 bg-emerald-50/90 ring-2 ring-emerald-200',
+      iconWrap: 'border-emerald-200 bg-emerald-100 text-emerald-700',
+      pill: 'bg-emerald-100 text-emerald-700',
+      accent: 'text-emerald-800',
+    }
+  }
+
   return {
     card: 'border-sky-200 bg-[linear-gradient(180deg,rgba(240,249,255,0.92),rgba(255,255,255,0.98))]',
     selected: 'border-sky-300 bg-sky-50/90 ring-2 ring-sky-200',
@@ -510,6 +626,49 @@ function getBridgeKind(settingsJson: Record<string, unknown> | null | undefined)
 
 function getFormSelector(settingsJson: Record<string, unknown> | null | undefined) {
   return typeof settingsJson?.formSelector === 'string' ? settingsJson.formSelector : '#lead-form'
+}
+
+function getGoogleSheetsCsvUrl(settingsJson: Record<string, unknown> | null | undefined) {
+  const publishedCsvUrl = typeof settingsJson?.googleSheetsPublishedCsvUrl === 'string'
+    ? settingsJson.googleSheetsPublishedCsvUrl.trim()
+    : ''
+  if (publishedCsvUrl) return publishedCsvUrl
+
+  const spreadsheetId = typeof settingsJson?.googleSheetsSpreadsheetId === 'string'
+    ? settingsJson.googleSheetsSpreadsheetId.trim()
+    : ''
+  const sheetName = typeof settingsJson?.googleSheetsSheetName === 'string' && settingsJson.googleSheetsSheetName.trim()
+    ? settingsJson.googleSheetsSheetName.trim()
+    : 'Leads'
+
+  if (!spreadsheetId) return ''
+
+  const base = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq?tqx=out:csv`
+  return sheetName ? `${base}&sheet=${encodeURIComponent(sheetName)}` : base
+}
+
+function getGoogleSheetsSpreadsheetId(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.googleSheetsSpreadsheetId === 'string' ? settingsJson.googleSheetsSpreadsheetId : ''
+}
+
+function getGoogleSheetsSheetName(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.googleSheetsSheetName === 'string' && settingsJson.googleSheetsSheetName.trim() ? settingsJson.googleSheetsSheetName : 'Leads'
+}
+
+function getGoogleSheetsPublishedCsvUrl(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.googleSheetsPublishedCsvUrl === 'string' ? settingsJson.googleSheetsPublishedCsvUrl : ''
+}
+
+function getGoogleSheetsRowLimit(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.googleSheetsRowLimit === 'string' && settingsJson.googleSheetsRowLimit.trim() ? settingsJson.googleSheetsRowLimit : '200'
+}
+
+function getGoogleSheetsImportMode(settingsJson: Record<string, unknown> | null | undefined) {
+  return settingsJson?.googleSheetsImportMode === 'LEADS_AND_OPPORTUNITIES' ? 'LEADS_AND_OPPORTUNITIES' : 'LEADS_ONLY'
+}
+
+function getGoogleSheetsOpportunityStage(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.googleSheetsOpportunityStage === 'string' && settingsJson.googleSheetsOpportunityStage.trim() ? settingsJson.googleSheetsOpportunityStage : 'QUALIFIED'
 }
 
 function getWhatsAppAccessToken(settingsJson: Record<string, unknown> | null | undefined) {
@@ -632,6 +791,60 @@ function normalizePixelValue(rawValue: string, fallback: string) {
   return digits || fallback
 }
 
+function getWebFormCustomFieldPlaceholder(field: WebFormCustomField) {
+  if (field.type === 'check') return field.defaultValue || 'Acepto esta opción'
+  if (field.type === 'file') return field.defaultValue || 'Selecciona uno o más archivos'
+  if (field.type === 'select') return field.defaultValue || field.options[0] || 'Selecciona una opción'
+  return field.placeholder || field.defaultValue || 'Campo personalizado'
+}
+
+function renderWebFormCustomFieldPreview(field: WebFormCustomField, args: {
+  borderColor: string
+  backgroundColor: string
+  textColor: string
+  inputRadius: string
+  labelColor: string
+  messageMinHeight: number
+}) {
+  const inputClassName = field.fullWidth ? 'grid gap-2 md:col-span-2' : 'grid gap-2'
+  const inputStyle = {
+    borderRadius: `${normalizePixelValue(args.inputRadius, '16')}px`,
+    border: `1px solid ${args.borderColor}`,
+    backgroundColor: args.backgroundColor,
+    color: args.textColor,
+  }
+
+  return (
+    <div key={field.id} className={inputClassName}>
+      <p className="text-xs font-semibold" style={{ color: args.labelColor }}>
+        {field.label}
+        {field.required ? ' *' : ''}
+      </p>
+      {field.type === 'textarea' ? (
+        <div className="px-4 py-3" style={{ ...inputStyle, minHeight: args.messageMinHeight }}>{getWebFormCustomFieldPlaceholder(field)}</div>
+      ) : field.type === 'check' ? (
+        <div className="flex items-center gap-3 px-4 py-3" style={inputStyle}>
+          <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-slate-300 bg-white text-[11px] font-semibold text-slate-500">{field.defaultValue ? 'OK' : ''}</span>
+          <span>{getWebFormCustomFieldPlaceholder(field)}</span>
+        </div>
+      ) : field.type === 'file' ? (
+        <div className="flex items-center justify-between gap-3 px-4 py-3" style={inputStyle}>
+          <span>{getWebFormCustomFieldPlaceholder(field)}</span>
+          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-500">Adjuntar</span>
+        </div>
+      ) : field.type === 'select' ? (
+        <div className="flex items-center justify-between gap-3 px-4 py-3" style={inputStyle}>
+          <span>{getWebFormCustomFieldPlaceholder(field)}</span>
+          <span className="text-xs text-slate-400">{field.options.length} opciones</span>
+        </div>
+      ) : (
+        <div className="px-4 py-3" style={inputStyle}>{getWebFormCustomFieldPlaceholder(field)}</div>
+      )}
+      {field.helpText ? <p className="text-[11px] leading-5 text-slate-500">{field.helpText}</p> : null}
+    </div>
+  )
+}
+
 function renderWebFormPreview(builderState: WebFormBuilderState, options?: {
   maxWidthClassName?: string
   outerPaddingClassName?: string
@@ -663,6 +876,24 @@ function renderWebFormPreview(builderState: WebFormBuilderState, options?: {
             {(builderState.showCompanyField || builderState.showCityField) ? <div className="grid gap-3 md:grid-cols-2">{builderState.showCompanyField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.companyLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.companyPlaceholder}</div></div> : null}{builderState.showCityField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.cityLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.cityPlaceholder}</div></div> : null}</div> : null}
             {builderState.showProductField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.productLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.productPlaceholder}</div></div> : null}
             {builderState.showMessageField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: builderState.formLabelColor }}>{builderState.messageLabel}</p><div className="px-4 py-3" style={{ minHeight: messageMinHeight, borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, border: `1px solid ${builderState.formInputBorderColor}`, backgroundColor: builderState.formInputBackgroundColor, color: builderState.formInputTextColor }}>{builderState.messagePlaceholder}</div></div> : null}
+            {builderState.webFormCustomFields.length ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                {builderState.webFormCustomFields.map((field) => renderWebFormCustomFieldPreview(field, {
+                  borderColor: builderState.formInputBorderColor,
+                  backgroundColor: builderState.formInputBackgroundColor,
+                  textColor: builderState.formInputTextColor,
+                  inputRadius: builderState.formInputRadius,
+                  labelColor: builderState.formLabelColor,
+                  messageMinHeight,
+                }))}
+              </div>
+            ) : null}
+            {builderState.termsEnabled ? (
+              <div className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-600">
+                <p className="font-medium text-slate-900">{builderState.termsLabel}{builderState.termsRequired ? ' *' : ''}</p>
+                {builderState.termsLinkUrl ? <p className="mt-1 text-xs text-slate-500">{builderState.termsLinkText} · {builderState.termsLinkUrl}</p> : null}
+              </div>
+            ) : null}
             <div className="px-4 py-3 text-center text-sm font-semibold" style={{ borderRadius: `${normalizePixelValue(builderState.formInputRadius, '16')}px`, background: `linear-gradient(135deg, ${builderState.formCtaColor}, ${builderState.accentColor})`, color: builderState.formCtaTextColor }}>{builderState.submitCtaLabel}</div>
           </div>
         </div>
@@ -830,6 +1061,7 @@ function getEndpoint(baseUrl: string, channel: ChannelConnection | null) {
   if (channel.provider === 'WEB_FORM') {
     const settings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
     const bridgeKind = getBridgeKind(settings)
+    if (bridgeKind === 'GOOGLE_SHEETS') return `${baseUrl}/api/crm/channels/${channel.id}/google-sheets/import`
     return bridgeKind && bridgeKind !== 'GENERIC' ? `${baseUrl}/api/crm/captures/bridge` : `${baseUrl}/api/crm/captures/web-form`
   }
   if (channel.provider === 'WEB_CHATBOT') return `${baseUrl}/api/crm/captures/chatbot`
@@ -839,6 +1071,7 @@ function getEndpoint(baseUrl: string, channel: ChannelConnection | null) {
 
 function channelTone(provider: CrmChannelProvider, bridgeKind: string) {
   if (provider === 'WEB_CHATBOT') return 'border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,.92),rgba(255,255,255,.98))]'
+  if (provider === 'WEB_FORM' && bridgeKind === 'GOOGLE_SHEETS') return 'border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,.95),rgba(255,255,255,.98))]'
   if (provider === 'WEB_FORM' && (bridgeKind === 'GMAIL' || bridgeKind === 'OUTLOOK')) return 'border-amber-200 bg-[linear-gradient(180deg,rgba(255,251,235,.95),rgba(255,255,255,.98))]'
   if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') return 'border-emerald-200 bg-[linear-gradient(180deg,rgba(220,252,231,.95),rgba(255,255,255,.98))]'
   return 'border-sky-200 bg-[linear-gradient(180deg,rgba(240,249,255,.96),rgba(255,255,255,.98))]'
@@ -847,6 +1080,7 @@ function channelTone(provider: CrmChannelProvider, bridgeKind: string) {
 function providerSummary(provider: CrmChannelProvider, bridgeKind: CrmBridgeKind) {
   if (provider === 'WEB_CHATBOT') return 'Canal conversacional embebible por iframe con captura en tiempo real.'
   if (provider === 'WEB_FORM' && bridgeKind === 'GENERIC') return 'Canal de captura vía formularios y landings con tracking comercial.'
+  if (provider === 'WEB_FORM' && bridgeKind === 'GOOGLE_SHEETS') return 'Bridge manual para importar y exportar leads desde hojas comerciales ya operativas.'
   if (provider === 'WEB_FORM') return 'Bridge operativo para automatizaciones externas y fuentes no nativas.'
   return 'Canal omnicanal basado en webhook para inbox y mensajería inbound.'
 }
@@ -1097,6 +1331,13 @@ function getWebFormBuilderState(settingsJson: Record<string, unknown> | null | u
     productPlaceholder: getSettingText(settingsJson, 'productPlaceholder', '¿Qué producto necesitas?'),
     messageLabel: getSettingText(settingsJson, 'messageLabel', 'Mensaje'),
     messagePlaceholder: getSettingText(settingsJson, 'messagePlaceholder', 'Cuéntanos qué necesitas y para cuándo.'),
+    webFormCustomFields: normalizeWebFormCustomFields(settingsJson?.webFormCustomFields),
+    webFormVariables: normalizeWebFormVariables(settingsJson?.webFormVariables),
+    termsEnabled: getBooleanSetting(settingsJson, 'termsEnabled', false),
+    termsRequired: getBooleanSetting(settingsJson, 'termsRequired', true),
+    termsLabel: getSettingText(settingsJson, 'termsLabel', 'Acepto el tratamiento de datos personales.'),
+    termsLinkText: getSettingText(settingsJson, 'termsLinkText', 'Leer términos'),
+    termsLinkUrl: getSettingText(settingsJson, 'termsLinkUrl', ''),
   }
 }
 
@@ -1250,6 +1491,7 @@ export function CrmIntegrationsClient() {
   const [createOpen, setCreateOpen] = useState(false)
   const [wizardStep, setWizardStep] = useState<WizardStep>('template')
   const [workspaceView, setWorkspaceView] = useState<CrmWorkspaceView>('operations')
+  const [operationsPanelView, setOperationsPanelView] = useState<CrmOperationsPanelView>('preview')
   const [metricsExpanded, setMetricsExpanded] = useState(false)
   const [baseUrl, setBaseUrl] = useState('')
   const [copiedKey, setCopiedKey] = useState('')
@@ -1268,15 +1510,19 @@ export function CrmIntegrationsClient() {
   const [chatbotBuilderPreviewMode, setChatbotBuilderPreviewMode] = useState<ChatbotPreviewMode>('expanded')
   const [chatbotBuilderPreviewViewport, setChatbotBuilderPreviewViewport] = useState<ChatbotPreviewViewport>('desktop')
   const [chatbotBuilderSection, setChatbotBuilderSection] = useState<ChatbotBuilderSection>('flow')
+  const [wizardChatbotSection, setWizardChatbotSection] = useState<ChatbotWizardSection>('base')
   const [selectedChatbotStageId, setSelectedChatbotStageId] = useState<ChatbotFlowStageId>('welcome')
   const [selectedChatbotConnectionId, setSelectedChatbotConnectionId] = useState<string | null>(null)
   const [webFormBuilderDraft, setWebFormBuilderDraft] = useState<WebFormBuilderState>(getWebFormBuilderState(null))
   const [webFormBuilderModalOpen, setWebFormBuilderModalOpen] = useState(false)
   const [savingWebFormBuilder, setSavingWebFormBuilder] = useState(false)
+  const [webFormBuilderSection, setWebFormBuilderSection] = useState<WebFormConfigSection>('fields')
+  const [wizardWebFormSection, setWizardWebFormSection] = useState<WebFormConfigSection>('base')
   const [metaSelectionDraft, setMetaSelectionDraft] = useState({ selectedPageId: '', selectedInstagramAccountId: '', selectedPhoneNumberId: '' })
   const [floatingPreviewOpen, setFloatingPreviewOpen] = useState(false)
   const [wizardChatPreviewMode, setWizardChatPreviewMode] = useState<ChatbotPreviewMode>('floating')
   const [wizardChatPreviewViewport, setWizardChatPreviewViewport] = useState<ChatbotPreviewViewport>('desktop')
+  const [googleSheetsActions, setGoogleSheetsActions] = useState<GoogleSheetsActionState>(getInitialGoogleSheetsActionState())
   const metaPopupRef = useRef<Window | null>(null)
   const metaPopupIntervalRef = useRef<number | null>(null)
   const metaPhoneSelectionRef = useRef<HTMLDivElement | null>(null)
@@ -1538,6 +1784,7 @@ export function CrmIntegrationsClient() {
   const selectedSettings = (selectedChannel?.settingsJson as Record<string, unknown> | null | undefined) ?? null
   const selectedToken = getTokenFromSettings(selectedSettings)
   const selectedBridgeKind = getBridgeKind(selectedSettings)
+  const selectedGoogleSheetsCsvUrl = getGoogleSheetsCsvUrl(selectedSettings)
   const selectedChatbotEmbedUrl = selectedChannel?.provider === 'WEB_CHATBOT' ? buildChatbotEmbedUrl(baseUrl, selectedChannel.id) : ''
   const selectedWebFormEmbedUrl = selectedChannel?.provider === 'WEB_FORM' && selectedBridgeKind === 'GENERIC' ? buildWebFormEmbedUrl(baseUrl, selectedChannel.id) : ''
   const selectedChatbotTitle = getChatbotTitle(selectedSettings)
@@ -1549,8 +1796,43 @@ export function CrmIntegrationsClient() {
   const wizardMetaChecklist = useMemo(() => createUsesWebhook && usesMetaProvider(createForm.provider) ? getMetaWizardChecklist(createForm, baseUrl) : [], [baseUrl, createForm, createUsesWebhook])
   const selectedMetaGuide = useMemo(() => selectedChannel && usesMetaProvider(selectedChannel.provider) ? getMetaSelectionGuide(selectedChannel, selectedMeta) : null, [selectedChannel, selectedMeta])
   const selectedMetaOnboardingChecklist = useMemo(() => selectedChannel && usesMetaProvider(selectedChannel.provider) ? getMetaOnboardingChecklist(selectedChannel, baseUrl) : [], [baseUrl, selectedChannel])
+  const operationsPanelSwitcher = selectedChannel ? (
+    <div className="flex flex-col items-stretch gap-2 md:items-end">
+      <div className="inline-flex h-auto items-center self-start rounded-[18px] border border-slate-200 bg-slate-50 p-1 md:self-auto">
+        <button
+          type="button"
+          onClick={() => setOperationsPanelView('preview')}
+          className={operationsPanelView === 'preview' ? 'rounded-[14px] bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-sm' : 'rounded-[14px] px-4 py-2 text-sm font-medium text-slate-500 transition hover:text-slate-800'}
+        >
+          Vista previa
+        </button>
+        <button
+          type="button"
+          onClick={() => setOperationsPanelView('readiness')}
+          className={operationsPanelView === 'readiness' ? 'rounded-[14px] bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-sm' : 'rounded-[14px] px-4 py-2 text-sm font-medium text-slate-500 transition hover:text-slate-800'}
+        >
+          Readiness
+        </button>
+        <button
+          type="button"
+          onClick={() => setOperationsPanelView('assets')}
+          className={operationsPanelView === 'assets' ? 'rounded-[14px] bg-white px-4 py-2 text-sm font-medium text-slate-900 shadow-sm' : 'rounded-[14px] px-4 py-2 text-sm font-medium text-slate-500 transition hover:text-slate-800'}
+        >
+          Studio de assets
+        </button>
+      </div>
+      <p className="px-1 text-[13px] text-slate-500 md:text-right">
+        {operationsPanelView === 'preview'
+          ? 'Muestra solo el resumen visual y los accesos rapidos del canal activo.'
+          : operationsPanelView === 'readiness'
+            ? 'Enfoca la revision de preparacion y pendientes antes de pasar a demo o produccion.'
+            : 'Concentra snippets, URLs, tokens y payloads del canal activo en una sola vista dedicada.'}
+      </p>
+    </div>
+  ) : null
   const selectedIsChatbot = selectedChannel?.provider === 'WEB_CHATBOT'
   const selectedIsPublicWebForm = selectedChannel?.provider === 'WEB_FORM' && selectedBridgeKind === 'GENERIC'
+  const selectedIsGoogleSheetsBridge = selectedChannel?.provider === 'WEB_FORM' && selectedBridgeKind === 'GOOGLE_SHEETS'
   const selectedChatbotFlowStage = useMemo(() => chatbotBuilderDraft.flowStages.find((item) => item.id === selectedChatbotStageId) ?? chatbotBuilderDraft.flowStages[0] ?? null, [chatbotBuilderDraft.flowStages, selectedChatbotStageId])
   const chatbotCanvasModel = useMemo(() => buildChatbotCanvasModel(chatbotBuilderDraft.flowStages), [chatbotBuilderDraft.flowStages])
   const selectedChatbotConnection = useMemo(
@@ -1598,6 +1880,10 @@ export function CrmIntegrationsClient() {
   useEffect(() => {
     setWebFormBuilderDraft(getWebFormBuilderState(selectedSettings))
   }, [selectedChannelId, selectedSettings])
+
+  useEffect(() => {
+    setGoogleSheetsActions(getInitialGoogleSheetsActionState())
+  }, [selectedChannelId])
 
   useEffect(() => {
     if (!selectedIsPublicWebForm) {
@@ -1650,6 +1936,9 @@ export function CrmIntegrationsClient() {
       }),
       outlook: buildOutlookPayloadExample(baseUrl, selectedChannel.id, token),
       webhook: buildWebhookPayloadExample(selectedChannel.provider),
+      googleSheetsPreview: `${baseUrl}/api/crm/channels/${selectedChannel.id}/google-sheets/preview`,
+      googleSheetsImport: `${baseUrl}/api/crm/channels/${selectedChannel.id}/google-sheets/import`,
+      googleSheetsExport: `${baseUrl}/api/crm/channels/${selectedChannel.id}/google-sheets/export`,
     }
   }, [baseUrl, selectedChannel, selectedSettings, selectedToken])
 
@@ -1675,6 +1964,8 @@ export function CrmIntegrationsClient() {
     setWizardMetaAdvancedOpen(false)
     setWizardChatPreviewMode('floating')
     setWizardChatPreviewViewport('desktop')
+    setWizardChatbotSection('base')
+    setWizardWebFormSection('base')
     setWizardStep('template')
     setCreateOpen(true)
   }
@@ -1693,6 +1984,12 @@ export function CrmIntegrationsClient() {
       status: channel.status,
       testingToken: getTokenFromSettings(settings) || '',
       bridgeKind: (bridgeKind || 'GENERIC') as CrmBridgeKind,
+      googleSheetsSpreadsheetId: getGoogleSheetsSpreadsheetId(settings),
+      googleSheetsSheetName: getGoogleSheetsSheetName(settings),
+      googleSheetsPublishedCsvUrl: getGoogleSheetsPublishedCsvUrl(settings),
+      googleSheetsRowLimit: getGoogleSheetsRowLimit(settings),
+      googleSheetsImportMode: getGoogleSheetsImportMode(settings),
+      googleSheetsOpportunityStage: getGoogleSheetsOpportunityStage(settings),
       externalAccountId: channel.externalAccountId || '',
       externalPageId: channel.externalPageId || '',
       externalPhoneNumberId: channel.externalPhoneNumberId || '',
@@ -1757,9 +2054,18 @@ export function CrmIntegrationsClient() {
       productPlaceholder: getSettingText(settings, 'productPlaceholder', '¿Qué producto necesitas?'),
       messageLabel: getSettingText(settings, 'messageLabel', 'Mensaje'),
       messagePlaceholder: getSettingText(settings, 'messagePlaceholder', 'Cuéntanos qué necesitas y para cuándo.'),
+      webFormCustomFields: normalizeWebFormCustomFields(settings?.webFormCustomFields),
+      webFormVariables: normalizeWebFormVariables(settings?.webFormVariables),
+      termsEnabled: getBooleanSetting(settings, 'termsEnabled', false),
+      termsRequired: getBooleanSetting(settings, 'termsRequired', true),
+      termsLabel: getSettingText(settings, 'termsLabel', 'Acepto el tratamiento de datos personales.'),
+      termsLinkText: getSettingText(settings, 'termsLinkText', 'Leer términos'),
+      termsLinkUrl: getSettingText(settings, 'termsLinkUrl', ''),
     })
     setWizardChatPreviewMode('floating')
     setWizardChatPreviewViewport('desktop')
+    setWizardChatbotSection('base')
+    setWizardWebFormSection('base')
     setWizardStep('config')
     setCreateOpen(true)
   }
@@ -1768,6 +2074,96 @@ export function CrmIntegrationsClient() {
     if (!value) return
     await navigator.clipboard.writeText(value)
     setCopiedKey(key)
+  }
+
+  async function runGoogleSheetsPreview() {
+    if (!selectedChannel || !selectedIsGoogleSheetsBridge || !snippets) return
+
+    setOperationsPanelView('preview')
+    setGoogleSheetsActions((current) => ({
+      ...current,
+      loadingPreview: true,
+      error: '',
+    }))
+
+    try {
+      const json = await requestJson<{
+        csvUrl: string
+        totalRows: number
+        headers: string[]
+        preview: Array<Record<string, unknown>>
+      }>(snippets.googleSheetsPreview)
+
+      if (!json.success || !json.data) {
+        setGoogleSheetsActions((current) => ({
+          ...current,
+          loadingPreview: false,
+          error: json.error || 'No se pudo previsualizar la hoja.',
+        }))
+        return
+      }
+
+      setGoogleSheetsActions((current) => ({
+        ...current,
+        loadingPreview: false,
+        error: '',
+        previewResult: json.data ?? null,
+      }))
+    } catch {
+      setGoogleSheetsActions((current) => ({
+        ...current,
+        loadingPreview: false,
+        error: 'No se pudo previsualizar la hoja.',
+      }))
+    }
+  }
+
+  async function runGoogleSheetsImport() {
+    if (!selectedChannel || !selectedIsGoogleSheetsBridge || !snippets) return
+
+    setOperationsPanelView('preview')
+    setGoogleSheetsActions((current) => ({
+      ...current,
+      loadingImport: true,
+      error: '',
+    }))
+
+    try {
+      const json = await requestJson<{
+        importedRows: number
+        skippedRows: number
+        opportunitiesCreated: number
+        processedRows: number
+      }>(snippets.googleSheetsImport, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+
+      if (!json.success || !json.data) {
+        setGoogleSheetsActions((current) => ({
+          ...current,
+          loadingImport: false,
+          error: json.error || 'No se pudo importar la hoja.',
+        }))
+        return
+      }
+
+      setGoogleSheetsActions((current) => ({
+        ...current,
+        loadingImport: false,
+        error: '',
+        importResult: json.data ?? null,
+      }))
+
+      await loadChannels()
+    } catch {
+      setGoogleSheetsActions((current) => ({
+        ...current,
+        loadingImport: false,
+        error: 'No se pudo importar la hoja.',
+      }))
+    }
   }
 
   function stopMetaPopupTracking() {
@@ -1927,6 +2323,12 @@ export function CrmIntegrationsClient() {
       const settingsJson = {
         testingToken: createForm.testingToken,
         bridgeKind: createForm.bridgeKind,
+        googleSheetsSpreadsheetId: createForm.googleSheetsSpreadsheetId,
+        googleSheetsSheetName: createForm.googleSheetsSheetName,
+        googleSheetsPublishedCsvUrl: createForm.googleSheetsPublishedCsvUrl,
+        googleSheetsRowLimit: createForm.googleSheetsRowLimit,
+        googleSheetsImportMode: createForm.googleSheetsImportMode,
+        googleSheetsOpportunityStage: createForm.googleSheetsOpportunityStage,
         whatsappAccessToken: createForm.whatsappAccessToken,
         whatsappApiVersion: createForm.whatsappApiVersion,
         formSelector: createForm.formSelector,
@@ -1989,6 +2391,13 @@ export function CrmIntegrationsClient() {
         productPlaceholder: createForm.productPlaceholder,
         messageLabel: createForm.messageLabel,
         messagePlaceholder: createForm.messagePlaceholder,
+        webFormCustomFields: createForm.webFormCustomFields,
+        webFormVariables: createForm.webFormVariables,
+        termsEnabled: createForm.termsEnabled,
+        termsRequired: createForm.termsRequired,
+        termsLabel: createForm.termsLabel,
+        termsLinkText: createForm.termsLinkText,
+        termsLinkUrl: createForm.termsLinkUrl,
         allowHumanHandoff: true,
       }
 
@@ -2228,6 +2637,592 @@ export function CrmIntegrationsClient() {
     }))
   }
 
+  function createEmptyWebFormCustomField(type: WebFormCustomFieldType = 'input'): WebFormCustomField {
+    return {
+      id: createWebFormEntityId('field'),
+      key: `campo_${Date.now()}`,
+      label: 'Campo personalizado',
+      type,
+      placeholder: '',
+      helpText: '',
+      required: false,
+      options: type === 'select' ? ['Opción 1', 'Opción 2'] : [],
+      defaultValue: '',
+      fullWidth: type === 'textarea' || type === 'file',
+    }
+  }
+
+  function createEmptyWebFormVariable(): WebFormVariable {
+    return {
+      id: createWebFormEntityId('variable'),
+      key: `variable_${Date.now()}`,
+      label: 'Variable oculta',
+      source: 'query',
+      value: '',
+      queryParam: 'utm_source',
+    }
+  }
+
+  function updateWizardWebFormField(fieldId: string, patch: Partial<WebFormCustomField>) {
+    setCreateForm((current) => ({
+      ...current,
+      webFormCustomFields: current.webFormCustomFields.map((field) => field.id === fieldId ? { ...field, ...patch } : field),
+    }))
+  }
+
+  function updateBuilderWebFormField(fieldId: string, patch: Partial<WebFormCustomField>) {
+    setWebFormBuilderDraft((current) => ({
+      ...current,
+      webFormCustomFields: current.webFormCustomFields.map((field) => field.id === fieldId ? { ...field, ...patch } : field),
+    }))
+  }
+
+  function updateWizardWebFormVariable(variableId: string, patch: Partial<WebFormVariable>) {
+    setCreateForm((current) => ({
+      ...current,
+      webFormVariables: current.webFormVariables.map((variable) => variable.id === variableId ? { ...variable, ...patch } : variable),
+    }))
+  }
+
+  function updateBuilderWebFormVariable(variableId: string, patch: Partial<WebFormVariable>) {
+    setWebFormBuilderDraft((current) => ({
+      ...current,
+      webFormVariables: current.webFormVariables.map((variable) => variable.id === variableId ? { ...variable, ...patch } : variable),
+    }))
+  }
+
+  function patchWizardWebForm(patch: Partial<WebFormBuilderState>) {
+    setCreateForm((current) => ({ ...current, ...patch }))
+  }
+
+  function patchBuilderWebForm(patch: Partial<WebFormBuilderState>) {
+    setWebFormBuilderDraft((current) => ({ ...current, ...patch }))
+  }
+
+  function addWizardWebFormField(type: WebFormCustomFieldType) {
+    setCreateForm((current) => ({
+      ...current,
+      webFormCustomFields: [...current.webFormCustomFields, createEmptyWebFormCustomField(type)],
+    }))
+  }
+
+  function addBuilderWebFormField(type: WebFormCustomFieldType) {
+    setWebFormBuilderDraft((current) => ({
+      ...current,
+      webFormCustomFields: [...current.webFormCustomFields, createEmptyWebFormCustomField(type)],
+    }))
+  }
+
+  function removeWizardWebFormField(fieldId: string) {
+    setCreateForm((current) => ({
+      ...current,
+      webFormCustomFields: current.webFormCustomFields.filter((field) => field.id !== fieldId),
+    }))
+  }
+
+  function removeBuilderWebFormField(fieldId: string) {
+    setWebFormBuilderDraft((current) => ({
+      ...current,
+      webFormCustomFields: current.webFormCustomFields.filter((field) => field.id !== fieldId),
+    }))
+  }
+
+  function addWizardWebFormVariable() {
+    setCreateForm((current) => ({
+      ...current,
+      webFormVariables: [...current.webFormVariables, createEmptyWebFormVariable()],
+    }))
+  }
+
+  function addBuilderWebFormVariable() {
+    setWebFormBuilderDraft((current) => ({
+      ...current,
+      webFormVariables: [...current.webFormVariables, createEmptyWebFormVariable()],
+    }))
+  }
+
+  function removeWizardWebFormVariable(variableId: string) {
+    setCreateForm((current) => ({
+      ...current,
+      webFormVariables: current.webFormVariables.filter((variable) => variable.id !== variableId),
+    }))
+  }
+
+  function removeBuilderWebFormVariable(variableId: string) {
+    setWebFormBuilderDraft((current) => ({
+      ...current,
+      webFormVariables: current.webFormVariables.filter((variable) => variable.id !== variableId),
+    }))
+  }
+
+  function renderWebFormConfigurationSections(kind: 'wizard' | 'builder') {
+    const isWizard = kind === 'wizard'
+    const form = isWizard ? createForm : webFormBuilderDraft
+    const section = isWizard ? wizardWebFormSection : webFormBuilderSection
+    const setSection = isWizard ? setWizardWebFormSection : setWebFormBuilderSection
+    const patchForm = isWizard ? patchWizardWebForm : patchBuilderWebForm
+    const addField = isWizard ? addWizardWebFormField : addBuilderWebFormField
+    const updateField = isWizard ? updateWizardWebFormField : updateBuilderWebFormField
+    const removeField = isWizard ? removeWizardWebFormField : removeBuilderWebFormField
+    const addVariable = isWizard ? addWizardWebFormVariable : addBuilderWebFormVariable
+    const updateVariable = isWizard ? updateWizardWebFormVariable : updateBuilderWebFormVariable
+    const removeVariable = isWizard ? removeWizardWebFormVariable : removeBuilderWebFormVariable
+
+    const sectionOptions = isWizard ? WEB_FORM_SECTION_OPTIONS : WEB_FORM_SECTION_OPTIONS.filter((item) => item.id !== 'base')
+
+    return (
+      <Tabs value={section} onValueChange={(value) => setSection(value as WebFormConfigSection)} className="space-y-4">
+        <div className="overflow-x-auto pb-1">
+          <TabsList className="inline-flex h-auto min-w-max flex-nowrap rounded-2xl border border-slate-200 bg-slate-50 p-1 md:flex-wrap">
+            {sectionOptions.map((item) => (
+              <TabsTrigger key={item.id} value={item.id} className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">
+                {item.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+
+        {isWizard ? (
+          <TabsContent value="base" className="space-y-4">
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+                <div className="mb-4">
+                  <p className="text-sm font-semibold text-slate-900">Identidad del canal</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">Define cómo quedará identificado el canal dentro del CRM antes de configurar su captura.</p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-2 md:col-span-2">
+                    <Label>Nombre del canal</Label>
+                    <Input value={createForm.name} onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))} className="h-11 rounded-xl bg-white" />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Proveedor técnico</Label>
+                    <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700">
+                      {createForm.provider}
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Estado inicial</Label>
+                    <Select value={createForm.status} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, status: value as ChannelStatus }))}>
+                      <SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {CHANNEL_STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+                <div className="mb-4">
+                  <p className="text-sm font-semibold text-slate-900">Conexión y acceso</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">Aquí defines token, modo de captura y el puente técnico con el que entrarán los leads.</p>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-2 md:col-span-2">
+                    <Label>Token de prueba / verificación</Label>
+                    <div className="flex gap-2">
+                      <Input value={createForm.testingToken} onChange={(e) => setCreateForm((prev) => ({ ...prev, testingToken: e.target.value }))} className="h-11 rounded-xl bg-white" />
+                      <Button type="button" variant="outline" className="rounded-xl bg-white" onClick={() => setCreateForm((prev) => ({ ...prev, testingToken: makeDemoToken() }))}>Regenerar</Button>
+                    </div>
+                    <p className="text-xs leading-5 text-slate-500">Se usa para pruebas seguras, verificación y bridges demo.</p>
+                  </div>
+                  <div className="grid gap-2 md:col-span-2">
+                    <Label>Selector del formulario legacy</Label>
+                    <Input value={createForm.formSelector} onChange={(e) => setCreateForm((prev) => ({ ...prev, formSelector: e.target.value }))} className="h-11 rounded-xl bg-white" placeholder="#lead-form" />
+                    <p className="text-xs leading-5 text-slate-500">Se conserva para sitios que ya tienen su propio formulario. El modo recomendado ahora es iframe público hospedado por SGDigital.</p>
+                  </div>
+                  <div className="grid gap-2 md:col-span-2">
+                    <Label>Tipo de bridge</Label>
+                    <Select value={createForm.bridgeKind} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, bridgeKind: value as CrmBridgeKind }))}>
+                      <SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="GENERIC">GENERIC</SelectItem>
+                        <SelectItem value="GMAIL">GMAIL</SelectItem>
+                        <SelectItem value="OUTLOOK">OUTLOOK</SelectItem>
+                        <SelectItem value="GOOGLE_SHEETS">GOOGLE_SHEETS</SelectItem>
+                        <SelectItem value="TIKTOK">TIKTOK</SelectItem>
+                        <SelectItem value="YOUTUBE">YOUTUBE</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+        ) : null}
+
+        <TabsContent value="styles" className="space-y-4">
+          <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <p className="text-sm font-semibold text-slate-900">Dirección visual</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Define colores base, look del contenedor y contraste de inputs y CTA.</p>
+            </div>
+            <div className="grid gap-2"><Label>Color de acento</Label><Input value={form.accentColor} onChange={(e) => patchForm({ accentColor: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Color CTA</Label><Input value={form.formCtaColor} onChange={(e) => patchForm({ formCtaColor: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Texto CTA</Label><Input value={form.formCtaTextColor} onChange={(e) => patchForm({ formCtaTextColor: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Fondo general</Label><Input value={form.pageBackgroundColor} onChange={(e) => patchForm({ pageBackgroundColor: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Fondo interno</Label><Input value={form.backgroundColor} onChange={(e) => patchForm({ backgroundColor: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Color labels</Label><Input value={form.formLabelColor} onChange={(e) => patchForm({ formLabelColor: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Color borde inputs</Label><Input value={form.formInputBorderColor} onChange={(e) => patchForm({ formInputBorderColor: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Fondo inputs</Label><Input value={form.formInputBackgroundColor} onChange={(e) => patchForm({ formInputBackgroundColor: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Texto inputs</Label><Input value={form.formInputTextColor} onChange={(e) => patchForm({ formInputTextColor: e.target.value })} className="h-11 rounded-xl" /></div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="fields" className="space-y-4">
+          <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2 xl:grid-cols-3">
+            {[ 
+              { key: 'showNameField', label: 'Nombre' },
+              { key: 'showEmailField', label: 'Correo' },
+              { key: 'showPhoneField', label: 'Teléfono' },
+              { key: 'showCompanyField', label: 'Empresa' },
+              { key: 'showCityField', label: 'Ciudad' },
+              { key: 'showProductField', label: 'Producto' },
+              { key: 'showMessageField', label: 'Mensaje' },
+            ].map((field) => (
+              <div key={field.key} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{field.label}</p>
+                  <p className="text-xs text-slate-500">Mostrar en el formulario</p>
+                </div>
+                <Switch checked={Boolean(form[field.key as keyof WebFormBuilderState])} onCheckedChange={(checked) => patchForm({ [field.key]: checked } as Partial<WebFormBuilderState>)} />
+              </div>
+            ))}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-2"><Label>Label nombre</Label><Input value={form.nameLabel} onChange={(e) => patchForm({ nameLabel: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Placeholder nombre</Label><Input value={form.namePlaceholder} onChange={(e) => patchForm({ namePlaceholder: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Label correo</Label><Input value={form.emailLabel} onChange={(e) => patchForm({ emailLabel: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Placeholder correo</Label><Input value={form.emailPlaceholder} onChange={(e) => patchForm({ emailPlaceholder: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Label teléfono</Label><Input value={form.phoneLabel} onChange={(e) => patchForm({ phoneLabel: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Placeholder teléfono</Label><Input value={form.phonePlaceholder} onChange={(e) => patchForm({ phonePlaceholder: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Label empresa</Label><Input value={form.companyLabel} onChange={(e) => patchForm({ companyLabel: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Placeholder empresa</Label><Input value={form.companyPlaceholder} onChange={(e) => patchForm({ companyPlaceholder: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Label ciudad</Label><Input value={form.cityLabel} onChange={(e) => patchForm({ cityLabel: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Placeholder ciudad</Label><Input value={form.cityPlaceholder} onChange={(e) => patchForm({ cityPlaceholder: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Label producto</Label><Input value={form.productLabel} onChange={(e) => patchForm({ productLabel: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Placeholder producto</Label><Input value={form.productPlaceholder} onChange={(e) => patchForm({ productPlaceholder: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>Label mensaje</Label><Input value={form.messageLabel} onChange={(e) => patchForm({ messageLabel: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>Placeholder mensaje</Label><Input value={form.messagePlaceholder} onChange={(e) => patchForm({ messagePlaceholder: e.target.value })} className="h-11 rounded-xl" /></div>
+          </div>
+
+          <div className="rounded-[24px] border border-slate-200 bg-white p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Campos personalizados</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Agrega campos extra tipo input, textarea, phone, email, select, check o file.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {WEB_FORM_CUSTOM_FIELD_TYPE_OPTIONS.map((item) => (
+                  <Button key={item.value} type="button" variant="outline" className="rounded-xl" onClick={() => addField(item.value)}>
+                    + {item.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              {form.webFormCustomFields.length ? form.webFormCustomFields.map((field) => (
+                <div key={field.id} className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{field.label || 'Campo personalizado'}</p>
+                      <p className="text-xs text-slate-500">{getWebFormFieldTypeLabel(field.type)} · key {field.key}</p>
+                    </div>
+                    <Button type="button" variant="outline" className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => removeField(field.id)}>
+                      Eliminar campo
+                    </Button>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-2"><Label>Label</Label><Input value={field.label} onChange={(e) => updateField(field.id, { label: e.target.value })} className="h-11 rounded-xl" /></div>
+                    <div className="grid gap-2"><Label>Key interna</Label><Input value={field.key} onChange={(e) => updateField(field.id, { key: e.target.value })} className="h-11 rounded-xl" /></div>
+                    <div className="grid gap-2">
+                      <Label>Tipo</Label>
+                      <Select value={field.type} onValueChange={(value) => updateField(field.id, { type: value as WebFormCustomFieldType, options: value === 'select' ? (field.options.length ? field.options : ['Opción 1', 'Opción 2']) : [], fullWidth: value === 'textarea' || value === 'file' ? true : field.fullWidth })}>
+                        <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {WEB_FORM_CUSTOM_FIELD_TYPE_OPTIONS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2"><Label>Texto guía / placeholder</Label><Input value={field.placeholder} onChange={(e) => updateField(field.id, { placeholder: e.target.value })} className="h-11 rounded-xl" /></div>
+                    <div className="grid gap-2 md:col-span-2"><Label>Ayuda</Label><Input value={field.helpText} onChange={(e) => updateField(field.id, { helpText: e.target.value })} className="h-11 rounded-xl" /></div>
+                    <div className="grid gap-2"><Label>Valor por defecto</Label><Input value={field.defaultValue} onChange={(e) => updateField(field.id, { defaultValue: e.target.value })} className="h-11 rounded-xl" /></div>
+                    {field.type === 'select' ? <div className="grid gap-2"><Label>Opciones</Label><Input value={field.options.join(', ')} onChange={(e) => updateField(field.id, { options: e.target.value.split(',').map((item) => item.trim()).filter(Boolean) })} className="h-11 rounded-xl" placeholder="Opción 1, Opción 2" /></div> : null}
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">Campo obligatorio</p>
+                        <p className="text-xs text-slate-500">Exige completarlo antes de enviar.</p>
+                      </div>
+                      <Switch checked={field.required} onCheckedChange={(checked) => updateField(field.id, { required: checked })} />
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">Ancho completo</p>
+                        <p className="text-xs text-slate-500">Ocupa toda la fila en el formulario.</p>
+                      </div>
+                      <Switch checked={field.fullWidth} onCheckedChange={(checked) => updateField(field.id, { fullWidth: checked })} />
+                    </div>
+                  </div>
+                </div>
+              )) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-sm text-slate-500">Aún no hay campos personalizados. Usa los botones superiores para agregarlos.</div>}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="variables" className="space-y-4">
+          <div className="rounded-[24px] border border-slate-200 bg-white p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Variables ocultas</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Sirven para pasar UTMs, campañas o valores fijos sin mostrarlos al usuario.</p>
+              </div>
+              <Button type="button" className="rounded-xl" onClick={() => addVariable()}>
+                Agregar variable
+              </Button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              {form.webFormVariables.length ? form.webFormVariables.map((variable) => (
+                <div key={variable.id} className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{variable.label || 'Variable oculta'}</p>
+                      <p className="text-xs text-slate-500">{variable.source === 'query' ? 'Tomada de la URL' : 'Valor estático'} · key {variable.key}</p>
+                    </div>
+                    <Button type="button" variant="outline" className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => removeVariable(variable.id)}>
+                      Eliminar variable
+                    </Button>
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <div className="grid gap-2"><Label>Label</Label><Input value={variable.label} onChange={(e) => updateVariable(variable.id, { label: e.target.value })} className="h-11 rounded-xl" /></div>
+                    <div className="grid gap-2"><Label>Key interna</Label><Input value={variable.key} onChange={(e) => updateVariable(variable.id, { key: e.target.value })} className="h-11 rounded-xl" /></div>
+                    <div className="grid gap-2">
+                      <Label>Origen</Label>
+                      <Select value={variable.source} onValueChange={(value) => updateVariable(variable.id, { source: value as WebFormVariable['source'] })}>
+                        <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="query">Query param</SelectItem>
+                          <SelectItem value="static">Valor estático</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {variable.source === 'query' ? <div className="grid gap-2"><Label>Nombre del query param</Label><Input value={variable.queryParam} onChange={(e) => updateVariable(variable.id, { queryParam: e.target.value })} className="h-11 rounded-xl" placeholder="utm_source" /></div> : <div className="grid gap-2"><Label>Valor fijo</Label><Input value={variable.value} onChange={(e) => updateVariable(variable.id, { value: e.target.value })} className="h-11 rounded-xl" /></div>}
+                  </div>
+                </div>
+              )) : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-sm text-slate-500">No hay variables ocultas configuradas todavía.</div>}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="size" className="space-y-4">
+          <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
+            <div className="grid gap-2"><Label>Altura del iframe</Label><Input value={form.iframeHeight} onChange={(e) => patchForm({ iframeHeight: normalizePixelValue(e.target.value, '840') })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Tamaño base</Label><Input value={form.formFontSize} onChange={(e) => patchForm({ formFontSize: normalizePixelValue(e.target.value, '14') })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Radio tarjeta</Label><Input value={form.formCardRadius} onChange={(e) => patchForm({ formCardRadius: normalizePixelValue(e.target.value, '28') })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Radio inputs</Label><Input value={form.formInputRadius} onChange={(e) => patchForm({ formInputRadius: normalizePixelValue(e.target.value, '16') })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Espaciado entre campos</Label><Input value={form.formFieldSpacing} onChange={(e) => patchForm({ formFieldSpacing: normalizePixelValue(e.target.value, '14') })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Padding interno</Label><Input value={form.formPadding} onChange={(e) => patchForm({ formPadding: normalizePixelValue(e.target.value, '24') })} className="h-11 rounded-xl" /></div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="texts" className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-2 md:col-span-2"><Label>Título del formulario</Label><Input value={form.formTitle} onChange={(e) => patchForm({ formTitle: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>Descripción comercial</Label><Textarea value={form.formDescription} onChange={(e) => patchForm({ formDescription: e.target.value })} rows={3} className="rounded-2xl" /></div>
+            <div className="grid gap-2"><Label>Texto del CTA</Label><Input value={form.submitCtaLabel} onChange={(e) => patchForm({ submitCtaLabel: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2"><Label>Fuente CSS</Label><Input value={form.fontFamily} onChange={(e) => patchForm({ fontFamily: e.target.value })} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>Mensaje de éxito</Label><Textarea value={form.formSuccessMessage} onChange={(e) => patchForm({ formSuccessMessage: e.target.value })} rows={3} className="rounded-2xl" /></div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="terms" className="space-y-4">
+          <div className="space-y-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Mostrar aceptación de términos</p>
+                <p className="text-xs text-slate-500">Añade checkbox de autorización o tratamiento de datos.</p>
+              </div>
+              <Switch checked={form.termsEnabled} onCheckedChange={(checked) => patchForm({ termsEnabled: checked })} />
+            </div>
+            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Requerir aceptación</p>
+                <p className="text-xs text-slate-500">Bloquea el envío si el usuario no acepta.</p>
+              </div>
+              <Switch checked={form.termsRequired} onCheckedChange={(checked) => patchForm({ termsRequired: checked })} disabled={!form.termsEnabled} />
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-2 md:col-span-2"><Label>Texto principal</Label><Textarea value={form.termsLabel} onChange={(e) => patchForm({ termsLabel: e.target.value })} rows={2} className="rounded-2xl" disabled={!form.termsEnabled} /></div>
+              <div className="grid gap-2"><Label>Texto del enlace</Label><Input value={form.termsLinkText} onChange={(e) => patchForm({ termsLinkText: e.target.value })} className="h-11 rounded-xl" disabled={!form.termsEnabled} /></div>
+              <div className="grid gap-2"><Label>URL de términos</Label><Input value={form.termsLinkUrl} onChange={(e) => patchForm({ termsLinkUrl: e.target.value })} className="h-11 rounded-xl" placeholder="https://..." disabled={!form.termsEnabled} /></div>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="technical" className="space-y-4">
+          <div className="space-y-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Publicar formulario por iframe</p>
+                <p className="text-xs text-slate-500">Expone URL pública e iframe para el sitio del cliente.</p>
+              </div>
+              <Switch checked={form.publicEmbedEnabled} onCheckedChange={(checked) => patchForm({ publicEmbedEnabled: checked })} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Dominios permitidos</Label>
+              <Textarea value={form.allowedDomains} onChange={(e) => patchForm({ allowedDomains: e.target.value })} rows={3} className="rounded-2xl" placeholder="cliente.com, demo.cliente.com" />
+            </div>
+            {isWizard ? (
+              <div className="grid gap-2">
+                <Label>Selector del formulario legacy</Label>
+                <Input value={createForm.formSelector} onChange={(e) => setCreateForm((current) => ({ ...current, formSelector: e.target.value }))} className="h-11 rounded-xl" placeholder="#lead-form" />
+              </div>
+            ) : null}
+          </div>
+        </TabsContent>
+      </Tabs>
+    )
+  }
+
+  function renderChatbotWizardConfigurationSections() {
+    return (
+      <Tabs value={wizardChatbotSection} onValueChange={(value) => setWizardChatbotSection(value as ChatbotWizardSection)} className="space-y-4">
+        <div className="overflow-x-auto pb-1">
+          <TabsList className="inline-flex h-auto min-w-max flex-nowrap rounded-2xl border border-slate-200 bg-slate-50 p-1 md:flex-wrap">
+            {CHATBOT_WIZARD_SECTION_OPTIONS.map((item) => (
+              <TabsTrigger key={item.id} value={item.id} className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">
+                {item.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+
+        <TabsContent value="base" className="space-y-4">
+          <div className="space-y-4">
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+              <div className="mb-4">
+                <p className="text-sm font-semibold text-slate-900">Identidad del canal</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Define cómo aparecerá el chatbot dentro del CRM y con qué estado arranca.</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-2 md:col-span-2">
+                  <Label>Nombre del canal</Label>
+                  <Input value={createForm.name} onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))} className="h-11 rounded-xl bg-white" />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Proveedor técnico</Label>
+                  <div className="flex h-11 items-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700">{createForm.provider}</div>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Estado inicial</Label>
+                  <Select value={createForm.status} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, status: value as ChannelStatus }))}>
+                    <SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {CHANNEL_STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-4">
+              <div className="mb-4">
+                <p className="text-sm font-semibold text-slate-900">Conexión y acceso</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Controla el token de pruebas, la URL pública del iframe y las restricciones por dominio.</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-2 md:col-span-2">
+                  <Label>Token de prueba / verificación</Label>
+                  <div className="flex gap-2">
+                    <Input value={createForm.testingToken} onChange={(e) => setCreateForm((prev) => ({ ...prev, testingToken: e.target.value }))} className="h-11 rounded-xl bg-white" />
+                    <Button type="button" variant="outline" className="rounded-xl bg-white" onClick={() => setCreateForm((prev) => ({ ...prev, testingToken: makeDemoToken() }))}>Regenerar</Button>
+                  </div>
+                  <p className="text-xs leading-5 text-slate-500">Se usa para pruebas seguras, verificación y bridges demo.</p>
+                </div>
+                <div className="grid gap-2 md:col-span-2">
+                  <Label>Dominios permitidos</Label>
+                  <Textarea value={createForm.allowedDomains} onChange={(e) => setCreateForm((prev) => ({ ...prev, allowedDomains: e.target.value }))} rows={3} className="rounded-2xl bg-white" placeholder="cliente.com, demo.cliente.com" />
+                </div>
+                <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Publicar iframe sin token</p>
+                    <p className="text-xs text-slate-500">Recomendado para la demo controlada del cliente.</p>
+                  </div>
+                  <Switch checked={createForm.publicEmbedEnabled} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, publicEmbedEnabled: checked }))} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="brand" className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-2 md:col-span-2"><Label>Título visible del chatbot</Label><Input value={createForm.chatbotTitle} onChange={(e) => setCreateForm((prev) => ({ ...prev, chatbotTitle: e.target.value }))} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>Nombre del asistente</Label><Input value={createForm.assistantName} onChange={(e) => setCreateForm((prev) => ({ ...prev, assistantName: e.target.value }))} className="h-11 rounded-xl" /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>Prompt inicial</Label><Textarea value={createForm.chatbotPrompt} onChange={(e) => setCreateForm((prev) => ({ ...prev, chatbotPrompt: e.target.value }))} rows={4} className="rounded-2xl" /></div>
+            <div className="grid gap-2"><Label>Altura del iframe</Label><Input value={createForm.iframeHeight} onChange={(e) => setCreateForm((prev) => ({ ...prev, iframeHeight: e.target.value }))} className="h-11 rounded-xl" placeholder="720" /></div>
+            <div className="grid gap-2"><Label>Fuente CSS</Label><Input value={createForm.fontFamily} onChange={(e) => setCreateForm((prev) => ({ ...prev, fontFamily: e.target.value }))} className="h-11 rounded-xl" placeholder="ui-sans-serif, system-ui, sans-serif" /></div>
+            <div className="grid gap-2"><Label>Color de acento</Label><div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2"><input type="color" value={createForm.accentColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, accentColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar color de acento" /><div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.accentColor }} /><Input value={createForm.accentColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, accentColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="#1d4ed8" /></div></div>
+            <div className="grid gap-2"><Label>Color de fondo general</Label><div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2"><input type="color" value={createForm.pageBackgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, pageBackgroundColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar color de fondo general" /><div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.pageBackgroundColor }} /><Input value={createForm.pageBackgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, pageBackgroundColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="#eef5ff" /></div></div>
+            <div className="grid gap-2"><Label>Color de fondo interno</Label><div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2"><input type="color" value={createForm.backgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, backgroundColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar color de fondo interno" /><div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.backgroundColor }} /><Input value={createForm.backgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, backgroundColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="#f8fbff" /></div></div>
+            <div className="grid gap-2"><Label>Etiqueta superior</Label><Input value={createForm.headerBadgeLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, headerBadgeLabel: e.target.value }))} className="h-11 rounded-xl" placeholder="Chatbot CRM" /></div>
+            <div className="grid gap-2"><Label>Estado del asistente</Label><Input value={createForm.statusBadgeLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, statusBadgeLabel: e.target.value }))} className="h-11 rounded-xl" placeholder="En linea" /></div>
+            <div className="grid gap-2"><Label>Radio del panel</Label><div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2"><Input value={createForm.chatShellRadius} onChange={(e) => setCreateForm((prev) => ({ ...prev, chatShellRadius: normalizePixelValue(e.target.value, '30') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="30" /><span className="text-xs font-medium text-slate-500">px</span></div></div>
+            <div className="grid gap-2"><Label>Radio de burbujas</Label><div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2"><Input value={createForm.messageBubbleRadius} onChange={(e) => setCreateForm((prev) => ({ ...prev, messageBubbleRadius: normalizePixelValue(e.target.value, '22') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="22" /><span className="text-xs font-medium text-slate-500">px</span></div></div>
+            <div className="grid gap-2 md:col-span-2"><Label>Sombra del panel</Label><Select value={createForm.panelShadowPreset} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, panelShadowPreset: value as PanelShadowPreset }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="soft">Suave</SelectItem><SelectItem value="medium">Media</SelectItem><SelectItem value="strong">Fuerte</SelectItem></SelectContent></Select></div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="launcher" className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Habilitar launcher flotante</p>
+                <p className="text-xs text-slate-500">Controla si se genera y se usa el botón flotante además del iframe público.</p>
+              </div>
+              <Switch checked={createForm.floatingLauncherEnabled} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, floatingLauncherEnabled: checked }))} />
+            </div>
+            <div className="grid gap-2"><Label>Texto del launcher flotante</Label><Input value={createForm.launcherLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, launcherLabel: e.target.value }))} className="h-11 rounded-xl" placeholder="Abrir asesor virtual" /></div>
+            <div className="grid gap-2"><Label>Icono del launcher</Label><Select value={createForm.launcherIcon} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherIcon: value }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bot">bot</SelectItem><SelectItem value="message-circle">message-circle</SelectItem><SelectItem value="sparkles">sparkles</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2"><Label>Posición del launcher</Label><Select value={createForm.launcherPosition} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherPosition: value as LauncherPosition }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="right">Derecha</SelectItem><SelectItem value="left">Izquierda</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2"><Label>Tamaño del launcher</Label><Select value={createForm.launcherSize} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherSize: value as LauncherSize }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="compact">Compacto</SelectItem><SelectItem value="standard">Estándar</SelectItem><SelectItem value="large">Grande</SelectItem></SelectContent></Select></div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="copy" className="space-y-4">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Solicitar producto en la captura inicial</p>
+                <p className="text-xs text-slate-500">Permite que el bot consulte inventario y responda con referencia, precio y disponibilidad.</p>
+              </div>
+              <Switch checked={createForm.showProductField} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, showProductField: checked }))} />
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-2"><Label>Label nombre</Label><Input value={createForm.nameLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, nameLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+              <div className="grid gap-2"><Label>Placeholder nombre</Label><Input value={createForm.namePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, namePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+              <div className="grid gap-2"><Label>Label correo</Label><Input value={createForm.emailLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, emailLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+              <div className="grid gap-2"><Label>Placeholder correo</Label><Input value={createForm.emailPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, emailPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+              <div className="grid gap-2"><Label>Label teléfono</Label><Input value={createForm.phoneLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, phoneLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+              <div className="grid gap-2"><Label>Placeholder teléfono</Label><Input value={createForm.phonePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, phonePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+              <div className="grid gap-2"><Label>Label producto</Label><Input value={createForm.productLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, productLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+              <div className="grid gap-2"><Label>Placeholder producto</Label><Input value={createForm.productPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, productPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+              <div className="grid gap-2"><Label>Label mensaje</Label><Input value={createForm.messageLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, messageLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+              <div className="grid gap-2"><Label>Placeholder mensaje</Label><Input value={createForm.messagePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, messagePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
+    )
+  }
+
   async function saveSelectedChatbotBuilder() {
     if (!selectedChannel || !selectedIsChatbot) return
 
@@ -2278,6 +3273,8 @@ export function CrmIntegrationsClient() {
         formFieldSpacing: normalizePixelValue(webFormBuilderDraft.formFieldSpacing, '14'),
         formPadding: normalizePixelValue(webFormBuilderDraft.formPadding, '24'),
         formFontSize: normalizePixelValue(webFormBuilderDraft.formFontSize, '14'),
+        webFormCustomFields: webFormBuilderDraft.webFormCustomFields,
+        webFormVariables: webFormBuilderDraft.webFormVariables,
       }
 
       const json = await requestJson<ChannelConnection>(`/api/crm/channels/${selectedChannel.id}`, {
@@ -2338,6 +3335,9 @@ export function CrmIntegrationsClient() {
     if (!selectedChannel) return ['overview']
     const bridgeKind = selectedBridgeKind
     if (selectedChannel.provider === 'WEB_CHATBOT') return ['overview', 'chatbot', 'bridge']
+    if (selectedChannel.provider === 'WEB_FORM' && bridgeKind === 'GOOGLE_SHEETS') {
+      return ['overview', 'bridge']
+    }
     if (selectedChannel.provider === 'WEB_FORM' && (bridgeKind === 'GMAIL' || bridgeKind === 'OUTLOOK' || bridgeKind === 'TIKTOK' || bridgeKind === 'YOUTUBE')) {
       return ['overview', 'bridge', 'form']
     }
@@ -2352,7 +3352,7 @@ export function CrmIntegrationsClient() {
   }, [activeAssetTab, selectedAssetTabs])
 
   return (
-    <div className="space-y-6 pb-6">
+    <div className="space-y-4.5 pb-4">
       <ErpPageHero
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
@@ -2383,17 +3383,17 @@ export function CrmIntegrationsClient() {
         ]}
       />
 
-      <Tabs value={workspaceView} onValueChange={(value) => setWorkspaceView(value as CrmWorkspaceView)} className="space-y-5">
-        <div className="flex flex-col gap-3 rounded-[28px] border border-slate-200 bg-white/90 p-3 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.34)] md:flex-row md:items-center md:justify-between">
-          <TabsList className="grid h-auto grid-cols-2 rounded-[22px] border border-slate-200 bg-slate-50 p-1">
-            <TabsTrigger value="operations" className="rounded-[18px] px-5 py-2.5 data-[state=active]:bg-white">Operación</TabsTrigger>
-            <TabsTrigger value="metrics" className="rounded-[18px] px-5 py-2.5 data-[state=active]:bg-white">Métricas y metas</TabsTrigger>
+      <Tabs value={workspaceView} onValueChange={(value) => setWorkspaceView(value as CrmWorkspaceView)} className="space-y-4">
+        <div className="flex flex-col gap-2.5 rounded-[24px] border border-slate-200 bg-white/90 p-2.5 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.28)] md:flex-row md:items-center md:justify-between">
+          <TabsList className="grid h-auto grid-cols-2 rounded-[18px] border border-slate-200 bg-slate-50 p-1">
+            <TabsTrigger value="operations" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">Operación</TabsTrigger>
+            <TabsTrigger value="metrics" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">Métricas y metas</TabsTrigger>
           </TabsList>
-          <p className="px-2 text-sm text-slate-500">
-            {workspaceView === 'operations'
-              ? 'Vista compacta para administrar canales, assets y configuraciones sin ocupar espacio extra.'
-              : 'Panel ejecutivo para revisar rendimiento y definir objetivos comerciales por canal.'}
-          </p>
+          {workspaceView === 'metrics' ? (
+            <p className="px-2 text-[13px] text-slate-500">
+              Panel ejecutivo para revisar rendimiento y definir objetivos comerciales por canal.
+            </p>
+          ) : null}
         </div>
 
         <TabsContent value="metrics" className="space-y-5">
@@ -2685,14 +3685,14 @@ export function CrmIntegrationsClient() {
             </div>
           </div>
         </TabsContent>
-      <TabsContent value="operations" className="space-y-5">
-        <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
-        <Card className="rounded-[26px] border-slate-200 bg-white/95 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.34)]">
+      <TabsContent value="operations" className="space-y-4">
+        <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <Card className="rounded-[24px] border-slate-200 bg-white/95 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.3)]">
           <CardHeader className="border-b border-slate-100 pb-4">
             <CardTitle>Canales configurados</CardTitle>
             <CardDescription>Selecciona un canal para ver assets, webhooks y bridges listos para copiar.</CardDescription>
           </CardHeader>
-          <CardContent className="max-h-[72vh] space-y-3 overflow-y-auto p-4 md:p-5 xl:max-h-[calc(100vh-19rem)]">
+          <CardContent className="max-h-[72vh] space-y-2.5 overflow-y-auto p-3 md:p-4 xl:max-h-[calc(100vh-19rem)]">
             {loading ? <p className="text-sm text-muted-foreground">Cargando canales...</p> : null}
             {!loading && channels.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50/80 p-5 text-sm text-slate-500">
@@ -2779,14 +3779,23 @@ export function CrmIntegrationsClient() {
         </Card>
 
         <div className="space-y-5">
-          {selectedChannel ? (
-            <Card className="rounded-[26px] border-slate-200 bg-white/95 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.34)]">
+          {selectedChannel && operationsPanelView !== 'assets' ? (
+            <Card className="rounded-[24px] border-slate-200 bg-white/95 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.3)]">
               <CardHeader className="border-b border-slate-100 pb-4">
-                <CardTitle>Vista previa del canal</CardTitle>
-                <CardDescription>Resumen ejecutivo, readiness y accesos rápidos del canal seleccionado.</CardDescription>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <CardTitle>{operationsPanelView === 'preview' ? 'Vista previa del canal' : 'Checklist de readiness'}</CardTitle>
+                    <CardDescription>
+                      {operationsPanelView === 'preview'
+                        ? 'Resumen ejecutivo y accesos rápidos del canal seleccionado.'
+                        : 'Revisión operativa para validar si el canal ya está listo para demo o producción.'}
+                    </CardDescription>
+                  </div>
+                  {operationsPanelSwitcher}
+                </div>
               </CardHeader>
-              <CardContent className="space-y-5 p-4 md:p-5">
-                <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+              <CardContent className="space-y-4 p-4 md:p-5">
+                {operationsPanelView === 'preview' ? (
                   <div className={`rounded-[26px] border p-5 ${channelTone(selectedChannel.provider, selectedBridgeKind)}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -2863,34 +3872,137 @@ export function CrmIntegrationsClient() {
                         </div>
                       </div>
                     ) : null}
+
+                    {selectedIsGoogleSheetsBridge && snippets ? (
+                      <div className="mt-5 rounded-2xl border border-emerald-200 bg-white/90 p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Google Sheets operativo</p>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">Aquí mismo puedes validar la hoja, importar filas al CRM y descargar el CSV exportado del canal sin irte al studio técnico.</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button className="rounded-xl border-emerald-200 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => void runGoogleSheetsPreview()} disabled={googleSheetsActions.loadingPreview || googleSheetsActions.loadingImport}>
+                              <Eye className="mr-2 h-4 w-4" />
+                              {googleSheetsActions.loadingPreview ? 'Probando hoja...' : 'Probar preview'}
+                            </Button>
+                            <Button variant="outline" className="rounded-xl border-emerald-200 text-emerald-800 hover:bg-emerald-50" onClick={() => void runGoogleSheetsImport()} disabled={googleSheetsActions.loadingImport || googleSheetsActions.loadingPreview}>
+                              <Upload className="mr-2 h-4 w-4" />
+                              {googleSheetsActions.loadingImport ? 'Importando...' : 'Importar ahora'}
+                            </Button>
+                            <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
+                              <Link href={snippets.googleSheetsExport}>
+                                <Download className="mr-2 h-4 w-4" />
+                                Exportar CSV
+                              </Link>
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 md:grid-cols-3">
+                          <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
+                            <p className="text-[11px] uppercase tracking-[0.14em] text-emerald-700">Origen conectado</p>
+                            <p className="mt-2 break-all text-sm font-semibold text-slate-950">{selectedGoogleSheetsCsvUrl || 'Configura URL CSV o spreadsheet ID'}</p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                            <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Último preview</p>
+                            <p className="mt-2 text-2xl font-semibold text-slate-950">{googleSheetsActions.previewResult?.totalRows ?? '—'}</p>
+                            <p className="mt-1 text-xs text-slate-500">filas detectadas en la hoja</p>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                            <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Última importación</p>
+                            <p className="mt-2 text-2xl font-semibold text-slate-950">{googleSheetsActions.importResult?.importedRows ?? '—'}</p>
+                            <p className="mt-1 text-xs text-slate-500">filas importadas al CRM</p>
+                          </div>
+                        </div>
+
+                        {googleSheetsActions.error ? (
+                          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/80 px-4 py-3 text-sm text-rose-700">
+                            {googleSheetsActions.error}
+                          </div>
+                        ) : null}
+
+                        {googleSheetsActions.previewResult ? (
+                          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">Preview cargado</p>
+                                <p className="text-xs leading-5 text-slate-500">Headers: {googleSheetsActions.previewResult.headers.join(' · ') || 'sin headers detectados'}</p>
+                              </div>
+                              <Button variant="outline" className="rounded-xl" onClick={() => void copyText('google-sheets-preview-url', snippets.googleSheetsPreview)}>
+                                {copiedKey === 'google-sheets-preview-url' ? 'Copiado' : 'Copiar endpoint preview'}
+                              </Button>
+                            </div>
+                            <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+                              <table className="min-w-full text-left text-xs text-slate-600">
+                                <thead className="bg-slate-50 text-slate-500">
+                                  <tr>
+                                    <th className="px-3 py-2 font-semibold">Fila</th>
+                                    <th className="px-3 py-2 font-semibold">Nombre</th>
+                                    <th className="px-3 py-2 font-semibold">Email</th>
+                                    <th className="px-3 py-2 font-semibold">Teléfono</th>
+                                    <th className="px-3 py-2 font-semibold">Producto</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {googleSheetsActions.previewResult.preview.slice(0, 5).map((row, index) => (
+                                    <tr key={`${String(row.rowNumber ?? index)}-${index}`} className="border-t border-slate-100">
+                                      <td className="px-3 py-2 font-medium text-slate-900">{String(row.rowNumber ?? '—')}</td>
+                                      <td className="px-3 py-2">{String(row.nombre ?? '—')}</td>
+                                      <td className="px-3 py-2">{String(row.email ?? '—')}</td>
+                                      <td className="px-3 py-2">{String(row.telefono ?? '—')}</td>
+                                      <td className="px-3 py-2">{String(row.producto ?? '—')}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {googleSheetsActions.importResult ? (
+                          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+                            <p className="text-sm font-semibold text-emerald-900">Importación ejecutada</p>
+                            <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                              <div className="rounded-2xl border border-white/80 bg-white/85 p-3"><p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Procesadas</p><p className="mt-2 text-xl font-semibold text-slate-950">{googleSheetsActions.importResult.processedRows}</p></div>
+                              <div className="rounded-2xl border border-white/80 bg-white/85 p-3"><p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Importadas</p><p className="mt-2 text-xl font-semibold text-slate-950">{googleSheetsActions.importResult.importedRows}</p></div>
+                              <div className="rounded-2xl border border-white/80 bg-white/85 p-3"><p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Omitidas</p><p className="mt-2 text-xl font-semibold text-slate-950">{googleSheetsActions.importResult.skippedRows}</p></div>
+                              <div className="rounded-2xl border border-white/80 bg-white/85 p-3"><p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Oportunidades</p><p className="mt-2 text-xl font-semibold text-slate-950">{googleSheetsActions.importResult.opportunitiesCreated}</p></div>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
+                ) : null}
 
                   <div className="space-y-4">
-                    <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Checklist de readiness</p>
-                      {selectedReadiness ? (
-                        <div className="mt-4 space-y-4">
-                          {[
-                            { title: 'Configurado', items: selectedReadiness.configured },
-                            { title: 'Listo para demo', items: selectedReadiness.demo },
-                            { title: 'Listo para producción', items: selectedReadiness.production },
-                          ].map((group) => (
-                            <div key={group.title} className="space-y-2">
-                              <p className="text-sm font-semibold text-slate-900">{group.title}</p>
-                              {group.items.map((item) => (
-                                <div key={item.label} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                                  <span className={item.done ? 'mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700' : 'mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-700'}>{item.done ? 'OK' : '!'}</span>
-                                  <div>
-                                    <p className="text-sm font-medium text-slate-900">{item.label}</p>
-                                    <p className="text-xs leading-5 text-slate-500">{item.hint}</p>
+                    {operationsPanelView === 'readiness' ? (
+                      <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Checklist de readiness</p>
+                        {selectedReadiness ? (
+                          <div className="mt-4 space-y-4">
+                            {[
+                              { title: 'Configurado', items: selectedReadiness.configured },
+                              { title: 'Listo para demo', items: selectedReadiness.demo },
+                              { title: 'Listo para producción', items: selectedReadiness.production },
+                            ].map((group) => (
+                              <div key={group.title} className="space-y-2">
+                                <p className="text-sm font-semibold text-slate-900">{group.title}</p>
+                                {group.items.map((item) => (
+                                  <div key={item.label} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                                    <span className={item.done ? 'mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700' : 'mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-700'}>{item.done ? 'OK' : '!'}</span>
+                                    <div>
+                                      <p className="text-sm font-medium text-slate-900">{item.label}</p>
+                                      <p className="text-xs leading-5 text-slate-500">{item.hint}</p>
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
 
                     <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Gestión del canal</p>
@@ -3038,19 +4150,24 @@ export function CrmIntegrationsClient() {
                       </div>
                     ) : null}
                   </div>
-                </div>
               </CardContent>
             </Card>
           ) : null}
 
+          {operationsPanelView === 'assets' ? (
           <Card className="rounded-[26px] border-slate-200 bg-white/95 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.34)]">
             <CardHeader className="border-b border-slate-100 pb-4">
-              <CardTitle>Studio de assets</CardTitle>
-              <CardDescription>
-                {selectedChannel
-                  ? `Canal activo: ${selectedChannel.name}. Desde aquí copias scripts, payloads, tokens y URLs para formularios, chatbot, correo y social.`
-                  : 'Selecciona un canal para ver el setup operativo.'}
-              </CardDescription>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <CardTitle>Studio de assets</CardTitle>
+                  <CardDescription>
+                    {selectedChannel
+                      ? `Canal activo: ${selectedChannel.name}. Desde aquí copias scripts, payloads, tokens y URLs para formularios, chatbot, correo y social.`
+                      : 'Selecciona un canal para ver el setup operativo.'}
+                  </CardDescription>
+                </div>
+                {operationsPanelSwitcher}
+              </div>
             </CardHeader>
             <CardContent className="p-4 md:p-5">
               {!selectedChannel || !snippets ? (
@@ -3098,8 +4215,8 @@ export function CrmIntegrationsClient() {
 
                     <div className="grid gap-4 lg:grid-cols-2">
                       <div className="rounded-3xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-900">
-                        <p className="font-semibold">Google / Outlook</p>
-                        <p className="mt-2 leading-6">Quedaron listos como bridge demo sin duplicar módulos. El correo llega a una automatización externa, y esa automatización empuja el prospecto al endpoint del CRM usando este mismo canal.</p>
+                        <p className="font-semibold">Google / Outlook / Sheets</p>
+                        <p className="mt-2 leading-6">Correo y hojas quedaron montados como bridges del mismo CRM. Así puedes importar, exportar o automatizar captación sin abrir otro módulo comercial paralelo.</p>
                       </div>
                       <div className="rounded-3xl border border-sky-200 bg-sky-50/80 p-4 text-sm text-sky-900">
                         <p className="font-semibold">Meta / WhatsApp / Instagram</p>
@@ -3442,9 +4559,45 @@ export function CrmIntegrationsClient() {
                           </Button>
                         </CardContent>
                       </Card>
+                      <Card className="rounded-3xl border-emerald-200 bg-emerald-50/60">
+                        <CardHeader>
+                          <CardTitle className="text-base">Google Sheets Bridge</CardTitle>
+                          <CardDescription>Endpoints para preview, import y export sobre la hoja configurada en este canal.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3 text-sm text-slate-700">
+                          <div className="rounded-2xl border border-white/70 bg-white/85 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">CSV origen</p>
+                            <p className="mt-2 break-all font-medium text-slate-900">{selectedGoogleSheetsCsvUrl || 'Configura URL CSV o Spreadsheet ID + pestaña en el canal'}</p>
+                          </div>
+                          <div className="grid gap-2">
+                            <Label className="text-xs uppercase tracking-[0.14em] text-slate-500">Preview</Label>
+                            <Textarea value={snippets.googleSheetsPreview} readOnly rows={2} className="font-mono text-xs" />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label className="text-xs uppercase tracking-[0.14em] text-slate-500">Import</Label>
+                            <Textarea value={snippets.googleSheetsImport} readOnly rows={2} className="font-mono text-xs" />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label className="text-xs uppercase tracking-[0.14em] text-slate-500">Export</Label>
+                            <Textarea value={snippets.googleSheetsExport} readOnly rows={2} className="font-mono text-xs" />
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button className="rounded-xl" onClick={() => void copyText('bridge-google-sheets-import', snippets.googleSheetsImport)}>
+                              {copiedKey === 'bridge-google-sheets-import' ? 'Copiado' : 'Copiar import'}
+                            </Button>
+                            <Button variant="outline" className="rounded-xl" onClick={() => void copyText('bridge-google-sheets-export', snippets.googleSheetsExport)}>
+                              {copiedKey === 'bridge-google-sheets-export' ? 'Copiado' : 'Copiar export'}
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
                     </div>
 
                     <div className="grid gap-4 lg:grid-cols-2">
+                      <div className="rounded-3xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm text-emerald-900">
+                        <p className="font-semibold">Google Sheets operativo</p>
+                        <p className="mt-2 leading-6">La hoja entra por preview/import CSV y la salida vuelve a CSV del canal. Con eso ya puedes usar Google Sheets como backoffice comercial, checklist de ferias o consolidado manual de campañas.</p>
+                      </div>
                       <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4 text-sm text-slate-600">
                         <p className="font-semibold text-slate-900">TikTok y YouTube</p>
                         <p className="mt-2 leading-6">Para TikTok Lead Ads, formularios de creators o capturas desde YouTube, usa el mismo endpoint de bridge vía Make, Zapier, n8n o una función serverless. Así los leads entran a la misma estructura CRM sin crear otro módulo.</p>
@@ -3459,6 +4612,7 @@ export function CrmIntegrationsClient() {
               )}
             </CardContent>
           </Card>
+          ) : null}
         </div>
         </div>
       </TabsContent>
@@ -3892,62 +5046,8 @@ export function CrmIntegrationsClient() {
                 <DialogDescription>El usuario edita en un modal dedicado y cada ajuste se refleja al instante en el preview del iframe.</DialogDescription>
               </DialogHeader>
 
-              <div className="mt-5 space-y-4 pr-1">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="grid gap-2 md:col-span-2"><Label>Título</Label><Input value={webFormBuilderDraft.formTitle} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formTitle: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2 md:col-span-2"><Label>Descripción</Label><Textarea value={webFormBuilderDraft.formDescription} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formDescription: e.target.value }))} rows={3} className="rounded-2xl" /></div>
-                  <div className="grid gap-2"><Label>CTA</Label><Input value={webFormBuilderDraft.submitCtaLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, submitCtaLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Altura iframe</Label><Input value={webFormBuilderDraft.iframeHeight} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, iframeHeight: normalizePixelValue(e.target.value, '840') }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2 md:col-span-2"><Label>Mensaje de éxito</Label><Textarea value={webFormBuilderDraft.formSuccessMessage} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formSuccessMessage: e.target.value }))} rows={2} className="rounded-2xl" /></div>
-                  <div className="grid gap-2 md:col-span-2"><Label>Dominios permitidos</Label><Textarea value={webFormBuilderDraft.allowedDomains} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, allowedDomains: e.target.value }))} rows={2} className="rounded-2xl" placeholder="cliente.com, demo.cliente.com" /></div>
-                </div>
-
-                <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
-                  <div className="grid gap-2"><Label>Color acento</Label><Input value={webFormBuilderDraft.accentColor} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, accentColor: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Color CTA</Label><Input value={webFormBuilderDraft.formCtaColor} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formCtaColor: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Fondo general</Label><Input value={webFormBuilderDraft.pageBackgroundColor} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, pageBackgroundColor: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Fondo interno</Label><Input value={webFormBuilderDraft.backgroundColor} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, backgroundColor: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Radio tarjeta</Label><Input value={webFormBuilderDraft.formCardRadius} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formCardRadius: normalizePixelValue(e.target.value, '28') }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Radio inputs</Label><Input value={webFormBuilderDraft.formInputRadius} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formInputRadius: normalizePixelValue(e.target.value, '16') }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Espaciado</Label><Input value={webFormBuilderDraft.formFieldSpacing} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formFieldSpacing: normalizePixelValue(e.target.value, '14') }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Padding interno</Label><Input value={webFormBuilderDraft.formPadding} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formPadding: normalizePixelValue(e.target.value, '24') }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Tamaño fuente</Label><Input value={webFormBuilderDraft.formFontSize} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, formFontSize: normalizePixelValue(e.target.value, '14') }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Fuente CSS</Label><Input value={webFormBuilderDraft.fontFamily} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, fontFamily: e.target.value }))} className="h-11 rounded-xl" /></div>
-                </div>
-
-                <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2 xl:grid-cols-3">
-                  {[
-                    { key: 'showNameField', label: 'Nombre' },
-                    { key: 'showEmailField', label: 'Correo' },
-                    { key: 'showPhoneField', label: 'Teléfono' },
-                    { key: 'showCompanyField', label: 'Empresa' },
-                    { key: 'showCityField', label: 'Ciudad' },
-                    { key: 'showProductField', label: 'Producto' },
-                    { key: 'showMessageField', label: 'Mensaje' },
-                  ].map((field) => (
-                    <div key={field.key} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                      <span className="text-sm font-medium text-slate-900">{field.label}</span>
-                      <Switch checked={Boolean(webFormBuilderDraft[field.key as keyof WebFormBuilderState])} onCheckedChange={(checked) => setWebFormBuilderDraft((current) => ({ ...current, [field.key]: checked }))} />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="grid gap-2"><Label>Label nombre</Label><Input value={webFormBuilderDraft.nameLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, nameLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Placeholder nombre</Label><Input value={webFormBuilderDraft.namePlaceholder} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, namePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Label correo</Label><Input value={webFormBuilderDraft.emailLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, emailLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Placeholder correo</Label><Input value={webFormBuilderDraft.emailPlaceholder} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, emailPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Label teléfono</Label><Input value={webFormBuilderDraft.phoneLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, phoneLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Placeholder teléfono</Label><Input value={webFormBuilderDraft.phonePlaceholder} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, phonePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Label empresa</Label><Input value={webFormBuilderDraft.companyLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, companyLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Placeholder empresa</Label><Input value={webFormBuilderDraft.companyPlaceholder} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, companyPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Label ciudad</Label><Input value={webFormBuilderDraft.cityLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, cityLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Placeholder ciudad</Label><Input value={webFormBuilderDraft.cityPlaceholder} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, cityPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Label producto</Label><Input value={webFormBuilderDraft.productLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, productLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2"><Label>Placeholder producto</Label><Input value={webFormBuilderDraft.productPlaceholder} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, productPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2 md:col-span-2"><Label>Label mensaje</Label><Input value={webFormBuilderDraft.messageLabel} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, messageLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                  <div className="grid gap-2 md:col-span-2"><Label>Placeholder mensaje</Label><Input value={webFormBuilderDraft.messagePlaceholder} onChange={(e) => setWebFormBuilderDraft((current) => ({ ...current, messagePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                </div>
+              <div className="mt-5 pr-1">
+                {renderWebFormConfigurationSections('builder')}
               </div>
             </div>
 
@@ -3976,9 +5076,9 @@ export function CrmIntegrationsClient() {
       </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="h-[92vh] max-h-[92vh] max-w-5xl overflow-hidden rounded-[30px] border-slate-200 bg-white/98 p-0 shadow-[0_28px_80px_-42px_rgba(15,23,42,0.45)]">
-          <div className="grid h-full min-h-0 gap-0 lg:grid-cols-[0.9fr_1.1fr]">
-            <div className="min-h-0 overflow-y-auto border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,.18),transparent_32%),linear-gradient(180deg,#f8fbff,#ffffff)] p-6 lg:border-b-0 lg:border-r">
+        <DialogContent className="h-[92vh] max-h-[92vh] w-[97vw] max-w-[1560px] overflow-hidden rounded-[30px] border-slate-200 bg-white/98 p-0 shadow-[0_28px_80px_-42px_rgba(15,23,42,0.45)]">
+          <div className={wizardStep === 'template' ? 'h-full min-h-0' : 'grid h-full min-h-0 gap-0 lg:grid-cols-[0.9fr_1.1fr]'}>
+            <div className={wizardStep === 'template' ? 'min-h-0 h-full overflow-y-auto bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,.18),transparent_32%),linear-gradient(180deg,#f8fbff,#ffffff)] p-6' : 'min-h-0 overflow-y-auto border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,.18),transparent_32%),linear-gradient(180deg,#f8fbff,#ffffff)] p-6 lg:border-b-0 lg:border-r'}>
               <DialogHeader>
                 <DialogTitle>{editingChannelId ? 'Editar canal omnicanal' : 'Nuevo canal omnicanal'}</DialogTitle>
                 <DialogDescription>{editingChannelId ? 'Ajusta configuración, demo e iframe desde el mismo wizard sin perder el contexto del canal.' : 'Wizard por pasos para dejar el canal listo, con preview comercial y checklist antes de crearlo.'}</DialogDescription>
@@ -4004,7 +5104,13 @@ export function CrmIntegrationsClient() {
               </div>
 
               {wizardStep === 'template' ? (
-                <div className="mt-5 space-y-3 pr-1">
+                <div className="mt-5 space-y-4 pr-1">
+                  <div className="rounded-[26px] border border-slate-200 bg-white/85 p-4 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">Paso 1 · Elige el tipo de canal</p>
+                    <h3 className="mt-2 text-xl font-semibold text-slate-950">Elige cómo quieres captar tus leads.</h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">Selecciona un canal para continuar.</p>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {TEMPLATE_PRESETS.map((preset) => (
                     (() => {
                       const Icon = getTemplatePresetIcon(preset)
@@ -4017,29 +5123,23 @@ export function CrmIntegrationsClient() {
                           type="button"
                           onClick={() => applyTemplate(preset.key)}
                           className={selected
-                            ? `rounded-[26px] p-3.5 text-left shadow-sm transition-shadow ${surface.card} ${surface.selected}`
-                            : `rounded-[26px] p-3.5 text-left shadow-sm transition-shadow hover:shadow-md ${surface.card}`}
+                            ? `h-full rounded-[26px] p-3.5 text-left shadow-sm transition-shadow ${surface.card} ${surface.selected}`
+                            : `h-full rounded-[26px] p-3.5 text-left shadow-sm transition-shadow hover:shadow-md ${surface.card}`}
                         >
                           <div className="flex items-start gap-3">
                             <div className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${surface.iconWrap}`}>
                               <Icon className="h-5 w-5" />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-[15px] font-semibold leading-5 text-slate-950">{preset.name}</p>
-                                <span className={`rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] ${surface.pill}`}>{preset.connectionModel}</span>
-                              </div>
-                              <p className="mt-1.5 text-[13px] leading-5 text-slate-600">{preset.description}</p>
-                              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-                                <span className={`text-[11px] font-semibold ${surface.accent}`}>{preset.focus}</span>
-                                <span className="text-[11px] text-slate-500">{preset.readiness}</span>
-                              </div>
+                              <p className="text-[15px] font-semibold leading-5 text-slate-950">{preset.name}</p>
+                              <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.18em] ${surface.pill}`}>{preset.connectionModel}</span>
                             </div>
                           </div>
                         </button>
                       )
                     })()
                   ))}
+                  </div>
                 </div>
               ) : (
                 <div className="mt-5 rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm">
@@ -4185,34 +5285,13 @@ export function CrmIntegrationsClient() {
                             </button>
                           ))}
                         </div>
-                        <div className="mt-4 overflow-hidden rounded-[26px] border border-sky-200 p-4 shadow-sm" style={{ background: `radial-gradient(circle at top, rgba(14,165,233,0.16), transparent 34%), linear-gradient(180deg, ${createForm.pageBackgroundColor} 0%, ${createForm.backgroundColor} 100%)` }}>
-                          <div className="mx-auto" style={{ maxWidth: wizardChatPreviewViewport === 'mobile' ? 340 : 620, fontFamily: createForm.fontFamily }}>
-                            <div className="border border-slate-200 bg-white shadow-[0_28px_70px_-34px_rgba(15,23,42,.32)]" style={{ borderRadius: `${normalizePixelValue(createForm.formCardRadius, '28')}px`, padding: `${normalizePixelValue(createForm.formPadding, '24')}px`, backgroundColor: createForm.backgroundColor }}>
-                              <div className="flex items-center gap-3">
-                                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: createForm.accentColor, boxShadow: `0 0 0 6px ${createForm.accentColor}22` }} />
-                                <div>
-                                  <p className="text-lg font-semibold text-slate-950">{createForm.formTitle}</p>
-                                  <p className="mt-1 text-sm leading-6 text-slate-500">{createForm.formDescription}</p>
-                                </div>
-                              </div>
-                              <div className="mt-5 grid" style={{ gap: `${normalizePixelValue(createForm.formFieldSpacing, '14')}px`, fontSize: `${normalizePixelValue(createForm.formFontSize, '14')}px` }}>
-                                {createForm.showNameField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: createForm.formLabelColor }}>{createForm.nameLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, border: `1px solid ${createForm.formInputBorderColor}`, backgroundColor: createForm.formInputBackgroundColor, color: createForm.formInputTextColor }}>{createForm.namePlaceholder}</div></div> : null}
-                                <div className="grid gap-3 md:grid-cols-2">
-                                  {createForm.showEmailField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: createForm.formLabelColor }}>{createForm.emailLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, border: `1px solid ${createForm.formInputBorderColor}`, backgroundColor: createForm.formInputBackgroundColor, color: createForm.formInputTextColor }}>{createForm.emailPlaceholder}</div></div> : null}
-                                  {createForm.showPhoneField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: createForm.formLabelColor }}>{createForm.phoneLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, border: `1px solid ${createForm.formInputBorderColor}`, backgroundColor: createForm.formInputBackgroundColor, color: createForm.formInputTextColor }}>{createForm.phonePlaceholder}</div></div> : null}
-                                </div>
-                                {(createForm.showCompanyField || createForm.showCityField) ? <div className="grid gap-3 md:grid-cols-2">{createForm.showCompanyField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: createForm.formLabelColor }}>{createForm.companyLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, border: `1px solid ${createForm.formInputBorderColor}`, backgroundColor: createForm.formInputBackgroundColor, color: createForm.formInputTextColor }}>{createForm.companyPlaceholder}</div></div> : null}{createForm.showCityField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: createForm.formLabelColor }}>{createForm.cityLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, border: `1px solid ${createForm.formInputBorderColor}`, backgroundColor: createForm.formInputBackgroundColor, color: createForm.formInputTextColor }}>{createForm.cityPlaceholder}</div></div> : null}</div> : null}
-                                {createForm.showProductField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: createForm.formLabelColor }}>{createForm.productLabel}</p><div className="px-4 py-3" style={{ borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, border: `1px solid ${createForm.formInputBorderColor}`, backgroundColor: createForm.formInputBackgroundColor, color: createForm.formInputTextColor }}>{createForm.productPlaceholder}</div></div> : null}
-                                {createForm.showMessageField ? <div className="grid gap-2"><p className="text-xs font-semibold" style={{ color: createForm.formLabelColor }}>{createForm.messageLabel}</p><div className="px-4 py-3" style={{ minHeight: 112, borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, border: `1px solid ${createForm.formInputBorderColor}`, backgroundColor: createForm.formInputBackgroundColor, color: createForm.formInputTextColor }}>{createForm.messagePlaceholder}</div></div> : null}
-                                <div className="px-4 py-3 text-center text-sm font-semibold" style={{ borderRadius: `${normalizePixelValue(createForm.formInputRadius, '16')}px`, background: `linear-gradient(135deg, ${createForm.formCtaColor}, ${createForm.accentColor})`, color: createForm.formCtaTextColor }}>{createForm.submitCtaLabel}</div>
-                              </div>
-                            </div>
-                          </div>
+                        <div className="mt-4">
+                          {renderWebFormPreview(createForm, { maxWidthClassName: wizardChatPreviewViewport === 'mobile' ? 'max-w-[340px]' : 'max-w-xl', outerPaddingClassName: 'p-4', titleClassName: 'text-lg', messageMinHeight: 112 })}
                         </div>
                         <div className="mt-3 grid gap-2 text-[11px] text-slate-600 sm:grid-cols-3">
-                          <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2"><p className="font-semibold text-slate-900">Campos activos</p><p className="mt-1">{[createForm.showNameField && 'Nombre', createForm.showEmailField && 'Correo', createForm.showPhoneField && 'Teléfono', createForm.showCompanyField && 'Empresa', createForm.showCityField && 'Ciudad', createForm.showProductField && 'Producto', createForm.showMessageField && 'Mensaje'].filter(Boolean).join(' · ')}</p></div>
+                          <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2"><p className="font-semibold text-slate-900">Campos activos</p><p className="mt-1">{[createForm.showNameField && 'Nombre', createForm.showEmailField && 'Correo', createForm.showPhoneField && 'Teléfono', createForm.showCompanyField && 'Empresa', createForm.showCityField && 'Ciudad', createForm.showProductField && 'Producto', createForm.showMessageField && 'Mensaje', createForm.webFormCustomFields.length ? `${createForm.webFormCustomFields.length} personalizados` : ''].filter(Boolean).join(' · ')}</p></div>
                           <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2"><p className="font-semibold text-slate-900">Tipografía</p><p className="mt-1">{normalizePixelValue(createForm.formFontSize, '14')}px · {createForm.fontFamily}</p></div>
-                          <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2"><p className="font-semibold text-slate-900">Forma</p><p className="mt-1">Radio {normalizePixelValue(createForm.formInputRadius, '16')}px · Gap {normalizePixelValue(createForm.formFieldSpacing, '14')}px</p></div>
+                          <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2"><p className="font-semibold text-slate-900">Forma</p><p className="mt-1">Radio {normalizePixelValue(createForm.formInputRadius, '16')}px · Gap {normalizePixelValue(createForm.formFieldSpacing, '14')}px{createForm.termsEnabled ? ' · términos activos' : ''}</p></div>
                         </div>
                       </div>
                     ) : null}
@@ -4237,7 +5316,7 @@ export function CrmIntegrationsClient() {
               )}
             </div>
 
-            <div className="flex min-h-0 flex-col overflow-hidden p-6">
+            {wizardStep !== 'template' ? <div className="flex min-h-0 flex-col overflow-hidden p-6">
               <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(180deg,#fbfdff,#ffffff)] p-4 shadow-sm">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-slate-950 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white">{createPreset.connectionModel}</span>
@@ -4252,6 +5331,8 @@ export function CrmIntegrationsClient() {
               <div className="mt-5 flex-1 overflow-y-auto pr-1">
                 {wizardStep === 'config' ? (
                 <div className="grid gap-4 md:grid-cols-2">
+                {!createIsPublicWebForm && !createIsChatbot ? (
+                  <>
                 <div className="grid gap-2 md:col-span-2">
                   <Label>Nombre del canal</Label>
                   <Input value={createForm.name} onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))} className="h-11 rounded-xl" />
@@ -4279,6 +5360,8 @@ export function CrmIntegrationsClient() {
                   </div>
                   <p className="text-xs leading-5 text-slate-500">Se usa para pruebas seguras, verificación y bridges demo.</p>
                 </div>
+                  </>
+                ) : null}
                 {createUsesWebhook ? (
                   <>
                     {usesMetaProvider(createForm.provider) ? (
@@ -4344,7 +5427,7 @@ export function CrmIntegrationsClient() {
                   </>
                 ) : null}
 
-                {!createIsBridge && createForm.provider === 'WEB_FORM' ? (
+                {!createIsPublicWebForm && !createIsBridge && createForm.provider === 'WEB_FORM' ? (
                   <div className="grid gap-2 md:col-span-2">
                     <Label>Selector del formulario legacy</Label>
                     <Input value={createForm.formSelector} onChange={(e) => setCreateForm((prev) => ({ ...prev, formSelector: e.target.value }))} className="h-11 rounded-xl" placeholder="#lead-form" />
@@ -4352,7 +5435,7 @@ export function CrmIntegrationsClient() {
                   </div>
                 ) : null}
 
-                {createForm.provider === 'WEB_FORM' ? (
+                {!createIsPublicWebForm && createForm.provider === 'WEB_FORM' ? (
                   <div className="grid gap-2 md:col-span-2">
                     <Label>Tipo de bridge</Label>
                     <Select value={createForm.bridgeKind} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, bridgeKind: value as CrmBridgeKind }))}>
@@ -4361,6 +5444,7 @@ export function CrmIntegrationsClient() {
                         <SelectItem value="GENERIC">GENERIC</SelectItem>
                         <SelectItem value="GMAIL">GMAIL</SelectItem>
                         <SelectItem value="OUTLOOK">OUTLOOK</SelectItem>
+                            <SelectItem value="GOOGLE_SHEETS">GOOGLE_SHEETS</SelectItem>
                         <SelectItem value="TIKTOK">TIKTOK</SelectItem>
                         <SelectItem value="YOUTUBE">YOUTUBE</SelectItem>
                       </SelectContent>
@@ -4368,402 +5452,59 @@ export function CrmIntegrationsClient() {
                   </div>
                 ) : null}
 
-                {createIsPublicWebForm ? (
+                {createForm.provider === 'WEB_FORM' && createForm.bridgeKind === 'GOOGLE_SHEETS' ? (
                   <>
-                    <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">Publicar formulario por iframe</p>
-                        <p className="text-xs text-slate-500">Genera una URL pública y un iframe listo para pegar en el sitio del cliente.</p>
-                      </div>
-                      <Switch checked={createForm.publicEmbedEnabled} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, publicEmbedEnabled: checked }))} />
-                    </div>
                     <div className="grid gap-2 md:col-span-2">
-                      <Label>Título del formulario</Label>
-                      <Input value={createForm.formTitle} onChange={(e) => setCreateForm((prev) => ({ ...prev, formTitle: e.target.value }))} className="h-11 rounded-xl" />
-                    </div>
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Descripción comercial</Label>
-                      <Textarea value={createForm.formDescription} onChange={(e) => setCreateForm((prev) => ({ ...prev, formDescription: e.target.value }))} rows={3} className="rounded-2xl" />
+                      <Label>URL CSV publicada</Label>
+                      <Input value={createForm.googleSheetsPublishedCsvUrl} onChange={(e) => setCreateForm((prev) => ({ ...prev, googleSheetsPublishedCsvUrl: e.target.value }))} className="h-11 rounded-xl" placeholder="https://docs.google.com/spreadsheets/d/.../gviz/tq?tqx=out:csv" />
+                      <p className="text-xs leading-5 text-slate-500">Si la hoja está publicada o compartida por link CSV, esta es la vía más directa para preview, import y export operativos.</p>
                     </div>
                     <div className="grid gap-2">
-                      <Label>Altura del iframe</Label>
-                      <Input value={createForm.iframeHeight} onChange={(e) => setCreateForm((prev) => ({ ...prev, iframeHeight: normalizePixelValue(e.target.value, '840') }))} className="h-11 rounded-xl" placeholder="840" />
+                      <Label>Spreadsheet ID</Label>
+                      <Input value={createForm.googleSheetsSpreadsheetId} onChange={(e) => setCreateForm((prev) => ({ ...prev, googleSheetsSpreadsheetId: e.target.value }))} className="h-11 rounded-xl" placeholder="1AbC..." />
                     </div>
                     <div className="grid gap-2">
-                      <Label>Texto del CTA</Label>
-                      <Input value={createForm.submitCtaLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, submitCtaLabel: e.target.value }))} className="h-11 rounded-xl" />
+                      <Label>Nombre de pestaña</Label>
+                      <Input value={createForm.googleSheetsSheetName} onChange={(e) => setCreateForm((prev) => ({ ...prev, googleSheetsSheetName: e.target.value }))} className="h-11 rounded-xl" placeholder="Leads" />
                     </div>
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Mensaje de éxito</Label>
-                      <Textarea value={createForm.formSuccessMessage} onChange={(e) => setCreateForm((prev) => ({ ...prev, formSuccessMessage: e.target.value }))} rows={2} className="rounded-2xl" />
+                    <div className="grid gap-2">
+                      <Label>Límite por importación</Label>
+                      <Input value={createForm.googleSheetsRowLimit} onChange={(e) => setCreateForm((prev) => ({ ...prev, googleSheetsRowLimit: e.target.value.replace(/[^0-9]/g, '') || '200' }))} className="h-11 rounded-xl" placeholder="200" />
                     </div>
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Dominios permitidos</Label>
-                      <Textarea value={createForm.allowedDomains} onChange={(e) => setCreateForm((prev) => ({ ...prev, allowedDomains: e.target.value }))} rows={3} className="rounded-2xl" placeholder="cliente.com, demo.cliente.com" />
+                    <div className="grid gap-2">
+                      <Label>Modo de importación</Label>
+                      <Select value={createForm.googleSheetsImportMode} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, googleSheetsImportMode: value as 'LEADS_ONLY' | 'LEADS_AND_OPPORTUNITIES' }))}>
+                        <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="LEADS_ONLY">Solo leads</SelectItem>
+                          <SelectItem value="LEADS_AND_OPPORTUNITIES">Leads y oportunidades</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:col-span-2 md:grid-cols-2">
-                      <div className="md:col-span-2">
-                        <p className="text-sm font-semibold text-slate-900">Estilo visual del formulario</p>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">Ajusta look, radios, spacing, tipografía y CTA sin escribir código.</p>
-                      </div>
+                    {createForm.googleSheetsImportMode === 'LEADS_AND_OPPORTUNITIES' ? (
                       <div className="grid gap-2">
-                        <Label>Color de acento</Label>
-                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <input type="color" value={createForm.accentColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, accentColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar color de acento" />
-                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.accentColor }} />
-                          <Input value={createForm.accentColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, accentColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
-                        </div>
+                        <Label>Etapa inicial de oportunidad</Label>
+                        <Select value={createForm.googleSheetsOpportunityStage} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, googleSheetsOpportunityStage: value }))}>
+                          <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="NEW">NEW</SelectItem>
+                            <SelectItem value="QUALIFIED">QUALIFIED</SelectItem>
+                            <SelectItem value="PROPOSAL">PROPOSAL</SelectItem>
+                            <SelectItem value="NEGOTIATION">NEGOTIATION</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
-                      <div className="grid gap-2">
-                        <Label>Color CTA</Label>
-                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <input type="color" value={createForm.formCtaColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formCtaColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar color CTA" />
-                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.formCtaColor }} />
-                          <Input value={createForm.formCtaColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formCtaColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Fondo general</Label>
-                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <input type="color" value={createForm.pageBackgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, pageBackgroundColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar fondo general" />
-                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.pageBackgroundColor }} />
-                          <Input value={createForm.pageBackgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, pageBackgroundColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Fondo interno</Label>
-                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <input type="color" value={createForm.backgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, backgroundColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar fondo interno" />
-                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.backgroundColor }} />
-                          <Input value={createForm.backgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, backgroundColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Color labels</Label>
-                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <input type="color" value={createForm.formLabelColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formLabelColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar color labels" />
-                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.formLabelColor }} />
-                          <Input value={createForm.formLabelColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formLabelColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Color borde inputs</Label>
-                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <input type="color" value={createForm.formInputBorderColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formInputBorderColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar borde inputs" />
-                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.formInputBorderColor }} />
-                          <Input value={createForm.formInputBorderColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formInputBorderColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Fondo inputs</Label>
-                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <input type="color" value={createForm.formInputBackgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formInputBackgroundColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar fondo inputs" />
-                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.formInputBackgroundColor }} />
-                          <Input value={createForm.formInputBackgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formInputBackgroundColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Texto inputs</Label>
-                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <input type="color" value={createForm.formInputTextColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formInputTextColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar texto inputs" />
-                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.formInputTextColor }} />
-                          <Input value={createForm.formInputTextColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formInputTextColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Texto CTA</Label>
-                        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <input type="color" value={createForm.formCtaTextColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formCtaTextColor: e.target.value }))} className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0" aria-label="Seleccionar texto CTA" />
-                          <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.formCtaTextColor }} />
-                          <Input value={createForm.formCtaTextColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, formCtaTextColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Fuente CSS</Label>
-                        <Input value={createForm.fontFamily} onChange={(e) => setCreateForm((prev) => ({ ...prev, fontFamily: e.target.value }))} className="h-11 rounded-xl" />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Tamaño base</Label>
-                        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <Input value={createForm.formFontSize} onChange={(e) => setCreateForm((prev) => ({ ...prev, formFontSize: normalizePixelValue(e.target.value, '14') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
-                          <span className="text-xs font-medium text-slate-500">px</span>
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Radio tarjeta</Label>
-                        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <Input value={createForm.formCardRadius} onChange={(e) => setCreateForm((prev) => ({ ...prev, formCardRadius: normalizePixelValue(e.target.value, '28') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
-                          <span className="text-xs font-medium text-slate-500">px</span>
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Radio inputs</Label>
-                        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <Input value={createForm.formInputRadius} onChange={(e) => setCreateForm((prev) => ({ ...prev, formInputRadius: normalizePixelValue(e.target.value, '16') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
-                          <span className="text-xs font-medium text-slate-500">px</span>
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Espaciado entre campos</Label>
-                        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <Input value={createForm.formFieldSpacing} onChange={(e) => setCreateForm((prev) => ({ ...prev, formFieldSpacing: normalizePixelValue(e.target.value, '14') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
-                          <span className="text-xs font-medium text-slate-500">px</span>
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Padding interno</Label>
-                        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <Input value={createForm.formPadding} onChange={(e) => setCreateForm((prev) => ({ ...prev, formPadding: normalizePixelValue(e.target.value, '24') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" />
-                          <span className="text-xs font-medium text-slate-500">px</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:col-span-2 md:grid-cols-2 xl:grid-cols-3">
-                      {[
-                        { key: 'showNameField', label: 'Nombre' },
-                        { key: 'showEmailField', label: 'Correo' },
-                        { key: 'showPhoneField', label: 'Teléfono' },
-                        { key: 'showCompanyField', label: 'Empresa' },
-                        { key: 'showCityField', label: 'Ciudad' },
-                        { key: 'showProductField', label: 'Producto' },
-                        { key: 'showMessageField', label: 'Mensaje' },
-                      ].map((field) => (
-                        <div key={field.key} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">{field.label}</p>
-                            <p className="text-xs text-slate-500">Mostrar en el formulario</p>
-                          </div>
-                          <Switch checked={Boolean(createForm[field.key as keyof ChannelFormState])} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, [field.key]: checked }))} />
-                        </div>
-                      ))}
-                    </div>
-                    <div className="grid gap-3 md:col-span-2 md:grid-cols-2">
-                      <div className="grid gap-2"><Label>Label nombre</Label><Input value={createForm.nameLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, nameLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Placeholder nombre</Label><Input value={createForm.namePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, namePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Label correo</Label><Input value={createForm.emailLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, emailLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Placeholder correo</Label><Input value={createForm.emailPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, emailPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Label teléfono</Label><Input value={createForm.phoneLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, phoneLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Placeholder teléfono</Label><Input value={createForm.phonePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, phonePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Label empresa</Label><Input value={createForm.companyLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, companyLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Placeholder empresa</Label><Input value={createForm.companyPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, companyPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Label ciudad</Label><Input value={createForm.cityLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, cityLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Placeholder ciudad</Label><Input value={createForm.cityPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, cityPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Label producto</Label><Input value={createForm.productLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, productLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Placeholder producto</Label><Input value={createForm.productPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, productPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Label mensaje</Label><Input value={createForm.messageLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, messageLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                      <div className="grid gap-2"><Label>Placeholder mensaje</Label><Input value={createForm.messagePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, messagePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                    ) : null}
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm text-emerald-900 md:col-span-2">
+                      <p className="font-semibold">Primer slice operativo</p>
+                      <p className="mt-2 leading-6">Este bridge ya deja lista la previsualización de filas, la importación al CRM y la exportación CSV del propio canal. OAuth y service account quedan para la fase enterprise, pero el flujo comercial ya puede operar hoy.</p>
                     </div>
                   </>
                 ) : null}
 
-                {createIsChatbot ? (
-                  <>
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Título visible del chatbot</Label>
-                      <Input value={createForm.chatbotTitle} onChange={(e) => setCreateForm((prev) => ({ ...prev, chatbotTitle: e.target.value }))} className="h-11 rounded-xl" />
-                    </div>
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Nombre del asistente</Label>
-                      <Input value={createForm.assistantName} onChange={(e) => setCreateForm((prev) => ({ ...prev, assistantName: e.target.value }))} className="h-11 rounded-xl" />
-                    </div>
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Prompt inicial</Label>
-                      <Textarea value={createForm.chatbotPrompt} onChange={(e) => setCreateForm((prev) => ({ ...prev, chatbotPrompt: e.target.value }))} rows={4} className="rounded-2xl" />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Altura del iframe</Label>
-                      <Input value={createForm.iframeHeight} onChange={(e) => setCreateForm((prev) => ({ ...prev, iframeHeight: e.target.value }))} className="h-11 rounded-xl" placeholder="720" />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Color de acento</Label>
-                      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                        <input
-                          type="color"
-                          value={createForm.accentColor}
-                          onChange={(e) => setCreateForm((prev) => ({ ...prev, accentColor: e.target.value }))}
-                          className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0"
-                          aria-label="Seleccionar color de acento"
-                        />
-                        <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.accentColor }} />
-                        <Input value={createForm.accentColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, accentColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="#1d4ed8" />
-                      </div>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Color de fondo general</Label>
-                      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                        <input
-                          type="color"
-                          value={createForm.pageBackgroundColor}
-                          onChange={(e) => setCreateForm((prev) => ({ ...prev, pageBackgroundColor: e.target.value }))}
-                          className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0"
-                          aria-label="Seleccionar color de fondo general"
-                        />
-                        <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.pageBackgroundColor }} />
-                        <Input value={createForm.pageBackgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, pageBackgroundColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="#eef5ff" />
-                      </div>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Color de fondo interno</Label>
-                      <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                        <input
-                          type="color"
-                          value={createForm.backgroundColor}
-                          onChange={(e) => setCreateForm((prev) => ({ ...prev, backgroundColor: e.target.value }))}
-                          className="h-10 w-14 cursor-pointer rounded-lg border-0 bg-transparent p-0"
-                          aria-label="Seleccionar color de fondo interno"
-                        />
-                        <div className="h-8 w-8 rounded-full border border-slate-200" style={{ backgroundColor: createForm.backgroundColor }} />
-                        <Input value={createForm.backgroundColor} onChange={(e) => setCreateForm((prev) => ({ ...prev, backgroundColor: e.target.value }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="#f8fbff" />
-                      </div>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Fuente CSS</Label>
-                      <Input value={createForm.fontFamily} onChange={(e) => setCreateForm((prev) => ({ ...prev, fontFamily: e.target.value }))} className="h-11 rounded-xl" placeholder="ui-sans-serif, system-ui, sans-serif" />
-                    </div>
-                    <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">Habilitar launcher flotante</p>
-                        <p className="text-xs text-slate-500">Controla si se genera y se usa el botón flotante además del iframe público.</p>
-                      </div>
-                      <Switch checked={createForm.floatingLauncherEnabled} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, floatingLauncherEnabled: checked }))} />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Texto del launcher flotante</Label>
-                      <Input value={createForm.launcherLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, launcherLabel: e.target.value }))} className="h-11 rounded-xl" placeholder="Abrir asesor virtual" />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Icono del launcher</Label>
-                      <Select value={createForm.launcherIcon} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherIcon: value }))}>
-                        <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="bot">bot</SelectItem>
-                          <SelectItem value="message-circle">message-circle</SelectItem>
-                          <SelectItem value="sparkles">sparkles</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Posición del launcher</Label>
-                      <Select value={createForm.launcherPosition} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherPosition: value as LauncherPosition }))}>
-                        <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="right">Derecha</SelectItem>
-                          <SelectItem value="left">Izquierda</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Tamaño del launcher</Label>
-                      <Select value={createForm.launcherSize} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherSize: value as LauncherSize }))}>
-                        <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="compact">Compacto</SelectItem>
-                          <SelectItem value="standard">Estándar</SelectItem>
-                          <SelectItem value="large">Grande</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Dominios permitidos</Label>
-                      <Textarea value={createForm.allowedDomains} onChange={(e) => setCreateForm((prev) => ({ ...prev, allowedDomains: e.target.value }))} rows={3} className="rounded-2xl" placeholder="cliente.com, demo.cliente.com" />
-                    </div>
-                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:col-span-2 md:grid-cols-2">
-                      <div className="md:col-span-2">
-                        <p className="text-sm font-semibold text-slate-900">Estilos avanzados fáciles</p>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">Ajusta apariencia del panel con valores simples, sin escribir CSS ni JSON.</p>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Etiqueta superior</Label>
-                        <Input value={createForm.headerBadgeLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, headerBadgeLabel: e.target.value }))} className="h-11 rounded-xl" placeholder="Chatbot CRM" />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Estado del asistente</Label>
-                        <Input value={createForm.statusBadgeLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, statusBadgeLabel: e.target.value }))} className="h-11 rounded-xl" placeholder="En linea" />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Radio del panel</Label>
-                        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <Input value={createForm.chatShellRadius} onChange={(e) => setCreateForm((prev) => ({ ...prev, chatShellRadius: normalizePixelValue(e.target.value, '30') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="30" />
-                          <span className="text-xs font-medium text-slate-500">px</span>
-                        </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Radio de burbujas</Label>
-                        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                          <Input value={createForm.messageBubbleRadius} onChange={(e) => setCreateForm((prev) => ({ ...prev, messageBubbleRadius: normalizePixelValue(e.target.value, '22') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="22" />
-                          <span className="text-xs font-medium text-slate-500">px</span>
-                        </div>
-                      </div>
-                      <div className="grid gap-2 md:col-span-2">
-                        <Label>Sombra del panel</Label>
-                        <Select value={createForm.panelShadowPreset} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, panelShadowPreset: value as PanelShadowPreset }))}>
-                          <SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="soft">Suave</SelectItem>
-                            <SelectItem value="medium">Media</SelectItem>
-                            <SelectItem value="strong">Fuerte</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">Solicitar producto en la captura inicial</p>
-                        <p className="text-xs text-slate-500">Permite que el bot consulte inventario y responda con referencia, precio y disponibilidad.</p>
-                      </div>
-                      <Switch checked={createForm.showProductField} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, showProductField: checked }))} />
-                    </div>
-                    <div className="grid gap-3 md:col-span-2 md:grid-cols-2">
-                      <div className="grid gap-2">
-                        <Label>Label nombre</Label>
-                        <Input value={createForm.nameLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, nameLabel: e.target.value }))} className="h-11 rounded-xl" />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Placeholder nombre</Label>
-                        <Input value={createForm.namePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, namePlaceholder: e.target.value }))} className="h-11 rounded-xl" />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Label correo</Label>
-                        <Input value={createForm.emailLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, emailLabel: e.target.value }))} className="h-11 rounded-xl" />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Placeholder correo</Label>
-                        <Input value={createForm.emailPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, emailPlaceholder: e.target.value }))} className="h-11 rounded-xl" />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Label teléfono</Label>
-                        <Input value={createForm.phoneLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, phoneLabel: e.target.value }))} className="h-11 rounded-xl" />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Placeholder teléfono</Label>
-                        <Input value={createForm.phonePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, phonePlaceholder: e.target.value }))} className="h-11 rounded-xl" />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Label producto</Label>
-                        <Input value={createForm.productLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, productLabel: e.target.value }))} className="h-11 rounded-xl" />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Placeholder producto</Label>
-                        <Input value={createForm.productPlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, productPlaceholder: e.target.value }))} className="h-11 rounded-xl" />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Label mensaje</Label>
-                        <Input value={createForm.messageLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, messageLabel: e.target.value }))} className="h-11 rounded-xl" />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Placeholder mensaje</Label>
-                        <Input value={createForm.messagePlaceholder} onChange={(e) => setCreateForm((prev) => ({ ...prev, messagePlaceholder: e.target.value }))} className="h-11 rounded-xl" />
-                      </div>
-                    </div>
-                    <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">Publicar iframe sin token</p>
-                        <p className="text-xs text-slate-500">Recomendado para la demo controlada del cliente.</p>
-                      </div>
-                      <Switch checked={createForm.publicEmbedEnabled} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, publicEmbedEnabled: checked }))} />
-                    </div>
-                  </>
-                ) : null}
+                {createIsPublicWebForm ? <div className="md:col-span-2">{renderWebFormConfigurationSections('wizard')}</div> : null}
+
+                {createIsChatbot ? <div className="md:col-span-2">{renderChatbotWizardConfigurationSections()}</div> : null}
                 </div>
                 ) : wizardStep === 'review' ? (
                   <div className="space-y-4">
@@ -4814,14 +5555,14 @@ export function CrmIntegrationsClient() {
               </div>
 
               <DialogFooter className="mt-5 border-t border-slate-100 pt-5">
-                <Button variant="outline" className="rounded-xl" onClick={() => setWizardStep(wizardStep === 'review' ? 'config' : 'template')} disabled={saving || wizardStep === 'template'}>Atrás</Button>
-                {wizardStep !== 'review' ? <Button variant="outline" className="rounded-xl" onClick={() => setWizardStep(wizardStep === 'template' ? 'config' : 'review')} disabled={saving}>{wizardStep === 'template' ? 'Continuar' : 'Revisar canal'}</Button> : null}
+                <Button variant="outline" className="rounded-xl" onClick={() => setWizardStep(wizardStep === 'review' ? 'config' : 'template')} disabled={saving}>Atrás</Button>
+                {wizardStep !== 'review' ? <Button variant="outline" className="rounded-xl" onClick={() => setWizardStep('review')} disabled={saving}>Revisar canal</Button> : null}
                 <Button variant="outline" className="rounded-xl" onClick={() => setCreateOpen(false)} disabled={saving}>Cancelar</Button>
                 <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => void saveChannel()} disabled={saving || wizardStep !== 'review'}>
                   {saving ? (editingChannelId ? 'Guardando...' : 'Creando...') : (editingChannelId ? 'Guardar cambios' : 'Crear canal')}
                 </Button>
               </DialogFooter>
-            </div>
+            </div> : null}
           </div>
         </DialogContent>
       </Dialog>

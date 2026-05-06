@@ -170,7 +170,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[70vh] overflow-auto pr-1 space-y-4">
+        <div className="max-h-[70vh] overflow-auto pr-1 space-y-3">
           <div className="space-y-2">
             <div className="font-semibold text-sm">{t('rbac.userPermissions.section.role')}</div>
             <div className="rounded border px-3 py-2 flex items-center justify-between gap-3">
@@ -201,7 +201,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
                 {section.modules.map((moduleKey) => (
                   <div
                     key={moduleKey}
-                    className="flex items-center justify-between gap-3 px-3 py-2 border-b last:border-b-0"
+                    className="flex items-center justify-between gap-3 border-b px-3 py-1.5 last:border-b-0"
                   >
                     <div className="min-w-0">
                       <div className="text-sm font-medium truncate">{t(`rbac.module.${moduleKey}`)}</div>

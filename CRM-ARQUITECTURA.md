@@ -3,6 +3,10 @@
 **Fecha:** 2026-03-13  
 **Objetivo:** agregar un CRM **sin duplicar** entidades del ERP (clientes/usuarios/cotizaciones/órdenes/facturación), reutilizando el multitenancy por `empresaId`, el enfoque multi-sede (`sedeId`) y el RBAC existente por `ModuleKey` + `AccessLevel`.
 
+## Documento relacionado
+
+- Ver [CRM-MADUREZ-ROADMAP.md](CRM-MADUREZ-ROADMAP.md) para el mapa operativo de madurez, brechas y fases competitivas.
+
 ---
 
 ## 1) Alcance (MVP)

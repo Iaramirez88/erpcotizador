@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
-import { assertCrmSedeAccess, normalizeString } from '@/lib/crm'
+import { assertCrmSedeAccess, normalizeString, parseConversationStatus } from '@/lib/crm'
+import { canAssignCrmConversationToUser } from '@/lib/crm-omnichannel'
 
 export const runtime = 'nodejs'
 
@@ -28,33 +29,62 @@ export async function POST(request: Request, context: RouteContext) {
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
     const assignedToUserId = normalizeString(body?.assignedToUserId)
+    const rawStatus = normalizeString(body?.status)
+    const parsedStatus = parseConversationStatus(rawStatus)
+
+    if (rawStatus && !parsedStatus) {
+      return NextResponse.json({ error: 'status inválido' }, { status: 400 })
+    }
 
     if (assignedToUserId) {
       const user = await prisma.user.findUnique({ where: { id: assignedToUserId }, select: { id: true, empresaId: true } })
       if (!user || user.empresaId !== access.empresaId) {
         return NextResponse.json({ error: 'assignedToUserId inválido' }, { status: 400 })
       }
+
+      const canAssign = await canAssignCrmConversationToUser({
+        client: prisma,
+        empresaId: access.empresaId,
+        sedeId: current.sedeId,
+        userId: assignedToUserId,
+      })
+      if (!canAssign) {
+        return NextResponse.json({ error: 'El usuario no tiene acceso CRM suficiente para atender esta conversación.' }, { status: 400 })
+      }
     }
+
+    const nextStatus = parsedStatus ?? (assignedToUserId ? 'HUMAN_ACTIVE' : current.status === 'RESOLVED' ? 'RESOLVED' : 'PENDING')
+    const resolvedAt = nextStatus === 'RESOLVED' ? new Date() : null
 
     const updated = await prisma.$transaction(async (tx) => {
       const row = await tx.crmConversation.update({
         where: { id: current.id },
         data: {
           assignedToUserId: assignedToUserId || null,
-          status: assignedToUserId ? 'HUMAN_ACTIVE' : current.status === 'RESOLVED' ? 'RESOLVED' : 'PENDING',
+          status: nextStatus,
+          unreadCount: nextStatus === 'RESOLVED' ? 0 : current.unreadCount,
+          resolvedAt,
         },
         include: {
           assignedTo: { select: { id: true, name: true, email: true } },
         },
       })
 
+      const activitySummaryParts = []
+      if ((current.assignedToUserId || null) !== (assignedToUserId || null)) {
+        activitySummaryParts.push(assignedToUserId ? 'asignada a asesor' : 'liberada de asesor')
+      }
+      if (current.status !== nextStatus) {
+        activitySummaryParts.push(`estado ${current.status} → ${nextStatus}`)
+      }
+
       await tx.crmActivity.create({
         data: {
           empresaId: access.empresaId,
           sedeId: row.sedeId,
           type: 'OTHER',
-          summary: assignedToUserId ? 'Conversación asignada a asesor' : 'Conversación liberada de asesor',
-          details: assignedToUserId || null,
+          summary: activitySummaryParts.length ? `Conversación ${activitySummaryParts.join(' · ')}` : 'Conversación actualizada',
+          details: assignedToUserId || nextStatus,
           leadId: row.leadId,
           opportunityId: row.opportunityId,
           clienteId: row.clienteId,
@@ -62,6 +92,22 @@ export async function POST(request: Request, context: RouteContext) {
           createdById: access.userId,
         },
       })
+
+      if (assignedToUserId && assignedToUserId !== access.userId && assignedToUserId !== current.assignedToUserId) {
+        const contactLabel = row.contactDisplayName || row.contactPhone || row.contactEmail || 'nuevo prospecto'
+        await tx.notification.create({
+          data: {
+            empresaId: access.empresaId,
+            sedeId: row.sedeId,
+            userId: assignedToUserId,
+            type: 'INFO',
+            title: 'Te asignaron una conversación CRM',
+            body: `Nueva conversación asignada: ${contactLabel}.`,
+            actionUrl: `/dashboard/crm/conversations?conversationId=${row.id}`,
+            actionLabel: 'Abrir conversación',
+          },
+        })
+      }
 
       return row
     })

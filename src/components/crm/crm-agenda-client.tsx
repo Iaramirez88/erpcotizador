@@ -121,17 +121,17 @@ function AgendaTaskForm({
   onSubmit: () => void
 }) {
   return (
-    <div className="space-y-4">
-      <div className="grid gap-2">
+    <div className="space-y-3">
+      <div className="grid gap-1.5">
         <Label>Título</Label>
         <Input value={taskForm.title} onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))} placeholder="Ej. Llamada de seguimiento" />
       </div>
-      <div className="grid gap-2">
+      <div className="grid gap-1.5">
         <Label>Descripción</Label>
         <Textarea value={taskForm.description} onChange={(event) => setTaskForm((current) => ({ ...current, description: event.target.value }))} rows={3} placeholder="Detalles de la gestión comercial o reunión." />
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="grid gap-2">
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-1.5">
           <Label>Tipo de relación</Label>
           <Select value={taskForm.relationType} onValueChange={(value) => setTaskForm((current) => ({ ...current, relationType: value as 'lead' | 'cliente', relationId: '' }))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -141,7 +141,7 @@ function AgendaTaskForm({
             </SelectContent>
           </Select>
         </div>
-        <div className="grid gap-2">
+        <div className="grid gap-1.5">
           <Label>Prioridad</Label>
           <Select value={taskForm.priority} onValueChange={(value) => setTaskForm((current) => ({ ...current, priority: value as TaskPriority }))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -153,12 +153,12 @@ function AgendaTaskForm({
           </Select>
         </div>
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="grid gap-2">
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-1.5">
           <Label>Fecha y hora</Label>
           <Input type="datetime-local" value={taskForm.dueAt} onChange={(event) => setTaskForm((current) => ({ ...current, dueAt: event.target.value }))} />
         </div>
-        <div className="grid gap-2">
+        <div className="grid gap-1.5">
           <Label>Responsable</Label>
           <Select value={taskForm.assignedToUserId || '__none__'} onValueChange={(value) => setTaskForm((current) => ({ ...current, assignedToUserId: value === '__none__' ? '' : value }))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -169,7 +169,7 @@ function AgendaTaskForm({
           </Select>
         </div>
       </div>
-      <div className="grid gap-2">
+      <div className="grid gap-1.5">
         <Label>{taskForm.relationType === 'lead' ? 'Prospecto seleccionado' : 'Cliente seleccionado'}</Label>
         <Select value={taskForm.relationId || '__none__'} onValueChange={(value) => setTaskForm((current) => ({ ...current, relationId: value === '__none__' ? '' : value }))}>
           <SelectTrigger><SelectValue placeholder="Selecciona un registro" /></SelectTrigger>
@@ -181,7 +181,7 @@ function AgendaTaskForm({
           </SelectContent>
         </Select>
       </div>
-      <Button className="w-full rounded-xl" onClick={onSubmit} disabled={saving}>
+      <Button className="w-full rounded-lg" onClick={onSubmit} disabled={saving}>
         {saving ? 'Guardando...' : 'Agregar a la agenda'}
       </Button>
     </div>
@@ -357,7 +357,7 @@ export function CrmAgendaClient() {
   }
 
   return (
-    <div className="space-y-6 pb-6">
+    <div className="space-y-4.5 pb-4">
       <ErpPageHero
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },

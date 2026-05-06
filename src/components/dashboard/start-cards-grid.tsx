@@ -246,26 +246,26 @@ export default function StartCardsGrid({ allowedModules, enabledPlanModules, can
 
   return (
     <>
-      <div className="hidden gap-4 p-4 md:grid md:grid-cols-2 xl:grid-cols-3">
+      <div className="hidden gap-3 p-3 md:grid md:grid-cols-2 xl:grid-cols-3">
         {cards.map((card) => {
           const Icon = ICONS[card.icon]
 
           if (!card.locked) {
             return (
-              <Link key={card.href} href={card.href} className={`group rounded-[28px] border p-5 transition-all hover:-translate-y-1 hover:shadow-lg ${card.surface}`}>
-                <div className="flex items-start justify-between gap-4">
-                  <div className={`flex h-14 w-14 items-center justify-center rounded-2xl border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
-                    <Icon className="h-7 w-7" />
+              <Link key={card.href} href={card.href} className={`group rounded-[24px] border p-4 transition-all hover:-translate-y-1 hover:shadow-lg ${card.surface}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className={`flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
+                    <Icon className="h-6 w-6" />
                   </div>
-                  <span className="rounded-full border border-white/80 bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                  <span className="rounded-full border border-white/80 bg-white/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
                     Empezar
                   </span>
                 </div>
-                <div className="mt-6 space-y-2">
-                  <h2 className="text-xl font-semibold text-slate-950">{card.title}</h2>
-                  <p className="text-sm leading-6 text-slate-700">{card.description}</p>
+                <div className="mt-4 space-y-1.5">
+                  <h2 className="text-lg font-semibold text-slate-950">{card.title}</h2>
+                  <p className="text-[13px] leading-5 text-slate-700">{card.description}</p>
                 </div>
-                <div className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-slate-950">
+                <div className="mt-4 inline-flex items-center gap-2 text-[13px] font-semibold text-slate-950">
                   {card.cta}
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </div>
@@ -274,40 +274,40 @@ export default function StartCardsGrid({ allowedModules, enabledPlanModules, can
           }
 
           return (
-            <div key={card.href} className={`rounded-[28px] border p-5 ${card.surface} relative overflow-hidden`}>
+            <div key={card.href} className={`rounded-[24px] border p-4 ${card.surface} relative overflow-hidden`}>
               <div className="absolute inset-0 bg-white/55 backdrop-blur-[1px]" />
               <div className="relative flex h-full flex-col">
-                <div className="flex items-start justify-between gap-4">
-                  <div className={`flex h-14 w-14 items-center justify-center rounded-2xl border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
-                    <Icon className="h-7 w-7" />
+                <div className="flex items-start justify-between gap-3">
+                  <div className={`flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
+                    <Icon className="h-6 w-6" />
                   </div>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-700">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-700">
                     <Lock className="h-3.5 w-3.5" />
                     Bloqueado
                   </span>
                 </div>
-                <div className="mt-6 space-y-2">
-                  <h2 className="text-xl font-semibold text-slate-950">{card.title}</h2>
-                  <p className="text-sm leading-6 text-slate-700">{card.description}</p>
-                  <p className="text-sm font-medium text-slate-900">Tu plan actual no incluye este módulo.</p>
+                <div className="mt-4 space-y-1.5">
+                  <h2 className="text-lg font-semibold text-slate-950">{card.title}</h2>
+                  <p className="text-[13px] leading-5 text-slate-700">{card.description}</p>
+                  <p className="text-[13px] font-medium text-slate-900">Tu plan actual no incluye este módulo.</p>
                 </div>
                 {canManageBilling ? (
-                  <div className="mt-6 flex flex-wrap gap-2">
+                  <div className="mt-4 flex flex-wrap gap-2">
                     <Link
                       href={buildUpgradeHref(card.moduleKey)}
-                      className="inline-flex items-center rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                      className="inline-flex items-center rounded-full bg-slate-950 px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-slate-800"
                     >
                       Actualiza tu plan
                     </Link>
                     <Link
                       href={buildAddonHref(card.moduleKey)}
-                      className="inline-flex items-center rounded-full border border-slate-300 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-white"
+                      className="inline-flex items-center rounded-full border border-slate-300 bg-white/90 px-3.5 py-1.5 text-[12px] font-semibold text-slate-900 transition hover:bg-white"
                     >
                       Agrégalo independiente
                     </Link>
                   </div>
                 ) : (
-                  <div className="mt-6 rounded-2xl border border-white/70 bg-white/80 px-4 py-3 text-sm text-slate-700">
+                  <div className="mt-4 rounded-[18px] border border-white/70 bg-white/80 px-3.5 py-2.5 text-[12px] text-slate-700">
                     Solo la persona dueña del plan o un administrador puede activarlo.
                   </div>
                 )}
@@ -317,28 +317,28 @@ export default function StartCardsGrid({ allowedModules, enabledPlanModules, can
         })}
       </div>
 
-      <div className="space-y-3 p-3 md:hidden">
+      <div className="space-y-2.5 p-2.5 md:hidden">
         {cards.map((card) => {
           const Icon = ICONS[card.icon]
 
           if (!card.locked) {
             return (
-              <details key={card.href} className={`group rounded-[22px] border ${card.surface}`}>
-                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
-                  <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
+              <details key={card.href} className={`group rounded-[20px] border ${card.surface}`}>
+                <summary className="flex cursor-pointer list-none items-center gap-3 px-3.5 py-3 [&::-webkit-details-marker]:hidden">
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
                     <Icon className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-slate-950">{card.title}</div>
-                    <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Disponible</div>
+                    <div className="truncate text-[13px] font-semibold text-slate-950">{card.title}</div>
+                    <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">Disponible</div>
                   </div>
-                  <div className="text-xs font-semibold text-slate-600">Ver</div>
+                  <div className="text-[11px] font-semibold text-slate-600">Ver</div>
                 </summary>
-                <div className="border-t border-white/70 px-4 pb-4 pt-3">
-                  <p className="text-sm leading-5 text-slate-700">{card.description}</p>
+                <div className="border-t border-white/70 px-3.5 pb-3.5 pt-3">
+                  <p className="text-[12px] leading-5 text-slate-700">{card.description}</p>
                   <Link
                     href={card.href}
-                    className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-slate-950"
+                    className="mt-3 inline-flex items-center gap-2 text-[12px] font-semibold text-slate-950"
                   >
                     {card.cta}
                     <ArrowRight className="h-4 w-4" />
@@ -349,40 +349,40 @@ export default function StartCardsGrid({ allowedModules, enabledPlanModules, can
           }
 
           return (
-            <details key={card.href} className={`group rounded-[22px] border ${card.surface}`}>
-              <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
-                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
+            <details key={card.href} className={`group rounded-[20px] border ${card.surface}`}>
+              <summary className="flex cursor-pointer list-none items-center gap-3 px-3.5 py-3 [&::-webkit-details-marker]:hidden">
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[16px] border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
                   <Icon className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-semibold text-slate-950">{card.title}</div>
-                  <div className="inline-flex items-center gap-1 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-600">
+                  <div className="truncate text-[13px] font-semibold text-slate-950">{card.title}</div>
+                  <div className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-600">
                     <Lock className="h-3 w-3" />
                     Bloqueado
                   </div>
                 </div>
-                <div className="text-xs font-semibold text-slate-600">Ver</div>
+                <div className="text-[11px] font-semibold text-slate-600">Ver</div>
               </summary>
-              <div className="border-t border-white/70 px-4 pb-4 pt-3">
-                <p className="text-sm leading-5 text-slate-700">{card.description}</p>
-                <p className="mt-2 text-sm font-medium text-slate-900">Tu plan actual no incluye este módulo.</p>
+              <div className="border-t border-white/70 px-3.5 pb-3.5 pt-3">
+                <p className="text-[12px] leading-5 text-slate-700">{card.description}</p>
+                <p className="mt-2 text-[12px] font-medium text-slate-900">Tu plan actual no incluye este módulo.</p>
                 {canManageBilling ? (
                   <div className="mt-3 flex flex-col gap-2">
                     <Link
                       href={buildUpgradeHref(card.moduleKey)}
-                      className="inline-flex items-center justify-center rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white"
+                      className="inline-flex items-center justify-center rounded-full bg-slate-950 px-3.5 py-1.5 text-[12px] font-semibold text-white"
                     >
                       Actualiza tu plan
                     </Link>
                     <Link
                       href={buildAddonHref(card.moduleKey)}
-                      className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white/90 px-4 py-2 text-sm font-semibold text-slate-900"
+                      className="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white/90 px-3.5 py-1.5 text-[12px] font-semibold text-slate-900"
                     >
                       Agrégalo independiente
                     </Link>
                   </div>
                 ) : (
-                  <div className="mt-3 rounded-2xl border border-white/70 bg-white/80 px-4 py-3 text-sm text-slate-700">
+                  <div className="mt-3 rounded-[18px] border border-white/70 bg-white/80 px-3.5 py-2.5 text-[12px] text-slate-700">
                     Solo la persona dueña del plan o un administrador puede activarlo.
                   </div>
                 )}

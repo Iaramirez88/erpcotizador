@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Bot, FileText, Mail, MessageCircle, PhoneCall } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+import { AlertTriangle, Bot, Clock3, FileText, Mail, MessageCircle, PhoneCall } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,11 +22,18 @@ type ChannelProvider = 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'FACEBOOK_PAGE' |
 type BridgeKind = 'GENERIC' | 'GMAIL' | 'OUTLOOK' | 'TIKTOK' | 'YOUTUBE'
 type OpportunityStage = 'NEW' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON' | 'LOST'
 type OriginFilter = 'ALL' | 'EMAIL' | 'FORM' | 'CHATBOT' | 'WHATSAPP' | 'SOCIAL' | 'PHONE' | 'REFERRAL' | 'IMPORT'
+type QueueScope = 'TEAM' | 'MINE' | 'UNASSIGNED'
+type QueueFocus = 'ALL' | 'IMMEDIATE' | 'WAITING_CUSTOMER' | 'NEW_UNASSIGNED' | 'BOT_HANDOFF'
 
 type Assignee = {
   id: string
   name?: string | null
   email?: string | null
+  activeCount?: number
+  immediateCount?: number
+  waitingCustomerCount?: number
+  unreadCount?: number
+  lastLoginAt?: string | null
 }
 
 type Channel = {
@@ -110,6 +118,7 @@ type CrmConversationsClientProps = {
 }
 
 const STATUS_OPTIONS: Array<'ALL' | ConversationStatus> = ['ALL', 'OPEN', 'PENDING', 'BOT_ACTIVE', 'HUMAN_ACTIVE', 'RESOLVED', 'SPAM']
+const ATTENTION_STATUS_OPTIONS: ConversationStatus[] = ['OPEN', 'BOT_ACTIVE', 'HUMAN_ACTIVE', 'PENDING', 'RESOLVED', 'SPAM']
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T>> {
   const res = await fetch(url, init)
@@ -123,6 +132,10 @@ function formatDate(value: string | null | undefined, locale: string, fallback: 
   } catch {
     return String(value)
   }
+}
+
+function formatAssigneeName(assignee: Assignee) {
+  return assignee.name || assignee.email || assignee.id
 }
 
 function formatRelativeChannel(provider: ChannelProvider) {
@@ -170,6 +183,93 @@ function getOriginFilterGroup(originKey: CrmOriginKey): OriginFilter {
   if (originKey === 'REFERRAL') return 'REFERRAL'
   if (originKey === 'IMPORT') return 'IMPORT'
   return 'ALL'
+}
+
+function getConversationSlaMeta(conversation: ConversationListItem | ConversationDetail, locale: string) {
+  if (conversation.status === 'RESOLVED' || conversation.status === 'SPAM') {
+    return {
+      state: 'paused' as const,
+      label: 'SLA pausado',
+      className: 'border-slate-200 bg-slate-50 text-slate-600',
+      elapsedLabel: 'Sin seguimiento activo',
+    }
+  }
+
+  const lastMessageTime = new Date(conversation.lastMessageAt).getTime()
+  const elapsedMinutes = Number.isNaN(lastMessageTime) ? 0 : Math.max(0, Math.floor((Date.now() - lastMessageTime) / 60000))
+  const warningThreshold = conversation.unreadCount > 0 || !conversation.assignedTo ? 5 : 20
+  const breachThreshold = conversation.unreadCount > 0 || !conversation.assignedTo ? 15 : 60
+
+  let state: 'healthy' | 'warning' | 'breached' = 'healthy'
+  if (elapsedMinutes >= breachThreshold) state = 'breached'
+  else if (elapsedMinutes >= warningThreshold) state = 'warning'
+
+  const elapsedLabel = elapsedMinutes < 1
+    ? 'Actualizado ahora'
+    : elapsedMinutes < 60
+      ? `${elapsedMinutes} min sin respuesta`
+      : new Intl.RelativeTimeFormat(locale.startsWith('es') ? 'es' : 'en', { numeric: 'auto' }).format(-Math.floor(elapsedMinutes / 60), 'hour')
+
+  if (state === 'breached') {
+    return { state, label: 'SLA vencido', className: 'border-rose-200 bg-rose-50 text-rose-700', elapsedLabel }
+  }
+  if (state === 'warning') {
+    return { state, label: 'SLA en riesgo', className: 'border-amber-200 bg-amber-50 text-amber-700', elapsedLabel }
+  }
+  return { state, label: 'Dentro de SLA', className: 'border-emerald-200 bg-emerald-50 text-emerald-700', elapsedLabel }
+}
+
+function getConversationPriorityMeta(conversation: ConversationListItem | ConversationDetail, locale: string) {
+  const sla = getConversationSlaMeta(conversation, locale)
+  if (sla.state === 'breached' || conversation.unreadCount >= 3 || (!conversation.assignedTo && conversation.status !== 'RESOLVED' && conversation.status !== 'SPAM')) {
+    return { label: 'Prioridad alta', className: 'border-rose-200 bg-rose-50 text-rose-700' }
+  }
+  if (sla.state === 'warning' || conversation.unreadCount > 0 || conversation.status === 'PENDING' || conversation.status === 'BOT_ACTIVE') {
+    return { label: 'Prioridad media', className: 'border-amber-200 bg-amber-50 text-amber-700' }
+  }
+  return { label: 'Prioridad baja', className: 'border-slate-200 bg-slate-50 text-slate-700' }
+}
+
+function getConversationStatusMeta(status: ConversationStatus) {
+  switch (status) {
+    case 'OPEN':
+      return { label: 'Nuevo', className: 'border-sky-200 bg-sky-50 text-sky-700' }
+    case 'BOT_ACTIVE':
+      return { label: 'Bot atendiendo', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' }
+    case 'HUMAN_ACTIVE':
+      return { label: 'En gestión', className: 'border-indigo-200 bg-indigo-50 text-indigo-700' }
+    case 'PENDING':
+      return { label: 'Esperando cliente', className: 'border-amber-200 bg-amber-50 text-amber-700' }
+    case 'RESOLVED':
+      return { label: 'Resuelto', className: 'border-slate-200 bg-slate-100 text-slate-700' }
+    case 'SPAM':
+      return { label: 'Spam', className: 'border-rose-200 bg-rose-50 text-rose-700' }
+    default:
+      return { label: status, className: 'border-slate-200 bg-slate-50 text-slate-700' }
+  }
+}
+
+function getConversationOperationalRank(conversation: ConversationListItem | ConversationDetail, locale: string) {
+  const sla = getConversationSlaMeta(conversation, locale)
+  const priority = getConversationPriorityMeta(conversation, locale)
+
+  let score = 0
+  if (sla.state === 'breached') score += 100
+  else if (sla.state === 'warning') score += 50
+
+  if (priority.label === 'Prioridad alta') score += 40
+  else if (priority.label === 'Prioridad media') score += 20
+
+  if (!conversation.assignedTo && conversation.status !== 'RESOLVED' && conversation.status !== 'SPAM') score += 35
+  if (conversation.unreadCount > 0) score += Math.min(conversation.unreadCount, 5) * 5
+  if (conversation.status === 'BOT_ACTIVE') score += 18
+  if (conversation.status === 'OPEN') score += 12
+  if (conversation.status === 'PENDING') score -= 8
+
+  const lastMessageAt = new Date(conversation.lastMessageAt).getTime()
+  const timestamp = Number.isNaN(lastMessageAt) ? 0 : lastMessageAt
+
+  return { score, timestamp, slaState: sla.state, priorityLabel: priority.label }
 }
 
 function OriginChip({ originKey, label }: { originKey: CrmOriginKey; label: string }) {
@@ -225,6 +325,10 @@ function pickString(value: unknown) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function pickStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0) : []
+}
+
 function formatMoney(value: number | null | undefined, locale: string) {
   if (!Number.isFinite(value)) return '—'
   return new Intl.NumberFormat(locale, { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(Number(value))
@@ -245,6 +349,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = '—'
+  const searchParams = useSearchParams()
+  const requestedConversationId = (searchParams?.get('conversationId') || '').trim() || null
 
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -254,9 +360,12 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [channelFilter, setChannelFilter] = useState<'ALL' | string>('ALL')
   const [providerFilter, setProviderFilter] = useState<'ALL' | ChannelProvider>(props.initialProviderFilter ?? 'ALL')
   const [originFilter, setOriginFilter] = useState<OriginFilter>('ALL')
+  const [queueScope, setQueueScope] = useState<QueueScope>('TEAM')
+  const [queueFocus, setQueueFocus] = useState<QueueFocus>('ALL')
   const [conversations, setConversations] = useState<ConversationListItem[]>([])
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [assignees, setAssignees] = useState<Assignee[]>([])
   const [channels, setChannels] = useState<Channel[]>([])
 
@@ -275,6 +384,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [savingInterest, setSavingInterest] = useState(false)
 
   const [assigneeDraft, setAssigneeDraft] = useState('__none__')
+  const [statusDraft, setStatusDraft] = useState<ConversationStatus>('OPEN')
   const [messageDraft, setMessageDraft] = useState('')
   const [messageTypeDraft, setMessageTypeDraft] = useState<'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT'>('TEXT')
   const [attachmentUrlDraft, setAttachmentUrlDraft] = useState('')
@@ -307,18 +417,25 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       const json = await requestJson<ConversationListItem[]>(`/api/crm/conversations${suffix}`)
       const rows = Array.isArray(json.data) ? json.data : []
       setConversations(rows)
-      setSelectedConversationId((current) => current && rows.some((row) => row.id === current) ? current : rows[0]?.id ?? null)
+      setSelectedConversationId((current) => {
+        if (requestedConversationId && rows.some((row) => row.id === requestedConversationId)) {
+          return requestedConversationId
+        }
+        return current && rows.some((row) => row.id === current) ? current : rows[0]?.id ?? null
+      })
       setLastRefreshAt(new Date().toISOString())
     } finally {
       setLoading(false)
     }
-  }, [assignedFilter, channelFilter, providerFilter, search, statusFilter])
+  }, [assignedFilter, channelFilter, providerFilter, requestedConversationId, search, statusFilter])
 
   const loadMeta = useCallback(async () => {
-    const [assigneeRes, channelRes] = await Promise.all([
+    const [meRes, assigneeRes, channelRes] = await Promise.all([
+      requestJson<{ id: string }>('/api/me'),
       requestJson<Assignee[]>('/api/crm/assignees'),
       requestJson<Channel[]>('/api/crm/channels'),
     ])
+    setCurrentUserId(meRes.data?.id ?? null)
     setAssignees(Array.isArray(assigneeRes.data) ? assigneeRes.data : [])
     setChannels(Array.isArray(channelRes.data) ? channelRes.data : [])
     setSimulateForm((prev) => ({
@@ -334,6 +451,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       const row = json.success && json.data ? json.data : null
       setSelectedConversation(row)
       setAssigneeDraft(row?.assignedTo?.id || '__none__')
+      setStatusDraft(row?.status || 'OPEN')
     } finally {
       setDetailLoading(false)
     }
@@ -375,13 +493,99 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     const openCount = conversations.filter((item) => item.status !== 'RESOLVED' && item.status !== 'SPAM').length
     const unassignedCount = conversations.filter((item) => !item.assignedTo).length
     const unreadCount = conversations.reduce((sum, item) => sum + (item.unreadCount || 0), 0)
-    return { openCount, unassignedCount, unreadCount }
-  }, [conversations])
+    const slaBreachedCount = conversations.filter((item) => getConversationSlaMeta(item, locale).state === 'breached').length
+    const highPriorityCount = conversations.filter((item) => getConversationPriorityMeta(item, locale).label === 'Prioridad alta').length
+    return { openCount, unassignedCount, unreadCount, slaBreachedCount, highPriorityCount }
+  }, [conversations, locale])
+
+  const queueSummary = useMemo(() => {
+    const mineCount = currentUserId ? conversations.filter((item) => item.assignedTo?.id === currentUserId).length : 0
+    const unassignedCount = conversations.filter((item) => !item.assignedTo).length
+    return {
+      teamCount: conversations.length,
+      mineCount,
+      unassignedCount,
+    }
+  }, [conversations, currentUserId])
+
+  const advisorSummary = useMemo(() => {
+    return [...assignees].sort((left, right) => {
+      const leftImmediate = left.immediateCount ?? 0
+      const rightImmediate = right.immediateCount ?? 0
+      if (leftImmediate !== rightImmediate) return rightImmediate - leftImmediate
+
+      const leftActive = left.activeCount ?? 0
+      const rightActive = right.activeCount ?? 0
+      if (leftActive !== rightActive) return rightActive - leftActive
+
+      const leftUnread = left.unreadCount ?? 0
+      const rightUnread = right.unreadCount ?? 0
+      if (leftUnread !== rightUnread) return rightUnread - leftUnread
+
+      return formatAssigneeName(left).localeCompare(formatAssigneeName(right), 'es')
+    })
+  }, [assignees])
+
+  const queueScopedConversations = useMemo(() => {
+    const sortByOperationalPriority = (items: ConversationListItem[]) => [...items].sort((left, right) => {
+      const leftRank = getConversationOperationalRank(left, locale)
+      const rightRank = getConversationOperationalRank(right, locale)
+      if (leftRank.score !== rightRank.score) return rightRank.score - leftRank.score
+      return rightRank.timestamp - leftRank.timestamp
+    })
+
+    if (queueScope === 'MINE') {
+      if (!currentUserId) return []
+      return sortByOperationalPriority(conversations.filter((item) => item.assignedTo?.id === currentUserId))
+    }
+
+    if (queueScope === 'UNASSIGNED') {
+      return sortByOperationalPriority(conversations.filter((item) => !item.assignedTo))
+    }
+
+    return sortByOperationalPriority(conversations)
+  }, [conversations, currentUserId, locale, queueScope])
+
+  const queueFocusSummary = useMemo(() => {
+    const immediateCount = queueScopedConversations.filter((item) => {
+      const sla = getConversationSlaMeta(item, locale)
+      const priority = getConversationPriorityMeta(item, locale)
+      return sla.state === 'breached' || priority.label === 'Prioridad alta'
+    }).length
+    const waitingCustomerCount = queueScopedConversations.filter((item) => item.status === 'PENDING').length
+    const newUnassignedCount = queueScopedConversations.filter((item) => !item.assignedTo && item.status === 'OPEN').length
+    const botHandoffCount = queueScopedConversations.filter((item) => item.status === 'BOT_ACTIVE').length
+
+    return {
+      allCount: queueScopedConversations.length,
+      immediateCount,
+      waitingCustomerCount,
+      newUnassignedCount,
+      botHandoffCount,
+    }
+  }, [locale, queueScopedConversations])
 
   const visibleConversations = useMemo(() => {
-    if (originFilter === 'ALL') return conversations
-    return conversations.filter((item) => getOriginFilterGroup(getConversationOrigin(item.channelConnection).key) === originFilter)
-  }, [conversations, originFilter])
+    const focusFiltered = queueScopedConversations.filter((item) => {
+      if (queueFocus === 'ALL') return true
+      if (queueFocus === 'IMMEDIATE') {
+        const sla = getConversationSlaMeta(item, locale)
+        const priority = getConversationPriorityMeta(item, locale)
+        return sla.state === 'breached' || priority.label === 'Prioridad alta'
+      }
+      if (queueFocus === 'WAITING_CUSTOMER') return item.status === 'PENDING'
+      if (queueFocus === 'NEW_UNASSIGNED') return !item.assignedTo && item.status === 'OPEN'
+      if (queueFocus === 'BOT_HANDOFF') return item.status === 'BOT_ACTIVE'
+      return true
+    })
+
+    if (originFilter === 'ALL') return focusFiltered
+    return focusFiltered.filter((item) => getOriginFilterGroup(getConversationOrigin(item.channelConnection).key) === originFilter)
+  }, [locale, originFilter, queueFocus, queueScopedConversations])
+
+  useEffect(() => {
+    setQueueFocus('ALL')
+  }, [queueScope])
 
   useEffect(() => {
     setSelectedConversationId((current) => current && visibleConversations.some((item) => item.id === current) ? current : visibleConversations[0]?.id ?? null)
@@ -394,13 +598,41 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       const json = await requestJson(`/api/crm/conversations/${selectedConversation.id}/assign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assignedToUserId: assigneeDraft === '__none__' ? null : assigneeDraft }),
+        body: JSON.stringify({
+          assignedToUserId: assigneeDraft === '__none__' ? null : assigneeDraft,
+          status: statusDraft,
+        }),
       })
       if (!json.success) {
-        alert(json.error || 'No se pudo asignar la conversación.')
+        alert(json.error || 'No se pudo actualizar la atención de la conversación.')
         return
       }
       await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
+    } finally {
+      setAssigning(false)
+    }
+  }
+
+  async function takeConversation(conversationId: string) {
+    if (!currentUserId) return
+    setAssigning(true)
+    try {
+      const json = await requestJson(`/api/crm/conversations/${conversationId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignedToUserId: currentUserId,
+          status: 'HUMAN_ACTIVE',
+        }),
+      })
+      if (!json.success) {
+        alert(json.error || 'No se pudo tomar la conversación.')
+        return
+      }
+      await Promise.all([
+        loadConversations(),
+        selectedConversationId === conversationId ? loadDetail(conversationId) : Promise.resolve(),
+      ])
     } finally {
       setAssigning(false)
     }
@@ -588,7 +820,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   }, [locale, naText, selectedConversation])
 
   return (
-    <div className="space-y-6 pb-6">
+    <div className="space-y-4.5 pb-4">
       {props.hideHero ? null : (
         <ErpPageHero
           breadcrumbs={[
@@ -637,39 +869,40 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
             { label: 'Conversaciones abiertas', value: stats.openCount, hint: 'Hilos activos sin cerrar', tone: 'sky' },
             { label: 'Sin asignar', value: stats.unassignedCount, hint: 'Pendientes por tomar', tone: 'amber' },
             { label: 'No leidas', value: stats.unreadCount, hint: 'Mensajes pendientes de revisar', tone: 'teal' },
+            { label: 'SLA vencido', value: stats.slaBreachedCount, hint: 'Conversaciones que piden reacción inmediata', tone: 'amber' },
           ]}
         />
       )}
 
-      <Card className="rounded-[26px] border-slate-200 bg-white/90 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.35)]">
-        <CardContent className="grid gap-3 p-4 md:grid-cols-5 md:p-5">
-          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 md:col-span-2">
+      <Card className="rounded-[24px] border-slate-200 bg-white/90 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.28)]">
+        <CardContent className="grid gap-2.5 p-3 md:grid-cols-5 md:p-4">
+          <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 md:col-span-2">
             <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Buscar</Label>
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nombre, telefono, email o mensaje..." className="h-11 rounded-xl border-slate-200 bg-white" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nombre, telefono, email o mensaje..." className="h-9 rounded-lg border-slate-200 bg-white" />
           </div>
-          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+          <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
             <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estado</Label>
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'ALL' | ConversationStatus)}>
-              <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {STATUS_OPTIONS.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
-          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+          <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
             <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Asesor</Label>
             <Select value={assignedFilter} onValueChange={setAssignedFilter}>
-              <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos</SelectItem>
-                {assignees.map((item) => <SelectItem key={item.id} value={item.id}>{item.name || item.email || item.id}</SelectItem>)}
+                {assignees.map((item) => <SelectItem key={item.id} value={item.id}>{formatAssigneeName(item)}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
-          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+          <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
             <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Origen</Label>
             <Select value={originFilter} onValueChange={(value) => setOriginFilter(value as OriginFilter)}>
-              <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos</SelectItem>
                 <SelectItem value="EMAIL">Correo</SelectItem>
@@ -683,20 +916,20 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
               </SelectContent>
             </Select>
           </div>
-          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 md:col-span-2">
+          <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 md:col-span-2">
             <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Canal</Label>
             <Select value={channelFilter} onValueChange={setChannelFilter}>
-              <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos</SelectItem>
                 {channels.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
-          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 md:col-span-2">
+          <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 md:col-span-2">
             <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Proveedor</Label>
             <Select value={providerFilter} onValueChange={(value) => setProviderFilter(value as 'ALL' | ChannelProvider)} disabled={Boolean(props.initialProviderFilter)}>
-              <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos</SelectItem>
                 <SelectItem value="WEB_CHATBOT">Chatbot web</SelectItem>
@@ -709,27 +942,179 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-end rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 md:col-span-2">
-            <Button className="h-11 w-full rounded-xl" onClick={() => void loadConversations()}>
+          <div className="flex items-end rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-2.5 md:col-span-2">
+            <Button className="h-9 w-full rounded-lg" onClick={() => void loadConversations()}>
               Aplicar filtros
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
-          <CardHeader className="border-b border-slate-100 pb-5">
-            <CardTitle className="text-xl">Conversaciones ({visibleConversations.length})</CardTitle>
-            <CardDescription>Hilos omnicanal con prioridad comercial y acceso rápido al lead.</CardDescription>
+      <Card className="rounded-[24px] border-slate-200 bg-white/90 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.24)]">
+        <CardContent className="grid gap-3 p-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:p-4">
+          <div className="grid gap-2 md:grid-cols-3">
+            <button
+              type="button"
+              onClick={() => setQueueScope('TEAM')}
+              className={queueScope === 'TEAM' ? 'rounded-2xl border border-sky-200 bg-sky-50 px-3 py-3 text-left' : 'rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left'}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Equipo</p>
+              <p className="mt-1 text-lg font-semibold text-slate-950">{queueSummary.teamCount}</p>
+              <p className="mt-1 text-xs text-slate-500">Vista completa del inbox operativo.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setQueueScope('MINE')}
+              className={queueScope === 'MINE' ? 'rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-left' : 'rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left'}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Mis conversaciones</p>
+              <p className="mt-1 text-lg font-semibold text-slate-950">{queueSummary.mineCount}</p>
+              <p className="mt-1 text-xs text-slate-500">Lo que ya está bajo tu gestión.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setQueueScope('UNASSIGNED')}
+              className={queueScope === 'UNASSIGNED' ? 'rounded-2xl border border-amber-200 bg-amber-50 px-3 py-3 text-left' : 'rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left'}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Sin tomar</p>
+              <p className="mt-1 text-lg font-semibold text-slate-950">{queueSummary.unassignedCount}</p>
+              <p className="mt-1 text-xs text-slate-500">Hilos nuevos pendientes por responsable.</p>
+            </button>
+          </div>
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-600">
+            {queueScope === 'TEAM' ? 'Cola de equipo activa: prioriza SLA y conversaciones sin tomar.' : null}
+            {queueScope === 'MINE' ? 'Cola personal activa: revisa tus hilos vencidos y pendientes de respuesta.' : null}
+            {queueScope === 'UNASSIGNED' ? 'Cola de toma activa: reclama conversaciones nuevas antes de que venza el SLA.' : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-[24px] border-slate-200 bg-white/90 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.2)]">
+        <CardContent className="grid gap-3 p-3 md:grid-cols-5 md:p-4">
+          <button
+            type="button"
+            onClick={() => setQueueFocus('ALL')}
+            className={queueFocus === 'ALL' ? 'rounded-2xl border border-slate-300 bg-slate-100 px-3 py-3 text-left' : 'rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left'}
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Todo</p>
+            <p className="mt-1 text-lg font-semibold text-slate-950">{queueFocusSummary.allCount}</p>
+            <p className="mt-1 text-xs text-slate-500">Vista completa de la cola activa.</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setQueueFocus('IMMEDIATE')}
+            className={queueFocus === 'IMMEDIATE' ? 'rounded-2xl border border-rose-300 bg-rose-50 px-3 py-3 text-left' : 'rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left'}
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Atención inmediata</p>
+            <p className="mt-1 text-lg font-semibold text-slate-950">{queueFocusSummary.immediateCount}</p>
+            <p className="mt-1 text-xs text-slate-500">SLA vencido o prioridad alta.</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setQueueFocus('NEW_UNASSIGNED')}
+            className={queueFocus === 'NEW_UNASSIGNED' ? 'rounded-2xl border border-amber-300 bg-amber-50 px-3 py-3 text-left' : 'rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left'}
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Nuevas sin tomar</p>
+            <p className="mt-1 text-lg font-semibold text-slate-950">{queueFocusSummary.newUnassignedCount}</p>
+            <p className="mt-1 text-xs text-slate-500">Conversaciones abiertas sin responsable.</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setQueueFocus('WAITING_CUSTOMER')}
+            className={queueFocus === 'WAITING_CUSTOMER' ? 'rounded-2xl border border-indigo-300 bg-indigo-50 px-3 py-3 text-left' : 'rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left'}
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Esperando cliente</p>
+            <p className="mt-1 text-lg font-semibold text-slate-950">{queueFocusSummary.waitingCustomerCount}</p>
+            <p className="mt-1 text-xs text-slate-500">Hilos ya respondidos pendientes de retorno.</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setQueueFocus('BOT_HANDOFF')}
+            className={queueFocus === 'BOT_HANDOFF' ? 'rounded-2xl border border-emerald-300 bg-emerald-50 px-3 py-3 text-left' : 'rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left'}
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Bot a humano</p>
+            <p className="mt-1 text-lg font-semibold text-slate-950">{queueFocusSummary.botHandoffCount}</p>
+            <p className="mt-1 text-xs text-slate-500">Hilos donde ya toca relevo humano.</p>
+          </button>
+        </CardContent>
+      </Card>
+
+      <Card className="rounded-[24px] border-slate-200 bg-white/90 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.2)]">
+        <CardHeader className="border-b border-slate-100 pb-4">
+          <CardTitle className="text-lg">Vista por asesor</CardTitle>
+          <CardDescription>Usa responsables elegibles de CRM para cortar la cola y ver carga, urgencias y espera de cliente por asesor.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-4 md:p-4">
+          <button
+            type="button"
+            onClick={() => setAssignedFilter('ALL')}
+            className={assignedFilter === 'ALL' ? 'rounded-2xl border border-sky-300 bg-sky-50 px-3 py-3 text-left' : 'rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left'}
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Todos los asesores</p>
+            <p className="mt-1 text-lg font-semibold text-slate-950">{queueSummary.teamCount}</p>
+            <p className="mt-1 text-xs text-slate-500">Vista consolidada del frente comercial.</p>
+          </button>
+          {advisorSummary.map((assignee) => {
+            const isActive = assignedFilter === assignee.id
+            return (
+              <button
+                key={assignee.id}
+                type="button"
+                onClick={() => setAssignedFilter(assignee.id)}
+                className={isActive ? 'rounded-2xl border border-emerald-300 bg-emerald-50 px-3 py-3 text-left' : 'rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left'}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-950">{formatAssigneeName(assignee)}</p>
+                    <p className="mt-1 text-xs text-slate-500">{assignee.email || 'Sin correo visible'}</p>
+                  </div>
+                  {(assignee.immediateCount ?? 0) > 0 ? <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700">{assignee.immediateCount} urgente</span> : null}
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-600">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-2 py-2">
+                    <p className="font-semibold text-slate-900">{assignee.activeCount ?? 0}</p>
+                    <p className="mt-1 text-[11px] text-slate-500">Activas</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-2 py-2">
+                    <p className="font-semibold text-slate-900">{assignee.waitingCustomerCount ?? 0}</p>
+                    <p className="mt-1 text-[11px] text-slate-500">Espera</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-2 py-2">
+                    <p className="font-semibold text-slate-900">{assignee.unreadCount ?? 0}</p>
+                    <p className="mt-1 text-[11px] text-slate-500">No leídas</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-[11px] text-slate-500">Última actividad: {formatDate(assignee.lastLoginAt, locale, 'sin registro')}</p>
+              </button>
+            )
+          })}
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-3 xl:grid-cols-[340px_minmax(0,1fr)]">
+        <Card className="rounded-[24px] border-slate-200 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.28)]">
+          <CardHeader className="border-b border-slate-100 pb-4">
+            <CardTitle className="text-lg">
+              {queueScope === 'TEAM' ? 'Cola del equipo' : queueScope === 'MINE' ? 'Mis conversaciones' : 'Conversaciones sin tomar'} ({visibleConversations.length})
+            </CardTitle>
+            <CardDescription>
+              {queueFocus === 'ALL' ? 'Hilos omnicanal ordenados por urgencia operativa, SLA y prioridad comercial.' : null}
+              {queueFocus === 'IMMEDIATE' ? 'Ataca primero los hilos con SLA vencido o criticidad alta.' : null}
+              {queueFocus === 'NEW_UNASSIGNED' ? 'Reclama rápido las conversaciones nuevas para que no queden sin responsable.' : null}
+              {queueFocus === 'BOT_HANDOFF' ? 'Revisa los casos donde el bot ya dejó contexto y hace falta intervención humana.' : null}
+              {queueFocus === 'WAITING_CUSTOMER' ? 'Monitorea hilos pausados esperando respuesta del cliente.' : null}
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 p-4 md:p-5">
+          <CardContent className="space-y-2.5 p-3 md:p-4">
             {loading ? <p className="text-sm text-muted-foreground">Cargando conversaciones...</p> : null}
             {!loading && visibleConversations.length === 0 ? <p className="text-sm text-muted-foreground">No hay conversaciones para mostrar.</p> : null}
             {visibleConversations.map((item) => {
               const isActive = item.id === selectedConversationId
               const preview = item.messages?.[0]?.bodyText || item.sourceCampaign || item.contactEmail || item.contactPhone || naText
               const origin = getConversationOrigin(item.channelConnection)
+              const slaMeta = getConversationSlaMeta(item, locale)
+              const priorityMeta = getConversationPriorityMeta(item, locale)
+              const statusMeta = getConversationStatusMeta(item.status)
               return (
                 <button
                   key={item.id}
@@ -742,39 +1127,63 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-slate-900">{item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || 'Contacto sin nombre'}</span>
                         <OriginChip originKey={origin.key} label={origin.label} />
+                        <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${priorityMeta.className}`}>{priorityMeta.label}</span>
                       </div>
                       <p className="line-clamp-2 text-sm text-slate-600">{preview}</p>
                     </div>
                     <div className="grid gap-2 text-right">
-                      <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700 bg-slate-100">{item.status}</span>
+                      <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${statusMeta.className}`}>{statusMeta.label}</span>
                       {item.unreadCount > 0 ? <span className="text-xs font-semibold text-amber-700">{item.unreadCount} sin leer</span> : null}
                     </div>
                   </div>
-                  <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
                     <span>{item.assignedTo?.name || item.assignedTo?.email || 'Sin asesor'}</span>
-                    <span>{formatDate(item.lastMessageAt, locale, naText)}</span>
+                    <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 ${slaMeta.className}`}><Clock3 className="h-3.5 w-3.5" />{slaMeta.label}</span>
+                    <span>{slaMeta.elapsedLabel}</span>
                   </div>
+                  {!item.assignedTo && currentUserId ? (
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        variant="outline"
+                        className="h-8 rounded-full border-emerald-200 bg-emerald-50 px-3 text-xs text-emerald-800 hover:bg-emerald-100"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          void takeConversation(item.id)
+                        }}
+                        disabled={assigning}
+                      >
+                        Tomar conversación
+                      </Button>
+                    </div>
+                  ) : null}
                 </button>
               )
             })}
           </CardContent>
         </Card>
 
-        <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
-          <CardHeader className="border-b border-slate-100 pb-5">
-            <CardTitle className="text-xl">Detalle</CardTitle>
+        <Card className="rounded-[24px] border-slate-200 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.28)]">
+          <CardHeader className="border-b border-slate-100 pb-4">
+            <CardTitle className="text-lg">Detalle</CardTitle>
             <CardDescription>Asignación, contexto del lead, oportunidad y mensajes del hilo seleccionado.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-5 p-4 md:p-5" aria-busy={detailLoading}>
+          <CardContent className="space-y-4 p-3 md:p-4" aria-busy={detailLoading}>
             {detailLoading ? <span className="sr-only">Cargando detalle...</span> : null}
             {!detailLoading && !selectedConversation ? <p className="text-sm text-muted-foreground">Selecciona una conversación para ver el detalle.</p> : null}
             {selectedConversation ? (
               <>
+                {(() => {
+                  const selectedSla = getConversationSlaMeta(selectedConversation, locale)
+                  const selectedPriority = getConversationPriorityMeta(selectedConversation, locale)
+                  const selectedStatus = getConversationStatusMeta(selectedConversation.status)
+                  return (
                 <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-slate-50/70 p-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-xl font-semibold text-slate-950">{selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación sin alias'}</h2>
-                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">{selectedConversation.status}</span>
+                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${selectedStatus.className}`}>{selectedStatus.label}</span>
+                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${selectedPriority.className}`}>{selectedPriority.label}</span>
+                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${selectedSla.className}`}>{selectedSla.label}</span>
                     </div>
                     <p className="text-sm text-slate-600">
                       {selectedConversation.contactPhone || naText} · {selectedConversation.contactEmail || naText} · {selectedConversation.channelConnection.name}
@@ -786,6 +1195,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                       </span>
                       <span>Canal: {selectedConversation.channelConnection.name}</span>
                       <span>Último mensaje: {formatDate(selectedConversation.lastMessageAt, locale, naText)}</span>
+                      <span>{selectedSla.elapsedLabel}</span>
                       <span>Capturas: {selectedConversation.captures.length}</span>
                     </div>
                   </div>
@@ -795,28 +1205,50 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                         <Link href={`/dashboard/crm/leads/${selectedConversation.lead.id}`}>Abrir lead</Link>
                       </Button>
                     ) : null}
+                    {!selectedConversation.assignedTo && currentUserId ? (
+                      <Button variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100" onClick={() => void takeConversation(selectedConversation.id)} disabled={assigning}>
+                        {assigning ? 'Tomando...' : 'Tomar conversación'}
+                      </Button>
+                    ) : null}
                     <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void resolveConversation()} disabled={resolving || selectedConversation.status === 'RESOLVED'}>
                       {resolving ? 'Resolviendo...' : 'Resolver'}
                     </Button>
                   </div>
                 </div>
+                  )
+                })()}
 
                 <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
                   <div className="space-y-4">
                     <Card className="rounded-3xl border-slate-200 bg-white/85">
                       <CardHeader>
-                        <CardTitle className="text-base">Asignación</CardTitle>
+                        <CardTitle className="text-base">Atención y asignación</CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-3">
+                        <div className="grid gap-1.5">
+                          <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Estado de atención</Label>
+                          <Select value={statusDraft} onValueChange={(value) => setStatusDraft(value as ConversationStatus)}>
+                            <SelectTrigger className="rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {ATTENTION_STATUS_OPTIONS.map((item) => {
+                                const meta = getConversationStatusMeta(item)
+                                return <SelectItem key={item} value={item}>{meta.label}</SelectItem>
+                              })}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid gap-1.5">
+                          <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Responsable</Label>
                         <Select value={assigneeDraft} onValueChange={setAssigneeDraft}>
                           <SelectTrigger className="rounded-xl border-slate-200 bg-white"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="__none__">Sin asesor</SelectItem>
-                            {assignees.map((item) => <SelectItem key={item.id} value={item.id}>{item.name || item.email || item.id}</SelectItem>)}
+                            {assignees.map((item) => <SelectItem key={item.id} value={item.id}>{formatAssigneeName(item)}</SelectItem>)}
                           </SelectContent>
                         </Select>
+                        </div>
                         <Button className="w-full rounded-xl" onClick={() => void submitAssign()} disabled={assigning}>
-                          {assigning ? 'Guardando...' : 'Guardar asignación'}
+                          {assigning ? 'Guardando...' : 'Guardar atención'}
                         </Button>
                       </CardContent>
                     </Card>
@@ -852,6 +1284,13 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                         <CardDescription>Los nuevos inbounds ahora generan una notificación interna para el responsable del hilo.</CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-3 text-sm text-slate-600">
+                        <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${getConversationPriorityMeta(selectedConversation, locale).className}`}>{getConversationPriorityMeta(selectedConversation, locale).label}</span>
+                            <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${getConversationSlaMeta(selectedConversation, locale).className}`}>{getConversationSlaMeta(selectedConversation, locale).label}</span>
+                          </div>
+                          <p className="text-sm leading-6 text-slate-600">{getConversationSlaMeta(selectedConversation, locale).elapsedLabel}. Usa esta señal para priorizar respuesta, asignación y resolución del hilo.</p>
+                        </div>
                         <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
                           <p className="font-medium text-slate-900">Panel actual de prospectos y mensajes</p>
                           <p className="mt-1 leading-6">Este detalle sirve para operar el hilo, responder y dejar contexto. El paso a pipeline ahora se hace unicamente desde Editar lead.</p>
@@ -880,6 +1319,9 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                         {selectedConversation.captures.map((capture) => (
                           (() => {
                             const normalized = asRecord(capture.normalizedDataJson)
+                            const dedupe = asRecord(normalized?.dedupe)
+                            const dedupeLead = asRecord(dedupe?.lead)
+                            const dedupeConversation = asRecord(dedupe?.conversation)
                             const detectedName = pickString(normalized?.aiName) || pickString(normalized?.fromName)
                             const detectedEmail = pickString(normalized?.aiEmail) || pickString(normalized?.fromAddress)
                             const detectedPhone = pickString(normalized?.aiPhone) || pickString(normalized?.phone)
@@ -891,6 +1333,12 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                             const autoLeadStatus = pickString(normalized?.autoLeadStatusApplied) || pickString(normalized?.autoLeadStatus)
                             const autoOpportunityId = pickString(normalized?.autoOpportunityId)
                             const autoTaskId = pickString(normalized?.autoTaskId)
+                            const leadDedupeStrategy = pickString(dedupeLead?.strategy)
+                            const leadDedupeConfidence = pickString(dedupeLead?.confidence)
+                            const leadDedupeFields = pickStringArray(dedupeLead?.matchedFields)
+                            const conversationDedupeStrategy = pickString(dedupeConversation?.strategy)
+                            const conversationDedupeConfidence = pickString(dedupeConversation?.confidence)
+                            const conversationDedupeFields = pickStringArray(dedupeConversation?.matchedFields)
 
                             return (
                               <div key={capture.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600">
@@ -920,6 +1368,27 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                     {autoLeadStatus ? <p><span className="font-medium">Estado lead:</span> {autoLeadStatus}</p> : null}
                                     {autoOpportunityId ? <p><span className="font-medium">Oportunidad:</span> creada/vinculada</p> : null}
                                     {autoTaskId ? <p><span className="font-medium">Tarea:</span> creada/vinculada</p> : null}
+                                  </div>
+                                ) : null}
+                                {leadDedupeStrategy || conversationDedupeStrategy ? (
+                                  <div className="mt-3 grid gap-2 rounded-2xl border border-sky-200 bg-sky-50/70 p-3 text-xs text-sky-900">
+                                    <p className="font-semibold">Trazabilidad de deduplicación</p>
+                                    {leadDedupeStrategy ? (
+                                      <div className="grid gap-1 rounded-xl border border-sky-200 bg-white/80 p-2.5">
+                                        <p className="font-medium text-slate-900">Lead reutilizado</p>
+                                        <p><span className="font-medium text-slate-900">Regla:</span> {leadDedupeStrategy}</p>
+                                        {leadDedupeConfidence ? <p><span className="font-medium text-slate-900">Confianza:</span> {leadDedupeConfidence}</p> : null}
+                                        {leadDedupeFields.length ? <p><span className="font-medium text-slate-900">Campos:</span> {leadDedupeFields.join(', ')}</p> : null}
+                                      </div>
+                                    ) : null}
+                                    {conversationDedupeStrategy ? (
+                                      <div className="grid gap-1 rounded-xl border border-sky-200 bg-white/80 p-2.5">
+                                        <p className="font-medium text-slate-900">Conversación reutilizada</p>
+                                        <p><span className="font-medium text-slate-900">Regla:</span> {conversationDedupeStrategy}</p>
+                                        {conversationDedupeConfidence ? <p><span className="font-medium text-slate-900">Confianza:</span> {conversationDedupeConfidence}</p> : null}
+                                        {conversationDedupeFields.length ? <p><span className="font-medium text-slate-900">Campos:</span> {conversationDedupeFields.join(', ')}</p> : null}
+                                      </div>
+                                    ) : null}
                                   </div>
                                 ) : null}
                               </div>

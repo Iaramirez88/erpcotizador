@@ -810,22 +810,22 @@ export default function FloatingChatDrawer() {
       <div className="relative flex flex-col items-end">
         <div
           className={cn(
-            'pointer-events-auto absolute bottom-0 right-0 flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden rounded-t-[30px] border border-b-0 border-slate-200 bg-white shadow-[0_28px_70px_-36px_rgba(15,23,42,0.45)] transition-all duration-300',
-            'w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:w-[min(720px,calc(100vw-3rem))] lg:w-[min(820px,calc(100vw-4rem))]',
+            'pointer-events-auto absolute bottom-0 right-0 flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden rounded-t-[26px] border border-b-0 border-slate-200 bg-white shadow-[0_28px_70px_-36px_rgba(15,23,42,0.45)] transition-all duration-300',
+            'w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:w-[min(680px,calc(100vw-3rem))] lg:w-[min(780px,calc(100vw-4rem))]',
             open ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-[calc(100%+1.5rem)] opacity-0',
           )}
         >
-          <div className="border-b border-slate-200 bg-[linear-gradient(135deg,_#fffdf8_0%,_#f8fbff_48%,_#f2f7f4_100%)] px-4 py-2.5 sm:px-5">
+          <div className="border-b border-slate-200 bg-[linear-gradient(135deg,_#fffdf8_0%,_#f8fbff_48%,_#f2f7f4_100%)] px-4 py-2 sm:px-4.5">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">Chat global</p>
-                <h3 className="mt-0.5 text-[15px] font-semibold text-slate-950 sm:text-base">Mensajes y novedades</h3>
+                <h3 className="mt-0.5 text-[14px] font-semibold text-slate-950 sm:text-[15px]">Mensajes y novedades</h3>
                 <p className="mt-0.5 text-xs text-slate-600">Trabaja con el chat sin bloquear el resto del dashboard.</p>
               </div>
               <div className="flex items-center gap-2">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl md:hidden" aria-label="Cambiar sección del chat">
+                    <Button variant="outline" size="icon" className="h-8 w-8 rounded-lg md:hidden" aria-label="Cambiar sección del chat">
                       <MoreVertical className="h-4.5 w-4.5" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -841,7 +841,7 @@ export default function FloatingChatDrawer() {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl" onClick={() => setOpen(false)}>
+                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => setOpen(false)}>
                   <X className="h-4.5 w-4.5" />
                 </Button>
               </div>
@@ -866,10 +866,10 @@ export default function FloatingChatDrawer() {
           <div className="min-h-0 flex-1 overflow-hidden bg-white overflow-x-hidden">
             {activeTab === 'updates' ? (
               <div className="flex h-full min-h-0 flex-col overflow-hidden">
-                <div className="border-b border-slate-100 px-4 py-2.5 text-[13px] text-slate-600">
+                <div className="border-b border-slate-100 px-4 py-2 text-[12px] text-slate-600">
                   {loading ? 'Sincronizando mensajes nuevos...' : unreadAlerts.length ? `${unreadAlerts.length} hilos con novedades` : 'No tienes mensajes nuevos'}
                 </div>
-                <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
                   <div className="space-y-2.5">
                     {unreadAlerts.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-500">Todo está al día. Cuando llegue un mensaje nuevo te saldrá aquí y en el badge del botón flotante.</div> : null}
                     {unreadAlerts.map((alert) => (
@@ -1294,22 +1294,22 @@ export default function FloatingChatDrawer() {
       </div>
 
       <Dialog open={groupDialogOpen} onOpenChange={setGroupDialogOpen}>
-        <DialogContent className="z-[120] max-w-2xl">
+        <DialogContent className="z-[120] max-w-[760px]">
           <DialogHeader>
             <DialogTitle>Crear grupo interno</DialogTitle>
             <DialogDescription>Arma grupos operativos, compártelos en la pestaña de grupos creados y elimínalos cuando ya no hagan falta.</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-2">
-            <div className="grid gap-2">
+          <div className="grid gap-3 py-1.5">
+            <div className="grid gap-1.5">
               <Label>Nombre del grupo</Label>
               <Input value={groupForm.title} onChange={(event) => setGroupForm((current) => ({ ...current, title: event.target.value }))} placeholder="Ejemplo: Producción semana 14" />
             </div>
-            <div className="grid gap-2">
+            <div className="grid gap-1.5">
               <Label>Buscar participantes</Label>
               <Input value={groupSearch} onChange={(event) => setGroupSearch(event.target.value)} placeholder="Nombre o correo..." />
             </div>
-            <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-              <div className="max-h-64 space-y-2 overflow-y-auto rounded-2xl border border-slate-200 p-3">
+            <div className="grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
+              <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-xl border border-slate-200 p-2.5">
                 {groupCandidateUsers.map((user) => {
                   const selected = groupForm.participantUserIds.includes(user.id)
                   return (
@@ -1320,7 +1320,7 @@ export default function FloatingChatDrawer() {
                         ...current,
                         participantUserIds: selected ? current.participantUserIds.filter((item) => item !== user.id) : [...current.participantUserIds, user.id],
                       }))}
-                      className={selected ? 'flex w-full items-center justify-between rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-left' : 'flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left'}
+                      className={selected ? 'flex w-full items-center justify-between rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-left' : 'flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-left'}
                     >
                       <span>{user.name || user.email || user.id}</span>
                       <span className="text-xs text-slate-500">{selected ? 'Incluido' : 'Agregar'}</span>
@@ -1328,7 +1328,7 @@ export default function FloatingChatDrawer() {
                   )
                 })}
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                   <Users className="h-4 w-4" />
                   Participantes del grupo

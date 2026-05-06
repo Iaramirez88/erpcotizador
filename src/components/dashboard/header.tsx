@@ -13,10 +13,11 @@ import { signOut } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { useUiStore } from "@/lib/ui-store"
 import { NavSettingsDialog } from "@/components/dashboard/nav-settings-dialog"
+import { useTheme } from "@/components/providers/theme-provider"
 import { useTour } from "@/components/tour/tour-provider"
 import NotificationsBell from "@/components/dashboard/notifications-bell"
 import { useI18n } from "@/components/providers/i18n-provider"
-import { buildDashboardNavDefinitions, moduleForDashboardHref } from "@/lib/dashboard-navigation"
+import { buildDashboardNavDefinitions, moduleForDashboardHref, sectionForDashboardHref } from "@/lib/dashboard-navigation"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,11 +40,15 @@ interface HeaderProps {
 
 export default function Header({ user }: HeaderProps) {
   const { t, language, setLanguage } = useI18n()
+  const { theme, setTheme } = useTheme()
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const [planName, setPlanName] = useState<string>("")
   const [trialDaysLeft, setTrialDaysLeft] = useState<number | null>(null)
   const [trialBadgeVisible, setTrialBadgeVisible] = useState(false)
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
+  const [navOrder, setNavOrder] = useState<string[]>([])
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  const [navSettingsOpen, setNavSettingsOpen] = useState(false)
   const [canManageBilling] = useState(Boolean(user.canManageBilling))
   const [canAccessWebsiteServices] = useState(Boolean(user.canAccessWebsiteServices))
   const toggleMobileNav = useUiStore((s) => s.toggleMobileNav)
@@ -87,9 +92,10 @@ export default function Header({ user }: HeaderProps) {
 
       try {
         const res = await fetch('/api/ui-preferences')
-        const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { nav?: Record<string, boolean> } } | null
+        const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { nav?: Record<string, boolean>; navOrder?: string[] } } | null
         if (!cancelled && json?.success) {
           setNavPrefs(json.data?.nav ?? {})
+          setNavOrder(Array.isArray(json.data?.navOrder) ? json.data.navOrder : [])
         }
       } catch {
         // ignore
@@ -118,21 +124,22 @@ export default function Header({ user }: HeaderProps) {
       const isSuperAdminRoute = it.href === '/dashboard/configuracion/super-admin/modulos-por-plan'
       if (!isSuperAdminRoute) return true
       return user.role === 'ADMIN'
-    })
+    }).map((it) => ({ ...it, section: sectionForDashboardHref(it.href) }))
   }, [canAccessWebsiteServices, canManageBilling, t, allowedModules, user.role])
 
-  async function saveNav(next: Record<string, boolean>) {
+  async function saveNav(next: Record<string, boolean>, nextOrder: string[]) {
     setNavPrefs(next)
+    setNavOrder(nextOrder)
     await fetch('/api/ui-preferences', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nav: next }),
+      body: JSON.stringify({ nav: next, navOrder: nextOrder }),
     }).catch(() => null)
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/60 bg-white/72 px-2 py-2 shadow-[0_10px_24px_-22px_rgba(15,23,42,0.3)] backdrop-blur-xl sm:px-3 lg:px-4">
-      <div className="mx-auto flex w-full max-w-[1680px] items-center justify-between gap-2">
+    <header className="sticky top-0 z-50 border-b border-border/80 bg-background/88 px-2 py-1.5 text-foreground shadow-[0_10px_24px_-22px_rgba(15,23,42,0.22)] backdrop-blur-xl sm:px-3 lg:px-4">
+      <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-1.5">
         {/* Breadcrumb / Title */}
         <div className="flex min-w-0 items-center gap-1.5">
           <Button
@@ -148,17 +155,29 @@ export default function Header({ user }: HeaderProps) {
             </svg>
           </Button>
 
-          <h2 className="truncate text-sm font-semibold text-slate-900 sm:text-base">{t('header.controlPanel')}</h2>
+          <h2 className="truncate text-sm font-semibold text-foreground">{t('header.controlPanel')}</h2>
         </div>
 
         {/* Actions */}
-        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2.5">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           <NotificationsBell onUnreadCountChange={setUnreadCount} />
 
+          {navPrefs ? (
+            <NavSettingsDialog
+              items={navItems}
+              value={navPrefs}
+              order={navOrder}
+              onSave={saveNav}
+              open={navSettingsOpen}
+              onOpenChange={setNavSettingsOpen}
+              trigger={() => null}
+            />
+          ) : null}
+
           {/* Más opciones */}
-          <DropdownMenu>
+          <DropdownMenu open={moreMenuOpen} onOpenChange={setMoreMenuOpen}>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" type="button" className="relative h-8 bg-white/80 px-2 text-xs sm:px-2.5 sm:text-sm">
+              <Button variant="outline" size="sm" type="button" className="relative h-8 bg-background/80 px-2 text-xs sm:px-2.5">
                 {t('common.more')}
               </Button>
             </DropdownMenuTrigger>
@@ -169,22 +188,41 @@ export default function Header({ user }: HeaderProps) {
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {navPrefs ? (
-                <NavSettingsDialog
-                  items={navItems}
-                  value={navPrefs}
-                  onSave={saveNav}
-                  trigger={(open) => (
-                    <DropdownMenuItem
-                      onSelect={(e) => {
-                        e.preventDefault()
-                        open()
-                      }}
-                    >
-                      {t('header.customizeMenu')}
-                    </DropdownMenuItem>
-                  )}
-                />
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setMoreMenuOpen(false)
+                    setNavSettingsOpen(true)
+                  }}
+                >
+                  {t('header.customizeMenu')}
+                </DropdownMenuItem>
               ) : null}
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Tema</DropdownMenuLabel>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault()
+                  setTheme('light')
+                }}
+              >
+                Claro{theme === 'light' ? ' ✓' : ''}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault()
+                  setTheme('dark')
+                }}
+              >
+                Oscuro{theme === 'dark' ? ' ✓' : ''}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault()
+                  setTheme('system')
+                }}
+              >
+                Sistema{theme === 'system' ? ' ✓' : ''}
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>{t('header.sections.help')}</DropdownMenuLabel>
               <DropdownMenuItem
@@ -230,23 +268,23 @@ export default function Header({ user }: HeaderProps) {
 
           {/* User Menu */}
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <div className="relative h-8 w-8 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm">
+            <div className="relative h-8 w-8 overflow-hidden rounded-full border border-border bg-card shadow-sm">
               {user.image ? (
                 <Image src={user.image} alt={user.name ?? 'Usuario'} fill className="object-cover" sizes="32px" unoptimized />
               ) : (
-                <div className="grid h-full w-full place-items-center bg-slate-100 text-[11px] font-semibold text-slate-700">
+                <div className="grid h-full w-full place-items-center bg-muted text-[11px] font-semibold text-foreground">
                   {initials}
                 </div>
               )}
             </div>
             <div className="text-right hidden sm:block">
-              <p className="text-[13px] font-medium leading-4 text-slate-900">{user.name}</p>
-              <p className="text-[11px] capitalize leading-4 text-slate-500">
+              <p className="text-[12px] font-medium leading-4 text-slate-900">{user.name}</p>
+              <p className="text-[10px] capitalize leading-4 text-slate-500">
                 {user.role?.toLowerCase()}
                 {planName ? ` · Plan: ${planName}` : ''}
               </p>
               {trialBadgeVisible && trialDaysLeft !== null ? (
-                <p className="text-[10px] leading-4 text-red-600">
+                <p className="text-[10px] leading-3.5 text-red-600">
                   {trialDaysLeft <= 1 ? 'Tu prueba termina manana' : `Prueba: ${trialDaysLeft} dia(s) restantes`}
                 </p>
               ) : null}
@@ -256,7 +294,7 @@ export default function Header({ user }: HeaderProps) {
               variant="outline"
               size="sm"
               onClick={() => signOut({ callbackUrl: "/auth/login" })}
-              className="h-8 px-2.5"
+              className="h-8 px-2"
             >
               {t('header.signOut')}
             </Button>

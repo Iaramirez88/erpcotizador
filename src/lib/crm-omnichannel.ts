@@ -1,4 +1,4 @@
-import { Prisma, type CrmActivityType, type CrmLeadCaptureType, type CrmLeadSource, type CrmMessageType } from '@prisma/client'
+import { AccessLevel, ModuleKey, Prisma, type CrmActivityType, type CrmConversation, type CrmLead, type CrmLeadCaptureType, type CrmLeadSource, type CrmMessageType, type SedeRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { normalizeString } from '@/lib/crm'
 
@@ -23,6 +23,28 @@ type EnsureConversationArgs = {
   sourceMedium?: string | null
   sourceContent?: string | null
   eventAt?: Date
+}
+
+type DedupeTrace = {
+  matchedRecordId: string
+  strategy: string
+  matchedFields: string[]
+  confidence: 'strong' | 'medium'
+}
+
+type LeadMatchResult = {
+  lead: CrmLead | null
+  dedupe: DedupeTrace | null
+}
+
+type UpsertLeadFromInboundResult = {
+  lead: CrmLead
+  dedupe: DedupeTrace | null
+}
+
+type EnsureConversationResult = {
+  conversation: CrmConversation
+  dedupe: DedupeTrace | null
 }
 
 export function parseJsonObject(value: unknown): JsonObject {
@@ -50,15 +72,272 @@ export function parseMaybeDate(value: unknown): Date {
   return Number.isNaN(date.getTime()) ? new Date() : date
 }
 
+function normalizePhoneForMatching(value: string | null | undefined) {
+  const raw = normalizeString(value)
+  if (!raw) return ''
+  return raw.replace(/[^\d]+/g, '')
+}
+
+function normalizePhoneForStorage(value: string | null | undefined) {
+  const digits = normalizePhoneForMatching(value)
+  if (!digits) return ''
+  return digits.startsWith('57') ? `+${digits}` : digits
+}
+
+function normalizeLooseTextForMatching(value: string | null | undefined) {
+  const raw = normalizeString(value)
+  if (!raw) return ''
+  return raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+}
+
+function getEmailDomain(value: string | null | undefined) {
+  const email = normalizeString(value).toLowerCase()
+  if (!email) return ''
+  const atIndex = email.lastIndexOf('@')
+  if (atIndex <= 0 || atIndex === email.length - 1) return ''
+  return email.slice(atIndex + 1)
+}
+
+function buildDedupeTrace(args: {
+  matchedRecordId: string
+  strategy: string
+  matchedFields: string[]
+  confidence: 'strong' | 'medium'
+}): DedupeTrace {
+  return {
+    matchedRecordId: args.matchedRecordId,
+    strategy: args.strategy,
+    matchedFields: Array.from(new Set(args.matchedFields.filter(Boolean))),
+    confidence: args.confidence,
+  }
+}
+
+const ACCESS_LEVEL_ORDER: Record<AccessLevel, number> = {
+  NONE: 0,
+  READ: 1,
+  WRITE: 2,
+  ADMIN: 3,
+}
+
+function sedeRoleToBaseAccess(role: SedeRole): AccessLevel {
+  switch (role) {
+    case 'ADMIN':
+      return 'ADMIN'
+    case 'MANAGER':
+      return 'WRITE'
+    case 'MEMBER':
+      return 'WRITE'
+    case 'READER':
+    default:
+      return 'READ'
+  }
+}
+
+type CandidateAssignee = {
+  id: string
+  name: string | null
+  email: string
+  sedeDefaultId: string | null
+  lastLoginAt: Date | null
+  globalAccess: { level: AccessLevel } | null
+  sedeMemberships: Array<{ sedeId: string; role: SedeRole }>
+  moduleAccess: Array<{ sedeId: string; level: AccessLevel }>
+}
+
+function hasCrmConversationWriteAccess(user: CandidateAssignee, sedeId?: string | null) {
+  const globalBase = user.globalAccess?.level ?? 'NONE'
+
+  if (sedeId) {
+    const membership = user.sedeMemberships.find((row) => row.sedeId === sedeId)
+    const base = membership ? sedeRoleToBaseAccess(membership.role) : globalBase
+    const explicit = user.moduleAccess.find((row) => row.sedeId === sedeId)?.level
+    const effective = explicit ?? base
+    return ACCESS_LEVEL_ORDER[effective] >= ACCESS_LEVEL_ORDER.WRITE
+  }
+
+  if (ACCESS_LEVEL_ORDER[globalBase] >= ACCESS_LEVEL_ORDER.WRITE) return true
+  if (user.moduleAccess.some((row) => ACCESS_LEVEL_ORDER[row.level] >= ACCESS_LEVEL_ORDER.WRITE)) return true
+  return user.sedeMemberships.some((row) => ACCESS_LEVEL_ORDER[sedeRoleToBaseAccess(row.role)] >= ACCESS_LEVEL_ORDER.WRITE)
+}
+
+export async function canAssignCrmConversationToUser(args: {
+  client: TxClient
+  empresaId: string
+  sedeId?: string | null
+  userId: string
+}) {
+  const user = await args.client.user.findFirst({
+    where: {
+      id: args.userId,
+      empresaId: args.empresaId,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      sedeDefaultId: true,
+      lastLoginAt: true,
+      globalAccess: { select: { level: true } },
+      sedeMemberships: {
+        ...(args.sedeId ? { where: { sedeId: args.sedeId } } : {}),
+        select: { sedeId: true, role: true },
+      },
+      moduleAccess: {
+        where: {
+          module: ModuleKey.CRM,
+          ...(args.sedeId ? { sedeId: args.sedeId } : {}),
+        },
+        select: { sedeId: true, level: true },
+      },
+    },
+  })
+
+  if (!user) return false
+  return hasCrmConversationWriteAccess(user, args.sedeId)
+}
+
+function buildPhoneWhereClauses(field: 'telefono' | 'celular' | 'contactPhone', rawPhone: string | null | undefined) {
+  const normalized = normalizePhoneForMatching(rawPhone)
+  if (!normalized) return []
+
+  const compact = normalizePhoneForStorage(rawPhone)
+  const last10 = normalized.slice(-10)
+  const last8 = normalized.slice(-8)
+  const variants = Array.from(new Set([compact, normalized].filter(Boolean)))
+  const clauses: Array<Record<string, unknown>> = variants.map((value) => ({ [field]: value }))
+
+  if (last10 && last10 !== normalized) {
+    clauses.push({ [field]: { endsWith: last10 } })
+  }
+
+  if (last8 && last8 !== last10 && last8 !== normalized) {
+    clauses.push({ [field]: { endsWith: last8 } })
+  }
+
+  return clauses
+}
+
+function getNextInboundConversationStatus(args: {
+  currentStatus?: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM' | null
+  assignedToUserId?: string | null
+}) {
+  const hasAssignee = Boolean(normalizeString(args.assignedToUserId))
+  const currentStatus = args.currentStatus ?? null
+
+  if (currentStatus === 'SPAM') return 'SPAM' as const
+  if (currentStatus === 'BOT_ACTIVE') return 'BOT_ACTIVE' as const
+  if (hasAssignee) return 'HUMAN_ACTIVE' as const
+  return 'OPEN' as const
+}
+
+async function resolveInboundAssigneeUserId(args: {
+  client: TxClient
+  empresaId: string
+  sedeId?: string | null
+  channelConnectionId?: string | null
+  preferredUserId?: string | null
+}) {
+  const preferredUserId = normalizeString(args.preferredUserId)
+  const channelConnectionId = normalizeString(args.channelConnectionId)
+  const now = Date.now()
+  const activeSessionThreshold = 18 * 60 * 60 * 1000
+
+  const users = await args.client.user.findMany({
+    where: {
+      empresaId: args.empresaId,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      sedeDefaultId: true,
+      lastLoginAt: true,
+      globalAccess: { select: { level: true } },
+      sedeMemberships: {
+        ...(args.sedeId ? { where: { sedeId: args.sedeId } } : {}),
+        select: { sedeId: true, role: true },
+      },
+      moduleAccess: {
+        where: {
+          module: ModuleKey.CRM,
+          ...(args.sedeId ? { sedeId: args.sedeId } : {}),
+        },
+        select: { sedeId: true, level: true },
+      },
+    },
+    take: 50,
+  })
+
+  const eligibleUsers = users.filter((user) => hasCrmConversationWriteAccess(user, args.sedeId))
+  if (!eligibleUsers.length) return null
+
+  const activeConversations = await args.client.crmConversation.findMany({
+    where: {
+      empresaId: args.empresaId,
+      assignedToUserId: { not: null },
+      status: { in: ['OPEN', 'PENDING', 'BOT_ACTIVE', 'HUMAN_ACTIVE'] },
+    },
+    select: {
+      assignedToUserId: true,
+      channelConnectionId: true,
+    },
+  })
+
+  const loadMap = new Map<string, number>()
+  const sameChannelLoadMap = new Map<string, number>()
+  for (const row of activeConversations) {
+    if (!row.assignedToUserId) continue
+    loadMap.set(row.assignedToUserId, (loadMap.get(row.assignedToUserId) ?? 0) + 1)
+    if (channelConnectionId && row.channelConnectionId === channelConnectionId) {
+      sameChannelLoadMap.set(row.assignedToUserId, (sameChannelLoadMap.get(row.assignedToUserId) ?? 0) + 1)
+    }
+  }
+
+  const ranked = [...eligibleUsers].sort((left, right) => {
+    const leftPreferred = left.id === preferredUserId ? 0 : 1
+    const rightPreferred = right.id === preferredUserId ? 0 : 1
+    if (leftPreferred !== rightPreferred) return leftPreferred - rightPreferred
+
+    const leftSedeScore = args.sedeId && left.sedeDefaultId === args.sedeId ? 0 : 1
+    const rightSedeScore = args.sedeId && right.sedeDefaultId === args.sedeId ? 0 : 1
+    if (leftSedeScore !== rightSedeScore) return leftSedeScore - rightSedeScore
+
+    const leftActiveScore = left.lastLoginAt && now - left.lastLoginAt.getTime() <= activeSessionThreshold ? 0 : 1
+    const rightActiveScore = right.lastLoginAt && now - right.lastLoginAt.getTime() <= activeSessionThreshold ? 0 : 1
+    if (leftActiveScore !== rightActiveScore) return leftActiveScore - rightActiveScore
+
+    const leftChannelScore = channelConnectionId && (sameChannelLoadMap.get(left.id) ?? 0) > 0 ? 0 : 1
+    const rightChannelScore = channelConnectionId && (sameChannelLoadMap.get(right.id) ?? 0) > 0 ? 0 : 1
+    if (leftChannelScore !== rightChannelScore) return leftChannelScore - rightChannelScore
+
+    const leftLoad = loadMap.get(left.id) ?? 0
+    const rightLoad = loadMap.get(right.id) ?? 0
+    if (leftLoad !== rightLoad) return leftLoad - rightLoad
+
+    return (left.name || left.email || left.id).localeCompare(right.name || right.email || right.id, 'es')
+  })
+
+  return ranked[0]?.id || null
+}
+
 export async function findMatchingLead(args: {
   client: TxClient
   empresaId: string
+  nombre?: string | null
+  empresaNombre?: string | null
   email?: string | null
   phone?: string | null
   document?: string | null
-}) {
+  eventAt?: Date
+}): Promise<LeadMatchResult> {
+  const nombre = normalizeString(args.nombre)
+  const empresaNombre = normalizeString(args.empresaNombre)
   const email = normalizeString(args.email).toLowerCase()
-  const phone = normalizeString(args.phone)
+  const phone = normalizePhoneForStorage(args.phone)
   const document = normalizeString(args.document)
 
   if (document) {
@@ -66,7 +345,17 @@ export async function findMatchingLead(args: {
       where: { empresaId: args.empresaId, documento: document },
       orderBy: { createdAt: 'desc' },
     })
-    if (byDocument) return byDocument
+    if (byDocument) {
+      return {
+        lead: byDocument,
+        dedupe: buildDedupeTrace({
+          matchedRecordId: byDocument.id,
+          strategy: 'document_exact',
+          matchedFields: ['documento'],
+          confidence: 'strong',
+        }),
+      }
+    }
   }
 
   if (email) {
@@ -74,59 +363,191 @@ export async function findMatchingLead(args: {
       where: { empresaId: args.empresaId, email },
       orderBy: { createdAt: 'desc' },
     })
-    if (byEmail) return byEmail
+    if (byEmail) {
+      return {
+        lead: byEmail,
+        dedupe: buildDedupeTrace({
+          matchedRecordId: byEmail.id,
+          strategy: 'email_exact',
+          matchedFields: ['email'],
+          confidence: 'strong',
+        }),
+      }
+    }
   }
 
   if (phone) {
     const byPhone = await args.client.crmLead.findFirst({
       where: {
         empresaId: args.empresaId,
-        OR: [{ telefono: phone }, { celular: phone }],
+        OR: [
+          ...buildPhoneWhereClauses('telefono', phone),
+          ...buildPhoneWhereClauses('celular', phone),
+        ],
       },
       orderBy: { createdAt: 'desc' },
     })
-    if (byPhone) return byPhone
+    if (byPhone) {
+      return {
+        lead: byPhone,
+        dedupe: buildDedupeTrace({
+          matchedRecordId: byPhone.id,
+          strategy: 'phone_exact_or_suffix',
+          matchedFields: ['telefono', 'celular'],
+          confidence: 'strong',
+        }),
+      }
+    }
   }
 
-  return null
+  const normalizedNombre = normalizeLooseTextForMatching(nombre)
+  const normalizedEmpresaNombre = normalizeLooseTextForMatching(empresaNombre)
+  const emailDomain = getEmailDomain(email)
+  if (normalizedNombre) {
+    const recentThreshold = new Date((args.eventAt ?? new Date()).getTime() - (45 * 24 * 60 * 60 * 1000))
+    const weakSignals: Prisma.CrmLeadWhereInput[] = []
+
+    if (empresaNombre) {
+      weakSignals.push({
+        empresaNombre: {
+          equals: empresaNombre,
+          mode: 'insensitive',
+        },
+      })
+    }
+
+    if (emailDomain) {
+      weakSignals.push({
+        email: {
+          endsWith: `@${emailDomain}`,
+          mode: 'insensitive',
+        },
+      })
+    }
+
+    if (weakSignals.length) {
+      const candidates = await args.client.crmLead.findMany({
+        where: {
+          empresaId: args.empresaId,
+          AND: [
+            {
+              OR: [
+                { lastActivityAt: { gte: recentThreshold } },
+                { createdAt: { gte: recentThreshold } },
+              ],
+            },
+            { OR: weakSignals },
+          ],
+        },
+        orderBy: [{ lastActivityAt: 'desc' }, { createdAt: 'desc' }],
+        take: 12,
+      })
+
+      const byRecentHeuristic = candidates.find((candidate) => {
+        if (normalizeLooseTextForMatching(candidate.nombre) !== normalizedNombre) return false
+
+        const companyMatches = normalizedEmpresaNombre
+          && normalizeLooseTextForMatching(candidate.empresaNombre) === normalizedEmpresaNombre
+        const emailDomainMatches = emailDomain && getEmailDomain(candidate.email) === emailDomain
+
+        return Boolean(companyMatches || emailDomainMatches)
+      })
+
+      if (byRecentHeuristic) {
+        const matchedFields = ['nombre']
+        const normalizedCandidateEmpresa = normalizeLooseTextForMatching(byRecentHeuristic.empresaNombre)
+        const candidateEmailDomain = getEmailDomain(byRecentHeuristic.email)
+
+        if (normalizedEmpresaNombre && normalizedCandidateEmpresa === normalizedEmpresaNombre) {
+          matchedFields.push('empresaNombre')
+        }
+
+        if (emailDomain && candidateEmailDomain === emailDomain) {
+          matchedFields.push('emailDomain')
+        }
+
+        return {
+          lead: byRecentHeuristic,
+          dedupe: buildDedupeTrace({
+            matchedRecordId: byRecentHeuristic.id,
+            strategy: 'recent_name_plus_secondary_signal',
+            matchedFields,
+            confidence: 'medium',
+          }),
+        }
+      }
+    }
+  }
+
+  return { lead: null, dedupe: null }
 }
 
-export async function ensureConversation(args: EnsureConversationArgs) {
+export async function ensureConversation(args: EnsureConversationArgs): Promise<EnsureConversationResult> {
   const eventAt = args.eventAt ?? new Date()
-  const contactPhone = normalizeString(args.contactPhone)
+  const contactPhone = normalizePhoneForStorage(args.contactPhone)
   const contactEmail = normalizeString(args.contactEmail).toLowerCase()
   const externalThreadId = normalizeString(args.externalThreadId)
   const orConditions: Array<Record<string, string>> = []
 
   if (externalThreadId) orConditions.push({ externalThreadId })
   if (args.leadId) orConditions.push({ leadId: args.leadId })
-  if (contactPhone) orConditions.push({ contactPhone })
   if (contactEmail) orConditions.push({ contactEmail })
 
-  const existing = orConditions.length
+  const phoneConditions = buildPhoneWhereClauses('contactPhone', contactPhone)
+  const activeStatuses = ['OPEN', 'PENDING', 'BOT_ACTIVE', 'HUMAN_ACTIVE'] as const
+
+  const activeMatch = (orConditions.length || phoneConditions.length)
     ? await args.client.crmConversation.findFirst({
         where: {
           empresaId: args.empresaId,
           channelConnectionId: args.channelConnectionId,
-          status: { in: ['OPEN', 'PENDING', 'BOT_ACTIVE', 'HUMAN_ACTIVE'] },
-          OR: orConditions,
+          status: { in: [...activeStatuses] },
+          OR: [...orConditions, ...phoneConditions],
         },
         orderBy: { lastMessageAt: 'desc' },
       })
     : null
 
+  const existing = activeMatch ?? ((orConditions.length || phoneConditions.length)
+    ? await args.client.crmConversation.findFirst({
+        where: {
+          empresaId: args.empresaId,
+          channelConnectionId: args.channelConnectionId,
+          status: { not: 'SPAM' },
+          OR: [...orConditions, ...phoneConditions],
+        },
+        orderBy: { lastMessageAt: 'desc' },
+      })
+    : null)
+
   if (existing) {
-    return args.client.crmConversation.update({
+    const matchedFields: string[] = []
+    if (externalThreadId && existing.externalThreadId === externalThreadId) matchedFields.push('externalThreadId')
+    if (args.leadId && existing.leadId === args.leadId) matchedFields.push('leadId')
+    if (contactEmail && existing.contactEmail === contactEmail) matchedFields.push('contactEmail')
+    if (contactPhone && normalizePhoneForMatching(existing.contactPhone) === normalizePhoneForMatching(contactPhone)) {
+      matchedFields.push('contactPhone')
+    }
+
+    const nextAssignedToUserId = args.assignedToUserId ?? existing.assignedToUserId
+    const nextStatus = getNextInboundConversationStatus({
+      currentStatus: existing.status,
+      assignedToUserId: nextAssignedToUserId,
+    })
+
+    const conversation = await args.client.crmConversation.update({
       where: { id: existing.id },
       data: {
         leadId: args.leadId ?? existing.leadId,
         clienteId: args.clienteId ?? existing.clienteId,
         opportunityId: args.opportunityId ?? existing.opportunityId,
-        assignedToUserId: args.assignedToUserId ?? existing.assignedToUserId,
+        assignedToUserId: nextAssignedToUserId,
         contactDisplayName: normalizeString(args.contactDisplayName) || existing.contactDisplayName,
         contactPhone: contactPhone || existing.contactPhone,
         contactEmail: contactEmail || existing.contactEmail,
         externalThreadId: externalThreadId || existing.externalThreadId,
+        status: nextStatus,
+        resolvedAt: nextStatus === 'SPAM' ? existing.resolvedAt : null,
         unreadCount: { increment: 1 },
         firstInboundAt: existing.firstInboundAt ?? eventAt,
         lastMessageAt: eventAt,
@@ -137,9 +558,19 @@ export async function ensureConversation(args: EnsureConversationArgs) {
         sourceContent: normalizeString(args.sourceContent) || existing.sourceContent,
       },
     })
+
+    return {
+      conversation,
+      dedupe: buildDedupeTrace({
+        matchedRecordId: existing.id,
+        strategy: activeMatch ? 'active_conversation_reuse' : 'historical_conversation_reopen',
+        matchedFields,
+        confidence: matchedFields.includes('externalThreadId') ? 'strong' : 'medium',
+      }),
+    }
   }
 
-  return args.client.crmConversation.create({
+  const conversation = await args.client.crmConversation.create({
     data: {
       empresaId: args.empresaId,
       sedeId: args.sedeId ?? null,
@@ -148,7 +579,7 @@ export async function ensureConversation(args: EnsureConversationArgs) {
       clienteId: args.clienteId ?? null,
       opportunityId: args.opportunityId ?? null,
       assignedToUserId: args.assignedToUserId ?? null,
-      status: 'OPEN',
+      status: getNextInboundConversationStatus({ assignedToUserId: args.assignedToUserId ?? null }),
       directionLastMessage: 'INBOUND',
       externalThreadId: externalThreadId || null,
       contactDisplayName: normalizeString(args.contactDisplayName) || null,
@@ -163,6 +594,8 @@ export async function ensureConversation(args: EnsureConversationArgs) {
       sourceContent: normalizeString(args.sourceContent) || null,
     },
   })
+
+  return { conversation, dedupe: null }
 }
 
 export async function upsertLeadFromInbound(args: {
@@ -180,43 +613,48 @@ export async function upsertLeadFromInbound(args: {
   notes?: string | null
   source: CrmLeadSource
   eventAt?: Date
-}) {
+}): Promise<UpsertLeadFromInboundResult> {
   const eventAt = args.eventAt ?? new Date()
   const existing = await findMatchingLead({
     client: args.client,
     empresaId: args.empresaId,
+    nombre: args.nombre,
+    empresaNombre: args.empresaNombre,
     email: args.email,
     phone: args.phone,
     document: args.document,
+    eventAt,
   })
 
   const nombre = normalizeString(args.nombre) || normalizeString(args.phone) || normalizeString(args.email) || 'Lead sin nombre'
   const empresaNombre = normalizeString(args.empresaNombre)
   const email = normalizeString(args.email).toLowerCase()
-  const phone = normalizeString(args.phone)
+  const phone = normalizePhoneForStorage(args.phone)
   const document = normalizeString(args.document)
   const ciudad = normalizeString(args.ciudad)
   const notes = normalizeString(args.notes)
 
-  if (existing) {
-    return args.client.crmLead.update({
-      where: { id: existing.id },
+  if (existing.lead) {
+    const lead = await args.client.crmLead.update({
+      where: { id: existing.lead.id },
       data: {
-        sedeId: existing.sedeId ?? args.sedeId ?? null,
-        empresaNombre: existing.empresaNombre || empresaNombre || null,
-        email: existing.email || email || null,
-        telefono: existing.telefono || phone || null,
-        celular: existing.celular || phone || null,
-        documento: existing.documento || document || null,
-        ciudad: existing.ciudad || ciudad || null,
-        notes: existing.notes || notes || null,
-        ownerUserId: existing.ownerUserId ?? args.ownerUserId ?? null,
+        sedeId: existing.lead.sedeId ?? args.sedeId ?? null,
+        empresaNombre: existing.lead.empresaNombre || empresaNombre || null,
+        email: existing.lead.email || email || null,
+        telefono: existing.lead.telefono || phone || null,
+        celular: existing.lead.celular || phone || null,
+        documento: existing.lead.documento || document || null,
+        ciudad: existing.lead.ciudad || ciudad || null,
+        notes: existing.lead.notes || notes || null,
+        ownerUserId: existing.lead.ownerUserId ?? args.ownerUserId ?? null,
         lastActivityAt: eventAt,
       },
     })
+
+    return { lead, dedupe: existing.dedupe }
   }
 
-  return args.client.crmLead.create({
+  const lead = await args.client.crmLead.create({
     data: {
       empresaId: args.empresaId,
       sedeId: args.sedeId ?? null,
@@ -235,6 +673,8 @@ export async function upsertLeadFromInbound(args: {
       lastActivityAt: eventAt,
     },
   })
+
+  return { lead, dedupe: null }
 }
 
 export async function logInboundCapture(args: {
@@ -315,12 +755,20 @@ export async function createInboundArtifacts(args: {
   normalizedDataJson: Prisma.InputJsonValue
 }) {
   const eventAt = args.eventAt ?? new Date()
-  const lead = await upsertLeadFromInbound({
+  const assignedToUserId = await resolveInboundAssigneeUserId({
+    client: args.client,
+    empresaId: args.empresaId,
+    sedeId: args.sedeId ?? null,
+    channelConnectionId: args.channelConnectionId,
+    preferredUserId: args.ownerUserId ?? null,
+  })
+
+  const leadResult = await upsertLeadFromInbound({
     client: args.client,
     empresaId: args.empresaId,
     sedeId: args.sedeId ?? null,
     createdById: args.createdById,
-    ownerUserId: args.ownerUserId ?? null,
+    ownerUserId: assignedToUserId,
     nombre: args.nombre,
     empresaNombre: args.empresaNombre,
     email: args.email,
@@ -331,14 +779,15 @@ export async function createInboundArtifacts(args: {
     source: args.source,
     eventAt,
   })
+  const lead = leadResult.lead
 
-  const conversation = await ensureConversation({
+  const conversationResult = await ensureConversation({
     client: args.client,
     empresaId: args.empresaId,
     sedeId: args.sedeId ?? null,
     channelConnectionId: args.channelConnectionId,
     leadId: lead.id,
-    assignedToUserId: args.ownerUserId ?? lead.ownerUserId ?? null,
+    assignedToUserId: assignedToUserId ?? lead.ownerUserId ?? null,
     contactDisplayName: args.nombre,
     contactPhone: args.phone,
     contactEmail: args.email,
@@ -349,6 +798,15 @@ export async function createInboundArtifacts(args: {
     sourceContent: args.sourceContent,
     eventAt,
   })
+  const conversation = conversationResult.conversation
+
+  const normalizedCaptureData: Prisma.InputJsonValue = {
+    ...parseJsonObject(args.normalizedDataJson),
+    dedupe: {
+      lead: leadResult.dedupe,
+      conversation: conversationResult.dedupe,
+    },
+  }
 
   const message = await args.client.crmMessage.create({
     data: {
@@ -388,7 +846,7 @@ export async function createInboundArtifacts(args: {
     conversationId: conversation.id,
     captureType: args.captureType,
     rawPayloadJson: args.rawPayloadJson,
-    normalizedDataJson: args.normalizedDataJson,
+    normalizedDataJson: normalizedCaptureData,
     utmSource: args.utmSource,
     utmMedium: args.utmMedium,
     utmCampaign: args.utmCampaign,
@@ -399,7 +857,7 @@ export async function createInboundArtifacts(args: {
     providerLeadId: args.providerLeadId,
   })
 
-  const notificationUserId = conversation.assignedToUserId || args.ownerUserId || lead.ownerUserId || args.createdById
+  const notificationUserId = conversation.assignedToUserId || assignedToUserId || lead.ownerUserId || args.createdById
   if (notificationUserId) {
     const contactLabel = normalizeString(args.nombre) || conversation.contactDisplayName || lead.nombre || 'prospecto'
     const messagePreview = normalizeString(args.messageText)

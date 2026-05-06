@@ -1,6 +1,8 @@
 "use client"
 
 import { useMemo, useState } from 'react'
+import type { ChangeEvent } from 'react'
+import type { WebFormCustomField, WebFormVariable } from '@/lib/crm-web-form-schema'
 
 type PublicWebFormEmbedProps = {
   channelId: string
@@ -44,7 +46,16 @@ type PublicWebFormEmbedProps = {
   productPlaceholder: string
   messageLabel: string
   messagePlaceholder: string
+  customFields: WebFormCustomField[]
+  variables: WebFormVariable[]
+  termsEnabled: boolean
+  termsRequired: boolean
+  termsLabel: string
+  termsLinkText: string
+  termsLinkUrl: string
 }
+
+type CustomFieldValue = string | boolean | Array<{ name: string; size: number; type: string }>
 
 type FormState = {
   nombre: string
@@ -68,6 +79,8 @@ const initialState: FormState = {
 
 export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
   const [formState, setFormState] = useState<FormState>(initialState)
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, CustomFieldValue>>(() => Object.fromEntries(props.customFields.map((field) => [field.key, field.type === 'check' ? field.defaultValue === 'true' : field.defaultValue || ''])))
+  const [termsAccepted, setTermsAccepted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -100,6 +113,44 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
   }), [props.inputBackgroundColor, props.inputBorderColor, props.inputRadius, props.inputTextColor])
 
   const fieldGap = `${props.fieldSpacing}px`
+  const hiddenVariables = useMemo(() => {
+    if (typeof window === 'undefined') return []
+    const params = new URLSearchParams(window.location.search)
+    return props.variables.map((variable) => ({
+      key: variable.key,
+      label: variable.label,
+      value: variable.source === 'query' ? params.get(variable.queryParam || variable.key) || '' : variable.value,
+    }))
+  }, [props.variables])
+
+  function resetCustomFields() {
+    setCustomFieldValues(Object.fromEntries(props.customFields.map((field) => [field.key, field.type === 'check' ? field.defaultValue === 'true' : field.defaultValue || ''])))
+  }
+
+  function handleFileChange(field: WebFormCustomField, event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []).map((file) => ({ name: file.name, size: file.size, type: file.type }))
+    setCustomFieldValues((current) => ({ ...current, [field.key]: files }))
+  }
+
+  function validateCustomFields() {
+    for (const field of props.customFields) {
+      if (!field.required) continue
+      const value = customFieldValues[field.key]
+      if (field.type === 'check') {
+        if (!value) return `Debes completar el campo ${field.label}.`
+        continue
+      }
+      if (field.type === 'file') {
+        if (!Array.isArray(value) || !value.length) return `Debes adjuntar ${field.label}.`
+        continue
+      }
+      if (!String(value ?? '').trim()) return `Debes completar el campo ${field.label}.`
+    }
+    if (props.termsEnabled && props.termsRequired && !termsAccepted) {
+      return 'Debes aceptar los términos antes de enviar el formulario.'
+    }
+    return ''
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -107,6 +158,12 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
 
     if (!formState.nombre.trim() && !formState.email.trim() && !formState.telefono.trim()) {
       setErrorMessage('Incluye al menos nombre, correo o teléfono para capturar el lead.')
+      return
+    }
+
+    const customFieldError = validateCustomFields()
+    if (customFieldError) {
+      setErrorMessage(customFieldError)
       return
     }
 
@@ -122,12 +179,29 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
         body: JSON.stringify({
           channelId: props.channelId,
           ...formState,
+          customFields: props.customFields.map((field) => ({
+            id: field.id,
+            key: field.key,
+            label: field.label,
+            type: field.type,
+            value: customFieldValues[field.key] ?? '',
+          })),
+          variables: hiddenVariables,
+          termsAccepted,
           landingPageUrl: parentReferrer || window.location.href,
           referrerUrl: parentReferrer,
           payload: {
             source: 'iframe-web-form',
             userAgent: navigator.userAgent,
             embedUrl: window.location.href,
+            customFields: props.customFields.map((field) => ({
+              key: field.key,
+              label: field.label,
+              type: field.type,
+              value: customFieldValues[field.key] ?? '',
+            })),
+            variables: hiddenVariables,
+            termsAccepted,
           },
         }),
       })
@@ -138,6 +212,8 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
       }
 
       setFormState(initialState)
+      resetCustomFields()
+      setTermsAccepted(false)
       setSuccess(true)
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'No se pudo enviar el formulario')
@@ -209,6 +285,65 @@ export function CrmPublicWebFormEmbed(props: PublicWebFormEmbedProps) {
               <label style={{ display: 'grid', gap: 8, color: props.labelColor, fontWeight: 600 }}>
                 <span>{props.messageLabel}</span>
                 <textarea value={formState.mensaje} onChange={(event) => setFormState((current) => ({ ...current, mensaje: event.target.value }))} placeholder={props.messagePlaceholder} rows={5} style={{ ...inputStyle, resize: 'vertical', minHeight: 132 }} />
+              </label>
+            ) : null}
+
+            {props.customFields.length ? (
+              <div style={{ display: 'grid', gap: fieldGap, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                {props.customFields.map((field) => {
+                  const wrapperStyle = {
+                    display: 'grid',
+                    gap: 8,
+                    color: props.labelColor,
+                    fontWeight: 600,
+                    gridColumn: field.fullWidth ? '1 / -1' : undefined,
+                  } as const
+                  const value = customFieldValues[field.key]
+                  return (
+                    <label key={field.id} style={wrapperStyle}>
+                      <span>{field.label}{field.required ? ' *' : ''}</span>
+                      {field.type === 'textarea' ? (
+                        <textarea value={String(value ?? '')} onChange={(event) => setCustomFieldValues((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} rows={4} style={{ ...inputStyle, resize: 'vertical', minHeight: 120 }} />
+                      ) : field.type === 'select' ? (
+                        <select value={String(value ?? '')} onChange={(event) => setCustomFieldValues((current) => ({ ...current, [field.key]: event.target.value }))} style={inputStyle}>
+                          <option value="">Selecciona una opción</option>
+                          {field.options.map((option) => <option key={option} value={option}>{option}</option>)}
+                        </select>
+                      ) : field.type === 'check' ? (
+                        <span style={{ ...inputStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <input type="checkbox" checked={Boolean(value)} onChange={(event) => setCustomFieldValues((current) => ({ ...current, [field.key]: event.target.checked }))} />
+                          <span style={{ color: props.inputTextColor, fontWeight: 500 }}>{field.placeholder || field.helpText || 'Aceptar'}</span>
+                        </span>
+                      ) : field.type === 'file' ? (
+                        <span style={{ display: 'grid', gap: 8 }}>
+                          <input type="file" multiple onChange={(event) => handleFileChange(field, event)} style={inputStyle} />
+                          {Array.isArray(value) && value.length ? <span style={{ color: '#475569', fontSize: 12 }}>{value.map((file) => file.name).join(', ')}</span> : null}
+                        </span>
+                      ) : (
+                        <input type={field.type === 'email' ? 'email' : field.type === 'phone' ? 'tel' : 'text'} value={String(value ?? '')} onChange={(event) => setCustomFieldValues((current) => ({ ...current, [field.key]: event.target.value }))} placeholder={field.placeholder} style={inputStyle} />
+                      )}
+                      {field.helpText ? <span style={{ color: '#64748b', fontWeight: 500, fontSize: 12, lineHeight: 1.5 }}>{field.helpText}</span> : null}
+                    </label>
+                  )
+                })}
+              </div>
+            ) : null}
+
+            {props.termsEnabled ? (
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, color: props.labelColor, fontWeight: 600, border: '1px solid rgba(148,163,184,.26)', borderRadius: 18, padding: '12px 14px', backgroundColor: 'rgba(255,255,255,.8)' }}>
+                <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} style={{ marginTop: 3 }} />
+                <span style={{ color: '#334155', fontWeight: 500, lineHeight: 1.5 }}>
+                  {props.termsLabel}
+                  {props.termsRequired ? ' *' : ''}
+                  {props.termsLinkUrl ? (
+                    <>
+                      {' '}
+                      <a href={props.termsLinkUrl} target="_blank" rel="noreferrer" style={{ color: props.accentColor, fontWeight: 700 }}>
+                        {props.termsLinkText}
+                      </a>
+                    </>
+                  ) : null}
+                </span>
               </label>
             ) : null}
 

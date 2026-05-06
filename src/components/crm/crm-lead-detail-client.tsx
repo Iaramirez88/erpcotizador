@@ -387,7 +387,7 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4.5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-2">
           <ErpBreadcrumbs

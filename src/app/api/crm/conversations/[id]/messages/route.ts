@@ -261,7 +261,16 @@ export async function POST(request: Request, context: RouteContext) {
         data: {
           lastMessageAt: message.occurredAt,
           directionLastMessage: 'OUTBOUND',
-          status: messageStatus === 'FAILED' ? current.status : (current.status === 'RESOLVED' ? 'HUMAN_ACTIVE' : current.status),
+          status: messageStatus === 'FAILED'
+            ? current.status
+            : current.status === 'RESOLVED'
+              ? 'HUMAN_ACTIVE'
+              : 'PENDING',
+          resolvedAt: messageStatus === 'FAILED'
+            ? current.resolvedAt
+            : current.status === 'RESOLVED'
+              ? null
+              : current.resolvedAt,
         },
       })
 

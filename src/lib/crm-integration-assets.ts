@@ -7,7 +7,7 @@ export type CrmChannelProvider =
   | 'WEB_CHATBOT'
   | 'INSTAGRAM_DM'
 
-export type CrmBridgeKind = 'GENERIC' | 'GMAIL' | 'OUTLOOK' | 'TIKTOK' | 'YOUTUBE'
+export type CrmBridgeKind = 'GENERIC' | 'GMAIL' | 'OUTLOOK' | 'GOOGLE_SHEETS' | 'TIKTOK' | 'YOUTUBE'
 
 type WebFormSnippetArgs = {
   baseUrl: string
@@ -58,6 +58,8 @@ export function getChannelProviderLabel(provider: CrmChannelProvider, bridgeKind
         return 'Gmail Inbox Bridge'
       case 'OUTLOOK':
         return 'Outlook Inbox Bridge'
+      case 'GOOGLE_SHEETS':
+        return 'Google Sheets Bridge'
       case 'TIKTOK':
         return 'TikTok Lead Bridge'
       case 'YOUTUBE':

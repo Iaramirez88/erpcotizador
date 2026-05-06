@@ -14,7 +14,8 @@ import { useUiStore } from "@/lib/ui-store"
 import { NavSettingsDialog, type NavSettingsItem } from "@/components/dashboard/nav-settings-dialog"
 import Image from "next/image"
 import { useI18n } from "@/components/providers/i18n-provider"
-import { buildDashboardNavDefinitions, moduleForDashboardHref } from "@/lib/dashboard-navigation"
+import { useTheme } from "@/components/providers/theme-provider"
+import { buildDashboardNavDefinitions, moduleForDashboardHref, sectionForDashboardHref } from "@/lib/dashboard-navigation"
 
 interface SidebarProps {
   user: {
@@ -30,6 +31,12 @@ interface NavItem {
   href: string
   icon: React.ReactElement
   badge?: string
+}
+
+function sortNavItemsByOrder(items: NavItem[], order: string[]) {
+  if (!order.length) return items
+  const orderMap = new Map(order.map((href, index) => [href, index]))
+  return [...items].sort((a, b) => (orderMap.get(a.href) ?? Number.MAX_SAFE_INTEGER) - (orderMap.get(b.href) ?? Number.MAX_SAFE_INTEGER))
 }
 
 function buildModuleNavigation(t: (key: string) => string): NavItem[] {
@@ -135,7 +142,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: t('nav.crm'),
+    name: "Frente comercial",
     href: "/dashboard/crm",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -181,7 +188,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: "Leads",
+    name: "Captación",
     href: "/dashboard/crm/leads",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -190,7 +197,7 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
-    name: "Oportunidades",
+    name: "Pipeline",
     href: "/dashboard/crm/oportunidades",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -453,6 +460,7 @@ type EmpresaBranding = {
 
 export default function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname() ?? ''
+  const { resolvedTheme } = useTheme()
 
   const { t } = useI18n()
 
@@ -475,6 +483,7 @@ export default function Sidebar({ user }: SidebarProps) {
   const setRouteLoading = useUiStore((s) => s.setRouteLoading)
 
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
+  const [navOrder, setNavOrder] = useState<string[]>([])
   const [enabledModules, setEnabledModules] = useState<Set<string> | null>(null)
   const [empresa, setEmpresa] = useState<EmpresaBranding | null>(null)
   const [planTier, setPlanTier] = useState<string | null>(null)
@@ -504,9 +513,10 @@ export default function Sidebar({ user }: SidebarProps) {
     async function load() {
       try {
         const res = await fetch('/api/ui-preferences')
-        const json: UiPrefsResponse = await res.json().catch(() => ({ success: false }))
+        const json: (UiPrefsResponse & { data?: UiPrefsResponse['data'] & { navOrder?: string[] } }) = await res.json().catch(() => ({ success: false }))
         if (!cancelled && json?.success) {
           setNavPrefs(json.data?.nav ?? {})
+          setNavOrder(Array.isArray(json.data?.navOrder) ? json.data.navOrder : [])
         }
       } catch {}
       try {
@@ -615,8 +625,8 @@ export default function Sidebar({ user }: SidebarProps) {
       if (it.href !== '/dashboard/configuracion/plan') return true
       return canManageBilling
     })
-    return withBillingGate
-  }, [navPrefs, enabledModules, user?.role, canAccessWebsiteServices, canManageBilling, allowedModules, moduleNavigation])
+    return sortNavItemsByOrder(withBillingGate, navOrder)
+  }, [navPrefs, enabledModules, user?.role, canAccessWebsiteServices, canManageBilling, allowedModules, moduleNavigation, navOrder])
 
   const visibleHrefs = useMemo(() => {
     return new Set(visibleNavigation.map((it) => it.href))
@@ -654,16 +664,17 @@ export default function Sidebar({ user }: SidebarProps) {
         if (!isSuperAdminRoute) return true
         return user?.role === 'ADMIN'
       })
-      .map((it) => ({ name: it.name, href: it.href }))
+      .map((it) => ({ name: it.name, href: it.href, section: sectionForDashboardHref(it.href) }))
     return base
   }, [canAccessWebsiteServices, canManageBilling, user?.role, allowedModules, dashboardNavDefinitions])
 
-  async function saveNav(next: Record<string, boolean>) {
+  async function saveNav(next: Record<string, boolean>, nextOrder: string[]) {
     setNavPrefs(next)
+    setNavOrder(nextOrder)
     await fetch('/api/ui-preferences', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nav: next }),
+      body: JSON.stringify({ nav: next, navOrder: nextOrder }),
     }).catch(() => null)
   }
 
@@ -696,6 +707,7 @@ export default function Sidebar({ user }: SidebarProps) {
       {
         title: 'CRM',
         items: [
+          get('/dashboard/crm'),
           get('/dashboard/crm/agenda'),
           get('/dashboard/crm/chatbot'),
           get('/dashboard/crm/archivos'),
@@ -781,7 +793,31 @@ export default function Sidebar({ user }: SidebarProps) {
     if (activeSectionTitle) setOpenSectionTitle(activeSectionTitle)
   }, [activeSectionTitle])
 
-  const effectiveOpenSection = openSectionTitle ?? activeSectionTitle
+  const effectiveOpenSection = openSectionTitle
+  const isDark = resolvedTheme === 'dark'
+  const sidebarSurface = isDark
+    ? "border-white/10 bg-[linear-gradient(180deg,#0f172a_0%,#111827_52%,#101a2d_100%)] text-slate-100 shadow-[18px_0_40px_-32px_rgba(15,23,42,0.75)]"
+    : "border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_58%,#f1f5f9_100%)] text-slate-900 shadow-[18px_0_40px_-32px_rgba(15,23,42,0.18)]"
+  const sectionBorder = isDark ? "border-white/10" : "border-slate-200/80"
+  const sectionTitleText = isDark ? "text-slate-400" : "text-slate-500"
+  const navText = isDark ? "text-slate-200" : "text-slate-700"
+  const navHover = isDark ? "hover:bg-white/8" : "hover:bg-slate-100"
+  const navActive = isDark
+    ? "bg-white/14 text-white shadow-[0_12px_18px_-18px_rgba(148,163,184,0.45)]"
+    : "bg-white text-slate-950 ring-1 ring-slate-200/80 shadow-[0_10px_18px_-18px_rgba(15,23,42,0.22)]"
+  const sectionHeaderOpen = isDark
+    ? "bg-white/8 text-slate-100"
+    : "bg-slate-100 text-slate-900"
+  const sectionHeaderActive = isDark
+    ? "bg-white/14 text-white ring-1 ring-white/10 shadow-[0_12px_18px_-18px_rgba(148,163,184,0.45)]"
+    : "bg-sky-100/90 text-sky-950 ring-1 ring-sky-200 shadow-[0_12px_18px_-18px_rgba(14,165,233,0.28)]"
+  const sectionHeaderTextActive = isDark ? "text-slate-100" : "text-sky-900"
+  const sectionHeaderTextOpen = isDark ? "text-slate-300" : "text-slate-700"
+  const softButton = isDark ? "border-white/10 text-slate-200 hover:bg-white/10" : "border-slate-200 text-slate-600 hover:bg-slate-100"
+  const userSecondaryText = isDark ? "text-slate-400" : "text-slate-500"
+  const userStrongText = isDark ? "text-slate-100" : "text-slate-900"
+  const avatarSurface = isDark ? "bg-white/10 text-slate-100" : "bg-slate-100 text-slate-700"
+  const badgeSurface = isDark ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-600"
 
   return (
     <>
@@ -796,15 +832,16 @@ export default function Sidebar({ user }: SidebarProps) {
 
       <aside
         className={cn(
-          "flex flex-col border-r border-white/10 bg-[linear-gradient(180deg,#0f172a_0%,#111827_52%,#101a2d_100%)] text-slate-100 shadow-[18px_0_40px_-32px_rgba(15,23,42,0.75)]",
+          "flex flex-col border-r",
+          sidebarSurface,
           "fixed inset-y-0 left-0 z-50 md:static",
-          sidebarCollapsed ? "w-[4.5rem]" : "w-[88vw] max-w-[320px] md:w-60 md:max-w-none",
+          sidebarCollapsed ? "w-[4.25rem]" : "w-[86vw] max-w-[300px] md:w-56 md:max-w-none",
           "transform transition-transform md:translate-x-0",
           mobileNavOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         )}
       >
         {/* Logo */}
-        <div className="border-b border-white/10 p-3">
+        <div className={cn("border-b p-2.5", sectionBorder)}>
           <div className={cn("flex items-center", sidebarCollapsed ? "justify-center" : "space-x-3")}>
             <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-[linear-gradient(135deg,#0f766e_0%,#2563eb_100%)] text-base font-bold text-primary-foreground shadow-[0_12px_24px_-18px_rgba(37,99,235,0.7)]">
               {empresa?.logo ? (
@@ -815,14 +852,14 @@ export default function Sidebar({ user }: SidebarProps) {
             </div>
             {!sidebarCollapsed ? (
               <div>
-                <h1 className="text-base font-bold leading-5 text-slate-50">{empresa?.nombre ?? 'SGDigital'}</h1>
-                <p className="text-[11px] text-slate-400">Cotizador Pro</p>
+                <h1 className={cn("text-sm font-bold leading-5", userStrongText)}>{empresa?.nombre ?? 'SGDigital'}</h1>
+                <p className={cn("text-[10px]", userSecondaryText)}>Cotizador Pro</p>
               </div>
             ) : null}
 
             <button
               type="button"
-              className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-slate-200 hover:bg-white/10 md:hidden"
+              className={cn("ml-auto inline-flex h-8 w-8 items-center justify-center rounded-lg border md:hidden", softButton)}
               onClick={() => setMobileNavOpen(false)}
               aria-label="Cerrar menú"
             >
@@ -834,7 +871,8 @@ export default function Sidebar({ user }: SidebarProps) {
             <button
               type="button"
               className={cn(
-                "ml-auto hidden h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-slate-200 hover:bg-white/10 md:inline-flex",
+                "ml-auto hidden h-8 w-8 items-center justify-center rounded-lg border md:inline-flex",
+                softButton,
                 sidebarCollapsed ? "ml-0" : ""
               )}
               onClick={toggleSidebarCollapsed}
@@ -854,7 +892,7 @@ export default function Sidebar({ user }: SidebarProps) {
         </div>
 
         {/* Navigation */}
-        <nav className={cn("flex-1 p-2.5 space-y-0.5 overflow-y-auto", sidebarCollapsed ? "px-1.5" : "px-2.5")}>
+        <nav className={cn("flex-1 space-y-0.5 overflow-y-auto py-2", sidebarCollapsed ? "px-1.5" : "px-2")}>
           {sections.map((section) => {
             const visibleItems = section.items.filter((it) => visibleHrefs.has(it.href))
             if (!visibleItems.length) return null
@@ -878,8 +916,8 @@ export default function Sidebar({ user }: SidebarProps) {
                             }
                           }}
                           className={cn(
-                            "flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors",
-                            isActive ? "bg-white/14 text-white shadow-[0_12px_18px_-18px_rgba(148,163,184,0.45)]" : "text-slate-200 hover:bg-white/8",
+                            "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
+                            isActive ? navActive : cn(navText, navHover),
                             isBlocked ? "opacity-60 cursor-not-allowed" : ""
                           )}
                           title={item.name}
@@ -887,7 +925,7 @@ export default function Sidebar({ user }: SidebarProps) {
                           <div className={cn("flex items-center", "justify-center w-full")}> 
                             {item.icon}
                             {isBlocked && (
-                              <Lock className="ml-1.5 h-3.5 w-3.5 text-slate-400" />
+                              <Lock className={cn("ml-1.5 h-3.5 w-3.5", sectionTitleText)} />
                             )}
                           </div>
                         </Link>
@@ -916,18 +954,23 @@ export default function Sidebar({ user }: SidebarProps) {
                 <button
                   type="button"
                   onClick={() => {
-                    setOpenSectionTitle((cur) => {
-                      if (cur === section.title) return isActiveSection ? section.title : null
-                      return section.title
-                    })
+                    setOpenSectionTitle((cur) => (cur === section.title ? null : section.title))
                   }}
                   className={cn(
-                    "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors text-slate-200 hover:bg-white/8"
+                    "w-full flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
+                    isActiveSection ? sectionHeaderActive : isOpen ? sectionHeaderOpen : cn(navText, navHover)
                   )}
                 >
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{section.title}</span>
+                  <span className={cn(
+                    "text-[10px] font-semibold uppercase tracking-[0.12em]",
+                    isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : sectionTitleText
+                  )}>{section.title}</span>
                   <svg
-                    className={cn("h-3.5 w-3.5 transition-transform text-slate-400", isOpen ? "rotate-180" : "")}
+                    className={cn(
+                      "h-3.5 w-3.5 transition-transform",
+                      isActiveSection ? sectionHeaderTextActive : isOpen ? sectionHeaderTextOpen : sectionTitleText,
+                      isOpen ? "rotate-180" : ""
+                    )}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -959,20 +1002,20 @@ export default function Sidebar({ user }: SidebarProps) {
                               }
                             }}
                             className={cn(
-                              "flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors",
-                              isActive ? "bg-white/14 text-white shadow-[0_12px_18px_-18px_rgba(148,163,184,0.45)]" : "text-slate-200 hover:bg-white/8",
+                              "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
+                              isActive ? navActive : cn(navText, navHover),
                               isBlocked ? "opacity-60 cursor-not-allowed" : ""
                             )}
                           >
                             <div className="flex items-center space-x-2.5">
                               {item.icon}
-                              <span className="text-[13px] font-medium leading-4">{item.name}</span>
+                              <span className="text-[12px] font-medium leading-4">{item.name}</span>
                               {isBlocked && (
-                                <Lock className="ml-1.5 h-3.5 w-3.5 text-slate-400" />
+                                <Lock className={cn("ml-1.5 h-3.5 w-3.5", sectionTitleText)} />
                               )}
                             </div>
                             {item.badge ? (
-                              <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-medium text-slate-200">{item.badge}</span>
+                              <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", badgeSurface)}>{item.badge}</span>
                             ) : null}
                           </Link>
                           {isBlocked && (
@@ -1005,8 +1048,8 @@ export default function Sidebar({ user }: SidebarProps) {
                       href={item.href}
                       onClick={() => setMobileNavOpen(false)}
                       className={cn(
-                        "flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors",
-                        isActive ? "bg-slate-800/60 text-white" : "text-slate-200 hover:bg-slate-800/40"
+                        "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
+                        isActive ? navActive : cn(navText, navHover)
                       )}
                       title={item.name}
                     >
@@ -1022,20 +1065,33 @@ export default function Sidebar({ user }: SidebarProps) {
                 <button
                   type="button"
                   onClick={() => {
-                    const isActiveSection = activeSectionTitle === "Preferencias"
-                    setOpenSectionTitle((cur) => {
-                      if (cur === "Preferencias") return isActiveSection ? "Preferencias" : null
-                      return "Preferencias"
-                    })
+                    setOpenSectionTitle((cur) => (cur === "Preferencias" ? null : "Preferencias"))
                   }}
                   className={cn(
-                    "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors text-slate-200 hover:bg-white/8"
+                    "w-full flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
+                    activeSectionTitle === "Preferencias"
+                      ? sectionHeaderActive
+                      : effectiveOpenSection === "Preferencias"
+                        ? sectionHeaderOpen
+                        : cn(navText, navHover)
                   )}
                 >
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{t('sidebar.preferences')}</span>
+                  <span className={cn(
+                    "text-[10px] font-semibold uppercase tracking-[0.12em]",
+                    activeSectionTitle === "Preferencias"
+                      ? sectionHeaderTextActive
+                      : effectiveOpenSection === "Preferencias"
+                        ? sectionHeaderTextOpen
+                        : sectionTitleText
+                  )}>{t('sidebar.preferences')}</span>
                   <svg
                     className={cn(
-                      "h-3.5 w-3.5 transition-transform text-slate-400",
+                      "h-3.5 w-3.5 transition-transform",
+                      activeSectionTitle === "Preferencias"
+                        ? sectionHeaderTextActive
+                        : effectiveOpenSection === "Preferencias"
+                          ? sectionHeaderTextOpen
+                          : sectionTitleText,
                       effectiveOpenSection === "Preferencias" ? "rotate-180" : ""
                     )}
                     fill="none"
@@ -1067,13 +1123,13 @@ export default function Sidebar({ user }: SidebarProps) {
                             setOpenSectionTitle(activeSectionTitle ?? null)
                           }}
                           className={cn(
-                            "flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors",
-                            isActive ? "bg-white/14 text-white shadow-[0_12px_18px_-18px_rgba(148,163,184,0.45)]" : "text-slate-200 hover:bg-white/8"
+                            "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
+                            isActive ? navActive : cn(navText, navHover)
                           )}
                         >
                           <div className="flex items-center space-x-2.5">
                             {item.icon}
-                            <span className="text-[13px] font-medium leading-4">{item.name}</span>
+                            <span className="text-[12px] font-medium leading-4">{item.name}</span>
                           </div>
                         </Link>
                       )
@@ -1082,13 +1138,16 @@ export default function Sidebar({ user }: SidebarProps) {
                         <NavSettingsDialog
                           items={navSettingsItems}
                           value={navPrefs}
+                          order={navOrder}
                           onSave={saveNav}
                           trigger={(open) => (
                             <button
                               type="button"
                               onClick={() => open()}
                               className={cn(
-                                "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg transition-colors text-slate-200 hover:bg-white/8"
+                                "w-full flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
+                                navText,
+                                navHover
                               )}
                             >
                               <div className="flex items-center space-x-2.5">
@@ -1100,7 +1159,7 @@ export default function Sidebar({ user }: SidebarProps) {
                                     d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
                                   />
                                 </svg>
-                                <span className="text-[13px] font-medium leading-4">{t('header.customizeMenu')}</span>
+                                <span className="text-[12px] font-medium leading-4">{t('header.customizeMenu')}</span>
                               </div>
                             </button>
                           )}
@@ -1115,15 +1174,15 @@ export default function Sidebar({ user }: SidebarProps) {
         </nav>
 
         {/* User Info + Cambiar contraseña */}
-        <div className={cn("border-t border-white/10 p-3", sidebarCollapsed ? "px-1.5" : "px-3")}>
+        <div className={cn("border-t p-2.5", sectionBorder, sidebarCollapsed ? "px-1.5" : "px-2.5")}>
           <div className={cn("flex items-center space-x-2.5", sidebarCollapsed ? "justify-center" : "") }>
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-[13px] font-medium text-slate-100">
+            <div className={cn("flex h-8 w-8 items-center justify-center rounded-full text-[12px] font-medium", avatarSurface)}>
               {user.name?.charAt(0).toUpperCase()}
             </div>
             {!sidebarCollapsed ? (
               <div className="flex-1 min-w-0">
-                <p className="truncate text-[13px] font-medium leading-4 text-slate-100">{user.name}</p>
-                <p className="truncate text-[11px] leading-4 text-slate-400">{user.email}</p>
+                <p className={cn("truncate text-[12px] font-medium leading-4", userStrongText)}>{user.name}</p>
+                <p className={cn("truncate text-[10px] leading-4", userSecondaryText)}>{user.email}</p>
               </div>
             ) : null}
           </div>
@@ -1133,7 +1192,7 @@ export default function Sidebar({ user }: SidebarProps) {
               <Link
                 href="/auth/change-password"
                 onClick={() => setMobileNavOpen(false)}
-                className="text-[11px] font-medium text-sky-300 hover:underline"
+                className={cn("text-[10px] font-medium hover:underline", isDark ? "text-sky-300" : "text-sky-700")}
               >
                 Cambiar contraseña
               </Link>

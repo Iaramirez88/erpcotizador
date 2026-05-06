@@ -10,6 +10,7 @@ import {
   parseOptionalInt,
   parseOpportunityStage,
 } from '@/lib/crm'
+import { syncCrmOpportunityFollowUpTaskById } from '@/lib/crm-follow-up'
 import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 
 export const runtime = 'nodejs'
@@ -174,30 +175,41 @@ export async function POST(request: Request) {
       if (denied) return denied
     }
 
-    const row = await prisma.crmOpportunity.create({
-      data: {
+    const row = await prisma.$transaction(async (tx) => {
+      const created = await tx.crmOpportunity.create({
+        data: {
+          empresaId: access.empresaId,
+          sedeId: finalSedeId || null,
+          title,
+          description: description || null,
+          stage,
+          leadId: leadId || null,
+          clienteId: clienteId || null,
+          expectedValue: expectedValue ?? 0,
+          probabilityPct: probabilityPct ?? 0,
+          expectedCloseAt: expectedCloseAt ?? null,
+          assignedToUserId: assignedToUserId || null,
+          createdById: access.userId,
+          cotizacionId: cotizacionId || null,
+        },
+        include: {
+          sede: { select: { id: true, nombre: true, codigo: true } },
+          lead: { select: { id: true, nombre: true, status: true } },
+          cliente: { select: { id: true, nombre: true, documento: true } },
+          assignedTo: { select: { id: true, name: true, email: true } },
+          createdBy: { select: { id: true, name: true, email: true } },
+          cotizacion: { select: { id: true, numero: true, estado: true, total: true } },
+        },
+      })
+
+      await syncCrmOpportunityFollowUpTaskById({
+        client: tx,
         empresaId: access.empresaId,
-        sedeId: finalSedeId || null,
-        title,
-        description: description || null,
-        stage,
-        leadId: leadId || null,
-        clienteId: clienteId || null,
-        expectedValue: expectedValue ?? 0,
-        probabilityPct: probabilityPct ?? 0,
-        expectedCloseAt: expectedCloseAt ?? null,
-        assignedToUserId: assignedToUserId || null,
-        createdById: access.userId,
-        cotizacionId: cotizacionId || null,
-      },
-      include: {
-        sede: { select: { id: true, nombre: true, codigo: true } },
-        lead: { select: { id: true, nombre: true, status: true } },
-        cliente: { select: { id: true, nombre: true, documento: true } },
-        assignedTo: { select: { id: true, name: true, email: true } },
-        createdBy: { select: { id: true, name: true, email: true } },
-        cotizacion: { select: { id: true, numero: true, estado: true, total: true } },
-      },
+        actorUserId: access.userId,
+        opportunityId: created.id,
+      })
+
+      return created
     })
 
     return NextResponse.json({ success: true, data: row }, { status: 201 })

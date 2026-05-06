@@ -43,7 +43,7 @@ export default function RouteLoadingIndicator() {
 
   return (
     <div className="pointer-events-none absolute inset-0 z-50 bg-gray-50">
-      <div className="p-3 sm:p-4 lg:p-6 space-y-6">
+      <div className="p-3 sm:p-4 lg:p-5 space-y-4.5">
         <div className="space-y-2">
           <Skeleton className="h-8 w-64" />
           <Skeleton className="h-4 w-80" />

@@ -34,6 +34,7 @@ type MaterialMatch = {
   id: string
   nombre: string
   imagenUrl: string | null
+  tipoNombre: string | null
   categoria: string | null
   proveedor: string | null
   precioM2: number | null
@@ -42,7 +43,10 @@ type MaterialMatch = {
   stockActual: number
   stockMinimo: number
   unidadMedida: string
+  requiresWorkOrder: boolean
 }
+
+type MaterialLookupKind = 'any' | 'product' | 'service'
 
 type CatalogInsight = {
   primary: MaterialMatch | null
@@ -50,7 +54,30 @@ type CatalogInsight = {
   catalog: MaterialMatch[]
   query: string
   catalogIntent: boolean
+  lookupKind: MaterialLookupKind
 }
+
+const SERVICE_HINT_TERMS = [
+  'servicio',
+  'servicios',
+  'digital',
+  'hosting',
+  'dominio',
+  'dominios',
+  'plan',
+  'planes',
+  'mantenimiento',
+  'asesoria',
+  'consultoria',
+  'diseno',
+  'web',
+  'landing',
+  'seo',
+  'redes',
+  'marketing',
+  'campana',
+  'suscripcion',
+]
 
 type ChatFlowNextField = Exclude<ChatbotFlowNextField, 'none'> | null
 
@@ -69,12 +96,16 @@ function splitSearchTerms(value: string) {
 function scoreMaterialMatch(material: MaterialMatch, query: string) {
   const normalizedQuery = normalizeString(query).toLowerCase()
   const normalizedName = normalizeString(material.nombre).toLowerCase()
+  const normalizedType = normalizeString(material.tipoNombre).toLowerCase()
+  const normalizedCategory = normalizeString(material.categoria).toLowerCase()
+  const normalizedSupplier = normalizeString(material.proveedor).toLowerCase()
+  const haystack = [normalizedName, normalizedType, normalizedCategory, normalizedSupplier].filter(Boolean)
   if (normalizedName === normalizedQuery) return 100
   if (normalizedName.startsWith(normalizedQuery)) return 80
-  if (normalizedName.includes(normalizedQuery)) return 60
+  if (haystack.some((value) => value.includes(normalizedQuery))) return 60
 
   const terms = splitSearchTerms(query)
-  return terms.reduce((score, term) => (normalizedName.includes(term) ? score + 10 : score), 0)
+  return terms.reduce((score, term) => (haystack.some((value) => value.includes(term)) ? score + 10 : score), 0)
 }
 
 function formatMoney(value: number) {
@@ -115,6 +146,42 @@ function isCatalogIntent(messageText: string, requestedProduct: string) {
   ].some((pattern) => pattern.test(source))
 }
 
+function isUrlIntent(messageText: string) {
+  const source = normalizeString(messageText).toLowerCase()
+  if (!source) return false
+  return [
+    /\b(url|link|enlace|sitio|pagina|página|web|portafolio|portfolio)\b/i,
+    /\bmandame\b.*\b(link|enlace|url|pagina|página|web)\b/i,
+  ].some((pattern) => pattern.test(source))
+}
+
+function isServiceLikeMaterial(material: Pick<MaterialMatch, 'nombre' | 'tipoNombre' | 'categoria'>) {
+  const source = normalizeString([material.nombre, material.tipoNombre, material.categoria].filter(Boolean).join(' ')).toLowerCase()
+  return SERVICE_HINT_TERMS.some((term) => source.includes(term))
+}
+
+function resolveMaterialLookupKind(args: { messageText: string; requestedProduct: string; quickAction?: ChatbotQuickAction | null }): MaterialLookupKind {
+  if (args.quickAction?.kind === 'product_lookup') return 'product'
+  if (args.quickAction?.kind === 'service_lookup') return 'service'
+
+  const source = normalizeString(args.requestedProduct || args.messageText).toLowerCase()
+  if (!source) return 'any'
+  return SERVICE_HINT_TERMS.some((term) => source.includes(term)) ? 'service' : 'any'
+}
+
+function prioritizeMaterialsByLookupKind(items: MaterialMatch[], lookupKind: MaterialLookupKind) {
+  if (lookupKind === 'any') return items
+  const preferred = items.filter((item) => lookupKind === 'service' ? isServiceLikeMaterial(item) : !isServiceLikeMaterial(item))
+  const others = items.filter((item) => !preferred.some((preferredItem) => preferredItem.id === item.id))
+  return [...preferred, ...others]
+}
+
+function resolveUrlQuickAction(args: { messageText: string; quickActions: ChatbotQuickAction[]; selectedQuickAction: ChatbotQuickAction | null }) {
+  if (args.selectedQuickAction?.kind === 'url' && args.selectedQuickAction.actionUrl) return args.selectedQuickAction
+  if (!isUrlIntent(args.messageText)) return null
+  return args.quickActions.find((item) => item.enabled && item.kind === 'url' && item.actionUrl) ?? null
+}
+
 function dedupeMaterials(items: MaterialMatch[]) {
   const seen = new Set<string>()
   return items.filter((item) => {
@@ -136,6 +203,7 @@ async function resolveCatalogInsight(args: {
   empresaId: string
   requestedProduct: string
   messageText: string
+  lookupKind: MaterialLookupKind
 }) {
   const catalogIntent = isCatalogIntent(args.messageText, args.requestedProduct)
   const materialSearchText = args.requestedProduct || args.messageText
@@ -149,6 +217,7 @@ async function resolveCatalogInsight(args: {
           OR: materialTerms.length > 0
             ? materialTerms.flatMap((term) => ([
                 { nombre: { contains: term, mode: 'insensitive' as const } },
+                { tipoNombre: { contains: term, mode: 'insensitive' as const } },
                 { categoria: { contains: term, mode: 'insensitive' as const } },
                 { proveedor: { contains: term, mode: 'insensitive' as const } },
               ]))
@@ -158,6 +227,7 @@ async function resolveCatalogInsight(args: {
           id: true,
           nombre: true,
           imagenUrl: true,
+          tipoNombre: true,
           categoria: true,
           proveedor: true,
           precioM2: true,
@@ -166,30 +236,32 @@ async function resolveCatalogInsight(args: {
           stockActual: true,
           stockMinimo: true,
           unidadMedida: true,
+          requiresWorkOrder: true,
         },
         take: 8,
       })
     : []
 
-  const rankedMatches = dedupeMaterials(
+  const rankedMatches = prioritizeMaterialsByLookupKind(dedupeMaterials(
     materialCandidates
       .map((item) => ({ item, score: scoreMaterialMatch(item, materialSearchText) }))
       .sort((left, right) => right.score - left.score)
       .filter((entry) => entry.score > 0)
       .map((entry) => entry.item),
-  )
+  ), args.lookupKind)
 
-  const catalog = catalogIntent
+  const rawCatalog = catalogIntent
     ? await args.tx.material.findMany({
         where: {
           empresaId: args.empresaId,
           activo: true,
-          stockActual: { gt: 0 },
+          ...(args.lookupKind === 'product' ? { stockActual: { gt: 0 } } : {}),
         },
         select: {
           id: true,
           nombre: true,
           imagenUrl: true,
+          tipoNombre: true,
           categoria: true,
           proveedor: true,
           precioM2: true,
@@ -198,18 +270,24 @@ async function resolveCatalogInsight(args: {
           stockActual: true,
           stockMinimo: true,
           unidadMedida: true,
+          requiresWorkOrder: true,
         },
         orderBy: [{ stockActual: 'desc' }, { updatedAt: 'desc' }],
-        take: 5,
+        take: args.lookupKind === 'service' ? 12 : 5,
       })
     : []
+
+  const catalog = prioritizeMaterialsByLookupKind(dedupeMaterials(rawCatalog), args.lookupKind)
+    .filter((item) => args.lookupKind !== 'service' || isServiceLikeMaterial(item))
+    .slice(0, 5)
 
   return {
     primary: rankedMatches[0] ?? null,
     alternatives: rankedMatches.slice(1, 4),
-    catalog: dedupeMaterials(catalog),
+    catalog,
     query: materialSearchText,
     catalogIntent,
+    lookupKind: args.lookupKind,
   } satisfies CatalogInsight
 }
 
@@ -304,6 +382,13 @@ function resolveChatStage(args: {
       ?? null
   }
 
+  if (selectedQuickAction?.kind === 'product_lookup' || selectedQuickAction?.kind === 'service_lookup') {
+    return findChatbotFlowStage(args.flowStages, 'catalog')
+      ?? findChatbotFlowStage(args.flowStages, args.currentStageId)
+      ?? args.flowStages[0]
+      ?? null
+  }
+
   if (args.nextField === 'name') {
     return findChatbotFlowStage(args.flowStages, 'welcome')
       ?? findChatbotFlowStage(args.flowStages, args.currentStageId)
@@ -370,6 +455,7 @@ function buildAssistantReply(args: {
   const currentStage = findChatbotFlowStage(args.flowStages, args.currentStageId) ?? args.flowStages[0] ?? null
   const matchedResponseOption = findChatbotFlowResponseOption(currentStage, args.responseOptionId)
     ?? matchChatbotFlowResponseOption(currentStage, args.messageText)
+  const selectedQuickAction = findChatbotQuickAction(args.quickActions, args.quickActionId)
 
   if (args.requestHuman) {
     const handoffStage = resolveChatStage({
@@ -412,6 +498,15 @@ function buildAssistantReply(args: {
     catalogIntent: args.insight.catalogIntent,
     nextField,
   })
+  const preferredUrlAction = resolveUrlQuickAction({ messageText: args.messageText, quickActions: args.quickActions, selectedQuickAction })
+
+  if (preferredUrlAction?.actionUrl) {
+    return {
+      body: decorateAssistantReply(`Te conviene revisar ${preferredUrlAction.label.toLowerCase()} aquí: ${preferredUrlAction.actionUrl}`, nextStage, args.currentStageId, args.quickActionId),
+      nextField: null as ChatFlowNextField,
+      stage: nextStage,
+    }
+  }
 
   if (matchedResponseOption) {
     const stageField = nextStage?.nextField === 'none' ? null : nextStage?.nextField || null
@@ -441,9 +536,13 @@ function buildAssistantReply(args: {
   if (args.insight.catalogIntent && args.insight.catalog.length > 0 && !args.requestedProduct) {
     return {
       body: decorateAssistantReply([
-        'Claro. Estos son algunos productos con inventario activo en este momento:',
+        args.insight.lookupKind === 'service'
+          ? 'Puedo ofrecerte estas opciones activas ahora mismo:'
+          : 'Estas son algunas opciones activas ahora mismo:',
         formatCatalogLines(args.insight.catalog.slice(0, 3)),
-        'Si alguno te interesa, respóndeme con el nombre del producto y la cantidad aproximada que necesitas.',
+        args.insight.lookupKind === 'service'
+          ? 'Si una te sirve, dime cuál y te sigo guiando.'
+          : 'Si una te interesa, dime cuál y la cantidad aproximada.',
       ].join('\n'), nextStage, args.currentStageId, args.quickActionId),
       nextField: 'product' as ChatFlowNextField,
       stage: nextStage,
@@ -458,10 +557,10 @@ function buildAssistantReply(args: {
     if (nextField === 'quantity') {
       return {
         body: decorateAssistantReply([
-          `Encontré ${args.insight.primary.nombre} en catálogo.`,
-          `Precio de referencia: ${formatMaterialPrice(args.insight.primary)}.`,
+          `Encontré ${args.insight.primary.nombre}.`,
+          `Precio ref.: ${formatMaterialPrice(args.insight.primary)}.`,
           `${stockLabel}.`,
-          'Ahora dime qué cantidad necesitas para dejar la solicitud lista.',
+          'Ahora dime la cantidad.',
           alternativesLabel.trim(),
         ].join(' '), nextStage, args.currentStageId, args.quickActionId),
         nextField,
@@ -471,12 +570,12 @@ function buildAssistantReply(args: {
 
     return {
       body: decorateAssistantReply([
-        `Encontré ${args.insight.primary.nombre} en catálogo.`,
-        `Precio de referencia: ${formatMaterialPrice(args.insight.primary)}.`,
+        `Encontré ${args.insight.primary.nombre}.`,
+        `Precio ref.: ${formatMaterialPrice(args.insight.primary)}.`,
         `${stockLabel}.`,
         args.leadQualified
-          ? `Perfecto. Tomo ${args.quantity || 'la cantidad solicitada'} como referencia y tu lead quedó marcado como calificado. El centro de ventas puede continuar el seguimiento.`
-          : 'Con esto ya dejamos la conversación encaminada para seguimiento comercial.',
+          ? `Tomo ${args.quantity || 'la cantidad solicitada'} como referencia y lo dejo listo para el equipo comercial.`
+          : 'Con esto ya quedó encaminado para seguimiento comercial.',
         alternativesLabel.trim(),
       ].join(' '), nextStage, args.currentStageId, args.quickActionId),
       nextField: null as ChatFlowNextField,
@@ -487,9 +586,9 @@ function buildAssistantReply(args: {
   if (args.requestedProduct && args.insight.alternatives.length > 0) {
     return {
       body: decorateAssistantReply([
-        `No encontré una coincidencia exacta para ${args.requestedProduct}, pero estas referencias cercanas sí existen en catálogo:`,
+        `No encontré una coincidencia exacta para ${args.requestedProduct}. Estas referencias se parecen:`,
         formatCatalogLines(args.insight.alternatives),
-        'Respóndeme con la que más se parece o con cantidad, medida o referencia para afinar la búsqueda.',
+        'Respóndeme con la más cercana o con medida, referencia o cantidad.',
       ].join('\n'), nextStage, args.currentStageId, args.quickActionId),
       nextField: 'quantity' as ChatFlowNextField,
       stage: nextStage,
@@ -498,14 +597,14 @@ function buildAssistantReply(args: {
 
   if (args.requestedProduct) {
     return {
-      body: decorateAssistantReply(`Recibí tu consulta por ${args.requestedProduct}. No encontré una coincidencia exacta en inventario, pero la conversación quedó registrada para validarla con el equipo comercial. Si puedes, responde con cantidad, medida o referencia.`, nextStage, args.currentStageId, args.quickActionId),
+      body: decorateAssistantReply(`Recibí tu consulta por ${args.requestedProduct}. No veo una coincidencia exacta todavía. Si me das cantidad, medida o referencia, afino la búsqueda; si prefieres, te paso con un asesor.`, nextStage, args.currentStageId, args.quickActionId),
       nextField: 'quantity' as ChatFlowNextField,
       stage: nextStage,
     }
   }
 
   return {
-    body: decorateAssistantReply('Recibí tu mensaje y ya quedó registrado en el CRM. Si me indicas el producto o servicio de interés, puedo buscar una referencia disponible y seguir guiándote.', nextStage, args.currentStageId, args.quickActionId),
+    body: decorateAssistantReply('Recibí tu mensaje. Si me dices el producto o servicio de interés, te respondo con la mejor ruta: catálogo, enlace útil o asesor.', nextStage, args.currentStageId, args.quickActionId),
     nextField: args.showProductField ? 'product' : null,
     stage: nextStage,
   }
@@ -576,12 +675,6 @@ export async function POST(request: Request) {
       const flowVariables = studioSettings.flowVariables.filter((item: { enabled: boolean }) => item.enabled)
       const resolvedIdentity = resolveChatIdentity({ nombre, email, phone, requestedProduct, messageText, expectedField })
       const effectiveProduct = resolvedIdentity.requestedProduct
-      const catalogInsight = await resolveCatalogInsight({
-        tx,
-        empresaId: channel.empresaId,
-        requestedProduct: effectiveProduct,
-        messageText,
-      })
 
       const artifacts = await createInboundArtifacts({
         client: tx,
@@ -653,6 +746,14 @@ export async function POST(request: Request) {
       const flowStages = activeFlow.flowStages.length ? activeFlow.flowStages : settings.flowStages
       const quickActions = activeFlow.quickActions.length ? activeFlow.quickActions : settings.quickActions
       const pauseNodes = activeFlow.pauseNodes
+      const selectedQuickAction = findChatbotQuickAction(quickActions, quickActionId)
+      const catalogInsight = await resolveCatalogInsight({
+        tx,
+        empresaId: channel.empresaId,
+        requestedProduct: effectiveProduct,
+        messageText,
+        lookupKind: resolveMaterialLookupKind({ messageText, requestedProduct: effectiveProduct, quickAction: selectedQuickAction }),
+      })
 
       const assistantReply = buildAssistantReply({
         insight: catalogInsight,

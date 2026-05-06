@@ -5,8 +5,17 @@ import { prisma } from '@/lib/prisma'
 export const runtime = 'nodejs'
 
 type UiLanguage = 'es' | 'en'
+type UiTheme = 'system' | 'light' | 'dark'
 
 type NavPrefs = Record<string, boolean>
+type NavOrderPrefs = string[]
+
+type StoredNavPrefs =
+  | NavPrefs
+  | {
+      visibility?: NavPrefs
+      order?: NavOrderPrefs
+    }
 
 type ReportPrefs = {
   sections?: {
@@ -31,10 +40,29 @@ type DataViewPrefs = Record<string, 'list' | 'grid'>
 
 type StoredReportPrefs = ReportPrefs & {
   dataView?: DataViewPrefs
+  theme?: UiTheme
+}
+
+function normalizeNavPrefs(value: unknown): { visibility: NavPrefs; order: NavOrderPrefs } {
+  if (!isPlainObject(value)) {
+    return { visibility: {}, order: [] }
+  }
+
+  const visibilitySource = isPlainObject(value.visibility) ? value.visibility : value
+  const visibility = Object.fromEntries(
+    Object.entries(visibilitySource).filter(([, entry]) => typeof entry === 'boolean')
+  ) as NavPrefs
+
+  const order = Array.isArray(value.order)
+    ? value.order.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    : []
+
+  return { visibility, order }
 }
 
 function defaultPrefs() {
   const nav: NavPrefs = {}
+  const navOrder: NavOrderPrefs = []
   const report: ReportPrefs = {
     sections: { kpis: true, ventas: true, topClientes: true, documentos: true, compras: true },
     charts: { ventasMensuales: true, documentosPorTipo: true, comprasPorProveedor: true },
@@ -42,7 +70,8 @@ function defaultPrefs() {
   const tutorial: TutorialPrefs = { seen: {} }
   const dataView: DataViewPrefs = {}
   const language: UiLanguage = 'es'
-  return { nav, report, tutorial, dataView, language }
+  const theme: UiTheme = 'system'
+  return { nav, navOrder, report, tutorial, dataView, language, theme }
 }
 
 async function resolveUserIdFromSession(session: { user?: { id?: string; email?: string | null } }) {
@@ -72,15 +101,19 @@ export async function GET() {
     select: { nav: true, report: true, tutorial: true, language: true },
   })
   const defaults = defaultPrefs()
+  const storedNav = normalizeNavPrefs(pref?.nav)
+  const storedReport = isPlainObject(pref?.report) ? (pref?.report as StoredReportPrefs) : null
 
   return NextResponse.json({
     success: true,
     data: {
-      nav: (pref?.nav as unknown) ?? defaults.nav,
-      report: (pref?.report as unknown) ?? defaults.report,
+      nav: storedNav.visibility,
+      navOrder: storedNav.order,
+      report: storedReport ?? defaults.report,
       tutorial: (pref?.tutorial as unknown) ?? defaults.tutorial,
-      dataView: (pref?.report as Record<string, unknown> | null)?.dataView ?? defaults.dataView,
+      dataView: storedReport?.dataView ?? defaults.dataView,
       language: (pref?.language as UiLanguage | null) ?? defaults.language,
+      theme: storedReport?.theme ?? defaults.theme,
     },
   })
 }
@@ -100,36 +133,49 @@ export async function PUT(req: NextRequest) {
   const defaults = defaultPrefs()
 
   const nav = isPlainObject(body.nav) ? (body.nav as NavPrefs) : undefined
+  const navOrder = Array.isArray(body.navOrder)
+    ? body.navOrder.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    : undefined
   const report = isPlainObject(body.report) ? (body.report as ReportPrefs) : undefined
   const tutorial = isPlainObject(body.tutorial) ? (body.tutorial as TutorialPrefs) : undefined
   const dataView = isPlainObject(body.dataView) ? (body.dataView as DataViewPrefs) : undefined
 
   const languageRaw = typeof body.language === 'string' ? body.language.trim().toLowerCase() : ''
   const language: UiLanguage | undefined = languageRaw === 'es' || languageRaw === 'en' ? (languageRaw as UiLanguage) : undefined
+  const themeRaw = typeof body.theme === 'string' ? body.theme.trim().toLowerCase() : ''
+  const theme: UiTheme | undefined = themeRaw === 'system' || themeRaw === 'light' || themeRaw === 'dark'
+    ? (themeRaw as UiTheme)
+    : undefined
 
   const current = await prisma.uiPreference.findUnique({
     where: { userId },
-    select: { report: true },
+    select: { nav: true, report: true },
   })
 
   const currentReport: StoredReportPrefs = isPlainObject(current?.report) ? (current.report as StoredReportPrefs) : { ...defaults.report, dataView: defaults.dataView }
+  const currentNav = normalizeNavPrefs(current?.nav)
   const nextReport = {
     ...currentReport,
     ...(report ?? {}),
     dataView: dataView ?? currentReport.dataView ?? defaults.dataView,
+    theme: theme ?? currentReport.theme ?? defaults.theme,
+  }
+  const nextNav = {
+    visibility: nav ?? currentNav.visibility ?? defaults.nav,
+    order: navOrder ?? currentNav.order ?? defaults.navOrder,
   }
 
   const updated = await prisma.uiPreference.upsert({
     where: { userId },
     create: {
       userId,
-      nav: (nav ?? defaults.nav) as never,
+      nav: nextNav as never,
       report: nextReport as never,
       tutorial: (tutorial ?? defaults.tutorial) as never,
       language: language ?? defaults.language,
     },
     update: {
-      nav: (nav ?? undefined) as never,
+      nav: nextNav as never,
       report: nextReport as never,
       tutorial: (tutorial ?? undefined) as never,
       language: language ?? undefined,
@@ -137,14 +183,19 @@ export async function PUT(req: NextRequest) {
     select: { nav: true, report: true, tutorial: true, language: true },
   })
 
+  const updatedNav = normalizeNavPrefs(updated.nav)
+  const updatedReport = isPlainObject(updated.report) ? (updated.report as StoredReportPrefs) : null
+
   return NextResponse.json({
     success: true,
     data: {
-      nav: updated.nav,
-      report: updated.report,
+      nav: updatedNav.visibility,
+      navOrder: updatedNav.order,
+      report: updatedReport,
       tutorial: updated.tutorial,
-      dataView: (updated.report as Record<string, unknown> | null)?.dataView ?? defaults.dataView,
+      dataView: updatedReport?.dataView ?? defaults.dataView,
       language: updated.language as UiLanguage,
+      theme: updatedReport?.theme ?? defaults.theme,
     },
   })
 }

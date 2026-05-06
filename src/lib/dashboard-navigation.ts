@@ -3,6 +3,62 @@ export type DashboardNavDefinition = {
   href: string
 }
 
+export function sectionForDashboardHref(href: string): string {
+  switch (href) {
+    case '/dashboard':
+    case '/dashboard/reportes':
+    case '/dashboard/plantillas':
+      return 'Centro de Control'
+    case '/dashboard/contabilidad':
+      return 'Contabilidad'
+    case '/dashboard/contabilidad/nomina':
+      return 'Nomina'
+    case '/dashboard/cotizador':
+    case '/dashboard/cotizaciones':
+    case '/dashboard/remisiones':
+    case '/dashboard/pos':
+    case '/dashboard/clientes':
+      return 'Comercial'
+    case '/dashboard/crm':
+    case '/dashboard/crm/agenda':
+    case '/dashboard/crm/archivos':
+    case '/dashboard/crm/chatbot':
+    case '/dashboard/crm/integraciones':
+    case '/dashboard/crm/leads':
+    case '/dashboard/crm/oportunidades':
+      return 'CRM'
+    case '/dashboard/crm/tareas':
+    case '/dashboard/espacios-trabajo':
+    case '/dashboard/chat':
+      return 'Productividad'
+    case '/dashboard/ordenes':
+    case '/dashboard/litografia':
+    case '/dashboard/escaneos':
+    case '/dashboard/productos':
+      return 'Operaciones'
+    case '/dashboard/inventario':
+    case '/dashboard/inventario/traslados':
+      return 'Inventario'
+    case '/dashboard/compras':
+    case '/dashboard/proveedores':
+    case '/dashboard/configuracion/desperdicios':
+      return 'Logistica'
+    case '/dashboard/configuracion/sedes':
+    case '/dashboard/configuracion/usuarios':
+    case '/dashboard/configuracion/permisos':
+    case '/dashboard/configuracion/empresa':
+    case '/dashboard/configuracion/servicios-web':
+    case '/dashboard/configuracion/plan':
+      return 'Gestion'
+    case '/dashboard/configuracion/super-admin/empresas':
+    case '/dashboard/configuracion/super-admin/usuarios':
+    case '/dashboard/configuracion/super-admin/modulos-por-plan':
+      return 'Super Admin'
+    default:
+      return 'Otros'
+  }
+}
+
 export function moduleForDashboardHref(href: string): string | null {
   switch (href) {
     case '/dashboard/configuracion/servicios-web':
@@ -131,13 +187,13 @@ export function buildDashboardNavDefinitions(t: (key: string) => string): Dashbo
     { name: t('nav.deliveries'), href: '/dashboard/remisiones' },
     { name: t('nav.billing'), href: '/dashboard/pos' },
     { name: t('nav.clients'), href: '/dashboard/clientes' },
-    { name: t('nav.crm'), href: '/dashboard/crm' },
+    { name: 'Frente comercial', href: '/dashboard/crm' },
     { name: 'Agenda CRM', href: '/dashboard/crm/agenda' },
     { name: 'Administrador de archivos', href: '/dashboard/crm/archivos' },
     { name: 'Chatbot', href: '/dashboard/crm/chatbot' },
     { name: 'Canales e integraciones', href: '/dashboard/crm/integraciones' },
-    { name: 'Leads', href: '/dashboard/crm/leads' },
-    { name: 'Oportunidades', href: '/dashboard/crm/oportunidades' },
+    { name: 'Captación', href: '/dashboard/crm/leads' },
+    { name: 'Pipeline', href: '/dashboard/crm/oportunidades' },
     { name: 'Tareas', href: '/dashboard/crm/tareas' },
     { name: 'Espacios de trabajo', href: '/dashboard/espacios-trabajo' },
     { name: 'Chat global', href: '/dashboard/chat' },

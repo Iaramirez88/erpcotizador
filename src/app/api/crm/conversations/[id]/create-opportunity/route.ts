@@ -83,6 +83,7 @@ export async function POST(request: Request, context: RouteContext) {
         data: {
           opportunityId: opportunity.id,
           status: conversation.status === 'RESOLVED' ? 'HUMAN_ACTIVE' : conversation.status,
+          resolvedAt: conversation.status === 'RESOLVED' ? null : conversation.resolvedAt,
         },
       })
 

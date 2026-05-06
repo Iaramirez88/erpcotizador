@@ -436,11 +436,11 @@ export function QuickPos() {
       ref={rootRef}
       className={`${expanded ? 'fixed inset-0 z-50 h-screen overflow-hidden' : 'h-[calc(100vh-4rem)] overflow-hidden'} bg-[radial-gradient(circle_at_top,#fff7ed_0%,#ffffff_40%,#f8fafc_100%)] px-4 py-5 md:px-6`}
     >
-      <div className="mx-auto flex h-full max-w-[1500px] min-h-0 flex-col gap-4">
-        <div className="flex shrink-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+      <div className="mx-auto flex h-full max-w-[1500px] min-h-0 flex-col gap-3.5">
+        <div className="flex shrink-0 flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-orange-600">Modo caja</p>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Venta rápida separada del módulo de facturación</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900">Venta rápida separada del módulo de facturación</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" asChild>
@@ -453,14 +453,14 @@ export function QuickPos() {
         </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(460px,0.95fr)]">
-          <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-orange-200 bg-white shadow-[0_30px_90px_-48px_rgba(234,88,12,0.5)]">
-          <div className="border-b border-orange-100 bg-gradient-to-r from-orange-50 via-white to-white px-6 py-5">
+        <div className="grid min-h-0 flex-1 items-stretch gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(430px,0.95fr)]">
+          <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-orange-200 bg-white shadow-[0_24px_72px_-44px_rgba(234,88,12,0.45)]">
+          <div className="border-b border-orange-100 bg-gradient-to-r from-orange-50 via-white to-white px-5 py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-orange-600">Punto de venta</p>
             <div className="mt-2 flex items-center justify-between gap-4">
               <div>
-                <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Venta rápida</h1>
-                <p className="mt-1 text-sm text-slate-500">Escanea, cobra y factura desde una caja limpia, grande y sin distraerte.</p>
+                <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Venta rápida</h1>
+                <p className="mt-1 text-[13px] text-slate-500">Escanea, cobra y factura desde una caja limpia, grande y sin distraerte.</p>
               </div>
               <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-right">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-700">Total</p>
@@ -469,7 +469,7 @@ export function QuickPos() {
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col px-6 py-5">
+          <div className="flex min-h-0 flex-1 flex-col px-5 py-4">
             <div className="grid grid-cols-[minmax(0,1.6fr)_110px_140px_64px] gap-3 border-b border-slate-200 pb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
               <span>Producto</span>
               <span className="text-center">Cant</span>
@@ -535,8 +535,8 @@ export function QuickPos() {
           </div>
         </section>
 
-        <aside className="grid min-h-0 content-start gap-4 overflow-auto pr-1 xl:grid-cols-2">
-          <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm xl:col-span-2">
+        <aside className="grid min-h-0 content-start gap-3 overflow-auto pr-1 xl:grid-cols-2">
+          <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm xl:col-span-2">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Escanear</p>
             <div className="mt-3 flex gap-3">
               <div className="relative flex-1">
@@ -553,12 +553,12 @@ export function QuickPos() {
                   }}
                   onBlur={focusScanner}
                   placeholder="Escanea el código"
-                  className="h-14 rounded-2xl border-orange-200 pl-10 text-base"
+                  className="h-11 rounded-xl border-orange-200 pl-10 text-[15px]"
                 />
               </div>
               <Button
                 type="button"
-                className="h-14 rounded-2xl bg-orange-500 px-5 text-white hover:bg-orange-600"
+                className="h-11 rounded-xl bg-orange-500 px-4 text-white hover:bg-orange-600"
                 onClick={() => void lookupAndAddProduct()}
                 disabled={scannerBusy}
               >

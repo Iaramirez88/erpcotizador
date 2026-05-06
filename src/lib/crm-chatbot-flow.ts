@@ -2,13 +2,14 @@ export type ChatbotFlowNextField = 'name' | 'email' | 'phone' | 'product' | 'qua
 
 export type ChatbotFlowResponseMatchMode = 'exact' | 'contains'
 
-export type ChatbotQuickActionKind = 'catalog' | 'stock' | 'human' | 'message'
+export type ChatbotQuickActionKind = 'catalog' | 'stock' | 'human' | 'message' | 'url' | 'product_lookup' | 'service_lookup'
 
 export type ChatbotQuickAction = {
   id: string
   label: string
   kind: ChatbotQuickActionKind
   message: string
+  actionUrl: string | null
   enabled: boolean
 }
 
@@ -61,7 +62,13 @@ function isResponseMatchMode(value: unknown): value is ChatbotFlowResponseMatchM
 }
 
 function isQuickActionKind(value: unknown): value is ChatbotQuickActionKind {
-  return value === 'catalog' || value === 'stock' || value === 'human' || value === 'message'
+  return value === 'catalog'
+    || value === 'stock'
+    || value === 'human'
+    || value === 'message'
+    || value === 'url'
+    || value === 'product_lookup'
+    || value === 'service_lookup'
 }
 
 export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
@@ -71,6 +78,7 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       label: 'Ver catálogo',
       kind: 'catalog',
       message: 'Quiero ver el catálogo disponible.',
+      actionUrl: null,
       enabled: true,
     },
     {
@@ -78,6 +86,7 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       label: 'Productos con stock',
       kind: 'stock',
       message: 'Muéstrame productos con stock disponible.',
+      actionUrl: null,
       enabled: true,
     },
     {
@@ -85,6 +94,7 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       label: 'Hablar con asesor',
       kind: 'human',
       message: 'Quiero hablar con un asesor humano.',
+      actionUrl: null,
       enabled: true,
     },
   ]
@@ -230,11 +240,13 @@ export function normalizeChatbotQuickActions(value: unknown): ChatbotQuickAction
     .map((item) => {
       const record = asRecord(item)
       if (!record) return null
+      const actionUrl = asText(record.actionUrl)
       return {
         id: asText(record.id),
         label: asText(record.label),
         kind: isQuickActionKind(record.kind) ? record.kind : 'message',
         message: asText(record.message),
+        actionUrl: actionUrl || null,
         enabled: asBoolean(record.enabled, true),
       } satisfies ChatbotQuickAction
     })
@@ -242,7 +254,9 @@ export function normalizeChatbotQuickActions(value: unknown): ChatbotQuickAction
 
   if (!normalized.length) return defaults
 
-  return defaults.map((defaultAction) => normalized.find((item) => item.id === defaultAction.id) ?? defaultAction)
+  const mergedDefaults = defaults.map((defaultAction) => normalized.find((item) => item.id === defaultAction.id) ?? defaultAction)
+  const extraActions = normalized.filter((item) => !defaults.some((defaultAction) => defaultAction.id === item.id))
+  return [...mergedDefaults, ...extraActions]
 }
 
 export function normalizeChatbotFlowStages(value: unknown): ChatbotFlowStage[] {

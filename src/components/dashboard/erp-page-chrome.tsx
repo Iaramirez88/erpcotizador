@@ -45,38 +45,38 @@ export function ErpPageHero({
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-[22px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,116,144,0.18),_transparent_32%),linear-gradient(135deg,_#fffdf8_0%,_#f8fbff_48%,_#f2f7f4_100%)] shadow-[0_18px_40px_-30px_rgba(15,23,42,0.3)]",
+        "overflow-hidden rounded-[18px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,116,144,0.18),_transparent_32%),linear-gradient(135deg,_#fffdf8_0%,_#f8fbff_48%,_#f2f7f4_100%)] shadow-[0_14px_30px_-28px_rgba(15,23,42,0.24)]",
         className,
       )}
     >
-      <div className={cn('grid gap-4 p-5 lg:p-6', hasStats ? 'lg:grid-cols-[1.2fr_0.8fr]' : undefined)}>
-        <div className="space-y-3">
+      <div className={cn('grid gap-2.5 p-3.5 lg:p-4', hasStats ? 'lg:grid-cols-[1.2fr_0.8fr]' : undefined)}>
+        <div className="space-y-2">
           {breadcrumbs.length ? <ErpBreadcrumbs items={breadcrumbs} /> : null}
           {eyebrow ? (
-            <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700 backdrop-blur">
+            <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700 backdrop-blur">
               {eyebrow}
             </div>
           ) : null}
-          <div className="space-y-1.5">
-            <h1 className="max-w-3xl text-2xl font-semibold tracking-tight text-slate-950 lg:text-3xl">{title}</h1>
-            {description ? <p className="max-w-3xl text-sm leading-5 text-slate-600">{description}</p> : null}
+          <div className="space-y-0.5">
+            <h1 className="max-w-3xl text-xl font-semibold tracking-tight text-slate-950 lg:text-2xl">{title}</h1>
+            {description ? <p className="max-w-3xl text-[13px] leading-5 text-slate-600">{description}</p> : null}
           </div>
           {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
         </div>
 
         {hasStats ? (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {stats.map((stat) => (
               <div
                 key={stat.label}
                 className={cn(
-                  "rounded-2xl border p-4 shadow-sm backdrop-blur",
+                  "rounded-[10px] border p-2.5 shadow-sm backdrop-blur",
                   toneClassName[stat.tone ?? "neutral"],
                 )}
               >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{stat.label}</p>
-                <div className="mt-2.5 text-2xl font-semibold">{stat.value}</div>
-                {stat.hint ? <p className="mt-1.5 text-xs text-slate-500">{stat.hint}</p> : null}
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{stat.label}</p>
+                <div className="mt-1.5 text-lg font-semibold">{stat.value}</div>
+                {stat.hint ? <p className="mt-1 text-[11px] text-slate-500">{stat.hint}</p> : null}
               </div>
             ))}
           </div>
@@ -119,12 +119,12 @@ type ErpSectionHeadingProps = {
 
 export function ErpSectionHeading({ title, description, actions, className }: ErpSectionHeadingProps) {
   return (
-    <div className={cn("flex flex-col gap-2.5 lg:flex-row lg:items-end lg:justify-between", className)}>
+    <div className={cn("flex flex-col gap-1.5 lg:flex-row lg:items-end lg:justify-between", className)}>
       <div>
-        <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
-        {description ? <p className="text-sm leading-5 text-slate-500">{description}</p> : null}
+        <h2 className="text-base font-semibold text-slate-950">{title}</h2>
+        {description ? <p className="text-[13px] leading-5 text-slate-500">{description}</p> : null}
       </div>
-      {actions ? <div className="flex flex-wrap gap-2 text-sm">{actions}</div> : null}
+      {actions ? <div className="flex flex-wrap gap-2 text-[13px]">{actions}</div> : null}
     </div>
   )
 }

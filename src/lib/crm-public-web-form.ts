@@ -1,4 +1,10 @@
 import { headers } from 'next/headers'
+import {
+  normalizeWebFormCustomFields,
+  normalizeWebFormVariables,
+  type WebFormCustomField,
+  type WebFormVariable,
+} from '@/lib/crm-web-form-schema'
 
 export type PublicWebFormSettings = {
   publicEmbedEnabled: boolean
@@ -44,6 +50,13 @@ export type PublicWebFormSettings = {
   productPlaceholder: string
   messageLabel: string
   messagePlaceholder: string
+  customFields: WebFormCustomField[]
+  variables: WebFormVariable[]
+  termsEnabled: boolean
+  termsRequired: boolean
+  termsLabel: string
+  termsLinkText: string
+  termsLinkUrl: string
 }
 
 function normalizeHost(value: string) {
@@ -125,6 +138,13 @@ export function getPublicWebFormSettings(settingsJson: unknown): PublicWebFormSe
     productPlaceholder: getStringSetting(settings, 'productPlaceholder', '¿Qué producto necesitas?'),
     messageLabel: getStringSetting(settings, 'messageLabel', 'Mensaje'),
     messagePlaceholder: getStringSetting(settings, 'messagePlaceholder', 'Cuéntanos qué necesitas y para cuándo.'),
+    customFields: normalizeWebFormCustomFields(settings.webFormCustomFields),
+    variables: normalizeWebFormVariables(settings.webFormVariables),
+    termsEnabled: getBooleanSetting(settings, 'termsEnabled', false),
+    termsRequired: getBooleanSetting(settings, 'termsRequired', true),
+    termsLabel: getStringSetting(settings, 'termsLabel', 'Acepto el tratamiento de datos personales.'),
+    termsLinkText: getStringSetting(settings, 'termsLinkText', 'Leer términos'),
+    termsLinkUrl: getStringSetting(settings, 'termsLinkUrl', ''),
   }
 }
 

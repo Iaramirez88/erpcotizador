@@ -3,6 +3,7 @@ import { AccessLevel, CrmLeadSource, CrmLeadStatus, ModuleKey } from '@prisma/cl
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
+import { syncCrmLeadFollowUpTaskById } from '@/lib/crm-follow-up'
 import { requireSedeAccess } from '@/lib/rbac'
 
 export const runtime = 'nodejs'
@@ -27,6 +28,55 @@ function parseLeadSource(value: unknown): CrmLeadSource | null {
 function parseTags(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return Array.from(new Set(value.map((item) => normalizeString(item)).filter(Boolean)))
+}
+
+function normalizePhone(value: unknown): string {
+  return normalizeString(value).replace(/[^\d]+/g, '')
+}
+
+async function findConflictingLead(args: {
+  empresaId: string
+  documento?: string | null
+  email?: string | null
+  telefono?: string | null
+  excludeLeadId?: string | null
+}) {
+  const documento = normalizeString(args.documento)
+  const email = normalizeString(args.email).toLowerCase()
+  const telefono = normalizePhone(args.telefono)
+  const conditions: Array<Record<string, unknown>> = []
+
+  if (documento) conditions.push({ documento })
+  if (email) conditions.push({ email })
+  if (telefono) {
+    conditions.push({ telefono: telefono })
+    conditions.push({ celular: telefono })
+    if (telefono.length >= 8) {
+      const suffix = telefono.slice(-10)
+      conditions.push({ telefono: { endsWith: suffix } })
+      conditions.push({ celular: { endsWith: suffix } })
+    }
+  }
+
+  if (!conditions.length) return null
+
+  return prisma.crmLead.findFirst({
+    where: {
+      empresaId: args.empresaId,
+      ...(args.excludeLeadId ? { id: { not: args.excludeLeadId } } : {}),
+      OR: conditions,
+    },
+    select: {
+      id: true,
+      nombre: true,
+      documento: true,
+      email: true,
+      telefono: true,
+      celular: true,
+      status: true,
+    },
+    orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+  })
 }
 
 async function assertSedeAccess(args: { sedeId: string; empresaId: string; userId: string; minLevel: AccessLevel }) {
@@ -131,9 +181,23 @@ export async function POST(request: Request) {
     const ownerUserId = normalizeString(body?.ownerUserId)
     const status = parseLeadStatus(body?.status) ?? 'NEW'
     const source = parseLeadSource(body?.source) ?? 'OTRO'
+    const documento = normalizeString(body?.documento)
+    const email = normalizeString(body?.email).toLowerCase()
+    const telefono = normalizePhone(body?.telefono)
+    const celular = normalizePhone(body?.celular)
 
     if (!nombre) {
       return NextResponse.json({ error: 'nombre es requerido' }, { status: 400 })
+    }
+
+    const conflictingLead = await findConflictingLead({
+      empresaId: access.empresaId,
+      documento,
+      email,
+      telefono: telefono || celular,
+    })
+    if (conflictingLead) {
+      return NextResponse.json({ error: `Ya existe un prospecto similar: ${conflictingLead.nombre}` }, { status: 409 })
     }
 
     if (sedeId) {
@@ -148,30 +212,41 @@ export async function POST(request: Request) {
       }
     }
 
-    const lead = await prisma.crmLead.create({
-      data: {
+    const lead = await prisma.$transaction(async (tx) => {
+      const created = await tx.crmLead.create({
+        data: {
+          empresaId: access.empresaId,
+          sedeId: sedeId || null,
+          status,
+          source,
+          nombre,
+          empresaNombre: normalizeString(body?.empresaNombre) || null,
+          documento: documento || null,
+          email: email || null,
+          telefono: telefono || null,
+          celular: celular || null,
+          direccion: normalizeString(body?.direccion) || null,
+          ciudad: normalizeString(body?.ciudad) || null,
+          tags: parseTags(body?.tags),
+          notes: normalizeString(body?.notes) || null,
+          ownerUserId: ownerUserId || null,
+          createdById: access.userId,
+        },
+        include: {
+          sede: { select: { id: true, nombre: true, codigo: true } },
+          ownerUser: { select: { id: true, name: true, email: true } },
+          createdBy: { select: { id: true, name: true, email: true } },
+        },
+      })
+
+      await syncCrmLeadFollowUpTaskById({
+        client: tx,
         empresaId: access.empresaId,
-        sedeId: sedeId || null,
-        status,
-        source,
-        nombre,
-        empresaNombre: normalizeString(body?.empresaNombre) || null,
-        documento: normalizeString(body?.documento) || null,
-        email: normalizeString(body?.email) || null,
-        telefono: normalizeString(body?.telefono) || null,
-        celular: normalizeString(body?.celular) || null,
-        direccion: normalizeString(body?.direccion) || null,
-        ciudad: normalizeString(body?.ciudad) || null,
-        tags: parseTags(body?.tags),
-        notes: normalizeString(body?.notes) || null,
-        ownerUserId: ownerUserId || null,
-        createdById: access.userId,
-      },
-      include: {
-        sede: { select: { id: true, nombre: true, codigo: true } },
-        ownerUser: { select: { id: true, name: true, email: true } },
-        createdBy: { select: { id: true, name: true, email: true } },
-      },
+        actorUserId: access.userId,
+        leadId: created.id,
+      })
+
+      return created
     })
 
     return NextResponse.json({ success: true, data: lead }, { status: 201 })

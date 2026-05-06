@@ -81,6 +81,13 @@ export default async function PublicWebFormPage(props: PageProps) {
       productPlaceholder={settings.productPlaceholder}
       messageLabel={settings.messageLabel}
       messagePlaceholder={settings.messagePlaceholder}
+      customFields={settings.customFields}
+      variables={settings.variables}
+      termsEnabled={settings.termsEnabled}
+      termsRequired={settings.termsRequired}
+      termsLabel={settings.termsLabel}
+      termsLinkText={settings.termsLinkText}
+      termsLinkUrl={settings.termsLinkUrl}
     />
   )
 }

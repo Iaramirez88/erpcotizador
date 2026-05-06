@@ -198,6 +198,8 @@ type StudioGraphEdge = {
   toId: string
   label: string
   toneClass: string
+  showLabel?: boolean
+  dashed?: boolean
 }
 
 const AUTOMATION_PROVIDER_OPTIONS: Array<{ value: ChatbotAutomationProvider; label: string }> = [
@@ -350,11 +352,18 @@ function summarizeMatchValue(value: string, fallback: string) {
 
 function buildStudioGraph(builder: BuilderState) {
   const laneY = {
-    triggers: 28,
-    stages: 250,
-    pauses: 392,
-    actions: 520,
+    triggers: 44,
+    stages: 232,
+    pauses: 402,
+    actions: 534,
   }
+  const startX = 36
+  const stageStartX = 248
+  const stageSpacing = 352
+  const triggerStackGap = 108
+  const actionStackGap = 122
+  const pauseStackGap = 112
+
   const startNode: StudioGraphNode = {
     id: 'start',
     domId: 'studio-start',
@@ -362,14 +371,13 @@ function buildStudioGraph(builder: BuilderState) {
     title: 'Inicio',
     subtitle: 'Entrada del chatbot',
     description: builder.chatbotTitle || 'Nuevo visitante',
-    x: 40,
+    x: startX,
     y: laneY.stages,
-    width: 180,
+    width: 172,
     accentClass: 'border-emerald-300 bg-emerald-50 text-emerald-900',
     toneClass: 'stroke-emerald-400',
   }
 
-  const stageSpacing = 300
   const stageNodes: StudioGraphNode[] = builder.flowStages.map((stage, index) => {
     const id = `stage:${stage.id}`
     const layout = builder.studioNodeLayout[id]
@@ -380,19 +388,25 @@ function buildStudioGraph(builder: BuilderState) {
       title: stage.title || `Etapa ${index + 1}`,
       subtitle: stage.nextField === 'none' ? 'Mensaje' : `Captura ${stage.nextField}`,
       description: `${stage.responseOptions.length} rutas · ${stage.quickActionIds.length} acciones`,
-      x: layout?.x ?? 280 + (index * stageSpacing),
+      x: layout?.x ?? stageStartX + (index * stageSpacing),
       y: layout?.y ?? laneY.stages,
-      width: 220,
+      width: 248,
       accentClass: 'border-emerald-200 bg-white text-slate-900',
       toneClass: 'stroke-emerald-400',
     }
   })
 
   const stageIndexById = new Map(builder.flowStages.map((stage, index) => [stage.id, index]))
+  const stageNodeByStageId = new Map(builder.flowStages.map((stage, index) => [stage.id, stageNodes[index]]))
+  const triggerCountByStageId = new Map<string, number>()
 
   const triggerNodes: StudioGraphNode[] = builder.flowTriggers.map((trigger, index) => {
     const id = `trigger:${trigger.id}`
     const layout = builder.studioNodeLayout[id]
+    const targetStageNode = stageNodeByStageId.get(trigger.targetStageId)
+    const triggerCount = triggerCountByStageId.get(trigger.targetStageId) ?? 0
+    triggerCountByStageId.set(trigger.targetStageId, triggerCount + 1)
+
     return {
       id,
       domId: toDomId('trigger', trigger.id),
@@ -400,9 +414,9 @@ function buildStudioGraph(builder: BuilderState) {
       title: trigger.label || `Disparador ${index + 1}`,
       subtitle: trigger.event.replaceAll('_', ' '),
       description: summarizeMatchValue(trigger.matchValue, 'Evento automático'),
-      x: layout?.x ?? 280 + ((stageIndexById.get(trigger.targetStageId) ?? index) * stageSpacing),
-      y: layout?.y ?? laneY.triggers + ((index % 2) * 96),
-      width: 210,
+      x: layout?.x ?? (targetStageNode ? targetStageNode.x + 18 : stageStartX + ((stageIndexById.get(trigger.targetStageId) ?? index) * stageSpacing)),
+      y: layout?.y ?? laneY.triggers + (triggerCount * triggerStackGap),
+      width: 220,
       accentClass: trigger.enabled ? 'border-amber-200 bg-amber-50 text-amber-950' : 'border-slate-200 bg-slate-100 text-slate-500',
       toneClass: trigger.enabled ? 'stroke-amber-400' : 'stroke-slate-300',
     }
@@ -417,9 +431,23 @@ function buildStudioGraph(builder: BuilderState) {
     })
   })
 
+  const actionStageIndex = new Map<string, number>()
+  builder.flowStages.forEach((stage, index) => {
+    stage.quickActionIds.forEach((actionId) => {
+      if (!actionStageIndex.has(actionId)) {
+        actionStageIndex.set(actionId, index)
+      }
+    })
+  })
+  const actionCountByStageIndex = new Map<number, number>()
+
   const actionNodes: StudioGraphNode[] = builder.quickActions.map((action, index) => {
     const id = `action:${action.id}`
     const layout = builder.studioNodeLayout[id]
+    const sourceIndex = actionStageIndex.get(action.id) ?? index
+    const actionCount = actionCountByStageIndex.get(sourceIndex) ?? 0
+    actionCountByStageIndex.set(sourceIndex, actionCount + 1)
+
     return {
       id,
       domId: toDomId('action', action.id),
@@ -427,18 +455,24 @@ function buildStudioGraph(builder: BuilderState) {
       title: action.label || `Acción ${index + 1}`,
       subtitle: action.kind,
       description: actionUsage.get(action.id)?.length ? `${actionUsage.get(action.id)?.length} etapas la usan` : 'Acción disponible',
-      x: layout?.x ?? 280 + (index * 240),
-      y: layout?.y ?? laneY.actions + ((index % 2) * 92),
-      width: 200,
+      x: layout?.x ?? stageStartX + (sourceIndex * stageSpacing) + 20,
+      y: layout?.y ?? laneY.actions + (actionCount * actionStackGap),
+      width: 228,
       accentClass: action.enabled ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-950' : 'border-slate-200 bg-slate-100 text-slate-500',
       toneClass: action.enabled ? 'stroke-fuchsia-400' : 'stroke-slate-300',
     }
   })
 
+  const pauseCountBySourceIndex = new Map<number, number>()
   const pauseNodes: StudioGraphNode[] = builder.pauseNodes.map((pause, index) => {
     const id = `pause:${pause.id}`
     const layout = builder.studioNodeLayout[id]
     const sourceIndex = stageIndexById.get(pause.sourceStageId) ?? index
+    const targetIndex = stageIndexById.get(pause.targetStageId) ?? sourceIndex + 1
+    const pauseCount = pauseCountBySourceIndex.get(sourceIndex) ?? 0
+    pauseCountBySourceIndex.set(sourceIndex, pauseCount + 1)
+    const midpointIndex = sourceIndex + Math.max(0.45, (targetIndex - sourceIndex) * 0.5)
+
     return {
       id,
       domId: toDomId('pause', pause.id),
@@ -446,9 +480,9 @@ function buildStudioGraph(builder: BuilderState) {
       title: pause.title || `Pausa ${index + 1}`,
       subtitle: `${pause.durationMinutes} min`,
       description: pause.description || 'Espera antes de continuar con el siguiente mensaje.',
-      x: layout?.x ?? 340 + (sourceIndex * stageSpacing),
-      y: layout?.y ?? laneY.pauses + ((index % 2) * 88),
-      width: 190,
+      x: layout?.x ?? stageStartX + (midpointIndex * stageSpacing) - 94,
+      y: layout?.y ?? laneY.pauses + (pauseCount * pauseStackGap),
+      width: 206,
       accentClass: pause.enabled ? 'border-sky-200 bg-sky-50 text-sky-950' : 'border-slate-200 bg-slate-100 text-slate-500',
       toneClass: pause.enabled ? 'stroke-sky-400' : 'stroke-slate-300',
     }
@@ -464,6 +498,7 @@ function buildStudioGraph(builder: BuilderState) {
       toId: stageNodes[0].id,
       label: 'inicio',
       toneClass: 'stroke-emerald-300',
+      showLabel: false,
     })
   }
 
@@ -477,6 +512,7 @@ function buildStudioGraph(builder: BuilderState) {
         toId: `stage:${option.targetStageId}`,
         label: option.label || 'ruta',
         toneClass: 'stroke-sky-300',
+        showLabel: true,
       })
     })
 
@@ -488,6 +524,8 @@ function buildStudioGraph(builder: BuilderState) {
         toId: `action:${actionId}`,
         label: 'accion',
         toneClass: 'stroke-fuchsia-300',
+        showLabel: false,
+        dashed: true,
       })
     })
   })
@@ -500,6 +538,7 @@ function buildStudioGraph(builder: BuilderState) {
       toId: `stage:${trigger.targetStageId}`,
       label: trigger.event === 'message' ? 'salto' : trigger.event.replaceAll('_', ' '),
       toneClass: trigger.enabled ? 'stroke-amber-300' : 'stroke-slate-300',
+      showLabel: false,
     })
   })
 
@@ -512,6 +551,7 @@ function buildStudioGraph(builder: BuilderState) {
         toId: pauseNodeId,
         label: `espera ${pause.durationMinutes} min`,
         toneClass: pause.enabled ? 'stroke-sky-300' : 'stroke-slate-300',
+        showLabel: false,
       })
     }
     if (stageIndexById.has(pause.targetStageId)) {
@@ -521,12 +561,13 @@ function buildStudioGraph(builder: BuilderState) {
         toId: `stage:${pause.targetStageId}`,
         label: 'continua',
         toneClass: pause.enabled ? 'stroke-sky-300' : 'stroke-slate-300',
+        showLabel: false,
       })
     }
   })
 
-  const contentWidth = Math.max(...nodes.map((node) => node.x + node.width), 1200) + 120
-  const contentHeight = Math.max(...nodes.map((node) => node.y + 120), 760)
+  const contentWidth = Math.max(...nodes.map((node) => node.x + node.width), 1320) + 180
+  const contentHeight = Math.max(...nodes.map((node) => node.y + 144), 820)
 
   return { nodes, edges, contentWidth, contentHeight }
 }
@@ -662,6 +703,7 @@ export function CrmChatbotStudioClient() {
   const [contextMenu, setContextMenu] = useState<StudioContextMenuState | null>(null)
   const [paletteDragKind, setPaletteDragKind] = useState<StudioPaletteKind | null>(null)
   const [mapFullscreen, setMapFullscreen] = useState(false)
+  const [flowEditMode, setFlowEditMode] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [minimapOpen, setMinimapOpen] = useState(true)
   const [studioMounted, setStudioMounted] = useState(false)
@@ -1011,7 +1053,7 @@ export function CrmChatbotStudioClient() {
     const nextActionId = makeId('action')
     const position = args?.position ?? getVisibleInsertPosition()
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
-      quickActions: [...current.quickActions, { id: nextActionId, label: 'Nueva accion', kind: 'message', message: 'Mensaje de accion rapida.', enabled: true }],
+      quickActions: [...current.quickActions, { id: nextActionId, label: 'Nueva accion', kind: 'message', message: 'Mensaje de accion rapida.', actionUrl: null, enabled: true }],
       flowStages: args?.sourceNode?.kind === 'stage'
         ? current.flowStages.map((stage) => stage.id === args.sourceNode?.id ? { ...stage, quickActionIds: [...stage.quickActionIds, nextActionId] } : stage)
         : current.flowStages,
@@ -1250,6 +1292,23 @@ export function CrmChatbotStudioClient() {
   function openEditor(node: StudioFocusNode) {
     focusStudioNode(node)
     setEditingNode(node)
+  }
+
+  function startFlowEditing() {
+    setFlowEditMode(true)
+    setMapFullscreen(true)
+    setInspectorOpen(true)
+    setActiveStudioPanel('map')
+  }
+
+  function stopFlowEditing() {
+    setFlowEditMode(false)
+    setMapFullscreen(false)
+    setContextMenu(null)
+    setPaletteDragKind(null)
+    setConnectionDraft(null)
+    setDragState(null)
+    setPanState(null)
   }
 
   function canConnectNodes(sourceKind: StudioGraphNode['kind'], targetKind: StudioGraphNode['kind']) {
@@ -1708,41 +1767,30 @@ export function CrmChatbotStudioClient() {
   }
 
   function renderFullscreenPropertiesInspector() {
-    if (!focusedNode) {
-      return (
-        <div className="space-y-4 rounded-[24px] border border-slate-200/80 bg-white/95 p-4 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.25)]">
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Inspector</div>
-            <div className="mt-1 text-sm font-semibold text-slate-900">Sin bloque seleccionado</div>
-            <div className="mt-1 text-sm text-slate-600">Selecciona una caja del flujo para editar sus propiedades desde este panel.</div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-            <div className="font-semibold text-slate-900">Atajo rápido</div>
-            <div className="mt-2">Haz click en un bloque del canvas para abrir sus propiedades aquí.</div>
-          </div>
-        </div>
-      )
-    }
+    if (!focusedNode || !inspectorOpen) return null
 
     const deletionBlocker = getNodeDeletionBlocker(focusedNode)
 
     return (
-      <div className="space-y-4 rounded-[24px] border border-slate-200/80 bg-white/95 p-4 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.25)]">
-        <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-4">
+      <div className="space-y-3 rounded-[20px] border border-slate-200/80 bg-white/95 p-3 shadow-[0_16px_34px_-24px_rgba(15,23,42,0.25)]">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Inspector</div>
             <div className="mt-1 text-sm font-semibold text-slate-900">{getNodeKindLabel(focusedNode.kind)}</div>
             <div className="mt-1 text-xs text-slate-500">Propiedades del bloque seleccionado.</div>
           </div>
-          <Switch checked={focusedNode.kind === 'stage' ? true : focusedNode.kind === 'action' ? Boolean(selectedAction?.enabled) : focusedNode.kind === 'trigger' ? Boolean(selectedTrigger?.enabled) : Boolean(selectedPause?.enabled)} onCheckedChange={(checked) => {
-            if (focusedNode.kind === 'action' && selectedAction) updateQuickAction(selectedAction.id, { enabled: checked })
-            if (focusedNode.kind === 'trigger' && selectedTrigger) updateTrigger(selectedTrigger.id, { enabled: checked })
-            if (focusedNode.kind === 'pause' && selectedPause) updatePauseNode(selectedPause.id, { enabled: checked })
-          }} disabled={focusedNode.kind === 'stage'} />
+          <div className="flex items-center gap-2">
+            <Switch checked={focusedNode.kind === 'stage' ? true : focusedNode.kind === 'action' ? Boolean(selectedAction?.enabled) : focusedNode.kind === 'trigger' ? Boolean(selectedTrigger?.enabled) : Boolean(selectedPause?.enabled)} onCheckedChange={(checked) => {
+              if (focusedNode.kind === 'action' && selectedAction) updateQuickAction(selectedAction.id, { enabled: checked })
+              if (focusedNode.kind === 'trigger' && selectedTrigger) updateTrigger(selectedTrigger.id, { enabled: checked })
+              if (focusedNode.kind === 'pause' && selectedPause) updatePauseNode(selectedPause.id, { enabled: checked })
+            }} disabled={focusedNode.kind === 'stage'} />
+            <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => setInspectorOpen(false)}>Cerrar</Button>
+          </div>
         </div>
 
         {selectedStage ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div className="grid gap-2">
               <Label>Título</Label>
               <Input value={selectedStage.title} onChange={(event) => updateStage(selectedStage.id, { title: event.target.value })} />
@@ -1788,10 +1836,13 @@ export function CrmChatbotStudioClient() {
               <Select value={selectedAction.kind} onValueChange={(value) => updateQuickAction(selectedAction.id, { kind: value as ChatbotQuickActionKind })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="catalog">Catálogo</SelectItem>
+                  <SelectItem value="stock">Stock</SelectItem>
+                  <SelectItem value="product_lookup">Lookup producto</SelectItem>
+                  <SelectItem value="service_lookup">Lookup servicio</SelectItem>
+                  <SelectItem value="url">URL</SelectItem>
+                  <SelectItem value="human">Humano</SelectItem>
                   <SelectItem value="message">Mensaje</SelectItem>
-                  <SelectItem value="assign_human">Asignar humano</SelectItem>
-                  <SelectItem value="tag_lead">Etiquetar lead</SelectItem>
-                  <SelectItem value="open_crm">Abrir CRM</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1799,6 +1850,12 @@ export function CrmChatbotStudioClient() {
               <Label>Mensaje</Label>
               <Textarea value={selectedAction.message} onChange={(event) => updateQuickAction(selectedAction.id, { message: event.target.value })} rows={5} />
             </div>
+            {selectedAction.kind === 'url' ? (
+              <div className="grid gap-2">
+                <Label>URL destino</Label>
+                <Input value={selectedAction.actionUrl || ''} onChange={(event) => updateQuickAction(selectedAction.id, { actionUrl: event.target.value })} placeholder="https://... o /ruta-interna" />
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -1882,7 +1939,7 @@ export function CrmChatbotStudioClient() {
           </div>
         ) : null}
 
-        <div className="grid grid-cols-2 gap-2 border-t border-slate-200 pt-4">
+        <div className="grid grid-cols-2 gap-2 border-t border-slate-200 pt-3">
           <Button type="button" variant="outline" size="sm" onClick={() => openEditor(focusedNode)}>Edición avanzada</Button>
           <Button type="button" variant="outline" size="sm" onClick={() => duplicateNode(focusedNode)}>Duplicar</Button>
           <Button type="button" variant="outline" size="sm" onClick={() => reorderNode(focusedNode, -1)}>Subir</Button>
@@ -2033,19 +2090,25 @@ export function CrmChatbotStudioClient() {
   }
 
   function renderMapWorkspace(overlay = false) {
+    const canEditFlow = overlay && flowEditMode
+    const showFullscreenInspector = canEditFlow && inspectorOpen && Boolean(focusedNode)
+    const startNode = studioGraph.nodes.find((node) => node.kind === 'start')
+    const firstStageNode = studioGraph.nodes.find((node) => node.kind === 'stage')
+    const startZoneWidth = firstStageNode ? firstStageNode.x + firstStageNode.width + 72 : 360
+
     return (
       <Card className={overlay ? 'flex h-full flex-col border-0 bg-transparent shadow-none' : ''}>
         <CardContent className={overlay ? 'flex-1 overflow-hidden px-0 pb-0 pt-0' : 'overflow-hidden pt-0'}>
-          <div className={`grid gap-4 rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.08),_transparent_28%),linear-gradient(180deg,_rgba(248,250,252,0.98),_rgba(241,245,249,0.96))] p-3 md:p-4 ${overlay ? 'h-full min-h-0 xl:grid-cols-[84px_minmax(0,1fr)_300px]' : 'lg:grid-cols-[minmax(0,1fr)_260px]'}`}>
-            {overlay ? renderFullscreenPaletteRail() : null}
+          <div className={`grid rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.08),_transparent_28%),linear-gradient(180deg,_rgba(248,250,252,0.98),_rgba(241,245,249,0.96))] ${overlay ? `h-full min-h-0 gap-2 p-1.5 ${showFullscreenInspector ? 'xl:grid-cols-[70px_minmax(0,1fr)_280px]' : 'xl:grid-cols-[70px_minmax(0,1fr)]'}` : 'gap-4 p-3 md:p-4 lg:grid-cols-[minmax(0,1fr)_260px]'}`}>
+            {canEditFlow ? renderFullscreenPaletteRail() : null}
             <div className="relative min-w-0 space-y-2 overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200/80 bg-white/80 px-3 py-2 text-xs text-slate-500">
+              <div className={`flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200/80 bg-white/80 text-xs text-slate-500 ${overlay ? 'px-2 py-1.5' : 'px-3 py-2'}`}>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">Zoom {(builder.studioViewport.scale * 100).toFixed(0)}%</span>
                   <span>Pan X {Math.round(builder.studioViewport.x)} · Y {Math.round(builder.studioViewport.y)}</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {focusedNode ? (
+                  {canEditFlow && focusedNode ? (
                     <Button type="button" variant="outline" size="sm" onClick={() => setInspectorOpen((current) => !current)}>
                       {inspectorOpen ? 'Inspector' : 'Mostrar inspector'}
                     </Button>
@@ -2053,9 +2116,9 @@ export function CrmChatbotStudioClient() {
                   <Button type="button" variant="outline" size="sm" onClick={() => setStudioScale(builder.studioViewport.scale - 0.1)}>Zoom -</Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => setStudioScale(builder.studioViewport.scale + 0.1)}>Zoom +</Button>
                   <Button type="button" variant="outline" size="sm" onClick={resetStudioViewport}>Centrar vista</Button>
-                  <Button type="button" variant="outline" size="sm" onClick={clearStudioLayout}>Auto ordenar</Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setMapFullscreen((current) => !current)}>
-                    {overlay ? 'Cerrar' : 'Pantalla completa'}
+                  {canEditFlow ? <Button type="button" variant="outline" size="sm" onClick={clearStudioLayout}>Auto ordenar</Button> : null}
+                  <Button type="button" variant="outline" size="sm" onClick={canEditFlow ? stopFlowEditing : startFlowEditing}>
+                    {canEditFlow ? 'Salir edición' : 'Editar flujo'}
                   </Button>
                 </div>
               </div>
@@ -2063,8 +2126,9 @@ export function CrmChatbotStudioClient() {
               <div className="relative min-h-0 flex-1">
                 <div
                   ref={boardViewportRef}
-                  onPointerDown={handleBoardBackgroundPointerDown}
+                  onPointerDown={canEditFlow ? handleBoardBackgroundPointerDown : undefined}
                   onTouchStart={(event) => {
+                    if (!canEditFlow) return
                     const metrics = getTouchMetrics(event.touches)
                     if (!metrics) return
                     event.preventDefault()
@@ -2078,6 +2142,7 @@ export function CrmChatbotStudioClient() {
                     }
                   }}
                   onTouchMove={(event) => {
+                    if (!canEditFlow) return
                     if (!pinchStateRef.current || event.touches.length < 2) return
                     const metrics = getTouchMetrics(event.touches)
                     if (!metrics) return
@@ -2088,24 +2153,38 @@ export function CrmChatbotStudioClient() {
                     })
                   }}
                   onTouchEnd={(event) => {
+                    if (!canEditFlow) return
                     if (event.touches.length < 2) {
                       pinchStateRef.current = null
                     }
                   }}
-                  onDragOver={handleBoardDragOver}
-                  onDrop={handleBoardDrop}
-                  onContextMenu={handleBoardBackgroundContextMenu}
+                  onDragOver={canEditFlow ? handleBoardDragOver : undefined}
+                  onDrop={canEditFlow ? handleBoardDrop : undefined}
+                  onContextMenu={canEditFlow ? handleBoardBackgroundContextMenu : undefined}
                   onWheel={(event) => {
                     event.preventDefault()
                     const direction = event.deltaY > 0 ? -0.08 : 0.08
                     setStudioScale(builder.studioViewport.scale + direction, { clientX: event.clientX, clientY: event.clientY })
                   }}
-                  className={`relative ${overlay ? 'h-[calc(100vh-250px)] min-h-[560px] md:h-[calc(100vh-220px)]' : 'h-[calc(100vh-320px)] min-h-[480px] md:h-[calc(100vh-280px)] md:min-h-[760px]'} touch-none overflow-hidden rounded-[24px] border border-slate-200/80 bg-[linear-gradient(rgba(148,163,184,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.12)_1px,transparent_1px)] bg-[size:32px_32px] ${panState ? 'cursor-grabbing' : 'cursor-grab'} ${paletteDragKind ? 'ring-2 ring-emerald-300 ring-offset-2' : ''}`}
+                  className={`relative ${overlay ? 'h-[calc(100vh-120px)] min-h-[620px]' : 'h-[calc(100vh-320px)] min-h-[480px] md:h-[calc(100vh-280px)] md:min-h-[760px]'} touch-none overflow-hidden rounded-[24px] border border-slate-200/80 bg-[linear-gradient(rgba(148,163,184,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.12)_1px,transparent_1px)] bg-[size:32px_32px] ${panState ? 'cursor-grabbing' : 'cursor-grab'} ${paletteDragKind ? 'ring-2 ring-emerald-300 ring-offset-2' : ''}`}
                 >
-                  {overlay ? renderFullscreenShortcutHint() : null}
-                  {paletteDragKind ? (
+                  {canEditFlow ? renderFullscreenShortcutHint() : null}
+                  {canEditFlow && paletteDragKind ? (
                     <div className="pointer-events-none absolute inset-x-4 top-4 z-10 rounded-2xl border border-dashed border-emerald-300 bg-white/90 px-4 py-3 text-sm font-medium text-emerald-800 shadow-sm">
                       Suelta aqui para crear un bloque de {STUDIO_PALETTE_ITEMS.find((item) => item.kind === paletteDragKind)?.label.toLowerCase()}.
+                    </div>
+                  ) : null}
+                  {!canEditFlow ? (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/60 backdrop-blur-[2px]">
+                      <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white/96 px-6 py-6 text-center shadow-[0_28px_80px_-40px_rgba(15,23,42,0.35)]">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Vista protegida</div>
+                        <div className="mt-3 text-2xl font-semibold text-slate-900">Editar flujo</div>
+                        <div className="mt-2 text-sm leading-6 text-slate-600">Primero entra en modo edición para reorganizar bloques, abrir el menú de arrastre y trabajar el flujo en pantalla completa sin ruido visual.</div>
+                        <div className="mt-5 flex items-center justify-center gap-3">
+                          <Button type="button" className="rounded-2xl px-5" onClick={startFlowEditing}>Editar flujo</Button>
+                          <Button type="button" variant="outline" className="rounded-2xl px-5" onClick={resetStudioViewport}>Solo centrar vista</Button>
+                        </div>
+                      </div>
                     </div>
                   ) : null}
                   <div
@@ -2118,6 +2197,23 @@ export function CrmChatbotStudioClient() {
                     }}
                   >
                     <div className="relative" style={{ width: `${studioGraph.contentWidth}px`, height: `${studioGraph.contentHeight}px` }}>
+                      {startNode ? (
+                        <>
+                          <div
+                            className="pointer-events-none absolute inset-y-0 left-0 rounded-[24px] bg-[linear-gradient(90deg,rgba(16,185,129,0.09)_0%,rgba(52,211,153,0.06)_62%,rgba(255,255,255,0)_100%)]"
+                            style={{ width: `${Math.min(startZoneWidth, studioGraph.contentWidth)}px` }}
+                          />
+                          <div
+                            className="pointer-events-none absolute inset-y-8 border-r border-dashed border-emerald-300/80"
+                            style={{ left: `${Math.min(startZoneWidth, studioGraph.contentWidth)}px` }}
+                          />
+                          <div
+                            className="pointer-events-none absolute left-5 top-5 rounded-full border border-emerald-200 bg-white/92 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700 shadow-sm"
+                          >
+                            Inicio del flujo
+                          </div>
+                        </>
+                      ) : null}
                       <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${studioGraph.contentWidth} ${studioGraph.contentHeight}`} fill="none">
                         {studioGraph.edges.map((edge) => {
                           const source = studioGraph.nodes.find((node) => node.id === edge.fromId)
@@ -2129,12 +2225,9 @@ export function CrmChatbotStudioClient() {
                           const endY = getNodeAnchorY(target)
                           const deltaX = Math.max((endX - startX) / 2, 56)
                           const path = `M ${startX} ${startY} C ${startX + deltaX} ${startY}, ${endX - deltaX} ${endY}, ${endX} ${endY}`
-                          const labelX = startX + ((endX - startX) / 2)
-                          const labelY = startY + ((endY - startY) / 2) - 12
                           return (
                             <g key={edge.id}>
-                              <path d={path} className={`${edge.toneClass} fill-none stroke-[2.5]`} strokeDasharray={edge.label === 'accion' ? '6 6' : undefined} />
-                              <text x={labelX} y={labelY} textAnchor="middle" className="fill-slate-500 text-[11px] font-medium">{edge.label}</text>
+                              <path d={path} className={`${edge.toneClass} fill-none stroke-[2.5]`} strokeDasharray={edge.dashed ? '6 6' : undefined} />
                             </g>
                           )
                         })}
@@ -2165,19 +2258,23 @@ export function CrmChatbotStudioClient() {
                           <div
                             key={node.id}
                             onContextMenu={(event) => {
+                              if (!canEditFlow) return
                               event.preventDefault()
                               event.stopPropagation()
                               if (node.kind === 'start') return
                               openContextMenu({ kind: node.kind, id: nodeKey }, node.x + node.width + 14, node.y + 18)
                             }}
-                            onPointerDown={(event) => handleBoardNodePointerDown(event, node)}
+                            onPointerDown={(event) => {
+                              if (!canEditFlow) return
+                              handleBoardNodePointerDown(event, node)
+                            }}
                             onClick={(event) => {
                               event.stopPropagation()
                               if (node.kind !== 'start') {
                                 focusStudioNode({ kind: node.kind, id: nodeKey })
                               }
                             }}
-                            className={`group absolute cursor-grab rounded-[22px] border px-3 py-2.5 text-left shadow-sm transition active:cursor-grabbing ${node.accentClass} ${active ? 'ring-2 ring-slate-900/15 shadow-lg' : 'hover:-translate-y-0.5'} ${validTarget ? 'ring-2 ring-sky-300 ring-offset-2' : ''}`}
+                            className={`group absolute cursor-grab rounded-[20px] border px-4 py-3 text-left shadow-[0_14px_30px_-24px_rgba(15,23,42,0.35)] transition active:cursor-grabbing ${node.accentClass} ${active ? 'ring-2 ring-slate-900/15 shadow-[0_18px_40px_-22px_rgba(15,23,42,0.32)]' : 'hover:-translate-y-0.5 hover:shadow-[0_16px_34px_-22px_rgba(15,23,42,0.3)]'} ${validTarget ? 'ring-2 ring-sky-300 ring-offset-2' : ''}`}
                             style={{ left: `${node.x}px`, top: `${node.y}px`, width: `${node.width}px` }}
                           >
                             {node.kind !== 'start' ? (
@@ -2186,12 +2283,13 @@ export function CrmChatbotStudioClient() {
                                 aria-label={`Agregar bloque desde ${node.title}`}
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={(event) => {
+                                  if (!canEditFlow) return
                                   event.stopPropagation()
                                   if (node.kind !== 'start') {
                                     openCreateMenu({ x: node.x + node.width + 24, y: node.y + 20, target: { sourceNode: { kind: node.kind, id: nodeKey } } })
                                   }
                                 }}
-                                className="absolute -right-3 -top-3 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 opacity-100 shadow transition hover:border-emerald-300 hover:text-emerald-700 lg:opacity-0 lg:group-hover:opacity-100"
+                                className={`absolute -right-3 -top-3 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow transition hover:border-emerald-300 hover:text-emerald-700 ${active ? 'opacity-100' : 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100'}`}
                               >
                                 <Plus className="h-4 w-4" />
                               </button>
@@ -2201,10 +2299,11 @@ export function CrmChatbotStudioClient() {
                                 aria-label="Agregar mensaje inicial"
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={(event) => {
+                                  if (!canEditFlow) return
                                   event.stopPropagation()
                                   openCreateMenu({ x: node.x + node.width + 24, y: node.y + 20, target: { sourceNode: { kind: 'stage', id: builder.flowStages[0]?.id || '' } } })
                                 }}
-                                className="absolute -right-3 -top-3 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 opacity-100 shadow transition hover:border-emerald-300 hover:text-emerald-700 lg:opacity-0 lg:group-hover:opacity-100"
+                                className={`absolute -right-3 -top-3 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow transition hover:border-emerald-300 hover:text-emerald-700 ${active ? 'opacity-100' : 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100'}`}
                               >
                                 <Plus className="h-4 w-4" />
                               </button>
@@ -2213,20 +2312,28 @@ export function CrmChatbotStudioClient() {
                               type="button"
                               aria-label={`Conectar hacia ${node.title}`}
                               onPointerDown={(event) => {
+                                if (!canEditFlow) return
                                 event.stopPropagation()
                               }}
-                              onPointerUp={(event) => handleConnectionDrop(event, node)}
+                              onPointerUp={(event) => {
+                                if (!canEditFlow) return
+                                handleConnectionDrop(event, node)
+                              }}
                               className={`absolute -left-2.5 top-[40px] h-5 w-5 rounded-full border bg-white shadow ${validTarget ? 'border-sky-400' : 'border-slate-300'}`}
                             />
                             {node.kind === 'stage' && responseHandles.length ? (
-                              <div className="absolute -right-10 top-7 space-y-2">
+                              <div className={`absolute -right-10 top-7 space-y-2 transition ${active ? 'opacity-100' : 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100'}`}>
                                 {responseHandles.map((option, index) => (
                                   <button
                                     key={option.id}
                                     type="button"
                                     aria-label={`Reconectar rama ${option.label}`}
-                                    onPointerDown={(event) => handleConnectionStart(event, node, option.id, option.label)}
+                                    onPointerDown={(event) => {
+                                      if (!canEditFlow) return
+                                      handleConnectionStart(event, node, option.id, option.label)
+                                    }}
                                     onContextMenu={(event) => {
+                                      if (!canEditFlow) return
                                       event.preventDefault()
                                       event.stopPropagation()
                                       openCreateMenu({ x: node.x + node.width + 30, y: node.y + 50 + (index * 26), target: { sourceNode: { kind: 'stage', id: nodeKey }, sourceOptionId: option.id } })
@@ -2244,24 +2351,29 @@ export function CrmChatbotStudioClient() {
                               <button
                                 type="button"
                                 aria-label={`Crear conexion desde ${node.title}`}
-                                onPointerDown={(event) => handleConnectionStart(event, node)}
+                                onPointerDown={(event) => {
+                                  if (!canEditFlow) return
+                                  handleConnectionStart(event, node)
+                                }}
                                 className="absolute -right-2.5 top-[40px] h-5 w-5 rounded-full border border-slate-300 bg-white shadow"
                               />
                             ) : null}
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <div className="inline-flex rounded-full bg-white/85 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] opacity-80">{getNodeTypeLabel(node.kind)}</div>
-                                <div className="mt-2 truncate text-sm font-semibold">{node.title}</div>
+                                <div className="flex items-center gap-2">
+                                  <div className="inline-flex rounded-full bg-white/88 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] opacity-90">{getNodeTypeLabel(node.kind)}</div>
+                                  {active ? <div className="rounded-full border border-white/70 bg-white/90 px-2 py-1 text-[10px] font-semibold text-slate-700">Activo</div> : null}
+                                </div>
+                                <div className="mt-2 truncate text-[15px] font-semibold">{node.title}</div>
                               </div>
                               <div className="flex items-center gap-1">
-                                <div data-node-drag-handle="true" className="rounded-full border border-current/15 bg-white/80 p-1 opacity-70"><GripVertical className="h-3.5 w-3.5" /></div>
-                                {active ? <div className="rounded-full bg-white/80 px-2 py-1 text-[10px] font-semibold text-slate-700">Activo</div> : null}
+                                <div data-node-drag-handle="true" className="rounded-full border border-current/15 bg-white/80 p-1 opacity-70 lg:opacity-0 lg:group-hover:opacity-100"><GripVertical className="h-3.5 w-3.5" /></div>
                               </div>
                             </div>
-                            <div className="mt-1 line-clamp-2 text-xs opacity-80">{node.subtitle}</div>
-                            <div className="mt-2 line-clamp-3 text-[11px] leading-5 opacity-70">{node.description}</div>
+                            <div className="mt-1 line-clamp-1 text-xs font-medium opacity-80">{node.subtitle}</div>
+                            <div className="mt-2 line-clamp-2 text-[11px] leading-5 opacity-70">{node.description}</div>
                             {node.kind === 'stage' && stageMap[nodeKey]?.responseOptions.length ? (
-                              <div className="mt-2 flex flex-wrap gap-1.5">
+                              <div className="mt-3 flex flex-wrap gap-1.5">
                                 {stageMap[nodeKey]?.responseOptions.slice(0, 3).map((option) => (
                                   <span key={option.id} className="rounded-full border border-white/70 bg-white/80 px-2 py-1 text-[10px] font-semibold text-slate-700">
                                     {option.label}
@@ -2273,7 +2385,7 @@ export function CrmChatbotStudioClient() {
                         )
                       })}
 
-                      {contextMenu ? (
+                      {canEditFlow && contextMenu ? (
                         <div
                           className="absolute z-20 min-w-[200px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.3)]"
                           style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
@@ -2344,47 +2456,31 @@ export function CrmChatbotStudioClient() {
                     </div>
                   </div>
 
-                  {renderInspectorDrawer(overlay)}
-                  {overlay ? renderFullscreenMinimap() : null}
+                  {canEditFlow ? renderInspectorDrawer(overlay) : null}
+                  {canEditFlow ? renderFullscreenMinimap() : null}
                 </div>
               </div>
             </div>
 
-            {overlay ? (
+            {showFullscreenInspector ? (
               <div className="space-y-4">
                 {renderFullscreenPropertiesInspector()}
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-600">
                   <div className="font-semibold text-slate-900">Gestos táctiles</div>
                   <div className="mt-2">Un dedo sobre fondo → desplaza el canvas</div>
                   <div className="mt-1">Dos dedos → zoom con pinch</div>
                   <div className="mt-1">Para mover una caja en tablet usa el asa de puntos</div>
                 </div>
               </div>
-            ) : (
+            ) : !overlay ? (
               <div className="space-y-3 rounded-[24px] border border-slate-200/80 bg-white/90 p-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Panel de bloques</div>
-                  <div className="mt-1 text-sm text-slate-600">Arrastra un bloque al canvas o haz clic derecho donde quieras crearlo.</div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Vista del flujo</div>
+                  <div className="mt-1 text-sm text-slate-600">Activa editar flujo para mostrar el panel de bloques, el arrastre y las acciones avanzadas.</div>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                  {STUDIO_PALETTE_ITEMS.map((item) => (
-                    <button
-                      key={item.kind}
-                      type="button"
-                      draggable
-                      onDragStart={(event) => handlePaletteDragStart(event, item.kind)}
-                      onDragEnd={handlePaletteDragEnd}
-                      onClick={() => handleCreateFromMenu(item.kind)}
-                      className={`rounded-2xl border px-4 py-3 text-left transition ${item.className} ${paletteDragKind === item.kind ? 'scale-[1.02] shadow-sm ring-2 ring-slate-900/10' : ''}`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold">{item.label}</div>
-                        <div className="rounded-full border border-current/20 bg-white/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]">Drag</div>
-                      </div>
-                      <div className="mt-1 text-xs opacity-85">{item.description}</div>
-                    </button>
-                  ))}
-                </div>
+                {!overlay ? (
+                  <Button type="button" className="w-full rounded-2xl" onClick={startFlowEditing}>Editar flujo en pantalla completa</Button>
+                ) : null}
                 <div className="rounded-[22px] border border-slate-200 bg-[linear-gradient(180deg,#f8fafc,#ffffff)] p-3">
                   <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Referencia visual</div>
                   <svg viewBox="0 0 240 170" className="mt-3 h-auto w-full">
@@ -2421,7 +2517,7 @@ export function CrmChatbotStudioClient() {
                   <div className="mt-1">Pausa → Mensaje</div>
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -2589,7 +2685,7 @@ export function CrmChatbotStudioClient() {
   }, [activeStudioPanel, focusedNode, mapFullscreen])
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4.5">
       <ErpPageHero
         eyebrow="CRM"
         title="Chatbot studio"
@@ -2601,13 +2697,13 @@ export function CrmChatbotStudioClient() {
         ]}
       />
 
-      {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
-      {notice ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div> : null}
+      {error ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-700">{error}</div> : null}
+      {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-700">{notice}</div> : null}
 
       <Card className="border-slate-200">
-        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-700">
+        <CardContent className="flex flex-wrap items-center justify-between gap-2.5 p-3.5">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-emerald-700">
               <Bot className="h-5 w-5" />
             </div>
             <div>
@@ -2631,13 +2727,13 @@ export function CrmChatbotStudioClient() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="studio" className="space-y-4">
+      <Tabs defaultValue="studio" className="space-y-3">
         <TabsList>
           <TabsTrigger value="studio">Studio</TabsTrigger>
           <TabsTrigger value="historial">Historial</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="studio" className="space-y-4">
+        <TabsContent value="studio" className="space-y-3">
           {!studioMounted ? (
             <Card>
               <CardContent className="flex min-h-[420px] items-center justify-center pt-6">
@@ -2647,9 +2743,9 @@ export function CrmChatbotStudioClient() {
               </CardContent>
             </Card>
           ) : (
-          <div className={`grid gap-4 ${activeStudioPanel === 'map' ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[280px_minmax(0,1fr)]'}`}>
+          <div className={`grid gap-3 ${activeStudioPanel === 'map' ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[268px_minmax(0,1fr)]'}`}>
             {activeStudioPanel !== 'map' ? (
-            <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
+            <div className="space-y-3 xl:sticky xl:top-3 xl:self-start">
               <Card>
                 <CardHeader>
                   <CardTitle>Panel de control</CardTitle>
@@ -2700,7 +2796,7 @@ export function CrmChatbotStudioClient() {
             </div>
             ) : null}
 
-            <div className="min-w-0 space-y-4">
+            <div className="min-w-0 space-y-3">
               {activeStudioPanel === 'library' ? (
                 <Card>
                   <CardHeader>
@@ -3132,29 +3228,33 @@ export function CrmChatbotStudioClient() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={mapFullscreen} onOpenChange={setMapFullscreen}>
-        <DialogContent className="h-[calc(100vh-24px)] w-[calc(100vw-24px)] max-w-none overflow-hidden border-none bg-white/98 p-4 shadow-[0_30px_90px_-32px_rgba(15,23,42,0.5)]">
-          <div className="h-full overflow-hidden rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.08),_transparent_24%),linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] p-3 md:p-4">
+      <Dialog open={mapFullscreen} onOpenChange={(open) => { if (open) { setMapFullscreen(true); return } stopFlowEditing() }}>
+        <DialogContent className="h-[calc(100vh-8px)] w-[calc(100vw-8px)] max-w-none overflow-hidden border-none bg-white/98 p-1 shadow-[0_30px_90px_-32px_rgba(15,23,42,0.5)]">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Mapa completo del flujo chatbot</DialogTitle>
+            <DialogDescription>Vista ampliada para editar y revisar el mapa de etapas, conexiones y rutas del flujo.</DialogDescription>
+          </DialogHeader>
+          <div className="h-full overflow-hidden rounded-[24px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.08),_transparent_24%),linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] p-1">
             {activeStudioPanel === 'map' ? renderMapWorkspace(true) : null}
           </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={Boolean(editingNode)} onOpenChange={(open) => { if (!open) setEditingNode(null) }}>
-        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-3xl">
+        <DialogContent className="max-h-[86vh] overflow-y-auto sm:max-w-[880px]">
           {editingStage ? (
             <>
               <DialogHeader>
                 <DialogTitle>Editar etapa</DialogTitle>
                 <DialogDescription>Configura el mensaje principal, el dato esperado y las rutas de esta etapa.</DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 py-2">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="grid gap-2">
+              <div className="grid gap-3 py-1.5">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-1.5">
                     <Label>Título</Label>
                     <Input value={editingStage.title} onChange={(event) => updateStage(editingStage.id, { title: event.target.value })} />
                   </div>
-                  <div className="grid gap-2">
+                  <div className="grid gap-1.5">
                     <Label>Siguiente dato esperado</Label>
                     <Select value={editingStage.nextField} onValueChange={(value) => updateStage(editingStage.id, { nextField: value as ChatbotFlowNextField })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
@@ -3169,21 +3269,21 @@ export function CrmChatbotStudioClient() {
                     </Select>
                   </div>
                 </div>
-                <div className="grid gap-2">
+                <div className="grid gap-1.5">
                   <Label>Descripción</Label>
                   <Textarea value={editingStage.description} onChange={(event) => updateStage(editingStage.id, { description: event.target.value })} rows={2} />
                 </div>
-                <div className="grid gap-2">
+                <div className="grid gap-1.5">
                   <Label>Prompt de etapa</Label>
                   <Textarea value={editingStage.prompt} onChange={(event) => updateStage(editingStage.id, { prompt: event.target.value })} rows={3} />
                 </div>
-                <div className="grid gap-2">
+                <div className="grid gap-1.5">
                   <Label>Acciones rápidas</Label>
-                  <div className="grid gap-2 md:grid-cols-2">
+                  <div className="grid gap-1.5 md:grid-cols-2">
                     {builder.quickActions.map((action) => {
                       const active = editingStage.quickActionIds.includes(action.id)
                       return (
-                        <label key={action.id} className="flex items-center justify-between rounded-2xl border border-slate-200 px-3 py-2 text-sm">
+                        <label key={action.id} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 text-sm">
                           <span>{action.label}</span>
                           <Switch checked={active} onCheckedChange={(checked) => updateStage(editingStage.id, { quickActionIds: checked ? [...editingStage.quickActionIds, action.id] : editingStage.quickActionIds.filter((id) => id !== action.id) })} />
                         </label>
@@ -3191,19 +3291,19 @@ export function CrmChatbotStudioClient() {
                     })}
                   </div>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <Label>Opciones de respuesta</Label>
                     <Button variant="outline" size="sm" onClick={() => updateStage(editingStage.id, { responseOptions: [...editingStage.responseOptions, { id: makeId('option'), label: 'Nueva opción', userMessage: 'Mensaje esperado del visitante.', assistantReply: 'Respuesta del asistente.', matchMode: 'contains', matchValue: '', targetStageId: editingStage.id }] })}>Agregar opción</Button>
                   </div>
                   {editingStage.responseOptions.map((option) => (
-                    <div key={option.id} className="rounded-2xl border border-dashed border-slate-200 p-3">
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <div className="grid gap-2">
+                    <div key={option.id} className="rounded-xl border border-dashed border-slate-200 p-2.5">
+                      <div className="grid gap-2.5 md:grid-cols-2">
+                        <div className="grid gap-1.5">
                           <Label>Etiqueta</Label>
                           <Input value={option.label} onChange={(event) => updateResponseOption(editingStage.id, option.id, { label: event.target.value })} />
                         </div>
-                        <div className="grid gap-2">
+                        <div className="grid gap-1.5">
                           <Label>Destino</Label>
                           <Select value={option.targetStageId} onValueChange={(value) => updateResponseOption(editingStage.id, option.id, { targetStageId: value })}>
                             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -3212,7 +3312,7 @@ export function CrmChatbotStudioClient() {
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="grid gap-2">
+                        <div className="grid gap-1.5">
                           <Label>Modo de match</Label>
                           <Select value={option.matchMode} onValueChange={(value) => updateResponseOption(editingStage.id, option.id, { matchMode: value as ChatbotFlowResponseMatchMode })}>
                             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -3222,15 +3322,15 @@ export function CrmChatbotStudioClient() {
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="grid gap-2">
+                        <div className="grid gap-1.5">
                           <Label>Términos</Label>
                           <Input value={option.matchValue} onChange={(event) => updateResponseOption(editingStage.id, option.id, { matchValue: event.target.value })} />
                         </div>
-                        <div className="grid gap-2 md:col-span-2">
+                        <div className="grid gap-1.5 md:col-span-2">
                           <Label>Mensaje del usuario</Label>
                           <Textarea value={option.userMessage} onChange={(event) => updateResponseOption(editingStage.id, option.id, { userMessage: event.target.value })} rows={2} />
                         </div>
-                        <div className="grid gap-2 md:col-span-2">
+                        <div className="grid gap-1.5 md:col-span-2">
                           <Label>Respuesta del asistente</Label>
                           <Textarea value={option.assistantReply} onChange={(event) => updateResponseOption(editingStage.id, option.id, { assistantReply: event.target.value })} rows={2} />
                         </div>
@@ -3328,6 +3428,9 @@ export function CrmChatbotStudioClient() {
                       <SelectContent>
                         <SelectItem value="catalog">Catálogo</SelectItem>
                         <SelectItem value="stock">Stock</SelectItem>
+                        <SelectItem value="product_lookup">Lookup producto</SelectItem>
+                        <SelectItem value="service_lookup">Lookup servicio</SelectItem>
+                        <SelectItem value="url">URL</SelectItem>
                         <SelectItem value="human">Humano</SelectItem>
                         <SelectItem value="message">Mensaje</SelectItem>
                       </SelectContent>
@@ -3338,6 +3441,12 @@ export function CrmChatbotStudioClient() {
                   <Label>Mensaje que dispara</Label>
                   <Input value={editingAction.message} onChange={(event) => updateQuickAction(editingAction.id, { message: event.target.value })} />
                 </div>
+                {editingAction.kind === 'url' ? (
+                  <div className="grid gap-2">
+                    <Label>URL destino</Label>
+                    <Input value={editingAction.actionUrl || ''} onChange={(event) => updateQuickAction(editingAction.id, { actionUrl: event.target.value })} placeholder="https://... o /ruta-interna" />
+                  </div>
+                ) : null}
                 <div className="flex items-center justify-between rounded-2xl border border-slate-200 px-3 py-2.5">
                   <div>
                     <div className="text-sm font-medium text-slate-900">Acción habilitada</div>

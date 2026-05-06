@@ -222,6 +222,27 @@ function getQuickActionVisual(kind: ChatbotQuickAction['kind']) {
       className: 'border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-300 hover:bg-amber-100',
     }
   }
+  if (kind === 'url') {
+    return {
+      badge: 'URL',
+      icon: '↗',
+      className: 'border-indigo-200 bg-indigo-50 text-indigo-800 hover:border-indigo-300 hover:bg-indigo-100',
+    }
+  }
+  if (kind === 'product_lookup') {
+    return {
+      badge: 'Producto',
+      icon: '▣',
+      className: 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100',
+    }
+  }
+  if (kind === 'service_lookup') {
+    return {
+      badge: 'Servicio',
+      icon: '◇',
+      className: 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800 hover:border-fuchsia-300 hover:bg-fuchsia-100',
+    }
+  }
   return {
     badge: 'Accion',
     icon: '•',
