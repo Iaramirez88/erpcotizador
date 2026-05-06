@@ -121,6 +121,19 @@ const DEFAULT_STAGE_SETTINGS: StageSetting[] = [
 const TASK_STATUS_OPTIONS: TaskStatus[] = ['OPEN', 'DONE', 'CANCELED']
 const TASK_PRIORITY_OPTIONS: TaskPriority[] = ['LOW', 'NORMAL', 'HIGH']
 
+function normalizeStageSettings(stageSettings: StageSetting[] | null | undefined) {
+  const source = Array.isArray(stageSettings) && stageSettings.length ? stageSettings : DEFAULT_STAGE_SETTINGS
+  const uniqueStages = new Map<OpportunityStage, StageSetting>()
+
+  for (const stage of [...source].sort((left, right) => left.sortOrder - right.sortOrder)) {
+    if (!uniqueStages.has(stage.key)) {
+      uniqueStages.set(stage.key, stage)
+    }
+  }
+
+  return Array.from(uniqueStages.values())
+}
+
 function formatMoney(value: number | null | undefined, locale: string) {
   const amount = typeof value === 'number' ? value : 0
   try {
@@ -316,6 +329,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
 
   const [activeTab, setActiveTab] = useState<'leads' | 'opportunities' | 'tasks'>(isFocusedOpportunities ? 'opportunities' : props?.initialTab ?? 'leads')
   const [opportunityView, setOpportunityView] = useState<'list' | 'pipeline'>(isFocusedOpportunities ? 'pipeline' : 'list')
+  const [focusedOpportunityTab, setFocusedOpportunityTab] = useState<'filters' | 'list'>('filters')
   const [draggingOpportunityId, setDraggingOpportunityId] = useState<string | null>(null)
   const [draggingOpportunityStage, setDraggingOpportunityStage] = useState<OpportunityStage | null>(null)
   const [dragTargetStage, setDragTargetStage] = useState<OpportunityStage | null>(null)
@@ -414,9 +428,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
       setLeads(Array.isArray(leadRes.data) ? leadRes.data : [])
       setOpportunities(Array.isArray(opportunityRes.data) ? opportunityRes.data : [])
       setTasks(Array.isArray(taskRes.data) ? taskRes.data : [])
-      const nextStages = Array.isArray(stageRes.data) && stageRes.data.length
-        ? [...stageRes.data].sort((a, b) => a.sortOrder - b.sortOrder)
-        : DEFAULT_STAGE_SETTINGS
+      const nextStages = normalizeStageSettings(stageRes.data)
       setStageSettings(nextStages)
       setStageDrafts(nextStages)
     } finally {
@@ -479,11 +491,15 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
     return new Map(stageSettings.map((stage) => [stage.key, stage]))
   }, [stageSettings])
 
+  const visibleStageSettings = useMemo(() => {
+    return DEFAULT_STAGE_SETTINGS.map((defaultStage) => stageMap.get(defaultStage.key) ?? defaultStage)
+  }, [stageMap])
+
   const getStageLabel = (stage: OpportunityStage) => stageMap.get(stage)?.label || stage
   const getStageColor = (stage: OpportunityStage) => stageMap.get(stage)?.color || null
 
   const opportunitiesByStage = useMemo(() => {
-    return stageSettings.map((stage) => {
+    return visibleStageSettings.map((stage) => {
       const manualIds = stageManualOrder[stage.key] || []
       const items = opportunities
         .filter((row) => row.stage === stage.key)
@@ -503,7 +519,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
       const total = items.reduce((sum, row) => sum + (row.expectedValue || 0), 0)
       return { ...stage, items, total }
     })
-  }, [opportunities, stageManualOrder, stageSettings])
+  }, [opportunities, stageManualOrder, visibleStageSettings])
 
   const pipelineSummary = useMemo(() => {
     const openRows = opportunities.filter((row) => row.stage !== 'WON' && row.stage !== 'LOST')
@@ -800,7 +816,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
   async function submitStageSettings() {
     setSavingStages(true)
     try {
-      const payload = stageDrafts
+      const payload = normalizeStageSettings(stageDrafts)
         .map((item) => ({
           ...item,
           label: item.label.trim(),
@@ -818,7 +834,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
         alert(json.error || 'No se pudo actualizar el pipeline.')
         return
       }
-      const next = [...json.data].sort((a, b) => a.sortOrder - b.sortOrder)
+      const next = normalizeStageSettings(json.data)
       setStageSettings(next)
       setStageDrafts(next)
       setStageDialogOpen(false)
@@ -1093,80 +1109,17 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
     if (!success) await loadData()
   }
 
-  const opportunitiesWorkspace = (
-    <div className={isFocusedOpportunities ? 'space-y-5' : 'space-y-4 pt-4'}>
-      {isFocusedOpportunities ? (
-        <Card className="rounded-[26px] border-slate-200 bg-white/95 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.24)]">
-          <CardContent className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-1">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Vistas de oportunidades</p>
-              <h2 className="text-lg font-semibold text-slate-950">Pipeline con prioridad visual</h2>
-              <p className="text-sm text-slate-600">En esta ruta el pipeline tiene el protagonismo y la lista queda como vista secundaria para revisión puntual.</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
-                <Button variant={opportunityView === 'pipeline' ? 'default' : 'ghost'} className="rounded-xl px-4" onClick={() => setOpportunityView('pipeline')}>
-                  Pipeline
-                </Button>
-                <Button variant={opportunityView === 'list' ? 'default' : 'ghost'} className="rounded-xl px-4" onClick={() => setOpportunityView('list')}>
-                  Lista
-                </Button>
-              </div>
-              <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => openCreateOpportunityDialog()}>
-                Nuevo deal
-              </Button>
-              <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={openStageDialog}>
-                Configurar pipeline
-              </Button>
-              <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={() => void loadData()}>
-                Refrescar
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="flex items-center justify-end gap-2">
-          <Button variant={opportunityView === 'list' ? 'default' : 'outline'} className="rounded-xl" onClick={() => setOpportunityView('list')}>
-            Lista
-          </Button>
-          <Button variant={opportunityView === 'pipeline' ? 'default' : 'outline'} className="rounded-xl" onClick={() => setOpportunityView('pipeline')}>
-            Pipeline
-          </Button>
-        </div>
-      )}
-
-      {opportunityView === 'pipeline' ? (
-        <div className="space-y-4">
-          <Card className="rounded-[26px] border-slate-200 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
-            <CardContent className="grid gap-3 p-4 md:grid-cols-4 md:p-5">
-              <div className="rounded-2xl border border-slate-200 bg-white/85 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Oportunidades abiertas</p>
-                <p className="mt-2 text-3xl font-semibold text-slate-950">{pipelineSummary.openCount}</p>
-                <p className="mt-1 text-xs text-slate-500">Negocios en movimiento dentro del embudo.</p>
-              </div>
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Valor ponderado</p>
-                <p className="mt-2 text-3xl font-semibold text-emerald-950">{formatMoney(pipelineSummary.weightedValue, locale)}</p>
-                <p className="mt-1 text-xs text-emerald-700/80">Proyección ajustada por probabilidad de cierre.</p>
-              </div>
-              <div className="rounded-2xl border border-amber-200 bg-amber-50/75 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Cierres vencidos</p>
-                <p className="mt-2 text-3xl font-semibold text-amber-950">{pipelineSummary.overdueCount}</p>
-                <p className="mt-1 text-xs text-amber-700/80">Oportunidades que requieren reacción inmediata.</p>
-              </div>
-              <div className="rounded-2xl border border-sky-200 bg-sky-50/75 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">Con cotización</p>
-                <p className="mt-2 text-3xl font-semibold text-sky-950">{pipelineSummary.quotedCount}</p>
-                <p className="mt-1 text-xs text-sky-700/80">Negocios con propuesta formal vinculada.</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className={isFocusedOpportunities ? 'grid grid-flow-col auto-cols-[minmax(320px,1fr)] gap-4 overflow-x-auto pb-3' : 'grid grid-flow-col auto-cols-[minmax(280px,1fr)] gap-4 overflow-x-auto pb-2'}>
-              {opportunitiesByStage.map((column) => (
+  const opportunityPipelineBoard = (
+    <div className={isFocusedOpportunities ? 'w-full overflow-x-auto pb-3 md:overflow-visible' : 'w-full overflow-x-auto pb-2 md:overflow-visible'}>
+      <div
+        className={isFocusedOpportunities
+          ? 'flex min-w-max gap-4 md:min-w-0 md:flex-nowrap [&>*:nth-child(n+7)]:hidden'
+          : 'flex min-w-max gap-4 md:min-w-0 md:flex-nowrap [&>*:nth-child(n+7)]:hidden'}
+      >
+        {opportunitiesByStage.map((column) => (
                 <Card
                   key={column.key}
-                  className={`min-w-0 overflow-hidden rounded-[24px] border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)] transition-all ${dragTargetStage === column.key ? 'ring-2 ring-sky-400 shadow-[0_24px_50px_-30px_rgba(14,165,233,0.35)]' : ''}`}
+                  className={`w-[260px] shrink-0 overflow-hidden rounded-[24px] border-slate-200 bg-[linear-gradient(180deg,#ffffff,#fbfdff)] shadow-[0_18px_40px_-34px_rgba(15,23,42,0.35)] transition-all md:min-w-0 md:flex-1 ${dragTargetStage === column.key ? 'ring-2 ring-sky-400 shadow-[0_24px_50px_-30px_rgba(14,165,233,0.35)]' : ''}`}
                   onDragOver={(event) => {
                     event.preventDefault()
                     if (draggingOpportunityId) {
@@ -1184,28 +1137,28 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                     void handleOpportunityDrop(column.key, null)
                   }}
                 >
-                  <CardHeader className="border-b border-slate-100 px-4 pb-3 pt-4" style={{ background: `linear-gradient(180deg, ${withAlpha(column.color, '16', 'rgba(148,163,184,0.12)')}, rgba(255,255,255,0.98))` }}>
+                  <CardHeader className="border-b border-slate-100 px-3 pb-2.5 pt-3" style={{ background: `linear-gradient(180deg, ${withAlpha(column.color, '16', 'rgba(148,163,184,0.12)')}, rgba(255,255,255,0.98))` }}>
                     <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1.5">
-                        <div className="inline-flex items-center gap-2 rounded-full border border-white/80 bg-white/85 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-                          <CircleDot className="h-3.5 w-3.5" style={{ color: column.color || '#64748b' }} />
+                      <div className="space-y-1">
+                        <div className="inline-flex items-center gap-1.5 rounded-full border border-white/80 bg-white/85 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600">
+                          <CircleDot className="h-3 w-3" style={{ color: column.color || '#64748b' }} />
                           {column.label}
                         </div>
-                        <CardDescription>{formatMoney(column.total, locale)} proyectado</CardDescription>
+                        <CardDescription className="text-[11px]">{formatMoney(column.total, locale)} proyectado</CardDescription>
                       </div>
                       <div className="flex items-start gap-2">
                         <button
                           type="button"
-                          className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:text-sky-700"
+                          className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:border-sky-300 hover:text-sky-700"
                           onClick={() => openCreateOpportunityDialog(column.key)}
                           title={`Nueva carta en ${column.label}`}
                           aria-label={`Nueva carta en ${column.label}`}
                         >
-                          <Plus className="h-5 w-5" />
+                          <Plus className="h-4 w-4" />
                         </button>
-                        <div className="rounded-2xl bg-white/85 px-3 py-1.5 text-right shadow-sm">
-                          <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Deals</p>
-                          <p className="text-base font-semibold text-slate-900">{column.items.length}</p>
+                        <div className="rounded-xl bg-white/85 px-2.5 py-1 text-right shadow-sm">
+                          <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Deals</p>
+                          <p className="text-sm font-semibold text-slate-900">{column.items.length}</p>
                         </div>
                       </div>
                     </div>
@@ -1215,19 +1168,19 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                       </div>
                     ) : null}
                   </CardHeader>
-                  <CardContent className="space-y-2.5 p-3">
+                  <CardContent className="space-y-2 p-2.5">
                     <button
                       type="button"
-                      className="flex w-full items-center justify-center gap-2 rounded-[18px] border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800"
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 transition hover:border-sky-300 hover:bg-sky-50 hover:text-sky-800"
                       onClick={() => openCreateOpportunityDialog(column.key)}
                     >
-                      <Plus className="h-4 w-4" />
+                      <Plus className="h-3.5 w-3.5" />
                       Agregar carta en {column.label.toLowerCase()}
                     </button>
                     {column.items.length === 0 ? (
-                      <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-                        <p className="text-sm font-medium text-slate-600">Sin oportunidades en esta etapa</p>
-                        <p className="mt-1 text-xs text-slate-500">Arrastra una tarjeta hasta aquí para actualizar el pipeline.</p>
+                      <div className="rounded-[18px] border border-dashed border-slate-200 bg-slate-50 px-3 py-5 text-center">
+                        <p className="text-xs font-medium text-slate-600">Sin oportunidades en esta etapa</p>
+                        <p className="mt-1 text-[11px] leading-4 text-slate-500">Arrastra una tarjeta hasta aquí para actualizar el pipeline.</p>
                       </div>
                     ) : null}
                     {column.items.map((row) => {
@@ -1269,85 +1222,85 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                                 Insertar antes de esta tarjeta
                               </div>
                             ) : null}
-                            <div className="flex items-start gap-3">
-                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-[11px] font-semibold text-white shadow-sm">
+                            <div className="flex items-start gap-2.5">
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-[10px] font-semibold text-white shadow-sm">
                                 {getInitials(relationName)}
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0">
-                                    <p className="truncate text-sm font-semibold leading-tight text-slate-950">{row.title}</p>
-                                    <p className="mt-0.5 truncate text-xs text-slate-500">{relationName}</p>
+                                    <p className="truncate text-xs font-semibold leading-tight text-slate-950">{row.title}</p>
+                                    <p className="mt-0.5 truncate text-[11px] text-slate-500">{relationName}</p>
                                   </div>
                                   <div className="flex items-center gap-1 text-slate-400">
-                                    <GripVertical className="h-4 w-4" />
+                                    <GripVertical className="h-3.5 w-3.5" />
                                   </div>
                                 </div>
                               </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-2">
-                              <div className="rounded-xl bg-slate-50 px-3 py-2">
-                                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Valor</p>
-                                <p className="mt-1 text-sm font-semibold text-slate-950">{formatMoney(row.expectedValue, locale)}</p>
+                              <div className="rounded-xl bg-slate-50 px-2.5 py-2">
+                                <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Valor</p>
+                                <p className="mt-1 text-xs font-semibold text-slate-950">{formatMoney(row.expectedValue, locale)}</p>
                               </div>
-                              <div className={`rounded-xl border px-3 py-2 ${getProbabilitySurface(row.probabilityPct)}`}>
-                                <p className="text-[11px] uppercase tracking-[0.14em]">Probabilidad</p>
-                                <p className="mt-1 text-sm font-semibold">{row.probabilityPct}%</p>
+                              <div className={`rounded-xl border px-2.5 py-2 ${getProbabilitySurface(row.probabilityPct)}`}>
+                                <p className="text-[10px] uppercase tracking-[0.12em]">Probabilidad</p>
+                                <p className="mt-1 text-xs font-semibold">{row.probabilityPct}%</p>
                               </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-2">
-                              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-400">Score</p>
-                                <p className="mt-1 text-sm font-semibold text-slate-950">{score}/100</p>
+                              <div className="rounded-xl border border-slate-200 bg-white px-2.5 py-2">
+                                <p className="text-[10px] uppercase tracking-[0.12em] text-slate-400">Score</p>
+                                <p className="mt-1 text-xs font-semibold text-slate-950">{score}/100</p>
                               </div>
-                              <div className={`rounded-xl border px-3 py-2 ${riskMeta.className}`}>
-                                <p className="text-[11px] uppercase tracking-[0.14em]">Riesgo</p>
-                                <p className="mt-1 text-sm font-semibold">{riskMeta.label}</p>
+                              <div className={`rounded-xl border px-2.5 py-2 ${riskMeta.className}`}>
+                                <p className="text-[10px] uppercase tracking-[0.12em]">Riesgo</p>
+                                <p className="mt-1 text-xs font-semibold">{riskMeta.label}</p>
                               </div>
                             </div>
 
-                            <div className="flex flex-wrap gap-1.5 text-[11px] text-slate-600">
+                            <div className="flex flex-wrap gap-1 text-[10px] text-slate-600">
                               {origin ? <OriginBadge originKey={origin.key} label={origin.label} /> : null}
-                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
-                                <CalendarClock className="h-3.5 w-3.5 text-slate-400" />
+                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5">
+                                <CalendarClock className="h-3 w-3 text-slate-400" />
                                 {getDaysToCloseLabel(row.expectedCloseAt, locale)}
                               </span>
-                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
-                                <UserRound className="h-3.5 w-3.5 text-slate-400" />
+                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5">
+                                <UserRound className="h-3 w-3 text-slate-400" />
                                 {assigneeName}
                               </span>
-                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1">
-                                <Sparkles className="h-3.5 w-3.5 text-slate-400" />
+                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5">
+                                <Sparkles className="h-3 w-3 text-slate-400" />
                                 {row._count?.tasks ?? 0} tareas · {row._count?.activities ?? 0} actividades
                               </span>
                             </div>
 
-                            <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2 text-[11px] text-slate-600">
+                            <div className="rounded-xl border border-slate-100 bg-slate-50/70 px-2.5 py-2 text-[10px] text-slate-600">
                               <div className="flex items-center justify-between gap-3">
                                 <span className="truncate">{quoteLabel}</span>
                                 <span className="truncate text-slate-400">Actualizada {formatDate(row.updatedAt, locale, naText)}</span>
                               </div>
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                            <div className="flex flex-wrap items-center gap-1 pt-1">
                               {row.cotizacion ? (
-                                <Button asChild variant="ghost" className="h-8 rounded-full border border-sky-200 px-3 text-xs text-sky-700 hover:bg-sky-50 hover:text-sky-800" onClick={(event) => event.stopPropagation()}>
+                                <Button asChild variant="ghost" className="h-7 rounded-full border border-sky-200 px-2.5 text-[11px] text-sky-700 hover:bg-sky-50 hover:text-sky-800" onClick={(event) => event.stopPropagation()}>
                                   <Link href={`/dashboard/cotizador?id=${row.cotizacion.id}`}>
                                     Ver cotización
-                                    <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
+                                    <ArrowUpRight className="ml-1 h-3 w-3" />
                                   </Link>
                                 </Button>
                               ) : row.cliente ? (
-                                <Button asChild variant="ghost" className="h-8 rounded-full border border-sky-200 px-3 text-xs text-sky-700 hover:bg-sky-50 hover:text-sky-800" onClick={(event) => event.stopPropagation()}>
+                                <Button asChild variant="ghost" className="h-7 rounded-full border border-sky-200 px-2.5 text-[11px] text-sky-700 hover:bg-sky-50 hover:text-sky-800" onClick={(event) => event.stopPropagation()}>
                                   <Link href={`/dashboard/cotizador?crmOpportunityId=${row.id}&clienteId=${row.cliente.id}&opportunityTitle=${encodeURIComponent(row.title)}`}>
                                     Crear cotización
-                                    <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
+                                    <ArrowUpRight className="ml-1 h-3 w-3" />
                                   </Link>
                                 </Button>
                               ) : null}
-                              <Button variant="ghost" className="h-8 rounded-full border border-slate-200 px-3 text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-900" onClick={(event) => { event.stopPropagation(); void openEditOpportunityDialog(row) }}>
+                              <Button variant="ghost" className="h-7 rounded-full border border-slate-200 px-2.5 text-[11px] text-slate-600 hover:bg-slate-100 hover:text-slate-900" onClick={(event) => { event.stopPropagation(); void openEditOpportunityDialog(row) }}>
                                 Editar deal
                               </Button>
                             </div>
@@ -1358,71 +1311,87 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                   </CardContent>
                 </Card>
               ))}
-          </div>
-        </div>
-      ) : null}
+      </div>
+    </div>
+  )
 
-      {opportunityView === 'list' ? (
-        <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
-          <CardHeader className="border-b border-slate-100 pb-5">
-            <CardTitle className="text-xl">Oportunidades ({opportunities.length})</CardTitle>
-            <CardDescription>Pipeline comercial con valor esperado, probabilidad y acceso directo al cotizador.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-4 md:p-5">
-            <div className="space-y-3">
-              {loading ? <p className="text-sm text-muted-foreground">Cargando...</p> : null}
-              {!loading && opportunities.length === 0 ? <p className="text-sm text-muted-foreground">No hay oportunidades para mostrar.</p> : null}
-              {opportunities.map((row) => {
-                const riskMeta = getOpportunityRiskMeta(row)
-                const score = getOpportunityScore(row)
-                const origin = row.originKey && row.originLabel
-                  ? { key: row.originKey, label: row.originLabel }
-                  : row.lead?.source
-                    ? getLeadSourceFallbackMeta(row.lead.source)
-                    : null
-                return <div key={row.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-lg font-semibold text-slate-900">{row.title}</span>
-                        <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ backgroundColor: `${getStageColor(row.stage) || '#f59e0b'}22`, color: getStageColor(row.stage) || '#b45309' }}>
-                          {getStageLabel(row.stage)}
-                        </span>
-                        {origin ? <OriginBadge originKey={origin.key} label={origin.label} /> : null}
-                      </div>
-                      <p className="text-sm text-slate-600">{row.lead?.nombre || row.cliente?.nombre || 'Sin relación'} · cierre estimado {formatDate(row.expectedCloseAt, locale, 'Sin fecha')}</p>
-                      <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                        <span>Actualizada: {formatDate(row.updatedAt, locale, naText)}</span>
-                        <span>Probabilidad: {row.probabilityPct}%</span>
-                        <span>Score: {score}/100</span>
-                        <span className={`rounded-full border px-2.5 py-1 font-semibold ${riskMeta.className}`}>{riskMeta.label}</span>
-                      </div>
-                    </div>
-                    <div className="min-w-[220px] rounded-2xl bg-slate-50 p-4 text-right">
-                      <p className="text-xs uppercase tracking-wide text-slate-400">Valor esperado</p>
-                      <p className="mt-2 text-2xl font-semibold text-slate-950">{formatMoney(row.expectedValue, locale)}</p>
-                      {row.cotizacion ? (
-                        <Button asChild variant="ghost" className="mt-3 h-auto p-0 text-sky-700 hover:text-sky-800">
-                          <Link href={`/dashboard/cotizador?id=${row.cotizacion.id}`}>Abrir {row.cotizacion.numero}</Link>
-                        </Button>
-                      ) : row.cliente ? (
-                        <Button asChild variant="ghost" className="mt-3 h-auto p-0 text-sky-700 hover:text-sky-800">
-                          <Link href={`/dashboard/cotizador?crmOpportunityId=${row.id}&clienteId=${row.cliente.id}&opportunityTitle=${encodeURIComponent(row.title)}`}>
-                            Crear cotización
-                          </Link>
-                        </Button>
-                      ) : (
-                        <p className="mt-3 text-xs text-amber-600">Convierte el lead a cliente para cotizar.</p>
-                      )}
-                      <Button variant="ghost" className="mt-2 h-auto p-0 text-slate-600 hover:text-slate-900" onClick={() => void openEditOpportunityDialog(row)}>Editar</Button>
-                    </div>
+  const opportunityListBoard = (
+    <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
+      <CardHeader className="border-b border-slate-100 pb-5">
+        <CardTitle className="text-xl">Oportunidades ({opportunities.length})</CardTitle>
+        <CardDescription>Pipeline comercial con valor esperado, probabilidad y acceso directo al cotizador.</CardDescription>
+      </CardHeader>
+      <CardContent className="p-4 md:p-5">
+        <div className="space-y-3">
+          {loading ? <p className="text-sm text-muted-foreground">Cargando...</p> : null}
+          {!loading && opportunities.length === 0 ? <p className="text-sm text-muted-foreground">No hay oportunidades para mostrar.</p> : null}
+          {opportunities.map((row) => {
+            const riskMeta = getOpportunityRiskMeta(row)
+            const score = getOpportunityScore(row)
+            const origin = row.originKey && row.originLabel
+              ? { key: row.originKey, label: row.originLabel }
+              : row.lead?.source
+                ? getLeadSourceFallbackMeta(row.lead.source)
+                : null
+            return <div key={row.id} className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-5 shadow-sm transition-shadow hover:shadow-md">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-lg font-semibold text-slate-900">{row.title}</span>
+                    <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ backgroundColor: `${getStageColor(row.stage) || '#f59e0b'}22`, color: getStageColor(row.stage) || '#b45309' }}>
+                      {getStageLabel(row.stage)}
+                    </span>
+                    {origin ? <OriginBadge originKey={origin.key} label={origin.label} /> : null}
+                  </div>
+                  <p className="text-sm text-slate-600">{row.lead?.nombre || row.cliente?.nombre || 'Sin relación'} · cierre estimado {formatDate(row.expectedCloseAt, locale, 'Sin fecha')}</p>
+                  <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                    <span>Actualizada: {formatDate(row.updatedAt, locale, naText)}</span>
+                    <span>Probabilidad: {row.probabilityPct}%</span>
+                    <span>Score: {score}/100</span>
+                    <span className={`rounded-full border px-2.5 py-1 font-semibold ${riskMeta.className}`}>{riskMeta.label}</span>
                   </div>
                 </div>
-              })}
+                <div className="min-w-[220px] rounded-2xl bg-slate-50 p-4 text-right">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">Valor esperado</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-950">{formatMoney(row.expectedValue, locale)}</p>
+                  {row.cotizacion ? (
+                    <Button asChild variant="ghost" className="mt-3 h-auto p-0 text-sky-700 hover:text-sky-800">
+                      <Link href={`/dashboard/cotizador?id=${row.cotizacion.id}`}>Abrir {row.cotizacion.numero}</Link>
+                    </Button>
+                  ) : row.cliente ? (
+                    <Button asChild variant="ghost" className="mt-3 h-auto p-0 text-sky-700 hover:text-sky-800">
+                      <Link href={`/dashboard/cotizador?crmOpportunityId=${row.id}&clienteId=${row.cliente.id}&opportunityTitle=${encodeURIComponent(row.title)}`}>
+                        Crear cotización
+                      </Link>
+                    </Button>
+                  ) : (
+                    <p className="mt-3 text-xs text-amber-600">Convierte el lead a cliente para cotizar.</p>
+                  )}
+                  <Button variant="ghost" className="mt-2 h-auto p-0 text-slate-600 hover:text-slate-900" onClick={() => void openEditOpportunityDialog(row)}>Editar</Button>
+                </div>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      ) : null}
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  const opportunitiesWorkspace = (
+    <div className={isFocusedOpportunities ? 'space-y-5' : 'space-y-4 pt-4'}>
+      {isFocusedOpportunities ? null : (
+        <div className="flex items-center justify-end gap-2">
+          <Button variant={opportunityView === 'list' ? 'default' : 'outline'} className="rounded-xl" onClick={() => setOpportunityView('list')}>
+            Lista
+          </Button>
+          <Button variant={opportunityView === 'pipeline' ? 'default' : 'outline'} className="rounded-xl" onClick={() => setOpportunityView('pipeline')}>
+            Pipeline
+          </Button>
+        </div>
+      )}
+
+      {opportunityView === 'pipeline' ? opportunityPipelineBoard : null}
+      {opportunityView === 'list' ? opportunityListBoard : null}
     </div>
   )
 
@@ -1431,8 +1400,8 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
       {isFocusedOpportunities ? (
         <>
           <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,116,144,0.18),_transparent_32%),linear-gradient(135deg,_#fffdf8_0%,_#f8fbff_48%,_#f2f7f4_100%)] shadow-[0_22px_52px_-36px_rgba(15,23,42,0.3)]">
-            <div className="grid gap-5 p-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(380px,0.85fr)] xl:items-start lg:p-6">
-              <div className="space-y-3">
+            <div className="grid gap-3 p-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)] xl:items-start lg:p-5">
+              <div className="space-y-2">
                 <ErpBreadcrumbs
                   items={[
                     { label: 'Dashboard', href: '/dashboard' },
@@ -1440,68 +1409,87 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                     { label: 'Oportunidades' },
                   ]}
                 />
-                <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700 backdrop-blur">
+                <div className="inline-flex items-center rounded-full border border-sky-200 bg-white/80 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-sky-700 backdrop-blur">
                   Pipeline CRM
                 </div>
-                <div className="space-y-1.5">
-                  <h1 className="max-w-2xl text-2xl font-semibold tracking-tight text-slate-950 lg:text-3xl">Oportunidades y pipeline comercial</h1>
-                  <p className="max-w-2xl text-[13px] leading-5 text-slate-600">Vista dedicada para consultar el embudo, mover deals, reaccionar a cierres vencidos y abrir cada oportunidad con menos ruido alrededor.</p>
+                <div className="space-y-1">
+                  <h1 className="max-w-2xl text-xl font-semibold tracking-tight text-slate-950 lg:text-[28px]">Oportunidades y pipeline comercial</h1>
+                  <p className="max-w-2xl text-xs leading-5 text-slate-600">El pipeline queda primero y siempre visible. El resto del contexto se consulta por tabs sin perder de vista el embudo.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button asChild variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/85 px-4">
+                  <Button asChild variant="outline" className="h-8 rounded-lg border-slate-200 bg-white/85 px-3 text-xs">
                     <Link href="/dashboard/crm">Volver al panel comercial</Link>
                   </Button>
-                  <Button asChild variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/85 px-4">
+                  <Button asChild variant="outline" className="h-8 rounded-lg border-slate-200 bg-white/85 px-3 text-xs">
                     <Link href="/dashboard/crm/conversations">Inbox omnicanal</Link>
+                  </Button>
+                  <Button className="h-8 rounded-lg bg-slate-950 px-3 text-xs text-white hover:bg-slate-800" onClick={() => openCreateOpportunityDialog()}>
+                    Nuevo deal
                   </Button>
                 </div>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:self-start">
-                <div className="min-w-0 rounded-xl border border-slate-200/80 bg-white/85 p-3.5 shadow-sm backdrop-blur">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Deals abiertos</p>
-                  <p className="mt-2.5 text-2xl font-semibold text-slate-950">{pipelineSummary.openCount}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">Negocios activos dentro del pipeline.</p>
+              <div className="grid gap-2 sm:grid-cols-2 xl:self-start">
+                <div className="min-w-0 rounded-lg border border-slate-200/80 bg-white/85 p-3 shadow-sm backdrop-blur">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Deals abiertos</p>
+                  <p className="mt-1.5 text-xl font-semibold text-slate-950">{pipelineSummary.openCount}</p>
+                  <p className="mt-0.5 text-[11px] leading-4 text-slate-500">Negocios activos dentro del pipeline.</p>
                 </div>
-                <div className="min-w-0 rounded-xl border border-emerald-200/80 bg-[linear-gradient(180deg,_rgba(236,253,245,0.95),_rgba(255,255,255,0.9))] p-3.5 shadow-sm">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Valor ponderado</p>
-                  <p className="mt-2.5 text-2xl font-semibold text-emerald-950">{formatMoney(pipelineSummary.weightedValue, locale)}</p>
-                  <p className="mt-1 text-xs leading-5 text-emerald-700/80">Proyección priorizada por probabilidad.</p>
+                <div className="min-w-0 rounded-lg border border-emerald-200/80 bg-[linear-gradient(180deg,_rgba(236,253,245,0.95),_rgba(255,255,255,0.9))] p-3 shadow-sm">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">Valor ponderado</p>
+                  <p className="mt-1.5 text-xl font-semibold text-emerald-950">{formatMoney(pipelineSummary.weightedValue, locale)}</p>
+                  <p className="mt-0.5 text-[11px] leading-4 text-emerald-700/80">Proyección priorizada por probabilidad.</p>
                 </div>
-                <div className="min-w-0 rounded-xl border border-amber-200/80 bg-[linear-gradient(180deg,_rgba(255,251,235,0.96),_rgba(255,255,255,0.9))] p-3.5 shadow-sm">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700">Cierres vencidos</p>
-                  <p className="mt-2.5 text-2xl font-semibold text-amber-950">{pipelineSummary.overdueCount}</p>
-                  <p className="mt-1 text-xs leading-5 text-amber-700/80">Deals que necesitan reacción inmediata.</p>
+                <div className="min-w-0 rounded-lg border border-amber-200/80 bg-[linear-gradient(180deg,_rgba(255,251,235,0.96),_rgba(255,255,255,0.9))] p-3 shadow-sm">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">Cierres vencidos</p>
+                  <p className="mt-1.5 text-xl font-semibold text-amber-950">{pipelineSummary.overdueCount}</p>
+                  <p className="mt-0.5 text-[11px] leading-4 text-amber-700/80">Deals que necesitan reacción inmediata.</p>
                 </div>
-                <div className="min-w-0 rounded-xl border border-sky-200/80 bg-[linear-gradient(180deg,_rgba(239,246,255,0.98),_rgba(255,255,255,0.9))] p-3.5 shadow-sm">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">Con cotización</p>
-                  <p className="mt-2.5 text-2xl font-semibold text-sky-950">{pipelineSummary.quotedCount}</p>
-                  <p className="mt-1 text-xs leading-5 text-sky-700/80">Oportunidades ya conectadas con propuesta.</p>
+                <div className="min-w-0 rounded-lg border border-sky-200/80 bg-[linear-gradient(180deg,_rgba(239,246,255,0.98),_rgba(255,255,255,0.9))] p-3 shadow-sm">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-700">Con cotización</p>
+                  <p className="mt-1.5 text-xl font-semibold text-sky-950">{pipelineSummary.quotedCount}</p>
+                  <p className="mt-0.5 text-[11px] leading-4 text-sky-700/80">Oportunidades ya conectadas con propuesta.</p>
                 </div>
               </div>
             </div>
           </section>
 
-          <Card className="rounded-[26px] border-slate-200 bg-white/90 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.2)]">
-            <CardContent className="grid gap-2.5 p-3 md:grid-cols-[minmax(0,1.5fr)_220px_180px] md:p-4">
-              <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
-                <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Buscar deal</Label>
-                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por oportunidad, lead o cliente..." className="h-9 rounded-lg border-slate-200 bg-white" />
-              </div>
-              <div className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/80 p-2.5">
-                <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Etapa</Label>
-                <Select value={opportunityStageFilter} onValueChange={(value) => setOpportunityStageFilter(value as 'ALL' | OpportunityStage)}>
-                  <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Todas</SelectItem>
-                    {stageSettings.map((item) => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-end rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-2.5">
-                <Button variant="outline" className="h-9 w-full rounded-lg border-slate-200 bg-white" onClick={clearFilters}>Limpiar filtros</Button>
-              </div>
-            </CardContent>
-          </Card>
+          <section className="space-y-3">
+            <Tabs value={focusedOpportunityTab} onValueChange={(value) => setFocusedOpportunityTab(value as 'filters' | 'list')}>
+              <Card className="rounded-[22px] border-slate-200 bg-white/92 shadow-[0_16px_30px_-28px_rgba(15,23,42,0.2)]">
+                <CardContent className="p-2.5">
+                  <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+                    <TabsList className="grid h-9 w-full max-w-[220px] grid-cols-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
+                      <TabsTrigger value="filters" className="rounded-md px-3 py-1.5 text-[11px] data-[state=active]:bg-white data-[state=active]:shadow-sm">Filtros</TabsTrigger>
+                      <TabsTrigger value="list" className="rounded-md px-3 py-1.5 text-[11px] data-[state=active]:bg-white data-[state=active]:shadow-sm">Lista</TabsTrigger>
+                    </TabsList>
+                    <div className="min-w-0 flex-1">
+                      <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por oportunidad, lead o cliente..." className="h-9 rounded-lg border-slate-200 bg-white text-sm" />
+                    </div>
+                    <div className="w-full xl:w-[170px]">
+                      <Select value={opportunityStageFilter} onValueChange={(value) => setOpportunityStageFilter(value as 'ALL' | OpportunityStage)}>
+                        <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-white text-sm"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ALL">Todas</SelectItem>
+                          {visibleStageSettings.map((item) => <SelectItem key={item.key} value={item.key}>{item.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button variant="outline" className="h-9 rounded-lg border-slate-200 bg-white px-3 text-[11px]" onClick={clearFilters}>Limpiar filtros</Button>
+                    <Button variant="outline" className="h-9 rounded-lg border-slate-200 bg-white px-3 text-[11px]" onClick={openStageDialog}>
+                      Configurar pipeline
+                    </Button>
+                    <Button variant="outline" className="h-9 rounded-lg border-slate-200 bg-white px-3 text-[11px]" onClick={() => void loadData()}>
+                      Refrescar
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </Tabs>
+
+            {opportunityPipelineBoard}
+
+            {focusedOpportunityTab === 'list' ? opportunityListBoard : null}
+          </section>
         </>
       ) : (
         <>
@@ -1635,7 +1623,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
         </>
       )}
 
-      {isFocusedOpportunities ? opportunitiesWorkspace : (
+      {!isFocusedOpportunities ? (
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'leads' | 'opportunities' | 'tasks')}>
         <div className="space-y-3">
           <div className="grid gap-2.5 rounded-[24px] border border-slate-200 bg-white/90 p-3.5 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.25)] md:grid-cols-3">
@@ -1855,7 +1843,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
           </Card>
         </TabsContent>
       </Tabs>
-      )}
+      ) : null}
 
       <Dialog open={opportunityDealOpen} onOpenChange={setOpportunityDealOpen}>
         <DialogContent className="ml-auto h-[100vh] max-h-[100vh] w-full max-w-2xl rounded-none rounded-l-[30px] border-l border-slate-200 bg-white/98 p-0 shadow-[0_28px_80px_-30px_rgba(15,23,42,0.38)] sm:max-w-2xl">

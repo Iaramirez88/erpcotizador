@@ -479,6 +479,7 @@ export default function Sidebar({ user }: SidebarProps) {
   const setMobileNavOpen = useUiStore((s) => s.setMobileNavOpen)
 
   const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed)
+  const hydrateSidebarCollapsed = useUiStore((s) => s.hydrateSidebarCollapsed)
   const toggleSidebarCollapsed = useUiStore((s) => s.toggleSidebarCollapsed)
   const setRouteLoading = useUiStore((s) => s.setRouteLoading)
 
@@ -494,6 +495,10 @@ export default function Sidebar({ user }: SidebarProps) {
   useEffect(() => {
     if (user.role === 'ADMIN') setCanManageBilling(true)
   }, [user.role])
+
+  useEffect(() => {
+    hydrateSidebarCollapsed()
+  }, [hydrateSidebarCollapsed])
 
   function isNavActive(href: string) {
     if (href === '/dashboard') return pathname === '/dashboard'

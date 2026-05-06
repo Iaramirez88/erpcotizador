@@ -62,8 +62,31 @@ export async function ensureCrmStageSettings(client: PrismaStageClient, empresaI
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
   })
 
-  if (existing.length >= DEFAULT_CRM_STAGE_SETTINGS.length) {
-    return existing
+  const seen = new Set<CrmOpportunityStage>()
+  const duplicateIds: string[] = []
+
+  for (const row of existing) {
+    if (seen.has(row.key)) {
+      duplicateIds.push(row.id)
+      continue
+    }
+    seen.add(row.key)
+  }
+
+  if (duplicateIds.length) {
+    await client.crmStageSetting.deleteMany({
+      where: {
+        empresaId,
+        id: { in: duplicateIds },
+      },
+    })
+  }
+
+  if (seen.size >= DEFAULT_CRM_STAGE_SETTINGS.length) {
+    return client.crmStageSetting.findMany({
+      where: { empresaId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    })
   }
 
   for (const stage of DEFAULT_CRM_STAGE_SETTINGS) {

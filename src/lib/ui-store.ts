@@ -6,6 +6,7 @@ type UiState = {
   toggleMobileNav: () => void
 
   sidebarCollapsed: boolean
+  hydrateSidebarCollapsed: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
   toggleSidebarCollapsed: () => void
 
@@ -35,7 +36,8 @@ export const useUiStore = create<UiState>((set) => ({
   setMobileNavOpen: (open) => set({ mobileNavOpen: open }),
   toggleMobileNav: () => set((s) => ({ mobileNavOpen: !s.mobileNavOpen })),
 
-  sidebarCollapsed: readInitialSidebarCollapsed(),
+  sidebarCollapsed: false,
+  hydrateSidebarCollapsed: () => set({ sidebarCollapsed: readInitialSidebarCollapsed() }),
   setSidebarCollapsed: (collapsed) =>
     set(() => {
       persistSidebarCollapsed(collapsed)
