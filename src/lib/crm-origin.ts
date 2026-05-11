@@ -1,5 +1,5 @@
 export type CrmOriginProvider = 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'FACEBOOK_PAGE' | 'MESSENGER' | 'WEB_FORM' | 'WEB_CHATBOT' | 'INSTAGRAM_DM'
-export type CrmBridgeKind = 'GENERIC' | 'GMAIL' | 'OUTLOOK' | 'GOOGLE_SHEETS' | 'TIKTOK' | 'YOUTUBE'
+export type CrmBridgeKind = 'GENERIC' | 'BOOKING' | 'GMAIL' | 'OUTLOOK' | 'GOOGLE_SHEETS' | 'GOOGLE_CALENDAR' | 'MICROSOFT_365_CALENDAR' | 'SLACK' | 'TEAMS' | 'META_LEAD_ADS' | 'EXTERNAL_FORM' | 'TIKTOK' | 'YOUTUBE'
 export type CrmLeadSource = 'WEB' | 'REFERIDO' | 'WHATSAPP' | 'LLAMADA' | 'IMPORT' | 'OTRO'
 
 export type CrmOriginKey =
@@ -40,9 +40,16 @@ export function getCrmOriginMeta(args: {
   source?: CrmLeadSource | string | null
 }): CrmOriginMeta {
   if (args.provider === 'WEB_FORM') {
+    if (args.bridgeKind === 'BOOKING') return { key: 'FORM_WEB', label: 'Agenda web' }
     if (args.bridgeKind === 'GMAIL') return { key: 'EMAIL_GMAIL', label: 'Correo Gmail' }
     if (args.bridgeKind === 'OUTLOOK') return { key: 'EMAIL_OUTLOOK', label: 'Correo Outlook' }
     if (args.bridgeKind === 'GOOGLE_SHEETS') return { key: 'GOOGLE_SHEETS', label: 'Google Sheets' }
+    if (args.bridgeKind === 'GOOGLE_CALENDAR') return { key: 'OTHER', label: 'Google Calendar' }
+    if (args.bridgeKind === 'MICROSOFT_365_CALENDAR') return { key: 'OTHER', label: 'Microsoft 365 Calendar' }
+    if (args.bridgeKind === 'SLACK') return { key: 'OTHER', label: 'Slack' }
+    if (args.bridgeKind === 'TEAMS') return { key: 'OTHER', label: 'Microsoft Teams' }
+    if (args.bridgeKind === 'META_LEAD_ADS') return { key: 'MESSENGER_FACEBOOK', label: 'Meta Lead Ads' }
+    if (args.bridgeKind === 'EXTERNAL_FORM') return { key: 'FORM_WEB', label: 'Formulario externo' }
     if (args.bridgeKind === 'TIKTOK') return { key: 'LEAD_TIKTOK', label: 'Lead TikTok' }
     if (args.bridgeKind === 'YOUTUBE') return { key: 'LEAD_YOUTUBE', label: 'Lead YouTube' }
     return { key: 'FORM_WEB', label: 'Formulario web' }

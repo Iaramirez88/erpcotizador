@@ -65,7 +65,31 @@ Esto deja una base útil. El bloque no está cerrado: falta convertir las integr
 - CRM-INT-EM-DT-001: medir tiempo a primera respuesta por correo y porcentaje de correos sin responsable.
 - CRM-INT-EM-DT-002: definir playbook de fallback cuando la automatización externa falle o se atrase.
 
-## Bloque 3. Slack y Teams
+## Bloque 3. Agenda embebida web por iframe/API
+
+### Backend
+
+- CRM-INT-BKG-BE-001: crear contrato de integración para agenda embebida en sitio web mediante iframe o widget externo con identificador de sede, canal y origen.
+- CRM-INT-BKG-BE-002: exponer endpoint/API para consumir citas agendadas desde el iframe y convertirlas en lead, actividad y cita comercial trazable dentro del CRM.
+- CRM-INT-BKG-BE-003: validar payload, deduplicar por correo, teléfono y franja horaria para evitar citas duplicadas o prospectos paralelos.
+- CRM-INT-BKG-BE-004: persistir datos mínimos de la cita: fecha, hora, servicio, origen web, página, responsable, estado y metadatos de captación.
+- CRM-INT-BKG-BE-005: disparar flujo opcional de notificación al usuario por WhatsApp y/o correo al crear, reprogramar o cancelar la cita.
+- CRM-INT-BKG-BE-006: registrar auditoría por evento de agenda: recibido, aceptado, rechazado, notificado, fallido y motivo.
+
+### Frontend
+
+- CRM-INT-BKG-FE-001: crear configuración de integración de agenda web dentro del centro de integraciones con parámetros de iframe, sitio, sede y asignación.
+- CRM-INT-BKG-FE-002: permitir definir qué campos captura el formulario embebido y cómo se mapean a lead, contacto, oportunidad y cita CRM.
+- CRM-INT-BKG-FE-003: exponer opciones por evento para habilitar notificación al usuario por WhatsApp, correo o ambos.
+- CRM-INT-BKG-FE-004: mostrar historial de citas recibidas desde la web, estado de consumo API y estado de notificaciones enviadas.
+
+### Datos y operación
+
+- CRM-INT-BKG-DT-001: definir payload oficial para citas web y plantilla mínima de campos obligatorios para el iframe.
+- CRM-INT-BKG-DT-002: medir citas recibidas, aceptadas, deduplicadas, reprogramadas, canceladas y notificadas por canal.
+- CRM-INT-BKG-DT-003: definir fallback operativo cuando falle el consumo API o cuando no se pueda enviar WhatsApp o correo.
+
+## Bloque 4. Slack y Teams
 
 ### Backend
 
@@ -83,7 +107,7 @@ Esto deja una base útil. El bloque no está cerrado: falta convertir las integr
 - CRM-INT-NT-DT-001: medir eventos emitidos, entregados y fallidos por integración.
 - CRM-INT-NT-DT-002: definir mensajes estándar de alta prioridad para no saturar los canales internos.
 
-## Bloque 4. Google Calendar y Microsoft 365 Calendar
+## Bloque 5. Google Calendar y Microsoft 365 Calendar
 
 ### Backend
 
@@ -101,7 +125,7 @@ Esto deja una base útil. El bloque no está cerrado: falta convertir las integr
 - CRM-INT-CAL-DT-001: medir reuniones creadas, completadas, reprogramadas y no-show.
 - CRM-INT-CAL-DT-002: definir plantillas mínimas de tipo de reunión y duración por flujo comercial.
 
-## Bloque 5. Meta Lead Ads y formularios externos
+## Bloque 6. Meta Lead Ads y formularios externos
 
 ### Backend
 
@@ -120,7 +144,7 @@ Esto deja una base útil. El bloque no está cerrado: falta convertir las integr
 - CRM-INT-CAP-DT-001: medir captación por origen, campaña, tasa de deduplicación y promoción a pipeline.
 - CRM-INT-CAP-DT-002: definir checklist QA para validar que un lead pago cae con owner y seguimiento correctos.
 
-## Bloque 6. Drive y OneDrive
+## Bloque 7. Drive y OneDrive
 
 ### Backend
 
@@ -137,7 +161,7 @@ Esto deja una base útil. El bloque no está cerrado: falta convertir las integr
 
 - CRM-INT-DOC-DT-001: medir cantidad de archivos enlazados por flujo comercial y uso por asesor.
 
-## Bloque 7. Payment links y pasarela de pago
+## Bloque 8. Payment links y pasarela de pago
 
 ### Backend
 
@@ -159,17 +183,19 @@ Esto deja una base útil. El bloque no está cerrado: falta convertir las integr
 
 1. Google Sheets.
 2. Gmail y Outlook.
-3. Slack y Teams.
-4. Google Calendar y Microsoft 365 Calendar.
-5. Meta Lead Ads y formularios externos.
-6. Drive y OneDrive.
-7. Payment links y pasarela.
+3. Agenda embebida web por iframe/API.
+4. Slack y Teams.
+5. Google Calendar y Microsoft 365 Calendar.
+6. Meta Lead Ads y formularios externos.
+7. Drive y OneDrive.
+8. Payment links y pasarela.
 
 ## Secuencia recomendada dentro del primer slice
 
 1. Arrancar por Google Sheets con importación manual, mapping y auditoría.
 2. Encima de eso formalizar Gmail y Outlook dentro del catálogo soportado del CRM.
-3. Después activar notificaciones Slack/Teams para acelerar la operación interna.
+3. Después habilitar agenda embebida web por iframe/API con consumo de citas y notificación al usuario por WhatsApp/correo.
+4. Luego activar notificaciones Slack/Teams para acelerar la operación interna.
 
 ## Criterio de salida del bloque
 

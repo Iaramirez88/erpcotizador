@@ -4,7 +4,7 @@ import fs from 'fs/promises'
 import { AccessLevel, ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
-import { assertCrmSedeAccess } from '@/lib/crm'
+import { assertCrmSedeAccess, normalizeString } from '@/lib/crm'
 import { canUserAccessWorkspace, getAccessibleTaskWorkspace } from '@/lib/crm-task-workspaces'
 
 export const runtime = 'nodejs'
@@ -25,6 +25,8 @@ const DOCUMENT_TYPES = new Set([
   'text/csv',
 ])
 
+type ExternalAttachmentProvider = 'GOOGLE_DRIVE' | 'ONEDRIVE'
+
 function sanitizeBaseName(filename: string): string {
   const clean = filename
     .normalize('NFKD')
@@ -40,6 +42,36 @@ function resolveAttachmentType(fileType: string): 'image' | 'audio' | 'video' | 
   if (VIDEO_TYPES.has(fileType)) return 'video'
   if (DOCUMENT_TYPES.has(fileType)) return 'document'
   return null
+}
+
+function normalizeExternalProvider(value: unknown): ExternalAttachmentProvider | null {
+  const normalized = normalizeString(value).toUpperCase()
+  if (normalized === 'GOOGLE_DRIVE' || normalized === 'ONEDRIVE') return normalized
+  return null
+}
+
+function isValidExternalUrl(value: string) {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' || url.protocol === 'http:'
+  } catch {
+    return false
+  }
+}
+
+function extractExternalAttachmentId(urlValue: string, provider: ExternalAttachmentProvider) {
+  try {
+    const url = new URL(urlValue)
+    if (provider === 'GOOGLE_DRIVE') {
+      const pathMatch = url.pathname.match(/\/d\/([a-zA-Z0-9_-]+)/)
+      if (pathMatch?.[1]) return pathMatch[1]
+      return normalizeString(url.searchParams.get('id')) || null
+    }
+
+    return normalizeString(url.searchParams.get('resid') || url.searchParams.get('id')) || normalizeString(url.pathname.split('/').filter(Boolean).at(-1)) || null
+  } catch {
+    return null
+  }
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -69,9 +101,39 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       if (denied) return denied
     }
 
+    const contentType = request.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
+      const provider = normalizeExternalProvider(body?.provider)
+      const url = normalizeString(body?.url)
+      const name = normalizeString(body?.name)
+
+      if (!provider) {
+        return NextResponse.json({ success: false, error: 'provider inválido. Usa GOOGLE_DRIVE o ONEDRIVE.' }, { status: 400 })
+      }
+      if (!url || !isValidExternalUrl(url)) {
+        return NextResponse.json({ success: false, error: 'url inválida para adjunto externo.' }, { status: 400 })
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          name: name || `Documento ${provider === 'GOOGLE_DRIVE' ? 'Drive' : 'OneDrive'}`,
+          url,
+          type: 'document',
+          mimeType: null,
+          sizeBytes: null,
+          uploadedAt: new Date().toISOString(),
+          provider,
+          externalId: extractExternalAttachmentId(url, provider),
+        },
+      })
+    }
+
     const form = await request.formData().catch(() => null)
     if (!form) {
-      return NextResponse.json({ success: false, error: 'Body inválido (multipart/form-data requerido)' }, { status: 400 })
+      return NextResponse.json({ success: false, error: 'Body inválido (multipart/form-data o application/json requerido)' }, { status: 400 })
     }
 
     const file = form.get('file')
@@ -115,6 +177,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         mimeType: fileType || null,
         sizeBytes: Number.isFinite(fileSize) ? fileSize : null,
         uploadedAt: new Date().toISOString(),
+        provider: 'UPLOAD',
+        externalId: null,
       },
     })
   } catch (error) {

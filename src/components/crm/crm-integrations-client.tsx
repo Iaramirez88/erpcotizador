@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import {
   Bar,
   BarChart,
@@ -40,6 +40,9 @@ import {
   type ChatbotQuickAction,
 } from '@/lib/crm-chatbot-flow'
 import {
+  buildBookingEmbedUrl,
+  buildBookingIframeSnippet,
+  buildBookingSnippet,
   buildChatbotEmbedUrl,
   buildChatbotIframeSnippet,
   buildChatbotSnippet,
@@ -103,6 +106,131 @@ type MetaWhatsAppAsset = {
 
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
 
+type BrandLogoProps = { className?: string }
+
+function GmailLogo({ className }: BrandLogoProps) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
+      <rect x="6" y="10" width="36" height="28" rx="6" fill="#fff" />
+      <path d="M10 16.5V34a2 2 0 0 0 2 2h5V22.6L24 28l7-5.4V36h5a2 2 0 0 0 2-2V16.5l-14 10.8-14-10.8Z" fill="#EA4335" />
+      <path d="M10 16.5 24 27.3 38 16.5V14a2 2 0 0 0-2-2h-2.3L24 19.2 14.3 12H12a2 2 0 0 0-2 2v2.5Z" fill="#4285F4" />
+      <path d="M10 16.5V34a2 2 0 0 0 2 2h2.5V18.5L10 16.5Z" fill="#34A853" />
+      <path d="M38 16.5V34a2 2 0 0 1-2 2h-2.5V18.5L38 16.5Z" fill="#FBBC04" />
+    </svg>
+  )
+}
+
+function OutlookLogo({ className }: BrandLogoProps) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
+      <path d="M18 10h18a4 4 0 0 1 4 4v20a4 4 0 0 1-4 4H18V10Z" fill="#0A64C9" />
+      <path d="M18 14h18v20H18V14Z" fill="#1173D4" />
+      <path d="M18 18l9 7 9-7" stroke="#D9ECFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 14.5 22 12v24L8 33.5V14.5Z" fill="#0F5FB9" />
+      <circle cx="15.5" cy="24" r="5.3" fill="#fff" />
+      <circle cx="15.5" cy="24" r="2.8" fill="#0F5FB9" />
+    </svg>
+  )
+}
+
+function GoogleSheetsLogo({ className }: BrandLogoProps) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
+      <path d="M14 6h14l10 10v22a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4V10a4 4 0 0 1 4-4Z" fill="#0F9D58" />
+      <path d="M28 6v10h10" fill="#2BB673" />
+      <path d="M17 19h14M17 25h14M17 31h14M22 16v18" stroke="#E8F5E9" strokeWidth="2.6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function GoogleCalendarLogo({ className }: BrandLogoProps) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
+      <rect x="8" y="10" width="32" height="30" rx="6" fill="#4285F4" />
+      <rect x="8" y="10" width="32" height="8" rx="6" fill="#1A73E8" />
+      <path d="M16 6v8M32 6v8" stroke="#DCEBFF" strokeWidth="3" strokeLinecap="round" />
+      <path d="M24 24c-4 0-7 3-7 7h14c0-4-3-7-7-7Zm0 0a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" fill="#fff" />
+    </svg>
+  )
+}
+
+function MicrosoftLogo({ className }: BrandLogoProps) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
+      <rect x="8" y="8" width="14" height="14" fill="#F25022" />
+      <rect x="26" y="8" width="14" height="14" fill="#7FBA00" />
+      <rect x="8" y="26" width="14" height="14" fill="#00A4EF" />
+      <rect x="26" y="26" width="14" height="14" fill="#FFB900" />
+    </svg>
+  )
+}
+
+function SlackLogo({ className }: BrandLogoProps) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
+      <path d="M18.4 7.5a4.4 4.4 0 1 0-8.8 0v8.9a4.4 4.4 0 0 0 8.8 0V7.5Z" fill="#E01E5A" />
+      <path d="M22 18.4a4.4 4.4 0 0 0 0-8.8h-8.9a4.4 4.4 0 1 0 0 8.8H22Z" fill="#E01E5A" />
+      <path d="M40.5 18.4a4.4 4.4 0 1 0 0-8.8h-8.9a4.4 4.4 0 1 0 0 8.8h8.9Z" fill="#36C5F0" />
+      <path d="M29.6 22a4.4 4.4 0 0 0 8.8 0v-8.9a4.4 4.4 0 1 0-8.8 0V22Z" fill="#36C5F0" />
+      <path d="M29.6 40.5a4.4 4.4 0 1 0 8.8 0v-8.9a4.4 4.4 0 1 0-8.8 0v8.9Z" fill="#2EB67D" />
+      <path d="M26 29.6a4.4 4.4 0 0 0 0 8.8h8.9a4.4 4.4 0 1 0 0-8.8H26Z" fill="#2EB67D" />
+      <path d="M7.5 29.6a4.4 4.4 0 1 0 0 8.8h8.9a4.4 4.4 0 1 0 0-8.8H7.5Z" fill="#ECB22E" />
+      <path d="M18.4 26a4.4 4.4 0 0 0-8.8 0v8.9a4.4 4.4 0 1 0 8.8 0V26Z" fill="#ECB22E" />
+    </svg>
+  )
+}
+
+function TeamsLogo({ className }: BrandLogoProps) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
+      <circle cx="34" cy="16" r="5" fill="#7B83EB" />
+      <circle cx="39" cy="29" r="4" fill="#A6AAF5" />
+      <rect x="10" y="12" width="22" height="24" rx="5" fill="#5059C9" />
+      <rect x="6" y="16" width="17" height="18" rx="4" fill="#3E45A8" />
+      <path d="M11.5 20h8v3h-2.4v7h-3.2v-7h-2.4v-3Z" fill="#fff" />
+      <path d="M32 20h8a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4h-8V20Z" fill="#7B83EB" />
+    </svg>
+  )
+}
+
+function MetaLogo({ className }: BrandLogoProps) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
+      <path d="M10.5 30.2c2.4-8.5 5.9-13 10.3-13 4.5 0 6.8 5.7 9.1 10.8 1.8 4 3.1 5.9 5.3 5.9 2 0 3.3-1.4 3.3-3.7 0-4.9-3.9-12.1-8-15.7-2.2-1.9-4.5-2.8-7.1-2.8-3.7 0-6.8 1.8-9.6 5.5-3.2 4.1-5.7 10.2-5.7 14.7 0 3.7 2.1 6.2 5.7 6.2 3.5 0 5.8-2.7 8.5-8.8 2.1-4.6 3.7-6.8 5.5-6.8 1.7 0 3.2 2.2 5.1 6.8 2.4 5.8 4.7 8.8 8.4 8.8 3.6 0 6.4-2.7 6.4-7 0-7.1-4.8-15.8-10-20.4-3.6-3.2-8.3-5-13.3-5-6.2 0-11.5 3.1-15.8 8.9C4.6 20.5 2 27 2 31.9" stroke="#0866FF" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function TikTokLogo({ className }: BrandLogoProps) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
+      <path d="M24 8v20.2a7.6 7.6 0 1 1-7.6-7.6" stroke="#25F4EE" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M28 8c1 3.8 3.6 6.9 7.2 8.6" stroke="#FE2C55" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M24 8v20.2a7.6 7.6 0 1 1-7.6-7.6" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M28 8c1 3.8 3.6 6.9 7.2 8.6V21c-2.8-.1-5.4-1-7.6-2.6V31a10.6 10.6 0 1 1-10.6-10.6" stroke="#111827" strokeWidth="4.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function YouTubeLogo({ className }: BrandLogoProps) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
+      <rect x="6" y="12" width="36" height="24" rx="8" fill="#FF0033" />
+      <path d="M21 18.5 31 24l-10 5.5v-11Z" fill="#fff" />
+    </svg>
+  )
+}
+
+function WhatsAppLogo({ className }: BrandLogoProps) {
+  return (
+    <svg viewBox="0 0 48 48" className={className} fill="none" aria-hidden="true">
+      <circle cx="24" cy="24" r="16" fill="#25D366" />
+      <path d="M14.7 36.1 16.9 30a12.5 12.5 0 1 1 4.5 4.4l-6.7 1.7Z" fill="#25D366" />
+      <path d="M20.9 17.8c-.4-.9-.8-1-1.3-1h-1.1c-.4 0-.9.1-1.3.6-.4.5-1.7 1.6-1.7 3.9 0 2.3 1.7 4.6 1.9 4.9.3.3 3.2 5 8 6.8 1.2.4 2.1.7 2.8.8 1.2.2 2.3.2 3.1-.1.9-.3 2.6-1.1 2.9-2.2.4-1 .4-1.9.3-2-.1-.2-.5-.3-1-.6-.5-.2-2.9-1.4-3.4-1.6-.4-.2-.7-.2-1 .2-.3.5-1.2 1.6-1.4 1.9-.3.3-.5.4-1 .1-.5-.2-2-.8-3.8-2.4-1.4-1.2-2.3-2.7-2.6-3.2-.3-.5 0-.7.2-1 .2-.2.5-.5.7-.8.2-.3.3-.5.5-.8.2-.3.1-.6 0-.8-.1-.2-1-2.4-1.4-3.3Z" fill="#fff" />
+    </svg>
+  )
+}
+
 type TemplatePreset = {
   key: string
   name: string
@@ -112,6 +240,46 @@ type TemplatePreset = {
   connectionModel: string
   readiness: string
   focus: string
+}
+
+type IntegrationGuideKey = TemplatePreset['key']
+type GuideAccent = 'sky' | 'emerald' | 'violet' | 'amber' | 'blue' | 'fuchsia' | 'slate'
+
+type IntegrationGuideStep = {
+  title: string
+  detail: string
+  bullets: string[]
+}
+
+type IntegrationGuide = {
+  title: string
+  summary: string
+  audience: string
+  estimatedTime: string
+  accent: GuideAccent
+  prerequisites: string[]
+  steps: IntegrationGuideStep[]
+  validations: string[]
+  troubleshooting: string[]
+  assets: Array<{ label: string; value: string }>
+  visualTitle: string
+  visualDescription: string
+  visualNodes: Array<{ label: string; caption: string }>
+}
+
+type IntegrationSnippets = {
+  webForm: string
+  webFormIframe: string
+  webFormEmbedUrl: string
+  chatbot: string
+  chatbotIframe: string
+  chatbotEmbedUrl: string
+  gmail: string
+  outlook: string
+  webhook: string
+  googleSheetsPreview: string
+  googleSheetsImport: string
+  googleSheetsExport: string
 }
 
 type WizardStep = 'template' | 'config' | 'review'
@@ -315,6 +483,9 @@ function getInitialChannelForm() {
     googleSheetsRowLimit: '200',
     googleSheetsImportMode: 'LEADS_ONLY' as 'LEADS_ONLY' | 'LEADS_AND_OPPORTUNITIES',
     googleSheetsOpportunityStage: 'QUALIFIED',
+    bookingNotifyByEmail: true,
+    bookingNotifyByWhatsApp: true,
+    outgoingWebhookUrl: '',
     externalAccountId: '',
     externalPageId: '',
     externalPhoneNumberId: '',
@@ -405,6 +576,7 @@ const CHANNEL_STATUS_OPTIONS: ChannelStatus[] = ['DRAFT', 'TESTING', 'ACTIVE', '
 
 const TEMPLATE_PRESETS: TemplatePreset[] = [
   { key: 'web-form', name: 'Formulario Web', provider: 'WEB_FORM', description: 'Captura leads desde un iframe profesional o desde formularios existentes en landings.', connectionModel: 'Iframe + script', readiness: 'Operativo hoy', focus: 'Captura de formularios y campañas' },
+  { key: 'web-booking', name: 'Agenda Web', provider: 'WEB_FORM', bridgeKind: 'BOOKING', description: 'Agenda citas desde un iframe en la web y consúmelas directo en el CRM con confirmación automática.', connectionModel: 'Iframe + API', readiness: 'Operativo hoy', focus: 'Citas, seguimiento y notificación al usuario' },
   { key: 'web-chatbot', name: 'Chatbot Web', provider: 'WEB_CHATBOT', description: 'Chat embebible por iframe con hilo en tiempo real dentro del CRM.', connectionModel: 'Iframe publico', readiness: 'Operativo hoy', focus: 'Conversación, handoff y lead capture' },
   { key: 'whatsapp-cloud', name: 'WhatsApp Cloud', provider: 'WHATSAPP_CLOUD', description: 'Webhook listo para pruebas y conexión oficial.', connectionModel: 'Webhook nativo', readiness: 'Demo avanzada', focus: 'Inbox y mensajes inbound' },
   { key: 'facebook-page', name: 'Facebook / Messenger', provider: 'FACEBOOK_PAGE', description: 'Inbox social vía webhook para mensajes de páginas Meta.', connectionModel: 'Webhook nativo', readiness: 'Demo avanzada', focus: 'Social inbox y conversaciones' },
@@ -412,9 +584,315 @@ const TEMPLATE_PRESETS: TemplatePreset[] = [
   { key: 'gmail-bridge', name: 'Gmail Inbox Bridge', provider: 'WEB_FORM', bridgeKind: 'GMAIL', description: 'Apps Script para empujar correos comerciales al inbox omnicanal.', connectionModel: 'Bridge Apps Script', readiness: 'Operativo hoy', focus: 'Correos de prospectos a CRM' },
   { key: 'outlook-bridge', name: 'Outlook Inbox Bridge', provider: 'WEB_FORM', bridgeKind: 'OUTLOOK', description: 'Bridge operativo para Power Automate y Microsoft 365.', connectionModel: 'Bridge Power Automate', readiness: 'Operativo hoy', focus: 'Inbox comercial de Microsoft' },
   { key: 'google-sheets-bridge', name: 'Google Sheets Bridge', provider: 'WEB_FORM', bridgeKind: 'GOOGLE_SHEETS', description: 'Importa y exporta leads desde hojas comerciales sin crear otro módulo.', connectionModel: 'CSV bridge', readiness: 'Operativo hoy', focus: 'Backoffice comercial y campañas' },
+  { key: 'google-calendar-bridge', name: 'Google Calendar Bridge', provider: 'WEB_FORM', bridgeKind: 'GOOGLE_CALENDAR', description: 'Empuja tareas y citas del CRM hacia Google Calendar mediante webhook saliente.', connectionModel: 'Outgoing webhook', readiness: 'Operativo hoy', focus: 'Agenda comercial sincronizada' },
+  { key: 'microsoft-365-calendar-bridge', name: 'Microsoft 365 Calendar Bridge', provider: 'WEB_FORM', bridgeKind: 'MICROSOFT_365_CALENDAR', description: 'Sincroniza tareas agendadas del CRM hacia Microsoft 365 Calendar con webhook saliente.', connectionModel: 'Outgoing webhook', readiness: 'Operativo hoy', focus: 'Agenda comercial en Microsoft 365' },
+  { key: 'slack-bridge', name: 'Slack Alerts Bridge', provider: 'WEB_FORM', bridgeKind: 'SLACK', description: 'Recibe alertas internas de CRM en Slack vía webhook saliente.', connectionModel: 'Outgoing webhook', readiness: 'Operativo hoy', focus: 'Coordinación comercial interna' },
+  { key: 'teams-bridge', name: 'Microsoft Teams Alerts Bridge', provider: 'WEB_FORM', bridgeKind: 'TEAMS', description: 'Envía alertas internas de CRM a Teams usando webhook saliente.', connectionModel: 'Outgoing webhook', readiness: 'Operativo hoy', focus: 'Coordinación comercial interna' },
+  { key: 'meta-lead-ads-bridge', name: 'Meta Lead Ads Bridge', provider: 'WEB_FORM', bridgeKind: 'META_LEAD_ADS', description: 'Recibe leads de Meta Lead Ads por webhook bridge, n8n, Make o middleware propio.', connectionModel: 'Bridge automation', readiness: 'Operativo hoy', focus: 'Captura de campañas Lead Ads' },
+  { key: 'external-form-bridge', name: 'Formulario Externo Bridge', provider: 'WEB_FORM', bridgeKind: 'EXTERNAL_FORM', description: 'Conecta formularios de terceros al CRM sin reescribir el frontend del cliente.', connectionModel: 'Bridge API', readiness: 'Operativo hoy', focus: 'Captura externa unificada' },
   { key: 'tiktok-bridge', name: 'TikTok Lead Bridge', provider: 'WEB_FORM', bridgeKind: 'TIKTOK', description: 'Usa Make/Zapier o webhook para llevar leads al CRM.', connectionModel: 'Bridge automation', readiness: 'Demo guiada', focus: 'Lead Ads y formularios externos' },
   { key: 'youtube-bridge', name: 'YouTube Lead Bridge', provider: 'WEB_FORM', bridgeKind: 'YOUTUBE', description: 'Bridge para formularios, comentarios o capturas desde campañas.', connectionModel: 'Bridge automation', readiness: 'Demo guiada', focus: 'Captura desde video y campañas' },
 ]
+
+function guideAccentClasses(accent: GuideAccent) {
+  switch (accent) {
+    case 'emerald':
+      return { soft: 'border-emerald-200 bg-emerald-50/70 text-emerald-900', node: 'border-emerald-200 bg-white text-emerald-900', arrow: 'text-emerald-500' }
+    case 'violet':
+      return { soft: 'border-violet-200 bg-violet-50/70 text-violet-900', node: 'border-violet-200 bg-white text-violet-900', arrow: 'text-violet-500' }
+    case 'amber':
+      return { soft: 'border-amber-200 bg-amber-50/70 text-amber-900', node: 'border-amber-200 bg-white text-amber-900', arrow: 'text-amber-500' }
+    case 'blue':
+      return { soft: 'border-blue-200 bg-blue-50/70 text-blue-900', node: 'border-blue-200 bg-white text-blue-900', arrow: 'text-blue-500' }
+    case 'fuchsia':
+      return { soft: 'border-fuchsia-200 bg-fuchsia-50/70 text-fuchsia-900', node: 'border-fuchsia-200 bg-white text-fuchsia-900', arrow: 'text-fuchsia-500' }
+    case 'slate':
+      return { soft: 'border-slate-200 bg-slate-50/70 text-slate-900', node: 'border-slate-200 bg-white text-slate-900', arrow: 'text-slate-500' }
+    default:
+      return { soft: 'border-sky-200 bg-sky-50/70 text-sky-900', node: 'border-sky-200 bg-white text-sky-900', arrow: 'text-sky-500' }
+  }
+}
+
+function getIntegrationGuideKey(channel: ChannelConnection, bridgeKind: string): IntegrationGuideKey {
+  if (channel.provider === 'WEB_CHATBOT') return 'web-chatbot'
+  if (channel.provider === 'WHATSAPP_CLOUD' || channel.provider === 'WHATSAPP_SANDBOX') return 'whatsapp-cloud'
+  if (channel.provider === 'FACEBOOK_PAGE' || channel.provider === 'MESSENGER') return 'facebook-page'
+  if (channel.provider === 'INSTAGRAM_DM') return 'instagram-dm'
+  if (bridgeKind === 'BOOKING') return 'web-booking'
+  if (bridgeKind === 'GMAIL') return 'gmail-bridge'
+  if (bridgeKind === 'OUTLOOK') return 'outlook-bridge'
+  if (bridgeKind === 'GOOGLE_SHEETS') return 'google-sheets-bridge'
+  if (bridgeKind === 'GOOGLE_CALENDAR') return 'google-calendar-bridge'
+  if (bridgeKind === 'MICROSOFT_365_CALENDAR') return 'microsoft-365-calendar-bridge'
+  if (bridgeKind === 'SLACK') return 'slack-bridge'
+  if (bridgeKind === 'TEAMS') return 'teams-bridge'
+  if (bridgeKind === 'META_LEAD_ADS') return 'meta-lead-ads-bridge'
+  if (bridgeKind === 'EXTERNAL_FORM') return 'external-form-bridge'
+  if (bridgeKind === 'TIKTOK') return 'tiktok-bridge'
+  if (bridgeKind === 'YOUTUBE') return 'youtube-bridge'
+  return 'web-form'
+}
+
+function renderIntegrationGuideVisual(guide: IntegrationGuide): ReactNode {
+  const accent = guideAccentClasses(guide.accent)
+  return (
+    <div className={`rounded-[26px] border p-4 ${accent.soft}`}>
+      <p className="text-xs font-semibold uppercase tracking-[0.16em]">{guide.visualTitle}</p>
+      <p className="mt-2 text-sm leading-6">{guide.visualDescription}</p>
+      <div className="mt-4 grid gap-3 lg:grid-cols-4">
+        {guide.visualNodes.map((node, index) => (
+          <div key={`${node.label}-${index}`} className="flex items-center gap-3 lg:contents">
+            <div className={`rounded-[22px] border p-4 ${accent.node}`}>
+              <p className="text-sm font-semibold">{node.label}</p>
+              <p className="mt-1 text-xs leading-5 text-slate-600">{node.caption}</p>
+            </div>
+            {index < guide.visualNodes.length - 1 ? <div className={`hidden items-center justify-center text-xl font-semibold lg:flex ${accent.arrow}`}>→</div> : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function getDetailedIntegrationGuide(args: {
+  channel: ChannelConnection
+  bridgeKind: string
+  endpoint: string
+  token: string
+  snippets: IntegrationSnippets | null
+}): IntegrationGuide {
+  const key = getIntegrationGuideKey(args.channel, args.bridgeKind)
+  const tokenLabel = args.token || args.channel.verifyTokenPreview || 'Define un token o credencial del canal.'
+  const snippets = args.snippets
+
+  const buildGuide = (guide: IntegrationGuide) => guide
+  const buildBridgeGuide = (
+    title: string,
+    summary: string,
+    accent: GuideAccent,
+    audience: string,
+    prerequisites: string[],
+    steps: IntegrationGuideStep[],
+    validations: string[],
+    troubleshooting: string[],
+    assets: Array<{ label: string; value: string }>,
+    visualNodes: Array<{ label: string; caption: string }>,
+  ) => buildGuide({
+    title,
+    summary,
+    audience,
+    estimatedTime: '20 a 40 minutos',
+    accent,
+    prerequisites,
+    steps,
+    validations,
+    troubleshooting,
+    assets,
+    visualTitle: 'Flujo visual de integración',
+    visualDescription: 'Resumen visual del orden recomendado para dejar el canal operativo de punta a punta.',
+    visualNodes,
+  })
+
+  if (key === 'web-form') {
+    return buildBridgeGuide(
+      'Integración detallada de Formulario Web',
+      'Publica el formulario del CRM como iframe o incrústalo sobre un formulario existente del cliente.',
+      'sky',
+      'Marketing, desarrollo web o implementador del sitio.',
+      ['Canal creado y activo en el studio.', 'Definir si se usará URL pública, iframe o snippet sobre un DOM existente.', 'Tener identificado el dominio final donde se publicará.'],
+      [
+        { title: '1. Ajusta el formulario en el CRM', detail: 'Configura textos, campos, CTA, términos y apariencia visual.', bullets: ['Verifica labels y placeholders comerciales.', 'Si el cliente no tiene frontend propio, prioriza iframe.', 'Si ya existe un formulario en la landing, deja listo el selector.'] },
+        { title: '2. Publica la versión embebible', detail: 'Copia la URL pública o el iframe listo para pegar.', bullets: [`URL pública: ${snippets?.webFormEmbedUrl || 'Disponible al seleccionar el canal.'}`, 'Usa iframe para CMS o builder visual.', 'Valida que el sitio no bloquee el embebido por CSP o dominio.'] },
+        { title: '3. Si el cliente ya tiene formulario, usa el snippet bridge', detail: 'Pega el snippet sobre el DOM existente y ajusta el selector.', bullets: ['Revisa que el selector exista realmente al cargar la página.', `Token de referencia: ${tokenLabel}`, 'Mapea nombre, correo, teléfono y mensaje con los names correctos.'] },
+        { title: '4. Ejecuta la prueba punta a punta', detail: 'Envía una captura real desde la página y revisa lead, actividad y fuente dentro del CRM.', bullets: ['Revisa el endpoint y el estado del canal.', 'Haz una prueba repetida para validar deduplicación.', 'Pasa a ACTIVE solo cuando cierre la prueba real.'] },
+      ],
+      ['El formulario abre correctamente.', 'La captura crea lead y actividad.', 'El sitio no bloquea el iframe ni el script.'],
+      ['Si el iframe no carga, revisa dominio permitido y políticas del sitio.', 'Si el snippet no captura, revisa selector y timing de carga.', 'Si no entra al CRM, recopia endpoint y token del canal.'],
+      [{ label: 'Endpoint', value: args.endpoint }, { label: 'URL pública', value: snippets?.webFormEmbedUrl || 'Disponible al seleccionar el canal.' }, { label: 'Iframe', value: snippets?.webFormIframe || 'Disponible en la pestaña Formulario.' }],
+      [{ label: 'CRM', caption: 'Configuras el formulario' }, { label: 'Asset web', caption: 'Copias URL, iframe o script' }, { label: 'Landing', caption: 'El prospecto envía sus datos' }, { label: 'Pipeline', caption: 'El lead queda trazado' }],
+    )
+  }
+
+  if (key === 'web-booking') {
+    return buildBridgeGuide(
+      'Integración detallada de Agenda Web',
+      'Publica una agenda tipo booking desde el CRM para que el usuario reserve una cita y la operación quede trazada.',
+      'sky',
+      'Implementador web, equipo comercial y responsable de agenda.',
+      ['Canal de Agenda Web configurado.', 'Definir si enviará confirmación por correo, WhatsApp o ambos.', 'Validar responsable y horario comercial.'],
+      [
+        { title: '1. Configura la agenda en el CRM', detail: 'Ajusta textos, servicio, estados y notificaciones de reserva.', bullets: ['Comprueba que la vista pública muestre la experiencia tipo booking.', 'Activa correo o WhatsApp según la operación.', 'Verifica el estado TESTING antes de publicar.'] },
+        { title: '2. Embebe la agenda en la web', detail: 'Inserta la URL pública o el iframe del canal en la página de agendamiento.', bullets: [`URL de agenda: ${snippets?.webFormEmbedUrl || 'Disponible al seleccionar el canal.'}`, 'Ideal para CTA de contacto o campañas.', 'Prueba la agenda en desktop y mobile.'] },
+        { title: '3. Ejecuta una reserva real', detail: 'Selecciona fecha y hora y revisa el resultado dentro del CRM.', bullets: ['Debe crearse lead y cita asociada.', 'Valida trazabilidad del canal.', 'Confirma que salga la notificación configurada.'] },
+        { title: '4. Operativiza la agenda', detail: 'Comparte el enlace final y deja listo el ownership operativo.', bullets: ['Revisa readiness antes de salir a producción.', 'Documenta la landing donde quedó publicada.', 'Haz una segunda prueba con el mismo contacto para revisar deduplicación.'] },
+      ],
+      ['La agenda carga correctamente.', 'La cita aparece en CRM con fecha y hora.', 'Las notificaciones configuradas sí se envían.'],
+      ['Si no ves el calendario, revisa el embed o el dominio.', 'Si la confirmación no sale, revisa las credenciales del canal.', 'Si se duplican citas, revisa el payload y los datos de contacto.'],
+      [{ label: 'Endpoint', value: args.endpoint }, { label: 'URL pública', value: snippets?.webFormEmbedUrl || 'Disponible al seleccionar el canal.' }, { label: 'Iframe agenda', value: snippets?.webFormIframe || 'Disponible en la pestaña Formulario.' }],
+      [{ label: 'Agenda CRM', caption: 'Canal y reglas listos' }, { label: 'Landing', caption: 'Usuario agenda fecha y hora' }, { label: 'CRM', caption: 'Se crea lead y cita' }, { label: 'Confirmación', caption: 'Correo o WhatsApp al usuario' }],
+    )
+  }
+
+  if (key === 'web-chatbot') {
+    return buildBridgeGuide(
+      'Integración detallada de Chatbot Web',
+      'Inserta el chatbot del CRM por iframe o widget flotante y convierte conversaciones en leads e inbox operativo.',
+      'emerald',
+      'Webmaster, marketing y equipo de ventas.',
+      ['Configurar título, prompt, asistente y launcher.', 'Definir dominios permitidos.', 'Tener lista la URL o iframe que se publicará.'],
+      [
+        { title: '1. Ajusta el constructor del bot', detail: 'Configura marca, flujo, quick actions, handoff y launcher.', bullets: ['Valida el canvas si usarás ramas guiadas.', 'Ajusta colores y copy visibles.', 'Decide si el widget flotante quedará activo.'] },
+        { title: '2. Publica por iframe o widget', detail: 'Elige si el cliente usará un bloque fijo o un launcher flotante.', bullets: [`URL pública: ${snippets?.chatbotEmbedUrl || 'Disponible al seleccionar el canal.'}`, 'Iframe para bloque fijo.', 'Widget flotante si prefieren activación discreta.'] },
+        { title: '3. Ejecuta pruebas de conversación', detail: 'Abre la demo, conversa y revisa el inbox CRM.', bullets: ['Prueba quick actions y escalamiento.', 'Valida captura de lead si el flujo pide datos.', 'Revisa el inbox en paralelo.'] },
+        { title: '4. Activa monitoreo y go-live', detail: 'Documenta dominios, owner y canal de seguimiento.', bullets: ['Prueba mobile y desktop.', 'Revisa que el launcher no tape elementos críticos.', 'Pasa a ACTIVE tras una prueba funcional real.'] },
+      ],
+      ['El iframe abre con el layout esperado.', 'Las conversaciones llegan al inbox.', 'El widget no rompe la experiencia del sitio.'],
+      ['Si no aparece el widget, revisa floatingLauncherEnabled.', 'Si no entra al inbox, recopia endpoint y token.', 'Si responde mal, revisa el flujo y quick actions configuradas.'],
+      [{ label: 'URL pública', value: snippets?.chatbotEmbedUrl || 'Disponible al seleccionar el canal.' }, { label: 'Iframe', value: snippets?.chatbotIframe || 'Disponible en la pestaña Chatbot.' }, { label: 'Widget', value: snippets?.chatbot || 'Disponible en la pestaña Chatbot.' }],
+      [{ label: 'Constructor', caption: 'Marca y flujo del bot' }, { label: 'Sitio web', caption: 'Iframe o widget publicado' }, { label: 'Inbox CRM', caption: 'Conversación centralizada' }, { label: 'Ventas', caption: 'Handoff y seguimiento' }],
+    )
+  }
+
+  if (key === 'whatsapp-cloud' || key === 'facebook-page' || key === 'instagram-dm') {
+    const platform = key === 'whatsapp-cloud' ? 'WhatsApp Cloud' : key === 'facebook-page' ? 'Facebook / Messenger' : 'Instagram DM'
+    const accent = key === 'whatsapp-cloud' ? 'emerald' : key === 'instagram-dm' ? 'fuchsia' : 'blue'
+    const activeLabel = key === 'whatsapp-cloud' ? 'número activo' : key === 'facebook-page' ? 'página activa' : 'cuenta activa'
+    return buildBridgeGuide(
+      `Integración detallada de ${platform}`,
+      `Conecta ${platform} al CRM mediante OAuth de Meta y verifica el webhook nativo del canal.`,
+      accent,
+      'Administrador técnico y responsable del activo en Meta.',
+      ['Acceso al Business Manager o activo correspondiente.', 'Abrir la conexión oficial desde el canal.', 'Definir exactamente qué activo quedará operativo.'],
+      [
+        { title: '1. Inicia OAuth desde el canal', detail: 'Conecta Meta usando la cuenta que sí administra el activo correcto.', bullets: ['Hazlo desde este canal específico.', 'Si el activo no aparece, revisa permisos del usuario en Meta.', 'Evita mover la operación sin reconectar el canal.'] },
+        { title: '2. Aplica el activo correcto', detail: `Selecciona y guarda el ${activeLabel} que operará en el CRM.`, bullets: ['Valida que el campo activo quede lleno.', 'No cierres el proceso hasta ver el activo aplicado.', 'Revisa el checklist de onboarding del panel.'] },
+        { title: '3. Verifica el webhook', detail: 'Meta debe apuntar al endpoint del canal y validar el token correctamente.', bullets: [`Webhook del canal: ${args.endpoint}`, `Token de verificación: ${tokenLabel}`, 'Luego ejecuta una prueba real desde el canal social.'] },
+        { title: '4. Valida la operación en inbox', detail: 'Envía un mensaje o DM y confirma que aparece en el inbox del CRM.', bullets: ['Revisa último webhook y errores recientes.', 'Confirma que el activo aplicado es el mismo de la prueba.', 'Pasa a ACTIVE solo cuando cierre la validación real.'] },
+      ],
+      ['El activo quedó aplicado.', 'Meta verifica el webhook.', 'La prueba entra al inbox correcto.'],
+      ['Si el activo no aparece, revisa permisos o reconecta Meta.', 'Si falla la verificación, recopia endpoint y token.', 'Si la conversación cae en otro canal, revisa el activo realmente aplicado.'],
+      [{ label: 'Webhook', value: args.endpoint }, { label: 'Token de verificación', value: tokenLabel }],
+      [{ label: 'OAuth Meta', caption: 'Autorizas cuenta y activos' }, { label: 'Activo', caption: `Eliges ${activeLabel}` }, { label: 'Webhook', caption: 'Meta verifica y envía eventos' }, { label: 'Inbox CRM', caption: 'Conversaciones listas para operar' }],
+    )
+  }
+
+  if (key === 'gmail-bridge' || key === 'outlook-bridge') {
+    const isGmail = key === 'gmail-bridge'
+    return buildBridgeGuide(
+      `Integración detallada de ${isGmail ? 'Gmail Inbox Bridge' : 'Outlook Inbox Bridge'}`,
+      isGmail ? 'Usa Apps Script para empujar correos de Gmail al inbox omnicanal.' : 'Configura Power Automate para enviar correos de Outlook al bridge CRM.',
+      isGmail ? 'amber' : 'blue',
+      isGmail ? 'Implementador Google Workspace u operaciones.' : 'Administrador Microsoft 365 u operaciones.',
+      [isGmail ? 'Acceso a script.google.com.' : 'Acceso a Power Automate.', 'Canal bridge creado en el CRM.', 'Definir qué correos sí deben entrar al CRM.'],
+      [
+        { title: '1. Crea la automatización del correo', detail: isGmail ? 'Abre Apps Script, crea un proyecto y pega el script base del canal.' : 'Crea un flujo en Power Automate con trigger de correo entrante y acción HTTP.', bullets: [isGmail ? 'Nombra el proyecto claramente.' : 'Filtra por carpeta, categoría o remitente.', `Endpoint del bridge: ${args.endpoint}`, isGmail ? 'No edites token ni endpoint hasta validar.' : 'Mantén el flujo acotado a prospectos reales.'] },
+        { title: '2. Ajusta filtro y payload', detail: 'Define qué correos se enviarán y confirma la estructura del payload.', bullets: [isGmail ? 'Usa etiquetas o reglas de Gmail.' : 'Usa el body de referencia del canal.', `Snippet de referencia: ${isGmail ? snippets?.gmail || 'Disponible en Bridges.' : snippets?.outlook || 'Disponible en Bridges.'}`, `Token de referencia: ${tokenLabel}`] },
+        { title: '3. Ejecuta una prueba controlada', detail: 'Dispara un correo real y revisa el resultado en el CRM.', bullets: ['Confirma remitente, asunto y cuerpo en el inbox.', 'Revisa que el endpoint responda correctamente.', 'Ajusta el filtro si entra demasiado ruido.'] },
+        { title: '4. Formaliza el ownership', detail: 'Documenta quién mantiene el script o flujo y qué regla dispara la automatización.', bullets: ['Evita duplicar automatizaciones sobre la misma bandeja.', 'Monitorea errores los primeros días.', 'Activa producción cuando la trazabilidad sea consistente.'] },
+      ],
+      ['La automatización corre sin error.', 'El correo aparece en el inbox CRM.', 'El filtro solo procesa correos comerciales.'],
+      ['Si falla la automatización, revisa permisos y autenticación.', 'Si el payload no entra, recopia endpoint y cuerpo base.', 'Si duplica hilos, revisa trigger, etiqueta o regla.'],
+      [{ label: 'Endpoint bridge', value: args.endpoint }, { label: isGmail ? 'Apps Script' : 'Body Power Automate', value: isGmail ? snippets?.gmail || 'Disponible en Bridges.' : snippets?.outlook || 'Disponible en Bridges.' }],
+      [{ label: isGmail ? 'Gmail' : 'Outlook', caption: 'Correo llega a la bandeja' }, { label: isGmail ? 'Apps Script' : 'Power Automate', caption: 'Filtra y arma el payload' }, { label: 'Bridge CRM', caption: 'Recibe y normaliza el correo' }, { label: 'Inbox', caption: 'Seguimiento comercial centralizado' }],
+    )
+  }
+
+  if (key === 'google-sheets-bridge') {
+    return buildBridgeGuide(
+      'Integración detallada de Google Sheets Bridge',
+      'Usa una hoja como entrada o salida comercial del CRM mediante preview, import y export CSV.',
+      'emerald',
+      'Backoffice comercial, analista o integrador ligero.',
+      ['Hoja publicada o Spreadsheet ID configurado.', 'Columnas mínimas definidas.', 'Canal creado con sheetName o CSV URL.'],
+      [
+        { title: '1. Configura el origen', detail: 'Define CSV publicado o Spreadsheet ID + pestaña dentro del canal.', bullets: ['Usa una estructura estable de columnas.', 'La hoja debe ser accesible para el proceso.', 'Confirma el origen antes de importar masivamente.'] },
+        { title: '2. Lanza un preview', detail: 'Usa el preview para revisar headers y filas detectadas.', bullets: [`Preview: ${snippets?.googleSheetsPreview || 'Disponible en Bridges.'}`, 'Corrige columnas antes de importar.', 'Valida que la hoja correcta sí sea la que responde.'] },
+        { title: '3. Ejecuta la importación', detail: 'Cuando el preview esté correcto, dispara el import desde el canal.', bullets: [`Import: ${snippets?.googleSheetsImport || 'Disponible en Bridges.'}`, 'Revisa procesadas, importadas y omitidas.', 'Si aplica, valida oportunidades creadas.'] },
+        { title: '4. Usa el export operativamente', detail: 'Comparte el CSV de salida cuando el equipo necesite consumo fuera del CRM.', bullets: [`Export: ${snippets?.googleSheetsExport || 'Disponible en Bridges.'}`, 'Útil para checklist o consolidado manual.', 'No reemplaza al CRM como fuente principal.'] },
+      ],
+      ['Preview detecta headers correctos.', 'Importa las filas esperadas.', 'Export genera un CSV consumible.'],
+      ['Si no lee la hoja, revisa publicación CSV o Spreadsheet ID.', 'Si omite filas, revisa columnas obligatorias.', 'Si el export falla, revisa el estado y configuración del canal.'],
+      [{ label: 'Preview', value: snippets?.googleSheetsPreview || 'Disponible en Bridges.' }, { label: 'Import', value: snippets?.googleSheetsImport || 'Disponible en Bridges.' }, { label: 'Export', value: snippets?.googleSheetsExport || 'Disponible en Bridges.' }],
+      [{ label: 'Hoja', caption: 'Origen comercial o ferial' }, { label: 'Preview', caption: 'Valida headers y filas' }, { label: 'Import CRM', caption: 'Crea leads u oportunidades' }, { label: 'Export', caption: 'Devuelve salida operativa' }],
+    )
+  }
+
+  if (key === 'google-calendar-bridge' || key === 'microsoft-365-calendar-bridge') {
+    const calendarName = key === 'google-calendar-bridge' ? 'Google Calendar' : 'Microsoft 365 Calendar'
+    return buildBridgeGuide(
+      `Integración detallada de ${calendarName} Bridge`,
+      `Sincroniza tareas o citas del CRM hacia ${calendarName} usando un receptor de webhook saliente.`,
+      'blue',
+      'Integrador de automatización o backend ligero.',
+      ['Canal bridge creado.', 'Webhook receptor o flujo externo listo.', `Cuenta o calendario de ${calendarName} identificado.`],
+      [
+        { title: '1. Define el receptor externo', detail: 'Este canal emite un payload saliente; el receptor debe consumirlo y crear el evento real.', bullets: ['Puedes usar Make, n8n, Power Automate o una función propia.', 'Guarda la URL en outgoingWebhookUrl.', `Ese receptor será quien autentique contra ${calendarName}.`] },
+        { title: '2. Mapea el payload a evento', detail: 'Convierte la tarea CRM a la estructura del calendario final.', bullets: ['Conserva el id CRM como referencia.', 'Define duración, timezone y calendario destino.', 'Prueba primero con una cita interna.'] },
+        { title: '3. Dispara una tarea de prueba', detail: 'Crea o agenda una tarea desde el CRM y revisa el resultado en el calendario.', bullets: ['Revisa logs del flujo externo.', `Confirma que ${calendarName} reciba título y horario correctos.`, 'Si la tarea cambia, vuelve a probar la sincronización.'] },
+        { title: '4. Documenta ownership', detail: 'Deja claro quién mantiene el receptor externo y cómo se recupera si falla.', bullets: ['No dejes el bridge sin owner técnico.', 'Monitorea expiración de credenciales.', 'Define fallback operativo para reprogramaciones o fallos.'] },
+      ],
+      ['El webhook saliente se dispara.', `El receptor crea el evento en ${calendarName}.`, 'La fecha y hora final coinciden con CRM.'],
+      ['Si no sale el webhook, revisa outgoingWebhookUrl.', `Si ${calendarName} no crea el evento, revisa la automatización externa.`, 'Si la hora se mueve, revisa timezone en ambos lados.'],
+      [{ label: 'Punto clave', value: 'Configura outgoingWebhookUrl y mantenlo con un receptor externo activo.' }],
+      [{ label: 'CRM', caption: 'Se crea tarea o cita' }, { label: 'Webhook', caption: 'Sale el payload del canal' }, { label: 'Automatización', caption: 'Transforma y autentica' }, { label: calendarName, caption: 'Evento publicado' }],
+    )
+  }
+
+  if (key === 'slack-bridge' || key === 'teams-bridge') {
+    const platform = key === 'slack-bridge' ? 'Slack' : 'Microsoft Teams'
+    return buildBridgeGuide(
+      `Integración detallada de ${platform} Alerts Bridge`,
+      `Envía alertas internas del CRM a ${platform} mediante un webhook saliente configurado en el canal.`,
+      'slate',
+      'Operaciones internas, RevOps o administrador corporativo.',
+      [`Webhook o flujo de ${platform} disponible.`, 'Canal bridge creado en el CRM.', 'Definir qué canal interno recibirá las alertas.'],
+      [
+        { title: '1. Prepara el destino interno', detail: `Crea el webhook o flujo que recibirá las alertas en ${platform}.`, bullets: [`Usa un canal útil para coordinación comercial.`, 'Evita destinos demasiado ruidosos.', 'Conserva la URL como secreto operativo.'] },
+        { title: '2. Configura outgoingWebhookUrl', detail: 'Guarda la URL destino dentro del canal CRM.', bullets: ['Mantén el canal en TESTING al inicio.', 'No reutilices una URL sin saber a qué equipo publica.', 'Documenta la dependencia externa.'] },
+        { title: '3. Ejecuta una alerta de prueba', detail: 'Provoca el evento comercial y revisa el mensaje publicado.', bullets: ['Puede ser una asignación, captura o alerta interna.', 'Valida claridad, formato y destinatario.', 'Ajusta el flujo si el mensaje no se entiende.'] },
+        { title: '4. Formaliza la operación', detail: 'Deja claro qué eventos llegan, quién mantiene el bridge y cuál es el fallback.', bullets: ['Pasa a ACTIVE cuando cierre la prueba.', 'Define prioridad de alertas para no saturar al equipo.', 'Monitorea errores al inicio de operación.'] },
+      ],
+      [`${platform} recibe el mensaje esperado.`, 'El receptor responde correctamente.', 'El equipo confirma que el canal interno es el correcto.'],
+      ['Si no llega nada, revisa outgoingWebhookUrl.', 'Si el formato es malo, adapta el flujo externo.', 'Si no sabes qué equipo lo recibe, documenta el destino antes de activar.'],
+      [{ label: 'Dato clave', value: `Configura outgoingWebhookUrl con el receptor de ${platform}.` }],
+      [{ label: 'Evento CRM', caption: 'Cambio operativo o alerta' }, { label: 'Bridge', caption: 'Tiene outgoingWebhookUrl' }, { label: platform, caption: 'Recibe el POST o flujo' }, { label: 'Equipo', caption: 'Ve la notificación' }],
+    )
+  }
+
+  if (key === 'meta-lead-ads-bridge' || key === 'external-form-bridge' || key === 'tiktok-bridge' || key === 'youtube-bridge') {
+    const origin = key === 'meta-lead-ads-bridge' ? 'Meta Lead Ads' : key === 'external-form-bridge' ? 'Formulario Externo' : key === 'tiktok-bridge' ? 'TikTok' : 'YouTube'
+    return buildBridgeGuide(
+      `Integración detallada de ${origin} Bridge`,
+      `Conecta ${origin} al CRM mediante bridge HTTP o automatización intermedia sin abrir otro módulo comercial paralelo.`,
+      key === 'meta-lead-ads-bridge' ? 'blue' : 'sky',
+      'Marketing, automatización o desarrollo web.',
+      ['Definir origen exacto del lead o formulario.', 'Tener middleware, flujo o frontend capaz de hacer POST HTTP.', 'Canal bridge creado en el CRM.'],
+      [
+        { title: '1. Define la fuente de captura', detail: 'Aclara si el payload saldrá desde frontend, backend, middleware o una automatización externa.', bullets: ['Evita tener dos rutas activas para el mismo origen.', 'Mantén un owner claro del bridge.', `Endpoint operativo: ${args.endpoint}`] },
+        { title: '2. Mapea el payload al CRM', detail: 'Envía nombre, email, teléfono y contexto comercial del origen.', bullets: ['Incluye campaña, formulario o asset si está disponible.', key === 'meta-lead-ads-bridge' ? 'Si tienes leadgen_id, no lo pierdas en el flujo.' : 'Usa metadata para campos propios del origen.', 'Mantén consistencia en los nombres de campo.'] },
+        { title: '3. Ejecuta una prueba real o simulada', detail: 'Lanza un POST controlado y revisa la captura dentro del CRM.', bullets: ['Valida lead, actividad y fuente.', 'Revisa deduplicación sobre contactos existentes.', 'Confirma owner y tarea inicial si aplica.'] },
+        { title: '4. Documenta y opera', detail: 'Deja documentado el contrato del payload y el owner técnico del origen.', bullets: ['Guarda un payload ejemplo que funcione.', 'Monitorea errores del canal al salir a producción.', 'Separa canales si dos fuentes distintas requieren trazabilidad propia.'] },
+      ],
+      ['El lead entra con contexto del origen.', 'La deduplicación funciona.', 'El equipo puede identificar de dónde vino la captura.'],
+      ['Si no entra, revisa la automatización o middleware.', 'Si falta contexto, amplía metadata.', 'Si duplica, evita múltiples rutas activas sobre el mismo origen.'],
+      [{ label: 'Endpoint bridge', value: args.endpoint }, { label: 'Referencia payload', value: snippets?.webForm || 'Usa el contrato base del canal.' }],
+      [{ label: origin, caption: 'Fuente original de la captura' }, { label: 'Middleware', caption: 'Transforma o envía el payload' }, { label: 'Bridge CRM', caption: 'Ingesta y deduplicación' }, { label: 'Pipeline', caption: 'Seguimiento comercial' }],
+    )
+  }
+
+  return buildBridgeGuide(
+    'Integración detallada del canal',
+    'Selecciona un canal para ver el paso a paso detallado de implementación.',
+    'sky',
+    'Implementador del canal.',
+    ['Canal seleccionado.'],
+    [{ title: '1. Selecciona el canal', detail: 'El panel mostrará la guía apropiada según el tipo de integración.', bullets: ['El contenido cambia por canal, provider y bridgeKind.'] }],
+    ['Canal identificado.'],
+    ['Selecciona un canal a la izquierda.'],
+    [],
+    [{ label: 'Canal', caption: 'Selecciona una integración' }, { label: 'Guía', caption: 'Se cargan pasos y assets' }, { label: 'Validación', caption: 'Se ejecuta QA' }, { label: 'Producción', caption: 'Canal listo para operar' }],
+  )
+}
 
 const MANAGED_CHANNEL_SETTING_KEYS = new Set([
   'testingToken',
@@ -425,6 +903,9 @@ const MANAGED_CHANNEL_SETTING_KEYS = new Set([
   'googleSheetsRowLimit',
   'googleSheetsImportMode',
   'googleSheetsOpportunityStage',
+  'bookingNotifyByEmail',
+  'bookingNotifyByWhatsApp',
+  'outgoingWebhookUrl',
   'whatsappAccessToken',
   'whatsappApiVersion',
   'formSelector',
@@ -501,6 +982,10 @@ function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResponse<T
   return fetch(url, init).then((res) => res.json().catch(() => ({}))) as Promise<JsonResponse<T>>
 }
 
+function isOutgoingWebhookBridge(bridgeKind: string) {
+  return bridgeKind === 'SLACK' || bridgeKind === 'TEAMS' || bridgeKind === 'GOOGLE_CALENDAR' || bridgeKind === 'MICROSOFT_365_CALENDAR'
+}
+
 function formatDate(value: string | null | undefined) {
   if (!value) return '—'
   try {
@@ -536,17 +1021,46 @@ function getProviderChartColor(provider: CrmChannelProvider) {
   }
 }
 
-function getTemplatePresetIcon(preset: TemplatePreset): LucideIcon {
-  if (preset.provider === 'WHATSAPP_CLOUD' || preset.provider === 'WHATSAPP_SANDBOX') return MessageCircle
+function getTemplatePresetLogo(preset: TemplatePreset): ComponentType<{ className?: string }> {
+  if (preset.bridgeKind === 'GMAIL') return GmailLogo
+  if (preset.bridgeKind === 'OUTLOOK') return OutlookLogo
+  if (preset.bridgeKind === 'GOOGLE_SHEETS') return GoogleSheetsLogo
+  if (preset.bridgeKind === 'GOOGLE_CALENDAR') return GoogleCalendarLogo
+  if (preset.bridgeKind === 'MICROSOFT_365_CALENDAR') return MicrosoftLogo
+  if (preset.bridgeKind === 'SLACK') return SlackLogo
+  if (preset.bridgeKind === 'TEAMS') return TeamsLogo
+  if (preset.bridgeKind === 'META_LEAD_ADS') return MetaLogo
+  if (preset.bridgeKind === 'TIKTOK') return TikTokLogo
+  if (preset.bridgeKind === 'YOUTUBE') return YouTubeLogo
+  if (preset.provider === 'WHATSAPP_CLOUD' || preset.provider === 'WHATSAPP_SANDBOX') return WhatsAppLogo
   if (preset.provider === 'INSTAGRAM_DM') return Instagram
   if (preset.provider === 'FACEBOOK_PAGE' || preset.provider === 'MESSENGER') return Facebook
   if (preset.provider === 'WEB_CHATBOT') return Bot
-  if (preset.bridgeKind === 'GOOGLE_SHEETS') return BarChart3
-  if (preset.bridgeKind === 'GMAIL' || preset.bridgeKind === 'OUTLOOK') return Mail
+  if (preset.bridgeKind === 'BOOKING') return Target
   return Globe
 }
 
 function getTemplatePresetSurface(preset: TemplatePreset) {
+  if (preset.bridgeKind === 'BOOKING') {
+    return {
+      card: 'border-sky-200 bg-[linear-gradient(180deg,rgba(240,249,255,0.92),rgba(255,255,255,0.98))]',
+      selected: 'border-sky-300 bg-sky-50/90 ring-2 ring-sky-200',
+      iconWrap: 'border-sky-200 bg-sky-100 text-sky-700',
+      pill: 'bg-sky-100 text-sky-700',
+      accent: 'text-sky-800',
+    }
+  }
+
+  if (preset.bridgeKind === 'SLACK' || preset.bridgeKind === 'TEAMS') {
+    return {
+      card: 'border-slate-200 bg-[linear-gradient(180deg,rgba(248,250,252,0.96),rgba(255,255,255,0.98))]',
+      selected: 'border-slate-300 bg-slate-50/90 ring-2 ring-slate-200',
+      iconWrap: 'border-slate-200 bg-slate-100 text-slate-700',
+      pill: 'bg-slate-100 text-slate-700',
+      accent: 'text-slate-800',
+    }
+  }
+
   if (preset.provider === 'WHATSAPP_CLOUD' || preset.provider === 'WHATSAPP_SANDBOX') {
     return {
       card: 'border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,0.92),rgba(255,255,255,0.98))]',
@@ -669,6 +1183,18 @@ function getGoogleSheetsImportMode(settingsJson: Record<string, unknown> | null 
 
 function getGoogleSheetsOpportunityStage(settingsJson: Record<string, unknown> | null | undefined) {
   return typeof settingsJson?.googleSheetsOpportunityStage === 'string' && settingsJson.googleSheetsOpportunityStage.trim() ? settingsJson.googleSheetsOpportunityStage : 'QUALIFIED'
+}
+
+function getBookingNotifyByEmail(settingsJson: Record<string, unknown> | null | undefined) {
+  return getBooleanSetting(settingsJson, 'bookingNotifyByEmail', true)
+}
+
+function getBookingNotifyByWhatsApp(settingsJson: Record<string, unknown> | null | undefined) {
+  return getBooleanSetting(settingsJson, 'bookingNotifyByWhatsApp', true)
+}
+
+function getOutgoingWebhookUrl(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.outgoingWebhookUrl === 'string' ? settingsJson.outgoingWebhookUrl : ''
 }
 
 function getWhatsAppAccessToken(settingsJson: Record<string, unknown> | null | undefined) {
@@ -1061,7 +1587,9 @@ function getEndpoint(baseUrl: string, channel: ChannelConnection | null) {
   if (channel.provider === 'WEB_FORM') {
     const settings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
     const bridgeKind = getBridgeKind(settings)
+    if (isOutgoingWebhookBridge(bridgeKind)) return getOutgoingWebhookUrl(settings)
     if (bridgeKind === 'GOOGLE_SHEETS') return `${baseUrl}/api/crm/channels/${channel.id}/google-sheets/import`
+    if (bridgeKind === 'BOOKING') return `${baseUrl}/api/crm/captures/booking`
     return bridgeKind && bridgeKind !== 'GENERIC' ? `${baseUrl}/api/crm/captures/bridge` : `${baseUrl}/api/crm/captures/web-form`
   }
   if (channel.provider === 'WEB_CHATBOT') return `${baseUrl}/api/crm/captures/chatbot`
@@ -1071,16 +1599,27 @@ function getEndpoint(baseUrl: string, channel: ChannelConnection | null) {
 
 function channelTone(provider: CrmChannelProvider, bridgeKind: string) {
   if (provider === 'WEB_CHATBOT') return 'border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,.92),rgba(255,255,255,.98))]'
+  if (provider === 'WEB_FORM' && bridgeKind === 'BOOKING') return 'border-sky-200 bg-[linear-gradient(180deg,rgba(224,242,254,.95),rgba(255,255,255,.98))]'
   if (provider === 'WEB_FORM' && bridgeKind === 'GOOGLE_SHEETS') return 'border-emerald-200 bg-[linear-gradient(180deg,rgba(236,253,245,.95),rgba(255,255,255,.98))]'
+  if (provider === 'WEB_FORM' && (bridgeKind === 'GOOGLE_CALENDAR' || bridgeKind === 'MICROSOFT_365_CALENDAR')) return 'border-cyan-200 bg-[linear-gradient(180deg,rgba(236,254,255,.95),rgba(255,255,255,.98))]'
+  if (provider === 'WEB_FORM' && (bridgeKind === 'META_LEAD_ADS' || bridgeKind === 'EXTERNAL_FORM')) return 'border-fuchsia-200 bg-[linear-gradient(180deg,rgba(253,244,255,.95),rgba(255,255,255,.98))]'
   if (provider === 'WEB_FORM' && (bridgeKind === 'GMAIL' || bridgeKind === 'OUTLOOK')) return 'border-amber-200 bg-[linear-gradient(180deg,rgba(255,251,235,.95),rgba(255,255,255,.98))]'
+  if (provider === 'WEB_FORM' && (bridgeKind === 'SLACK' || bridgeKind === 'TEAMS')) return 'border-slate-200 bg-[linear-gradient(180deg,rgba(248,250,252,.96),rgba(255,255,255,.98))]'
   if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') return 'border-emerald-200 bg-[linear-gradient(180deg,rgba(220,252,231,.95),rgba(255,255,255,.98))]'
   return 'border-sky-200 bg-[linear-gradient(180deg,rgba(240,249,255,.96),rgba(255,255,255,.98))]'
 }
 
 function providerSummary(provider: CrmChannelProvider, bridgeKind: CrmBridgeKind) {
   if (provider === 'WEB_CHATBOT') return 'Canal conversacional embebible por iframe con captura en tiempo real.'
+  if (provider === 'WEB_FORM' && bridgeKind === 'BOOKING') return 'Agenda embebible por iframe que crea cita, tarea CRM y dispara confirmaciones automáticas.'
   if (provider === 'WEB_FORM' && bridgeKind === 'GENERIC') return 'Canal de captura vía formularios y landings con tracking comercial.'
   if (provider === 'WEB_FORM' && bridgeKind === 'GOOGLE_SHEETS') return 'Bridge manual para importar y exportar leads desde hojas comerciales ya operativas.'
+  if (provider === 'WEB_FORM' && bridgeKind === 'GOOGLE_CALENDAR') return 'Bridge saliente que publica tareas y citas del CRM hacia Google Calendar.'
+  if (provider === 'WEB_FORM' && bridgeKind === 'MICROSOFT_365_CALENDAR') return 'Bridge saliente que sincroniza tareas y citas del CRM hacia Microsoft 365 Calendar.'
+  if (provider === 'WEB_FORM' && bridgeKind === 'SLACK') return 'Bridge saliente para avisar eventos CRM a canales internos de Slack.'
+  if (provider === 'WEB_FORM' && bridgeKind === 'TEAMS') return 'Bridge saliente para publicar eventos CRM en Microsoft Teams.'
+  if (provider === 'WEB_FORM' && bridgeKind === 'META_LEAD_ADS') return 'Bridge inbound para campañas de Meta Lead Ads sin depender de una integración nativa cerrada.'
+  if (provider === 'WEB_FORM' && bridgeKind === 'EXTERNAL_FORM') return 'Bridge inbound para formularios externos, landings third-party y capturas server-to-server.'
   if (provider === 'WEB_FORM') return 'Bridge operativo para automatizaciones externas y fuentes no nativas.'
   return 'Canal omnicanal basado en webhook para inbox y mensajería inbound.'
 }
@@ -1252,7 +1791,7 @@ function getChannelReadiness(channel: ChannelConnection, baseUrl: string) {
   const token = getTokenFromSettings(settings)
   const bridgeKind = getBridgeKind(settings)
   const isChatbot = channel.provider === 'WEB_CHATBOT'
-  const isPublicWebForm = channel.provider === 'WEB_FORM' && bridgeKind === 'GENERIC'
+  const isPublicWebForm = channel.provider === 'WEB_FORM' && (bridgeKind === 'GENERIC' || bridgeKind === 'BOOKING')
   const isWebhook = channel.provider !== 'WEB_FORM' && channel.provider !== 'WEB_CHATBOT'
   const isMeta = usesMetaProvider(channel.provider)
   const publicEmbed = getPublicEmbedEnabled(settings)
@@ -1262,6 +1801,7 @@ function getChannelReadiness(channel: ChannelConnection, baseUrl: string) {
   const hasWhatsAppCredentials = channel.provider !== 'WHATSAPP_CLOUD' && channel.provider !== 'WHATSAPP_SANDBOX'
     ? true
     : Boolean(getWhatsAppAccessToken(settings))
+  const hasOutgoingWebhook = !isOutgoingWebhookBridge(bridgeKind) || Boolean(getOutgoingWebhookUrl(settings))
 
   const configured: ReadinessItem[] = [
     { label: 'Base configurada', done: Boolean(channel.name && channel.provider), hint: 'Nombre y proveedor definidos.' },
@@ -1271,13 +1811,14 @@ function getChannelReadiness(channel: ChannelConnection, baseUrl: string) {
 
   const demo: ReadinessItem[] = [
     { label: 'Listo para demo', done: channel.status === 'TESTING' || channel.status === 'ACTIVE', hint: 'El canal debe estar en TESTING o ACTIVE.' },
-    { label: 'Preview comercial', done: isChatbot ? Boolean(buildChatbotEmbedUrl(baseUrl, channel.id)) : isPublicWebForm ? Boolean(buildWebFormEmbedUrl(baseUrl, channel.id)) : true, hint: 'Debe existir forma visible de mostrar la integración.' },
+    { label: 'Preview comercial', done: isChatbot ? Boolean(buildChatbotEmbedUrl(baseUrl, channel.id)) : isPublicWebForm ? Boolean(bridgeKind === 'BOOKING' ? buildBookingEmbedUrl(baseUrl, channel.id) : buildWebFormEmbedUrl(baseUrl, channel.id)) : true, hint: 'Debe existir forma visible de mostrar la integración.' },
     { label: 'Fuente de demo', done: !isWebhook || hasExternalId || bridgeKind !== 'GENERIC', hint: 'Webhook o IDs externos mínimos para una demo guiada.' },
   ]
 
   const production: ReadinessItem[] = [
     { label: 'Estado productivo', done: channel.status === 'ACTIVE', hint: 'Para producción el canal debe estar activo.' },
     { label: 'Dominio endurecido', done: (!isChatbot && !isPublicWebForm) || !publicEmbed || Boolean(allowedDomains.trim()), hint: 'Los embeds públicos deberían restringirse por dominios.' },
+    { label: 'Webhook saliente configurado', done: hasOutgoingWebhook, hint: 'Slack, Teams y calendarios requieren un destino HTTP configurado.' },
     { label: 'Conexión Meta', done: hasMetaConnection, hint: 'WhatsApp, Messenger e Instagram deben quedar enlazados por OAuth real.' },
     { label: 'Identificadores externos', done: !isWebhook || hasExternalId, hint: 'Meta o proveedor externo debe quedar identificado.' },
     { label: 'Credenciales proveedor', done: hasWhatsAppCredentials, hint: 'WhatsApp Cloud requiere access token para enviar desde el inbox.' },
@@ -1636,8 +2177,8 @@ export function CrmIntegrationsClient() {
   const selectedChannel = useMemo(() => channels.find((item) => item.id === selectedChannelId) ?? null, [channels, selectedChannelId])
   const createPreset = useMemo(() => TEMPLATE_PRESETS.find((item) => item.key === createForm.templateKey) ?? TEMPLATE_PRESETS[0], [createForm.templateKey])
   const createIsChatbot = createForm.provider === 'WEB_CHATBOT'
-  const createIsBridge = createForm.provider === 'WEB_FORM' && createForm.bridgeKind !== 'GENERIC'
-  const createIsPublicWebForm = createForm.provider === 'WEB_FORM' && createForm.bridgeKind === 'GENERIC'
+  const createIsPublicWebForm = createForm.provider === 'WEB_FORM' && (createForm.bridgeKind === 'GENERIC' || createForm.bridgeKind === 'BOOKING')
+  const createIsBridge = createForm.provider === 'WEB_FORM' && !createIsPublicWebForm
   const createUsesWebhook = createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' || createForm.provider === 'FACEBOOK_PAGE' || createForm.provider === 'MESSENGER' || createForm.provider === 'INSTAGRAM_DM'
   const wizardLauncherMetrics = useMemo(() => getLauncherPreviewMetrics(createForm.launcherSize), [createForm.launcherSize])
   const derivedChatbotCustomCss = useMemo(() => buildFriendlyChatbotCustomCss({ chatShellRadius: createForm.chatShellRadius, messageBubbleRadius: createForm.messageBubbleRadius, panelShadowPreset: createForm.panelShadowPreset }), [createForm.chatShellRadius, createForm.messageBubbleRadius, createForm.panelShadowPreset])
@@ -1786,7 +2327,9 @@ export function CrmIntegrationsClient() {
   const selectedBridgeKind = getBridgeKind(selectedSettings)
   const selectedGoogleSheetsCsvUrl = getGoogleSheetsCsvUrl(selectedSettings)
   const selectedChatbotEmbedUrl = selectedChannel?.provider === 'WEB_CHATBOT' ? buildChatbotEmbedUrl(baseUrl, selectedChannel.id) : ''
-  const selectedWebFormEmbedUrl = selectedChannel?.provider === 'WEB_FORM' && selectedBridgeKind === 'GENERIC' ? buildWebFormEmbedUrl(baseUrl, selectedChannel.id) : ''
+  const selectedWebFormEmbedUrl = selectedChannel?.provider === 'WEB_FORM' && (selectedBridgeKind === 'GENERIC' || selectedBridgeKind === 'BOOKING')
+    ? (selectedBridgeKind === 'BOOKING' ? buildBookingEmbedUrl(baseUrl, selectedChannel.id) : buildWebFormEmbedUrl(baseUrl, selectedChannel.id))
+    : ''
   const selectedChatbotTitle = getChatbotTitle(selectedSettings)
   const selectedChatbotPrompt = getChatbotPrompt(selectedSettings)
   const selectedChatbotAssistant = getAssistantName(selectedSettings)
@@ -1831,7 +2374,7 @@ export function CrmIntegrationsClient() {
     </div>
   ) : null
   const selectedIsChatbot = selectedChannel?.provider === 'WEB_CHATBOT'
-  const selectedIsPublicWebForm = selectedChannel?.provider === 'WEB_FORM' && selectedBridgeKind === 'GENERIC'
+  const selectedIsPublicWebForm = selectedChannel?.provider === 'WEB_FORM' && (selectedBridgeKind === 'GENERIC' || selectedBridgeKind === 'BOOKING')
   const selectedIsGoogleSheetsBridge = selectedChannel?.provider === 'WEB_FORM' && selectedBridgeKind === 'GOOGLE_SHEETS'
   const selectedChatbotFlowStage = useMemo(() => chatbotBuilderDraft.flowStages.find((item) => item.id === selectedChatbotStageId) ?? chatbotBuilderDraft.flowStages[0] ?? null, [chatbotBuilderDraft.flowStages, selectedChatbotStageId])
   const chatbotCanvasModel = useMemo(() => buildChatbotCanvasModel(chatbotBuilderDraft.flowStages), [chatbotBuilderDraft.flowStages])
@@ -1891,23 +2434,36 @@ export function CrmIntegrationsClient() {
     }
   }, [selectedIsPublicWebForm])
 
-  const snippets = useMemo(() => {
+  const snippets = useMemo<IntegrationSnippets | null>(() => {
     if (!selectedChannel || !baseUrl) return null
 
     const token = selectedToken || '<TOKEN>'
     return {
-      webForm: buildWebFormSnippet({
-        baseUrl,
-        channelId: selectedChannel.id,
-        token,
-        selector: getFormSelector(selectedSettings),
-      }),
-      webFormIframe: buildWebFormIframeSnippet({
-        baseUrl,
-        channelId: selectedChannel.id,
-        height: getIframeHeight(selectedSettings),
-      }),
-      webFormEmbedUrl: buildWebFormEmbedUrl(baseUrl, selectedChannel.id),
+      webForm: selectedBridgeKind === 'BOOKING'
+        ? buildBookingSnippet({
+            baseUrl,
+            channelId: selectedChannel.id,
+            token,
+            selector: getFormSelector(selectedSettings),
+          })
+        : buildWebFormSnippet({
+            baseUrl,
+            channelId: selectedChannel.id,
+            token,
+            selector: getFormSelector(selectedSettings),
+          }),
+      webFormIframe: selectedBridgeKind === 'BOOKING'
+        ? buildBookingIframeSnippet({
+            baseUrl,
+            channelId: selectedChannel.id,
+            height: getIframeHeight(selectedSettings),
+          })
+        : buildWebFormIframeSnippet({
+            baseUrl,
+            channelId: selectedChannel.id,
+            height: getIframeHeight(selectedSettings),
+          }),
+      webFormEmbedUrl: selectedBridgeKind === 'BOOKING' ? buildBookingEmbedUrl(baseUrl, selectedChannel.id) : buildWebFormEmbedUrl(baseUrl, selectedChannel.id),
       chatbot: buildChatbotSnippet({
         baseUrl,
         channelId: selectedChannel.id,
@@ -1935,12 +2491,23 @@ export function CrmIntegrationsClient() {
         token,
       }),
       outlook: buildOutlookPayloadExample(baseUrl, selectedChannel.id, token),
-      webhook: buildWebhookPayloadExample(selectedChannel.provider),
+      webhook: buildWebhookPayloadExample(selectedChannel.provider, selectedBridgeKind as CrmBridgeKind | null),
       googleSheetsPreview: `${baseUrl}/api/crm/channels/${selectedChannel.id}/google-sheets/preview`,
       googleSheetsImport: `${baseUrl}/api/crm/channels/${selectedChannel.id}/google-sheets/import`,
       googleSheetsExport: `${baseUrl}/api/crm/channels/${selectedChannel.id}/google-sheets/export`,
     }
   }, [baseUrl, selectedChannel, selectedSettings, selectedToken])
+
+  const selectedIntegrationGuide = useMemo(() => {
+    if (!selectedChannel) return null
+    return getDetailedIntegrationGuide({
+      channel: selectedChannel,
+      bridgeKind: selectedBridgeKind,
+      endpoint,
+      token: selectedToken,
+      snippets,
+    })
+  }, [endpoint, selectedBridgeKind, selectedChannel, selectedToken, snippets])
 
   function applyTemplate(templateKey: string) {
     const preset = TEMPLATE_PRESETS.find((item) => item.key === templateKey)
@@ -1953,7 +2520,7 @@ export function CrmIntegrationsClient() {
       provider: preset.provider,
       bridgeKind: preset.bridgeKind ?? 'GENERIC',
       testingToken: prev.testingToken || makeDemoToken(),
-      publicEmbedEnabled: preset.provider === 'WEB_CHATBOT' || (preset.provider === 'WEB_FORM' && !preset.bridgeKind),
+      publicEmbedEnabled: preset.provider === 'WEB_CHATBOT' || (preset.provider === 'WEB_FORM' && (!preset.bridgeKind || preset.bridgeKind === 'BOOKING')),
     }))
     setWizardStep('config')
   }
@@ -1990,6 +2557,9 @@ export function CrmIntegrationsClient() {
       googleSheetsRowLimit: getGoogleSheetsRowLimit(settings),
       googleSheetsImportMode: getGoogleSheetsImportMode(settings),
       googleSheetsOpportunityStage: getGoogleSheetsOpportunityStage(settings),
+      bookingNotifyByEmail: getBookingNotifyByEmail(settings),
+      bookingNotifyByWhatsApp: getBookingNotifyByWhatsApp(settings),
+      outgoingWebhookUrl: getOutgoingWebhookUrl(settings),
       externalAccountId: channel.externalAccountId || '',
       externalPageId: channel.externalPageId || '',
       externalPhoneNumberId: channel.externalPhoneNumberId || '',
@@ -2838,14 +3408,44 @@ export function CrmIntegrationsClient() {
                       <SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="GENERIC">GENERIC</SelectItem>
+                        <SelectItem value="BOOKING">BOOKING</SelectItem>
                         <SelectItem value="GMAIL">GMAIL</SelectItem>
                         <SelectItem value="OUTLOOK">OUTLOOK</SelectItem>
                         <SelectItem value="GOOGLE_SHEETS">GOOGLE_SHEETS</SelectItem>
+                        <SelectItem value="GOOGLE_CALENDAR">GOOGLE_CALENDAR</SelectItem>
+                        <SelectItem value="MICROSOFT_365_CALENDAR">MICROSOFT_365_CALENDAR</SelectItem>
+                        <SelectItem value="SLACK">SLACK</SelectItem>
+                        <SelectItem value="TEAMS">TEAMS</SelectItem>
+                        <SelectItem value="META_LEAD_ADS">META_LEAD_ADS</SelectItem>
+                        <SelectItem value="EXTERNAL_FORM">EXTERNAL_FORM</SelectItem>
                         <SelectItem value="TIKTOK">TIKTOK</SelectItem>
                         <SelectItem value="YOUTUBE">YOUTUBE</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
+                  {createForm.bridgeKind === 'BOOKING' ? (
+                    <div className="grid gap-2 md:col-span-2">
+                      <Label>Confirmaciones al usuario</Label>
+                      <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-2">
+                        <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
+                          <span>Enviar correo al agendar</span>
+                          <Switch checked={createForm.bookingNotifyByEmail} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, bookingNotifyByEmail: checked }))} />
+                        </label>
+                        <label className="flex items-center justify-between gap-3 text-sm text-slate-700">
+                          <span>Enviar WhatsApp al agendar</span>
+                          <Switch checked={createForm.bookingNotifyByWhatsApp} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, bookingNotifyByWhatsApp: checked }))} />
+                        </label>
+                      </div>
+                      <p className="text-xs leading-5 text-slate-500">Estas opciones disparan confirmación al usuario cuando la cita entra por el iframe o por el API.</p>
+                    </div>
+                  ) : null}
+                  {isOutgoingWebhookBridge(createForm.bridgeKind) ? (
+                    <div className="grid gap-2 md:col-span-2">
+                      <Label>Webhook saliente</Label>
+                      <Input value={createForm.outgoingWebhookUrl} onChange={(e) => setCreateForm((prev) => ({ ...prev, outgoingWebhookUrl: e.target.value }))} className="h-11 rounded-xl bg-white" placeholder={createForm.bridgeKind === 'SLACK' ? 'https://hooks.slack.com/services/...' : createForm.bridgeKind === 'TEAMS' ? 'https://...webhook.office.com/...' : 'https://tu-automatizacion.com/webhooks/calendar'} />
+                      <p className="text-xs leading-5 text-slate-500">Slack y Teams reciben alertas internas. Google Calendar y Microsoft 365 Calendar reciben tareas o citas del CRM cuando tienen fecha programada.</p>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -3299,7 +3899,7 @@ export function CrmIntegrationsClient() {
     const endpointPreview = createForm.provider === 'WEB_CHATBOT'
       ? `${baseUrl || 'https://tu-dominio.com'}/chatbot/<canal>`
       : createForm.provider === 'WEB_FORM'
-          ? `${baseUrl || 'https://tu-dominio.com'}${createIsBridge ? '/api/crm/captures/bridge' : '/api/crm/captures/web-form'}`
+          ? `${baseUrl || 'https://tu-dominio.com'}${createForm.bridgeKind === 'BOOKING' ? '/api/crm/captures/booking' : createIsBridge ? '/api/crm/captures/bridge' : '/api/crm/captures/web-form'}`
         : usesMetaProvider(createForm.provider)
           ? `${baseUrl || 'https://tu-dominio.com'}/api/webhooks/meta`
         : `${baseUrl || 'https://tu-dominio.com'}/api/crm/channels/<canal>/webhook`
@@ -3327,22 +3927,29 @@ export function CrmIntegrationsClient() {
       configured,
       demo,
       production,
-      iframeUrl: createForm.provider === 'WEB_CHATBOT' ? `${baseUrl || 'https://tu-dominio.com'}/chatbot/<canal-generado>` : createIsPublicWebForm ? `${baseUrl || 'https://tu-dominio.com'}/form/<canal-generado>` : '',
+      iframeUrl: createForm.provider === 'WEB_CHATBOT'
+        ? `${baseUrl || 'https://tu-dominio.com'}/chatbot/<canal-generado>`
+        : createIsPublicWebForm
+          ? `${baseUrl || 'https://tu-dominio.com'}${createForm.bridgeKind === 'BOOKING' ? '/booking/<canal-generado>' : '/form/<canal-generado>'}`
+          : '',
     }
   }, [baseUrl, createForm, createIsPublicWebForm, createUsesWebhook])
 
   const selectedAssetTabs = useMemo(() => {
     if (!selectedChannel) return ['overview']
     const bridgeKind = selectedBridgeKind
-    if (selectedChannel.provider === 'WEB_CHATBOT') return ['overview', 'chatbot', 'bridge']
+    if (selectedChannel.provider === 'WEB_CHATBOT') return ['overview', 'guide', 'chatbot', 'bridge']
     if (selectedChannel.provider === 'WEB_FORM' && bridgeKind === 'GOOGLE_SHEETS') {
-      return ['overview', 'bridge']
+      return ['overview', 'guide', 'bridge']
     }
-    if (selectedChannel.provider === 'WEB_FORM' && (bridgeKind === 'GMAIL' || bridgeKind === 'OUTLOOK' || bridgeKind === 'TIKTOK' || bridgeKind === 'YOUTUBE')) {
-      return ['overview', 'bridge', 'form']
+    if (selectedChannel.provider === 'WEB_FORM' && isOutgoingWebhookBridge(bridgeKind)) {
+      return ['overview', 'guide']
     }
-    if (selectedChannel.provider === 'WEB_FORM') return ['overview', 'form', 'bridge']
-    return ['overview', 'webhook', 'bridge']
+    if (selectedChannel.provider === 'WEB_FORM' && (bridgeKind === 'GMAIL' || bridgeKind === 'OUTLOOK' || bridgeKind === 'META_LEAD_ADS' || bridgeKind === 'EXTERNAL_FORM' || bridgeKind === 'TIKTOK' || bridgeKind === 'YOUTUBE')) {
+      return ['overview', 'guide', 'bridge', 'form']
+    }
+    if (selectedChannel.provider === 'WEB_FORM') return ['overview', 'guide', 'form', 'bridge']
+    return ['overview', 'guide', 'webhook', 'bridge']
   }, [selectedBridgeKind, selectedChannel])
 
   useEffect(() => {
@@ -4179,6 +4786,7 @@ export function CrmIntegrationsClient() {
                   <div className="overflow-x-auto pb-1">
                     <TabsList className="inline-flex h-auto min-w-max flex-nowrap rounded-2xl border border-slate-200 bg-slate-50 p-1 md:flex-wrap">
                     {selectedAssetTabs.includes('overview') ? <TabsTrigger value="overview" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Resumen</TabsTrigger> : null}
+                    {selectedAssetTabs.includes('guide') ? <TabsTrigger value="guide" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Integración paso a paso detallado</TabsTrigger> : null}
                     {selectedAssetTabs.includes('form') ? <TabsTrigger value="form" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Formulario</TabsTrigger> : null}
                     {selectedAssetTabs.includes('chatbot') ? <TabsTrigger value="chatbot" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Chatbot</TabsTrigger> : null}
                     {selectedAssetTabs.includes('webhook') ? <TabsTrigger value="webhook" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Webhook social</TabsTrigger> : null}
@@ -4246,6 +4854,127 @@ export function CrmIntegrationsClient() {
                     ) : null}
                   </TabsContent>
 
+                  <TabsContent value="guide" className="space-y-4">
+                    {!selectedIntegrationGuide ? (
+                      <Card className="rounded-3xl border-slate-200">
+                        <CardContent className="p-6 text-sm text-slate-500">Selecciona un canal para ver la guía detallada de integración.</CardContent>
+                      </Card>
+                    ) : (
+                      <>
+                        <ErpSectionHeading title={selectedIntegrationGuide.title} description={selectedIntegrationGuide.summary} />
+                        <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+                          <Card className="rounded-3xl border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)]">
+                            <CardHeader>
+                              <CardTitle className="text-base">Contexto de la integración</CardTitle>
+                              <CardDescription>Resumen ejecutivo para alinear negocio, implementación y validación.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4 text-sm text-slate-700">
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Perfil recomendado</p>
+                                  <p className="mt-2 font-medium text-slate-900">{selectedIntegrationGuide.audience}</p>
+                                </div>
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tiempo estimado</p>
+                                  <p className="mt-2 font-medium text-slate-900">{selectedIntegrationGuide.estimatedTime}</p>
+                                </div>
+                              </div>
+                              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Prerequisitos</p>
+                                <div className="mt-3 space-y-2">
+                                  {selectedIntegrationGuide.prerequisites.map((item) => (
+                                    <div key={item} className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2">
+                                      <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white">OK</span>
+                                      <p className="text-sm leading-6 text-slate-700">{item}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+
+                          {renderIntegrationGuideVisual(selectedIntegrationGuide)}
+                        </div>
+
+                        <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+                          <Card className="rounded-3xl border-slate-200">
+                            <CardHeader>
+                              <CardTitle className="text-base">Paso a paso operativo</CardTitle>
+                              <CardDescription>Secuencia recomendada para dejar el canal funcionando de punta a punta.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                              {selectedIntegrationGuide.steps.map((step, index) => (
+                                <div key={step.title} className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4">
+                                  <div className="flex items-start gap-3">
+                                    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-950 text-xs font-semibold text-white">{index + 1}</span>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-semibold text-slate-900">{step.title}</p>
+                                      <p className="mt-1 text-sm leading-6 text-slate-600">{step.detail}</p>
+                                      <div className="mt-3 space-y-2">
+                                        {step.bullets.map((bullet) => (
+                                          <div key={bullet} className="rounded-2xl border border-slate-100 bg-white px-3 py-2 text-sm leading-6 text-slate-700">
+                                            {bullet}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </CardContent>
+                          </Card>
+
+                          <div className="space-y-4">
+                            <Card className="rounded-3xl border-slate-200">
+                              <CardHeader>
+                                <CardTitle className="text-base">Assets y referencias</CardTitle>
+                                <CardDescription>Valores que el implementador suele necesitar durante la integración.</CardDescription>
+                              </CardHeader>
+                              <CardContent className="space-y-3">
+                                {selectedIntegrationGuide.assets.map((asset) => (
+                                  <div key={asset.label} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{asset.label}</p>
+                                    <Textarea value={asset.value} readOnly rows={Math.min(Math.max(Math.ceil(asset.value.length / 72), 2), 8)} className="mt-2 font-mono text-xs" />
+                                  </div>
+                                ))}
+                              </CardContent>
+                            </Card>
+
+                            <Card className="rounded-3xl border-slate-200">
+                              <CardHeader>
+                                <CardTitle className="text-base">Validación final</CardTitle>
+                                <CardDescription>Checklist corto para cerrar QA y pasar el canal a demo o producción.</CardDescription>
+                              </CardHeader>
+                              <CardContent className="space-y-2">
+                                {selectedIntegrationGuide.validations.map((item) => (
+                                  <div key={item} className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-sm text-emerald-900">
+                                    <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">OK</span>
+                                    <span>{item}</span>
+                                  </div>
+                                ))}
+                              </CardContent>
+                            </Card>
+
+                            <Card className="rounded-3xl border-slate-200">
+                              <CardHeader>
+                                <CardTitle className="text-base">Problemas comunes</CardTitle>
+                                <CardDescription>Qué revisar primero si la integración no queda lista a la primera.</CardDescription>
+                              </CardHeader>
+                              <CardContent className="space-y-2">
+                                {selectedIntegrationGuide.troubleshooting.map((item) => (
+                                  <div key={item} className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-sm text-amber-900">
+                                    <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">!</span>
+                                    <span>{item}</span>
+                                  </div>
+                                ))}
+                              </CardContent>
+                            </Card>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </TabsContent>
+
                   <TabsContent value="form" className="space-y-4">
                     <ErpSectionHeading title="Formulario web embebible" description="Modo recomendado: URL pública e iframe listo para pegar, con fallback legacy por selector." />
                     {selectedIsPublicWebForm ? (
@@ -4300,7 +5029,7 @@ export function CrmIntegrationsClient() {
                         </Card>
                       </div>
                     ) : null}
-                    {selectedBridgeKind === 'GENERIC' ? (
+                    {selectedIsPublicWebForm ? (
                       <div className="grid gap-4 lg:grid-cols-2">
                         <Card className="rounded-3xl border-slate-200">
                           <CardHeader>
@@ -5113,7 +5842,7 @@ export function CrmIntegrationsClient() {
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {TEMPLATE_PRESETS.map((preset) => (
                     (() => {
-                      const Icon = getTemplatePresetIcon(preset)
+                      const Icon = getTemplatePresetLogo(preset)
                       const surface = getTemplatePresetSurface(preset)
                       const selected = createForm.templateKey === preset.key
 
@@ -5442,13 +6171,28 @@ export function CrmIntegrationsClient() {
                       <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="GENERIC">GENERIC</SelectItem>
+                        <SelectItem value="BOOKING">BOOKING</SelectItem>
                         <SelectItem value="GMAIL">GMAIL</SelectItem>
                         <SelectItem value="OUTLOOK">OUTLOOK</SelectItem>
-                            <SelectItem value="GOOGLE_SHEETS">GOOGLE_SHEETS</SelectItem>
+                        <SelectItem value="GOOGLE_SHEETS">GOOGLE_SHEETS</SelectItem>
+                        <SelectItem value="GOOGLE_CALENDAR">GOOGLE_CALENDAR</SelectItem>
+                        <SelectItem value="MICROSOFT_365_CALENDAR">MICROSOFT_365_CALENDAR</SelectItem>
+                        <SelectItem value="SLACK">SLACK</SelectItem>
+                        <SelectItem value="TEAMS">TEAMS</SelectItem>
+                        <SelectItem value="META_LEAD_ADS">META_LEAD_ADS</SelectItem>
+                        <SelectItem value="EXTERNAL_FORM">EXTERNAL_FORM</SelectItem>
                         <SelectItem value="TIKTOK">TIKTOK</SelectItem>
                         <SelectItem value="YOUTUBE">YOUTUBE</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+                ) : null}
+
+                {createForm.provider === 'WEB_FORM' && isOutgoingWebhookBridge(createForm.bridgeKind) ? (
+                  <div className="grid gap-2 md:col-span-2">
+                    <Label>Webhook saliente</Label>
+                    <Input value={createForm.outgoingWebhookUrl} onChange={(e) => setCreateForm((prev) => ({ ...prev, outgoingWebhookUrl: e.target.value }))} className="h-11 rounded-xl" placeholder={createForm.bridgeKind === 'SLACK' ? 'https://hooks.slack.com/services/...' : createForm.bridgeKind === 'TEAMS' ? 'https://...webhook.office.com/...' : 'https://tu-automatizacion.com/webhooks/calendar'} />
+                    <p className="text-xs leading-5 text-slate-500">Los bridges salientes disparan POST automáticos cuando el CRM crea nuevas tareas con fecha o registra citas web.</p>
                   </div>
                 ) : null}
 

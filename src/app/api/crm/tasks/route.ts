@@ -20,6 +20,7 @@ import {
   normalizeTaskCustomFields,
   normalizeUserIdList,
 } from '@/lib/crm-task-workspaces'
+import { dispatchCrmTaskCalendarBridges } from '@/lib/crm-calendar-bridges'
 
 export const runtime = 'nodejs'
 
@@ -244,7 +245,44 @@ export async function POST(request: Request) {
       return tx.crmTask.findUniqueOrThrow({ where: { id: created.id }, include: crmTaskInclude })
     })
 
-    return NextResponse.json({ success: true, data: row }, { status: 201 })
+    const calendarSyncs = await dispatchCrmTaskCalendarBridges({
+      empresaId: access.empresaId,
+      sedeId: finalSedeId || null,
+      eventName: 'crm.task.created',
+      task: {
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        status: row.status,
+        priority: row.priority,
+        dueAt: row.dueAt,
+        workspaceId: row.workspaceId,
+        leadId: row.leadId,
+        opportunityId: row.opportunityId,
+        clienteId: row.clienteId,
+        assignedToUserId: row.assignedToUserId,
+        createdById: row.createdById,
+        colorHex: row.colorHex,
+      },
+      lead: row.lead ? {
+        id: row.lead.id,
+        nombre: row.lead.nombre,
+      } : null,
+      opportunity: row.opportunity ? {
+        id: row.opportunity.id,
+        title: row.opportunity.title,
+      } : null,
+      cliente: row.cliente ? {
+        id: row.cliente.id,
+        nombre: row.cliente.nombre,
+      } : null,
+      meta: {
+        workspaceId: workspace?.id ?? null,
+        workspaceName: workspace?.name ?? null,
+      },
+    })
+
+    return NextResponse.json({ success: true, data: row, calendarSyncs }, { status: 201 })
   } catch (error) {
     console.error('Error creando tarea CRM:', error)
     return NextResponse.json({ error: 'Error creando tarea CRM' }, { status: 500 })

@@ -5,6 +5,7 @@ import path from 'path'
 export type CrmFileItemType = 'folder' | 'image' | 'audio' | 'video' | 'document'
 export type CrmFileEntityType = 'TASK' | 'LEAD' | 'OPPORTUNITY'
 export type CrmFileAuditAction = 'CREATED' | 'UPLOADED' | 'RENAMED' | 'MOVED' | 'SHARED' | 'LINKED' | 'UNLINKED'
+export type CrmExternalFileProvider = 'GOOGLE_DRIVE' | 'ONEDRIVE'
 
 export type CrmFileLinkedEntities = {
   tasks: string[]
@@ -34,6 +35,9 @@ export type CrmFileItem = {
   mimeType: string | null
   createdAt: string
   createdById: string | null
+  sourceProvider?: CrmExternalFileProvider | null
+  externalId?: string | null
+  isExternal?: boolean
   sharedWithUserIds: string[]
   linkedEntities: CrmFileLinkedEntities
   auditTrail: CrmFileAuditEntry[]
@@ -67,10 +71,16 @@ type CrmFilesActor = {
 
 type CrmFilesIndexEntry = {
   id: string
-  kind: 'folder' | 'file'
+  kind: 'folder' | 'file' | 'external'
   createdAt: string
   updatedAt: string
   createdById: string | null
+  externalName?: string | null
+  externalProvider?: CrmExternalFileProvider | null
+  externalUrl?: string | null
+  externalId?: string | null
+  externalMimeType?: string | null
+  externalSizeBytes?: number | null
   sharedWithUserIds: string[]
   linkedEntities: CrmFileLinkedEntities
   auditTrail: CrmFileAuditEntry[]
@@ -154,12 +164,17 @@ function createAuditEntry(action: CrmFileAuditAction, actor: CrmFilesActor | und
   }
 }
 
+function normalizeExternalProvider(value: unknown): CrmExternalFileProvider | null {
+  const raw = typeof value === 'string' ? value.trim().toUpperCase() : ''
+  return raw === 'GOOGLE_DRIVE' || raw === 'ONEDRIVE' ? raw : null
+}
+
 function appendAudit(entry: CrmFilesIndexEntry, action: CrmFileAuditAction, actor: CrmFilesActor | undefined, message: string) {
   entry.auditTrail = [createAuditEntry(action, actor, message), ...normalizeAuditTrail(entry.auditTrail)].slice(0, MAX_AUDIT_ITEMS)
   entry.updatedAt = new Date().toISOString()
 }
 
-function createIndexEntry(kind: 'folder' | 'file', actor?: CrmFilesActor): CrmFilesIndexEntry {
+function createIndexEntry(kind: 'folder' | 'file' | 'external', actor?: CrmFilesActor): CrmFilesIndexEntry {
   const now = new Date().toISOString()
   return {
     id: crypto.randomUUID(),
@@ -167,6 +182,12 @@ function createIndexEntry(kind: 'folder' | 'file', actor?: CrmFilesActor): CrmFi
     createdAt: now,
     updatedAt: now,
     createdById: actor?.userId || null,
+    externalName: null,
+    externalProvider: null,
+    externalUrl: null,
+    externalId: null,
+    externalMimeType: null,
+    externalSizeBytes: null,
     sharedWithUserIds: [],
     linkedEntities: emptyLinkedEntities(),
     auditTrail: [],
@@ -299,10 +320,16 @@ async function readIndex(empresaId: string): Promise<CrmFilesIndex> {
       entryPath,
       {
         id: typeof entry?.id === 'string' && entry.id ? entry.id : crypto.randomUUID(),
-        kind: entry?.kind === 'folder' ? 'folder' : 'file',
+        kind: entry?.kind === 'folder' ? 'folder' : entry?.kind === 'external' ? 'external' : 'file',
         createdAt: typeof entry?.createdAt === 'string' && entry.createdAt ? entry.createdAt : new Date().toISOString(),
         updatedAt: typeof entry?.updatedAt === 'string' && entry.updatedAt ? entry.updatedAt : new Date().toISOString(),
         createdById: typeof entry?.createdById === 'string' && entry.createdById ? entry.createdById : null,
+        externalName: typeof entry?.externalName === 'string' && entry.externalName ? entry.externalName : null,
+        externalProvider: normalizeExternalProvider(entry?.externalProvider),
+        externalUrl: typeof entry?.externalUrl === 'string' && entry.externalUrl ? entry.externalUrl : null,
+        externalId: typeof entry?.externalId === 'string' && entry.externalId ? entry.externalId : null,
+        externalMimeType: typeof entry?.externalMimeType === 'string' && entry.externalMimeType ? entry.externalMimeType : null,
+        externalSizeBytes: typeof entry?.externalSizeBytes === 'number' && Number.isFinite(entry.externalSizeBytes) ? entry.externalSizeBytes : null,
         sharedWithUserIds: Array.from(new Set(Array.isArray(entry?.sharedWithUserIds) ? entry.sharedWithUserIds.map((userId) => String(userId || '').trim()).filter(Boolean) : [])),
         linkedEntities: normalizeLinkedEntities(entry?.linkedEntities),
         auditTrail: normalizeAuditTrail(entry?.auditTrail),
@@ -319,7 +346,7 @@ async function writeIndex(empresaId: string, index: CrmFilesIndex) {
   await fs.writeFile(filePath, JSON.stringify(index, null, 2), 'utf8')
 }
 
-function ensureIndexEntry(index: CrmFilesIndex, entryPath: string, kind: 'folder' | 'file', actor?: CrmFilesActor) {
+function ensureIndexEntry(index: CrmFilesIndex, entryPath: string, kind: 'folder' | 'file' | 'external', actor?: CrmFilesActor) {
   const current = index.entries[entryPath]
   if (current) {
     current.kind = kind
@@ -330,6 +357,44 @@ function ensureIndexEntry(index: CrmFilesIndex, entryPath: string, kind: 'folder
   const created = createIndexEntry(kind, actor)
   index.entries[entryPath] = created
   return created
+}
+
+function buildExternalProviderLabel(provider: CrmExternalFileProvider | null | undefined) {
+  if (provider === 'GOOGLE_DRIVE') return 'Google Drive'
+  if (provider === 'ONEDRIVE') return 'OneDrive'
+  return 'Archivo externo'
+}
+
+function buildExternalEntryPath(provider: CrmExternalFileProvider, externalId: string | null | undefined, url: string) {
+  const stableId = String(externalId || '').trim() || crypto.createHash('sha1').update(`${provider}:${url}`).digest('hex')
+  return ['__external__', provider.toLowerCase(), stableId].join('/')
+}
+
+function buildExternalItem(entryPath: string, entry: CrmFilesIndexEntry): CrmFileItem {
+  const providerLabel = buildExternalProviderLabel(entry.externalProvider)
+  const name = entry.externalName || entry.externalId || providerLabel
+  const mimeType = entry.externalMimeType || null
+  const extension = mimeType ? null : (path.extname(name).toLowerCase() || null)
+  return {
+    id: entry.id,
+    name,
+    path: entryPath,
+    directoryPath: providerLabel,
+    type: resolveItemType(name, mimeType),
+    sizeBytes: typeof entry.externalSizeBytes === 'number' ? entry.externalSizeBytes : 0,
+    updatedAt: entry.updatedAt,
+    url: entry.externalUrl || null,
+    extension,
+    mimeType,
+    createdAt: entry.createdAt,
+    createdById: entry.createdById,
+    sourceProvider: entry.externalProvider || null,
+    externalId: entry.externalId || null,
+    isExternal: true,
+    sharedWithUserIds: entry.sharedWithUserIds,
+    linkedEntities: normalizeLinkedEntities(entry.linkedEntities),
+    auditTrail: normalizeAuditTrail(entry.auditTrail),
+  }
 }
 
 function deleteIndexEntries(index: CrmFilesIndex, entryPath: string) {
@@ -586,6 +651,14 @@ export async function getCrmFilesSnapshot(args: { empresaId: string; currentPath
 export async function getCrmFileItemByPath(args: { empresaId: string; entryPath: string; currentUserId?: string | null }) {
   const root = await ensureCrmFilesRoot(args.empresaId)
   const index = await readIndex(args.empresaId)
+  const externalMetadata = index.entries[String(args.entryPath || '').trim()]
+  if (externalMetadata?.kind === 'external') {
+    if (!hasUserAccessToPath(index, String(args.entryPath || '').trim(), args.currentUserId)) {
+      throw new Error('No tienes acceso a ese elemento del repositorio.')
+    }
+    await writeIndex(args.empresaId, index)
+    return buildExternalItem(String(args.entryPath || '').trim(), externalMetadata)
+  }
   const segments = normalizeCrmFilesPath(args.entryPath)
   if (!segments.length) {
     throw new Error('Selecciona un archivo o carpeta válida.')
@@ -767,6 +840,13 @@ export async function moveCrmEntry(args: { empresaId: string; entryPath: string;
 export async function updateCrmEntrySharing(args: { empresaId: string; entryPath: string; sharedWithUserIds: string[]; actor?: CrmFilesActor }) {
   const root = await ensureCrmFilesRoot(args.empresaId)
   const index = await readIndex(args.empresaId)
+  const externalEntry = index.entries[args.entryPath]
+  if (externalEntry?.kind === 'external') {
+    externalEntry.sharedWithUserIds = Array.from(new Set(args.sharedWithUserIds.map((userId) => String(userId || '').trim()).filter(Boolean)))
+    appendAudit(externalEntry, 'SHARED', args.actor, `${args.actor?.label || 'Usuario interno'} actualizó el acceso compartido con ${externalEntry.sharedWithUserIds.length} usuario(s).`)
+    await writeIndex(args.empresaId, index)
+    return buildExternalItem(args.entryPath, externalEntry)
+  }
   const segments = normalizeCrmFilesPath(args.entryPath)
   if (!segments.length) throw new Error('Selecciona un archivo o carpeta válida.')
   const absolutePath = getAbsolutePathForSegments(root, segments)
@@ -784,6 +864,17 @@ export async function updateCrmEntrySharing(args: { empresaId: string; entryPath
 export async function linkCrmEntryToEntity(args: { empresaId: string; entryPath: string; entityType: CrmFileEntityType; entityId: string; actor?: CrmFilesActor }) {
   const root = await ensureCrmFilesRoot(args.empresaId)
   const index = await readIndex(args.empresaId)
+  const externalEntry = index.entries[args.entryPath]
+  if (externalEntry?.kind === 'external') {
+    const key = mapEntityTypeToKey(args.entityType)
+    externalEntry.linkedEntities = normalizeLinkedEntities({
+      ...externalEntry.linkedEntities,
+      [key]: [...externalEntry.linkedEntities[key], args.entityId],
+    })
+    appendAudit(externalEntry, 'LINKED', args.actor, `${args.actor?.label || 'Usuario interno'} vinculó este elemento con ${args.entityType} ${args.entityId}.`)
+    await writeIndex(args.empresaId, index)
+    return buildExternalItem(args.entryPath, externalEntry)
+  }
   const segments = normalizeCrmFilesPath(args.entryPath)
   if (!segments.length) throw new Error('Selecciona un archivo o carpeta válida.')
   const absolutePath = getAbsolutePathForSegments(root, segments)
@@ -805,6 +896,21 @@ export async function linkCrmEntryToEntity(args: { empresaId: string; entryPath:
 export async function unlinkCrmEntryFromEntity(args: { empresaId: string; entryPath: string; entityType: CrmFileEntityType; entityId: string; actor?: CrmFilesActor }) {
   const root = await ensureCrmFilesRoot(args.empresaId)
   const index = await readIndex(args.empresaId)
+  const externalEntry = index.entries[args.entryPath]
+  if (externalEntry?.kind === 'external') {
+    const key = mapEntityTypeToKey(args.entityType)
+    externalEntry.linkedEntities = normalizeLinkedEntities({
+      ...externalEntry.linkedEntities,
+      [key]: externalEntry.linkedEntities[key].filter((item) => item !== args.entityId),
+    })
+    appendAudit(externalEntry, 'UNLINKED', args.actor, `${args.actor?.label || 'Usuario interno'} retiró el vínculo con ${args.entityType} ${args.entityId}.`)
+    const hasLinks = Object.values(externalEntry.linkedEntities).some((items) => items.length > 0)
+    if (!hasLinks) {
+      delete index.entries[args.entryPath]
+    }
+    await writeIndex(args.empresaId, index)
+    return externalEntry.kind === 'external' ? buildExternalItem(args.entryPath, externalEntry) : buildExternalItem(args.entryPath, ensureIndexEntry(index, args.entryPath, 'external', args.actor))
+  }
   const segments = normalizeCrmFilesPath(args.entryPath)
   if (!segments.length) throw new Error('Selecciona un archivo o carpeta válida.')
   const absolutePath = getAbsolutePathForSegments(root, segments)
@@ -832,6 +938,10 @@ export async function listCrmLinkedEntries(args: { empresaId: string; entityType
   for (const [entryPath, entry] of Object.entries(index.entries)) {
     if (!entry.linkedEntities[key].includes(args.entityId)) continue
     if (!hasUserAccessToPath(index, entryPath, args.currentUserId)) continue
+    if (entry.kind === 'external') {
+      result.push(buildExternalItem(entryPath, entry))
+      continue
+    }
     const segments = normalizeCrmFilesPath(entryPath)
     if (!segments.length) continue
     try {
@@ -843,4 +953,37 @@ export async function listCrmLinkedEntries(args: { empresaId: string; entityType
 
   await writeIndex(args.empresaId, index)
   return result.sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+}
+
+export async function createOrLinkCrmExternalEntry(args: {
+  empresaId: string
+  entityType: CrmFileEntityType
+  entityId: string
+  provider: CrmExternalFileProvider
+  name: string
+  url: string
+  externalId?: string | null
+  mimeType?: string | null
+  sizeBytes?: number | null
+  updatedAt?: string | null
+  actor?: CrmFilesActor
+}) {
+  const index = await readIndex(args.empresaId)
+  const entryPath = buildExternalEntryPath(args.provider, args.externalId, args.url)
+  const metadata = ensureIndexEntry(index, entryPath, 'external', args.actor)
+  metadata.externalName = args.name.trim() || metadata.externalName || args.externalId || buildExternalProviderLabel(args.provider)
+  metadata.externalProvider = args.provider
+  metadata.externalUrl = args.url.trim()
+  metadata.externalId = String(args.externalId || '').trim() || metadata.externalId || null
+  metadata.externalMimeType = String(args.mimeType || '').trim() || null
+  metadata.externalSizeBytes = typeof args.sizeBytes === 'number' && Number.isFinite(args.sizeBytes) ? args.sizeBytes : null
+  metadata.updatedAt = args.updatedAt ? new Date(args.updatedAt).toISOString() : new Date().toISOString()
+  const key = mapEntityTypeToKey(args.entityType)
+  metadata.linkedEntities = normalizeLinkedEntities({
+    ...metadata.linkedEntities,
+    [key]: [...metadata.linkedEntities[key], args.entityId],
+  })
+  appendAudit(metadata, 'LINKED', args.actor, `${args.actor?.label || 'Usuario interno'} vinculó un archivo externo de ${buildExternalProviderLabel(args.provider)} con ${args.entityType} ${args.entityId}.`)
+  await writeIndex(args.empresaId, index)
+  return buildExternalItem(entryPath, metadata)
 }

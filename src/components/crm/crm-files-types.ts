@@ -1,4 +1,5 @@
 export type CrmFileItemType = 'folder' | 'image' | 'audio' | 'video' | 'document'
+export type CrmExternalFileProvider = 'GOOGLE_DRIVE' | 'ONEDRIVE'
 
 export type CrmFileLinkedEntities = {
   tasks: string[]
@@ -30,6 +31,9 @@ export type CrmFileItem = {
   mimeType: string | null
   createdAt: string
   createdById: string | null
+  sourceProvider?: CrmExternalFileProvider | null
+  externalId?: string | null
+  isExternal?: boolean
   sharedWithUserIds: string[]
   linkedEntities: CrmFileLinkedEntities
   auditTrail: CrmFileAuditEntry[]

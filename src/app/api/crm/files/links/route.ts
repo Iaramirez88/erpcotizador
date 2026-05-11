@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey } from '@prisma/client'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { assertCrmSedeAccess } from '@/lib/crm'
-import { linkCrmEntryToEntity, listCrmLinkedEntries, unlinkCrmEntryFromEntity, type CrmFileEntityType } from '@/lib/crm-files'
+import { createOrLinkCrmExternalEntry, linkCrmEntryToEntity, listCrmLinkedEntries, unlinkCrmEntryFromEntity, type CrmExternalFileProvider, type CrmFileEntityType } from '@/lib/crm-files'
 import { prisma } from '@/lib/prisma'
 
 function parseEntityType(value: unknown): CrmFileEntityType | null {
   const raw = typeof value === 'string' ? value.trim().toUpperCase() : ''
   return raw === 'TASK' || raw === 'LEAD' || raw === 'OPPORTUNITY' ? raw : null
+}
+
+function parseExternalProvider(value: unknown): CrmExternalFileProvider | null {
+  const raw = typeof value === 'string' ? value.trim().toUpperCase() : ''
+  return raw === 'GOOGLE_DRIVE' || raw === 'ONEDRIVE' ? raw : null
 }
 
 async function validateEntityAccess(args: {
@@ -79,24 +84,59 @@ export async function POST(request: NextRequest) {
     const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
     if (!access.ok) return access.response
 
-    const body = (await request.json().catch(() => null)) as { entityType?: unknown; entityId?: unknown; path?: unknown } | null
+    const body = (await request.json().catch(() => null)) as {
+      entityType?: unknown
+      entityId?: unknown
+      path?: unknown
+      external?: {
+        provider?: unknown
+        id?: unknown
+        name?: unknown
+        url?: unknown
+        mimeType?: unknown
+        sizeBytes?: unknown
+        updatedAt?: unknown
+      }
+    } | null
     const entityType = parseEntityType(body?.entityType)
     const entityId = String(body?.entityId || '').trim()
     const entryPath = String(body?.path || '').trim()
-    if (!entityType || !entityId || !entryPath) {
-      return NextResponse.json({ success: false, error: 'Indica entityType, entityId y path.' }, { status: 400 })
+    const externalProvider = parseExternalProvider(body?.external?.provider)
+    const externalName = String(body?.external?.name || '').trim()
+    const externalUrl = String(body?.external?.url || '').trim()
+    const externalId = String(body?.external?.id || '').trim()
+    const externalMimeType = String(body?.external?.mimeType || '').trim() || null
+    const externalSizeBytes = typeof body?.external?.sizeBytes === 'number' ? body.external.sizeBytes : null
+    const externalUpdatedAt = String(body?.external?.updatedAt || '').trim() || null
+    if (!entityType || !entityId || (!entryPath && !(externalProvider && externalName && externalUrl))) {
+      return NextResponse.json({ success: false, error: 'Indica entityType, entityId y path o un archivo externo válido.' }, { status: 400 })
     }
 
     const accessResponse = await validateEntityAccess({ entityType, entityId, empresaId: access.empresaId, userId: access.userId, minLevel: 'WRITE' })
     if (accessResponse) return accessResponse
 
-    const item = await linkCrmEntryToEntity({
-      empresaId: access.empresaId,
-      entityType,
-      entityId,
-      entryPath,
-      actor: { userId: access.userId, label: access.session.user.name || access.session.user.email || 'Usuario interno' },
-    })
+    const actor = { userId: access.userId, label: access.session.user.name || access.session.user.email || 'Usuario interno' }
+    const item = externalProvider && externalName && externalUrl
+      ? await createOrLinkCrmExternalEntry({
+          empresaId: access.empresaId,
+          entityType,
+          entityId,
+          provider: externalProvider,
+          name: externalName,
+          url: externalUrl,
+          externalId,
+          mimeType: externalMimeType,
+          sizeBytes: externalSizeBytes,
+          updatedAt: externalUpdatedAt,
+          actor,
+        })
+      : await linkCrmEntryToEntity({
+          empresaId: access.empresaId,
+          entityType,
+          entityId,
+          entryPath,
+          actor,
+        })
     return NextResponse.json({ success: true, data: item })
   } catch (error) {
     const detail = error instanceof Error ? error.message : 'Error desconocido'

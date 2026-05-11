@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { Prisma, type CrmChannelConnection, type CrmChannelProvider, type CrmMessageStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { createInboundArtifacts, getConnectionToken, parseJsonObject } from '@/lib/crm-omnichannel'
+import { createInboundArtifacts, getConnectionToken, parseJsonObject, parseMaybeDate } from '@/lib/crm-omnichannel'
 import { normalizeString } from '@/lib/crm'
 import { getWebhookInboundMapping, normalizeWebhookInboundPayload } from '@/lib/crm-webhook-normalizer'
+import { fetchMetaLeadgenRecord, getMetaAccessToken, type MetaLeadgenRecord } from '@/lib/crm-meta'
 
 export const runtime = 'nodejs'
 
@@ -20,6 +21,14 @@ const MESSAGE_STATUS_RANK: Record<CrmMessageStatus, number> = {
 
 type MetaChannelRecord = Pick<CrmChannelConnection, 'id' | 'empresaId' | 'sedeId' | 'provider' | 'status' | 'settingsJson' | 'verifyToken' | 'externalAccountId' | 'externalPageId' | 'externalPhoneNumberId'> & {
   createdBy: { id: string }
+}
+
+type NativeLeadgenChange = {
+  leadgenId: string
+  pageId: string | null
+  formId: string | null
+  eventAt: Date
+  rawPayloadJson: Prisma.InputJsonValue
 }
 
 function shouldAdvanceMessageStatus(current: CrmMessageStatus, next: CrmMessageStatus) {
@@ -246,7 +255,177 @@ async function resolveMetaChannel(body: Record<string, unknown> | null) {
   }
 }
 
+function extractNativeLeadgenChanges(body: Record<string, unknown> | null) {
+  const payload = body ?? {}
+  const entries = Array.isArray(payload.entry) ? payload.entry.map((item) => parseJsonObject(item)) : []
+  const changes: NativeLeadgenChange[] = []
+
+  for (const entry of entries) {
+    const pageId = normalizeString(entry.id) || null
+    const rows = Array.isArray(entry.changes) ? entry.changes.map((item) => parseJsonObject(item)) : []
+
+    for (const change of rows) {
+      const field = normalizeString(change.field).toLowerCase()
+      if (!field.includes('leadgen')) continue
+
+      const value = parseJsonObject(change.value)
+      const leadgenId = normalizeString(value.leadgen_id || value.leadgenId || value.id)
+      if (!leadgenId) continue
+
+      changes.push({
+        leadgenId,
+        pageId,
+        formId: normalizeString(value.form_id || value.formId) || null,
+        eventAt: parseMaybeDate(value.created_time || value.time || entry.time),
+        rawPayloadJson: {
+          object: payload.object ?? null,
+          entry,
+          change,
+          value,
+        } as Prisma.InputJsonValue,
+      })
+    }
+  }
+
+  return changes
+}
+
+function getLeadFieldValue(record: MetaLeadgenRecord, aliases: string[]) {
+  const lowerAliases = aliases.map((alias) => alias.toLowerCase())
+  for (const field of record.fieldData) {
+    if (!lowerAliases.includes(field.name.toLowerCase())) continue
+    const joined = field.values.map((value) => normalizeString(value)).filter(Boolean).join(', ')
+    if (joined) return joined
+  }
+  return ''
+}
+
+function buildMetaLeadgenMessage(record: MetaLeadgenRecord) {
+  const lines = [
+    record.formName ? `Formulario: ${record.formName}` : '',
+    record.campaignName ? `Campaña: ${record.campaignName}` : '',
+    record.adName ? `Anuncio: ${record.adName}` : '',
+    getLeadFieldValue(record, ['message', 'mensaje', 'comments', 'comentarios', 'pregunta']),
+  ].filter(Boolean)
+
+  return lines.join('\n') || 'Lead recibido desde Meta Lead Ads.'
+}
+
+async function processNativeMetaLeadgenForChannel(channel: MetaChannelRecord, body: Record<string, unknown> | null) {
+  const leadgenChanges = extractNativeLeadgenChanges(body)
+  if (!leadgenChanges.length) return null
+
+  const accessToken = getMetaAccessToken(channel.settingsJson)
+  if (!accessToken) {
+    throw new Error('El canal Meta no tiene access token para resolver leadgen_id nativo.')
+  }
+
+  const leadRecords = await Promise.all(leadgenChanges.map(async (change) => ({
+    change,
+    record: await fetchMetaLeadgenRecord({ accessToken, leadgenId: change.leadgenId }),
+  })))
+
+  const latestEventAt = leadRecords
+    .map(({ change, record }) => parseMaybeDate(record.createdTime || change.eventAt.toISOString()))
+    .sort((left, right) => left.getTime() - right.getTime())
+    .at(-1) ?? new Date()
+
+  const results = await prisma.$transaction(async (tx) => {
+    const processed = [] as Array<Awaited<ReturnType<typeof createInboundArtifacts>>>
+
+    for (const { change, record } of leadRecords) {
+      const nombre = getLeadFieldValue(record, ['full_name', 'nombre', 'name']) || [getLeadFieldValue(record, ['first_name', 'nombre']), getLeadFieldValue(record, ['last_name', 'apellido'])].filter(Boolean).join(' ')
+      const email = getLeadFieldValue(record, ['email', 'correo', 'correo_electronico']).toLowerCase()
+      const phone = getLeadFieldValue(record, ['phone_number', 'telefono', 'celular', 'mobile_phone'])
+      const empresaNombre = getLeadFieldValue(record, ['company_name', 'empresa', 'company'])
+      const ciudad = getLeadFieldValue(record, ['city', 'ciudad'])
+      const messageText = buildMetaLeadgenMessage(record)
+      const eventAt = parseMaybeDate(record.createdTime || change.eventAt.toISOString())
+
+      const artifacts = await createInboundArtifacts({
+        client: tx,
+        empresaId: channel.empresaId,
+        sedeId: channel.sedeId,
+        createdById: channel.createdBy.id,
+        ownerUserId: channel.createdBy.id,
+        channelConnectionId: channel.id,
+        source: 'WEB',
+        captureType: 'WEB_FORM',
+        activityType: 'OTHER',
+        messageType: 'EVENT',
+        eventAt,
+        nombre,
+        empresaNombre,
+        email,
+        phone,
+        ciudad,
+        messageText,
+        externalThreadId: `meta-leadgen:${change.pageId || channel.externalPageId || channel.id}:${record.leadgenId}`,
+        providerLeadId: record.leadgenId,
+        sourceLabel: 'Meta Lead Ads',
+        sourceCampaign: record.campaignName,
+        sourceMedium: 'meta-lead-ads-native',
+        sourceContent: record.adName || record.formName,
+        landingPageUrl: record.formId ? `https://www.facebook.com/ads/leadgen/forms/${record.formId}` : null,
+        rawPayloadJson: {
+          webhook: change.rawPayloadJson,
+          leadgen: record.rawJson,
+        } as Prisma.InputJsonValue,
+        normalizedDataJson: {
+          provider: channel.provider,
+          providerLeadId: record.leadgenId,
+          pageId: change.pageId,
+          formId: record.formId,
+          formName: record.formName,
+          campaignId: record.campaignId,
+          campaignName: record.campaignName,
+          adId: record.adId,
+          adName: record.adName,
+          adsetId: record.adsetId,
+          adsetName: record.adsetName,
+          platform: record.platform,
+          fieldData: record.fieldData,
+        } as Prisma.InputJsonValue,
+      })
+
+      processed.push(artifacts)
+    }
+
+    await tx.crmChannelConnection.update({
+      where: { id: channel.id },
+      data: { lastWebhookAt: latestEventAt, lastErrorAt: null, lastErrorMessage: null },
+    })
+
+    return processed
+  })
+
+  const first = results[0]
+
+  return {
+    success: true,
+    processed: results.length,
+    processedStatuses: 0,
+    data: {
+      leadId: first?.lead.id ?? null,
+      conversationId: first?.conversation.id ?? null,
+      messageId: first?.message.id ?? null,
+      captureId: first?.capture.id ?? null,
+      records: results.map((result) => ({
+        leadId: result.lead.id,
+        conversationId: result.conversation.id,
+        messageId: result.message.id,
+        captureId: result.capture.id,
+      })),
+      nativeLeadgen: true,
+      testing: channel.status === 'TESTING',
+    },
+  }
+}
+
 async function processMetaWebhookForChannel(channel: MetaChannelRecord, body: Record<string, unknown> | null) {
+  const nativeLeadgenResult = await processNativeMetaLeadgenForChannel(channel, body)
+  if (nativeLeadgenResult) return nativeLeadgenResult
+
   const normalized = normalizeWebhookInboundPayload({ provider: channel.provider, body })
   const mapping = getWebhookInboundMapping(channel.provider)
   const latestEventAt = [

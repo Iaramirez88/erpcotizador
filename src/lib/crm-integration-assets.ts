@@ -7,7 +7,20 @@ export type CrmChannelProvider =
   | 'WEB_CHATBOT'
   | 'INSTAGRAM_DM'
 
-export type CrmBridgeKind = 'GENERIC' | 'GMAIL' | 'OUTLOOK' | 'GOOGLE_SHEETS' | 'TIKTOK' | 'YOUTUBE'
+export type CrmBridgeKind = 'GENERIC' | 'BOOKING' | 'GMAIL' | 'OUTLOOK' | 'GOOGLE_SHEETS' | 'GOOGLE_CALENDAR' | 'MICROSOFT_365_CALENDAR' | 'SLACK' | 'TEAMS' | 'META_LEAD_ADS' | 'EXTERNAL_FORM' | 'TIKTOK' | 'YOUTUBE'
+
+type BookingSnippetArgs = {
+  baseUrl: string
+  channelId: string
+  token: string
+  selector?: string
+}
+
+type BookingIframeArgs = {
+  baseUrl: string
+  channelId: string
+  height?: string
+}
 
 type WebFormSnippetArgs = {
   baseUrl: string
@@ -54,12 +67,26 @@ type GmailSnippetArgs = {
 export function getChannelProviderLabel(provider: CrmChannelProvider, bridgeKind?: string | null) {
   if (provider === 'WEB_FORM') {
     switch (bridgeKind) {
+      case 'BOOKING':
+        return 'Agenda Web'
       case 'GMAIL':
         return 'Gmail Inbox Bridge'
       case 'OUTLOOK':
         return 'Outlook Inbox Bridge'
       case 'GOOGLE_SHEETS':
         return 'Google Sheets Bridge'
+      case 'GOOGLE_CALENDAR':
+        return 'Google Calendar Bridge'
+      case 'MICROSOFT_365_CALENDAR':
+        return 'Microsoft 365 Calendar Bridge'
+      case 'SLACK':
+        return 'Slack Alerts Bridge'
+      case 'TEAMS':
+        return 'Microsoft Teams Alerts Bridge'
+      case 'META_LEAD_ADS':
+        return 'Meta Lead Ads Bridge'
+      case 'EXTERNAL_FORM':
+        return 'External Form Bridge'
       case 'TIKTOK':
         return 'TikTok Lead Bridge'
       case 'YOUTUBE':
@@ -158,6 +185,10 @@ export function buildWebFormEmbedUrl(baseUrl: string, channelId: string) {
   return `${baseUrl}/form/${channelId}`
 }
 
+export function buildBookingEmbedUrl(baseUrl: string, channelId: string) {
+  return `${baseUrl}/booking/${channelId}`
+}
+
 export function buildWebFormIframeSnippet(args: WebFormIframeArgs) {
   const height = (args.height || '840').replace(/[^0-9]/g, '') || '840'
   const src = buildWebFormEmbedUrl(args.baseUrl, args.channelId)
@@ -169,6 +200,81 @@ export function buildWebFormIframeSnippet(args: WebFormIframeArgs) {
   style="width:100%;min-height:${height}px;border:0;border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.16);background:#ffffff;"
   referrerpolicy="strict-origin-when-cross-origin"
 ></iframe>`
+}
+
+export function buildBookingIframeSnippet(args: BookingIframeArgs) {
+  const height = (args.height || '960').replace(/[^0-9]/g, '') || '960'
+  const src = buildBookingEmbedUrl(args.baseUrl, args.channelId)
+
+  return `<iframe
+  src="${src}"
+  title="Agenda CRM SGDigital"
+  loading="lazy"
+  style="width:100%;min-height:${height}px;border:0;border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.16);background:#ffffff;"
+  referrerpolicy="strict-origin-when-cross-origin"
+></iframe>`
+}
+
+export function buildBookingSnippet(args: BookingSnippetArgs) {
+  const selector = args.selector || '#booking-form'
+  return `<script>
+(function () {
+  const endpoint = '${args.baseUrl}/api/crm/captures/booking';
+  const channelId = '${args.channelId}';
+  const token = '${args.token}';
+  const selector = '${selector}';
+
+  function serializeForm(form) {
+    const data = new FormData(form);
+    return {
+      nombre: data.get('nombre') || data.get('name') || '',
+      email: data.get('email') || '',
+      telefono: data.get('telefono') || data.get('phone') || '',
+      producto: data.get('servicio') || data.get('producto') || data.get('service') || '',
+      mensaje: data.get('mensaje') || data.get('message') || '',
+      startsAt: data.get('startsAt') || data.get('fechaHora') || data.get('datetime') || '',
+      landingPageUrl: window.location.href,
+      referrerUrl: document.referrer || '',
+      utmSource: new URLSearchParams(window.location.search).get('utm_source') || '',
+      utmMedium: new URLSearchParams(window.location.search).get('utm_medium') || '',
+      utmCampaign: new URLSearchParams(window.location.search).get('utm_campaign') || '',
+      utmContent: new URLSearchParams(window.location.search).get('utm_content') || '',
+      utmTerm: new URLSearchParams(window.location.search).get('utm_term') || ''
+    };
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const body = serializeForm(form);
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-crm-channel-token': token,
+      },
+      body: JSON.stringify({ channelId, ...body }),
+    });
+
+    if (!response.ok) {
+      console.error('CRM booking failed');
+      return;
+    }
+
+    form.dispatchEvent(new CustomEvent('sgdigital:crm-booking-created', { detail: body }));
+    form.reset();
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const form = document.querySelector(selector);
+    if (!form) {
+      console.warn('SGDigital CRM: no se encontró el formulario de agenda', selector);
+      return;
+    }
+    form.addEventListener('submit', handleSubmit);
+  });
+})();
+</script>`
 }
 
 export function buildChatbotSnippet(args: ChatbotSnippetArgs) {
@@ -415,7 +521,58 @@ export function buildOutlookPayloadExample(baseUrl: string, channelId: string, t
   }, null, 2)
 }
 
-export function buildWebhookPayloadExample(provider: CrmChannelProvider) {
+export function buildWebhookPayloadExample(provider: CrmChannelProvider, bridgeKind?: CrmBridgeKind | null) {
+  if (provider === 'WEB_FORM' && bridgeKind === 'BOOKING') {
+    return JSON.stringify({
+      channelId: 'crm_channel_xxx',
+      nombre: 'Camila Rojas',
+      email: 'camila@example.com',
+      telefono: '+573001112233',
+      producto: 'Asesoría comercial',
+      mensaje: 'Necesito una reunión para revisar una propuesta.',
+      startsAt: '2026-05-12T10:00:00-05:00',
+      landingPageUrl: 'https://cliente.com/agendar',
+      referrerUrl: 'https://cliente.com/',
+      utmSource: 'website',
+      utmMedium: 'booking-widget',
+      utmCampaign: 'agenda-home',
+    }, null, 2)
+  }
+
+  if (provider === 'WEB_FORM' && bridgeKind === 'META_LEAD_ADS') {
+    return JSON.stringify({
+      channelId: 'crm_channel_xxx',
+      payload: {
+        leadgen_id: '2384-2394-8293',
+        form_id: '120394820',
+        campaign_name: 'Lanzamiento mayo',
+        field_data: [
+          { name: 'full_name', values: ['Camila Rojas'] },
+          { name: 'email', values: ['camila@example.com'] },
+          { name: 'phone_number', values: ['+573001112233'] },
+          { name: 'company_name', values: ['Litografía Andina'] },
+        ],
+      },
+      sourceCampaign: 'meta-mayo',
+      utmMedium: 'meta-lead-ads',
+    }, null, 2)
+  }
+
+  if (provider === 'WEB_FORM' && bridgeKind === 'EXTERNAL_FORM') {
+    return JSON.stringify({
+      channelId: 'crm_channel_xxx',
+      nombre: 'Laura Torres',
+      email: 'laura@example.com',
+      telefono: '+573002224455',
+      empresaNombre: 'Editorial Norte',
+      ciudad: 'Bogotá',
+      mensaje: 'Quiero una cotización para empaques.',
+      landingPageUrl: 'https://partner.com/formulario',
+      sourceCampaign: 'partner-landing-q2',
+      utmMedium: 'external-form',
+    }, null, 2)
+  }
+
   const sourcePayload = provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX'
     ? {
         externalThreadId: 'wa-573001112233',

@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
 
-const SUPPORTED_BRIDGES = new Set(['GMAIL', 'OUTLOOK', 'TIKTOK', 'YOUTUBE'])
+const SUPPORTED_BRIDGES = new Set(['GMAIL', 'OUTLOOK', 'META_LEAD_ADS', 'EXTERNAL_FORM', 'TIKTOK', 'YOUTUBE'])
 
 type EmailAutomationCategory = 'QUOTE' | 'PURCHASE' | 'SUPPORT' | 'INFORMATION' | 'GENERAL'
 
@@ -126,10 +126,43 @@ function buildSupportTaskTitle(args: { subject: string; fromName: string; fromAd
   return `Soporte · ${focus}`
 }
 
+function findFieldValue(payload: Record<string, unknown>, aliases: string[]) {
+  const groups = [payload, parseJsonObject(payload.payload), parseJsonObject(payload.data)]
+
+  for (const group of groups) {
+    for (const alias of aliases) {
+      const direct = normalizeString(group[alias])
+      if (direct) return direct
+    }
+
+    const fieldData = Array.isArray(group.field_data)
+      ? group.field_data
+      : Array.isArray(group.fieldData)
+        ? group.fieldData
+        : []
+
+    for (const row of fieldData) {
+      const item = parseJsonObject(row)
+      const name = normalizeString(item.name).toLowerCase()
+      if (!name || !aliases.includes(name)) continue
+
+      const values = Array.isArray(item.values) ? item.values.map((value) => normalizeString(value)).filter(Boolean) : []
+      if (values.length) return values.join(', ')
+
+      const singleValue = normalizeString(item.value)
+      if (singleValue) return singleValue
+    }
+  }
+
+  return ''
+}
+
 function resolveBridgeMetadata(bridgeKind: string) {
   switch (bridgeKind) {
     case 'GMAIL':
       return {
+        source: 'IMPORT' as const,
+        captureType: 'MANUAL_IMPORT' as const,
         activityType: 'EMAIL' as const,
         sourceLabel: 'Gmail Inbox Bridge',
         sourceMedium: 'gmail-bridge',
@@ -137,13 +170,35 @@ function resolveBridgeMetadata(bridgeKind: string) {
       }
     case 'OUTLOOK':
       return {
+        source: 'IMPORT' as const,
+        captureType: 'MANUAL_IMPORT' as const,
         activityType: 'EMAIL' as const,
         sourceLabel: 'Outlook Inbox Bridge',
         sourceMedium: 'outlook-bridge',
         landingPageUrl: 'outlook://mail',
       }
+    case 'META_LEAD_ADS':
+      return {
+        source: 'WEB' as const,
+        captureType: 'WEB_FORM' as const,
+        activityType: 'NOTE' as const,
+        sourceLabel: 'Meta Lead Ads Bridge',
+        sourceMedium: 'meta-lead-ads-bridge',
+        landingPageUrl: null,
+      }
+    case 'EXTERNAL_FORM':
+      return {
+        source: 'WEB' as const,
+        captureType: 'WEB_FORM' as const,
+        activityType: 'NOTE' as const,
+        sourceLabel: 'Formulario externo Bridge',
+        sourceMedium: 'external-form-bridge',
+        landingPageUrl: null,
+      }
     case 'TIKTOK':
       return {
+        source: 'IMPORT' as const,
+        captureType: 'MANUAL_IMPORT' as const,
         activityType: 'NOTE' as const,
         sourceLabel: 'TikTok Lead Bridge',
         sourceMedium: 'tiktok-bridge',
@@ -151,6 +206,8 @@ function resolveBridgeMetadata(bridgeKind: string) {
       }
     case 'YOUTUBE':
       return {
+        source: 'IMPORT' as const,
+        captureType: 'MANUAL_IMPORT' as const,
         activityType: 'NOTE' as const,
         sourceLabel: 'YouTube Lead Bridge',
         sourceMedium: 'youtube-bridge',
@@ -201,15 +258,15 @@ export async function POST(request: Request) {
     }
 
     const payload = parseJsonObject(body?.payload)
-    const fromName = normalizeString(body?.fromName || body?.nombre || payload.fromName || payload.nombre || payload.name)
-    const fromAddress = normalizeString(body?.fromAddress || body?.email || payload.fromAddress || payload.email).toLowerCase()
-    const phone = normalizeString(body?.telefono || body?.celular || payload.telefono || payload.celular || payload.phone)
-    const messageText = normalizeString(body?.mensaje || body?.message || payload.mensaje || payload.message || payload.bodyPreview || payload.body)
+    const fromName = normalizeString(body?.fromName || body?.nombre || payload.fromName || payload.nombre || payload.name || findFieldValue(payload, ['full_name', 'name', 'nombre']))
+    const fromAddress = normalizeString(body?.fromAddress || body?.email || payload.fromAddress || payload.email || findFieldValue(payload, ['email', 'correo', 'correo_electronico'])).toLowerCase()
+    const phone = normalizeString(body?.telefono || body?.celular || payload.telefono || payload.celular || payload.phone || findFieldValue(payload, ['phone_number', 'telefono', 'celular', 'mobile_phone']))
+    const messageText = normalizeString(body?.mensaje || body?.message || payload.mensaje || payload.message || payload.bodyPreview || payload.body || findFieldValue(payload, ['message', 'mensaje', 'comentarios', 'comentario']))
     const subject = normalizeString(body?.subject || payload.subject)
-    const empresaNombre = normalizeString(body?.empresaNombre || payload.empresaNombre || payload.company)
-    const ciudad = normalizeString(body?.ciudad || payload.ciudad || payload.city)
-    const document = normalizeString(body?.documento || payload.documento)
-    const sourceCampaign = normalizeString(body?.sourceCampaign || payload.sourceCampaign || payload.campaign)
+    const empresaNombre = normalizeString(body?.empresaNombre || payload.empresaNombre || payload.company || findFieldValue(payload, ['company_name', 'empresa', 'company']))
+    const ciudad = normalizeString(body?.ciudad || payload.ciudad || payload.city || findFieldValue(payload, ['city', 'ciudad']))
+    const document = normalizeString(body?.documento || payload.documento || findFieldValue(payload, ['document', 'documento', 'identificacion']))
+    const sourceCampaign = normalizeString(body?.sourceCampaign || payload.sourceCampaign || payload.campaign || payload.campaign_name)
     const eventAt = parseMaybeDate(body?.eventAt || payload.eventAt || payload.receivedAt)
     const externalThreadId = normalizeString(
       body?.externalThreadId
@@ -296,8 +353,8 @@ export async function POST(request: Request) {
         createdById: channel.createdBy.id,
         ownerUserId: channel.createdBy.id,
         channelConnectionId: channel.id,
-        source: 'IMPORT',
-        captureType: 'MANUAL_IMPORT',
+        source: metadata.source,
+        captureType: metadata.captureType,
         activityType: metadata.activityType,
         messageType: 'TEXT',
         eventAt,

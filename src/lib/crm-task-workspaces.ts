@@ -14,6 +14,8 @@ export type TaskAttachment = {
   mimeType: string | null
   sizeBytes: number | null
   uploadedAt: string
+  provider?: 'UPLOAD' | 'LIBRARY' | 'GOOGLE_DRIVE' | 'ONEDRIVE' | null
+  externalId?: string | null
 }
 
 export type TaskCustomField = {
@@ -53,6 +55,10 @@ function normalizeTaskAttachment(value: unknown, index: number): TaskAttachment 
     mimeType: normalizeString(value.mimeType) || null,
     sizeBytes,
     uploadedAt,
+    provider: ['UPLOAD', 'LIBRARY', 'GOOGLE_DRIVE', 'ONEDRIVE'].includes(normalizeString(value.provider).toUpperCase())
+      ? normalizeString(value.provider).toUpperCase() as TaskAttachment['provider']
+      : null,
+    externalId: normalizeString(value.externalId) || null,
   }
 }
 

@@ -7,6 +7,7 @@ const META_GRAPH_VERSION = 'v23.0'
 
 export const META_OAUTH_SCOPES = [
   'business_management',
+  'leads_retrieval',
   'pages_show_list',
   'pages_manage_metadata',
   'pages_messaging',
@@ -43,6 +44,22 @@ export type MetaConnectionSnapshot = {
   expiresAt: string | null
   pages: MetaPageAsset[]
   whatsappAssets: MetaWhatsAppAsset[]
+}
+
+export type MetaLeadgenRecord = {
+  leadgenId: string
+  createdTime: string | null
+  formId: string | null
+  formName: string | null
+  campaignId: string | null
+  campaignName: string | null
+  adId: string | null
+  adName: string | null
+  adsetId: string | null
+  adsetName: string | null
+  platform: string | null
+  fieldData: Array<{ name: string; values: string[] }>
+  rawJson: Prisma.InputJsonValue
 }
 
 type MetaTokenResponse = {
@@ -140,6 +157,44 @@ export function getMetaPageAccessToken(settingsJson: unknown) {
   const encrypted = normalizeString(settings.metaPageAccessTokenEncrypted)
   if (encrypted) return decryptChannelSecret(encrypted)
   return normalizeString(settings.metaPageAccessToken)
+}
+
+export async function fetchMetaLeadgenRecord(args: { accessToken: string; leadgenId: string }) {
+  const json = await fetchMetaGraph<Record<string, unknown>>(`/${args.leadgenId}`, {
+    fields: 'id,created_time,field_data,form_id,campaign_id,campaign_name,ad_id,ad_name,adgroup_id,adgroup_name,platform',
+  }, args.accessToken)
+
+  const formId = normalizeString(json.form_id) || null
+  const formJson = parseJsonObject(formId
+    ? await fetchMetaGraph<Record<string, unknown>>(`/${formId}`, { fields: 'id,name' }, args.accessToken).catch(() => ({}))
+    : {})
+
+  const fieldRows = Array.isArray(json.field_data)
+    ? json.field_data.map((item) => parseJsonObject(item))
+    : []
+
+  return {
+    leadgenId: normalizeString(json.id) || args.leadgenId,
+    createdTime: normalizeString(json.created_time) || null,
+    formId,
+    formName: normalizeString(formJson.name) || null,
+    campaignId: normalizeString(json.campaign_id) || null,
+    campaignName: normalizeString(json.campaign_name) || null,
+    adId: normalizeString(json.ad_id) || null,
+    adName: normalizeString(json.ad_name) || null,
+    adsetId: normalizeString(json.adgroup_id) || null,
+    adsetName: normalizeString(json.adgroup_name) || null,
+    platform: normalizeString(json.platform) || null,
+    fieldData: fieldRows.map((row) => ({
+      name: normalizeString(row.name),
+      values: Array.isArray(row.values)
+        ? row.values.map((value) => normalizeString(value)).filter(Boolean)
+        : normalizeString(row.value)
+          ? [normalizeString(row.value)]
+          : [],
+    })).filter((row) => row.name),
+    rawJson: json as Prisma.InputJsonValue,
+  } satisfies MetaLeadgenRecord
 }
 
 export type MetaMessagingDispatchConfig = {
