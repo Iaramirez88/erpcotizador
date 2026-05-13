@@ -5,9 +5,10 @@ import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { ModuleKey } from '@prisma/client'
 import { cn } from "@/lib/utils"
-import { formatCOP, getPlanPriceCOP, type BillingCycle, type PlanInfo, type PlanTier } from "@/lib/plans"
+import { formatCOP, type BillingCycle, type PlanInfo, type PlanTier } from "@/lib/plans"
 import {
   buildPlanModuleCatalog,
   getModularPlanQuote,
@@ -27,6 +28,18 @@ type PlanDetails = {
   incluye: Array<{ title: string; items: string[] }>
   alcance: string[]
 }
+
+type PlanCatalogInfo = PlanInfo & {
+  tagline?: string
+  forWho?: string
+  incluye?: Array<{ title: string; items: string[] }>
+  alcance?: string[]
+  storageLimitGb?: number | null
+  active?: boolean
+  displayOrder?: number
+}
+
+type PlanSectionTab = 'planes' | 'modulos' | 'almacenamiento' | 'historial' | 'comparacion'
 
 const PLAN_DETAILS: Record<PlanTier, PlanDetails> = {
   CRM: {
@@ -133,7 +146,7 @@ const PLAN_COMPARISON: ComparisonFeature[] = [
 type PlanApiResponse =
   | {
       ok: true
-      current: PlanInfo
+      current: PlanCatalogInfo
       effective?:
         | {
             planTier: PlanTier
@@ -159,7 +172,15 @@ type PlanApiResponse =
       lastInvoice: LastInvoice | null
       invoices: LastInvoice[]
       modulePrices: Array<{ module: ModuleKey; priceCOP: number }>
-      all: PlanInfo[]
+      all: PlanCatalogInfo[]
+      storageUsage: {
+        totalBytes: number
+        usedBytes: number
+        freeBytes: number
+        filesCount: number
+        foldersCount: number
+        lastUploadedAt: string | null
+      } | null
       devDefault: PlanTier
     }
   | {
@@ -199,8 +220,8 @@ export default function PlanPage() {
 
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [current, setCurrent] = useState<PlanInfo | null>(null)
-  const [all, setAll] = useState<PlanInfo[]>([])
+  const [current, setCurrent] = useState<PlanCatalogInfo | null>(null)
+  const [all, setAll] = useState<PlanCatalogInfo[]>([])
   const [empresa, setEmpresa] = useState<{
     planTier: PlanTier
     billingCycle: BillingCycle
@@ -212,6 +233,38 @@ export default function PlanPage() {
   const [cycle, setCycle] = useState<BillingCycle>("MONTHLY")
   const [isPaying, setIsPaying] = useState(false)
   const [selectedModules, setSelectedModules] = useState<(typeof PLAN_MODULE_CATALOG)[number]["module"][]>([])
+  const [activeTab, setActiveTab] = useState<PlanSectionTab>('planes')
+  const [storageUsage, setStorageUsage] = useState<{
+    totalBytes: number
+    usedBytes: number
+    freeBytes: number
+    filesCount: number
+    foldersCount: number
+    lastUploadedAt: string | null
+  } | null>(null)
+
+  function formatBytes(value: number) {
+    if (!Number.isFinite(value) || value <= 0) return '0 B'
+    const units = ['B', 'KB', 'MB', 'GB', 'TB']
+    const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1)
+    const size = value / 1024 ** exponent
+    return `${size >= 100 || exponent === 0 ? Math.round(size) : size.toFixed(1)} ${units[exponent]}`
+  }
+
+  function formatDateTime(value: string | null | undefined) {
+    if (!value) return 'Sin cargas aún'
+    try {
+      return new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+    } catch {
+      return value
+    }
+  }
+
+  function getStorageLevel(percentage: number) {
+    if (percentage >= 95) return 'critical'
+    if (percentage >= 80) return 'warning'
+    return 'normal'
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -235,6 +288,7 @@ export default function PlanPage() {
           setAll(json.all)
           setLastInvoice(json.lastInvoice)
           setInvoices(json.invoices)
+          setStorageUsage(json.storageUsage)
           setModulePriceMap(Object.fromEntries(json.modulePrices.map((row) => [row.module, row.priceCOP])) as Partial<Record<ModuleKey, number>>)
           return
         }
@@ -303,10 +357,14 @@ export default function PlanPage() {
 
   const sortedPlans = useMemo(() => {
     const order: PlanTier[] = ["CRM", "BASIC", "MEDIO", "INTERMEDIO", "FULL"]
-    return [...all].sort((a, b) => order.indexOf(a.tier) - order.indexOf(b.tier))
+    return [...all].sort((a, b) => (a.displayOrder ?? order.indexOf(a.tier)) - (b.displayOrder ?? order.indexOf(b.tier)))
   }, [all])
 
   const comparisonPlans = useMemo(() => sortedPlans.filter((plan) => plan.tier in PLAN_DETAILS), [sortedPlans])
+
+  const basePlanPriceMap = useMemo(() => {
+    return Object.fromEntries(sortedPlans.map((plan) => [plan.tier, plan.precioMensualCOP])) as Partial<Record<PlanTier, number>>
+  }, [sortedPlans])
 
   const pricedCatalog = useMemo(() => buildPlanModuleCatalog(modulePriceMap), [modulePriceMap])
 
@@ -325,7 +383,7 @@ export default function PlanPage() {
     return sortedPlans.find((plan) => plan.tier === recommendedTier) ?? null
   }, [recommendedTier, sortedPlans])
 
-  const modularQuote = useMemo(() => getModularPlanQuote({ selectedModules, cycle, modulePriceMap }), [selectedModules, cycle, modulePriceMap])
+  const modularQuote = useMemo(() => getModularPlanQuote({ selectedModules, cycle, modulePriceMap, basePlanPriceMap }), [selectedModules, cycle, modulePriceMap, basePlanPriceMap])
   const recommendedPrice = modularQuote.totalCOP
   const addonMonthlyTotal = useMemo(() => {
     return selectedModules.reduce((sum, moduleKey) => {
@@ -342,12 +400,61 @@ export default function PlanPage() {
     return new Set(getDefaultEnabledModulesForPlan(recommendedTier))
   }, [recommendedTier])
 
+  function getCatalogPrice(plan: PlanCatalogInfo | null, billingCycle: BillingCycle) {
+    if (!plan) return 0
+    if (billingCycle === 'MONTHLY') return plan.precioMensualCOP
+    return Math.round(plan.precioMensualCOP * 12 * 0.9)
+  }
+
   const currentRecommendedDifference = useMemo(() => {
     if (!current || current.tier === recommendedTier) return null
 
-    const currentPrice = getPlanPriceCOP(current.tier, cycle)
+    const currentPrice = getCatalogPrice(current, cycle)
     return recommendedPrice - currentPrice
   }, [current, recommendedPrice, recommendedTier, cycle])
+
+  const comparisonFeatures = useMemo<ComparisonFeature[]>(() => {
+    const storageAvailability = Object.fromEntries(
+      comparisonPlans.map((plan) => [plan.tier, typeof plan.storageLimitGb === 'number' ? `${plan.storageLimitGb} GB` : 'N/D'])
+    ) as Record<PlanTier, boolean | string>
+
+    return [
+      ...PLAN_COMPARISON,
+      { label: 'Espacio CRM / archivos', availability: storageAvailability },
+    ]
+  }, [comparisonPlans])
+
+  const activeCatalogPlans = useMemo(() => sortedPlans.filter((plan) => plan.active !== false), [sortedPlans])
+
+  const planStorageSummary = useMemo(() => {
+    return activeCatalogPlans.map((plan) => ({
+      tier: plan.tier,
+      nombre: plan.nombre,
+      storageLabel: typeof plan.storageLimitGb === 'number' ? `${plan.storageLimitGb} GB` : 'Pendiente',
+    }))
+  }, [activeCatalogPlans])
+
+  const storageUsagePct = useMemo(() => {
+    if (!storageUsage?.totalBytes || storageUsage.totalBytes <= 0) return 0
+    return Math.min(100, Math.round((storageUsage.usedBytes / storageUsage.totalBytes) * 100))
+  }, [storageUsage])
+
+  const storageLevel = useMemo(() => getStorageLevel(storageUsagePct), [storageUsagePct])
+  const storageAccentClass = storageLevel === 'critical'
+    ? 'bg-rose-600'
+    : storageLevel === 'warning'
+      ? 'bg-amber-500'
+      : 'bg-emerald-600'
+  const storagePanelClass = storageLevel === 'critical'
+    ? 'border-rose-200 bg-rose-50/70'
+    : storageLevel === 'warning'
+      ? 'border-amber-200 bg-amber-50/70'
+      : 'border-emerald-200 bg-emerald-50/70'
+  const storageAlertCopy = storageLevel === 'critical'
+    ? 'Estás muy cerca del límite del plan. Conviene liberar archivos o subir de capacidad.'
+    : storageLevel === 'warning'
+      ? 'El consumo ya supera el 80%. Conviene vigilar nuevas cargas.'
+      : 'El consumo está en rango saludable.'
 
   useEffect(() => {
     if (!current || selectedModules.length > 0) return
@@ -420,7 +527,7 @@ export default function PlanPage() {
 
         {isSuperAdmin ? (
           <Button asChild variant="outline">
-            <Link href="/dashboard/configuracion/super-admin/modulos-por-plan">Super Admin</Link>
+            <Link href="/dashboard/configuracion/super-admin/modulos-por-plan">Administrar catálogo</Link>
           </Button>
         ) : null}
       </div>
@@ -461,6 +568,11 @@ export default function PlanPage() {
                 <div className="mt-1 text-sm text-gray-700">
                   <span className="font-medium">{formatCOP(current.precioMensualCOP)}</span> / mes
                 </div>
+                {typeof current.storageLimitGb === 'number' ? (
+                  <div className="mt-1 text-sm text-gray-700">
+                    Espacio CRM: <span className="font-medium">{current.storageLimitGb} GB</span>
+                  </div>
+                ) : null}
                 {empresa?.planValidUntil ? (
                   <div className="mt-1 text-sm text-gray-700">
                     Vigente hasta:{" "}
@@ -581,68 +693,187 @@ export default function PlanPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.6fr_0.9fr]">
-        <Card className="border-slate-200 bg-[linear-gradient(135deg,#fff7ed_0%,#ffffff_48%,#eff6ff_100%)]">
-          <CardHeader>
-            <CardTitle>Arma tu plan por módulos</CardTitle>
-            <CardDescription>
-              Selecciona los módulos que realmente vas a usar. El sistema te recomienda el plan mínimo que los cubre y actualiza el valor en tiempo real.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            {Object.entries(modulesByCategory).map(([category, modules]) => (
-              <div key={category} className="space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-sm font-semibold text-slate-900">{category}</div>
-                    <div className="text-xs text-slate-600">Activa solo lo que aporta valor a esta etapa de la operación.</div>
-                  </div>
+      <Card className="border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]">
+        <CardHeader className="space-y-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle>Catálogo y cotización de planes</CardTitle>
+              <CardDescription>La información del catálogo sale del registro persistido en base de datos y se puede editar desde super admin en producción.</CardDescription>
+            </div>
+            <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600 sm:grid-cols-3 lg:min-w-[420px]">
+              {planStorageSummary.map((plan) => (
+                <div key={plan.tier} className="rounded-xl bg-slate-50 px-3 py-2">
+                  <div className="font-semibold text-slate-900">{plan.nombre}</div>
+                  <div>Espacio: {plan.storageLabel}</div>
                 </div>
+              ))}
+            </div>
+          </div>
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PlanSectionTab)}>
+            <TabsList className="h-auto flex-wrap justify-start rounded-2xl bg-slate-100 p-1">
+              <TabsTrigger value="planes" className="rounded-xl">Planes base</TabsTrigger>
+              <TabsTrigger value="modulos" className="rounded-xl">Arma tu plan por módulos</TabsTrigger>
+              <TabsTrigger value="almacenamiento" className="rounded-xl">Almacenamiento</TabsTrigger>
+              <TabsTrigger value="historial" className="rounded-xl">Historial de planes</TabsTrigger>
+              <TabsTrigger value="comparacion" className="rounded-xl">Diferencias entre planes</TabsTrigger>
+            </TabsList>
 
-                <div className="grid gap-3 md:grid-cols-2">
-                  {modules.map((module) => {
-                    const selected = selectedModules.includes(module.module)
-                    const startingTier = getMinimumPlanTierForModules([module.module])
-
-                    return (
-                      <button
-                        key={module.module}
-                        type="button"
-                        onClick={() => toggleModule(module.module)}
-                        className={cn(
-                          "rounded-2xl border p-4 text-left transition",
-                          selected
-                            ? "border-slate-900 bg-slate-900 text-white shadow-lg shadow-slate-300/60"
-                            : "border-white/70 bg-white/80 text-slate-900 shadow-sm hover:border-slate-300 hover:bg-white"
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-sm font-semibold">{module.nombre}</div>
-                            <div className={cn("mt-1 text-xs", selected ? "text-slate-200" : "text-slate-600")}>{module.descripcion}</div>
-                          </div>
-                          <span
-                            className={cn(
-                              "rounded-full px-2 py-1 text-[11px] font-semibold",
-                              selected ? "bg-white/15 text-white" : "bg-slate-100 text-slate-700"
-                            )}
-                          >
-                            + {formatCOP(module.activationPriceMonthlyCOP)}/mes
-                          </span>
-                        </div>
-                        <div className={cn("mt-3 text-[11px] font-medium uppercase tracking-[0.16em]", selected ? "text-slate-300" : "text-slate-500")}>
-                          Tier mínimo: {startingTier}
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
+            <TabsContent value="planes" className="space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Planes base disponibles</h2>
+                <p className="text-sm text-slate-600">Cada tarjeta toma nombre, copy, precio y almacenamiento desde la configuración persistida del plan.</p>
               </div>
-            ))}
-          </CardContent>
-        </Card>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {activeCatalogPlans.map((p) => {
+                  const isCurrent = current?.tier === p.tier
+                  const displayPrice = getCatalogPrice(p, cycle)
+                  const disablePay = isPaying || isLoading || (isCurrent && empresa?.billingCycle === cycle && !!empresa?.planValidUntil)
+                  const details = {
+                    ...PLAN_DETAILS[p.tier],
+                    tagline: p.tagline ?? PLAN_DETAILS[p.tier].tagline,
+                    forWho: p.forWho ?? PLAN_DETAILS[p.tier].forWho,
+                    incluye: p.incluye ?? PLAN_DETAILS[p.tier].incluye,
+                    alcance: p.alcance ?? PLAN_DETAILS[p.tier].alcance,
+                  }
 
-        <Card className="border-slate-200 bg-slate-950 text-white">
+                  return (
+                    <Card
+                      key={p.tier}
+                      className={cn(
+                        "border",
+                        isCurrent ? "border-blue-500 ring-1 ring-blue-200" : "border-gray-200"
+                      )}
+                    >
+                      <CardHeader>
+                        <CardTitle className="flex items-center justify-between">
+                          <span>{p.nombre}</span>
+                          {isCurrent ? (
+                            <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-1 rounded">
+                              Actual
+                            </span>
+                          ) : null}
+                        </CardTitle>
+                        <CardDescription>{p.descripcion}</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-gray-900">{formatCOP(displayPrice)}</div>
+                        <div className="text-sm text-gray-600">{cycle === "YEARLY" ? "COP / año" : "COP / mes"}</div>
+                        {typeof p.storageLimitGb === 'number' ? (
+                          <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">Espacio incluido: {p.storageLimitGb} GB</div>
+                        ) : null}
+
+                        <div className="mt-4 space-y-2">
+                          <div className="text-sm font-medium text-gray-900">{details.tagline}</div>
+                          <div className="text-sm text-gray-700">{details.forWho}</div>
+                        </div>
+
+                        <div className="mt-4 space-y-3">
+                          <div className="text-sm font-semibold text-gray-900">Incluye</div>
+                          <div className="space-y-2">
+                            {details.incluye.map((group) => (
+                              <div key={group.title} className="space-y-1">
+                                <div className="text-sm font-medium text-gray-900">{group.title}</div>
+                                {group.items.length ? (
+                                  <ul className="list-disc pl-5 text-sm text-gray-700">
+                                    {group.items.map((it) => (
+                                      <li key={it}>{it}</li>
+                                    ))}
+                                  </ul>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 space-y-2">
+                          <div className="text-sm font-semibold text-gray-900">Alcance</div>
+                          <ul className="list-disc pl-5 text-sm text-gray-700">
+                            {details.alcance.map((it) => (
+                              <li key={it}>{it}</li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        <div className="mt-4">
+                          <Button
+                            className="w-full"
+                            disabled={disablePay}
+                            variant={isCurrent ? "secondary" : "default"}
+                            onClick={() => startPayment(p.tier)}
+                          >
+                            {isPaying ? "Redirigiendo…" : isCurrent ? "Plan actual" : "Cambiar a este plan"}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="modulos" className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.6fr_0.9fr]">
+                <Card className="border-slate-200 bg-[linear-gradient(135deg,#fff7ed_0%,#ffffff_48%,#eff6ff_100%)]">
+                  <CardHeader>
+                    <CardTitle>Arma tu plan por módulos</CardTitle>
+                    <CardDescription>
+                      Selecciona los módulos que realmente vas a usar. El sistema te recomienda el plan mínimo que los cubre y actualiza el valor en tiempo real.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    {Object.entries(modulesByCategory).map(([category, modules]) => (
+                      <div key={category} className="space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900">{category}</div>
+                            <div className="text-xs text-slate-600">Activa solo lo que aporta valor a esta etapa de la operación.</div>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {modules.map((module) => {
+                            const selected = selectedModules.includes(module.module)
+                            const startingTier = getMinimumPlanTierForModules([module.module])
+
+                            return (
+                              <button
+                                key={module.module}
+                                type="button"
+                                onClick={() => toggleModule(module.module)}
+                                className={cn(
+                                  "rounded-2xl border p-4 text-left transition",
+                                  selected
+                                    ? "border-slate-900 bg-slate-900 text-white shadow-lg shadow-slate-300/60"
+                                    : "border-white/70 bg-white/80 text-slate-900 shadow-sm hover:border-slate-300 hover:bg-white"
+                                )}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <div className="text-sm font-semibold">{module.nombre}</div>
+                                    <div className={cn("mt-1 text-xs", selected ? "text-slate-200" : "text-slate-600")}>{module.descripcion}</div>
+                                  </div>
+                                  <span
+                                    className={cn(
+                                      "rounded-full px-2 py-1 text-[11px] font-semibold",
+                                      selected ? "bg-white/15 text-white" : "bg-slate-100 text-slate-700"
+                                    )}
+                                  >
+                                    + {formatCOP(module.activationPriceMonthlyCOP)}/mes
+                                  </span>
+                                </div>
+                                <div className={cn("mt-3 text-[11px] font-medium uppercase tracking-[0.16em]", selected ? "text-slate-300" : "text-slate-500")}>
+                                  Tier mínimo: {startingTier}
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-slate-200 bg-slate-950 text-white">
           <CardHeader>
             <CardTitle>{purchaseMode === 'ADDON' ? 'Resumen del adicional' : 'Resumen de cotización'}</CardTitle>
             <CardDescription className="text-slate-300">
@@ -671,11 +902,11 @@ export default function PlanPage() {
             <div className="grid gap-2 rounded-2xl border border-white/10 p-4 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-slate-300">{purchaseMode === 'ADDON' ? 'Base del plan actual' : `Base del plan ${recommendedPlan?.nombre ?? recommendedTier}`}</span>
-                <span>{formatCOP(purchaseMode === 'ADDON' ? 0 : cycle === 'YEARLY' ? getPlanPriceCOP(recommendedTier, 'YEARLY') : modularQuote.basePriceMonthlyCOP)}</span>
+                <span>{formatCOP(purchaseMode === 'ADDON' ? 0 : cycle === 'YEARLY' ? Math.round(modularQuote.basePriceMonthlyCOP * 12 * 0.9) : modularQuote.basePriceMonthlyCOP)}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-slate-300">Activación de módulos</span>
-                <span>{formatCOP(purchaseMode === 'ADDON' ? addonTotal : cycle === 'YEARLY' ? recommendedPrice - getPlanPriceCOP(recommendedTier, 'YEARLY') : modularQuote.modulesSubtotalMonthlyCOP)}</span>
+                <span>{formatCOP(purchaseMode === 'ADDON' ? addonTotal : cycle === 'YEARLY' ? recommendedPrice - Math.round(modularQuote.basePriceMonthlyCOP * 12 * 0.9) : modularQuote.modulesSubtotalMonthlyCOP)}</span>
               </div>
               {cycle === 'YEARLY' ? (
                 <div className="flex items-center justify-between gap-3 text-emerald-300">
@@ -745,169 +976,168 @@ export default function PlanPage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+              </div>
+            </TabsContent>
 
-      <div className="space-y-3">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">Planes base disponibles</h2>
-          <p className="text-sm text-slate-600">Si prefieres comparar por paquete cerrado, aquí sigues teniendo la vista completa de cada plan.</p>
-        </div>
+            <TabsContent value="almacenamiento" className="space-y-4">
+              <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Consumo actual de almacenamiento</CardTitle>
+                    <CardDescription>Capacidad usada por la empresa frente al límite actual del plan para archivos CRM.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className={cn('rounded-2xl border px-4 py-3 text-sm', storagePanelClass)}>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-semibold text-slate-900">
+                          {storageLevel === 'critical' ? 'Alerta crítica' : storageLevel === 'warning' ? 'Atención' : 'Estado estable'}
+                        </span>
+                        <span className="rounded-full bg-white/80 px-2 py-1 text-xs font-semibold text-slate-700">{storageUsagePct}% usado</span>
+                      </div>
+                      <p className="mt-2 text-sm text-slate-700">{storageAlertCopy}</p>
+                    </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {sortedPlans.map((p) => {
-          const isCurrent = current?.tier === p.tier
-          const displayPrice = getPlanPriceCOP(p.tier, cycle)
-          const disablePay = isPaying || isLoading || (isCurrent && empresa?.billingCycle === cycle && !!empresa?.planValidUntil)
-          const details = PLAN_DETAILS[p.tier]
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Usado</div>
+                        <div className="mt-2 text-2xl font-semibold text-slate-950">{formatBytes(storageUsage?.usedBytes ?? 0)}</div>
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Disponible</div>
+                        <div className="mt-2 text-2xl font-semibold text-slate-950">{formatBytes(storageUsage?.freeBytes ?? 0)}</div>
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Capacidad total</div>
+                        <div className="mt-2 text-2xl font-semibold text-slate-950">{formatBytes(storageUsage?.totalBytes ?? 0)}</div>
+                      </div>
+                    </div>
 
-          return (
-            <Card
-              key={p.tier}
-              className={cn(
-                "border",
-                isCurrent ? "border-blue-500 ring-1 ring-blue-200" : "border-gray-200"
-              )}
-            >
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>{p.nombre}</span>
-                  {isCurrent ? (
-                    <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-1 rounded">
-                      Actual
-                    </span>
-                  ) : null}
-                </CardTitle>
-                <CardDescription>{p.descripcion}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-gray-900">{formatCOP(displayPrice)}</div>
-                <div className="text-sm text-gray-600">{cycle === "YEARLY" ? "COP / año" : "COP / mes"}</div>
+                    <div className="rounded-2xl border border-slate-200 p-4">
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <span className="font-medium text-slate-700">Uso del plan actual</span>
+                        <span className="font-semibold text-slate-950">{storageUsagePct}%</span>
+                      </div>
+                      <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-100">
+                        <div className={cn('h-full rounded-full transition-all', storageAccentClass)} style={{ width: `${storageUsagePct}%` }} />
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
+                        <span>{storageUsage?.filesCount ?? 0} archivos</span>
+                        <span>{storageUsage?.foldersCount ?? 0} carpetas</span>
+                        <span>Plan actual: {current?.nombre ?? current?.tier ?? 'N/D'}</span>
+                        <span>Última carga: {formatDateTime(storageUsage?.lastUploadedAt)}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
 
-                <div className="mt-4 space-y-2">
-                  <div className="text-sm font-medium text-gray-900">{details.tagline}</div>
-                  <div className="text-sm text-gray-700">{details.forWho}</div>
-                </div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Capacidad por plan</CardTitle>
+                    <CardDescription>Referencia rápida del almacenamiento incluido en cada plan base.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {planStorageSummary.map((plan) => {
+                      const isCurrent = current?.tier === plan.tier
+                      return (
+                        <div key={plan.tier} className={cn('rounded-2xl border px-4 py-3', isCurrent ? 'border-blue-200 bg-blue-50/60' : 'border-slate-200')}>
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <div className="font-semibold text-slate-950">{plan.nombre}</div>
+                              <div className="text-xs text-slate-500">{plan.tier}</div>
+                            </div>
+                            <div className="text-sm font-medium text-slate-700">{plan.storageLabel}</div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
 
-                <div className="mt-4 space-y-3">
-                  <div className="text-sm font-semibold text-gray-900">Incluye</div>
-                  <div className="space-y-2">
-                    {details.incluye.map((group) => (
-                      <div key={group.title} className="space-y-1">
-                        <div className="text-sm font-medium text-gray-900">{group.title}</div>
-                        {group.items.length ? (
-                          <ul className="list-disc pl-5 text-sm text-gray-700">
-                            {group.items.map((it) => (
-                              <li key={it}>{it}</li>
-                            ))}
-                          </ul>
+            <TabsContent value="historial" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Historial de planes y cobros</CardTitle>
+                  <CardDescription>Últimos intentos y pagos registrados para la empresa.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {!invoices.length ? (
+                    <div className="text-sm text-gray-600">Aún no hay cobros registrados.</div>
+                  ) : (
+                    invoices.map((invoice) => (
+                      <div key={invoice.id} className="rounded-2xl border border-slate-200 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={cn(
+                                "text-xs font-semibold px-2 py-1 rounded",
+                                invoice.status === "PAID"
+                                  ? "bg-green-50 text-green-700"
+                                  : invoice.status === "PENDING"
+                                    ? "bg-yellow-50 text-yellow-800"
+                                    : invoice.status === "REJECTED"
+                                      ? "bg-red-50 text-red-700"
+                                      : "bg-gray-100 text-gray-700"
+                              )}
+                            >
+                              {invoice.status}
+                            </span>
+                            <span className="text-sm font-medium text-slate-900">{formatCOP(invoice.amountCOP)}</span>
+                            <span className="text-xs text-slate-500">{invoice.billingCycle === 'YEARLY' ? 'Anual' : 'Mensual'}</span>
+                          </div>
+                          <div className="text-xs text-slate-500">{new Date(invoice.createdAt).toLocaleString('es-CO')}</div>
+                        </div>
+                        <div className="mt-2 text-xs text-slate-500">Referencia: <span className="font-mono">{invoice.externalReference}</span></div>
+                        {invoice.quotedModules.length ? (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {invoice.quotedModules.map((moduleKey) => {
+                              const item = pricedCatalog.find((module) => module.module === moduleKey)
+                              return <span key={moduleKey} className="rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-700">{item?.nombre ?? moduleKey}</span>
+                            })}
+                          </div>
                         ) : null}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-                <div className="mt-4 space-y-2">
-                  <div className="text-sm font-semibold text-gray-900">Alcance</div>
-                  <ul className="list-disc pl-5 text-sm text-gray-700">
-                    {details.alcance.map((it) => (
-                      <li key={it}>{it}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="mt-4">
-                  <Button
-                    className="w-full"
-                    disabled={disablePay}
-                    variant={isCurrent ? "secondary" : "default"}
-                    onClick={() => startPayment(p.tier)}
-                  >
-                    {isPaying ? "Redirigiendo…" : isCurrent ? "Plan actual" : "Cambiar a este plan"}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Historial de cobros</CardTitle>
-          <CardDescription>Últimos intentos y pagos registrados para la empresa.</CardDescription>
+            <TabsContent value="comparacion" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Diferencias entre planes</CardTitle>
+                  <CardDescription>Comparativo rápido de funcionalidades, capacidad y almacenamiento CRM.</CardDescription>
+                </CardHeader>
+                <CardContent className="overflow-x-auto">
+                  <table className="min-w-[920px] w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="px-3 py-2 text-left font-semibold text-slate-900">Funcionalidad</th>
+                        {comparisonPlans.map((plan) => (
+                          <th key={plan.tier} className="px-3 py-2 text-center font-semibold text-slate-900">{plan.nombre}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {comparisonFeatures.map((feature) => (
+                        <tr key={feature.label} className="border-b last:border-b-0">
+                          <td className="px-3 py-2 text-slate-700">{feature.label}</td>
+                          {comparisonPlans.map((plan) => (
+                            <td key={`${feature.label}-${plan.tier}`} className="px-3 py-2 text-center">
+                              {renderAvailability(feature.availability[plan.tier])}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {!invoices.length ? (
-            <div className="text-sm text-gray-600">Aún no hay cobros registrados.</div>
-          ) : (
-            invoices.map((invoice) => (
-              <div key={invoice.id} className="rounded-2xl border border-slate-200 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        "text-xs font-semibold px-2 py-1 rounded",
-                        invoice.status === "PAID"
-                          ? "bg-green-50 text-green-700"
-                          : invoice.status === "PENDING"
-                            ? "bg-yellow-50 text-yellow-800"
-                            : invoice.status === "REJECTED"
-                              ? "bg-red-50 text-red-700"
-                              : "bg-gray-100 text-gray-700"
-                      )}
-                    >
-                      {invoice.status}
-                    </span>
-                    <span className="text-sm font-medium text-slate-900">{formatCOP(invoice.amountCOP)}</span>
-                    <span className="text-xs text-slate-500">{invoice.billingCycle === 'YEARLY' ? 'Anual' : 'Mensual'}</span>
-                  </div>
-                  <div className="text-xs text-slate-500">{new Date(invoice.createdAt).toLocaleString('es-CO')}</div>
-                </div>
-                <div className="mt-2 text-xs text-slate-500">Referencia: <span className="font-mono">{invoice.externalReference}</span></div>
-                {invoice.quotedModules.length ? (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {invoice.quotedModules.map((moduleKey) => {
-                      const item = pricedCatalog.find((module) => module.module === moduleKey)
-                      return <span key={moduleKey} className="rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-700">{item?.nombre ?? moduleKey}</span>
-                    })}
-                  </div>
-                ) : null}
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Diferencias entre planes</CardTitle>
-          <CardDescription>Comparativo rapido de funcionalidades, capacidad y CRM.</CardDescription>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <table className="min-w-[920px] w-full text-sm">
-            <thead>
-              <tr className="border-b">
-                <th className="px-3 py-2 text-left font-semibold text-slate-900">Funcionalidad</th>
-                {comparisonPlans.map((plan) => (
-                  <th key={plan.tier} className="px-3 py-2 text-center font-semibold text-slate-900">{plan.nombre}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {PLAN_COMPARISON.map((feature) => (
-                <tr key={feature.label} className="border-b last:border-b-0">
-                  <td className="px-3 py-2 text-slate-700">{feature.label}</td>
-                  {comparisonPlans.map((plan) => (
-                    <td key={`${feature.label}-${plan.tier}`} className="px-3 py-2 text-center">
-                      {renderAvailability(feature.availability[plan.tier])}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </CardContent>
       </Card>
     </div>
   )

@@ -3,13 +3,14 @@ import { prisma } from '@/lib/prisma'
 import { BillingCycle as PrismaBillingCycle, PlanTier as PrismaPlanTier } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { createBoldPaymentLink } from '@/lib/bold'
-import { ANNUAL_DISCOUNT_PCT, type BillingCycle, getPlanPriceCOP, type PlanTier } from '@/lib/plans'
+import { ANNUAL_DISCOUNT_PCT, type BillingCycle, type PlanTier } from '@/lib/plans'
 import { resolveUserIdFromSession } from '@/lib/session-user'
 import { ensurePlanOwnerUserIdForEmpresa } from '@/lib/plan-owner'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import { ALL_MODULE_KEYS, getModularPlanQuote } from '@/lib/plan-catalog'
 import type { ModuleKey } from '@prisma/client'
 import { getPlanModulePriceMap } from '@/lib/plan-module-prices'
+import { getManagedPlanPriceCOP, getManagedPlans } from '@/lib/managed-plans'
 
 export const runtime = 'nodejs'
 
@@ -83,7 +84,9 @@ export async function POST(request: Request) {
       : []
 
     const modulePriceMap = selectedModules.length ? await getPlanModulePriceMap() : undefined
-    const modularQuote = selectedModules.length ? getModularPlanQuote({ selectedModules, cycle, modulePriceMap }) : null
+    const managedPlans = await getManagedPlans({ includeInactive: true })
+    const basePlanPriceMap = Object.fromEntries(managedPlans.map((plan) => [plan.tier, plan.precioMensualCOP])) as Partial<Record<PlanTier, number>>
+    const modularQuote = selectedModules.length ? getModularPlanQuote({ selectedModules, cycle, modulePriceMap, basePlanPriceMap }) : null
     const addonMonthlyCOP = selectedModules.reduce((sum, moduleKey) => {
       const price = modulePriceMap?.[moduleKey] ?? 0
       return sum + price
@@ -93,7 +96,7 @@ export async function POST(request: Request) {
       : addonMonthlyCOP
     const amountCOP = purchaseMode === 'ADDON'
       ? addonTotalCOP
-      : modularQuote?.totalCOP ?? getPlanPriceCOP(tier, cycle)
+      : modularQuote?.totalCOP ?? await getManagedPlanPriceCOP(tier, cycle)
     const discountPct = purchaseMode === 'ADDON'
       ? (cycle === 'YEARLY' ? ANNUAL_DISCOUNT_PCT : 0)
       : modularQuote?.annualDiscountPct ?? (cycle === 'YEARLY' ? ANNUAL_DISCOUNT_PCT : 0)

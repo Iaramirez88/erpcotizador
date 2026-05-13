@@ -187,14 +187,19 @@ export function getPlanCatalogItem(moduleKey: ModuleKey, modulePriceMap?: Module
   return buildPlanModuleCatalog(modulePriceMap).find((item) => item.module === moduleKey) ?? null
 }
 
-export function getModularPlanQuote(args: { selectedModules: ModuleKey[]; cycle: BillingCycle; modulePriceMap?: ModulePriceMap }): ModularPlanQuote {
+export function getModularPlanQuote(args: {
+  selectedModules: ModuleKey[]
+  cycle: BillingCycle
+  modulePriceMap?: ModulePriceMap
+  basePlanPriceMap?: Partial<Record<PlanTier, number>>
+}): ModularPlanQuote {
   const catalog = buildPlanModuleCatalog(args.modulePriceMap)
   const selectedModules = Array.from(new Set(args.selectedModules)).filter((moduleKey) =>
     catalog.some((item) => item.module === moduleKey)
   )
 
   const recommendedTier = getMinimumPlanTierForModules(selectedModules)
-  const basePriceMonthlyCOP = getPlanPriceCOP(recommendedTier, 'MONTHLY')
+  const basePriceMonthlyCOP = args.basePlanPriceMap?.[recommendedTier] ?? getPlanPriceCOP(recommendedTier, 'MONTHLY')
   const modulesSubtotalMonthlyCOP = selectedModules.reduce((sum, moduleKey) => {
     const item = getPlanCatalogItem(moduleKey, args.modulePriceMap)
     return sum + (item?.activationPriceMonthlyCOP ?? 0)

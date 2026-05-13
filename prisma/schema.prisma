@@ -1877,6 +1877,26 @@ model PlanModulePriceSetting {
   @@map("plan_module_price_settings")
 }
 
+model PlanCatalogSetting {
+  id              String   @id @default(cuid())
+  planTier        PlanTier @unique
+  nombre          String
+  descripcion     String
+  precioMensualCOP Int
+  tagline         String
+  forWho          String
+  incluyeJson     Json
+  alcanceJson     Json
+  storageLimitGb  Int?
+  active          Boolean  @default(true)
+  displayOrder    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([active, displayOrder])
+  @@map("plan_catalog_settings")
+}
+
 // ============================================
 // NOTIFICACIONES (MVP)
 // ============================================

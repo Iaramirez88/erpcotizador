@@ -14,6 +14,8 @@ import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { getServerLanguage } from '@/lib/i18n/server'
 import { translate, type UiLanguage } from '@/lib/i18n/messages'
 import { resolveUserIdFromSession } from '@/lib/session-user'
+import { getCrmStorageUsageSummary } from '@/lib/crm-files'
+import { cn } from '@/lib/utils'
 
 function fmtDate(date: Date | null | undefined, locale: string, naText: string) {
   if (!date) return naText
@@ -31,6 +33,20 @@ function makeT(language: UiLanguage) {
 function tOrFallback(t: (key: string, vars?: Record<string, string>) => string, key: string, fallback: string) {
   const value = t(key)
   return value === key ? fallback : value
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1)
+  const size = value / 1024 ** exponent
+  return `${size >= 100 || exponent === 0 ? Math.round(size) : size.toFixed(1)} ${units[exponent]}`
+}
+
+function getStorageLevel(percentage: number) {
+  if (percentage >= 95) return 'critical'
+  if (percentage >= 80) return 'warning'
+  return 'normal'
 }
 
 export default async function PerfilPage() {
@@ -85,6 +101,9 @@ export default async function PerfilPage() {
   const empresaId = user.empresa?.id ?? null
   const isSystemSuperAdmin = isSuperAdminEmail(user.email)
   const isPlanOwner = empresaId ? await isPlanOwnerForEmpresa({ empresaId, userId: user.id }) : false
+    const storageUsage = empresaId ? await getCrmStorageUsageSummary({ empresaId }) : null
+    const storagePct = storageUsage?.totalBytes ? Math.min(100, Math.round((storageUsage.usedBytes / storageUsage.totalBytes) * 100)) : 0
+  const storageLevel = getStorageLevel(storagePct)
   const canManageBilling = isSystemSuperAdmin || isPlanOwner
 
   const roleLabel = (role?: string | null) => tOrFallback(t, `rbac.userRole.${role || 'USER'}`, String(role || 'USER'))
@@ -212,6 +231,73 @@ export default async function PerfilPage() {
               ) : (
                 <div className="text-muted-foreground">{t('profile.access.empty')}</div>
               )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="py-3">
+              <CardTitle className="text-base">{language === 'en' ? 'Storage usage' : 'Uso de almacenamiento'}</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-3 text-sm">
+              <div className={cn(
+                'rounded-xl border p-3',
+                storageLevel === 'critical'
+                  ? 'border-rose-200 bg-rose-50/70'
+                  : storageLevel === 'warning'
+                    ? 'border-amber-200 bg-amber-50/70'
+                    : 'border-emerald-200 bg-emerald-50/70'
+              )}>
+                <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                  <span className="font-semibold text-slate-900">
+                    {storageLevel === 'critical'
+                      ? language === 'en' ? 'Critical limit' : 'Límite crítico'
+                      : storageLevel === 'warning'
+                        ? language === 'en' ? 'Attention' : 'Atención'
+                        : language === 'en' ? 'Healthy usage' : 'Uso saludable'}
+                  </span>
+                  <span className="rounded-full bg-white/90 px-2 py-1 font-semibold text-slate-700">{storagePct}%</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-600">{language === 'en' ? 'Used' : 'Usado'}</span>
+                  <span className="font-semibold text-slate-950">{formatBytes(storageUsage?.usedBytes ?? 0)}</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <span className="text-slate-600">{language === 'en' ? 'Available' : 'Disponible'}</span>
+                  <span className="font-semibold text-slate-950">{formatBytes(storageUsage?.freeBytes ?? 0)}</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <span className="text-slate-600">{language === 'en' ? 'Total plan capacity' : 'Capacidad total del plan'}</span>
+                  <span className="font-semibold text-slate-950">{formatBytes(storageUsage?.totalBytes ?? 0)}</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                  <span>{language === 'en' ? 'Current usage' : 'Uso actual'}</span>
+                  <span>{storagePct}%</span>
+                </div>
+                <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className={cn(
+                      'h-full rounded-full',
+                      storageLevel === 'critical'
+                        ? 'bg-rose-600'
+                        : storageLevel === 'warning'
+                          ? 'bg-amber-500'
+                          : 'bg-emerald-600'
+                    )}
+                    style={{ width: `${storagePct}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="text-xs text-muted-foreground">
+                {(storageUsage?.filesCount ?? 0)} {language === 'en' ? 'files' : 'archivos'} · {(storageUsage?.foldersCount ?? 0)} {language === 'en' ? 'folders' : 'carpetas'}
+              </div>
+
+              <div className="text-xs text-muted-foreground">
+                {language === 'en' ? 'Last uploaded file' : 'Último archivo subido'}: {fmtDate(storageUsage?.lastUploadedAt ? new Date(storageUsage.lastUploadedAt) : null, locale, naText)}
+              </div>
             </CardContent>
           </Card>
 

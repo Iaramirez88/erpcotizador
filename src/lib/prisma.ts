@@ -88,6 +88,7 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasWebsiteServiceReminderSettingDelegate = typeof (prismaClient as any)?.websiteServiceReminderSetting?.findUnique === 'function'
   const hasWebsiteServiceReminderLogDelegate = typeof (prismaClient as any)?.websiteServiceReminderLog?.findMany === 'function'
   const hasWebsiteServiceMessageTemplateDelegate = typeof (prismaClient as any)?.websiteServiceMessageTemplate?.findMany === 'function'
+  const hasPlanCatalogSettingDelegate = typeof (prismaClient as any)?.planCatalogSetting?.findMany === 'function'
   const hasPayrollEmployeeDelegate = typeof (prismaClient as any)?.payrollEmployee?.findMany === 'function'
   const hasPayrollContractDelegate = typeof (prismaClient as any)?.payrollContract?.findMany === 'function'
   const hasPayrollPeriodDelegate = typeof (prismaClient as any)?.payrollPeriod?.findMany === 'function'
@@ -142,6 +143,7 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasWebsiteServiceReminderSettingDelegate ||
     !hasWebsiteServiceReminderLogDelegate ||
     !hasWebsiteServiceMessageTemplateDelegate ||
+    !hasPlanCatalogSettingDelegate ||
     !hasPayrollEmployeeDelegate ||
     !hasPayrollContractDelegate ||
     !hasPayrollPeriodDelegate ||

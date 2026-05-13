@@ -1,6 +1,8 @@
 import crypto from 'node:crypto'
 import fs from 'fs/promises'
 import path from 'path'
+import { prisma } from '@/lib/prisma'
+import { convertStorageLimitGbToBytes, getManagedPlanByTier } from '@/lib/managed-plans'
 
 export type CrmFileItemType = 'folder' | 'image' | 'audio' | 'video' | 'document'
 export type CrmFileEntityType = 'TASK' | 'LEAD' | 'OPPORTUNITY'
@@ -47,6 +49,15 @@ export type CrmFolderNode = {
   name: string
   path: string
   children: CrmFolderNode[]
+}
+
+export type CrmStorageUsageSummary = {
+  totalBytes: number
+  usedBytes: number
+  freeBytes: number
+  filesCount: number
+  foldersCount: number
+  lastUploadedAt: string | null
 }
 
 export type CrmFilesSnapshot = {
@@ -245,9 +256,21 @@ function resolveItemType(fileName: string, mimeType?: string | null): Exclude<Cr
   return 'document'
 }
 
-function getQuotaBytes() {
+function getQuotaBytesFromEnv() {
   const raw = Number(process.env.CRM_FILES_MAX_BYTES || '')
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_QUOTA_BYTES
+}
+
+async function getQuotaBytes(empresaId: string) {
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { planTier: true },
+  })
+
+  if (!empresa?.planTier) return getQuotaBytesFromEnv()
+
+  const plan = await getManagedPlanByTier(empresa.planTier)
+  return convertStorageLimitGbToBytes(plan.storageLimitGb) ?? getQuotaBytesFromEnv()
 }
 
 export function normalizeCrmFilesPath(input: string | null | undefined) {
@@ -631,7 +654,7 @@ export async function getCrmFilesSnapshot(args: { empresaId: string; currentPath
   })
 
   await writeIndex(args.empresaId, index)
-  const totalBytes = getQuotaBytes()
+  const totalBytes = await getQuotaBytes(args.empresaId)
   return {
     currentPath: currentClientPath,
     breadcrumbs,
@@ -645,6 +668,30 @@ export async function getCrmFilesSnapshot(args: { empresaId: string; currentPath
       filesCount: usage.filesCount,
       foldersCount: usage.foldersCount,
     },
+  }
+}
+
+export async function getCrmStorageUsageSummary(args: { empresaId: string }): Promise<CrmStorageUsageSummary> {
+  const root = await ensureCrmFilesRoot(args.empresaId)
+  const index = await readIndex(args.empresaId)
+  const tree = await buildFolderTree({ root, index })
+  const visibleFolderPaths = collectVisibleFolderPaths(tree || { name: '/', path: '', children: [] })
+  const usage = await walkUsage({ root, empresaId: args.empresaId, index, visibleFolderPaths })
+  const totalBytes = await getQuotaBytes(args.empresaId)
+  const lastUploadedAt = usage.recentItems.reduce<string | null>((latest, item) => {
+    const createdAt = item.createdAt || null
+    if (!createdAt) return latest
+    if (!latest) return createdAt
+    return new Date(createdAt).getTime() > new Date(latest).getTime() ? createdAt : latest
+  }, null)
+
+  return {
+    totalBytes,
+    usedBytes: usage.usedBytes,
+    freeBytes: Math.max(totalBytes - usage.usedBytes, 0),
+    filesCount: usage.filesCount,
+    foldersCount: usage.foldersCount,
+    lastUploadedAt,
   }
 }
 
@@ -707,11 +754,21 @@ export async function uploadCrmFiles(args: {
   const currentSegments = normalizeCrmFilesPath(args.currentPath)
   const directory = getAbsolutePathForSegments(root, currentSegments)
   await fs.mkdir(directory, { recursive: true })
+  const tree = await buildFolderTree({ root, index })
+  const visibleFolderPaths = collectVisibleFolderPaths(tree || { name: '/', path: '', children: [] })
+  const usage = await walkUsage({ root, empresaId: args.empresaId, index, visibleFolderPaths })
+  const quotaBytes = await getQuotaBytes(args.empresaId)
+  let projectedUsedBytes = usage.usedBytes
   const uploaded: CrmFileItem[] = []
 
   for (const file of args.files) {
     if (typeof file.size === 'number' && file.size > MAX_FILE_BYTES) {
       throw new Error(`El archivo ${file.name} supera el límite de 20 MB.`)
+    }
+
+    const fileSize = typeof file.size === 'number' && Number.isFinite(file.size) ? file.size : file.bytes.byteLength
+    if (projectedUsedBytes + fileSize > quotaBytes) {
+      throw new Error('Tu plan alcanzó el límite de espacio disponible para archivos CRM.')
     }
 
     const extension = path.extname(file.name)
@@ -725,6 +782,7 @@ export async function uploadCrmFiles(args: {
       appendAudit(metadata, 'UPLOADED', args.actor, `Archivo subido por ${args.actor?.label || 'usuario interno'}.`)
     }
     uploaded.push(await buildItemFromSegments({ root, empresaId: args.empresaId, itemSegments, index, actorForAutoCreate: args.actor }))
+    projectedUsedBytes += fileSize
   }
 
   await writeIndex(args.empresaId, index)

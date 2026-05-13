@@ -51,6 +51,51 @@ type PricesResponse =
   | { ok: true; rows: PriceRow[] }
   | { ok?: false; error?: string }
 
+type PlanCatalogRow = {
+  tier: PlanTier
+  nombre: string
+  descripcion: string
+  precioMensualCOP: number
+  tagline: string
+  forWho: string
+  incluye: Array<{ title: string; items: string[] }>
+  alcance: string[]
+  storageLimitGb: number | null
+  active: boolean
+  displayOrder: number
+}
+
+type PlanCatalogResponse =
+  | { ok: true; rows: PlanCatalogRow[] }
+  | { ok?: false; error?: string }
+
+function serializeIncludeGroups(groups: PlanCatalogRow['incluye']) {
+  return groups.map((group) => [group.title, ...group.items.map((item) => `- ${item}`)].join('\n')).join('\n\n')
+}
+
+function parseIncludeGroups(value: string): PlanCatalogRow['incluye'] {
+  return value
+    .split(/\n\s*\n/g)
+    .map((block) => block.split('\n').map((line) => line.trim()).filter(Boolean))
+    .map((lines) => {
+      const [title, ...items] = lines
+      if (!title) return null
+      return {
+        title,
+        items: items.map((item) => item.replace(/^[-*]\s*/, '').trim()).filter(Boolean),
+      }
+    })
+    .filter((group): group is PlanCatalogRow['incluye'][number] => Boolean(group))
+}
+
+function serializeScope(items: string[]) {
+  return items.join('\n')
+}
+
+function parseScope(value: string) {
+  return value.split('\n').map((item) => item.trim()).filter(Boolean)
+}
+
 function titleForModule(moduleKey: ModuleKey): string {
   switch (moduleKey) {
     case 'DASHBOARD':
@@ -99,6 +144,9 @@ export default function SuperAdminPlanModulesClient() {
   const [savingKey, setSavingKey] = useState<string | null>(null)
   const [priceRows, setPriceRows] = useState<PriceRow[]>([])
   const [savingPriceKey, setSavingPriceKey] = useState<string | null>(null)
+  const [planRows, setPlanRows] = useState<PlanCatalogRow[]>([])
+  const [savingPlanTier, setSavingPlanTier] = useState<PlanTier | null>(null)
+  const [copySourceByTier, setCopySourceByTier] = useState<Partial<Record<PlanTier, PlanTier>>>({})
 
   const [empresaNit, setEmpresaNit] = useState('')
   const [empresaId, setEmpresaId] = useState('')
@@ -117,6 +165,8 @@ export default function SuperAdminPlanModulesClient() {
         const json = (await res.json().catch(() => ({}))) as GetResponse
         const pricesRes = await fetch('/api/super-admin/module-prices', { cache: 'no-store' })
         const pricesJson = (await pricesRes.json().catch(() => ({}))) as PricesResponse
+        const planCatalogRes = await fetch('/api/super-admin/plan-catalog', { cache: 'no-store' })
+        const planCatalogJson = (await planCatalogRes.json().catch(() => ({}))) as PlanCatalogResponse
         if (!res.ok || !('ok' in json) || !json.ok) {
           setError(('error' in json && json.error) || 'No se pudo cargar la configuración')
           return
@@ -125,12 +175,17 @@ export default function SuperAdminPlanModulesClient() {
           setError(('error' in pricesJson && pricesJson.error) || 'No se pudo cargar los precios')
           return
         }
+        if (!planCatalogRes.ok || !('ok' in planCatalogJson) || !planCatalogJson.ok) {
+          setError(('error' in planCatalogJson && planCatalogJson.error) || 'No se pudo cargar el catálogo de planes')
+          return
+        }
 
         if (!cancelled) {
           setPlanTiers(json.planTiers)
           setModules(json.modules)
           setRows(json.rows)
           setPriceRows(pricesJson.rows)
+          setPlanRows(planCatalogJson.rows)
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error inesperado')
@@ -229,6 +284,51 @@ export default function SuperAdminPlanModulesClient() {
     }
   }
 
+  function updatePlanRow(tier: PlanTier, updater: (row: PlanCatalogRow) => PlanCatalogRow) {
+    setPlanRows((prev) => prev.map((row) => (row.tier === tier ? updater(row) : row)))
+  }
+
+  function copyPlanConfiguration(targetTier: PlanTier) {
+    const sourceTier = copySourceByTier[targetTier]
+    if (!sourceTier || sourceTier === targetTier) return
+    const source = planRows.find((row) => row.tier === sourceTier)
+    if (!source) return
+    updatePlanRow(targetTier, (row) => ({
+      ...row,
+      nombre: source.nombre,
+      descripcion: source.descripcion,
+      precioMensualCOP: source.precioMensualCOP,
+      tagline: source.tagline,
+      forWho: source.forWho,
+      incluye: source.incluye,
+      alcance: source.alcance,
+      storageLimitGb: source.storageLimitGb,
+      active: source.active,
+    }))
+  }
+
+  async function savePlan(row: PlanCatalogRow) {
+    setSavingPlanTier(row.tier)
+    setError(null)
+    try {
+      const res = await fetch('/api/super-admin/plan-catalog', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(row),
+      })
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; row?: PlanCatalogRow; error?: string }
+      if (!res.ok || !json.ok || !json.row) {
+        setError(json.error || 'No se pudo guardar el plan')
+        return
+      }
+      updatePlanRow(row.tier, () => json.row!)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error inesperado')
+    } finally {
+      setSavingPlanTier(null)
+    }
+  }
+
   async function generateEmpresaCode() {
     setGeneratingCode(true)
     setError(null)
@@ -323,6 +423,95 @@ export default function SuperAdminPlanModulesClient() {
           </div>
         </CardContent>
       </Card>
+
+      {!loading && !error ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Catálogo comercial de planes</CardTitle>
+            <CardDescription>Edita título, textos, costo, espacio CRM, orden, copia desde otro plan y anula la visibilidad comercial.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {planRows.map((row) => {
+              const includesText = serializeIncludeGroups(row.incluye)
+              const scopeText = serializeScope(row.alcance)
+              return (
+                <div key={row.tier} className="rounded-2xl border border-slate-200 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-base font-semibold text-slate-900">{row.tier}</div>
+                      <div className="text-xs text-slate-500">Base operativa del tier actual</div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Select value={copySourceByTier[row.tier] ?? row.tier} onValueChange={(value) => setCopySourceByTier((prev) => ({ ...prev, [row.tier]: value as PlanTier }))}>
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="Copiar desde" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {planRows.map((plan) => (
+                            <SelectItem key={`${row.tier}-${plan.tier}`} value={plan.tier}>{plan.tier}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button type="button" variant="outline" onClick={() => copyPlanConfiguration(row.tier)}>
+                        Copiar desde otro plan
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <Input value={row.nombre} onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, nombre: event.target.value }))} placeholder="Nombre" />
+                    <Input type="number" min={0} value={row.precioMensualCOP} onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, precioMensualCOP: Number(event.target.value || 0) }))} placeholder="Precio mensual" />
+                    <Input type="number" min={0} value={row.storageLimitGb ?? ''} onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, storageLimitGb: event.target.value === '' ? null : Number(event.target.value) }))} placeholder="Espacio CRM (GB)" />
+                    <Input type="number" min={0} value={row.displayOrder} onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, displayOrder: Number(event.target.value || 0) }))} placeholder="Orden" />
+                  </div>
+
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <Input value={row.tagline} onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, tagline: event.target.value }))} placeholder="Tagline" />
+                    <Input value={row.forWho} onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, forWho: event.target.value }))} placeholder="Enfoque comercial" />
+                  </div>
+
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <textarea
+                      className="min-h-[96px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={row.descripcion}
+                      onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, descripcion: event.target.value }))}
+                      placeholder="Descripción"
+                    />
+                    <div className="rounded-md border border-dashed border-slate-200 p-3 text-xs text-slate-500">
+                      Usa “Copiar desde otro plan” para arrancar desde una estructura existente y luego ajustar textos, costo y espacio.
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <textarea
+                      className="min-h-[180px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={includesText}
+                      onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, incluye: parseIncludeGroups(event.target.value) }))}
+                      placeholder={'Bloques de incluye. Primera línea = título. Siguientes líneas = items'}
+                    />
+                    <textarea
+                      className="min-h-[180px] rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      value={scopeText}
+                      onChange={(event) => updatePlanRow(row.tier, (current) => ({ ...current, alcance: parseScope(event.target.value) }))}
+                      placeholder={'Una línea por alcance'}
+                    />
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Switch checked={row.active} onCheckedChange={(value) => updatePlanRow(row.tier, (current) => ({ ...current, active: Boolean(value) }))} />
+                      <Label>{row.active ? 'Visible en catálogo' : 'Anulado en catálogo'}</Label>
+                    </div>
+                    <Button type="button" onClick={() => void savePlan(row)} disabled={savingPlanTier === row.tier}>
+                      {savingPlanTier === row.tier ? 'Guardando…' : 'Guardar plan'}
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {!loading && !error ? (
         <Card>

@@ -18,6 +18,7 @@ import {
 } from 'recharts'
 import type { LucideIcon } from 'lucide-react'
 import { Activity, BarChart3, Bot, Download, Eye, Facebook, Globe, Goal, Instagram, Mail, MessageCircle, Sparkles, Target, TrendingUp, Upload } from 'lucide-react'
+import { useI18n } from '@/components/providers/i18n-provider'
 import { ErpPageHero, ErpSectionHeading } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -654,16 +655,52 @@ function renderIntegrationGuideVisual(guide: IntegrationGuide): ReactNode {
   )
 }
 
+function renderBookingPreviewLegend() {
+  const items = [
+    {
+      step: '01',
+      title: 'Dia',
+      detail: 'El usuario navega el calendario y toma una fecha disponible.',
+    },
+    {
+      step: '02',
+      title: 'Hora',
+      detail: 'Luego elige el bloque horario que mejor le funcione.',
+    },
+    {
+      step: '03',
+      title: 'Confirmacion',
+      detail: 'Completa sus datos y el CRM registra la cita con notificacion opcional.',
+    },
+  ]
+
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      {items.map((item) => (
+        <div key={item.step} className="rounded-2xl border border-sky-200 bg-sky-50/70 p-3">
+          <div className="flex items-center gap-3">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-950 text-[11px] font-semibold text-white">{item.step}</span>
+            <p className="text-sm font-semibold text-slate-900">{item.title}</p>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-slate-600">{item.detail}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function getDetailedIntegrationGuide(args: {
   channel: ChannelConnection
   bridgeKind: string
   endpoint: string
   token: string
+  language: 'es' | 'en'
   snippets: IntegrationSnippets | null
 }): IntegrationGuide {
   const key = getIntegrationGuideKey(args.channel, args.bridgeKind)
-  const tokenLabel = args.token || args.channel.verifyTokenPreview || 'Define un token o credencial del canal.'
+  const tokenLabel = args.token || args.channel.verifyTokenPreview || (args.language === 'en' ? 'Set a token or channel credential.' : 'Define un token o credencial del canal.')
   const snippets = args.snippets
+  const tx = (es: string, en: string) => args.language === 'en' ? en : es
 
   const buildGuide = (guide: IntegrationGuide) => guide
   const buildBridgeGuide = (
@@ -681,216 +718,216 @@ function getDetailedIntegrationGuide(args: {
     title,
     summary,
     audience,
-    estimatedTime: '20 a 40 minutos',
+    estimatedTime: args.language === 'en' ? '20 to 40 minutes' : '20 a 40 minutos',
     accent,
     prerequisites,
     steps,
     validations,
     troubleshooting,
     assets,
-    visualTitle: 'Flujo visual de integración',
-    visualDescription: 'Resumen visual del orden recomendado para dejar el canal operativo de punta a punta.',
+    visualTitle: args.language === 'en' ? 'Visual integration flow' : 'Flujo visual de integración',
+    visualDescription: args.language === 'en' ? 'Visual summary of the recommended order to make the channel operational end to end.' : 'Resumen visual del orden recomendado para dejar el canal operativo de punta a punta.',
     visualNodes,
   })
 
   if (key === 'web-form') {
     return buildBridgeGuide(
-      'Integración detallada de Formulario Web',
-      'Publica el formulario del CRM como iframe o incrústalo sobre un formulario existente del cliente.',
+      tx('Integración detallada de Formulario Web', 'Detailed Web Form integration'),
+      tx('Publica el formulario del CRM como iframe o incrústalo sobre un formulario existente del cliente.', 'Publish the CRM form as an iframe or embed it on the client\'s existing form.'),
       'sky',
-      'Marketing, desarrollo web o implementador del sitio.',
-      ['Canal creado y activo en el studio.', 'Definir si se usará URL pública, iframe o snippet sobre un DOM existente.', 'Tener identificado el dominio final donde se publicará.'],
+      tx('Marketing, desarrollo web o implementador del sitio.', 'Marketing, web development, or site implementer.'),
+      [tx('Canal creado y activo en el studio.', 'Channel created and active in the studio.'), tx('Definir si se usará URL pública, iframe o snippet sobre un DOM existente.', 'Define whether to use a public URL, iframe, or snippet on an existing DOM.'), tx('Tener identificado el dominio final donde se publicará.', 'Identify the final domain where it will be published.')],
       [
-        { title: '1. Ajusta el formulario en el CRM', detail: 'Configura textos, campos, CTA, términos y apariencia visual.', bullets: ['Verifica labels y placeholders comerciales.', 'Si el cliente no tiene frontend propio, prioriza iframe.', 'Si ya existe un formulario en la landing, deja listo el selector.'] },
-        { title: '2. Publica la versión embebible', detail: 'Copia la URL pública o el iframe listo para pegar.', bullets: [`URL pública: ${snippets?.webFormEmbedUrl || 'Disponible al seleccionar el canal.'}`, 'Usa iframe para CMS o builder visual.', 'Valida que el sitio no bloquee el embebido por CSP o dominio.'] },
-        { title: '3. Si el cliente ya tiene formulario, usa el snippet bridge', detail: 'Pega el snippet sobre el DOM existente y ajusta el selector.', bullets: ['Revisa que el selector exista realmente al cargar la página.', `Token de referencia: ${tokenLabel}`, 'Mapea nombre, correo, teléfono y mensaje con los names correctos.'] },
-        { title: '4. Ejecuta la prueba punta a punta', detail: 'Envía una captura real desde la página y revisa lead, actividad y fuente dentro del CRM.', bullets: ['Revisa el endpoint y el estado del canal.', 'Haz una prueba repetida para validar deduplicación.', 'Pasa a ACTIVE solo cuando cierre la prueba real.'] },
+        { title: tx('1. Ajusta el formulario en el CRM', '1. Adjust the form in the CRM'), detail: tx('Configura textos, campos, CTA, términos y apariencia visual.', 'Configure copy, fields, CTA, legal terms, and visual appearance.'), bullets: [tx('Verifica labels y placeholders comerciales.', 'Verify commercial labels and placeholders.'), tx('Si el cliente no tiene frontend propio, prioriza iframe.', 'If the client has no custom frontend, prioritize the iframe.'), tx('Si ya existe un formulario en la landing, deja listo el selector.', 'If a form already exists on the landing page, leave the selector ready.')] },
+        { title: tx('2. Publica la versión embebible', '2. Publish the embeddable version'), detail: tx('Copia la URL pública o el iframe listo para pegar.', 'Copy the public URL or the iframe ready to paste.'), bullets: [`${tx('URL pública', 'Public URL')}: ${snippets?.webFormEmbedUrl || tx('Disponible al seleccionar el canal.', 'Available when selecting the channel.')}`, tx('Usa iframe para CMS o builder visual.', 'Use the iframe for a CMS or visual builder.'), tx('Valida que el sitio no bloquee el embebido por CSP o dominio.', 'Validate that the site does not block the embed because of CSP or domain rules.')] },
+        { title: tx('3. Si el cliente ya tiene formulario, usa el snippet bridge', '3. If the client already has a form, use the bridge snippet'), detail: tx('Pega el snippet sobre el DOM existente y ajusta el selector.', 'Paste the snippet into the existing DOM and adjust the selector.'), bullets: [tx('Revisa que el selector exista realmente al cargar la página.', 'Check that the selector actually exists when the page loads.'), `${tx('Token de referencia', 'Reference token')}: ${tokenLabel}`, tx('Mapea nombre, correo, teléfono y mensaje con los names correctos.', 'Map name, email, phone, and message using the correct field names.')] },
+        { title: tx('4. Ejecuta la prueba punta a punta', '4. Run the end-to-end test'), detail: tx('Envía una captura real desde la página y revisa lead, actividad y fuente dentro del CRM.', 'Send a real capture from the page and review the lead, activity, and source inside the CRM.'), bullets: [tx('Revisa el endpoint y el estado del canal.', 'Review the endpoint and the channel status.'), tx('Haz una prueba repetida para validar deduplicación.', 'Run a repeated test to validate deduplication.'), tx('Pasa a ACTIVE solo cuando cierre la prueba real.', 'Move to ACTIVE only when the real test is closed.')] },
       ],
-      ['El formulario abre correctamente.', 'La captura crea lead y actividad.', 'El sitio no bloquea el iframe ni el script.'],
-      ['Si el iframe no carga, revisa dominio permitido y políticas del sitio.', 'Si el snippet no captura, revisa selector y timing de carga.', 'Si no entra al CRM, recopia endpoint y token del canal.'],
-      [{ label: 'Endpoint', value: args.endpoint }, { label: 'URL pública', value: snippets?.webFormEmbedUrl || 'Disponible al seleccionar el canal.' }, { label: 'Iframe', value: snippets?.webFormIframe || 'Disponible en la pestaña Formulario.' }],
-      [{ label: 'CRM', caption: 'Configuras el formulario' }, { label: 'Asset web', caption: 'Copias URL, iframe o script' }, { label: 'Landing', caption: 'El prospecto envía sus datos' }, { label: 'Pipeline', caption: 'El lead queda trazado' }],
+      [tx('El formulario abre correctamente.', 'The form opens correctly.'), tx('La captura crea lead y actividad.', 'The capture creates a lead and activity.'), tx('El sitio no bloquea el iframe ni el script.', 'The site does not block the iframe or the script.')],
+      [tx('Si el iframe no carga, revisa dominio permitido y políticas del sitio.', 'If the iframe does not load, check allowed domains and site policies.'), tx('Si el snippet no captura, revisa selector y timing de carga.', 'If the snippet does not capture, review the selector and load timing.'), tx('Si no entra al CRM, recopia endpoint y token del canal.', 'If it does not reach the CRM, recopy the channel endpoint and token.')],
+      [{ label: 'Endpoint', value: args.endpoint }, { label: tx('URL pública', 'Public URL'), value: snippets?.webFormEmbedUrl || tx('Disponible al seleccionar el canal.', 'Available when selecting the channel.') }, { label: 'Iframe', value: snippets?.webFormIframe || tx('Disponible en la pestaña Formulario.', 'Available in the Form tab.') }],
+      [{ label: 'CRM', caption: tx('Configuras el formulario', 'You configure the form') }, { label: tx('Asset web', 'Web asset'), caption: tx('Copias URL, iframe o script', 'You copy the URL, iframe, or script') }, { label: 'Landing', caption: tx('El prospecto envía sus datos', 'The prospect submits their data') }, { label: 'Pipeline', caption: tx('El lead queda trazado', 'The lead is tracked') }],
     )
   }
 
   if (key === 'web-booking') {
     return buildBridgeGuide(
-      'Integración detallada de Agenda Web',
-      'Publica una agenda tipo booking desde el CRM para que el usuario reserve una cita y la operación quede trazada.',
+      tx('Integración detallada de Agenda Web', 'Detailed Web Booking integration'),
+      tx('Publica una agenda tipo booking desde el CRM para que el usuario reserve una cita y la operación quede trazada.', 'Publish a booking-style scheduler from the CRM so the user can reserve an appointment and the operation stays tracked.'),
       'sky',
-      'Implementador web, equipo comercial y responsable de agenda.',
-      ['Canal de Agenda Web configurado.', 'Definir si enviará confirmación por correo, WhatsApp o ambos.', 'Validar responsable y horario comercial.'],
+      tx('Implementador web, equipo comercial y responsable de agenda.', 'Web implementer, sales team, and scheduling owner.'),
+      [tx('Canal de Agenda Web configurado.', 'Web Booking channel configured.'), tx('Definir si enviará confirmación por correo, WhatsApp o ambos.', 'Define whether it will send confirmation by email, WhatsApp, or both.'), tx('Validar responsable y horario comercial.', 'Validate the owner and business hours.')],
       [
-        { title: '1. Configura la agenda en el CRM', detail: 'Ajusta textos, servicio, estados y notificaciones de reserva.', bullets: ['Comprueba que la vista pública muestre la experiencia tipo booking.', 'Activa correo o WhatsApp según la operación.', 'Verifica el estado TESTING antes de publicar.'] },
-        { title: '2. Embebe la agenda en la web', detail: 'Inserta la URL pública o el iframe del canal en la página de agendamiento.', bullets: [`URL de agenda: ${snippets?.webFormEmbedUrl || 'Disponible al seleccionar el canal.'}`, 'Ideal para CTA de contacto o campañas.', 'Prueba la agenda en desktop y mobile.'] },
-        { title: '3. Ejecuta una reserva real', detail: 'Selecciona fecha y hora y revisa el resultado dentro del CRM.', bullets: ['Debe crearse lead y cita asociada.', 'Valida trazabilidad del canal.', 'Confirma que salga la notificación configurada.'] },
-        { title: '4. Operativiza la agenda', detail: 'Comparte el enlace final y deja listo el ownership operativo.', bullets: ['Revisa readiness antes de salir a producción.', 'Documenta la landing donde quedó publicada.', 'Haz una segunda prueba con el mismo contacto para revisar deduplicación.'] },
+        { title: tx('1. Configura la agenda en el CRM', '1. Configure the booking flow in the CRM'), detail: tx('Ajusta textos, servicio, estados y notificaciones de reserva.', 'Adjust copy, service, states, and booking notifications.'), bullets: [tx('Comprueba que la vista pública muestre la experiencia tipo booking.', 'Check that the public view shows the booking-style experience.'), tx('Activa correo o WhatsApp según la operación.', 'Enable email or WhatsApp according to the operation.'), tx('Verifica el estado TESTING antes de publicar.', 'Verify TESTING status before publishing.')] },
+        { title: tx('2. Embebe la agenda en la web', '2. Embed the booking flow on the website'), detail: tx('Inserta la URL pública o el iframe del canal en la booking page.', 'Insert the public URL or the channel iframe into the scheduling page.'), bullets: [`${tx('URL de agenda', 'Booking URL')}: ${snippets?.webFormEmbedUrl || tx('Disponible al seleccionar el canal.', 'Available when selecting the channel.')}`, tx('Ideal para CTA de contacto o campañas.', 'Ideal for contact CTAs or campaigns.'), tx('Prueba la agenda en desktop y mobile.', 'Test the booking flow on desktop and mobile.')] },
+        { title: tx('3. Ejecuta una reserva real', '3. Run a real booking'), detail: tx('Selecciona fecha y hora y revisa el resultado dentro del CRM.', 'Select date and time and review the result inside the CRM.'), bullets: [tx('Debe crearse lead y cita asociada.', 'A lead and linked appointment should be created.'), tx('Valida trazabilidad del canal.', 'Validate channel traceability.'), tx('Confirma que salga la notificación configurada.', 'Confirm that the configured notification is sent.')] },
+        { title: tx('4. Operativiza la agenda', '4. Operationalize the booking flow'), detail: tx('Comparte el enlace final y deja listo el ownership operativo.', 'Share the final link and leave operational ownership ready.'), bullets: [tx('Revisa readiness antes de salir a producción.', 'Review readiness before going to production.'), tx('Documenta la landing donde quedó publicada.', 'Document the landing page where it was published.'), tx('Haz una segunda prueba con el mismo contacto para revisar deduplicación.', 'Run a second test with the same contact to review deduplication.')] },
       ],
-      ['La agenda carga correctamente.', 'La cita aparece en CRM con fecha y hora.', 'Las notificaciones configuradas sí se envían.'],
-      ['Si no ves el calendario, revisa el embed o el dominio.', 'Si la confirmación no sale, revisa las credenciales del canal.', 'Si se duplican citas, revisa el payload y los datos de contacto.'],
-      [{ label: 'Endpoint', value: args.endpoint }, { label: 'URL pública', value: snippets?.webFormEmbedUrl || 'Disponible al seleccionar el canal.' }, { label: 'Iframe agenda', value: snippets?.webFormIframe || 'Disponible en la pestaña Formulario.' }],
-      [{ label: 'Agenda CRM', caption: 'Canal y reglas listos' }, { label: 'Landing', caption: 'Usuario agenda fecha y hora' }, { label: 'CRM', caption: 'Se crea lead y cita' }, { label: 'Confirmación', caption: 'Correo o WhatsApp al usuario' }],
+      [tx('La agenda carga correctamente.', 'The booking flow loads correctly.'), tx('La cita aparece en CRM con fecha y hora.', 'The appointment appears in the CRM with date and time.'), tx('Las notificaciones configuradas sí se envían.', 'Configured notifications are sent.')],
+      [tx('Si no ves el calendario, revisa el embed o el dominio.', 'If you do not see the calendar, check the embed or the domain.'), tx('Si la confirmación no sale, revisa las credenciales del canal.', 'If confirmation is not sent, review the channel credentials.'), tx('Si se duplican citas, revisa el payload y los datos de contacto.', 'If appointments are duplicated, review the payload and contact data.')],
+      [{ label: 'Endpoint', value: args.endpoint }, { label: tx('URL pública', 'Public URL'), value: snippets?.webFormEmbedUrl || tx('Disponible al seleccionar el canal.', 'Available when selecting the channel.') }, { label: tx('Iframe agenda', 'Booking iframe'), value: snippets?.webFormIframe || tx('Disponible en la pestaña Formulario.', 'Available in the Form tab.') }],
+      [{ label: tx('Agenda CRM', 'CRM booking'), caption: tx('Canal y reglas listos', 'Channel and rules ready') }, { label: 'Landing', caption: tx('Usuario agenda fecha y hora', 'User books date and time') }, { label: 'CRM', caption: tx('Se crea lead y cita', 'Lead and appointment are created') }, { label: tx('Confirmación', 'Confirmation'), caption: tx('Correo o WhatsApp al usuario', 'Email or WhatsApp to the user') }],
     )
   }
 
   if (key === 'web-chatbot') {
     return buildBridgeGuide(
-      'Integración detallada de Chatbot Web',
-      'Inserta el chatbot del CRM por iframe o widget flotante y convierte conversaciones en leads e inbox operativo.',
+      tx('Integración detallada de Chatbot Web', 'Detailed Web Chatbot integration'),
+      tx('Inserta el chatbot del CRM por iframe o widget flotante y convierte conversaciones en leads e inbox operativo.', 'Insert the CRM chatbot through an iframe or floating widget and convert conversations into leads and operational inbox threads.'),
       'emerald',
-      'Webmaster, marketing y equipo de ventas.',
-      ['Configurar título, prompt, asistente y launcher.', 'Definir dominios permitidos.', 'Tener lista la URL o iframe que se publicará.'],
+      tx('Webmaster, marketing y equipo de ventas.', 'Webmaster, marketing, and sales team.'),
+      [tx('Configurar título, prompt, asistente y launcher.', 'Configure title, prompt, assistant, and launcher.'), tx('Definir dominios permitidos.', 'Define allowed domains.'), tx('Tener lista la URL o iframe que se publicará.', 'Have the URL or iframe that will be published ready.')],
       [
-        { title: '1. Ajusta el constructor del bot', detail: 'Configura marca, flujo, quick actions, handoff y launcher.', bullets: ['Valida el canvas si usarás ramas guiadas.', 'Ajusta colores y copy visibles.', 'Decide si el widget flotante quedará activo.'] },
-        { title: '2. Publica por iframe o widget', detail: 'Elige si el cliente usará un bloque fijo o un launcher flotante.', bullets: [`URL pública: ${snippets?.chatbotEmbedUrl || 'Disponible al seleccionar el canal.'}`, 'Iframe para bloque fijo.', 'Widget flotante si prefieren activación discreta.'] },
-        { title: '3. Ejecuta pruebas de conversación', detail: 'Abre la demo, conversa y revisa el inbox CRM.', bullets: ['Prueba quick actions y escalamiento.', 'Valida captura de lead si el flujo pide datos.', 'Revisa el inbox en paralelo.'] },
-        { title: '4. Activa monitoreo y go-live', detail: 'Documenta dominios, owner y canal de seguimiento.', bullets: ['Prueba mobile y desktop.', 'Revisa que el launcher no tape elementos críticos.', 'Pasa a ACTIVE tras una prueba funcional real.'] },
+        { title: tx('1. Ajusta el constructor del bot', '1. Adjust the bot builder'), detail: tx('Configura marca, flujo, quick actions, handoff y launcher.', 'Configure brand, flow, quick actions, handoff, and launcher.'), bullets: [tx('Valida el canvas si usarás ramas guiadas.', 'Validate the canvas if you will use guided branches.'), tx('Ajusta colores y copy visibles.', 'Adjust visible colors and copy.'), tx('Decide si el widget flotante quedará activo.', 'Decide whether the floating widget will remain active.')] },
+        { title: tx('2. Publica por iframe o widget', '2. Publish through iframe or widget'), detail: tx('Elige si el cliente usará un bloque fijo o un launcher flotante.', 'Choose whether the client will use a fixed block or a floating launcher.'), bullets: [`${tx('URL pública', 'Public URL')}: ${snippets?.chatbotEmbedUrl || tx('Disponible al seleccionar el canal.', 'Available when selecting the channel.')}`, tx('Iframe para bloque fijo.', 'Iframe for a fixed block.'), tx('Widget flotante si prefieren activación discreta.', 'Floating widget if they prefer discreet activation.')] },
+        { title: tx('3. Ejecuta pruebas de conversación', '3. Run conversation tests'), detail: tx('Abre la demo, conversa y revisa el inbox CRM.', 'Open the demo, chat, and review the CRM inbox.'), bullets: [tx('Prueba quick actions y escalamiento.', 'Test quick actions and escalation.'), tx('Valida captura de lead si el flujo pide datos.', 'Validate lead capture if the flow requests data.'), tx('Revisa el inbox en paralelo.', 'Review the inbox in parallel.')] },
+        { title: tx('4. Activa monitoreo y go-live', '4. Activate monitoring and go live'), detail: tx('Documenta dominios, owner y canal de seguimiento.', 'Document domains, owner, and follow-up channel.'), bullets: [tx('Prueba mobile y desktop.', 'Test mobile and desktop.'), tx('Revisa que el launcher no tape elementos críticos.', 'Make sure the launcher does not cover critical elements.'), tx('Pasa a ACTIVE tras una prueba funcional real.', 'Move to ACTIVE after a real functional test.')] },
       ],
-      ['El iframe abre con el layout esperado.', 'Las conversaciones llegan al inbox.', 'El widget no rompe la experiencia del sitio.'],
-      ['Si no aparece el widget, revisa floatingLauncherEnabled.', 'Si no entra al inbox, recopia endpoint y token.', 'Si responde mal, revisa el flujo y quick actions configuradas.'],
-      [{ label: 'URL pública', value: snippets?.chatbotEmbedUrl || 'Disponible al seleccionar el canal.' }, { label: 'Iframe', value: snippets?.chatbotIframe || 'Disponible en la pestaña Chatbot.' }, { label: 'Widget', value: snippets?.chatbot || 'Disponible en la pestaña Chatbot.' }],
-      [{ label: 'Constructor', caption: 'Marca y flujo del bot' }, { label: 'Sitio web', caption: 'Iframe o widget publicado' }, { label: 'Inbox CRM', caption: 'Conversación centralizada' }, { label: 'Ventas', caption: 'Handoff y seguimiento' }],
+      [tx('El iframe abre con el layout esperado.', 'The iframe opens with the expected layout.'), tx('Las conversaciones llegan al inbox.', 'Conversations reach the inbox.'), tx('El widget no rompe la experiencia del sitio.', 'The widget does not break the site experience.')],
+      [tx('Si no aparece el widget, revisa floatingLauncherEnabled.', 'If the widget does not appear, check floatingLauncherEnabled.'), tx('Si no entra al inbox, recopia endpoint y token.', 'If it does not reach the inbox, recopy the endpoint and token.'), tx('Si responde mal, revisa el flujo y quick actions configuradas.', 'If it responds poorly, review the configured flow and quick actions.')],
+      [{ label: tx('URL pública', 'Public URL'), value: snippets?.chatbotEmbedUrl || tx('Disponible al seleccionar el canal.', 'Available when selecting the channel.') }, { label: 'Iframe', value: snippets?.chatbotIframe || tx('Disponible en la pestaña Chatbot.', 'Available in the Chatbot tab.') }, { label: 'Widget', value: snippets?.chatbot || tx('Disponible en la pestaña Chatbot.', 'Available in the Chatbot tab.') }],
+      [{ label: tx('Constructor', 'Builder'), caption: tx('Marca y flujo del bot', 'Bot brand and flow') }, { label: tx('Sitio web', 'Website'), caption: tx('Iframe o widget publicado', 'Published iframe or widget') }, { label: 'Inbox CRM', caption: tx('Conversación centralizada', 'Centralized conversation') }, { label: tx('Ventas', 'Sales'), caption: tx('Handoff y seguimiento', 'Handoff and follow-up') }],
     )
   }
 
   if (key === 'whatsapp-cloud' || key === 'facebook-page' || key === 'instagram-dm') {
     const platform = key === 'whatsapp-cloud' ? 'WhatsApp Cloud' : key === 'facebook-page' ? 'Facebook / Messenger' : 'Instagram DM'
     const accent = key === 'whatsapp-cloud' ? 'emerald' : key === 'instagram-dm' ? 'fuchsia' : 'blue'
-    const activeLabel = key === 'whatsapp-cloud' ? 'número activo' : key === 'facebook-page' ? 'página activa' : 'cuenta activa'
+    const activeLabel = key === 'whatsapp-cloud' ? tx('número activo', 'active number') : key === 'facebook-page' ? tx('página activa', 'active page') : tx('cuenta activa', 'active account')
     return buildBridgeGuide(
-      `Integración detallada de ${platform}`,
-      `Conecta ${platform} al CRM mediante OAuth de Meta y verifica el webhook nativo del canal.`,
+      tx(`Integración detallada de ${platform}`, `Detailed ${platform} integration`),
+      tx(`Conecta ${platform} al CRM mediante OAuth de Meta y verifica el webhook nativo del canal.`, `Connect ${platform} to the CRM through Meta OAuth and verify the channel's native webhook.`),
       accent,
-      'Administrador técnico y responsable del activo en Meta.',
-      ['Acceso al Business Manager o activo correspondiente.', 'Abrir la conexión oficial desde el canal.', 'Definir exactamente qué activo quedará operativo.'],
+      tx('Administrador técnico y responsable del activo en Meta.', 'Technical administrator and owner of the asset in Meta.'),
+      [tx('Acceso al Business Manager o activo correspondiente.', 'Access to Business Manager or the corresponding asset.'), tx('Abrir la conexión oficial desde el canal.', 'Open the official connection from the channel.'), tx('Definir exactamente qué activo quedará operativo.', 'Define exactly which asset will remain operational.')],
       [
-        { title: '1. Inicia OAuth desde el canal', detail: 'Conecta Meta usando la cuenta que sí administra el activo correcto.', bullets: ['Hazlo desde este canal específico.', 'Si el activo no aparece, revisa permisos del usuario en Meta.', 'Evita mover la operación sin reconectar el canal.'] },
-        { title: '2. Aplica el activo correcto', detail: `Selecciona y guarda el ${activeLabel} que operará en el CRM.`, bullets: ['Valida que el campo activo quede lleno.', 'No cierres el proceso hasta ver el activo aplicado.', 'Revisa el checklist de onboarding del panel.'] },
-        { title: '3. Verifica el webhook', detail: 'Meta debe apuntar al endpoint del canal y validar el token correctamente.', bullets: [`Webhook del canal: ${args.endpoint}`, `Token de verificación: ${tokenLabel}`, 'Luego ejecuta una prueba real desde el canal social.'] },
-        { title: '4. Valida la operación en inbox', detail: 'Envía un mensaje o DM y confirma que aparece en el inbox del CRM.', bullets: ['Revisa último webhook y errores recientes.', 'Confirma que el activo aplicado es el mismo de la prueba.', 'Pasa a ACTIVE solo cuando cierre la validación real.'] },
+        { title: tx('1. Inicia OAuth desde el canal', '1. Start OAuth from the channel'), detail: tx('Conecta Meta usando la cuenta que sí administra el activo correcto.', 'Connect Meta using the account that actually manages the correct asset.'), bullets: [tx('Hazlo desde este canal específico.', 'Do it from this specific channel.'), tx('Si el activo no aparece, revisa permisos del usuario en Meta.', 'If the asset does not appear, review the user permissions in Meta.'), tx('Evita mover la operación sin reconectar el canal.', 'Avoid moving the operation without reconnecting the channel.')] },
+        { title: tx('2. Aplica el activo correcto', '2. Apply the correct asset'), detail: tx(`Selecciona y guarda el ${activeLabel} que operará en el CRM.`, `Select and save the ${activeLabel} that will operate in the CRM.`), bullets: [tx('Valida que el campo activo quede lleno.', 'Validate that the active field is filled.'), tx('No cierres el proceso hasta ver el activo aplicado.', 'Do not close the process until you see the asset applied.'), tx('Revisa el checklist de onboarding del panel.', 'Review the onboarding checklist in the panel.')] },
+        { title: tx('3. Verifica el webhook', '3. Verify the webhook'), detail: tx('Meta debe apuntar al endpoint del canal y validar el token correctamente.', 'Meta must point to the channel endpoint and validate the token correctly.'), bullets: [`${tx('Webhook del canal', 'Channel webhook')}: ${args.endpoint}`, `${tx('Token de verificación', 'Verification token')}: ${tokenLabel}`, tx('Luego ejecuta una prueba real desde el canal social.', 'Then run a real test from the social channel.')] },
+        { title: tx('4. Valida la operación en inbox', '4. Validate inbox operation'), detail: tx('Envía un mensaje o DM y confirma que aparece en el inbox del CRM.', 'Send a message or DM and confirm it appears in the CRM inbox.'), bullets: [tx('Revisa último webhook y errores recientes.', 'Review the latest webhook and recent errors.'), tx('Confirma que el activo aplicado es el mismo de la prueba.', 'Confirm that the applied asset is the same one used in the test.'), tx('Pasa a ACTIVE solo cuando cierre la validación real.', 'Move to ACTIVE only when the real validation is closed.')] },
       ],
-      ['El activo quedó aplicado.', 'Meta verifica el webhook.', 'La prueba entra al inbox correcto.'],
-      ['Si el activo no aparece, revisa permisos o reconecta Meta.', 'Si falla la verificación, recopia endpoint y token.', 'Si la conversación cae en otro canal, revisa el activo realmente aplicado.'],
-      [{ label: 'Webhook', value: args.endpoint }, { label: 'Token de verificación', value: tokenLabel }],
-      [{ label: 'OAuth Meta', caption: 'Autorizas cuenta y activos' }, { label: 'Activo', caption: `Eliges ${activeLabel}` }, { label: 'Webhook', caption: 'Meta verifica y envía eventos' }, { label: 'Inbox CRM', caption: 'Conversaciones listas para operar' }],
+      [tx('El activo quedó aplicado.', 'The asset was applied.'), tx('Meta verifica el webhook.', 'Meta verifies the webhook.'), tx('La prueba entra al inbox correcto.', 'The test reaches the correct inbox.')],
+      [tx('Si el activo no aparece, revisa permisos o reconecta Meta.', 'If the asset does not appear, review permissions or reconnect Meta.'), tx('Si falla la verificación, recopia endpoint y token.', 'If verification fails, recopy the endpoint and token.'), tx('Si la conversación cae en otro canal, revisa el activo realmente aplicado.', 'If the conversation lands in another channel, review the asset actually applied.')],
+      [{ label: 'Webhook', value: args.endpoint }, { label: tx('Token de verificación', 'Verification token'), value: tokenLabel }],
+      [{ label: 'OAuth Meta', caption: tx('Autorizas cuenta y activos', 'Authorize account and assets') }, { label: tx('Activo', 'Asset'), caption: tx(`Eliges ${activeLabel}`, `Choose the ${activeLabel}`) }, { label: 'Webhook', caption: tx('Meta verifica y envía eventos', 'Meta verifies and sends events') }, { label: 'Inbox CRM', caption: tx('Conversaciones listas para operar', 'Conversations ready to operate') }],
     )
   }
 
   if (key === 'gmail-bridge' || key === 'outlook-bridge') {
     const isGmail = key === 'gmail-bridge'
     return buildBridgeGuide(
-      `Integración detallada de ${isGmail ? 'Gmail Inbox Bridge' : 'Outlook Inbox Bridge'}`,
-      isGmail ? 'Usa Apps Script para empujar correos de Gmail al inbox omnicanal.' : 'Configura Power Automate para enviar correos de Outlook al bridge CRM.',
+      tx(`Integración detallada de ${isGmail ? 'Gmail Inbox Bridge' : 'Outlook Inbox Bridge'}`, `Detailed ${isGmail ? 'Gmail Inbox Bridge' : 'Outlook Inbox Bridge'} integration`),
+      isGmail ? tx('Usa Apps Script para empujar correos de Gmail al inbox omnicanal.', 'Use Apps Script to push Gmail emails into the omnichannel inbox.') : tx('Configura Power Automate para enviar correos de Outlook al bridge CRM.', 'Configure Power Automate to send Outlook emails to the CRM bridge.'),
       isGmail ? 'amber' : 'blue',
-      isGmail ? 'Implementador Google Workspace u operaciones.' : 'Administrador Microsoft 365 u operaciones.',
-      [isGmail ? 'Acceso a script.google.com.' : 'Acceso a Power Automate.', 'Canal bridge creado en el CRM.', 'Definir qué correos sí deben entrar al CRM.'],
+      isGmail ? tx('Implementador Google Workspace u operaciones.', 'Google Workspace implementer or operations.') : tx('Administrador Microsoft 365 u operaciones.', 'Microsoft 365 administrator or operations.'),
+      [isGmail ? tx('Acceso a script.google.com.', 'Access to script.google.com.') : tx('Acceso a Power Automate.', 'Access to Power Automate.'), tx('Canal bridge creado en el CRM.', 'Bridge channel created in the CRM.'), tx('Definir qué correos sí deben entrar al CRM.', 'Define which emails should enter the CRM.')],
       [
-        { title: '1. Crea la automatización del correo', detail: isGmail ? 'Abre Apps Script, crea un proyecto y pega el script base del canal.' : 'Crea un flujo en Power Automate con trigger de correo entrante y acción HTTP.', bullets: [isGmail ? 'Nombra el proyecto claramente.' : 'Filtra por carpeta, categoría o remitente.', `Endpoint del bridge: ${args.endpoint}`, isGmail ? 'No edites token ni endpoint hasta validar.' : 'Mantén el flujo acotado a prospectos reales.'] },
-        { title: '2. Ajusta filtro y payload', detail: 'Define qué correos se enviarán y confirma la estructura del payload.', bullets: [isGmail ? 'Usa etiquetas o reglas de Gmail.' : 'Usa el body de referencia del canal.', `Snippet de referencia: ${isGmail ? snippets?.gmail || 'Disponible en Bridges.' : snippets?.outlook || 'Disponible en Bridges.'}`, `Token de referencia: ${tokenLabel}`] },
-        { title: '3. Ejecuta una prueba controlada', detail: 'Dispara un correo real y revisa el resultado en el CRM.', bullets: ['Confirma remitente, asunto y cuerpo en el inbox.', 'Revisa que el endpoint responda correctamente.', 'Ajusta el filtro si entra demasiado ruido.'] },
-        { title: '4. Formaliza el ownership', detail: 'Documenta quién mantiene el script o flujo y qué regla dispara la automatización.', bullets: ['Evita duplicar automatizaciones sobre la misma bandeja.', 'Monitorea errores los primeros días.', 'Activa producción cuando la trazabilidad sea consistente.'] },
+        { title: tx('1. Crea la automatización del correo', '1. Create the email automation'), detail: isGmail ? tx('Abre Apps Script, crea un proyecto y pega el script base del canal.', 'Open Apps Script, create a project, and paste the channel base script.') : tx('Crea un flujo en Power Automate con trigger de correo entrante y acción HTTP.', 'Create a Power Automate flow with an incoming email trigger and an HTTP action.'), bullets: [isGmail ? tx('Nombra el proyecto claramente.', 'Name the project clearly.') : tx('Filtra por carpeta, categoría o remitente.', 'Filter by folder, category, or sender.'), `${tx('Endpoint del bridge', 'Bridge endpoint')}: ${args.endpoint}`, isGmail ? tx('No edites token ni endpoint hasta validar.', 'Do not edit token or endpoint until validation.') : tx('Mantén el flujo acotado a prospectos reales.', 'Keep the flow limited to real prospects.')] },
+        { title: tx('2. Ajusta filtro y payload', '2. Adjust filter and payload'), detail: tx('Define qué correos se enviarán y confirma la estructura del payload.', 'Define which emails will be sent and confirm the payload structure.'), bullets: [isGmail ? tx('Usa etiquetas o reglas de Gmail.', 'Use Gmail labels or rules.') : tx('Usa el body de referencia del canal.', 'Use the channel reference body.'), `${tx('Snippet de referencia', 'Reference snippet')}: ${isGmail ? snippets?.gmail || tx('Disponible en Bridges.', 'Available in Bridges.') : snippets?.outlook || tx('Disponible en Bridges.', 'Available in Bridges.')}`, `${tx('Token de referencia', 'Reference token')}: ${tokenLabel}`] },
+        { title: tx('3. Ejecuta una prueba controlada', '3. Run a controlled test'), detail: tx('Dispara un correo real y revisa el resultado en el CRM.', 'Trigger a real email and review the result in the CRM.'), bullets: [tx('Confirma remitente, asunto y cuerpo en el inbox.', 'Confirm sender, subject, and body in the inbox.'), tx('Revisa que el endpoint responda correctamente.', 'Check that the endpoint responds correctly.'), tx('Ajusta el filtro si entra demasiado ruido.', 'Adjust the filter if too much noise enters.')] },
+        { title: tx('4. Formaliza el ownership', '4. Formalize ownership'), detail: tx('Documenta quién mantiene el script o flujo y qué regla dispara la automatización.', 'Document who maintains the script or flow and which rule triggers the automation.'), bullets: [tx('Evita duplicar automatizaciones sobre la misma bandeja.', 'Avoid duplicating automations on the same inbox.'), tx('Monitorea errores los primeros días.', 'Monitor errors during the first few days.'), tx('Activa producción cuando la trazabilidad sea consistente.', 'Activate production when traceability is consistent.')] },
       ],
-      ['La automatización corre sin error.', 'El correo aparece en el inbox CRM.', 'El filtro solo procesa correos comerciales.'],
-      ['Si falla la automatización, revisa permisos y autenticación.', 'Si el payload no entra, recopia endpoint y cuerpo base.', 'Si duplica hilos, revisa trigger, etiqueta o regla.'],
-      [{ label: 'Endpoint bridge', value: args.endpoint }, { label: isGmail ? 'Apps Script' : 'Body Power Automate', value: isGmail ? snippets?.gmail || 'Disponible en Bridges.' : snippets?.outlook || 'Disponible en Bridges.' }],
-      [{ label: isGmail ? 'Gmail' : 'Outlook', caption: 'Correo llega a la bandeja' }, { label: isGmail ? 'Apps Script' : 'Power Automate', caption: 'Filtra y arma el payload' }, { label: 'Bridge CRM', caption: 'Recibe y normaliza el correo' }, { label: 'Inbox', caption: 'Seguimiento comercial centralizado' }],
+      [tx('La automatización corre sin error.', 'The automation runs without error.'), tx('El correo aparece en el inbox CRM.', 'The email appears in the CRM inbox.'), tx('El filtro solo procesa correos comerciales.', 'The filter processes only commercial emails.')],
+      [tx('Si falla la automatización, revisa permisos y autenticación.', 'If the automation fails, review permissions and authentication.'), tx('Si el payload no entra, recopia endpoint y cuerpo base.', 'If the payload does not enter, recopy the endpoint and base body.'), tx('Si duplica hilos, revisa trigger, etiqueta o regla.', 'If it duplicates threads, review the trigger, label, or rule.')],
+      [{ label: tx('Endpoint bridge', 'Bridge endpoint'), value: args.endpoint }, { label: isGmail ? 'Apps Script' : tx('Body Power Automate', 'Power Automate body'), value: isGmail ? snippets?.gmail || tx('Disponible en Bridges.', 'Available in Bridges.') : snippets?.outlook || tx('Disponible en Bridges.', 'Available in Bridges.') }],
+      [{ label: isGmail ? 'Gmail' : 'Outlook', caption: tx('Correo llega a la bandeja', 'Email reaches the inbox') }, { label: isGmail ? 'Apps Script' : 'Power Automate', caption: tx('Filtra y arma el payload', 'Filter and build the payload') }, { label: 'Bridge CRM', caption: tx('Recibe y normaliza el correo', 'Receive and normalize the email') }, { label: 'Inbox', caption: tx('Seguimiento comercial centralizado', 'Centralized sales follow-up') }],
     )
   }
 
   if (key === 'google-sheets-bridge') {
     return buildBridgeGuide(
-      'Integración detallada de Google Sheets Bridge',
-      'Usa una hoja como entrada o salida comercial del CRM mediante preview, import y export CSV.',
+      tx('Integración detallada de Google Sheets Bridge', 'Detailed Google Sheets Bridge integration'),
+      tx('Usa una hoja como entrada o salida comercial del CRM mediante preview, import y export CSV.', 'Use a spreadsheet as a commercial input or output for the CRM through preview, import, and CSV export.'),
       'emerald',
-      'Backoffice comercial, analista o integrador ligero.',
-      ['Hoja publicada o Spreadsheet ID configurado.', 'Columnas mínimas definidas.', 'Canal creado con sheetName o CSV URL.'],
+      tx('Backoffice comercial, analista o integrador ligero.', 'Sales back office, analyst, or lightweight integrator.'),
+      [tx('Hoja publicada o Spreadsheet ID configurado.', 'Published sheet or configured Spreadsheet ID.'), tx('Columnas mínimas definidas.', 'Minimum columns defined.'), tx('Canal creado con sheetName o CSV URL.', 'Channel created with sheetName or CSV URL.')],
       [
-        { title: '1. Configura el origen', detail: 'Define CSV publicado o Spreadsheet ID + pestaña dentro del canal.', bullets: ['Usa una estructura estable de columnas.', 'La hoja debe ser accesible para el proceso.', 'Confirma el origen antes de importar masivamente.'] },
-        { title: '2. Lanza un preview', detail: 'Usa el preview para revisar headers y filas detectadas.', bullets: [`Preview: ${snippets?.googleSheetsPreview || 'Disponible en Bridges.'}`, 'Corrige columnas antes de importar.', 'Valida que la hoja correcta sí sea la que responde.'] },
-        { title: '3. Ejecuta la importación', detail: 'Cuando el preview esté correcto, dispara el import desde el canal.', bullets: [`Import: ${snippets?.googleSheetsImport || 'Disponible en Bridges.'}`, 'Revisa procesadas, importadas y omitidas.', 'Si aplica, valida oportunidades creadas.'] },
-        { title: '4. Usa el export operativamente', detail: 'Comparte el CSV de salida cuando el equipo necesite consumo fuera del CRM.', bullets: [`Export: ${snippets?.googleSheetsExport || 'Disponible en Bridges.'}`, 'Útil para checklist o consolidado manual.', 'No reemplaza al CRM como fuente principal.'] },
+        { title: tx('1. Configura el origen', '1. Configure the source'), detail: tx('Define CSV publicado o Spreadsheet ID + pestaña dentro del canal.', 'Define a published CSV or Spreadsheet ID plus the tab inside the channel.'), bullets: [tx('Usa una estructura estable de columnas.', 'Use a stable column structure.'), tx('La hoja debe ser accesible para el proceso.', 'The sheet must be accessible for the process.'), tx('Confirma el origen antes de importar masivamente.', 'Confirm the source before importing in bulk.')] },
+        { title: tx('2. Lanza un preview', '2. Run a preview'), detail: tx('Usa el preview para revisar headers y filas detectadas.', 'Use the preview to review detected headers and rows.'), bullets: [`Preview: ${snippets?.googleSheetsPreview || tx('Disponible en Bridges.', 'Available in Bridges.')}`, tx('Corrige columnas antes de importar.', 'Correct columns before importing.'), tx('Valida que la hoja correcta sí sea la que responde.', 'Validate that the correct sheet is the one responding.')] },
+        { title: tx('3. Ejecuta la importación', '3. Run the import'), detail: tx('Cuando el preview esté correcto, dispara el import desde el canal.', 'When the preview is correct, trigger the import from the channel.'), bullets: [`Import: ${snippets?.googleSheetsImport || tx('Disponible en Bridges.', 'Available in Bridges.')}`, tx('Revisa procesadas, importadas y omitidas.', 'Review processed, imported, and skipped rows.'), tx('Si aplica, valida oportunidades creadas.', 'If applicable, validate created opportunities.')] },
+        { title: tx('4. Usa el export operativamente', '4. Use export operationally'), detail: tx('Comparte el CSV de salida cuando el equipo necesite consumo fuera del CRM.', 'Share the output CSV when the team needs consumption outside the CRM.'), bullets: [`Export: ${snippets?.googleSheetsExport || tx('Disponible en Bridges.', 'Available in Bridges.')}`, tx('Útil para checklist o consolidado manual.', 'Useful for checklist or manual consolidation.'), tx('No reemplaza al CRM como fuente principal.', 'It does not replace the CRM as the main source.') ] },
       ],
-      ['Preview detecta headers correctos.', 'Importa las filas esperadas.', 'Export genera un CSV consumible.'],
-      ['Si no lee la hoja, revisa publicación CSV o Spreadsheet ID.', 'Si omite filas, revisa columnas obligatorias.', 'Si el export falla, revisa el estado y configuración del canal.'],
-      [{ label: 'Preview', value: snippets?.googleSheetsPreview || 'Disponible en Bridges.' }, { label: 'Import', value: snippets?.googleSheetsImport || 'Disponible en Bridges.' }, { label: 'Export', value: snippets?.googleSheetsExport || 'Disponible en Bridges.' }],
-      [{ label: 'Hoja', caption: 'Origen comercial o ferial' }, { label: 'Preview', caption: 'Valida headers y filas' }, { label: 'Import CRM', caption: 'Crea leads u oportunidades' }, { label: 'Export', caption: 'Devuelve salida operativa' }],
+      [tx('Preview detecta headers correctos.', 'Preview detects correct headers.'), tx('Importa las filas esperadas.', 'It imports the expected rows.'), tx('Export genera un CSV consumible.', 'Export generates a usable CSV.')],
+      [tx('Si no lee la hoja, revisa publicación CSV o Spreadsheet ID.', 'If it does not read the sheet, review CSV publication or Spreadsheet ID.'), tx('Si omite filas, revisa columnas obligatorias.', 'If it skips rows, review required columns.'), tx('Si el export falla, revisa el estado y configuración del canal.', 'If export fails, review the channel status and configuration.')],
+      [{ label: 'Preview', value: snippets?.googleSheetsPreview || tx('Disponible en Bridges.', 'Available in Bridges.') }, { label: 'Import', value: snippets?.googleSheetsImport || tx('Disponible en Bridges.', 'Available in Bridges.') }, { label: 'Export', value: snippets?.googleSheetsExport || tx('Disponible en Bridges.', 'Available in Bridges.') }],
+      [{ label: tx('Hoja', 'Sheet'), caption: tx('Origen comercial o ferial', 'Commercial or event source') }, { label: 'Preview', caption: tx('Valida headers y filas', 'Validate headers and rows') }, { label: 'Import CRM', caption: tx('Crea leads u oportunidades', 'Create leads or opportunities') }, { label: 'Export', caption: tx('Devuelve salida operativa', 'Return operational output') }],
     )
   }
 
   if (key === 'google-calendar-bridge' || key === 'microsoft-365-calendar-bridge') {
     const calendarName = key === 'google-calendar-bridge' ? 'Google Calendar' : 'Microsoft 365 Calendar'
     return buildBridgeGuide(
-      `Integración detallada de ${calendarName} Bridge`,
-      `Sincroniza tareas o citas del CRM hacia ${calendarName} usando un receptor de webhook saliente.`,
+      tx(`Integración detallada de ${calendarName} Bridge`, `Detailed ${calendarName} Bridge integration`),
+      tx(`Sincroniza tareas o citas del CRM hacia ${calendarName} usando un receptor de webhook saliente.`, `Synchronize CRM tasks or appointments to ${calendarName} using an outgoing webhook receiver.`),
       'blue',
-      'Integrador de automatización o backend ligero.',
-      ['Canal bridge creado.', 'Webhook receptor o flujo externo listo.', `Cuenta o calendario de ${calendarName} identificado.`],
+      tx('Integrador de automatización o backend ligero.', 'Automation integrator or lightweight backend owner.'),
+      [tx('Canal bridge creado.', 'Bridge channel created.'), tx('Webhook receptor o flujo externo listo.', 'Receiver webhook or external flow ready.'), tx(`Cuenta o calendario de ${calendarName} identificado.`, `${calendarName} account or calendar identified.`)],
       [
-        { title: '1. Define el receptor externo', detail: 'Este canal emite un payload saliente; el receptor debe consumirlo y crear el evento real.', bullets: ['Puedes usar Make, n8n, Power Automate o una función propia.', 'Guarda la URL en outgoingWebhookUrl.', `Ese receptor será quien autentique contra ${calendarName}.`] },
-        { title: '2. Mapea el payload a evento', detail: 'Convierte la tarea CRM a la estructura del calendario final.', bullets: ['Conserva el id CRM como referencia.', 'Define duración, timezone y calendario destino.', 'Prueba primero con una cita interna.'] },
-        { title: '3. Dispara una tarea de prueba', detail: 'Crea o agenda una tarea desde el CRM y revisa el resultado en el calendario.', bullets: ['Revisa logs del flujo externo.', `Confirma que ${calendarName} reciba título y horario correctos.`, 'Si la tarea cambia, vuelve a probar la sincronización.'] },
-        { title: '4. Documenta ownership', detail: 'Deja claro quién mantiene el receptor externo y cómo se recupera si falla.', bullets: ['No dejes el bridge sin owner técnico.', 'Monitorea expiración de credenciales.', 'Define fallback operativo para reprogramaciones o fallos.'] },
+        { title: tx('1. Define el receptor externo', '1. Define the external receiver'), detail: tx('Este canal emite un payload saliente; el receptor debe consumirlo y crear el evento real.', 'This channel emits an outgoing payload; the receiver must consume it and create the real event.'), bullets: [tx('Puedes usar Make, n8n, Power Automate o una función propia.', 'You can use Make, n8n, Power Automate, or a custom function.'), tx('Guarda la URL en outgoingWebhookUrl.', 'Save the URL in outgoingWebhookUrl.'), tx(`Ese receptor será quien autentique contra ${calendarName}.`, `That receiver will be responsible for authenticating against ${calendarName}.`)] },
+        { title: tx('2. Mapea el payload a evento', '2. Map the payload to the event'), detail: tx('Convierte la tarea CRM a la estructura del calendario final.', 'Convert the CRM task to the final calendar structure.'), bullets: [tx('Conserva el id CRM como referencia.', 'Keep the CRM id as a reference.'), tx('Define duración, timezone y calendario destino.', 'Define duration, timezone, and target calendar.'), tx('Prueba primero con una cita interna.', 'Test first with an internal appointment.')] },
+        { title: tx('3. Dispara una tarea de prueba', '3. Trigger a test task'), detail: tx('Crea o agenda una tarea desde el CRM y revisa el resultado en el calendario.', 'Create or schedule a task from the CRM and review the result in the calendar.'), bullets: [tx('Revisa logs del flujo externo.', 'Review logs from the external flow.'), tx(`Confirma que ${calendarName} reciba título y horario correctos.`, `Confirm that ${calendarName} receives the correct title and time.`), tx('Si la tarea cambia, vuelve a probar la sincronización.', 'If the task changes, test synchronization again.')] },
+        { title: tx('4. Documenta ownership', '4. Document ownership'), detail: tx('Deja claro quién mantiene el receptor externo y cómo se recupera si falla.', 'Make it clear who maintains the external receiver and how recovery happens if it fails.'), bullets: [tx('No dejes el bridge sin owner técnico.', 'Do not leave the bridge without a technical owner.'), tx('Monitorea expiración de credenciales.', 'Monitor credential expiration.'), tx('Define fallback operativo para reprogramaciones o fallos.', 'Define an operational fallback for rescheduling or failures.')] },
       ],
-      ['El webhook saliente se dispara.', `El receptor crea el evento en ${calendarName}.`, 'La fecha y hora final coinciden con CRM.'],
-      ['Si no sale el webhook, revisa outgoingWebhookUrl.', `Si ${calendarName} no crea el evento, revisa la automatización externa.`, 'Si la hora se mueve, revisa timezone en ambos lados.'],
-      [{ label: 'Punto clave', value: 'Configura outgoingWebhookUrl y mantenlo con un receptor externo activo.' }],
-      [{ label: 'CRM', caption: 'Se crea tarea o cita' }, { label: 'Webhook', caption: 'Sale el payload del canal' }, { label: 'Automatización', caption: 'Transforma y autentica' }, { label: calendarName, caption: 'Evento publicado' }],
+      [tx('El webhook saliente se dispara.', 'The outgoing webhook is triggered.'), tx(`El receptor crea el evento en ${calendarName}.`, `The receiver creates the event in ${calendarName}.`), tx('La fecha y hora final coinciden con CRM.', 'The final date and time match the CRM.')],
+      [tx('Si no sale el webhook, revisa outgoingWebhookUrl.', 'If the webhook does not go out, review outgoingWebhookUrl.'), tx(`Si ${calendarName} no crea el evento, revisa la automatización externa.`, `If ${calendarName} does not create the event, review the external automation.`), tx('Si la hora se mueve, revisa timezone en ambos lados.', 'If the time shifts, review timezone on both sides.')],
+      [{ label: tx('Punto clave', 'Key point'), value: tx('Configura outgoingWebhookUrl y mantenlo con un receptor externo activo.', 'Configure outgoingWebhookUrl and keep it connected to an active external receiver.') }],
+      [{ label: 'CRM', caption: tx('Se crea tarea o cita', 'Task or appointment is created') }, { label: 'Webhook', caption: tx('Sale el payload del canal', 'The channel payload is sent') }, { label: tx('Automatización', 'Automation'), caption: tx('Transforma y autentica', 'Transforms and authenticates') }, { label: calendarName, caption: tx('Evento publicado', 'Published event') }],
     )
   }
 
   if (key === 'slack-bridge' || key === 'teams-bridge') {
     const platform = key === 'slack-bridge' ? 'Slack' : 'Microsoft Teams'
     return buildBridgeGuide(
-      `Integración detallada de ${platform} Alerts Bridge`,
-      `Envía alertas internas del CRM a ${platform} mediante un webhook saliente configurado en el canal.`,
+      tx(`Integración detallada de ${platform} Alerts Bridge`, `Detailed ${platform} Alerts Bridge integration`),
+      tx(`Envía alertas internas del CRM a ${platform} mediante un webhook saliente configurado en el canal.`, `Send internal CRM alerts to ${platform} through an outgoing webhook configured on the channel.`),
       'slate',
-      'Operaciones internas, RevOps o administrador corporativo.',
-      [`Webhook o flujo de ${platform} disponible.`, 'Canal bridge creado en el CRM.', 'Definir qué canal interno recibirá las alertas.'],
+      tx('Operaciones internas, RevOps o administrador corporativo.', 'Internal operations, RevOps, or corporate administrator.'),
+      [tx(`Webhook o flujo de ${platform} disponible.`, `${platform} webhook or flow available.`), tx('Canal bridge creado en el CRM.', 'Bridge channel created in the CRM.'), tx('Definir qué canal interno recibirá las alertas.', 'Define which internal channel will receive the alerts.')],
       [
-        { title: '1. Prepara el destino interno', detail: `Crea el webhook o flujo que recibirá las alertas en ${platform}.`, bullets: [`Usa un canal útil para coordinación comercial.`, 'Evita destinos demasiado ruidosos.', 'Conserva la URL como secreto operativo.'] },
-        { title: '2. Configura outgoingWebhookUrl', detail: 'Guarda la URL destino dentro del canal CRM.', bullets: ['Mantén el canal en TESTING al inicio.', 'No reutilices una URL sin saber a qué equipo publica.', 'Documenta la dependencia externa.'] },
-        { title: '3. Ejecuta una alerta de prueba', detail: 'Provoca el evento comercial y revisa el mensaje publicado.', bullets: ['Puede ser una asignación, captura o alerta interna.', 'Valida claridad, formato y destinatario.', 'Ajusta el flujo si el mensaje no se entiende.'] },
-        { title: '4. Formaliza la operación', detail: 'Deja claro qué eventos llegan, quién mantiene el bridge y cuál es el fallback.', bullets: ['Pasa a ACTIVE cuando cierre la prueba.', 'Define prioridad de alertas para no saturar al equipo.', 'Monitorea errores al inicio de operación.'] },
+        { title: tx('1. Prepara el destino interno', '1. Prepare the internal destination'), detail: tx(`Crea el webhook o flujo que recibirá las alertas en ${platform}.`, `Create the webhook or flow that will receive alerts in ${platform}.`), bullets: [tx('Usa un canal útil para coordinación comercial.', 'Use a channel that is useful for sales coordination.'), tx('Evita destinos demasiado ruidosos.', 'Avoid overly noisy destinations.'), tx('Conserva la URL como secreto operativo.', 'Keep the URL as an operational secret.')] },
+        { title: tx('2. Configura outgoingWebhookUrl', '2. Configure outgoingWebhookUrl'), detail: tx('Guarda la URL destino dentro del canal CRM.', 'Save the destination URL inside the CRM channel.'), bullets: [tx('Mantén el canal en TESTING al inicio.', 'Keep the channel in TESTING at the beginning.'), tx('No reutilices una URL sin saber a qué equipo publica.', 'Do not reuse a URL without knowing which team it posts to.'), tx('Documenta la dependencia externa.', 'Document the external dependency.')] },
+        { title: tx('3. Ejecuta una alerta de prueba', '3. Run a test alert'), detail: tx('Provoca el evento comercial y revisa el mensaje publicado.', 'Trigger the commercial event and review the published message.'), bullets: [tx('Puede ser una asignación, captura o alerta interna.', 'It can be an assignment, capture, or internal alert.'), tx('Valida claridad, formato y destinatario.', 'Validate clarity, format, and recipient.'), tx('Ajusta el flujo si el mensaje no se entiende.', 'Adjust the flow if the message is not clear.')] },
+        { title: tx('4. Formaliza la operación', '4. Formalize the operation'), detail: tx('Deja claro qué eventos llegan, quién mantiene el bridge y cuál es el fallback.', 'Make clear which events arrive, who maintains the bridge, and what the fallback is.'), bullets: [tx('Pasa a ACTIVE cuando cierre la prueba.', 'Move to ACTIVE when the test closes.'), tx('Define prioridad de alertas para no saturar al equipo.', 'Define alert priority so the team is not overwhelmed.'), tx('Monitorea errores al inicio de operación.', 'Monitor errors at the start of operation.')] },
       ],
-      [`${platform} recibe el mensaje esperado.`, 'El receptor responde correctamente.', 'El equipo confirma que el canal interno es el correcto.'],
-      ['Si no llega nada, revisa outgoingWebhookUrl.', 'Si el formato es malo, adapta el flujo externo.', 'Si no sabes qué equipo lo recibe, documenta el destino antes de activar.'],
-      [{ label: 'Dato clave', value: `Configura outgoingWebhookUrl con el receptor de ${platform}.` }],
-      [{ label: 'Evento CRM', caption: 'Cambio operativo o alerta' }, { label: 'Bridge', caption: 'Tiene outgoingWebhookUrl' }, { label: platform, caption: 'Recibe el POST o flujo' }, { label: 'Equipo', caption: 'Ve la notificación' }],
+      [tx(`${platform} recibe el mensaje esperado.`, `${platform} receives the expected message.`), tx('El receptor responde correctamente.', 'The receiver responds correctly.'), tx('El equipo confirma que el canal interno es el correcto.', 'The team confirms that the internal channel is the correct one.')],
+      [tx('Si no llega nada, revisa outgoingWebhookUrl.', 'If nothing arrives, review outgoingWebhookUrl.'), tx('Si el formato es malo, adapta el flujo externo.', 'If the format is poor, adapt the external flow.'), tx('Si no sabes qué equipo lo recibe, documenta el destino antes de activar.', 'If you do not know which team receives it, document the destination before activating.')],
+      [{ label: tx('Dato clave', 'Key data'), value: tx(`Configura outgoingWebhookUrl con el receptor de ${platform}.`, `Configure outgoingWebhookUrl with the ${platform} receiver.`) }],
+      [{ label: tx('Evento CRM', 'CRM event'), caption: tx('Cambio operativo o alerta', 'Operational change or alert') }, { label: 'Bridge', caption: tx('Tiene outgoingWebhookUrl', 'Has outgoingWebhookUrl') }, { label: platform, caption: tx('Recibe el POST o flujo', 'Receives the POST or flow') }, { label: tx('Equipo', 'Team'), caption: tx('Ve la notificación', 'Sees the notification') }],
     )
   }
 
   if (key === 'meta-lead-ads-bridge' || key === 'external-form-bridge' || key === 'tiktok-bridge' || key === 'youtube-bridge') {
     const origin = key === 'meta-lead-ads-bridge' ? 'Meta Lead Ads' : key === 'external-form-bridge' ? 'Formulario Externo' : key === 'tiktok-bridge' ? 'TikTok' : 'YouTube'
     return buildBridgeGuide(
-      `Integración detallada de ${origin} Bridge`,
-      `Conecta ${origin} al CRM mediante bridge HTTP o automatización intermedia sin abrir otro módulo comercial paralelo.`,
+      tx(`Integración detallada de ${origin} Bridge`, `Detailed ${origin} Bridge integration`),
+      tx(`Conecta ${origin} al CRM mediante bridge HTTP o automatización intermedia sin abrir otro módulo comercial paralelo.`, `Connect ${origin} to the CRM through an HTTP bridge or intermediate automation without opening another parallel sales module.`),
       key === 'meta-lead-ads-bridge' ? 'blue' : 'sky',
-      'Marketing, automatización o desarrollo web.',
-      ['Definir origen exacto del lead o formulario.', 'Tener middleware, flujo o frontend capaz de hacer POST HTTP.', 'Canal bridge creado en el CRM.'],
+      tx('Marketing, automatización o desarrollo web.', 'Marketing, automation, or web development.'),
+      [tx('Definir origen exacto del lead o formulario.', 'Define the exact origin of the lead or form.'), tx('Tener middleware, flujo o frontend capaz de hacer POST HTTP.', 'Have middleware, flow, or frontend capable of making an HTTP POST.'), tx('Canal bridge creado en el CRM.', 'Bridge channel created in the CRM.')],
       [
-        { title: '1. Define la fuente de captura', detail: 'Aclara si el payload saldrá desde frontend, backend, middleware o una automatización externa.', bullets: ['Evita tener dos rutas activas para el mismo origen.', 'Mantén un owner claro del bridge.', `Endpoint operativo: ${args.endpoint}`] },
-        { title: '2. Mapea el payload al CRM', detail: 'Envía nombre, email, teléfono y contexto comercial del origen.', bullets: ['Incluye campaña, formulario o asset si está disponible.', key === 'meta-lead-ads-bridge' ? 'Si tienes leadgen_id, no lo pierdas en el flujo.' : 'Usa metadata para campos propios del origen.', 'Mantén consistencia en los nombres de campo.'] },
-        { title: '3. Ejecuta una prueba real o simulada', detail: 'Lanza un POST controlado y revisa la captura dentro del CRM.', bullets: ['Valida lead, actividad y fuente.', 'Revisa deduplicación sobre contactos existentes.', 'Confirma owner y tarea inicial si aplica.'] },
-        { title: '4. Documenta y opera', detail: 'Deja documentado el contrato del payload y el owner técnico del origen.', bullets: ['Guarda un payload ejemplo que funcione.', 'Monitorea errores del canal al salir a producción.', 'Separa canales si dos fuentes distintas requieren trazabilidad propia.'] },
+        { title: tx('1. Define la fuente de captura', '1. Define the capture source'), detail: tx('Aclara si el payload saldrá desde frontend, backend, middleware o una automatización externa.', 'Clarify whether the payload will come from frontend, backend, middleware, or external automation.'), bullets: [tx('Evita tener dos rutas activas para el mismo origen.', 'Avoid having two active routes for the same origin.'), tx('Mantén un owner claro del bridge.', 'Keep a clear owner for the bridge.'), `${tx('Endpoint operativo', 'Operational endpoint')}: ${args.endpoint}`] },
+        { title: tx('2. Mapea el payload al CRM', '2. Map the payload to the CRM'), detail: tx('Envía nombre, email, teléfono y contexto comercial del origen.', 'Send name, email, phone, and the commercial context from the source.'), bullets: [tx('Incluye campaña, formulario o asset si está disponible.', 'Include campaign, form, or asset if available.'), key === 'meta-lead-ads-bridge' ? tx('Si tienes leadgen_id, no lo pierdas en el flujo.', 'If you have leadgen_id, do not lose it in the flow.') : tx('Usa metadata para campos propios del origen.', 'Use metadata for source-specific fields.'), tx('Mantén consistencia en los nombres de campo.', 'Keep field names consistent.')] },
+        { title: tx('3. Ejecuta una prueba real o simulada', '3. Run a real or simulated test'), detail: tx('Lanza un POST controlado y revisa la captura dentro del CRM.', 'Launch a controlled POST and review the capture inside the CRM.'), bullets: [tx('Valida lead, actividad y fuente.', 'Validate lead, activity, and source.'), tx('Revisa deduplicación sobre contactos existentes.', 'Review deduplication against existing contacts.'), tx('Confirma owner y tarea inicial si aplica.', 'Confirm owner and initial task if applicable.')] },
+        { title: tx('4. Documenta y opera', '4. Document and operate'), detail: tx('Deja documentado el contrato del payload y el owner técnico del origen.', 'Document the payload contract and the technical owner of the source.'), bullets: [tx('Guarda un payload ejemplo que funcione.', 'Save a sample payload that works.'), tx('Monitorea errores del canal al salir a producción.', 'Monitor channel errors when going to production.'), tx('Separa canales si dos fuentes distintas requieren trazabilidad propia.', 'Separate channels if two different sources require their own traceability.')] },
       ],
-      ['El lead entra con contexto del origen.', 'La deduplicación funciona.', 'El equipo puede identificar de dónde vino la captura.'],
-      ['Si no entra, revisa la automatización o middleware.', 'Si falta contexto, amplía metadata.', 'Si duplica, evita múltiples rutas activas sobre el mismo origen.'],
-      [{ label: 'Endpoint bridge', value: args.endpoint }, { label: 'Referencia payload', value: snippets?.webForm || 'Usa el contrato base del canal.' }],
-      [{ label: origin, caption: 'Fuente original de la captura' }, { label: 'Middleware', caption: 'Transforma o envía el payload' }, { label: 'Bridge CRM', caption: 'Ingesta y deduplicación' }, { label: 'Pipeline', caption: 'Seguimiento comercial' }],
+      [tx('El lead entra con contexto del origen.', 'The lead enters with the source context.'), tx('La deduplicación funciona.', 'Deduplication works.'), tx('El equipo puede identificar de dónde vino la captura.', 'The team can identify where the capture came from.')],
+      [tx('Si no entra, revisa la automatización o middleware.', 'If it does not enter, review the automation or middleware.'), tx('Si falta contexto, amplía metadata.', 'If context is missing, expand the metadata.'), tx('Si duplica, evita múltiples rutas activas sobre el mismo origen.', 'If it duplicates, avoid multiple active routes on the same source.')],
+      [{ label: tx('Endpoint bridge', 'Bridge endpoint'), value: args.endpoint }, { label: tx('Referencia payload', 'Payload reference'), value: snippets?.webForm || tx('Usa el contrato base del canal.', 'Use the channel base contract.') }],
+      [{ label: origin, caption: tx('Fuente original de la captura', 'Original capture source') }, { label: 'Middleware', caption: tx('Transforma o envía el payload', 'Transforms or sends the payload') }, { label: 'Bridge CRM', caption: tx('Ingesta y deduplicación', 'Ingestion and deduplication') }, { label: 'Pipeline', caption: tx('Seguimiento comercial', 'Commercial follow-up') }],
     )
   }
 
   return buildBridgeGuide(
-    'Integración detallada del canal',
-    'Selecciona un canal para ver el paso a paso detallado de implementación.',
+    args.language === 'en' ? 'Detailed channel integration' : 'Integración detallada del canal',
+    args.language === 'en' ? 'Select a channel to see the detailed implementation walkthrough.' : 'Selecciona un canal para ver el paso a paso detallado de implementación.',
     'sky',
-    'Implementador del canal.',
-    ['Canal seleccionado.'],
-    [{ title: '1. Selecciona el canal', detail: 'El panel mostrará la guía apropiada según el tipo de integración.', bullets: ['El contenido cambia por canal, provider y bridgeKind.'] }],
-    ['Canal identificado.'],
-    ['Selecciona un canal a la izquierda.'],
+    args.language === 'en' ? 'Channel implementer.' : 'Implementador del canal.',
+    [args.language === 'en' ? 'Channel selected.' : 'Canal seleccionado.'],
+    [{ title: args.language === 'en' ? '1. Select the channel' : '1. Selecciona el canal', detail: args.language === 'en' ? 'The panel will show the appropriate guide depending on the integration type.' : 'El panel mostrará la guía apropiada según el tipo de integración.', bullets: [args.language === 'en' ? 'Content changes by channel, provider, and bridgeKind.' : 'El contenido cambia por canal, provider y bridgeKind.'] }],
+    [args.language === 'en' ? 'Channel identified.' : 'Canal identificado.'],
+    [args.language === 'en' ? 'Select a channel on the left.' : 'Selecciona un canal a la izquierda.'],
     [],
-    [{ label: 'Canal', caption: 'Selecciona una integración' }, { label: 'Guía', caption: 'Se cargan pasos y assets' }, { label: 'Validación', caption: 'Se ejecuta QA' }, { label: 'Producción', caption: 'Canal listo para operar' }],
+    [{ label: args.language === 'en' ? 'Channel' : 'Canal', caption: args.language === 'en' ? 'Select an integration' : 'Selecciona una integración' }, { label: args.language === 'en' ? 'Guide' : 'Guía', caption: args.language === 'en' ? 'Steps and assets are loaded' : 'Se cargan pasos y assets' }, { label: args.language === 'en' ? 'Validation' : 'Validación', caption: args.language === 'en' ? 'QA is executed' : 'Se ejecuta QA' }, { label: args.language === 'en' ? 'Production' : 'Producción', caption: args.language === 'en' ? 'Channel ready to operate' : 'Canal listo para operar' }],
   )
 }
 
@@ -986,17 +1023,17 @@ function isOutgoingWebhookBridge(bridgeKind: string) {
   return bridgeKind === 'SLACK' || bridgeKind === 'TEAMS' || bridgeKind === 'GOOGLE_CALENDAR' || bridgeKind === 'MICROSOFT_365_CALENDAR'
 }
 
-function formatDate(value: string | null | undefined) {
+function formatDate(value: string | null | undefined, language: 'es' | 'en' = 'es') {
   if (!value) return '—'
   try {
-    return new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+    return new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
   } catch {
     return String(value)
   }
 }
 
-function formatCompactNumber(value: number) {
-  return new Intl.NumberFormat('es-CO', {
+function formatCompactNumber(value: number, language: 'es' | 'en' = 'es') {
+  return new Intl.NumberFormat(language === 'en' ? 'en-US' : 'es-CO', {
     notation: 'compact',
     maximumFractionDigits: value >= 100 ? 0 : 1,
   }).format(value)
@@ -2021,6 +2058,7 @@ function buildChatbotCanvasModel(stages: ChatbotFlowStage[]) {
 }
 
 export function CrmIntegrationsClient() {
+  const { language } = useI18n()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [deletingChannelId, setDeletingChannelId] = useState<string | null>(null)
@@ -2297,7 +2335,7 @@ export function CrmIntegrationsClient() {
           value: totalCaptures,
           target: captureGoal,
           progress: Math.min(100, Math.round((totalCaptures / captureGoal) * 100)),
-          caption: `${formatCompactNumber(totalCaptures)} leads ya entraron al CRM`,
+          caption: language === 'en' ? `${formatCompactNumber(totalCaptures, language)} leads already entered the CRM` : `${formatCompactNumber(totalCaptures, language)} leads ya entraron al CRM`,
           icon: TrendingUp,
           accent: 'from-emerald-500 to-lime-400',
         },
@@ -2306,7 +2344,7 @@ export function CrmIntegrationsClient() {
           value: totalConversations,
           target: conversationGoal,
           progress: Math.min(100, Math.round((totalConversations / conversationGoal) * 100)),
-          caption: `${formatCompactNumber(totalConversations)} hilos comerciales vinculados`,
+          caption: language === 'en' ? `${formatCompactNumber(totalConversations, language)} linked sales threads` : `${formatCompactNumber(totalConversations, language)} hilos comerciales vinculados`,
           icon: Activity,
           accent: 'from-amber-500 to-orange-400',
         },
@@ -2325,6 +2363,7 @@ export function CrmIntegrationsClient() {
   const selectedSettings = (selectedChannel?.settingsJson as Record<string, unknown> | null | undefined) ?? null
   const selectedToken = getTokenFromSettings(selectedSettings)
   const selectedBridgeKind = getBridgeKind(selectedSettings)
+  const selectedIsBookingBridge = selectedBridgeKind === 'BOOKING'
   const selectedGoogleSheetsCsvUrl = getGoogleSheetsCsvUrl(selectedSettings)
   const selectedChatbotEmbedUrl = selectedChannel?.provider === 'WEB_CHATBOT' ? buildChatbotEmbedUrl(baseUrl, selectedChannel.id) : ''
   const selectedWebFormEmbedUrl = selectedChannel?.provider === 'WEB_FORM' && (selectedBridgeKind === 'GENERIC' || selectedBridgeKind === 'BOOKING')
@@ -2505,9 +2544,10 @@ export function CrmIntegrationsClient() {
       bridgeKind: selectedBridgeKind,
       endpoint,
       token: selectedToken,
+      language,
       snippets,
     })
-  }, [endpoint, selectedBridgeKind, selectedChannel, selectedToken, snippets])
+  }, [endpoint, language, selectedBridgeKind, selectedChannel, selectedToken, snippets])
 
   function applyTemplate(templateKey: string) {
     const preset = TEMPLATE_PRESETS.find((item) => item.key === templateKey)
@@ -3964,41 +4004,41 @@ export function CrmIntegrationsClient() {
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'CRM', href: '/dashboard/crm' },
-          { label: 'Integraciones' },
+          { label: language === 'en' ? 'Integrations' : 'Integraciones' },
         ]}
-        eyebrow="CRM Omnicanal"
-        title="Centro de integraciones y captura de leads"
-        description="Activa canales, genera scripts para formularios y chatbot, y monta bridges operativos para correo y redes sin duplicar módulos del ERP. Todo termina en leads, conversaciones y oportunidades del CRM existente."
+        eyebrow={language === 'en' ? 'Omnichannel CRM' : 'CRM Omnicanal'}
+        title={language === 'en' ? 'Integrations and lead capture center' : 'Centro de integraciones y captura de leads'}
+        description={language === 'en' ? 'Activate channels, generate scripts for forms and chatbot, and set up operational bridges for email and social networks without duplicating ERP modules. Everything lands in leads, conversations, and opportunities in the existing CRM.' : 'Activa canales, genera scripts para formularios y chatbot, y monta bridges operativos para correo y redes sin duplicar módulos del ERP. Todo termina en leads, conversaciones y oportunidades del CRM existente.'}
         actions={
           <>
             <Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85" onClick={() => void loadChannels()}>
-              Refrescar
+              {language === 'en' ? 'Refresh' : 'Refrescar'}
             </Button>
             <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
-              <Link href="/dashboard/crm/conversations">Abrir bandeja omnicanal</Link>
+              <Link href="/dashboard/crm/conversations">{language === 'en' ? 'Open omnichannel inbox' : 'Abrir bandeja omnicanal'}</Link>
             </Button>
             <Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={openCreateWizard}>
-              Nuevo canal
+              {language === 'en' ? 'New channel' : 'Nuevo canal'}
             </Button>
           </>
         }
         stats={[
-          { label: 'Canales activos', value: stats.active, hint: 'Producción lista para recibir leads', tone: 'teal' },
-          { label: 'Canales en pruebas', value: stats.testing, hint: 'Sandbox, testing y demo controlada', tone: 'amber' },
-          { label: 'Capturas registradas', value: stats.captures, hint: 'Leads creados desde integraciones', tone: 'sky' },
-          { label: 'Conversaciones vinculadas', value: stats.conversations, hint: 'Hilos generados en el inbox CRM', tone: 'neutral' },
+          { label: language === 'en' ? 'Active channels' : 'Canales activos', value: stats.active, hint: language === 'en' ? 'Production ready to receive leads' : 'Producción lista para recibir leads', tone: 'teal' },
+          { label: language === 'en' ? 'Channels in testing' : 'Canales en pruebas', value: stats.testing, hint: language === 'en' ? 'Sandbox, testing, and controlled demo' : 'Sandbox, testing y demo controlada', tone: 'amber' },
+          { label: language === 'en' ? 'Registered captures' : 'Capturas registradas', value: stats.captures, hint: language === 'en' ? 'Leads created from integrations' : 'Leads creados desde integraciones', tone: 'sky' },
+          { label: language === 'en' ? 'Linked conversations' : 'Conversaciones vinculadas', value: stats.conversations, hint: language === 'en' ? 'Threads created in the CRM inbox' : 'Hilos generados en el inbox CRM', tone: 'neutral' },
         ]}
       />
 
       <Tabs value={workspaceView} onValueChange={(value) => setWorkspaceView(value as CrmWorkspaceView)} className="space-y-4">
         <div className="flex flex-col gap-2.5 rounded-[24px] border border-slate-200 bg-white/90 p-2.5 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.28)] md:flex-row md:items-center md:justify-between">
           <TabsList className="grid h-auto grid-cols-2 rounded-[18px] border border-slate-200 bg-slate-50 p-1">
-            <TabsTrigger value="operations" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">Operación</TabsTrigger>
-            <TabsTrigger value="metrics" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">Métricas y metas</TabsTrigger>
+            <TabsTrigger value="operations" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">{language === 'en' ? 'Operations' : 'Operación'}</TabsTrigger>
+            <TabsTrigger value="metrics" className="rounded-[14px] px-4 py-2 data-[state=active]:bg-white">{language === 'en' ? 'Metrics and goals' : 'Métricas y metas'}</TabsTrigger>
           </TabsList>
           {workspaceView === 'metrics' ? (
             <p className="px-2 text-[13px] text-slate-500">
-              Panel ejecutivo para revisar rendimiento y definir objetivos comerciales por canal.
+              {language === 'en' ? 'Executive panel to review performance and define commercial goals by channel.' : 'Panel ejecutivo para revisar rendimiento y definir objetivos comerciales por canal.'}
             </p>
           ) : null}
         </div>
@@ -4010,44 +4050,44 @@ export function CrmIntegrationsClient() {
                 <div className="space-y-3">
                   <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-sky-700">
                     <Sparkles className="h-3.5 w-3.5" />
-                    Inteligencia omnicanal
+                    {language === 'en' ? 'Omnichannel intelligence' : 'Inteligencia omnicanal'}
                   </div>
                   <div>
-                    <h2 className="text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">Métricas, metas y tendencias</h2>
+                    <h2 className="text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">{language === 'en' ? 'Metrics, goals, and trends' : 'Métricas, metas y tendencias'}</h2>
                     <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 md:text-base">
-                      Este espacio concentra el tablero ejecutivo. Lo dejamos aparte para que la operación diaria siga ligera y aquí puedas abrir el análisis sólo cuando lo necesites.
+                      {language === 'en' ? 'This area concentrates the executive dashboard. It is kept separate so daily operations stay lighter and analysis opens only when you need it.' : 'Este espacio concentra el tablero ejecutivo. Lo dejamos aparte para que la operación diaria siga ligera y aquí puedas abrir el análisis sólo cuando lo necesites.'}
                     </p>
                   </div>
                 </div>
                 <Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85" onClick={() => setMetricsExpanded((current) => !current)}>
-                  {metricsExpanded ? 'Colapsar dashboard' : 'Expandir dashboard'}
+                  {metricsExpanded ? (language === 'en' ? 'Collapse dashboard' : 'Colapsar dashboard') : (language === 'en' ? 'Expand dashboard' : 'Expandir dashboard')}
                 </Button>
               </div>
 
               <div className="mt-5 grid gap-3 md:grid-cols-3">
                 <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex items-center justify-between text-slate-500">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">Activación</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">{language === 'en' ? 'Activation' : 'Activación'}</span>
                     <Target className="h-4 w-4 text-sky-500" />
                   </div>
                   <p className="mt-3 text-3xl font-semibold text-slate-950">{channelAnalytics.scorecards.activationRate}%</p>
-                  <p className="mt-1 text-sm text-slate-600">Canales activos o en testing sobre el total.</p>
+                  <p className="mt-1 text-sm text-slate-600">{language === 'en' ? 'Active or testing channels over the total.' : 'Canales activos o en testing sobre el total.'}</p>
                 </div>
                 <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex items-center justify-between text-slate-500">
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">Producción</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">{language === 'en' ? 'Production' : 'Producción'}</span>
                     <Goal className="h-4 w-4 text-emerald-500" />
                   </div>
                   <p className="mt-3 text-3xl font-semibold text-slate-950">{channelAnalytics.scorecards.productionRate}%</p>
-                  <p className="mt-1 text-sm text-slate-600">Canales listos para salir a operación real.</p>
+                  <p className="mt-1 text-sm text-slate-600">{language === 'en' ? 'Channels ready for real operation.' : 'Canales listos para salir a operación real.'}</p>
                 </div>
                 <div className="rounded-[22px] border border-cyan-200 bg-[linear-gradient(135deg,#0f172a,#0b4a6f)] p-4 text-white shadow-[0_24px_50px_-34px_rgba(15,23,42,0.7)]">
                   <div className="flex items-center justify-between text-cyan-100">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">Momentum</span>
                     <TrendingUp className="h-4 w-4 text-cyan-300" />
                   </div>
-                  <p className="mt-3 text-3xl font-semibold">{formatCompactNumber(stats.captures + stats.conversations)}</p>
-                  <p className="mt-1 text-sm text-cyan-50/90">Interacciones totales trazadas desde integraciones.</p>
+                  <p className="mt-3 text-3xl font-semibold">{formatCompactNumber(stats.captures + stats.conversations, language)}</p>
+                  <p className="mt-1 text-sm text-cyan-50/90">{language === 'en' ? 'Total interactions traced from integrations.' : 'Interacciones totales trazadas desde integraciones.'}</p>
                 </div>
               </div>
             </CardContent>
@@ -4056,21 +4096,21 @@ export function CrmIntegrationsClient() {
           <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
             <Card className="rounded-[30px] border-slate-200 bg-[linear-gradient(180deg,#ffffff,#f8fbff)] text-slate-950 shadow-[0_28px_80px_-46px_rgba(15,23,42,0.22)]">
               <CardHeader className="pb-4">
-                <CardTitle className="text-slate-950">Metas configurables</CardTitle>
-                <CardDescription className="text-slate-600">Puedes sobreescribir los objetivos sugeridos y el progreso se recalcula al instante.</CardDescription>
+                <CardTitle className="text-slate-950">{language === 'en' ? 'Configurable goals' : 'Metas configurables'}</CardTitle>
+                <CardDescription className="text-slate-600">{language === 'en' ? 'You can override the suggested targets and progress recalculates instantly.' : 'Puedes sobreescribir los objetivos sugeridos y el progreso se recalcula al instante.'}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-3">
                   <div className="grid gap-2">
-                    <Label className="text-sm font-medium text-slate-700">Meta de canales operativos</Label>
+                    <Label className="text-sm font-medium text-slate-700">{language === 'en' ? 'Operational channels target' : 'Meta de canales operativos'}</Label>
                     <Input value={goalTargets.operational} onChange={(event) => setGoalTargets((current) => ({ ...current, operational: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.operational)} className="rounded-2xl border-slate-300 bg-white text-slate-950 placeholder:text-slate-500" />
                   </div>
                   <div className="grid gap-2">
-                    <Label className="text-sm font-medium text-slate-700">Meta de capturas</Label>
+                    <Label className="text-sm font-medium text-slate-700">{language === 'en' ? 'Captures target' : 'Meta de capturas'}</Label>
                     <Input value={goalTargets.captures} onChange={(event) => setGoalTargets((current) => ({ ...current, captures: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.captures)} className="rounded-2xl border-slate-300 bg-white text-slate-950 placeholder:text-slate-500" />
                   </div>
                   <div className="grid gap-2">
-                    <Label className="text-sm font-medium text-slate-700">Meta de conversaciones</Label>
+                    <Label className="text-sm font-medium text-slate-700">{language === 'en' ? 'Conversations target' : 'Meta de conversaciones'}</Label>
                     <Input value={goalTargets.conversations} onChange={(event) => setGoalTargets((current) => ({ ...current, conversations: event.target.value.replace(/[^0-9]/g, '') }))} placeholder={String(channelAnalytics.defaultTargets.conversations)} className="rounded-2xl border-slate-300 bg-white text-slate-950 placeholder:text-slate-500" />
                   </div>
                 </div>
@@ -4091,12 +4131,12 @@ export function CrmIntegrationsClient() {
                         </div>
                         <div className="mt-4 flex items-end justify-between gap-3">
                           <div>
-                            <p className="text-2xl font-semibold text-slate-950">{formatCompactNumber(goal.value)}</p>
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Meta {formatCompactNumber(goal.target)}</p>
+                            <p className="text-2xl font-semibold text-slate-950">{formatCompactNumber(goal.value, language)}</p>
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{language === 'en' ? 'Target' : 'Meta'} {formatCompactNumber(goal.target, language)}</p>
                           </div>
                           <div className="text-right">
                             <p className="text-2xl font-semibold text-slate-950">{goal.progress}%</p>
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Cumplido</p>
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{language === 'en' ? 'Reached' : 'Cumplido'}</p>
                           </div>
                         </div>
                         <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-slate-200">
@@ -4116,8 +4156,8 @@ export function CrmIntegrationsClient() {
                     <Card className="rounded-[30px] border-slate-200 bg-white/95 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.34)]">
                       <CardHeader className="flex flex-col gap-3 border-b border-slate-100 pb-5 md:flex-row md:items-center md:justify-between">
                         <div>
-                          <CardTitle>Canales con mayor impacto</CardTitle>
-                          <CardDescription>Comparativo de capturas y conversaciones por canal en la capa comercial.</CardDescription>
+                          <CardTitle>{language === 'en' ? 'Channels with highest impact' : 'Canales con mayor impacto'}</CardTitle>
+                          <CardDescription>{language === 'en' ? 'Comparison of captures and conversations by channel in the commercial layer.' : 'Comparativo de capturas y conversaciones por canal en la capa comercial.'}</CardDescription>
                         </div>
                         <div className="rounded-full border border-sky-100 bg-sky-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
                           Top {Math.max(1, channelAnalytics.performance.length)}
@@ -4141,21 +4181,21 @@ export function CrmIntegrationsClient() {
                                       <p className="text-sm font-semibold text-slate-950">{item.fullName}</p>
                                       <p className="text-xs uppercase tracking-[0.14em] text-slate-500">{item.provider}</p>
                                       <div className="mt-2 space-y-1 text-sm text-slate-700">
-                                        <p>Capturas: <span className="font-semibold text-slate-950">{item.captures}</span></p>
-                                        <p>Conversaciones: <span className="font-semibold text-slate-950">{item.conversations}</span></p>
+                                        <p>{language === 'en' ? 'Captures:' : 'Capturas:'} <span className="font-semibold text-slate-950">{item.captures}</span></p>
+                                        <p>{language === 'en' ? 'Conversations:' : 'Conversaciones:'} <span className="font-semibold text-slate-950">{item.conversations}</span></p>
                                       </div>
                                     </div>
                                   )
                                 }}
                               />
-                              <Bar dataKey="captures" name="Capturas" radius={[10, 10, 0, 0]} fill="#0ea5e9" />
-                              <Bar dataKey="conversations" name="Conversaciones" radius={[10, 10, 0, 0]} fill="#0f172a" />
+                              <Bar dataKey="captures" name={language === 'en' ? 'Captures' : 'Capturas'} radius={[10, 10, 0, 0]} fill="#0ea5e9" />
+                              <Bar dataKey="conversations" name={language === 'en' ? 'Conversations' : 'Conversaciones'} radius={[10, 10, 0, 0]} fill="#0f172a" />
                             </BarChart>
                           </ResponsiveContainer>
                         </div>
                         {channelAnalytics.performance.length === 0 ? (
                           <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                            Crea canales para empezar a ver comparativos de rendimiento en tiempo real.
+                            {language === 'en' ? 'Create channels to start seeing real-time performance comparisons.' : 'Crea canales para empezar a ver comparativos de rendimiento en tiempo real.'}
                           </div>
                         ) : null}
                       </CardContent>
@@ -4163,15 +4203,15 @@ export function CrmIntegrationsClient() {
 
                     <Card className="rounded-[30px] border-slate-200 bg-white/95 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.34)]">
                       <CardHeader className="border-b border-slate-100 pb-5">
-                        <CardTitle>Mix de canales</CardTitle>
-                        <CardDescription>Distribución por origen para detectar concentración y diversificación del stack.</CardDescription>
+                        <CardTitle>{language === 'en' ? 'Channel mix' : 'Mix de canales'}</CardTitle>
+                        <CardDescription>{language === 'en' ? 'Distribution by source to detect concentration and diversification of the stack.' : 'Distribución por origen para detectar concentración y diversificación del stack.'}</CardDescription>
                       </CardHeader>
                       <CardContent className="grid gap-4 p-4 md:p-6">
                         <div className="h-[260px] w-full">
                           <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                               <Pie
-                                data={channelAnalytics.distribution.length > 0 ? channelAnalytics.distribution : [{ label: 'Sin canales', value: 1, color: '#cbd5e1' }]}
+                                data={channelAnalytics.distribution.length > 0 ? channelAnalytics.distribution : [{ label: language === 'en' ? 'No channels' : 'Sin canales', value: 1, color: '#cbd5e1' }]}
                                 dataKey="value"
                                 nameKey="label"
                                 innerRadius={62}
@@ -4179,7 +4219,7 @@ export function CrmIntegrationsClient() {
                                 paddingAngle={4}
                                 stroke="none"
                               >
-                                {(channelAnalytics.distribution.length > 0 ? channelAnalytics.distribution : [{ label: 'Sin canales', value: 1, color: '#cbd5e1' }]).map((entry) => (
+                                {(channelAnalytics.distribution.length > 0 ? channelAnalytics.distribution : [{ label: language === 'en' ? 'No channels' : 'Sin canales', value: 1, color: '#cbd5e1' }]).map((entry) => (
                                   <Cell key={entry.label} fill={entry.color} />
                                 ))}
                               </Pie>
@@ -4191,7 +4231,7 @@ export function CrmIntegrationsClient() {
                                   return (
                                     <div className="rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl">
                                       <p className="text-sm font-semibold text-slate-950">{item.label}</p>
-                                      <p className="text-sm text-slate-600">{item.value} canal(es)</p>
+                                      <p className="text-sm text-slate-600">{item.value} {language === 'en' ? 'channel(s)' : 'canal(es)'}</p>
                                     </div>
                                   )
                                 }}
@@ -4200,7 +4240,7 @@ export function CrmIntegrationsClient() {
                           </ResponsiveContainer>
                         </div>
                         <div className="space-y-3">
-                          {(channelAnalytics.distribution.length > 0 ? channelAnalytics.distribution : [{ label: 'Sin canales', value: 0, color: '#cbd5e1' }]).map((entry) => (
+                          {(channelAnalytics.distribution.length > 0 ? channelAnalytics.distribution : [{ label: language === 'en' ? 'No channels' : 'Sin canales', value: 0, color: '#cbd5e1' }]).map((entry) => (
                             <div key={entry.label} className="flex items-center justify-between rounded-[20px] border border-slate-100 bg-slate-50/80 px-4 py-3">
                               <div className="flex items-center gap-3">
                                 <span className="h-3 w-3 rounded-full" style={{ backgroundColor: entry.color }} />
@@ -4217,11 +4257,11 @@ export function CrmIntegrationsClient() {
                   <Card className="rounded-[30px] border-slate-200 bg-white/95 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.34)]">
                     <CardHeader className="flex flex-col gap-3 border-b border-slate-100 pb-5 lg:flex-row lg:items-center lg:justify-between">
                       <div>
-                        <CardTitle>Ritmo de actividad por mes</CardTitle>
-                        <CardDescription>Lectura temporal con base en última actividad o actualización de cada canal.</CardDescription>
+                        <CardTitle>{language === 'en' ? 'Monthly activity pace' : 'Ritmo de actividad por mes'}</CardTitle>
+                        <CardDescription>{language === 'en' ? 'Timeline based on the latest activity or update of each channel.' : 'Lectura temporal con base en última actividad o actualización de cada canal.'}</CardDescription>
                       </div>
                       <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
-                        Últimos 6 meses
+                        {language === 'en' ? 'Last 6 months' : 'Últimos 6 meses'}
                       </div>
                     </CardHeader>
                     <CardContent className="p-4 md:p-6">
@@ -4251,16 +4291,16 @@ export function CrmIntegrationsClient() {
                                   <div className="rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl">
                                     <p className="text-sm font-semibold text-slate-950">{label}</p>
                                     <div className="mt-2 space-y-1 text-sm text-slate-700">
-                                      <p>Capturas: <span className="font-semibold text-slate-950">{captures}</span></p>
-                                      <p>Conversaciones: <span className="font-semibold text-slate-950">{conversations}</span></p>
-                                      <p>Canales con actividad: <span className="font-semibold text-slate-950">{channelsInMonth}</span></p>
+                                      <p>{language === 'en' ? 'Captures:' : 'Capturas:'} <span className="font-semibold text-slate-950">{captures}</span></p>
+                                      <p>{language === 'en' ? 'Conversations:' : 'Conversaciones:'} <span className="font-semibold text-slate-950">{conversations}</span></p>
+                                      <p>{language === 'en' ? 'Channels with activity:' : 'Canales con actividad:'} <span className="font-semibold text-slate-950">{channelsInMonth}</span></p>
                                     </div>
                                   </div>
                                 )
                               }}
                             />
-                            <Line type="monotone" dataKey="captures" name="Capturas" stroke="url(#crmCapturesGradient)" strokeWidth={3} dot={{ r: 4, fill: '#0ea5e9' }} activeDot={{ r: 6 }} />
-                            <Line type="monotone" dataKey="conversations" name="Conversaciones" stroke="url(#crmConversationsGradient)" strokeWidth={3} dot={{ r: 4, fill: '#f97316' }} activeDot={{ r: 6 }} />
+                            <Line type="monotone" dataKey="captures" name={language === 'en' ? 'Captures' : 'Capturas'} stroke="url(#crmCapturesGradient)" strokeWidth={3} dot={{ r: 4, fill: '#0ea5e9' }} activeDot={{ r: 6 }} />
+                            <Line type="monotone" dataKey="conversations" name={language === 'en' ? 'Conversations' : 'Conversaciones'} stroke="url(#crmConversationsGradient)" strokeWidth={3} dot={{ r: 4, fill: '#f97316' }} activeDot={{ r: 6 }} />
                           </LineChart>
                         </ResponsiveContainer>
                       </div>
@@ -4270,12 +4310,12 @@ export function CrmIntegrationsClient() {
               ) : (
                 <Card className="rounded-[30px] border-slate-200 bg-white/95 shadow-[0_20px_50px_-36px_rgba(15,23,42,0.34)]">
                   <CardHeader>
-                    <CardTitle className="text-slate-950">Dashboard colapsado</CardTitle>
-                    <CardDescription className="text-slate-600">Expándelo cuando quieras revisar gráficos, tendencias y distribución por canal.</CardDescription>
+                    <CardTitle className="text-slate-950">{language === 'en' ? 'Collapsed dashboard' : 'Dashboard colapsado'}</CardTitle>
+                    <CardDescription className="text-slate-600">{language === 'en' ? 'Expand it when you want to review charts, trends, and distribution by channel.' : 'Expándelo cuando quieras revisar gráficos, tendencias y distribución por canal.'}</CardDescription>
                   </CardHeader>
                   <CardContent className="grid gap-3 md:grid-cols-3">
                     <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">Configurados</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">{language === 'en' ? 'Configured' : 'Configurados'}</p>
                       <p className="mt-2 text-3xl font-semibold text-slate-950">{channelAnalytics.scorecards.configured}</p>
                     </div>
                     <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm">
@@ -4296,14 +4336,14 @@ export function CrmIntegrationsClient() {
         <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <Card className="rounded-[24px] border-slate-200 bg-white/95 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.3)]">
           <CardHeader className="border-b border-slate-100 pb-4">
-            <CardTitle>Canales configurados</CardTitle>
-            <CardDescription>Selecciona un canal para ver assets, webhooks y bridges listos para copiar.</CardDescription>
+            <CardTitle>{language === 'en' ? 'Configured channels' : 'Canales configurados'}</CardTitle>
+            <CardDescription>{language === 'en' ? 'Select a channel to view assets, webhooks, and bridges ready to copy.' : 'Selecciona un canal para ver assets, webhooks y bridges listos para copiar.'}</CardDescription>
           </CardHeader>
           <CardContent className="max-h-[72vh] space-y-2.5 overflow-y-auto p-3 md:p-4 xl:max-h-[calc(100vh-19rem)]">
-            {loading ? <p className="text-sm text-muted-foreground">Cargando canales...</p> : null}
+            {loading ? <p className="text-sm text-muted-foreground">{language === 'en' ? 'Loading channels...' : 'Cargando canales...'}</p> : null}
             {!loading && channels.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50/80 p-5 text-sm text-slate-500">
-                Aún no hay canales. Crea uno desde plantilla y el CRM quedará listo para demo inmediata.
+                {language === 'en' ? 'There are no channels yet. Create one from a template and the CRM will be ready for an immediate demo.' : 'Aún no hay canales. Crea uno desde plantilla y el CRM quedará listo para demo inmediata.'}
               </div>
             ) : null}
 
@@ -4338,22 +4378,22 @@ export function CrmIntegrationsClient() {
 
                   <div className="mt-4 grid gap-2 text-sm text-slate-600">
                     <div className="flex items-center justify-between">
-                      <span>Capturas</span>
+                      <span>{language === 'en' ? 'Captures' : 'Capturas'}</span>
                       <span className="font-semibold text-slate-900">{channel._count?.captures ?? 0}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span>Conversaciones</span>
+                      <span>{language === 'en' ? 'Conversations' : 'Conversaciones'}</span>
                       <span className="font-semibold text-slate-900">{channel._count?.conversations ?? 0}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span>Último webhook</span>
-                      <span className="font-medium text-slate-900">{formatDate(channel.lastWebhookAt)}</span>
+                      <span>{language === 'en' ? 'Last webhook' : 'Último webhook'}</span>
+                      <span className="font-medium text-slate-900">{formatDate(channel.lastWebhookAt, language)}</span>
                     </div>
                   </div>
 
                   <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
                     <div className="grid gap-1.5">
-                      <Label className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Estado</Label>
+                      <Label className="text-[11px] uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Status' : 'Estado'}</Label>
                       <Select value={channel.status} onValueChange={(value) => void updateChannelStatus(channel.id, value as ChannelStatus)} disabled={updatingChannelId === channel.id}>
                         <SelectTrigger className="h-10 rounded-xl border-white/70 bg-white/90"><SelectValue /></SelectTrigger>
                         <SelectContent>
@@ -4370,7 +4410,7 @@ export function CrmIntegrationsClient() {
                         void copyText(`endpoint-${channel.id}`, getEndpoint(baseUrl, channel))
                       }}
                     >
-                      {copiedKey === `endpoint-${channel.id}` ? 'Copiado' : 'Copiar endpoint'}
+                      {copiedKey === `endpoint-${channel.id}` ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy endpoint' : 'Copiar endpoint')}
                     </Button>
                   </div>
 
@@ -4391,11 +4431,11 @@ export function CrmIntegrationsClient() {
               <CardHeader className="border-b border-slate-100 pb-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <CardTitle>{operationsPanelView === 'preview' ? 'Vista previa del canal' : 'Checklist de readiness'}</CardTitle>
+                    <CardTitle>{operationsPanelView === 'preview' ? (language === 'en' ? 'Channel preview' : 'Vista previa del canal') : (language === 'en' ? 'Readiness checklist' : 'Checklist de readiness')}</CardTitle>
                     <CardDescription>
                       {operationsPanelView === 'preview'
-                        ? 'Resumen ejecutivo y accesos rápidos del canal seleccionado.'
-                        : 'Revisión operativa para validar si el canal ya está listo para demo o producción.'}
+                        ? (language === 'en' ? 'Executive summary and quick actions for the selected channel.' : 'Resumen ejecutivo y accesos rápidos del canal seleccionado.')
+                        : (language === 'en' ? 'Operational review to validate whether the channel is ready for demo or production.' : 'Revisión operativa para validar si el canal ya está listo para demo o producción.')}
                     </CardDescription>
                   </div>
                   {operationsPanelSwitcher}
@@ -4415,16 +4455,16 @@ export function CrmIntegrationsClient() {
 
                     <div className="mt-5 grid gap-3 sm:grid-cols-3">
                       <div className="rounded-2xl border border-white/70 bg-white/85 p-3">
-                        <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Capturas</p>
+                        <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Captures' : 'Capturas'}</p>
                         <p className="mt-2 text-2xl font-semibold text-slate-950">{selectedChannel._count?.captures ?? 0}</p>
                       </div>
                       <div className="rounded-2xl border border-white/70 bg-white/85 p-3">
-                        <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Conversaciones</p>
+                        <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Conversations' : 'Conversaciones'}</p>
                         <p className="mt-2 text-2xl font-semibold text-slate-950">{selectedChannel._count?.conversations ?? 0}</p>
                       </div>
                       <div className="rounded-2xl border border-white/70 bg-white/85 p-3">
-                        <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Último webhook</p>
-                        <p className="mt-2 text-sm font-semibold text-slate-950">{formatDate(selectedChannel.lastWebhookAt)}</p>
+                        <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Last webhook' : 'Último webhook'}</p>
+                        <p className="mt-2 text-sm font-semibold text-slate-950">{formatDate(selectedChannel.lastWebhookAt, language)}</p>
                       </div>
                     </div>
 
@@ -4432,17 +4472,17 @@ export function CrmIntegrationsClient() {
                       <div className="mt-5 rounded-2xl border border-emerald-200 bg-white/85 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Preview del chatbot real</p>
-                            <p className="mt-2 text-sm leading-6 text-slate-600">Este preview representa el iframe y el launcher con la configuración actual del canal.</p>
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">{language === 'en' ? 'Real chatbot preview' : 'Preview del chatbot real'}</p>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">{language === 'en' ? 'This preview represents the iframe and launcher with the current channel configuration.' : 'Este preview representa el iframe y el launcher con la configuración actual del canal.'}</p>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Button className="rounded-xl" onClick={() => setChatbotBuilderModalOpen(true)}>
-                              Editar constructor
+                              {language === 'en' ? 'Edit builder' : 'Editar constructor'}
                             </Button>
                             <Button className="rounded-xl" variant="outline" onClick={() => void copyText('preview-chatbot-url', selectedChatbotEmbedUrl)}>
-                              {copiedKey === 'preview-chatbot-url' ? 'Copiado' : 'Copiar URL'}
+                              {copiedKey === 'preview-chatbot-url' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy URL' : 'Copiar URL')}
                             </Button>
-                            <Button asChild className="rounded-xl" variant="outline"><Link href={selectedChatbotEmbedUrl}>Abrir demo</Link></Button>
+                            <Button asChild className="rounded-xl" variant="outline"><Link href={selectedChatbotEmbedUrl}>{language === 'en' ? 'Open demo' : 'Abrir demo'}</Link></Button>
                           </div>
                         </div>
                         <div className="mt-4">
@@ -4450,9 +4490,9 @@ export function CrmIntegrationsClient() {
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <Button className="rounded-xl" variant="outline" onClick={() => void copyText('preview-chatbot-iframe', snippets?.chatbotIframe || '')}>
-                            {copiedKey === 'preview-chatbot-iframe' ? 'Copiado' : 'Copiar iframe'}
+                            {copiedKey === 'preview-chatbot-iframe' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy iframe' : 'Copiar iframe')}
                           </Button>
-                          <Button asChild className="rounded-xl" variant="outline"><Link href="/dashboard/crm/chatbot">Ver panel chatbot</Link></Button>
+                          <Button asChild className="rounded-xl" variant="outline"><Link href="/dashboard/crm/chatbot">{language === 'en' ? 'View chatbot panel' : 'Ver panel chatbot'}</Link></Button>
                         </div>
                       </div>
                     ) : null}
@@ -4461,21 +4501,36 @@ export function CrmIntegrationsClient() {
                       <div className="mt-5 rounded-2xl border border-sky-200 bg-white/85 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">Preview del formulario web real</p>
-                            <p className="mt-2 text-sm leading-6 text-slate-600">Este preview se construye con la configuración actual del canal y refleja cómo se verá el iframe embebido.</p>
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">{selectedIsBookingBridge ? (language === 'en' ? 'Real booking preview' : 'Preview de la agenda real') : (language === 'en' ? 'Real web form preview' : 'Preview del formulario web real')}</p>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">{selectedIsBookingBridge ? (language === 'en' ? 'This view loads the real channel iframe to validate day and time selection exactly as the end user will see it.' : 'Esta vista carga el iframe real del canal para validar la selección de día y hora tal como la verá el usuario final.') : (language === 'en' ? 'This preview is built from the current channel configuration and reflects how the embedded iframe will look.' : 'Este preview se construye con la configuración actual del canal y refleja cómo se verá el iframe embebido.')}</p>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Button className="rounded-xl" onClick={() => setWebFormBuilderModalOpen(true)}>
-                              Editar constructor
+                              {selectedIsBookingBridge ? (language === 'en' ? 'Edit booking flow' : 'Editar agenda') : (language === 'en' ? 'Edit builder' : 'Editar constructor')}
                             </Button>
                             <Button className="rounded-xl" variant="outline" onClick={() => void copyText('preview-web-form-url', selectedWebFormEmbedUrl)}>
-                              {copiedKey === 'preview-web-form-url' ? 'Copiado' : 'Copiar URL'}
+                              {copiedKey === 'preview-web-form-url' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy URL' : 'Copiar URL')}
                             </Button>
-                            <Button asChild className="rounded-xl" variant="outline"><Link href={selectedWebFormEmbedUrl}>Abrir demo</Link></Button>
+                            <Button asChild className="rounded-xl" variant="outline"><Link href={selectedWebFormEmbedUrl}>{language === 'en' ? 'Open demo' : 'Abrir demo'}</Link></Button>
                           </div>
                         </div>
                         <div className="mt-4">
-                          {renderWebFormPreview(webFormBuilderDraft)}
+                          {selectedIsBookingBridge ? (
+                            <div className="space-y-4">
+                              {renderBookingPreviewLegend()}
+                              <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-slate-50 shadow-sm">
+                                <div className="border-b border-slate-200 bg-white px-4 py-3 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+                                  {language === 'en' ? 'Real embedded channel demo' : 'Demo embebida real del canal'}
+                                </div>
+                                <iframe
+                                  src={selectedWebFormEmbedUrl}
+                                  title={`Preview agenda ${selectedChannel.name}`}
+                                  className="h-[720px] w-full bg-white xl:h-[760px]"
+                                  loading="lazy"
+                                />
+                              </div>
+                            </div>
+                          ) : renderWebFormPreview(webFormBuilderDraft)}
                         </div>
                       </div>
                     ) : null}
@@ -4484,22 +4539,22 @@ export function CrmIntegrationsClient() {
                       <div className="mt-5 rounded-2xl border border-emerald-200 bg-white/90 p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Google Sheets operativo</p>
-                            <p className="mt-2 text-sm leading-6 text-slate-600">Aquí mismo puedes validar la hoja, importar filas al CRM y descargar el CSV exportado del canal sin irte al studio técnico.</p>
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">{language === 'en' ? 'Operational Google Sheets' : 'Google Sheets operativo'}</p>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">{language === 'en' ? 'Here you can validate the sheet, import rows into the CRM, and download the exported CSV without leaving the technical studio.' : 'Aquí mismo puedes validar la hoja, importar filas al CRM y descargar el CSV exportado del canal sin irte al studio técnico.'}</p>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Button className="rounded-xl border-emerald-200 bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => void runGoogleSheetsPreview()} disabled={googleSheetsActions.loadingPreview || googleSheetsActions.loadingImport}>
                               <Eye className="mr-2 h-4 w-4" />
-                              {googleSheetsActions.loadingPreview ? 'Probando hoja...' : 'Probar preview'}
+                              {googleSheetsActions.loadingPreview ? (language === 'en' ? 'Testing sheet...' : 'Probando hoja...') : (language === 'en' ? 'Run preview' : 'Probar preview')}
                             </Button>
                             <Button variant="outline" className="rounded-xl border-emerald-200 text-emerald-800 hover:bg-emerald-50" onClick={() => void runGoogleSheetsImport()} disabled={googleSheetsActions.loadingImport || googleSheetsActions.loadingPreview}>
                               <Upload className="mr-2 h-4 w-4" />
-                              {googleSheetsActions.loadingImport ? 'Importando...' : 'Importar ahora'}
+                              {googleSheetsActions.loadingImport ? (language === 'en' ? 'Importing...' : 'Importando...') : (language === 'en' ? 'Import now' : 'Importar ahora')}
                             </Button>
                             <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
                               <Link href={snippets.googleSheetsExport}>
                                 <Download className="mr-2 h-4 w-4" />
-                                Exportar CSV
+                                {language === 'en' ? 'Export CSV' : 'Exportar CSV'}
                               </Link>
                             </Button>
                           </div>
@@ -4507,18 +4562,18 @@ export function CrmIntegrationsClient() {
 
                         <div className="mt-4 grid gap-3 md:grid-cols-3">
                           <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3">
-                            <p className="text-[11px] uppercase tracking-[0.14em] text-emerald-700">Origen conectado</p>
-                            <p className="mt-2 break-all text-sm font-semibold text-slate-950">{selectedGoogleSheetsCsvUrl || 'Configura URL CSV o spreadsheet ID'}</p>
+                            <p className="text-[11px] uppercase tracking-[0.14em] text-emerald-700">{language === 'en' ? 'Connected source' : 'Origen conectado'}</p>
+                            <p className="mt-2 break-all text-sm font-semibold text-slate-950">{selectedGoogleSheetsCsvUrl || (language === 'en' ? 'Set CSV URL or spreadsheet ID' : 'Configura URL CSV o spreadsheet ID')}</p>
                           </div>
                           <div className="rounded-2xl border border-slate-200 bg-white p-3">
-                            <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Último preview</p>
+                            <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Last preview' : 'Último preview'}</p>
                             <p className="mt-2 text-2xl font-semibold text-slate-950">{googleSheetsActions.previewResult?.totalRows ?? '—'}</p>
-                            <p className="mt-1 text-xs text-slate-500">filas detectadas en la hoja</p>
+                            <p className="mt-1 text-xs text-slate-500">{language === 'en' ? 'rows detected in the sheet' : 'filas detectadas en la hoja'}</p>
                           </div>
                           <div className="rounded-2xl border border-slate-200 bg-white p-3">
-                            <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Última importación</p>
+                            <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Last import' : 'Última importación'}</p>
                             <p className="mt-2 text-2xl font-semibold text-slate-950">{googleSheetsActions.importResult?.importedRows ?? '—'}</p>
-                            <p className="mt-1 text-xs text-slate-500">filas importadas al CRM</p>
+                            <p className="mt-1 text-xs text-slate-500">{language === 'en' ? 'rows imported into the CRM' : 'filas importadas al CRM'}</p>
                           </div>
                         </div>
 
@@ -4532,22 +4587,22 @@ export function CrmIntegrationsClient() {
                           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <div>
-                                <p className="text-sm font-semibold text-slate-900">Preview cargado</p>
-                                <p className="text-xs leading-5 text-slate-500">Headers: {googleSheetsActions.previewResult.headers.join(' · ') || 'sin headers detectados'}</p>
+                                <p className="text-sm font-semibold text-slate-900">{language === 'en' ? 'Preview loaded' : 'Preview cargado'}</p>
+                                <p className="text-xs leading-5 text-slate-500">Headers: {googleSheetsActions.previewResult.headers.join(' · ') || (language === 'en' ? 'no headers detected' : 'sin headers detectados')}</p>
                               </div>
                               <Button variant="outline" className="rounded-xl" onClick={() => void copyText('google-sheets-preview-url', snippets.googleSheetsPreview)}>
-                                {copiedKey === 'google-sheets-preview-url' ? 'Copiado' : 'Copiar endpoint preview'}
+                                {copiedKey === 'google-sheets-preview-url' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy preview endpoint' : 'Copiar endpoint preview')}
                               </Button>
                             </div>
                             <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
                               <table className="min-w-full text-left text-xs text-slate-600">
                                 <thead className="bg-slate-50 text-slate-500">
                                   <tr>
-                                    <th className="px-3 py-2 font-semibold">Fila</th>
-                                    <th className="px-3 py-2 font-semibold">Nombre</th>
+                                    <th className="px-3 py-2 font-semibold">{language === 'en' ? 'Row' : 'Fila'}</th>
+                                    <th className="px-3 py-2 font-semibold">{language === 'en' ? 'Name' : 'Nombre'}</th>
                                     <th className="px-3 py-2 font-semibold">Email</th>
-                                    <th className="px-3 py-2 font-semibold">Teléfono</th>
-                                    <th className="px-3 py-2 font-semibold">Producto</th>
+                                    <th className="px-3 py-2 font-semibold">{language === 'en' ? 'Phone' : 'Teléfono'}</th>
+                                    <th className="px-3 py-2 font-semibold">{language === 'en' ? 'Product' : 'Producto'}</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -4568,12 +4623,12 @@ export function CrmIntegrationsClient() {
 
                         {googleSheetsActions.importResult ? (
                           <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-                            <p className="text-sm font-semibold text-emerald-900">Importación ejecutada</p>
+                            <p className="text-sm font-semibold text-emerald-900">{language === 'en' ? 'Import executed' : 'Importación ejecutada'}</p>
                             <div className="mt-3 grid gap-3 sm:grid-cols-4">
-                              <div className="rounded-2xl border border-white/80 bg-white/85 p-3"><p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Procesadas</p><p className="mt-2 text-xl font-semibold text-slate-950">{googleSheetsActions.importResult.processedRows}</p></div>
-                              <div className="rounded-2xl border border-white/80 bg-white/85 p-3"><p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Importadas</p><p className="mt-2 text-xl font-semibold text-slate-950">{googleSheetsActions.importResult.importedRows}</p></div>
-                              <div className="rounded-2xl border border-white/80 bg-white/85 p-3"><p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Omitidas</p><p className="mt-2 text-xl font-semibold text-slate-950">{googleSheetsActions.importResult.skippedRows}</p></div>
-                              <div className="rounded-2xl border border-white/80 bg-white/85 p-3"><p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Oportunidades</p><p className="mt-2 text-xl font-semibold text-slate-950">{googleSheetsActions.importResult.opportunitiesCreated}</p></div>
+                              <div className="rounded-2xl border border-white/80 bg-white/85 p-3"><p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Processed' : 'Procesadas'}</p><p className="mt-2 text-xl font-semibold text-slate-950">{googleSheetsActions.importResult.processedRows}</p></div>
+                              <div className="rounded-2xl border border-white/80 bg-white/85 p-3"><p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Imported' : 'Importadas'}</p><p className="mt-2 text-xl font-semibold text-slate-950">{googleSheetsActions.importResult.importedRows}</p></div>
+                              <div className="rounded-2xl border border-white/80 bg-white/85 p-3"><p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Skipped' : 'Omitidas'}</p><p className="mt-2 text-xl font-semibold text-slate-950">{googleSheetsActions.importResult.skippedRows}</p></div>
+                              <div className="rounded-2xl border border-white/80 bg-white/85 p-3"><p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Opportunities' : 'Oportunidades'}</p><p className="mt-2 text-xl font-semibold text-slate-950">{googleSheetsActions.importResult.opportunitiesCreated}</p></div>
                             </div>
                           </div>
                         ) : null}
@@ -4585,13 +4640,13 @@ export function CrmIntegrationsClient() {
                   <div className="space-y-4">
                     {operationsPanelView === 'readiness' ? (
                       <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Checklist de readiness</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{language === 'en' ? 'Readiness checklist' : 'Checklist de readiness'}</p>
                         {selectedReadiness ? (
                           <div className="mt-4 space-y-4">
                             {[
-                              { title: 'Configurado', items: selectedReadiness.configured },
-                              { title: 'Listo para demo', items: selectedReadiness.demo },
-                              { title: 'Listo para producción', items: selectedReadiness.production },
+                              { title: language === 'en' ? 'Configured' : 'Configurado', items: selectedReadiness.configured },
+                              { title: language === 'en' ? 'Ready for demo' : 'Listo para demo', items: selectedReadiness.demo },
+                              { title: language === 'en' ? 'Ready for production' : 'Listo para producción', items: selectedReadiness.production },
                             ].map((group) => (
                               <div key={group.title} className="space-y-2">
                                 <p className="text-sm font-semibold text-slate-900">{group.title}</p>
@@ -4612,38 +4667,38 @@ export function CrmIntegrationsClient() {
                     ) : null}
 
                     <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Gestión del canal</p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{language === 'en' ? 'Channel management' : 'Gestión del canal'}</p>
                       <div className="mt-4 flex flex-wrap gap-2">
                         <Button variant="outline" className="rounded-xl" onClick={() => openEditWizard(selectedChannel)}>
-                          Editar canal
+                          {language === 'en' ? 'Edit channel' : 'Editar canal'}
                         </Button>
                         <Button variant="outline" className="rounded-xl" onClick={() => void copyText('selected-endpoint', endpoint)}>
-                          {copiedKey === 'selected-endpoint' ? 'Copiado' : 'Copiar endpoint'}
+                          {copiedKey === 'selected-endpoint' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy endpoint' : 'Copiar endpoint')}
                         </Button>
-                        {selectedChannel.provider === 'WEB_CHATBOT' ? <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"><Link href="/dashboard/crm/chatbot">Panel chatbot</Link></Button> : null}
-                        {selectedChannel.provider === 'WEB_CHATBOT' && selectedChatbotEmbedUrl ? <Button asChild variant="outline" className="rounded-xl"><Link href={selectedChatbotEmbedUrl}>Ver iframe</Link></Button> : null}
-                        {usesMetaProvider(selectedChannel.provider) ? <Button type="button" variant="outline" className="rounded-xl border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100" onClick={() => openMetaOnboarding(selectedChannel)}><Facebook className="mr-2 h-4 w-4" />{selectedMeta.hasConnection ? 'Reconectar con Facebook' : 'Continuar con Facebook'}</Button> : null}
-                        {usesMetaProvider(selectedChannel.provider) ? <Button variant="outline" className="rounded-xl" onClick={() => void syncMeta(selectedChannel.id)} disabled={updatingChannelId === selectedChannel.id || !selectedMeta.hasConnection}>{updatingChannelId === selectedChannel.id ? 'Sincronizando...' : 'Sincronizar Meta'}</Button> : null}
-                        {usesMetaProvider(selectedChannel.provider) ? <Button variant="outline" className="rounded-xl border-amber-200 text-amber-800 hover:bg-amber-50" onClick={() => void disconnectMeta(selectedChannel.id)} disabled={updatingChannelId === selectedChannel.id || !selectedMeta.hasConnection}>Desconectar Meta</Button> : null}
+                        {selectedChannel.provider === 'WEB_CHATBOT' ? <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"><Link href="/dashboard/crm/chatbot">{language === 'en' ? 'Chatbot panel' : 'Panel chatbot'}</Link></Button> : null}
+                        {selectedChannel.provider === 'WEB_CHATBOT' && selectedChatbotEmbedUrl ? <Button asChild variant="outline" className="rounded-xl"><Link href={selectedChatbotEmbedUrl}>{language === 'en' ? 'View iframe' : 'Ver iframe'}</Link></Button> : null}
+                        {usesMetaProvider(selectedChannel.provider) ? <Button type="button" variant="outline" className="rounded-xl border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100" onClick={() => openMetaOnboarding(selectedChannel)}><Facebook className="mr-2 h-4 w-4" />{selectedMeta.hasConnection ? (language === 'en' ? 'Reconnect with Facebook' : 'Reconectar con Facebook') : (language === 'en' ? 'Continue with Facebook' : 'Continuar con Facebook')}</Button> : null}
+                        {usesMetaProvider(selectedChannel.provider) ? <Button variant="outline" className="rounded-xl" onClick={() => void syncMeta(selectedChannel.id)} disabled={updatingChannelId === selectedChannel.id || !selectedMeta.hasConnection}>{updatingChannelId === selectedChannel.id ? (language === 'en' ? 'Syncing...' : 'Sincronizando...') : (language === 'en' ? 'Sync Meta' : 'Sincronizar Meta')}</Button> : null}
+                        {usesMetaProvider(selectedChannel.provider) ? <Button variant="outline" className="rounded-xl border-amber-200 text-amber-800 hover:bg-amber-50" onClick={() => void disconnectMeta(selectedChannel.id)} disabled={updatingChannelId === selectedChannel.id || !selectedMeta.hasConnection}>{language === 'en' ? 'Disconnect Meta' : 'Desconectar Meta'}</Button> : null}
                         <Button variant="outline" className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => setDeleteCandidate(selectedChannel)} disabled={deletingChannelId === selectedChannel.id}>
-                          {deletingChannelId === selectedChannel.id ? 'Eliminando...' : 'Eliminar canal'}
+                          {deletingChannelId === selectedChannel.id ? (language === 'en' ? 'Deleting...' : 'Eliminando...') : (language === 'en' ? 'Delete channel' : 'Eliminar canal')}
                         </Button>
                       </div>
-                      <p className="mt-3 text-xs leading-5 text-slate-500">Solo se eliminan canales sin conversaciones ni capturas. Si ya hubo actividad, deben desactivarse.</p>
+                      <p className="mt-3 text-xs leading-5 text-slate-500">{language === 'en' ? 'Only channels without conversations or captures can be deleted. If there was already activity, they must be disabled.' : 'Solo se eliminan canales sin conversaciones ni capturas. Si ya hubo actividad, deben desactivarse.'}</p>
                     </div>
 
                     {usesMetaProvider(selectedChannel.provider) ? (
                       <div className="rounded-[26px] border border-sky-200 bg-sky-50/60 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">Conexión real con Meta</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">{language === 'en' ? 'Real Meta connection' : 'Conexión real con Meta'}</p>
                         <div className="mt-4 rounded-2xl border border-sky-200 bg-white/80 p-4">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                              <p className="text-sm font-semibold text-slate-900">Onboarding guiado</p>
-                              <p className="mt-1 text-sm leading-6 text-slate-600">Lanza el flujo en una ventana controlada, vuelve al panel automáticamente y termina aquí mismo la selección del activo.</p>
+                              <p className="text-sm font-semibold text-slate-900">{language === 'en' ? 'Guided onboarding' : 'Onboarding guiado'}</p>
+                              <p className="mt-1 text-sm leading-6 text-slate-600">{language === 'en' ? 'Launch the flow in a controlled window, return automatically to the panel, and finish the asset selection right here.' : 'Lanza el flujo en una ventana controlada, vuelve al panel automáticamente y termina aquí mismo la selección del activo.'}</p>
                             </div>
                             <Button type="button" className="rounded-xl bg-[#1877f2] text-white hover:bg-[#166fe0]" onClick={() => openMetaOnboarding(selectedChannel)}>
                               <Facebook className="mr-2 h-4 w-4" />
-                              {selectedMeta.hasConnection ? 'Reconectar con Facebook' : 'Continuar con Facebook'}
+                              {selectedMeta.hasConnection ? (language === 'en' ? 'Reconnect with Facebook' : 'Reconectar con Facebook') : (language === 'en' ? 'Continue with Facebook' : 'Continuar con Facebook')}
                             </Button>
                           </div>
                           <div className="mt-4 grid gap-2">
@@ -4662,16 +4717,16 @@ export function CrmIntegrationsClient() {
                           <div className={metaConnectionFeedback.status === 'error' ? 'mt-4 flex items-start justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50/80 p-3 text-sm text-rose-900' : 'mt-4 flex items-start justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3 text-sm text-emerald-900'}>
                             <p>{metaConnectionFeedback.message}</p>
                             <Button type="button" variant="ghost" className={metaConnectionFeedback.status === 'error' ? 'h-auto rounded-lg px-2 py-1 text-xs text-rose-800 hover:bg-rose-100' : 'h-auto rounded-lg px-2 py-1 text-xs text-emerald-800 hover:bg-emerald-100'} onClick={() => setMetaConnectionFeedback(null)}>
-                              Ocultar
+                              {language === 'en' ? 'Hide' : 'Ocultar'}
                             </Button>
                           </div>
                         ) : null}
                         {selectedMeta.hasConnection ? (
                           <div className="mt-4 space-y-3 text-sm text-slate-700">
-                            <p><span className="font-semibold text-slate-900">Cuenta conectada:</span> {selectedMeta.connectedUserName || 'Meta conectada'}</p>
-                            <p><span className="font-semibold text-slate-900">Conectado:</span> {formatDate(selectedMeta.connectedAt)}</p>
-                            <p><span className="font-semibold text-slate-900">Última sincronización:</span> {formatDate(selectedMeta.lastSyncAt)}</p>
-                            <p><span className="font-semibold text-slate-900">Expira token:</span> {formatDate(selectedMeta.tokenExpiresAt)}</p>
+                            <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Connected account:' : 'Cuenta conectada:'}</span> {selectedMeta.connectedUserName || (language === 'en' ? 'Meta connected' : 'Meta conectada')}</p>
+                            <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Connected:' : 'Conectado:'}</span> {formatDate(selectedMeta.connectedAt, language)}</p>
+                            <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Last sync:' : 'Última sincronización:'}</span> {formatDate(selectedMeta.lastSyncAt, language)}</p>
+                            <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Token expires:' : 'Expira token:'}</span> {formatDate(selectedMeta.tokenExpiresAt, language)}</p>
                             {selectedMetaGuide ? (
                               <div className={selectedMetaGuide.tone === 'amber' ? 'rounded-2xl border border-amber-200 bg-amber-50/90 p-3 text-amber-900' : 'rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3 text-emerald-900'}>
                                 <p className="font-semibold">{selectedMetaGuide.title}</p>
@@ -4680,11 +4735,11 @@ export function CrmIntegrationsClient() {
                             ) : null}
                             {selectedChannel.provider === 'WHATSAPP_CLOUD' || selectedChannel.provider === 'WHATSAPP_SANDBOX' ? (
                               <div ref={metaPhoneSelectionRef} className={metaSelectionFocusTarget === 'phone' ? 'grid gap-2 rounded-2xl border-2 border-emerald-300 bg-emerald-50/90 p-3 shadow-[0_0_0_4px_rgba(16,185,129,0.12)] transition' : 'grid gap-2 rounded-2xl border border-sky-200 bg-white/70 p-3 transition'}>
-                                <Label>Número sincronizado</Label>
+                                <Label>{language === 'en' ? 'Synced number' : 'Número sincronizado'}</Label>
                                 <Select value={metaSelectionDraft.selectedPhoneNumberId || '__none__'} onValueChange={(value) => setMetaSelectionDraft((current) => ({ ...current, selectedPhoneNumberId: value === '__none__' ? '' : value }))}>
                                   <SelectTrigger className="h-10 rounded-xl bg-white"><SelectValue /></SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="__none__">Selecciona un número</SelectItem>
+                                    <SelectItem value="__none__">{language === 'en' ? 'Select a number' : 'Selecciona un número'}</SelectItem>
                                     {selectedMeta.whatsappAssets.map((item) => (
                                       <SelectItem key={item.phoneNumberId} value={item.phoneNumberId}>
                                         {item.displayPhoneNumber || item.phoneNumberId} · {item.wabaName}
@@ -4693,30 +4748,30 @@ export function CrmIntegrationsClient() {
                                   </SelectContent>
                                 </Select>
                                 <Button className="rounded-xl" variant="outline" onClick={() => void applyMetaSelection(selectedChannel)} disabled={updatingChannelId === selectedChannel.id || !metaSelectionDraft.selectedPhoneNumberId}>
-                                  Aplicar número activo
+                                  {language === 'en' ? 'Apply active number' : 'Aplicar número activo'}
                                 </Button>
                               </div>
                             ) : null}
                             {selectedChannel.provider === 'FACEBOOK_PAGE' || selectedChannel.provider === 'MESSENGER' ? (
                               <div ref={metaPageSelectionRef} className={metaSelectionFocusTarget === 'page' ? 'grid gap-2 rounded-2xl border-2 border-emerald-300 bg-emerald-50/90 p-3 shadow-[0_0_0_4px_rgba(16,185,129,0.12)] transition' : 'grid gap-2 rounded-2xl border border-sky-200 bg-white/70 p-3 transition'}>
-                                <Label>Página sincronizada</Label>
+                                <Label>{language === 'en' ? 'Synced page' : 'Página sincronizada'}</Label>
                                 <Select value={metaSelectionDraft.selectedPageId || '__none__'} onValueChange={(value) => setMetaSelectionDraft((current) => ({ ...current, selectedPageId: value === '__none__' ? '' : value }))}>
                                   <SelectTrigger className="h-10 rounded-xl bg-white"><SelectValue /></SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="__none__">Selecciona una página</SelectItem>
+                                    <SelectItem value="__none__">{language === 'en' ? 'Select a page' : 'Selecciona una página'}</SelectItem>
                                     {selectedMeta.pages.map((item) => (
                                       <SelectItem key={item.pageId} value={item.pageId}>{item.pageName}</SelectItem>
                                     ))}
                                   </SelectContent>
                                 </Select>
                                 <Button className="rounded-xl" variant="outline" onClick={() => void applyMetaSelection(selectedChannel)} disabled={updatingChannelId === selectedChannel.id || !metaSelectionDraft.selectedPageId}>
-                                  Aplicar página activa
+                                  {language === 'en' ? 'Apply active page' : 'Aplicar página activa'}
                                 </Button>
                               </div>
                             ) : null}
                             {selectedChannel.provider === 'INSTAGRAM_DM' ? (
                               <div ref={metaInstagramSelectionRef} className={metaSelectionFocusTarget === 'instagram' ? 'grid gap-2 rounded-2xl border-2 border-emerald-300 bg-emerald-50/90 p-3 shadow-[0_0_0_4px_rgba(16,185,129,0.12)] transition' : 'grid gap-2 rounded-2xl border border-sky-200 bg-white/70 p-3 transition'}>
-                                <Label>Cuenta de Instagram sincronizada</Label>
+                                <Label>{language === 'en' ? 'Synced Instagram account' : 'Cuenta de Instagram sincronizada'}</Label>
                                 <Select value={metaSelectionDraft.selectedInstagramAccountId || '__none__'} onValueChange={(value) => {
                                   const nextValue = value === '__none__' ? '' : value
                                   const relatedPage = selectedMeta.pages.find((item) => item.instagramAccountId === nextValue)
@@ -4728,7 +4783,7 @@ export function CrmIntegrationsClient() {
                                 }}>
                                   <SelectTrigger className="h-10 rounded-xl bg-white"><SelectValue /></SelectTrigger>
                                   <SelectContent>
-                                    <SelectItem value="__none__">Selecciona una cuenta</SelectItem>
+                                    <SelectItem value="__none__">{language === 'en' ? 'Select an account' : 'Selecciona una cuenta'}</SelectItem>
                                     {selectedMeta.pages.filter((item) => item.instagramAccountId).map((item) => (
                                       <SelectItem key={item.instagramAccountId} value={item.instagramAccountId || item.pageId}>
                                         @{item.instagramUsername || item.instagramName || item.instagramAccountId}
@@ -4737,22 +4792,22 @@ export function CrmIntegrationsClient() {
                                   </SelectContent>
                                 </Select>
                                 <Button className="rounded-xl" variant="outline" onClick={() => void applyMetaSelection(selectedChannel)} disabled={updatingChannelId === selectedChannel.id || !metaSelectionDraft.selectedInstagramAccountId}>
-                                  Aplicar cuenta activa
+                                  {language === 'en' ? 'Apply active account' : 'Aplicar cuenta activa'}
                                 </Button>
                               </div>
                             ) : null}
                             {selectedChannel.provider === 'WHATSAPP_CLOUD' || selectedChannel.provider === 'WHATSAPP_SANDBOX' ? (
-                              <p><span className="font-semibold text-slate-900">Número activo:</span> {selectedMeta.whatsappAssets.find((item) => item.phoneNumberId === selectedChannel.externalPhoneNumberId)?.displayPhoneNumber || selectedChannel.externalPhoneNumberId || 'Sin número asociado'}</p>
+                              <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Active number:' : 'Número activo:'}</span> {selectedMeta.whatsappAssets.find((item) => item.phoneNumberId === selectedChannel.externalPhoneNumberId)?.displayPhoneNumber || selectedChannel.externalPhoneNumberId || (language === 'en' ? 'No linked number' : 'Sin número asociado')}</p>
                             ) : null}
                             {selectedChannel.provider === 'FACEBOOK_PAGE' || selectedChannel.provider === 'MESSENGER' ? (
-                              <p><span className="font-semibold text-slate-900">Página activa:</span> {selectedMeta.pages.find((item) => item.pageId === selectedChannel.externalPageId)?.pageName || selectedChannel.externalPageId || 'Sin página asociada'}</p>
+                              <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Active page:' : 'Página activa:'}</span> {selectedMeta.pages.find((item) => item.pageId === selectedChannel.externalPageId)?.pageName || selectedChannel.externalPageId || (language === 'en' ? 'No linked page' : 'Sin página asociada')}</p>
                             ) : null}
                             {selectedChannel.provider === 'INSTAGRAM_DM' ? (
-                              <p><span className="font-semibold text-slate-900">Instagram activo:</span> {selectedMeta.pages.find((item) => item.instagramAccountId === selectedChannel.externalAccountId)?.instagramUsername || selectedChannel.externalAccountId || 'Sin cuenta asociada'}</p>
+                              <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Active Instagram:' : 'Instagram activo:'}</span> {selectedMeta.pages.find((item) => item.instagramAccountId === selectedChannel.externalAccountId)?.instagramUsername || selectedChannel.externalAccountId || (language === 'en' ? 'No linked account' : 'Sin cuenta asociada')}</p>
                             ) : null}
                           </div>
                         ) : (
-                          <p className="mt-3 text-sm leading-6 text-slate-700">Este canal ya puede enlazarse con Meta usando OAuth real desde el CRM. Al conectar, el sistema sincroniza páginas, cuentas de Instagram y assets de WhatsApp para dejar el canal operativo con IDs reales.</p>
+                          <p className="mt-3 text-sm leading-6 text-slate-700">{language === 'en' ? 'This channel can already be linked to Meta using real OAuth from the CRM. When connected, the system syncs pages, Instagram accounts, and WhatsApp assets so the channel becomes operational with real IDs.' : 'Este canal ya puede enlazarse con Meta usando OAuth real desde el CRM. Al conectar, el sistema sincroniza páginas, cuentas de Instagram y assets de WhatsApp para dejar el canal operativo con IDs reales.'}</p>
                         )}
                       </div>
                     ) : null}
@@ -4766,11 +4821,11 @@ export function CrmIntegrationsClient() {
             <CardHeader className="border-b border-slate-100 pb-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <CardTitle>Studio de assets</CardTitle>
+                  <CardTitle>{language === 'en' ? 'Assets studio' : 'Studio de assets'}</CardTitle>
                   <CardDescription>
                     {selectedChannel
-                      ? `Canal activo: ${selectedChannel.name}. Desde aquí copias scripts, payloads, tokens y URLs para formularios, chatbot, correo y social.`
-                      : 'Selecciona un canal para ver el setup operativo.'}
+                      ? (language === 'en' ? `Active channel: ${selectedChannel.name}. From here you copy scripts, payloads, tokens, and URLs for forms, chatbot, email, and social.` : `Canal activo: ${selectedChannel.name}. Desde aquí copias scripts, payloads, tokens y URLs para formularios, chatbot, correo y social.`)
+                      : (language === 'en' ? 'Select a channel to view the operational setup.' : 'Selecciona un canal para ver el setup operativo.')}
                   </CardDescription>
                 </div>
                 {operationsPanelSwitcher}
@@ -4779,17 +4834,17 @@ export function CrmIntegrationsClient() {
             <CardContent className="p-4 md:p-5">
               {!selectedChannel || !snippets ? (
                 <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50/80 p-6 text-sm text-slate-500">
-                  Elige un canal a la izquierda. El sistema te mostrará automáticamente el endpoint correcto, el token de pruebas y los scripts listos para pegar.
+                  {language === 'en' ? 'Choose a channel on the left. The system will automatically show the correct endpoint, the testing token, and the scripts ready to paste.' : 'Elige un canal a la izquierda. El sistema te mostrará automáticamente el endpoint correcto, el token de pruebas y los scripts listos para pegar.'}
                 </div>
               ) : (
                 <Tabs value={activeAssetTab} onValueChange={setActiveAssetTab} className="space-y-4">
                   <div className="overflow-x-auto pb-1">
                     <TabsList className="inline-flex h-auto min-w-max flex-nowrap rounded-2xl border border-slate-200 bg-slate-50 p-1 md:flex-wrap">
-                    {selectedAssetTabs.includes('overview') ? <TabsTrigger value="overview" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Resumen</TabsTrigger> : null}
-                    {selectedAssetTabs.includes('guide') ? <TabsTrigger value="guide" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Integración paso a paso detallado</TabsTrigger> : null}
-                    {selectedAssetTabs.includes('form') ? <TabsTrigger value="form" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Formulario</TabsTrigger> : null}
+                    {selectedAssetTabs.includes('overview') ? <TabsTrigger value="overview" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">{language === 'en' ? 'Overview' : 'Resumen'}</TabsTrigger> : null}
+                    {selectedAssetTabs.includes('guide') ? <TabsTrigger value="guide" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">{language === 'en' ? 'Detailed integration walkthrough' : 'Integración paso a paso detallado'}</TabsTrigger> : null}
+                    {selectedAssetTabs.includes('form') ? <TabsTrigger value="form" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">{language === 'en' ? 'Form' : 'Formulario'}</TabsTrigger> : null}
                     {selectedAssetTabs.includes('chatbot') ? <TabsTrigger value="chatbot" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Chatbot</TabsTrigger> : null}
-                    {selectedAssetTabs.includes('webhook') ? <TabsTrigger value="webhook" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Webhook social</TabsTrigger> : null}
+                    {selectedAssetTabs.includes('webhook') ? <TabsTrigger value="webhook" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">{language === 'en' ? 'Social webhook' : 'Webhook social'}</TabsTrigger> : null}
                     {selectedAssetTabs.includes('bridge') ? <TabsTrigger value="bridge" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Bridges</TabsTrigger> : null}
                     </TabsList>
                   </div>
@@ -4800,23 +4855,23 @@ export function CrmIntegrationsClient() {
                         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Endpoint</p>
                         <p className="mt-2 break-all text-sm font-medium text-slate-900">{endpoint}</p>
                         <Button variant="outline" className="mt-3 rounded-xl" onClick={() => void copyText('endpoint-main', endpoint)}>
-                          {copiedKey === 'endpoint-main' ? 'Copiado' : 'Copiar endpoint'}
+                          {copiedKey === 'endpoint-main' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy endpoint' : 'Copiar endpoint')}
                         </Button>
                       </div>
                       <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Token demo</p>
-                        <p className="mt-2 break-all text-sm font-medium text-slate-900">{selectedToken || selectedChannel.verifyTokenPreview || 'Configura testingToken en el canal'}</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{language === 'en' ? 'Demo token' : 'Token demo'}</p>
+                        <p className="mt-2 break-all text-sm font-medium text-slate-900">{selectedToken || selectedChannel.verifyTokenPreview || (language === 'en' ? 'Set testingToken on the channel' : 'Configura testingToken en el canal')}</p>
                         <Button variant="outline" className="mt-3 rounded-xl" onClick={() => void copyText('token-main', selectedToken)} disabled={!selectedToken}>
-                          {copiedKey === 'token-main' ? 'Copiado' : 'Copiar token'}
+                          {copiedKey === 'token-main' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy token' : 'Copiar token')}
                         </Button>
                       </div>
                       <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4">
-                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Destino operativo</p>
-                        <p className="mt-2 text-sm font-medium text-slate-900">Leads, conversaciones y oportunidades del CRM existente</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{language === 'en' ? 'Operational destination' : 'Destino operativo'}</p>
+                        <p className="mt-2 text-sm font-medium text-slate-900">{language === 'en' ? 'Leads, conversations, and opportunities in the existing CRM' : 'Leads, conversaciones y oportunidades del CRM existente'}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <Button asChild variant="outline" className="rounded-xl"><Link href="/dashboard/crm">Ver pipeline</Link></Button>
-                          <Button asChild variant="outline" className="rounded-xl"><Link href="/dashboard/crm/conversations">Abrir inbox</Link></Button>
-                          {selectedChannel.provider === 'WEB_CHATBOT' && selectedChatbotEmbedUrl ? <Button asChild variant="outline" className="rounded-xl"><Link href={selectedChatbotEmbedUrl}>Abrir demo iframe</Link></Button> : null}
+                          <Button asChild variant="outline" className="rounded-xl"><Link href="/dashboard/crm">{language === 'en' ? 'View pipeline' : 'Ver pipeline'}</Link></Button>
+                          <Button asChild variant="outline" className="rounded-xl"><Link href="/dashboard/crm/conversations">{language === 'en' ? 'Open inbox' : 'Abrir inbox'}</Link></Button>
+                          {selectedChannel.provider === 'WEB_CHATBOT' && selectedChatbotEmbedUrl ? <Button asChild variant="outline" className="rounded-xl"><Link href={selectedChatbotEmbedUrl}>{language === 'en' ? 'Open iframe demo' : 'Abrir demo iframe'}</Link></Button> : null}
                         </div>
                       </div>
                     </div>
@@ -4824,11 +4879,11 @@ export function CrmIntegrationsClient() {
                     <div className="grid gap-4 lg:grid-cols-2">
                       <div className="rounded-3xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-900">
                         <p className="font-semibold">Google / Outlook / Sheets</p>
-                        <p className="mt-2 leading-6">Correo y hojas quedaron montados como bridges del mismo CRM. Así puedes importar, exportar o automatizar captación sin abrir otro módulo comercial paralelo.</p>
+                        <p className="mt-2 leading-6">{language === 'en' ? 'Email and spreadsheets are set up as bridges on the same CRM. This lets you import, export, or automate capture without opening another parallel sales module.' : 'Correo y hojas quedaron montados como bridges del mismo CRM. Así puedes importar, exportar o automatizar captación sin abrir otro módulo comercial paralelo.'}</p>
                       </div>
                       <div className="rounded-3xl border border-sky-200 bg-sky-50/80 p-4 text-sm text-sky-900">
                         <p className="font-semibold">Meta / WhatsApp / Instagram</p>
-                        <p className="mt-2 leading-6">Ahora puedes conectar Meta directamente desde el CRM por OAuth real, elegir el activo exacto del canal y operar WhatsApp, Messenger e Instagram sobre el mismo inbox comercial.</p>
+                        <p className="mt-2 leading-6">{language === 'en' ? 'You can now connect Meta directly from the CRM with real OAuth, choose the exact channel asset, and operate WhatsApp, Messenger, and Instagram on the same sales inbox.' : 'Ahora puedes conectar Meta directamente desde el CRM por OAuth real, elegir el activo exacto del canal y operar WhatsApp, Messenger e Instagram sobre el mismo inbox comercial.'}</p>
                       </div>
                     </div>
 
@@ -4857,7 +4912,7 @@ export function CrmIntegrationsClient() {
                   <TabsContent value="guide" className="space-y-4">
                     {!selectedIntegrationGuide ? (
                       <Card className="rounded-3xl border-slate-200">
-                        <CardContent className="p-6 text-sm text-slate-500">Selecciona un canal para ver la guía detallada de integración.</CardContent>
+                        <CardContent className="p-6 text-sm text-slate-500">{language === 'en' ? 'Select a channel to view the detailed integration guide.' : 'Selecciona un canal para ver la guía detallada de integración.'}</CardContent>
                       </Card>
                     ) : (
                       <>
@@ -4865,22 +4920,22 @@ export function CrmIntegrationsClient() {
                         <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
                           <Card className="rounded-3xl border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)]">
                             <CardHeader>
-                              <CardTitle className="text-base">Contexto de la integración</CardTitle>
-                              <CardDescription>Resumen ejecutivo para alinear negocio, implementación y validación.</CardDescription>
+                              <CardTitle className="text-base">{language === 'en' ? 'Integration context' : 'Contexto de la integración'}</CardTitle>
+                              <CardDescription>{language === 'en' ? 'Executive summary to align business, implementation, and validation.' : 'Resumen ejecutivo para alinear negocio, implementación y validación.'}</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4 text-sm text-slate-700">
                               <div className="grid gap-3 sm:grid-cols-2">
                                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Perfil recomendado</p>
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Recommended profile' : 'Perfil recomendado'}</p>
                                   <p className="mt-2 font-medium text-slate-900">{selectedIntegrationGuide.audience}</p>
                                 </div>
                                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tiempo estimado</p>
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Estimated time' : 'Tiempo estimado'}</p>
                                   <p className="mt-2 font-medium text-slate-900">{selectedIntegrationGuide.estimatedTime}</p>
                                 </div>
                               </div>
                               <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Prerequisitos</p>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Prerequisites' : 'Prerequisitos'}</p>
                                 <div className="mt-3 space-y-2">
                                   {selectedIntegrationGuide.prerequisites.map((item) => (
                                     <div key={item} className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2">
@@ -4899,8 +4954,8 @@ export function CrmIntegrationsClient() {
                         <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
                           <Card className="rounded-3xl border-slate-200">
                             <CardHeader>
-                              <CardTitle className="text-base">Paso a paso operativo</CardTitle>
-                              <CardDescription>Secuencia recomendada para dejar el canal funcionando de punta a punta.</CardDescription>
+                              <CardTitle className="text-base">{language === 'en' ? 'Operational step by step' : 'Paso a paso operativo'}</CardTitle>
+                              <CardDescription>{language === 'en' ? 'Recommended sequence to leave the channel working end to end.' : 'Secuencia recomendada para dejar el canal funcionando de punta a punta.'}</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
                               {selectedIntegrationGuide.steps.map((step, index) => (
@@ -4927,8 +4982,8 @@ export function CrmIntegrationsClient() {
                           <div className="space-y-4">
                             <Card className="rounded-3xl border-slate-200">
                               <CardHeader>
-                                <CardTitle className="text-base">Assets y referencias</CardTitle>
-                                <CardDescription>Valores que el implementador suele necesitar durante la integración.</CardDescription>
+                                <CardTitle className="text-base">{language === 'en' ? 'Assets and references' : 'Assets y referencias'}</CardTitle>
+                                <CardDescription>{language === 'en' ? 'Values the implementer usually needs during integration.' : 'Valores que el implementador suele necesitar durante la integración.'}</CardDescription>
                               </CardHeader>
                               <CardContent className="space-y-3">
                                 {selectedIntegrationGuide.assets.map((asset) => (
@@ -4942,8 +4997,8 @@ export function CrmIntegrationsClient() {
 
                             <Card className="rounded-3xl border-slate-200">
                               <CardHeader>
-                                <CardTitle className="text-base">Validación final</CardTitle>
-                                <CardDescription>Checklist corto para cerrar QA y pasar el canal a demo o producción.</CardDescription>
+                                <CardTitle className="text-base">{language === 'en' ? 'Final validation' : 'Validación final'}</CardTitle>
+                                <CardDescription>{language === 'en' ? 'Short checklist to close QA and move the channel to demo or production.' : 'Checklist corto para cerrar QA y pasar el canal a demo o producción.'}</CardDescription>
                               </CardHeader>
                               <CardContent className="space-y-2">
                                 {selectedIntegrationGuide.validations.map((item) => (
@@ -4957,8 +5012,8 @@ export function CrmIntegrationsClient() {
 
                             <Card className="rounded-3xl border-slate-200">
                               <CardHeader>
-                                <CardTitle className="text-base">Problemas comunes</CardTitle>
-                                <CardDescription>Qué revisar primero si la integración no queda lista a la primera.</CardDescription>
+                                <CardTitle className="text-base">{language === 'en' ? 'Common problems' : 'Problemas comunes'}</CardTitle>
+                                <CardDescription>{language === 'en' ? 'What to check first if the integration is not ready on the first pass.' : 'Qué revisar primero si la integración no queda lista a la primera.'}</CardDescription>
                               </CardHeader>
                               <CardContent className="space-y-2">
                                 {selectedIntegrationGuide.troubleshooting.map((item) => (
@@ -4976,43 +5031,43 @@ export function CrmIntegrationsClient() {
                   </TabsContent>
 
                   <TabsContent value="form" className="space-y-4">
-                    <ErpSectionHeading title="Formulario web embebible" description="Modo recomendado: URL pública e iframe listo para pegar, con fallback legacy por selector." />
+                    <ErpSectionHeading title={language === 'en' ? 'Embeddable web form' : 'Formulario web embebible'} description={language === 'en' ? 'Recommended mode: public URL and iframe ready to paste, with legacy selector fallback.' : 'Modo recomendado: URL pública e iframe listo para pegar, con fallback legacy por selector.'} />
                     {selectedIsPublicWebForm ? (
                       <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
                         <Card className="rounded-3xl border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fbff)]">
                           <CardHeader>
-                            <CardTitle className="text-base">Constructor visual en modal</CardTitle>
-                            <CardDescription>Abre un espacio dedicado para editar el formulario sin perderte en la pantalla principal. Cada cambio se refleja en tiempo real.</CardDescription>
+                            <CardTitle className="text-base">{language === 'en' ? 'Visual builder in modal' : 'Constructor visual en modal'}</CardTitle>
+                            <CardDescription>{language === 'en' ? 'Open a dedicated space to edit the form without getting lost on the main screen. Every change is reflected in real time.' : 'Abre un espacio dedicado para editar el formulario sin perderte en la pantalla principal. Cada cambio se refleja en tiempo real.'}</CardDescription>
                           </CardHeader>
                           <CardContent className="space-y-4">
                             <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                              <p className="text-sm font-semibold text-slate-900">Qué vas a editar</p>
-                              <p className="mt-1 text-sm leading-6 text-slate-600">Texto comercial, colores, radios, espaciados, campos visibles, labels, placeholders y dominios del iframe.</p>
+                              <p className="text-sm font-semibold text-slate-900">{language === 'en' ? 'What you will edit' : 'Qué vas a editar'}</p>
+                              <p className="mt-1 text-sm leading-6 text-slate-600">{selectedIsBookingBridge ? (language === 'en' ? 'Commercial copy, colors, radii, spacing, visible fields, labels, placeholders, and the public experience of the embedded booking flow.' : 'Texto comercial, colores, radios, espaciados, campos visibles, labels, placeholders y la experiencia pública de la agenda embebida.') : (language === 'en' ? 'Commercial copy, colors, radii, spacing, visible fields, labels, placeholders, and iframe domains.' : 'Texto comercial, colores, radios, espaciados, campos visibles, labels, placeholders y dominios del iframe.')}</p>
                             </div>
                             <div className="grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
                               <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Campos activos</p>
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Active fields' : 'Campos activos'}</p>
                                 <p className="mt-2 font-medium text-slate-900">{[
-                                  webFormBuilderDraft.showNameField && 'Nombre',
-                                  webFormBuilderDraft.showEmailField && 'Correo',
-                                  webFormBuilderDraft.showPhoneField && 'Teléfono',
-                                  webFormBuilderDraft.showCompanyField && 'Empresa',
-                                  webFormBuilderDraft.showCityField && 'Ciudad',
-                                  webFormBuilderDraft.showProductField && 'Producto',
-                                  webFormBuilderDraft.showMessageField && 'Mensaje',
-                                ].filter(Boolean).join(' · ') || 'Sin campos visibles'}</p>
+                                  webFormBuilderDraft.showNameField && (language === 'en' ? 'Name' : 'Nombre'),
+                                  webFormBuilderDraft.showEmailField && (language === 'en' ? 'Email' : 'Correo'),
+                                  webFormBuilderDraft.showPhoneField && (language === 'en' ? 'Phone' : 'Teléfono'),
+                                  webFormBuilderDraft.showCompanyField && (language === 'en' ? 'Company' : 'Empresa'),
+                                  webFormBuilderDraft.showCityField && (language === 'en' ? 'City' : 'Ciudad'),
+                                  webFormBuilderDraft.showProductField && (language === 'en' ? 'Product' : 'Producto'),
+                                  webFormBuilderDraft.showMessageField && (language === 'en' ? 'Message' : 'Mensaje'),
+                                ].filter(Boolean).join(' · ') || (language === 'en' ? 'No visible fields' : 'Sin campos visibles')}</p>
                               </div>
                               <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Presentación</p>
-                                <p className="mt-2 font-medium text-slate-900">{normalizePixelValue(webFormBuilderDraft.formFontSize, '14')}px · radio {normalizePixelValue(webFormBuilderDraft.formInputRadius, '16')}px · gap {normalizePixelValue(webFormBuilderDraft.formFieldSpacing, '14')}px</p>
+                                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{language === 'en' ? 'Presentation' : 'Presentación'}</p>
+                                <p className="mt-2 font-medium text-slate-900">{normalizePixelValue(webFormBuilderDraft.formFontSize, '14')}px · {language === 'en' ? 'radius' : 'radio'} {normalizePixelValue(webFormBuilderDraft.formInputRadius, '16')}px · gap {normalizePixelValue(webFormBuilderDraft.formFieldSpacing, '14')}px</p>
                               </div>
                             </div>
                             <div className="flex flex-wrap gap-2">
                               <Button className="rounded-xl" onClick={() => setWebFormBuilderModalOpen(true)}>
-                                Abrir editor del formulario
+                                {selectedIsBookingBridge ? (language === 'en' ? 'Open booking editor' : 'Abrir editor de la agenda') : (language === 'en' ? 'Open form editor' : 'Abrir editor del formulario')}
                               </Button>
                               <Button variant="outline" className="rounded-xl" onClick={() => void copyText('form-builder-url', selectedWebFormEmbedUrl || snippets.webFormEmbedUrl)}>
-                                {copiedKey === 'form-builder-url' ? 'Copiado' : 'Copiar URL pública'}
+                                {copiedKey === 'form-builder-url' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy public URL' : 'Copiar URL pública')}
                               </Button>
                             </div>
                           </CardContent>
@@ -5020,11 +5075,26 @@ export function CrmIntegrationsClient() {
 
                         <Card className="rounded-3xl border-sky-200 bg-sky-50/40">
                           <CardHeader>
-                            <CardTitle className="text-base">Preview del canal</CardTitle>
-                            <CardDescription>Vista rápida del iframe actual. Para editar, usa el modal dedicado.</CardDescription>
+                            <CardTitle className="text-base">{language === 'en' ? 'Channel preview' : 'Preview del canal'}</CardTitle>
+                            <CardDescription>{selectedIsBookingBridge ? (language === 'en' ? 'Real view of the embedded booking flow with date and time selection. To edit it, use the dedicated modal.' : 'Vista real de la agenda embebida con selección de fecha y hora. Para editar, usa el modal dedicado.') : (language === 'en' ? 'Quick view of the current iframe. To edit it, use the dedicated modal.' : 'Vista rápida del iframe actual. Para editar, usa el modal dedicado.')}</CardDescription>
                           </CardHeader>
                           <CardContent>
-                            {renderWebFormPreview(webFormBuilderDraft, { maxWidthClassName: 'max-w-xl', outerPaddingClassName: 'p-4', titleClassName: 'text-lg', messageMinHeight: 112 })}
+                            {selectedIsBookingBridge ? (
+                              <div className="space-y-4">
+                                {renderBookingPreviewLegend()}
+                                <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+                                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+                                    {language === 'en' ? 'Published booking-style flow' : 'Agenda tipo booking publicada'}
+                                  </div>
+                                  <iframe
+                                    src={selectedWebFormEmbedUrl || snippets.webFormEmbedUrl}
+                                    title={`Preview agenda ${selectedChannel?.name || 'canal'}`}
+                                    className="h-[760px] w-full bg-white xl:h-[820px]"
+                                    loading="lazy"
+                                  />
+                                </div>
+                              </div>
+                            ) : renderWebFormPreview(webFormBuilderDraft, { maxWidthClassName: 'max-w-xl', outerPaddingClassName: 'p-4', titleClassName: 'text-lg', messageMinHeight: 112 })}
                           </CardContent>
                         </Card>
                       </div>
@@ -5033,46 +5103,46 @@ export function CrmIntegrationsClient() {
                       <div className="grid gap-4 lg:grid-cols-2">
                         <Card className="rounded-3xl border-slate-200">
                           <CardHeader>
-                            <CardTitle className="text-base">URL pública del formulario</CardTitle>
-                            <CardDescription>Ábrela directamente o úsala como fuente del iframe.</CardDescription>
+                            <CardTitle className="text-base">{selectedIsBookingBridge ? (language === 'en' ? 'Public booking URL' : 'URL pública de la agenda') : (language === 'en' ? 'Public form URL' : 'URL pública del formulario')}</CardTitle>
+                            <CardDescription>{selectedIsBookingBridge ? (language === 'en' ? 'Open it directly or use it as the source for the booking iframe.' : 'Ábrela directamente o úsala como fuente del iframe de agendamiento.') : (language === 'en' ? 'Open it directly or use it as the source for the iframe.' : 'Ábrela directamente o úsala como fuente del iframe.')}</CardDescription>
                           </CardHeader>
                           <CardContent className="space-y-3">
                             <Textarea value={selectedWebFormEmbedUrl || snippets.webFormEmbedUrl} readOnly rows={3} className="font-mono text-xs" />
                             <div className="flex flex-wrap gap-2">
                               <Button className="rounded-xl" onClick={() => void copyText('form-url', selectedWebFormEmbedUrl || snippets.webFormEmbedUrl)}>
-                                {copiedKey === 'form-url' ? 'Copiado' : 'Copiar URL'}
+                                {copiedKey === 'form-url' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy URL' : 'Copiar URL')}
                               </Button>
                               <Button asChild variant="outline" className="rounded-xl">
-                                <Link href={selectedWebFormEmbedUrl || snippets.webFormEmbedUrl}>Abrir demo</Link>
+                                <Link href={selectedWebFormEmbedUrl || snippets.webFormEmbedUrl}>{language === 'en' ? 'Open demo' : 'Abrir demo'}</Link>
                               </Button>
                             </div>
                           </CardContent>
                         </Card>
                         <Card className="rounded-3xl border-slate-200">
                           <CardHeader>
-                            <CardTitle className="text-base">Iframe listo para pegar</CardTitle>
-                            <CardDescription>Embed recomendado para integrarlo en cualquier sitio web.</CardDescription>
+                            <CardTitle className="text-base">{selectedIsBookingBridge ? (language === 'en' ? 'Booking iframe ready to paste' : 'Iframe de agenda listo para pegar') : (language === 'en' ? 'Iframe ready to paste' : 'Iframe listo para pegar')}</CardTitle>
+                            <CardDescription>{selectedIsBookingBridge ? (language === 'en' ? 'Recommended embed to publish the booking-style flow on any website.' : 'Embed recomendado para publicar el flujo tipo booking en cualquier sitio web.') : (language === 'en' ? 'Recommended embed to integrate it on any website.' : 'Embed recomendado para integrarlo en cualquier sitio web.')}</CardDescription>
                           </CardHeader>
                           <CardContent className="space-y-3">
                             <Textarea value={snippets.webFormIframe} readOnly rows={9} className="font-mono text-xs" />
                             <Button className="rounded-xl" onClick={() => void copyText('snippet-web-form-iframe', snippets.webFormIframe)}>
-                              {copiedKey === 'snippet-web-form-iframe' ? 'Iframe copiado' : 'Copiar iframe'}
+                              {copiedKey === 'snippet-web-form-iframe' ? (language === 'en' ? 'Iframe copied' : 'Iframe copiado') : (language === 'en' ? 'Copy iframe' : 'Copiar iframe')}
                             </Button>
                           </CardContent>
                         </Card>
                         <Card className="rounded-3xl border-slate-200 lg:col-span-2">
                           <CardHeader>
-                            <CardTitle className="text-base">Snippet legacy por selector</CardTitle>
-                            <CardDescription>Úsalo si el cliente ya tiene su propio formulario en el DOM.</CardDescription>
+                            <CardTitle className="text-base">{language === 'en' ? 'Legacy selector snippet' : 'Snippet legacy por selector'}</CardTitle>
+                            <CardDescription>{language === 'en' ? 'Use it if the client already has their own form in the DOM.' : 'Úsalo si el cliente ya tiene su propio formulario en el DOM.'}</CardDescription>
                           </CardHeader>
                           <CardContent className="space-y-3">
                             <Textarea value={snippets.webForm} readOnly rows={16} className="font-mono text-xs" />
                             <div className="flex flex-wrap gap-2">
                               <Button className="rounded-xl" onClick={() => void copyText('snippet-web-form', snippets.webForm)}>
-                                {copiedKey === 'snippet-web-form' ? 'Snippet copiado' : 'Copiar snippet'}
+                                {copiedKey === 'snippet-web-form' ? (language === 'en' ? 'Snippet copied' : 'Snippet copiado') : (language === 'en' ? 'Copy snippet' : 'Copiar snippet')}
                               </Button>
                               <Button variant="outline" className="rounded-xl" onClick={() => void copyText('token-form', selectedToken)} disabled={!selectedToken}>
-                                Copiar token
+                                {language === 'en' ? 'Copy token' : 'Copiar token'}
                               </Button>
                             </div>
                           </CardContent>
@@ -5081,17 +5151,17 @@ export function CrmIntegrationsClient() {
                     ) : (
                       <Card className="rounded-3xl border-slate-200">
                         <CardHeader>
-                          <CardTitle className="text-base">Snippet para integración manual</CardTitle>
-                          <CardDescription>Este canal usa bridge externo y no expone formulario público por iframe.</CardDescription>
+                          <CardTitle className="text-base">{language === 'en' ? 'Manual integration snippet' : 'Snippet para integración manual'}</CardTitle>
+                          <CardDescription>{language === 'en' ? 'This channel uses an external bridge and does not expose a public iframe form.' : 'Este canal usa bridge externo y no expone formulario público por iframe.'}</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                           <Textarea value={snippets.webForm} readOnly rows={18} className="font-mono text-xs" />
                           <div className="flex flex-wrap gap-2">
                             <Button className="rounded-xl" onClick={() => void copyText('snippet-web-form', snippets.webForm)}>
-                              {copiedKey === 'snippet-web-form' ? 'Snippet copiado' : 'Copiar snippet'}
+                              {copiedKey === 'snippet-web-form' ? (language === 'en' ? 'Snippet copied' : 'Snippet copiado') : (language === 'en' ? 'Copy snippet' : 'Copiar snippet')}
                             </Button>
                             <Button variant="outline" className="rounded-xl" onClick={() => void copyText('token-form', selectedToken)} disabled={!selectedToken}>
-                              Copiar token
+                              {language === 'en' ? 'Copy token' : 'Copiar token'}
                             </Button>
                           </div>
                         </CardContent>

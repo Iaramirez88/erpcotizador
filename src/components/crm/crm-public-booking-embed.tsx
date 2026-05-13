@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from 'react'
+import { useI18n } from '@/components/providers/i18n-provider'
 
 type CrmPublicBookingEmbedProps = {
   channelId: string
@@ -56,7 +57,10 @@ type CalendarCell = {
 }
 
 const BOOKING_TIME_SLOTS = ['09:00', '10:00', '11:00', '12:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00']
-const WEEKDAY_LABELS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom']
+const WEEKDAY_LABELS: Record<'es' | 'en', string[]> = {
+  es: ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'],
+  en: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+}
 
 function getInitialState(): BookingFormState {
   return {
@@ -91,12 +95,16 @@ function formatDateKey(value: Date) {
   return `${year}-${month}-${day}`
 }
 
-function formatBookingDate(value: Date) {
-  return new Intl.DateTimeFormat('es-CO', { weekday: 'short', day: '2-digit', month: 'short' }).format(value)
+function getLocale(language: 'es' | 'en') {
+  return language === 'en' ? 'en-US' : 'es-CO'
 }
 
-function formatBookingMonth(value: Date) {
-  return new Intl.DateTimeFormat('es-CO', { month: 'long', year: 'numeric' }).format(value)
+function formatBookingDate(value: Date, language: 'es' | 'en') {
+  return new Intl.DateTimeFormat(getLocale(language), { weekday: 'short', day: '2-digit', month: 'short' }).format(value)
+}
+
+function formatBookingMonth(value: Date, language: 'es' | 'en') {
+  return new Intl.DateTimeFormat(getLocale(language), { month: 'long', year: 'numeric' }).format(value)
 }
 
 function buildCalendarCells(monthDate: Date, availableKeys: Set<string>) {
@@ -128,6 +136,7 @@ function buildCalendarCells(monthDate: Date, availableKeys: Set<string>) {
 }
 
 export function CrmPublicBookingEmbed(props: CrmPublicBookingEmbedProps) {
+  const { language, t } = useI18n()
   const [form, setForm] = useState<BookingFormState>(getInitialState)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -184,7 +193,7 @@ export function CrmPublicBookingEmbed(props: CrmPublicBookingEmbedProps) {
 
     if (!selectedStartsAt) {
       setSubmitting(false)
-      setError('Selecciona primero la fecha y la hora de la cita.')
+      setError(t('crm.booking.validation.selectDateTime'))
       return
     }
 
@@ -205,13 +214,13 @@ export function CrmPublicBookingEmbed(props: CrmPublicBookingEmbedProps) {
 
       const json = await response.json().catch(() => ({})) as { error?: string; success?: boolean }
       if (!response.ok || !json.success) {
-        throw new Error(json.error || 'No se pudo registrar la cita.')
+        throw new Error(json.error || t('crm.booking.errors.submitFailed'))
       }
 
       setSuccess(props.successMessage)
       setForm(getInitialState())
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'No se pudo registrar la cita.')
+      setError(submitError instanceof Error ? submitError.message : t('crm.booking.errors.submitFailed'))
     } finally {
       setSubmitting(false)
     }
@@ -222,26 +231,26 @@ export function CrmPublicBookingEmbed(props: CrmPublicBookingEmbedProps) {
       <div className="mx-auto grid max-w-6xl gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="rounded-[30px] border border-slate-200/80 bg-slate-950 px-6 py-7 text-white shadow-[0_25px_80px_rgba(15,23,42,0.24)]">
           <span className="inline-flex rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em]" style={{ backgroundColor: `${props.accentColor}33`, color: '#fff' }}>
-            Agenda online
+            {t('crm.booking.badge')}
           </span>
           <h1 className="mt-4 text-3xl font-semibold tracking-tight">{props.title}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-300">{props.description}</p>
 
           <div className="mt-6 space-y-3 rounded-[24px] border border-white/10 bg-white/5 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Reserva seleccionada</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">{t('crm.booking.selectedReservation')}</p>
             <div>
-              <p className="text-lg font-semibold text-white">{selectedDate ? formatBookingDate(selectedDate) : 'Sin fecha'}</p>
-              <p className="text-sm text-slate-300">{selectedTime ? `${selectedTime} h` : 'Sin horario'}</p>
+              <p className="text-lg font-semibold text-white">{selectedDate ? formatBookingDate(selectedDate, language) : t('crm.booking.noDate')}</p>
+              <p className="text-sm text-slate-300">{selectedTime ? `${selectedTime} h` : t('crm.booking.noTime')}</p>
             </div>
-            <p className="text-xs leading-5 text-slate-400">La cita entra directo al CRM y puede disparar confirmación por correo o WhatsApp según la configuración del canal.</p>
+            <p className="text-xs leading-5 text-slate-400">{t('crm.booking.summaryHint')}</p>
           </div>
         </aside>
 
         <div style={cardStyle}>
           <div className="mb-6 rounded-[26px] border border-slate-200 bg-slate-50/80 p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Paso 1</p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Selecciona la fecha y la hora</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">Escoge un día disponible y luego el horario que mejor le funcione al prospecto.</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{t('crm.booking.step1')}</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{t('crm.booking.pickDateTime')}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{t('crm.booking.pickDateTimeDescription')}</p>
 
             <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_280px]">
               <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
@@ -249,14 +258,14 @@ export function CrmPublicBookingEmbed(props: CrmPublicBookingEmbedProps) {
                   <button type="button" onClick={() => goToMonth(-1)} disabled={currentMonth <= minMonth} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 text-slate-600 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-40">
                     ‹
                   </button>
-                  <p className="text-sm font-semibold capitalize text-slate-900">{formatBookingMonth(currentMonth)}</p>
+                  <p className="text-sm font-semibold capitalize text-slate-900">{formatBookingMonth(currentMonth, language)}</p>
                   <button type="button" onClick={() => goToMonth(1)} disabled={currentMonth >= maxMonth} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 text-slate-600 transition hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-40">
                     ›
                   </button>
                 </div>
 
                 <div className="grid grid-cols-7 gap-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                  {WEEKDAY_LABELS.map((label) => <span key={label}>{label}</span>)}
+                  {WEEKDAY_LABELS[language].map((label) => <span key={label}>{label}</span>)}
                 </div>
 
                 <div className="mt-3 grid grid-cols-7 gap-2">
@@ -287,8 +296,8 @@ export function CrmPublicBookingEmbed(props: CrmPublicBookingEmbedProps) {
               </div>
 
               <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-                <p className="text-sm font-semibold text-slate-900">Hora</p>
-                <p className="mt-1 text-xs text-slate-500">{selectedDate ? formatBookingDate(selectedDate) : 'Selecciona un día'}</p>
+                <p className="text-sm font-semibold text-slate-900">{t('crm.booking.time')}</p>
+                <p className="mt-1 text-xs text-slate-500">{selectedDate ? formatBookingDate(selectedDate, language) : t('crm.booking.pickDay')}</p>
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   {BOOKING_TIME_SLOTS.map((slot) => {
                     const selected = selectedTime === slot
@@ -353,11 +362,11 @@ export function CrmPublicBookingEmbed(props: CrmPublicBookingEmbedProps) {
 
             <div className="flex flex-wrap items-center justify-between gap-4 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Cita elegida</p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">{selectedDate ? `${formatBookingDate(selectedDate)} · ${selectedTime}` : 'Selecciona un horario'}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{t('crm.booking.selectedAppointment')}</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{selectedDate ? `${formatBookingDate(selectedDate, language)} · ${selectedTime}` : t('crm.booking.pickTime')}</p>
               </div>
               <button type="submit" disabled={submitting} className="inline-flex h-12 items-center justify-center rounded-2xl px-6 text-sm font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70" style={{ backgroundColor: props.ctaColor, color: props.ctaTextColor }}>
-                {submitting ? 'Registrando...' : props.submitLabel}
+                {submitting ? t('crm.booking.submitting') : props.submitLabel}
               </button>
             </div>
           </form>

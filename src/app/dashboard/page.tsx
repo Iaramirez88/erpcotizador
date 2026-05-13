@@ -14,7 +14,22 @@ import { resolveEffectivePlanTier } from '@/lib/plan-access'
 import { isPlanOwnerForEmpresa } from '@/lib/plan-owner'
 import { resolveUserIdFromSession } from '@/lib/session-user'
 import { isSuperAdminEmail } from '@/lib/super-admin'
+import { getCrmStorageUsageSummary } from '@/lib/crm-files'
 import { redirect } from 'next/navigation'
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1)
+  const size = value / 1024 ** exponent
+  return `${size >= 100 || exponent === 0 ? Math.round(size) : size.toFixed(1)} ${units[exponent]}`
+}
+
+function getStorageLevel(percentage: number) {
+  if (percentage >= 95) return 'critical'
+  if (percentage >= 80) return 'warning'
+  return 'normal'
+}
 
 export default async function DashboardPage() {
   const session = await auth()
@@ -31,6 +46,7 @@ export default async function DashboardPage() {
   let enabledPlanModules: ModuleKey[] | null = null
   let canManageBilling = session.user.role === 'ADMIN'
   let activeSedeName: string | null = null
+  let storageUsage: Awaited<ReturnType<typeof getCrmStorageUsageSummary>> | null = null
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -69,6 +85,7 @@ export default async function DashboardPage() {
         enabledPlanModules = await getEnabledModulesForEmpresa({ empresaId: user.empresaId, planTier: effectiveTier })
       }
 
+      storageUsage = await getCrmStorageUsageSummary({ empresaId: user.empresaId })
       canManageBilling = isSuperAdminEmail(user?.email) || await isPlanOwnerForEmpresa({ empresaId: user.empresaId, userId })
     }
   } catch {
@@ -77,6 +94,8 @@ export default async function DashboardPage() {
 
   const displayName = session.user.name || session.user.email || 'equipo'
   const continueHref = '/dashboard/reportes'
+  const storagePct = storageUsage?.totalBytes ? Math.min(100, Math.round((storageUsage.usedBytes / storageUsage.totalBytes) * 100)) : 0
+  const storageLevel = getStorageLevel(storagePct)
 
   return (
     <div className="space-y-6 pb-6">
@@ -98,6 +117,69 @@ export default async function DashboardPage() {
           </>
         }
       />
+
+      {storageUsage ? (
+        <Card className="rounded-[28px] border-slate-200 shadow-[0_20px_50px_-34px_rgba(15,23,42,0.3)]">
+          <CardHeader className="border-b border-slate-100 pb-5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <CardTitle className="text-2xl text-slate-950">Almacenamiento de la empresa</CardTitle>
+                <CardDescription>
+                  {storageLevel === 'critical'
+                    ? 'El espacio está cerca del límite. Conviene liberar archivos o ampliar el plan.'
+                    : storageLevel === 'warning'
+                      ? 'El consumo ya entró en zona de atención.'
+                      : 'El consumo actual sigue en una zona saludable.'}
+                </CardDescription>
+              </div>
+              <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/90">
+                <Link href="/dashboard/configuracion/plan?tab=almacenamiento">Ver almacenamiento</Link>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="grid gap-4 p-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className={storageLevel === 'critical' ? 'rounded-2xl border border-rose-200 bg-rose-50/70 p-4' : storageLevel === 'warning' ? 'rounded-2xl border border-amber-200 bg-amber-50/70 p-4' : 'rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4'}>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-semibold text-slate-900">Uso actual</span>
+                <span className="rounded-full bg-white/90 px-2 py-1 text-xs font-semibold text-slate-700">{storagePct}%</span>
+              </div>
+              <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/80">
+                <div className={storageLevel === 'critical' ? 'h-full rounded-full bg-rose-600' : storageLevel === 'warning' ? 'h-full rounded-full bg-amber-500' : 'h-full rounded-full bg-emerald-600'} style={{ width: `${storagePct}%` }} />
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Usado</div>
+                  <div className="mt-1 text-xl font-semibold text-slate-950">{formatBytes(storageUsage.usedBytes)}</div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Disponible</div>
+                  <div className="mt-1 text-xl font-semibold text-slate-950">{formatBytes(storageUsage.freeBytes)}</div>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Capacidad total</div>
+                  <div className="mt-1 text-xl font-semibold text-slate-950">{formatBytes(storageUsage.totalBytes)}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="text-sm font-semibold text-slate-900">Actividad reciente</div>
+              <div className="mt-3 space-y-2 text-sm text-slate-600">
+                <div>{storageUsage.filesCount} archivos registrados</div>
+                <div>{storageUsage.foldersCount} carpetas registradas</div>
+                <div>
+                  Última carga:{' '}
+                  <span className="font-medium text-slate-900">
+                    {storageUsage.lastUploadedAt
+                      ? new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(storageUsage.lastUploadedAt))
+                      : 'Sin cargas aún'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card className="rounded-[28px] border-slate-200 shadow-[0_20px_50px_-34px_rgba(15,23,42,0.3)]">
         <CardHeader className="border-b border-slate-100 pb-5">
