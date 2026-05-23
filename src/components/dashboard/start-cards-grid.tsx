@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import type { ModuleKey } from '@prisma/client'
+import { isOnboardingScopedDashboardHref } from '@/lib/dashboard-navigation'
 import {
   ArrowRight,
   BarChart3,
@@ -275,7 +276,10 @@ export default function StartCardsGrid({ allowedModules, enabledPlanModules, can
   const visibleSet = visibleHrefs.length ? new Set(visibleHrefs) : null
 
   const cards = START_CARDS
-    .filter((card) => !visibleSet || visibleSet.has(card.href))
+    .filter((card) => {
+      if (visibleSet) return visibleSet.has(card.href)
+      return !isOnboardingScopedDashboardHref(card.href)
+    })
     .filter((card) => !allowedSet || allowedSet.has(card.moduleKey))
     .map((card) => ({
       ...card,

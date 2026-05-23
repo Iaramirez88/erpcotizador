@@ -15,7 +15,7 @@ import { NavSettingsDialog, type NavSettingsItem } from "@/components/dashboard/
 import Image from "next/image"
 import { useI18n } from "@/components/providers/i18n-provider"
 import { useTheme } from "@/components/providers/theme-provider"
-import { buildDashboardNavDefinitions, moduleForDashboardHref, sectionForDashboardHref } from "@/lib/dashboard-navigation"
+import { buildDashboardNavDefinitions, isOnboardingScopedDashboardHref, moduleForDashboardHref, sectionForDashboardHref } from "@/lib/dashboard-navigation"
 
 interface SidebarProps {
   user: {
@@ -681,7 +681,10 @@ export default function Sidebar({ user }: SidebarProps) {
       if (it.href !== '/dashboard/configuracion/plan') return true
       return canManageBilling
     })
-    const withOnboardingScope = withBillingGate.filter((it) => !allowedNavHrefSet || allowedNavHrefSet.has(it.href))
+    const withOnboardingScope = withBillingGate.filter((it) => {
+      if (allowedNavHrefSet) return allowedNavHrefSet.has(it.href)
+      return !isOnboardingScopedDashboardHref(it.href)
+    })
     return sortNavItemsByOrder(withOnboardingScope, effectiveNavOrder)
   }, [navPrefs, enabledModules, user?.role, canAccessWebsiteServices, canManageBilling, allowedModules, moduleNavigation, effectiveNavOrder, allowedNavHrefSet])
 
@@ -703,7 +706,10 @@ export default function Sidebar({ user }: SidebarProps) {
 
   const navSettingsItems: NavSettingsItem[] = useMemo(() => {
     const base = dashboardNavDefinitions
-      .filter((it) => !allowedNavHrefSet || allowedNavHrefSet.has(it.href))
+      .filter((it) => {
+        if (allowedNavHrefSet) return allowedNavHrefSet.has(it.href)
+        return !isOnboardingScopedDashboardHref(it.href)
+      })
       .filter((it) => {
         if (it.href === '/dashboard/configuracion/servicios-web') {
           return canAccessWebsiteServices

@@ -3,6 +3,16 @@ export type DashboardNavDefinition = {
   href: string
 }
 
+const ONBOARDING_SCOPED_HREFS = new Set([
+  '/dashboard/restaurante',
+  '/dashboard/odontologia',
+  '/dashboard/dotaciones',
+])
+
+export function isOnboardingScopedDashboardHref(href: string): boolean {
+  return ONBOARDING_SCOPED_HREFS.has(href)
+}
+
 export function sectionForDashboardHref(href: string): string {
   switch (href) {
     case '/dashboard':
