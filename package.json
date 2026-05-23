@@ -13,6 +13,7 @@
     "prisma:migrate": "prisma migrate dev",
     "seed:flyers": "tsx scripts/seed-litografia-flyer-rates.ts",
     "seed:acabados": "tsx scripts/seed-litografia-finish-options.ts",
+    "seed:odontologia": "tsx scripts/seed-odontologia-base.ts",
     "litografia:reset": "tsx scripts/reset-litografia.ts",
     "litografia:test": "tsx scripts/test-litografia-pricing.ts",
     "worker:ocr": "tsx scripts/ocr-worker.ts",

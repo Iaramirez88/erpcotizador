@@ -80,6 +80,26 @@ const START_CARDS: StartCardDefinition[] = [
     surface: 'border-amber-200 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.35),transparent_34%),linear-gradient(180deg,#fffdf7,#fff7e8)]',
   },
   {
+    title: 'Panel restaurante',
+    description: 'Alinea servicio, caja, reposición e insumos desde un cockpit pensado para operación diaria.',
+    href: '/dashboard/restaurante',
+    cta: 'Abrir panel restaurante',
+    moduleKey: 'POS',
+    icon: 'pos',
+    tone: 'text-red-950',
+    surface: 'border-red-200 bg-[radial-gradient(circle_at_top_left,rgba(248,113,113,0.24),transparent_34%),linear-gradient(180deg,#fff8f8,#fff1f1)]',
+  },
+  {
+    title: 'Panel dotaciones',
+    description: 'Coordina cotización, abastecimiento y entrega para uniformes, EPP y pedidos corporativos.',
+    href: '/dashboard/dotaciones',
+    cta: 'Abrir panel dotaciones',
+    moduleKey: 'COTIZADOR',
+    icon: 'orders',
+    tone: 'text-cyan-950',
+    surface: 'border-cyan-200 bg-[radial-gradient(circle_at_top_left,rgba(6,182,212,0.22),transparent_34%),linear-gradient(180deg,#f4feff,#eafcff)]',
+  },
+  {
     title: 'Seguimiento de cotizaciones',
     description: 'Revisa estados, aprobaciones y próximas acciones sobre cotizaciones ya enviadas.',
     href: '/dashboard/cotizaciones',
@@ -98,6 +118,16 @@ const START_CARDS: StartCardDefinition[] = [
     icon: 'clients',
     tone: 'text-teal-950',
     surface: 'border-teal-200 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.24),transparent_34%),linear-gradient(180deg,#f4fffe,#e8fffb)]',
+  },
+  {
+    title: 'Panel odontología',
+    description: 'Registra ficha clínica básica, evoluciones y próximas visitas usando clientes como pacientes.',
+    href: '/dashboard/odontologia',
+    cta: 'Abrir panel clínico',
+    moduleKey: 'CLIENTES',
+    icon: 'clients',
+    tone: 'text-cyan-950',
+    surface: 'border-cyan-200 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.22),transparent_34%),linear-gradient(180deg,#f4feff,#eafcff)]',
   },
   {
     title: 'Gestionar CRM',
@@ -221,10 +251,13 @@ const START_CARDS: StartCardDefinition[] = [
   },
 ]
 
+
 type StartCardsGridProps = {
   allowedModules: ModuleKey[] | null
   enabledPlanModules: ModuleKey[] | null
   canManageBilling: boolean
+  prioritizedHrefs?: string[]
+  visibleHrefs?: string[]
 }
 
 function buildUpgradeHref(moduleKey: ModuleKey) {
@@ -235,20 +268,29 @@ function buildAddonHref(moduleKey: ModuleKey) {
   return `/dashboard/configuracion/plan?blockedModule=${encodeURIComponent(moduleKey)}&purchaseMode=ADDON`
 }
 
-export default function StartCardsGrid({ allowedModules, enabledPlanModules, canManageBilling }: StartCardsGridProps) {
+export default function StartCardsGrid({ allowedModules, enabledPlanModules, canManageBilling, prioritizedHrefs = [], visibleHrefs = [] }: StartCardsGridProps) {
   const allowedSet = allowedModules ? new Set(allowedModules) : null
   const enabledSet = enabledPlanModules ? new Set(enabledPlanModules) : null
+  const prioritizedMap = new Map(prioritizedHrefs.map((href, index) => [href, index]))
+  const visibleSet = visibleHrefs.length ? new Set(visibleHrefs) : null
 
-  const cards = START_CARDS.filter((card) => !allowedSet || allowedSet.has(card.moduleKey)).map((card) => ({
-    ...card,
-    locked: enabledSet ? !enabledSet.has(card.moduleKey) : false,
-  }))
+  const cards = START_CARDS
+    .filter((card) => !visibleSet || visibleSet.has(card.href))
+    .filter((card) => !allowedSet || allowedSet.has(card.moduleKey))
+    .map((card) => ({
+      ...card,
+      locked: enabledSet ? !enabledSet.has(card.moduleKey) : false,
+    }))
+    .sort((a, b) => (prioritizedMap.get(a.href) ?? Number.MAX_SAFE_INTEGER) - (prioritizedMap.get(b.href) ?? Number.MAX_SAFE_INTEGER))
+
+  const recommendedSet = new Set(cards.slice(0, Math.min(3, prioritizedHrefs.length)).map((card) => card.href))
 
   return (
     <>
       <div className="hidden gap-3 p-3 md:grid md:grid-cols-2 xl:grid-cols-3">
         {cards.map((card) => {
           const Icon = ICONS[card.icon]
+          const isRecommended = recommendedSet.has(card.href) && !card.locked
 
           if (!card.locked) {
             return (
@@ -257,9 +299,16 @@ export default function StartCardsGrid({ allowedModules, enabledPlanModules, can
                   <div className={`flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/70 bg-white/85 shadow-sm ${card.tone}`}>
                     <Icon className="h-6 w-6" />
                   </div>
-                  <span className="rounded-full border border-white/80 bg-white/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-                    Empezar
-                  </span>
+                  <div className="flex flex-col items-end gap-1">
+                    {isRecommended ? (
+                      <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">
+                        Recomendado
+                      </span>
+                    ) : null}
+                    <span className="rounded-full border border-white/80 bg-white/90 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                      Empezar
+                    </span>
+                  </div>
                 </div>
                 <div className="mt-4 space-y-1.5">
                   <h2 className="text-lg font-semibold text-slate-950">{card.title}</h2>
@@ -320,6 +369,7 @@ export default function StartCardsGrid({ allowedModules, enabledPlanModules, can
       <div className="space-y-2.5 p-2.5 md:hidden">
         {cards.map((card) => {
           const Icon = ICONS[card.icon]
+          const isRecommended = recommendedSet.has(card.href) && !card.locked
 
           if (!card.locked) {
             return (
@@ -330,7 +380,7 @@ export default function StartCardsGrid({ allowedModules, enabledPlanModules, can
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-semibold text-slate-950">{card.title}</div>
-                    <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">Disponible</div>
+                    <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-slate-500">{isRecommended ? 'Recomendado' : 'Disponible'}</div>
                   </div>
                   <div className="text-[11px] font-semibold text-slate-600">Ver</div>
                 </summary>

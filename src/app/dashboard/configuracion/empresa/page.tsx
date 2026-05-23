@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { getBusinessTypeLabel } from '@/lib/company-onboarding'
 
 type EmpresaConfig = {
   empresaId: string
@@ -17,6 +19,18 @@ type EmpresaConfig = {
   hasRegistrationCode: boolean
 }
 
+type OnboardingConfig = {
+  status: string
+  businessType: string | null
+  locked: boolean
+  completedAt?: string | null
+  dashboard: {
+    headline: string
+    description: string
+    checklist: string[]
+  } | null
+}
+
 export default function ConfigEmpresaPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -24,6 +38,7 @@ export default function ConfigEmpresaPage() {
   const [status, setStatus] = useState<string | null>(null)
 
   const [config, setConfig] = useState<EmpresaConfig | null>(null)
+  const [onboarding, setOnboarding] = useState<OnboardingConfig | null>(null)
   const [nombre, setNombre] = useState('')
   const [nit, setNit] = useState('')
   const [logo, setLogo] = useState<string | null>(null)
@@ -49,6 +64,26 @@ export default function ConfigEmpresaPage() {
         setLogo(json.data.logo)
       } catch {
         if (!cancelled) setError('No se pudo cargar la configuración.')
+      }
+      try {
+        const res = await fetch('/api/onboarding/empresa', { cache: 'no-store' })
+        const json = (await res.json().catch(() => null)) as {
+          ok?: boolean
+          status?: string
+          locked?: boolean
+          completedAt?: string | null
+          businessType?: string | null
+          dashboard?: OnboardingConfig['dashboard']
+        } | null
+        if (!cancelled && res.ok && json?.ok) {
+          setOnboarding({
+            status: json.status ?? 'COMPLETED',
+            locked: Boolean(json.locked),
+            completedAt: json.completedAt ?? null,
+            businessType: json.businessType ?? null,
+            dashboard: json.dashboard ?? null,
+          })
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -202,6 +237,79 @@ export default function ConfigEmpresaPage() {
           <Button type="button" disabled={saving || loading || !config} onClick={() => void saveBranding()}>
             {saving ? 'Guardando…' : 'Guardar cambios'}
           </Button>
+        </CardFooter>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Preset de operación</CardTitle>
+          <CardDescription>
+            El nicho inicial define qué módulos se muestran en este espacio y qué frentes quedan ocultos para el equipo.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loading ? <p className="text-sm text-muted-foreground">Cargando preset…</p> : null}
+          {!loading && onboarding ? (
+            <>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Tipo de negocio</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-950">
+                    {onboarding.businessType ? getBusinessTypeLabel(onboarding.businessType as Parameters<typeof getBusinessTypeLabel>[0]) : 'Sin definir'}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Estado</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-950">
+                    {onboarding.locked ? 'Cerrado' : onboarding.status === 'COMPLETED' ? 'Configurado' : 'Pendiente'}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Inicio</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-950">
+                    {onboarding.dashboard?.headline ?? 'Sin resumen aún'}
+                  </div>
+                </div>
+              </div>
+
+              {onboarding.locked ? (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  La configuración inicial ya quedó fijada y no se puede cambiar desde esta pantalla. Si necesitas mover el espacio a otro nicho o ajustar módulos base, solicítalo por soporte en ivanimage@hotmail.com o WhatsApp 3115385427.
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+                  Mientras no se cierre la configuración inicial, aquí podrás completar el preset para dejar visibles solo los módulos que sí aplican a tu negocio.
+                </div>
+              )}
+
+              {onboarding.dashboard?.checklist?.length ? (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-slate-900">Checklist sugerido</div>
+                  {onboarding.dashboard.checklist.map((item) => (
+                    <div key={item} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </CardContent>
+        <CardFooter>
+          {onboarding?.locked ? (
+            <div className="flex flex-wrap gap-2">
+              <Button asChild type="button" variant="outline">
+                <a href="mailto:ivanimage@hotmail.com?subject=Solicitud%20de%20cambio%20de%20nicho">Solicitar por correo</a>
+              </Button>
+              <Button asChild type="button">
+                <a href="https://wa.me/573115385427" target="_blank" rel="noreferrer">Solicitar por WhatsApp</a>
+              </Button>
+            </div>
+          ) : (
+            <Button asChild type="button" variant="outline">
+              <Link href="/dashboard/onboarding">Completar configuración inicial</Link>
+            </Button>
+          )}
         </CardFooter>
       </Card>
     </div>

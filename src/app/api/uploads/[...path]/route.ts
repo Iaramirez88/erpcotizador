@@ -148,6 +148,18 @@ async function resolveProtectedUploadPath(parts: string[]) {
     return path.join(getCrmFilesRootAbsolutePath(empresaId), ...parts.slice(2))
   }
 
+  if (parts[0] === 'odontologia' && parts[1] && parts.length >= 3) {
+    const access = await requireApiAccess(ModuleKey.CLIENTES, 'READ')
+    if (!access.ok) return access.response
+
+    const empresaId = parts[1]
+    if (empresaId !== access.empresaId) {
+      return new NextResponse('Not found', { status: 404, headers: { 'X-SG-Uploads': 'api' } })
+    }
+
+    return path.join(process.cwd(), 'public', 'uploads', ...parts)
+  }
+
   return null
 }
 

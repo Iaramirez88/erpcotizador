@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { LitografiaCutGuide } from "@/components/litografia/litografia-cut-guide"
 import { LitografiaImpositionPreview } from "@/components/litografia/litografia-imposition-preview"
 import { LitografiaPaperRequestDialog } from "@/components/litografia/litografia-paper-request-dialog"
+import type { LitografiaAiHandoff } from "@/lib/litografia-ai-handoff"
 import { computeLitografia, type LitografiaResult } from "@/lib/litografia"
 import { cn, formatCurrency } from "@/lib/utils"
 
@@ -60,6 +61,220 @@ const PRINT_INK_OPTIONS: Array<{ value: PrintInkKey; label: string }> = [
 function inkLabel(value: PrintInkKey) {
   const v = String(value || "").trim()
   return PRINT_INK_OPTIONS.find((o) => o.value === v)?.label || v || "—"
+}
+
+function normalizeAiDraftText(value: string | null | undefined) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+}
+
+function inferAiDraftPaperType(material: string | null | undefined): PapelTipo | null {
+  const normalized = normalizeAiDraftText(material)
+  if (!normalized) return null
+  if (normalized.includes("bond")) return "bond"
+  if (normalized.includes("propal") || normalized.includes("cote") || normalized.includes("couche")) return "propalcote"
+  if (normalized.includes("period")) return "periodico"
+  return "otro"
+}
+
+const COMMERCIAL_SIZE_ALIASES: Array<{ aliases: string[]; dimensions: Array<[number, number]> }> = [
+  { aliases: ["tarjeta de presentacion", "tarjetas de presentacion", "business card"], dimensions: [[9, 5], [8.5, 5.5]] },
+  { aliases: ["media carta", "medio carta", "1/2 carta", "half letter"], dimensions: [[14, 21.6], [13.97, 21.59]] },
+  { aliases: ["carta", "letter"], dimensions: [[21.6, 27.9], [21.59, 27.94]] },
+  { aliases: ["medio oficio", "media oficio", "1/2 oficio"], dimensions: [[16.5, 21.6], [16.51, 21.59]] },
+  { aliases: ["oficio", "legal"], dimensions: [[21.6, 33], [21.59, 33.02]] },
+  { aliases: ["tabloide", "doble carta", "tabloid"], dimensions: [[27.9, 43.2], [27.94, 43.18]] },
+  { aliases: ["medio tabloide", "1/2 tabloide"], dimensions: [[21.6, 27.9], [21.59, 27.94]] },
+  { aliases: ["a5"], dimensions: [[14.8, 21]] },
+  { aliases: ["a4"], dimensions: [[21, 29.7]] },
+  { aliases: ["a3"], dimensions: [[29.7, 42]] },
+]
+
+const PAPER_EQUIVALENCE_GROUPS = {
+  bond: ["bond", "obra", "offset"],
+  propalcote: ["propalcote", "propalcote", "propal", "couche", "couchee", "cote", "coated", "esmaltado"],
+  periodico: ["periodico", "prensa", "newsprint"],
+  cartulina: ["cartulina", "opalina", "bristol", "sulfatada", "sulfato", "marfil", "foldcote"],
+  kraft: ["kraft"],
+} as const
+
+function extractAiDraftWeight(text: string) {
+  const match = text.match(/(\d{2,3})\s*(g|gr|grs|gramos?)/)
+  if (!match?.[1]) return null
+  const value = Math.trunc(parseFloat(match[1]) || 0)
+  return Number.isFinite(value) && value > 0 ? value : null
+}
+
+function extractAiDraftDimensions(text: string) {
+  const matches = Array.from(text.matchAll(/(\d{1,2}(?:[.,]\d+)?)\s*(?:x|×|por)\s*(\d{1,2}(?:[.,]\d+)?)(?:\s*cm)?/g))
+  return matches
+    .map((match) => {
+      const width = parseFloat(String(match[1] || "").replace(",", "."))
+      const height = parseFloat(String(match[2] || "").replace(",", "."))
+      if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null
+      return [width, height] as [number, number]
+    })
+    .filter((entry): entry is [number, number] => Boolean(entry))
+}
+
+function getCommercialAliasDimensions(text: string) {
+  const dimensions: Array<[number, number]> = []
+  for (const group of COMMERCIAL_SIZE_ALIASES) {
+    if (group.aliases.some((alias) => text.includes(alias))) {
+      dimensions.push(...group.dimensions)
+    }
+  }
+  return dimensions
+}
+
+function scoreAiDraftTokenOverlap(source: string, candidate: string) {
+  const sourceTokens = source.split(/\s+/).filter((token) => token.length >= 4)
+  if (!sourceTokens.length) return 0
+  return sourceTokens.reduce((acc, token) => (candidate.includes(token) ? acc + 4 : acc), 0)
+}
+
+function findBestAiDraftSizeMatch(
+  sourceText: string,
+  draftWidth: number | null,
+  draftHeight: number | null,
+  sizeOptions: Array<{ key: string; nombre: string; widthCm: number; heightCm: number }>,
+) {
+  const dimensionCandidates: Array<[number, number]> = []
+  if (typeof draftWidth === "number" && typeof draftHeight === "number") {
+    dimensionCandidates.push([draftWidth, draftHeight])
+  }
+  dimensionCandidates.push(...extractAiDraftDimensions(sourceText))
+  dimensionCandidates.push(...getCommercialAliasDimensions(sourceText))
+
+  let bestMatch: { key: string; score: number } | null = null
+  for (const size of sizeOptions) {
+    const normalizedName = normalizeAiDraftText(size.nombre)
+    let score = 0
+
+    if (sourceText.includes(normalizedName)) {
+      score = Math.max(score, 80 + normalizedName.length)
+    }
+
+    for (const group of COMMERCIAL_SIZE_ALIASES) {
+      const aliasInSource = group.aliases.some((alias) => sourceText.includes(alias))
+      const aliasInTarget = group.aliases.some((alias) => normalizedName.includes(alias))
+      if (aliasInSource && aliasInTarget) {
+        const longestAlias = group.aliases.reduce((max, alias) => Math.max(max, alias.length), 0)
+        score = Math.max(score, 95 + longestAlias)
+      }
+    }
+
+    for (const [candidateWidth, candidateHeight] of dimensionCandidates) {
+      const sameOrientation = Math.abs(size.widthCm - candidateWidth) <= 0.6 && Math.abs(size.heightCm - candidateHeight) <= 0.6
+      const swappedOrientation = Math.abs(size.widthCm - candidateHeight) <= 0.6 && Math.abs(size.heightCm - candidateWidth) <= 0.6
+      if (sameOrientation || swappedOrientation) {
+        score = Math.max(score, 140)
+      }
+    }
+
+    score += scoreAiDraftTokenOverlap(sourceText, normalizedName)
+    if (!bestMatch || score > bestMatch.score) {
+      bestMatch = { key: size.key, score }
+    }
+  }
+
+  if (bestMatch && bestMatch.score >= 70) {
+    return { kind: "preset" as const, key: bestMatch.key }
+  }
+
+  const customSize = dimensionCandidates[0] ?? null
+  if (customSize) {
+    return { kind: "custom" as const, widthCm: customSize[0], heightCm: customSize[1] }
+  }
+
+  return null
+}
+
+function detectPaperEquivalenceGroups(text: string) {
+  return Object.entries(PAPER_EQUIVALENCE_GROUPS)
+    .filter(([, aliases]) => aliases.some((alias) => text.includes(alias)))
+    .map(([group]) => group)
+}
+
+function findBestAiDraftPaperMatch(material: string | null | undefined, papers: PaperRate[]) {
+  const normalizedMaterial = normalizeAiDraftText(material)
+  if (!normalizedMaterial) return null
+
+  const requestedWeight = extractAiDraftWeight(normalizedMaterial)
+  const inferredType = inferAiDraftPaperType(normalizedMaterial)
+  const requestedGroups = detectPaperEquivalenceGroups(normalizedMaterial)
+
+  let bestMatch: { paper: PaperRate; score: number } | null = null
+  for (const paper of papers) {
+    const haystack = normalizeAiDraftText(`${paper.nombre} ${paper.tipo || ""} ${paper.gramaje ?? ""}`)
+    let score = 0
+
+    if (haystack.includes(normalizedMaterial) || normalizedMaterial.includes(haystack)) {
+      score += 140
+    }
+
+    const paperType = inferAiDraftPaperType(`${paper.nombre} ${paper.tipo || ""}`)
+    if (inferredType && paperType === inferredType) {
+      score += 35
+    }
+
+    const paperGroups = detectPaperEquivalenceGroups(haystack)
+    for (const group of requestedGroups) {
+      if (paperGroups.includes(group)) {
+        score += 30
+      }
+    }
+
+    if (requestedWeight != null && paper.gramaje != null) {
+      const diff = Math.abs(paper.gramaje - requestedWeight)
+      if (diff === 0) score += 40
+      else if (diff <= 10) score += 25
+      else if (diff <= 25) score += 12
+    }
+
+    score += scoreAiDraftTokenOverlap(normalizedMaterial, haystack)
+
+    if (!bestMatch || score > bestMatch.score) {
+      bestMatch = { paper, score }
+    }
+  }
+
+  return bestMatch && bestMatch.score >= 35 ? bestMatch.paper : null
+}
+
+function isEditorialAiDraft(draft: LitografiaAiHandoff | null | undefined) {
+  if (!draft) return false
+  if ((draft.paginas ?? 0) > 0) return true
+  const source = normalizeAiDraftText(`${draft.quoteType || ""} ${draft.producto || ""} ${draft.brief || ""}`)
+  return source.includes("revista") || source.includes("cartilla") || source.includes("libro")
+}
+
+function findBestEditorialOptionFromDraft(
+  draft: LitografiaAiHandoff,
+  options: EditorialOptionItem[],
+) {
+  const source = normalizeAiDraftText(`${draft.quoteType || ""} ${draft.producto || ""} ${draft.brief || ""}`)
+  let bestMatch: EditorialOptionItem | null = null
+  let bestScore = -1
+
+  for (const option of options) {
+    const label = normalizeAiDraftText(`${option.label} ${option.value}`)
+    let score = 0
+    if (source.includes(label) || label.includes(source)) score += 100
+    if (source.includes("cartilla") && label.includes("cartilla")) score += 80
+    if (source.includes("revista") && label.includes("revista")) score += 80
+    if (source.includes("libro") && label.includes("libro")) score += 80
+    score += scoreAiDraftTokenOverlap(source, label)
+    if (score > bestScore) {
+      bestScore = score
+      bestMatch = option
+    }
+  }
+
+  return bestScore >= 20 ? bestMatch : options[0] ?? null
 }
 
 function hasSpecialInk(value: PrintInkKey) {
@@ -607,8 +822,11 @@ export function LitografiaQuoteDialog(props: {
   onAddItem: (payload: AddLitografiaItemPayload) => void
   edit?: { itemId: string; meta: LitografiaMeta } | null
   onUpdateItem?: (payload: AddLitografiaItemPayload & { itemId: string }) => void
+  aiDraft?: LitografiaAiHandoff | null
 }) {
   const { t, language } = useI18n()
+  const appliedAiDraftIdRef = useRef<string | null>(null)
+  const [appliedAiDraftId, setAppliedAiDraftId] = useState<string | null>(null)
 
   const [meLoaded, setMeLoaded] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
@@ -892,6 +1110,7 @@ export function LitografiaQuoteDialog(props: {
       setCustomFields([])
       setPricingError(null)
       setAttemptedSubmit(false)
+      setAppliedAiDraftId(null)
 
       setSelectedEditorialProductoKey("")
       setEditorialTotalPaginas("32")
@@ -1797,6 +2016,29 @@ export function LitografiaQuoteDialog(props: {
     return total
   }, [finishes, specialFinishRows])
 
+  const aiDraftId = props.aiDraft?.id ?? null
+  const aiDraftEditId = props.edit?.itemId ?? null
+  const sizeOptionsSignature = useMemo(
+    () => sizeOptions.map((size) => `${size.key}:${size.widthCm}x${size.heightCm}`).join("|"),
+    [sizeOptions],
+  )
+  const activePapersSignature = useMemo(
+    () => activePapers.map((paper) => `${paper.id}:${paper.nombre}:${paper.gramaje ?? ""}`).join("|"),
+    [activePapers],
+  )
+  const activeFinishesSignature = useMemo(
+    () => activeFinishes.map((finish) => `${finish.id}:${finish.nombre}`).join("|"),
+    [activeFinishes],
+  )
+  const transporteOptionsSignature = useMemo(
+    () => transporteOptions.map((option) => `${option.value}:${option.total}`).join("|"),
+    [transporteOptions],
+  )
+  const editorialOptionsSignature = useMemo(
+    () => editorialOptions.map((option) => `${option.value}:${option.totalPaginas}`).join("|"),
+    [editorialOptions],
+  )
+
   useEffect(() => {
     if (!props.open) return
     if (!selectedMachineProfileId && activePlanchaProfiles.length) {
@@ -1884,6 +2126,107 @@ export function LitografiaQuoteDialog(props: {
       setEditorialInner((prev) => (prev.paperId ? prev : { ...prev, paperId: activePapers[0]!.id }))
     }
   }, [props.open, editorialMode, activePlanchaProfiles, activeTintaProfiles, activePapers])
+
+  useEffect(() => {
+    if (!props.open) return
+    if (props.edit) return
+    if (!props.aiDraft) return
+    if (appliedAiDraftIdRef.current === props.aiDraft.id) return
+    if (!sizeOptions.length && !activePapers.length && !activeFinishes.length) return
+
+    const draft = props.aiDraft
+    const matchingSource = normalizeAiDraftText(`${draft.quoteType || ""} ${draft.brief || ""} ${draft.material || ""}`)
+    const editorialDraft = isEditorialAiDraft(draft)
+
+    if (editorialDraft) {
+      setQuoteMode("editorial")
+      if ((draft.paginas ?? 0) > 0) {
+        setEditorialTotalPaginas(String(draft.paginas))
+      }
+
+      if (!editorialOptions.length) {
+        return
+      }
+
+      const bestEditorialOption = findBestEditorialOptionFromDraft(draft, editorialOptions)
+      if (bestEditorialOption) {
+        setSelectedEditorialProductoKey(bestEditorialOption.value)
+      }
+    } else {
+      setQuoteMode("normal")
+      setSelectedEditorialProductoKey("")
+    }
+
+    if (draft.brief.trim()) {
+      setDescripcion(draft.brief.trim())
+    }
+
+    if (draft.cantidad && draft.cantidad > 0) {
+      setCantidad(String(draft.cantidad))
+    }
+
+    const matchedSize = findBestAiDraftSizeMatch(matchingSource, draft.anchoCm, draft.altoCm, sizeOptions)
+    if (matchedSize?.kind === "preset") {
+      setFormatoKey(matchedSize.key)
+      setCustomFormatoWidthCm("")
+      setCustomFormatoHeightCm("")
+    } else if (matchedSize?.kind === "custom") {
+      setFormatoKey(CUSTOM_PRINT_SIZE_KEY)
+      setCustomFormatoWidthCm(String(matchedSize.widthCm))
+      setCustomFormatoHeightCm(String(matchedSize.heightCm))
+    }
+
+    if (!matchedSize && typeof draft.anchoCm === "number" && typeof draft.altoCm === "number") {
+      setFormatoKey(CUSTOM_PRINT_SIZE_KEY)
+      setCustomFormatoWidthCm(String(draft.anchoCm))
+      setCustomFormatoHeightCm(String(draft.altoCm))
+    }
+
+    const inferredPaperType = inferAiDraftPaperType(draft.material)
+    if (inferredPaperType) {
+      setPapelTipo(inferredPaperType)
+    }
+
+    const normalizedMaterial = normalizeAiDraftText(draft.material)
+    const requestedWeight = extractAiDraftWeight(normalizedMaterial)
+    if (requestedWeight != null) {
+      setSelectedPaperGramaje(String(requestedWeight))
+    }
+
+    const matchedPaper = findBestAiDraftPaperMatch(draft.material, activePapers)
+
+    if (matchedPaper) {
+      setPaperRows([{ paperId: matchedPaper.id, qty: "1", formatoKey: "" }])
+      setSelectedPaperTipo(String(matchedPaper.tipo || "").trim())
+      setSelectedPaperGramaje(matchedPaper.gramaje != null ? String(matchedPaper.gramaje) : "")
+    }
+
+    const normalizedFinish = normalizeAiDraftText(draft.acabado)
+    if (normalizedFinish) {
+      const matchedFinish = activeFinishes.find((finish) => {
+        const haystack = normalizeAiDraftText(finish.nombre)
+        return haystack.includes(normalizedFinish) || normalizedFinish.includes(haystack)
+      })
+
+      if (matchedFinish) {
+        setSelectedFinishIds([matchedFinish.id])
+      }
+    }
+
+    const normalizedEntrega = normalizeAiDraftText(draft.entrega)
+    if (normalizedEntrega) {
+      const matchedTransport = transporteOptions.find((option) => {
+        const haystack = normalizeAiDraftText(`${option.value} ${option.label}`)
+        return haystack.includes(normalizedEntrega) || normalizedEntrega.includes(haystack)
+      })
+      if (matchedTransport) {
+        setSelectedTransporteKey(matchedTransport.value)
+      }
+    }
+
+    appliedAiDraftIdRef.current = draft.id
+    setAppliedAiDraftId(draft.id)
+  }, [props.open, aiDraftEditId, aiDraftId, sizeOptionsSignature, activePapersSignature, activeFinishesSignature, transporteOptionsSignature, editorialOptionsSignature])
 
   useEffect(() => {
     if (!props.open) return
@@ -3176,6 +3519,13 @@ export function LitografiaQuoteDialog(props: {
     if (isAdmin) return Boolean(calc)
     return Boolean(fallbackCalc)
   }, [validation.hasMissing, isAdmin, calc, fallbackCalc])
+
+  const aiProposalNotice = useMemo(() => {
+    if (!props.aiDraft) return null
+    if (appliedAiDraftId !== props.aiDraft.id) return null
+    if (canAdd) return { tone: "ready" as const, message: t('printshopQuote.aiProposal.ready') }
+    return { tone: "pending" as const, message: t('printshopQuote.aiProposal.pending') }
+  }, [props.aiDraft, appliedAiDraftId, canAdd, t])
 
   const runQtyHelp = useMemo(() => {
     const computed = isAdmin ? calc : fallbackCalc
@@ -6013,6 +6363,18 @@ export function LitografiaQuoteDialog(props: {
           </div>
 
           <div className="border-t bg-background p-4">
+            {aiProposalNotice ? (
+              <div
+                className={cn(
+                  "mb-3 rounded-md border px-3 py-2 text-sm",
+                  aiProposalNotice.tone === "ready"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                    : "border-amber-200 bg-amber-50 text-amber-900",
+                )}
+              >
+                {aiProposalNotice.message}
+              </div>
+            ) : null}
             <DialogFooter className="gap-2">
               <Button type="button" variant="outline" onClick={() => props.onOpenChange(false)}>
                 {t('common.close')}
@@ -6022,7 +6384,11 @@ export function LitografiaQuoteDialog(props: {
                 onClick={handleAddToCotizacion}
                 disabled={!canAdd}
               >
-                {props.edit?.itemId ? t('printshopQuote.actions.updateItem') : t('printshopQuote.actions.addToQuote')}
+                {props.edit?.itemId
+                  ? t('printshopQuote.actions.updateItem')
+                  : aiProposalNotice?.tone === "ready"
+                    ? t('printshopQuote.actions.addAiProposal')
+                    : t('printshopQuote.actions.addToQuote')}
               </Button>
             </DialogFooter>
           </div>

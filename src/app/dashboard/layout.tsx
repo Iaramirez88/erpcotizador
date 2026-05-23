@@ -10,6 +10,8 @@ import Sidebar from "@/components/dashboard/sidebar"
 import Header from "@/components/dashboard/header"
 import { TourProvider } from "@/components/tour/tour-provider"
 import PlanModuleGate from "@/components/dashboard/plan-module-gate"
+import DashboardScopeGate from "@/components/dashboard/dashboard-scope-gate"
+import OnboardingGate from "@/components/dashboard/onboarding-gate"
 import RouteLoadingIndicator from "@/components/dashboard/route-loading-indicator"
 import RouteLoadingStartListener from "@/components/dashboard/route-loading-start-listener"
 import { getActiveSedeForUser, getEffectiveAccessMap, NAV_MODULES } from "@/lib/rbac"
@@ -75,6 +77,8 @@ export default async function DashboardLayout({
   return (
     <TourProvider>
       <PlanModuleGate />
+      <DashboardScopeGate />
+      <OnboardingGate />
       <RouteLoadingStartListener />
       <div className="flex h-screen bg-background">
         {/* Sidebar */}

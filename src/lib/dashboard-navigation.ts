@@ -17,7 +17,10 @@ export function sectionForDashboardHref(href: string): string {
     case '/dashboard/cotizaciones':
     case '/dashboard/remisiones':
     case '/dashboard/pos':
+    case '/dashboard/restaurante':
     case '/dashboard/clientes':
+    case '/dashboard/odontologia':
+    case '/dashboard/dotaciones':
       return 'Comercial'
     case '/dashboard/crm':
     case '/dashboard/crm/agenda':
@@ -88,14 +91,17 @@ export function moduleForDashboardHref(href: string): string | null {
     case '/dashboard/contabilidad/tesoreria':
       return 'CONTABILIDAD'
     case '/dashboard/cotizador':
+    case '/dashboard/dotaciones':
       return 'COTIZADOR'
     case '/dashboard/cotizaciones':
       return 'COTIZACIONES'
     case '/dashboard/remisiones':
       return 'REMISIONES'
+    case '/dashboard/restaurante':
     case '/dashboard/pos':
       return 'POS'
     case '/dashboard/clientes':
+    case '/dashboard/odontologia':
       return 'CLIENTES'
     case '/dashboard/crm':
     case '/dashboard/crm/agenda':
@@ -149,9 +155,12 @@ export function moduleForDashboardPath(pathname: string): string | null {
   if (pathname.startsWith('/dashboard/reportes')) return 'REPORTES'
   if (pathname.startsWith('/dashboard/contabilidad')) return 'CONTABILIDAD'
   if (pathname.startsWith('/dashboard/cotizador')) return 'COTIZADOR'
+  if (pathname.startsWith('/dashboard/dotaciones')) return 'COTIZADOR'
   if (pathname.startsWith('/dashboard/cotizaciones')) return 'COTIZACIONES'
   if (pathname.startsWith('/dashboard/clientes')) return 'CLIENTES'
+  if (pathname.startsWith('/dashboard/odontologia')) return 'CLIENTES'
   if (pathname.startsWith('/dashboard/remisiones')) return 'REMISIONES'
+  if (pathname.startsWith('/dashboard/restaurante')) return 'POS'
   if (pathname.startsWith('/dashboard/pos')) return 'POS'
   if (pathname.startsWith('/dashboard/ordenes')) return 'ORDENES'
   if (pathname.startsWith('/dashboard/litografia')) return 'COTIZADOR'
@@ -183,10 +192,13 @@ export function buildDashboardNavDefinitions(t: (key: string) => string): Dashbo
     { name: t('nav.accounting'), href: '/dashboard/contabilidad' },
     { name: 'Nómina', href: '/dashboard/contabilidad/nomina' },
     { name: t('nav.quote'), href: '/dashboard/cotizador' },
+    { name: 'Dotaciones', href: '/dashboard/dotaciones' },
     { name: t('nav.quotes'), href: '/dashboard/cotizaciones' },
     { name: t('nav.deliveries'), href: '/dashboard/remisiones' },
+    { name: 'Restaurante', href: '/dashboard/restaurante' },
     { name: t('nav.billing'), href: '/dashboard/pos' },
     { name: t('nav.clients'), href: '/dashboard/clientes' },
+    { name: 'Odontología', href: '/dashboard/odontologia' },
     { name: 'Frente comercial', href: '/dashboard/crm' },
     { name: 'Agenda CRM', href: '/dashboard/crm/agenda' },
     { name: 'Administrador de archivos', href: '/dashboard/crm/archivos' },

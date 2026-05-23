@@ -33,10 +33,29 @@ interface NavItem {
   badge?: string
 }
 
+interface NavSection {
+  title: string
+  items: NavItem[]
+}
+
 function sortNavItemsByOrder(items: NavItem[], order: string[]) {
   if (!order.length) return items
   const orderMap = new Map(order.map((href, index) => [href, index]))
   return [...items].sort((a, b) => (orderMap.get(a.href) ?? Number.MAX_SAFE_INTEGER) - (orderMap.get(b.href) ?? Number.MAX_SAFE_INTEGER))
+}
+
+function getOrderIndex(href: string, order: string[]) {
+  const index = order.indexOf(href)
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index
+}
+
+function sortSectionsByOrder(sections: NavSection[], order: string[]) {
+  if (!order.length) return sections
+  return [...sections].sort((a, b) => {
+    const aIndex = Math.min(...a.items.map((item) => getOrderIndex(item.href, order)))
+    const bIndex = Math.min(...b.items.map((item) => getOrderIndex(item.href, order)))
+    return aIndex - bIndex
+  })
 }
 
 function buildModuleNavigation(t: (key: string) => string): NavItem[] {
@@ -138,6 +157,15 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+      </svg>
+    ),
+  },
+  {
+    name: 'Odontología',
+    href: "/dashboard/odontologia",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3c2.8 0 5 2.2 5 5 0 1.6-.7 3-1.9 4l-.4.3-.6 5.8a2.2 2.2 0 01-4.3 0l-.6-5.8-.4-.3A4.98 4.98 0 017 8c0-2.8 2.2-5 5-5z" />
       </svg>
     ),
   },
@@ -485,6 +513,8 @@ export default function Sidebar({ user }: SidebarProps) {
 
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
   const [navOrder, setNavOrder] = useState<string[]>([])
+  const [recommendedNavOrder, setRecommendedNavOrder] = useState<string[]>([])
+  const [allowedNavHrefs, setAllowedNavHrefs] = useState<string[]>([])
   const [enabledModules, setEnabledModules] = useState<Set<string> | null>(null)
   const [empresa, setEmpresa] = useState<EmpresaBranding | null>(null)
   const [planTier, setPlanTier] = useState<string | null>(null)
@@ -548,12 +578,33 @@ export default function Sidebar({ user }: SidebarProps) {
           setIsPersonal((json.data.nit ?? '').startsWith('PERS-'))
         }
       } catch {}
+      try {
+        const res = await fetch('/api/onboarding/empresa', { cache: 'no-store' })
+        const json = (await res.json().catch(() => null)) as
+          | { ok?: boolean; dashboard?: { prioritizedHrefs?: string[]; allowedHrefs?: string[] } | null }
+          | null
+        if (!cancelled && json?.ok) {
+          setRecommendedNavOrder(
+            Array.isArray(json.dashboard?.prioritizedHrefs)
+              ? json.dashboard!.prioritizedHrefs.filter((href): href is string => typeof href === 'string' && href.startsWith('/dashboard'))
+              : []
+          )
+          setAllowedNavHrefs(
+            Array.isArray(json.dashboard?.allowedHrefs)
+              ? json.dashboard!.allowedHrefs.filter((href): href is string => typeof href === 'string' && href.startsWith('/dashboard'))
+              : []
+          )
+        }
+      } catch {}
     }
     void load()
     return () => {
       cancelled = true
     }
   }, [])
+
+  const effectiveNavOrder = useMemo(() => (navOrder.length ? navOrder : recommendedNavOrder), [navOrder, recommendedNavOrder])
+  const allowedNavHrefSet = useMemo(() => (allowedNavHrefs.length ? new Set(allowedNavHrefs) : null), [allowedNavHrefs])
 
   const upgradePlanLabel = useMemo(() => {
     if (planTier === 'BASIC') return 'Intermedio'
@@ -630,8 +681,9 @@ export default function Sidebar({ user }: SidebarProps) {
       if (it.href !== '/dashboard/configuracion/plan') return true
       return canManageBilling
     })
-    return sortNavItemsByOrder(withBillingGate, navOrder)
-  }, [navPrefs, enabledModules, user?.role, canAccessWebsiteServices, canManageBilling, allowedModules, moduleNavigation, navOrder])
+    const withOnboardingScope = withBillingGate.filter((it) => !allowedNavHrefSet || allowedNavHrefSet.has(it.href))
+    return sortNavItemsByOrder(withOnboardingScope, effectiveNavOrder)
+  }, [navPrefs, enabledModules, user?.role, canAccessWebsiteServices, canManageBilling, allowedModules, moduleNavigation, effectiveNavOrder, allowedNavHrefSet])
 
   const visibleHrefs = useMemo(() => {
     return new Set(visibleNavigation.map((it) => it.href))
@@ -651,6 +703,7 @@ export default function Sidebar({ user }: SidebarProps) {
 
   const navSettingsItems: NavSettingsItem[] = useMemo(() => {
     const base = dashboardNavDefinitions
+      .filter((it) => !allowedNavHrefSet || allowedNavHrefSet.has(it.href))
       .filter((it) => {
         if (it.href === '/dashboard/configuracion/servicios-web') {
           return canAccessWebsiteServices
@@ -671,7 +724,7 @@ export default function Sidebar({ user }: SidebarProps) {
       })
       .map((it) => ({ name: it.name, href: it.href, section: sectionForDashboardHref(it.href) }))
     return base
-  }, [canAccessWebsiteServices, canManageBilling, user?.role, allowedModules, dashboardNavDefinitions])
+  }, [canAccessWebsiteServices, canManageBilling, user?.role, allowedModules, dashboardNavDefinitions, allowedNavHrefSet])
 
   async function saveNav(next: Record<string, boolean>, nextOrder: string[]) {
     setNavPrefs(next)
@@ -686,32 +739,33 @@ export default function Sidebar({ user }: SidebarProps) {
   const sections = useMemo(() => {
     const get = (href: string) => visibleNavigation.find((it) => it.href === href) ?? null
 
-    return [
+    const baseSections: NavSection[] = [
       {
         title: 'Centro de Control',
-        items: [get('/dashboard'), get('/dashboard/reportes'), get('/dashboard/plantillas')].filter(Boolean) as NavItem[],
+        items: sortNavItemsByOrder([get('/dashboard'), get('/dashboard/reportes'), get('/dashboard/plantillas')].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
       {
         title: 'Contabilidad',
-        items: [get('/dashboard/contabilidad')].filter(Boolean) as NavItem[],
+        items: sortNavItemsByOrder([get('/dashboard/contabilidad')].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
       {
         title: 'Nómina',
-        items: [get('/dashboard/contabilidad/nomina')].filter(Boolean) as NavItem[],
+        items: sortNavItemsByOrder([get('/dashboard/contabilidad/nomina')].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
       {
         title: 'Comercial',
-        items: [
+        items: sortNavItemsByOrder([
           get('/dashboard/cotizador'),
           get('/dashboard/cotizaciones'),
           get('/dashboard/remisiones'),
           get('/dashboard/pos'),
           get('/dashboard/clientes'),
-        ].filter(Boolean) as NavItem[],
+          get('/dashboard/odontologia'),
+        ].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
       {
         title: 'CRM',
-        items: [
+        items: sortNavItemsByOrder([
           get('/dashboard/crm'),
           get('/dashboard/crm/agenda'),
           get('/dashboard/crm/chatbot'),
@@ -719,57 +773,58 @@ export default function Sidebar({ user }: SidebarProps) {
           get('/dashboard/crm/integraciones'),
           get('/dashboard/crm/leads'),
           get('/dashboard/crm/oportunidades'),
-        ].filter(Boolean) as NavItem[],
+        ].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
       {
         title: 'Productividad',
-        items: [get('/dashboard/espacios-trabajo'), get('/dashboard/crm/tareas')].filter(Boolean) as NavItem[],
+        items: sortNavItemsByOrder([get('/dashboard/espacios-trabajo'), get('/dashboard/crm/tareas')].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
       {
         title: 'Operaciones',
-        items: [
+        items: sortNavItemsByOrder([
           get('/dashboard/ordenes'),
           get('/dashboard/litografia'),
           get('/dashboard/escaneos'),
           get('/dashboard/productos'),
-        ].filter(Boolean) as NavItem[],
+        ].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
       {
         title: 'Inventario',
-        items: [
+        items: sortNavItemsByOrder([
           get('/dashboard/inventario'),
           get('/dashboard/inventario/traslados'),
-        ].filter(Boolean) as NavItem[],
+        ].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
       {
         title: 'Logística',
-        items: [
+        items: sortNavItemsByOrder([
           get('/dashboard/compras'),
           get('/dashboard/proveedores'),
           get('/dashboard/configuracion/desperdicios'),
-        ].filter(Boolean) as NavItem[],
+        ].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
       {
         title: 'Gestión',
-        items: [
+        items: sortNavItemsByOrder([
           get('/dashboard/configuracion/sedes'),
           get('/dashboard/configuracion/usuarios'),
           get('/dashboard/configuracion/permisos'),
           get('/dashboard/configuracion/empresa'),
           get('/dashboard/configuracion/servicios-web'),
           get('/dashboard/configuracion/plan'),
-        ].filter(Boolean) as NavItem[],
+        ].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
       {
         title: 'Super Admin',
-        items: [
+        items: sortNavItemsByOrder([
           get('/dashboard/configuracion/super-admin/empresas'),
           get('/dashboard/configuracion/super-admin/usuarios'),
           get('/dashboard/configuracion/super-admin/modulos-por-plan'),
-        ].filter(Boolean) as NavItem[],
+        ].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
     ]
-  }, [visibleNavigation])
+    return sortSectionsByOrder(baseSections.filter((section) => section.items.length > 0), effectiveNavOrder)
+  }, [visibleNavigation, effectiveNavOrder])
 
   const activeSectionTitle = useMemo(() => {
     // Elegimos el match más específico (href más largo) para evitar que “/dashboard” capture todo.

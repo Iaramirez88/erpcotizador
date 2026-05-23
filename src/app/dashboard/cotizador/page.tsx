@@ -33,6 +33,8 @@ import type { CotizacionTemplateSettings } from "@/lib/cotizacion-template"
 import { useI18n } from "@/components/providers/i18n-provider"
 import { buildWhatsAppWebUrl } from "@/lib/whatsapp-link"
 import { MobilePdfFallback, useIsMobileViewport } from '@/components/pdf/mobile-pdf-fallback'
+import { LitografiaAiAssistant } from "@/components/litografia/litografia-ai-assistant"
+import type { LitografiaAiHandoff } from "@/lib/litografia-ai-handoff"
 
 function PdfPreviewLoading() {
   const { t } = useI18n()
@@ -193,9 +195,12 @@ export default function CotizadorPage() {
   const [isLoadingCotizacion, setIsLoadingCotizacion] = useState(false)
 
   const [litografiaOpen, setLitografiaOpen] = useState(false)
+  const [litografiaAiOpen, setLitografiaAiOpen] = useState(false)
   const [metrajeOpen, setMetrajeOpen] = useState(false)
   const [customProductOpen, setCustomProductOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [litografiaAiDraft, setLitografiaAiDraft] = useState<LitografiaAiHandoff | null>(null)
+  const [litografiaAiOpenToken, setLitografiaAiOpenToken] = useState(0)
 
   // Datos de la cotización
   const [clienteId, setClienteId] = useState("")
@@ -1203,6 +1208,7 @@ export default function CotizadorPage() {
         onAddItem={agregarItemLitografia}
         edit={litografiaEdit}
         onUpdateItem={actualizarItemLitografia}
+        aiDraft={litografiaAiDraft}
       />
 
       <MetrajeQuoteDialog
@@ -1223,6 +1229,25 @@ export default function CotizadorPage() {
         onOpenChange={setCustomProductOpen}
         defaultNombre={materialSearch}
       />
+
+      <Dialog open={litografiaAiOpen} onOpenChange={setLitografiaAiOpen}>
+        <DialogContent className="flex max-h-[90vh] max-w-6xl flex-col overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>{t('quoteBuilder.actions.aiQuoteBuilder')}</DialogTitle>
+          </DialogHeader>
+          <LitografiaAiAssistant
+            initialBrief={[descripcion, observaciones].map((item) => item.trim()).filter(Boolean).join("\n\n")}
+            openToken={litografiaAiOpenToken}
+            onApplyToClassic={(draft) => {
+              setLitografiaAiDraft(draft)
+              setLitografiaAiOpen(false)
+              setShowItemForm(false)
+              setLitografiaEdit(null)
+              setLitografiaOpen(true)
+            }}
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Preview post-guardar */}
       <Dialog
@@ -1625,6 +1650,18 @@ export default function CotizadorPage() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle>{t('quoteBuilder.sections.items')}</CardTitle>
                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={() => {
+                      setShowItemForm(false)
+                      setLitografiaAiOpenToken((value) => value + 1)
+                      setLitografiaAiOpen(true)
+                    }}
+                  >
+                    {t('quoteBuilder.actions.aiQuoteBuilder')}
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"

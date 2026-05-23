@@ -15,6 +15,7 @@ import { isPlanOwnerForEmpresa } from '@/lib/plan-owner'
 import { resolveUserIdFromSession } from '@/lib/session-user'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import { getCrmStorageUsageSummary } from '@/lib/crm-files'
+import { resolveDashboardConfig } from '@/lib/company-onboarding'
 import { redirect } from 'next/navigation'
 
 function formatBytes(value: number) {
@@ -47,6 +48,7 @@ export default async function DashboardPage() {
   let canManageBilling = session.user.role === 'ADMIN'
   let activeSedeName: string | null = null
   let storageUsage: Awaited<ReturnType<typeof getCrmStorageUsageSummary>> | null = null
+  let dashboardConfig: ReturnType<typeof resolveDashboardConfig> = null
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -72,6 +74,11 @@ export default async function DashboardPage() {
         select: {
           nit: true,
           registrationCodeHash: true,
+          businessType: true,
+          onboardingStatus: true,
+          onboardingData: true,
+          dashboardConfig: true,
+          planOwnerUserId: true,
           planTier: true,
           planValidUntil: true,
           trialTier: true,
@@ -83,6 +90,11 @@ export default async function DashboardPage() {
       if (empresa) {
         const effectiveTier = resolveEffectivePlanTier(empresa, new Date())
         enabledPlanModules = await getEnabledModulesForEmpresa({ empresaId: user.empresaId, planTier: effectiveTier })
+        dashboardConfig = resolveDashboardConfig({
+          dashboardConfig: empresa.dashboardConfig,
+          onboardingData: empresa.onboardingData,
+          businessType: empresa.businessType,
+        })
       }
 
       storageUsage = await getCrmStorageUsageSummary({ empresaId: user.empresaId })
@@ -102,9 +114,10 @@ export default async function DashboardPage() {
       <ErpPageHero
         breadcrumbs={[{ label: 'Dashboard' }]}
         title={`Hola, ${displayName}`}
-        description={activeSedeName
-          ? `El dashboard ahora es una pantalla de inicio. Elige qué quieres gestionar primero en ${activeSedeName} y entra directo al flujo correcto.`
-          : 'El dashboard ahora funciona como pantalla de inicio. Elige qué quieres gestionar primero y entra directo al flujo correcto.'}
+        description={dashboardConfig?.description
+          ?? (activeSedeName
+            ? `El dashboard ahora es una pantalla de inicio. Elige qué quieres gestionar primero en ${activeSedeName} y entra directo al flujo correcto.`
+            : 'El dashboard ahora funciona como pantalla de inicio. Elige qué quieres gestionar primero y entra directo al flujo correcto.')}
         actions={
           <>
             <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/90">
@@ -191,6 +204,8 @@ export default async function DashboardPage() {
             allowedModules={allowedModules}
             enabledPlanModules={enabledPlanModules}
             canManageBilling={canManageBilling}
+            prioritizedHrefs={dashboardConfig?.prioritizedHrefs ?? []}
+            visibleHrefs={dashboardConfig?.allowedHrefs ?? []}
           />
         </CardContent>
       </Card>

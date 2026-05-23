@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, type ComponentProps } from "react"
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react"
 import { useSearchParams } from "next/navigation"
 import { ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { SearchableNativeSelect } from "@/components/ui/searchable-native-select"
 import { computeLitografia } from "@/lib/litografia"
+import type { LitografiaAiHandoff } from "@/lib/litografia-ai-handoff"
 import { formatCurrency } from "@/lib/utils"
 
 type PapelTipo = "bond" | "propalcote" | "periodico" | "otro"
@@ -209,10 +210,28 @@ function getSizeDisplayName(sizes: Array<{ key: string; nombre: string }>, key: 
   return sizes.find((s) => s.key === key)?.nombre || key
 }
 
-export function LitografiaCalculator() {
+function normalizeHandoffText(value: string | null | undefined) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+}
+
+function inferPaperTypeFromMaterial(material: string | null | undefined): PapelTipo | null {
+  const normalized = normalizeHandoffText(material)
+  if (!normalized) return null
+  if (normalized.includes("bond")) return "bond"
+  if (normalized.includes("propal") || normalized.includes("cote") || normalized.includes("couche")) return "propalcote"
+  if (normalized.includes("period")) return "periodico"
+  return "otro"
+}
+
+export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHandoff | null } = {}) {
   const searchParams = useSearchParams()
   const PAGE_SIZE = 5
   const [tab] = useState<"config">("config")
+  const appliedAiDraftIdRef = useRef<string | null>(null)
 
   const [meLoaded, setMeLoaded] = useState(false)
   const [canConfigWrite, setCanConfigWrite] = useState(false)
@@ -246,6 +265,7 @@ export function LitografiaCalculator() {
   const [costoAcabados, setCostoAcabados] = useState("0")
   const [costoTransporte, setCostoTransporte] = useState("0")
   const [descripcion, setDescripcion] = useState("")
+  const [aiPrefillNotice, setAiPrefillNotice] = useState<string | null>(null)
 
   const [profiles, setProfiles] = useState<PrintProfile[]>([])
   const [papers, setPapers] = useState<PaperRate[]>([])
@@ -1240,6 +1260,92 @@ export function LitografiaCalculator() {
     else if (t.includes("period")) setPapelTipo("periodico")
     else setPapelTipo("otro")
   }, [papers, selectedPaperId])
+
+  useEffect(() => {
+    const draft = props.aiHandoffDraft
+    if (!draft) return
+    if (appliedAiDraftIdRef.current === draft.id) return
+    if (papersLoading || finishesLoading || sizesLoading || customDropdownsLoading) return
+
+    if (draft.cantidad && draft.cantidad > 0) {
+      setCantidad(String(draft.cantidad))
+    }
+
+    if (draft.brief.trim()) {
+      setDescripcion(draft.brief.trim())
+    }
+
+    if (typeof draft.anchoCm === "number" && typeof draft.altoCm === "number") {
+      const draftWidth = draft.anchoCm
+      const draftHeight = draft.altoCm
+      const matchedSize = sizeOptions.find((size) => {
+        const sameOrientation = Math.abs(size.widthCm - draftWidth) < 0.3 && Math.abs(size.heightCm - draftHeight) < 0.3
+        const swappedOrientation = Math.abs(size.widthCm - draftHeight) < 0.3 && Math.abs(size.heightCm - draftWidth) < 0.3
+        return sameOrientation || swappedOrientation
+      })
+
+      if (matchedSize) {
+        setFormatoKey(matchedSize.key)
+        setFormatoW(String(matchedSize.widthCm))
+        setFormatoH(String(matchedSize.heightCm))
+      }
+    }
+
+    const inferredPaperType = inferPaperTypeFromMaterial(draft.material)
+    if (inferredPaperType) {
+      setPapelTipo(inferredPaperType)
+    }
+
+    const normalizedMaterial = normalizeHandoffText(draft.material)
+    const gramajeMatch = normalizedMaterial.match(/(\d{2,3})\s*g/)
+    if (gramajeMatch) {
+      setSelectedPaperGramaje(gramajeMatch[1] || "")
+    }
+
+    const directPaperMatch = activePapers.find((paper) => {
+      const haystack = normalizeHandoffText(`${paper.nombre} ${paper.tipo || ""} ${paper.gramaje ?? ""}`)
+      return normalizedMaterial ? haystack.includes(normalizedMaterial) || normalizedMaterial.includes(haystack) : false
+    })
+
+    if (directPaperMatch) {
+      setSelectedPaperId(directPaperMatch.id)
+      setSelectedPaperTipo(String(directPaperMatch.tipo || "otro").trim() || "otro")
+      setSelectedPaperGramaje(directPaperMatch.gramaje != null ? String(directPaperMatch.gramaje) : "")
+    } else if (inferredPaperType) {
+      setSelectedPaperTipo(inferredPaperType)
+    }
+
+    const normalizedFinish = normalizeHandoffText(draft.acabado)
+    if (normalizedFinish) {
+      const finishMatch = activeFinishes.find((finish) => {
+        const name = normalizeHandoffText(finish.nombre)
+        return name.includes(normalizedFinish) || normalizedFinish.includes(name)
+      })
+      if (finishMatch) setSelectedFinishId(finishMatch.id)
+    }
+
+    const normalizedEntrega = normalizeHandoffText(draft.entrega)
+    if (normalizedEntrega) {
+      const transportMatch = transporteOptions.find((option) => {
+        const haystack = normalizeHandoffText(`${option.value} ${option.label}`)
+        return haystack.includes(normalizedEntrega) || normalizedEntrega.includes(haystack)
+      })
+      if (transportMatch) setSelectedTransporteKey(transportMatch.value)
+    }
+
+    setAiPrefillNotice(`Se precargó el cotizador con el brief IA: ${draft.quoteType}${draft.material ? ` · ${draft.material}` : ""}`)
+    appliedAiDraftIdRef.current = draft.id
+  }, [
+    props.aiHandoffDraft,
+    papersLoading,
+    finishesLoading,
+    sizesLoading,
+    customDropdownsLoading,
+    sizeOptions,
+    activePapers,
+    activeFinishes,
+    transporteOptions,
+  ])
 
   const createPlanchaProfile = async () => {
     const nombre = newPlanchaProfileNombre.trim()
@@ -5603,6 +5709,11 @@ export function LitografiaCalculator() {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {aiPrefillNotice ? (
+        <div className="lg:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          {aiPrefillNotice}
+        </div>
+      ) : null}
       <Card>
         <CardHeader>
           <CardTitle>Parámetros</CardTitle>

@@ -1329,6 +1329,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
 
     'quoteBuilder.actions.history': 'Historial',
     'quoteBuilder.actions.cancelEdit': 'Cancelar edición',
+    'quoteBuilder.actions.aiQuoteBuilder': 'Cotizar por IA',
     'quoteBuilder.actions.lithographyQuoteBuilder': 'Cotizador Litografía',
     'quoteBuilder.actions.metrageQuoteBuilder': 'Cotizador Metraje',
     'quoteBuilder.actions.addItem': 'Cotizar por lista de precios',
@@ -1417,6 +1418,8 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
 
     'printshopQuote.errors.invalidQuantity': 'Cantidad inválida',
     'printshopQuote.errors.completeRequired': 'Completa los campos requeridos',
+    'printshopQuote.aiProposal.ready': 'La propuesta IA quedó lista para agregar a la cotización.',
+    'printshopQuote.aiProposal.pending': 'Se precargó la propuesta IA. Revisa los faltantes antes de agregarla.',
     'printshopQuote.errors.noRateOrEstimate': 'No hay tarifa ni cálculo estimado disponible',
     'printshopQuote.errors.rateQueryFailed': 'No se pudo consultar tarifa',
     'printshopQuote.errors.loadConfigFailed': 'No se pudieron cargar tarifas',
@@ -1494,6 +1497,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'printshopQuote.actions.addAnotherSpecialFinish': 'Agregar otro',
     'printshopQuote.actions.updateItem': 'Actualizar item',
     'printshopQuote.actions.addToQuote': 'Agregar a cotización',
+    'printshopQuote.actions.addAiProposal': 'Agregar propuesta IA',
 
     'printshopQuote.examples.finish': 'Ej: barniz, UV.',
     'printshopQuote.examples.specialFinishes': 'Ej: troquel, hot stamping.',
@@ -3448,6 +3452,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
 
     'quoteBuilder.actions.history': 'History',
     'quoteBuilder.actions.cancelEdit': 'Cancel editing',
+    'quoteBuilder.actions.aiQuoteBuilder': 'Quote with AI',
     'quoteBuilder.actions.lithographyQuoteBuilder': 'Printshop Quote Builder',
     'quoteBuilder.actions.metrageQuoteBuilder': 'Metrage quoter',
     'quoteBuilder.actions.addItem': 'Quote from price list',
@@ -3536,6 +3541,8 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
 
     'printshopQuote.errors.invalidQuantity': 'Invalid quantity',
     'printshopQuote.errors.completeRequired': 'Complete required fields',
+    'printshopQuote.aiProposal.ready': 'The AI proposal is ready to add to the quote.',
+    'printshopQuote.aiProposal.pending': 'The AI proposal was prefilled. Review the missing fields before adding it.',
     'printshopQuote.errors.noRateOrEstimate': 'No rate or estimate available',
     'printshopQuote.errors.rateQueryFailed': 'Could not fetch rate',
     'printshopQuote.errors.loadConfigFailed': 'Failed to load rates',
@@ -3613,6 +3620,7 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'printshopQuote.actions.addAnotherSpecialFinish': 'Add another',
     'printshopQuote.actions.updateItem': 'Update item',
     'printshopQuote.actions.addToQuote': 'Add to quote',
+    'printshopQuote.actions.addAiProposal': 'Add AI proposal',
 
     'printshopQuote.examples.finish': 'e.g. varnish, UV.',
     'printshopQuote.examples.specialFinishes': 'e.g. die cut, hot stamping.',

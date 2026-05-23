@@ -160,6 +160,12 @@ model User {
   customProductRequestsCreated  CustomProductRequest[] @relation("CustomProductRequestCreatedBy")
   customProductRequestsApproved CustomProductRequest[] @relation("CustomProductRequestApprovedBy")
 
+  // Odontología
+  odontologyAppointmentsAssigned OdontologyAppointment[] @relation("OdontologyAppointmentAssignedDentist")
+  odontologyAppointmentsCreated OdontologyAppointment[] @relation("OdontologyAppointmentCreatedBy")
+  odontologyClinicalRecordsCreated OdontologyClinicalRecord[] @relation("OdontologyClinicalRecordCreatedBy")
+  odontologyTreatmentPlansCreated OdontologyTreatmentPlan[] @relation("OdontologyTreatmentPlanCreatedBy")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -490,6 +496,25 @@ enum RemisionStatus {
   ANULADA
 }
 
+enum DotacionPedidoStatus {
+  BORRADOR
+  EN_PREPARACION
+  ENTREGA_PARCIAL
+  ENTREGADA
+  CANCELADA
+}
+
+enum DotacionPedidoItemStatus {
+  PENDIENTE
+  REMITIDA
+  CANCELADA
+}
+
+enum RestauranteTurnoStatus {
+  ABIERTO
+  CERRADO
+}
+
 enum InventoryTransferStatus {
   PENDIENTE
   COMPLETADO
@@ -601,6 +626,12 @@ model Empresa {
   email     String?
   logo      String?
 
+  businessType String?
+  onboardingStatus String @default("COMPLETED")
+  onboardingCompletedAt DateTime?
+  onboardingData Json @default("{}")
+  dashboardConfig Json @default("{}")
+
   dianSettings Json @default("{}")
 
   // Código de acceso para permitir registro de usuarios en esta empresa.
@@ -698,6 +729,13 @@ model Empresa {
 
   // Dropdowns configurables (por empresa)
   configDropdowns ConfigDropdown[]
+
+  // Odontología
+  odontologyAppointments OdontologyAppointment[]
+  odontologyPatientProfiles OdontologyPatientProfile[]
+  odontologyClinicalRecords OdontologyClinicalRecord[]
+  odontologyTreatmentPlans OdontologyTreatmentPlan[]
+  odontologyTreatmentPlanItems OdontologyTreatmentPlanItem[]
   
   inventoryTransfers InventoryTransfer[]
 
@@ -1613,6 +1651,110 @@ model Remision {
   @@index([warehouseId, createdAt])
   @@index([assignedToUserId])
   @@map("remisiones")
+}
+
+model DotacionPedido {
+  id String @id @default(cuid())
+
+  empresaId String
+  sedeId    String
+
+  clienteId     String?
+  clienteNombre String?
+
+  cotizacionId     String?
+  cotizacionNumero String?
+
+  warehouseId String?
+
+  title     String?
+  batchNote String? @db.Text
+
+  status DotacionPedidoStatus @default(BORRADOR)
+  metadata Json @default("{}")
+
+  createdById String?
+  updatedById String?
+
+  items DotacionPedidoItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, updatedAt])
+  @@index([empresaId, sedeId, status])
+  @@index([clienteId, updatedAt])
+  @@index([cotizacionId])
+  @@map("dotacion_pedidos")
+}
+
+model DotacionPedidoItem {
+  id String @id @default(cuid())
+
+  pedidoId String
+  pedido   DotacionPedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  employeeId   String?
+  employeeName String?
+
+  sedeId   String?
+  sedeName String?
+
+  materialId   String?
+  materialName String?
+
+  talla    String?
+  color    String?
+  quantity Float   @default(1)
+  note     String? @db.Text
+
+  selected Boolean @default(true)
+  status   DotacionPedidoItemStatus @default(PENDIENTE)
+
+  deliveredAt    DateTime?
+  remisionId     String?
+  remisionNumero String?
+
+  sortOrder Int @default(0)
+  metadata  Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([pedidoId, sortOrder])
+  @@index([employeeId])
+  @@index([materialId])
+  @@index([sedeId])
+  @@index([status, deliveredAt])
+  @@map("dotacion_pedido_items")
+}
+
+model RestauranteTurno {
+  id String @id @default(cuid())
+
+  empresaId String
+  sedeId    String
+
+  title String?
+
+  status RestauranteTurnoStatus @default(ABIERTO)
+  boardData   Json   @default("{}")
+  summaryData Json   @default("{}")
+  closingNotes String? @db.Text
+
+  openedAt DateTime @default(now())
+  closedAt DateTime?
+
+  createdById String?
+  updatedById String?
+  closedById  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, sedeId, status, updatedAt])
+  @@index([empresaId, sedeId, openedAt])
+  @@map("restaurante_turnos")
 }
 
 model RemisionItem {
@@ -2738,6 +2880,10 @@ model Cliente {
   crmActivities     CrmActivity[] @relation("CrmActivityCliente")
   crmTasks          CrmTask[] @relation("CrmTaskCliente")
   crmConversations  CrmConversation[] @relation("CrmConversationCliente")
+  odontologyAppointments OdontologyAppointment[]
+  odontologyPatientProfile OdontologyPatientProfile?
+  odontologyClinicalRecords OdontologyClinicalRecord[]
+  odontologyTreatmentPlans OdontologyTreatmentPlan[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2746,6 +2892,199 @@ model Cliente {
   @@index([sedeId])
 
   @@map("clientes")
+}
+
+model OdontologyPatientProfile {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  clienteId String  @unique
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  birthDate DateTime?
+  bloodType String?
+  allergies String? @db.Text
+  currentMedications String? @db.Text
+  emergencyContactName String?
+  emergencyContactPhone String?
+  insuranceProvider String?
+  notes String? @db.Text
+
+  appointments OdontologyAppointment[]
+  clinicalRecords OdontologyClinicalRecord[]
+  treatmentPlans OdontologyTreatmentPlan[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId])
+  @@map("odontology_patient_profiles")
+}
+
+enum OdontologyAppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum OdontologyTreatmentPlanStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum OdontologyTreatmentItemStatus {
+  PLANNED
+  APPROVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model OdontologyAppointment {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  clienteId String
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  patientProfileId String?
+  patientProfile   OdontologyPatientProfile? @relation(fields: [patientProfileId], references: [id], onDelete: SetNull)
+
+  treatmentPlanId String?
+  treatmentPlan   OdontologyTreatmentPlan? @relation(fields: [treatmentPlanId], references: [id], onDelete: SetNull)
+
+  assignedDentistUserId String?
+  assignedDentist   User? @relation("OdontologyAppointmentAssignedDentist", fields: [assignedDentistUserId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdByUser   User? @relation("OdontologyAppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  startsAt DateTime
+  endsAt   DateTime
+  status   OdontologyAppointmentStatus @default(SCHEDULED)
+  reason   String
+  chairName String?
+  notes    String? @db.Text
+
+  clinicalRecords OdontologyClinicalRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, startsAt, status])
+  @@index([clienteId, startsAt])
+  @@index([assignedDentistUserId, startsAt])
+  @@index([treatmentPlanId])
+  @@map("odontology_appointments")
+}
+
+model OdontologyTreatmentPlan {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  clienteId String
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  patientProfileId String?
+  patientProfile   OdontologyPatientProfile? @relation(fields: [patientProfileId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdByUser   User? @relation("OdontologyTreatmentPlanCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  title            String
+  status           OdontologyTreatmentPlanStatus @default(DRAFT)
+  diagnosisSummary String? @db.Text
+  objectives       String? @db.Text
+  notes            String? @db.Text
+  estimatedTotal   Float @default(0)
+  approvedAt       DateTime?
+  completedAt      DateTime?
+
+  items           OdontologyTreatmentPlanItem[]
+  appointments    OdontologyAppointment[]
+  clinicalRecords OdontologyClinicalRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status, updatedAt])
+  @@index([clienteId, status])
+  @@index([patientProfileId])
+  @@map("odontology_treatment_plans")
+}
+
+model OdontologyTreatmentPlanItem {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  planId String
+  plan   OdontologyTreatmentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  toothCode     String?
+  procedureType String
+  description   String? @db.Text
+  status        OdontologyTreatmentItemStatus @default(PLANNED)
+  estimatedCost Float @default(0)
+  scheduledAt   DateTime?
+  completedAt   DateTime?
+  notes         String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([planId, status])
+  @@index([toothCode])
+  @@map("odontology_treatment_plan_items")
+}
+
+model OdontologyClinicalRecord {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  clienteId String
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  patientProfileId String?
+  patientProfile   OdontologyPatientProfile? @relation(fields: [patientProfileId], references: [id], onDelete: SetNull)
+
+  appointmentId String?
+  appointment   OdontologyAppointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  treatmentPlanId String?
+  treatmentPlan   OdontologyTreatmentPlan? @relation(fields: [treatmentPlanId], references: [id], onDelete: SetNull)
+
+  createdByUserId String?
+  createdByUser   User? @relation("OdontologyClinicalRecordCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  appointmentDate DateTime @default(now())
+  consultationReason String
+  diagnosis String? @db.Text
+  procedureSummary String? @db.Text
+  treatmentStatus String?
+  odontogram Json @default("{}")
+  observations String? @db.Text
+  nextVisitAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, appointmentDate])
+  @@index([clienteId, appointmentDate])
+  @@index([patientProfileId])
+  @@index([appointmentId])
+  @@index([treatmentPlanId])
+  @@map("odontology_clinical_records")
 }
 
 // ============================================
