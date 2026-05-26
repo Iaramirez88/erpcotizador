@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ModuleKey } from '@prisma/client'
 import { z } from 'zod'
 import { requireApiAccess } from '@/lib/api-rbac'
+import { appendAiWorkspaceHistory } from '@/lib/ai-workspace-history'
+import type { LitografiaAiHandoff } from '@/lib/litografia-ai-handoff'
 import { prisma } from '@/lib/prisma'
 import { analyzeLitografiaBrief, getLitografiaAiConnectionStatus, type ConfidenceLevel, type LitografiaCatalogContext } from '@/lib/litografia-ai'
 import { computeLitografia } from '@/lib/litografia'
@@ -58,6 +60,15 @@ type CostBreakdown = {
   totalSuggested: number | null
   unitPriceWithIva: number | null
 }
+
+type AssistantQuoteReply = {
+  title: string
+  message: string
+  assumptions: string[]
+  copyText: string
+}
+
+type LitografiaAiFinishHints = NonNullable<LitografiaAiHandoff['finishHints']>
 
 type PrintProfile = {
   id: string
@@ -143,9 +154,37 @@ function findFinishCandidates(catalog: LitografiaCatalogContext, args: {
   quoteType: string
   acabado: string | null | undefined
 }) {
+  const normalizedBrief = normalizeText(args.brief)
   const candidates: Array<{ id: string; nombre: string; grupo?: string | null; valor: number }> = []
   const finishNeedle = normalizeText(args.acabado)
-  const normalizedBrief = normalizeText(args.brief)
+
+  const aliasMatchers: Array<{ test: (finishName: string) => boolean; matchesBrief: boolean }> = [
+    {
+      test: (finishName) => /grafa|grafad/.test(finishName),
+      matchesBrief: /grafa|grafad/.test(normalizedBrief),
+    },
+    {
+      test: (finishName) => /plastificad|laminad.*mate/.test(finishName),
+      matchesBrief: /(plastificad|laminad)\s+mate/.test(normalizedBrief),
+    },
+    {
+      test: (finishName) => /plastificad|laminad.*brill/.test(finishName),
+      matchesBrief: /(plastificad|laminad)\s+(brillante|brillo)/.test(normalizedBrief),
+    },
+    {
+      test: (finishName) => /refile|corte/.test(finishName),
+      matchesBrief: /refile|corte/.test(normalizedBrief),
+    },
+    {
+      test: (finishName) => /plegad/.test(finishName),
+      matchesBrief: /plegad|diptico|triptico/.test(normalizedBrief),
+    },
+  ]
+
+  const pushCandidate = (finish: { id: string; nombre: string; grupo?: string | null; valor: number } | null | undefined) => {
+    if (!finish || candidates.some((item) => item.id === finish.id)) return
+    candidates.push(finish)
+  }
 
   const exact = finishNeedle
     ? (catalog.finishes ?? []).find((finish) => {
@@ -154,11 +193,23 @@ function findFinishCandidates(catalog: LitografiaCatalogContext, args: {
       }) ?? null
     : null
 
-  if (exact) candidates.push(exact)
+  pushCandidate(exact)
+
+  for (const finish of catalog.finishes ?? []) {
+    const haystack = normalizeText(finish.nombre)
+
+    if (normalizedBrief.includes(haystack)) {
+      pushCandidate(finish)
+      continue
+    }
+
+    const matchedAlias = aliasMatchers.some((alias) => alias.matchesBrief && alias.test(haystack))
+    if (matchedAlias) pushCandidate(finish)
+  }
 
   if (args.quoteType === 'PLEGABLE' && normalizedBrief.includes('plegable')) {
     const plegado = (catalog.finishes ?? []).find((finish) => normalizeText(finish.nombre).includes('plegad'))
-    if (plegado && !candidates.some((item) => item.id === plegado.id)) candidates.push(plegado)
+    pushCandidate(plegado)
   }
 
   if (normalizedBrief.includes('refile') || normalizedBrief.includes('corte')) {
@@ -166,10 +217,88 @@ function findFinishCandidates(catalog: LitografiaCatalogContext, args: {
       const haystack = normalizeText(finish.nombre)
       return haystack.includes('refile') || haystack.includes('corte')
     })
-    if (corte && !candidates.some((item) => item.id === corte.id)) candidates.push(corte)
+    pushCandidate(corte)
   }
 
   return candidates
+}
+
+function formatCopCurrency(value: number | null) {
+  if (value == null || !Number.isFinite(value)) return null
+  return new Intl.NumberFormat('es-CO', {
+    style: 'currency',
+    currency: 'COP',
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
+function formatInt(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return null
+  return new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(value)
+}
+
+function buildAssistantQuoteReply(args: {
+  brief: string
+  analysis: Awaited<ReturnType<typeof analyzeLitografiaBrief>>
+  costBreakdown: CostBreakdown
+}): AssistantQuoteReply | null {
+  const { analysis, costBreakdown } = args
+  if (!costBreakdown.totalSuggested || !analysis.extracted.cantidad) return null
+
+  const sizeLabel = costBreakdown.sizeLabel ?? (analysis.extracted.anchoCm && analysis.extracted.altoCm
+    ? `${analysis.extracted.anchoCm} x ${analysis.extracted.altoCm} cm`
+    : 'tamaño por confirmar')
+  const materialLabel = analysis.extracted.material ?? costBreakdown.paperName ?? 'material por confirmar'
+  const productLabel = analysis.extracted.producto ?? analysis.quoteType.toLowerCase()
+  const tintasLabel = analysis.extracted.tintas ? `${analysis.extracted.tintas}x${analysis.extracted.tintas}` : null
+  const finishedLabels = costBreakdown.lines
+    .map((line) => line.label)
+    .filter((label) => !/^papel\b/i.test(label) && !/^planchas/i.test(label) && !/^impresi[oó]n\b/i.test(label) && !/^entrega\b/i.test(label))
+  const finishSummary = finishedLabels.length ? finishedLabels.join(', ') : 'sin terminados adicionales detectados'
+
+  const assumptionSet = new Set<string>()
+  if (tintasLabel) assumptionSet.add(`Se asumió impresión ${tintasLabel}.`)
+  for (const note of costBreakdown.notes) assumptionSet.add(note)
+  if (!analysis.extracted.acabado && !finishedLabels.length) {
+    assumptionSet.add('No se detectó un terminado claro distinto al texto libre del brief.')
+  }
+
+  const title = `Cotización preliminar para ${formatInt(analysis.extracted.cantidad)} ${String(productLabel).toLowerCase()}${analysis.extracted.cantidad === 1 ? '' : 's'}`
+  const intro = `${title} en ${sizeLabel}, ${materialLabel}, ${finishSummary}.`
+  const lines = costBreakdown.lines.map((line) => {
+    const amount = formatCopCurrency(line.amount)
+    return amount ? `${line.label}: ${amount}` : null
+  }).filter((line): line is string => Boolean(line))
+
+  const utilityLine = costBreakdown.utility != null ? `Utilidad ${DEFAULT_MARGIN_PCT}%: ${formatCopCurrency(costBreakdown.utility)}` : null
+  const subtotalLine = costBreakdown.subtotalBeforeIva != null ? `Subtotal: ${formatCopCurrency(costBreakdown.subtotalBeforeIva)}` : null
+  const ivaLine = costBreakdown.ivaValue != null ? `IVA ${costBreakdown.ivaPct}%: ${formatCopCurrency(costBreakdown.ivaValue)}` : null
+  const totalLine = `Total final: ${formatCopCurrency(costBreakdown.totalSuggested)}`
+  const unitLine = costBreakdown.unitPriceWithIva != null ? `Valor unitario final aproximado: ${formatCopCurrency(costBreakdown.unitPriceWithIva)}` : null
+  const assumptions = Array.from(assumptionSet)
+  const assumptionsLine = assumptions.length
+    ? `Supuestos usados: ${assumptions.join(' ')}`
+    : null
+
+  const message = [
+    intro,
+    '',
+    'Costo base estimado:',
+    ...lines,
+    utilityLine,
+    subtotalLine,
+    ivaLine,
+    totalLine,
+    unitLine,
+    assumptionsLine,
+  ].filter((line): line is string => Boolean(line)).join('\n')
+
+  return {
+    title,
+    message,
+    assumptions,
+    copyText: message,
+  }
 }
 
 function metaNumber(meta: unknown, key: string) {
@@ -227,6 +356,84 @@ function findTransportOption(options: TransportOption[], entrega: string | null 
     const haystack = normalizeText(`${option.value} ${option.label}`)
     return haystack.includes(needle) || needle.includes(haystack)
   }) ?? null
+}
+
+function buildFinishHints(finishes: Array<{ nombre: string; grupo?: string | null }>): LitografiaAiFinishHints {
+  const genericLabels: string[] = []
+  let plastificadoLabel: string | null = null
+  let troqueladoLabel: string | null = null
+  let troqueladaLabel: string | null = null
+  let corteLabel: string | null = null
+
+  for (const finish of finishes) {
+    const group = String(finish.grupo || '').trim().toUpperCase()
+    if (group === 'PLASTIFICADO') {
+      plastificadoLabel ||= finish.nombre
+      continue
+    }
+    if (group === 'CORTE') {
+      corteLabel ||= finish.nombre
+      continue
+    }
+    if (group === 'TROQUELADO') {
+      if (/troquelad[ao]/i.test(finish.nombre)) troqueladaLabel ||= finish.nombre
+      else troqueladoLabel ||= finish.nombre
+      continue
+    }
+    genericLabels.push(finish.nombre)
+  }
+
+  return {
+    genericLabels,
+    plastificadoLabel,
+    troqueladoLabel,
+    troqueladaLabel,
+    corteLabel,
+  }
+}
+
+function buildLitografiaAiHandoff(args: {
+  analysis: Awaited<ReturnType<typeof analyzeLitografiaBrief>>
+  costBreakdown: CostBreakdown
+  transport: TransportOption | null
+  finishes: Array<{ nombre: string; grupo?: string | null }>
+  assistantReply: AssistantQuoteReply | null
+}): LitografiaAiHandoff {
+  const { analysis, costBreakdown, transport, finishes, assistantReply } = args
+  return {
+    id: `${Date.now()}`,
+    brief: analysis.normalizedBrief,
+    quoteType: analysis.quoteType,
+    producto: analysis.extracted.producto,
+    cantidad: analysis.extracted.cantidad,
+    anchoCm: analysis.extracted.anchoCm,
+    altoCm: analysis.extracted.altoCm,
+    paginas: analysis.extracted.paginas,
+    tintas: analysis.extracted.tintas,
+    material: analysis.extracted.material,
+    acabado: analysis.extracted.acabado,
+    finishHints: buildFinishHints(finishes),
+    pricingHints: {
+      sizeLabel: costBreakdown.sizeLabel,
+      paperName: costBreakdown.paperName,
+      transportLabel: transport?.label ?? null,
+      machineName: costBreakdown.machineName,
+    },
+    assistantReply: assistantReply?.message ?? null,
+    entrega: analysis.extracted.entrega,
+  }
+}
+
+function getFinishCandidatesForHandoff(args: {
+  brief: string
+  analysis: Awaited<ReturnType<typeof analyzeLitografiaBrief>>
+  catalog: LitografiaCatalogContext
+}) {
+  return findFinishCandidates(args.catalog, {
+    brief: args.brief,
+    quoteType: args.analysis.quoteType,
+    acabado: args.analysis.extracted.acabado,
+  }).map((finish) => ({ nombre: finish.nombre, grupo: finish.grupo ?? null }))
 }
 
 function buildCostBreakdown(args: {
@@ -363,19 +570,10 @@ function buildCostBreakdown(args: {
     { label: `Impresión ${best.profile.nombre}`, amount: best.result.tinta },
   ]
 
-  if (cutCost > 0) {
-    const cutLabel = finishes.find((finish) => String(finish.grupo || '').toUpperCase() === 'CORTE')?.nombre || 'Corte / refile'
-    lines.push({ label: cutLabel, amount: cutCost })
-  }
-
-  if (finishCost > 0) {
-    lines.push({
-      label: finishes
-        .filter((finish) => String(finish.grupo || '').toUpperCase() !== 'CORTE')
-        .map((finish) => finish.nombre)
-        .join(' + ') || 'Acabados',
-      amount: finishCost,
-    })
+  for (const finish of finishes) {
+    const amount = Number(finish.valor) || 0
+    if (amount <= 0) continue
+    lines.push({ label: finish.nombre, amount })
   }
 
   if (transportCost > 0) {
@@ -671,6 +869,12 @@ export async function POST(request: NextRequest) {
     const data = await analyzeLitografiaBrief(parsedBody.data.brief, catalog)
     const connection = getLitografiaAiConnectionStatus()
     const configuredSuggestion = matchConfiguredPrice({ analysis: data, catalog })
+    const finishCandidates = getFinishCandidatesForHandoff({
+      brief: parsedBody.data.brief,
+      analysis: data,
+      catalog,
+    })
+    const matchedTransport = findTransportOption(pricingContext.transportOptions, data.extracted.entrega)
     const costBreakdown = buildCostBreakdown({
       brief: parsedBody.data.brief,
       analysis: data,
@@ -683,11 +887,45 @@ export async function POST(request: NextRequest) {
       analysis: data,
       configuredSuggestion,
     })
+    const assistantReply = buildAssistantQuoteReply({
+      brief: parsedBody.data.brief,
+      analysis: data,
+      costBreakdown,
+    })
+    const handoff = buildLitografiaAiHandoff({
+      analysis: data,
+      costBreakdown,
+      transport: matchedTransport,
+      finishes: finishCandidates,
+      assistantReply,
+    })
+
+    await appendAiWorkspaceHistory({
+      empresaId,
+      entry: {
+        kind: 'LITOGRAFIA_QUOTE',
+        prompt: parsedBody.data.brief,
+        actorUserId: access.userId,
+        actorLabel: access.session.user.name || access.session.user.email || 'Usuario interno',
+        summary: data.summary,
+        responseText: assistantReply?.message ?? null,
+        metadata: {
+          quoteType: data.quoteType,
+          confidence: data.confidence,
+          missingFields: data.missingFields,
+          finishHints: handoff.finishHints,
+          totalSuggested: costBreakdown.totalSuggested,
+        },
+        asset: null,
+      },
+    })
 
     return NextResponse.json({
       ok: true,
       data,
       connection,
+      assistantReply,
+      handoff,
       pricing: {
         configuredSuggestion,
         costBreakdown,

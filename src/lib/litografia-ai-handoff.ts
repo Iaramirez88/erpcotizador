@@ -7,7 +7,22 @@ export type LitografiaAiHandoff = {
   anchoCm: number | null
   altoCm: number | null
   paginas: number | null
+  tintas: 1 | 2 | 4 | null
   material: string | null
   acabado: string | null
+  finishHints?: {
+    genericLabels: string[]
+    plastificadoLabel: string | null
+    troqueladoLabel: string | null
+    troqueladaLabel: string | null
+    corteLabel: string | null
+  }
+  pricingHints?: {
+    sizeLabel: string | null
+    paperName: string | null
+    transportLabel: string | null
+    machineName: string | null
+  }
+  assistantReply: string | null
   entrega: string | null
 }

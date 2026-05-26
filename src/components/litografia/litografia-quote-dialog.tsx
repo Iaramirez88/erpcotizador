@@ -277,6 +277,15 @@ function findBestEditorialOptionFromDraft(
   return bestScore >= 20 ? bestMatch : options[0] ?? null
 }
 
+function findFinishByLabel<T extends { id: string; nombre: string }>(label: string | null | undefined, options: T[]) {
+  const needle = normalizeAiDraftText(label)
+  if (!needle) return null
+  return options.find((option) => {
+    const haystack = normalizeAiDraftText(option.nombre)
+    return haystack.includes(needle) || needle.includes(haystack)
+  }) || null
+}
+
 function hasSpecialInk(value: PrintInkKey) {
   const v = String(value || "").trim()
   return v.includes("+")
@@ -2210,6 +2219,37 @@ export function LitografiaQuoteDialog(props: {
 
       if (matchedFinish) {
         setSelectedFinishIds([matchedFinish.id])
+      }
+    }
+
+    if (draft.finishHints) {
+      const genericFinishIds = draft.finishHints.genericLabels
+        .map((label) => findFinishByLabel(label, activeFinishes))
+        .filter((item): item is { id: string; nombre: string } => Boolean(item))
+        .map((item) => item.id)
+
+      if (genericFinishIds.length) {
+        setSelectedFinishIds(Array.from(new Set(genericFinishIds)))
+      }
+
+      const matchedPlastificado = findFinishByLabel(draft.finishHints.plastificadoLabel, activePlastificados)
+      if (matchedPlastificado) {
+        setSelectedPlastificadoId(matchedPlastificado.id)
+      }
+
+      const matchedTroquelado = findFinishByLabel(draft.finishHints.troqueladoLabel, activeTroquelados)
+      if (matchedTroquelado) {
+        setSelectedTroqueladoId(matchedTroquelado.id)
+      }
+
+      const matchedTroquelada = findFinishByLabel(draft.finishHints.troqueladaLabel, activeTroqueladas)
+      if (matchedTroquelada) {
+        setSelectedTroqueladaId(matchedTroquelada.id)
+      }
+
+      const matchedCorte = findFinishByLabel(draft.finishHints.corteLabel, activeCortes)
+      if (matchedCorte) {
+        setSelectedCorteId(matchedCorte.id)
       }
     }
 
