@@ -6,7 +6,7 @@ import { appendAiWorkspaceHistory } from '@/lib/ai-workspace-history'
 import { buildLitografiaKnowledgePromptContext, readLitografiaAiKnowledge } from '@/lib/litografia-ai-knowledge'
 import type { LitografiaAiHandoff } from '@/lib/litografia-ai-handoff'
 import { prisma } from '@/lib/prisma'
-import { analyzeLitografiaBrief, analyzeLitografiaBriefWithRules, getLitografiaAiConnectionStatus, type ConfidenceLevel, type LitografiaCatalogContext } from '@/lib/litografia-ai'
+import { analyzeLitografiaBrief, analyzeLitografiaBriefWithRules, generateLitografiaAssistantReply, getLitografiaAiConnectionStatus, type ConfidenceLevel, type LitografiaCatalogContext } from '@/lib/litografia-ai'
 import { computeLitografia } from '@/lib/litografia'
 
 export const runtime = 'nodejs'
@@ -101,6 +101,116 @@ function buildConversationBrief(brief: string, conversation: Array<{ role: 'user
   const latestBrief = brief.trim()
   const allMessages = [...userMessages, latestBrief].filter(Boolean)
   return Array.from(new Set(allMessages)).join('\n')
+}
+
+function isPickupDelivery(value: string | null | undefined) {
+  return /recoge en planta|pasa a recoger|va a recoger|retira/.test(normalizeText(value))
+}
+
+function asksPaperSheetPrice(brief: string) {
+  const normalized = normalizeText(brief)
+  if (!normalized) return false
+  const asksPrice = /cuanto vale|cuanto cuesta|precio|costo|valor/.test(normalized)
+  const asksPaper = /papel|bond|propalcote|opalina|cartulina|kimberly|adhesivo|periodico/.test(normalized)
+  return asksPrice && asksPaper && /pliego/.test(normalized)
+}
+
+function extractRequestedSheetSize(brief: string) {
+  const match = normalizeText(brief).match(/(\d{2,3}(?:[.,]\d{1,2})?)\s*(?:x|por)\s*(\d{2,3}(?:[.,]\d{1,2})?)/)
+  if (!match) return null
+  const first = Number(String(match[1]).replace(',', '.'))
+  const second = Number(String(match[2]).replace(',', '.'))
+  if (!Number.isFinite(first) || !Number.isFinite(second)) return null
+  return { width: first, height: second }
+}
+
+function matchesRequestedSheetSize(paper: { pliegoWidthCm?: number; pliegoHeightCm?: number }, size: { width: number; height: number } | null) {
+  if (!size) return false
+  const width = Number(paper.pliegoWidthCm || 0)
+  const height = Number(paper.pliegoHeightCm || 0)
+  if (!width || !height) return false
+  const same = Math.abs(width - size.width) < 1 && Math.abs(height - size.height) < 1
+  const swapped = Math.abs(width - size.height) < 1 && Math.abs(height - size.width) < 1
+  return same || swapped
+}
+
+function findRequestedPaperOptions(catalog: LitografiaCatalogContext, brief: string) {
+  const normalized = normalizeText(brief)
+  const requestedSheet = extractRequestedSheetSize(brief)
+
+  return (catalog.papers ?? [])
+    .map((paper) => {
+      const paperName = normalizeText(paper.nombre)
+      const paperType = normalizeText(paper.tipo)
+      const gramaje = Number(paper.gramaje || 0)
+      let score = 0
+
+      if (paperName && normalized.includes(paperName)) score += 120
+      if (paperType && normalized.includes(paperType)) score += 70
+      if (gramaje > 0 && new RegExp(`\\b${gramaje}\\s*(g|gr|grs|grms|gms)\\b`).test(normalized)) score += 60
+      if (paperType && gramaje > 0 && normalized.includes(`${paperType} ${gramaje}`)) score += 40
+      if (matchesRequestedSheetSize(paper, requestedSheet)) score += 80
+      if (/pliego/.test(normalized)) score += 5
+
+      return { paper, score }
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score || a.paper.nombre.localeCompare(b.paper.nombre))
+}
+
+function buildPaperSheetPriceReply(args: {
+  latestBrief: string
+  catalog: LitografiaCatalogContext
+}): AssistantQuoteReply | null {
+  if (!asksPaperSheetPrice(args.latestBrief)) return null
+
+  const options = findRequestedPaperOptions(args.catalog, args.latestBrief)
+  if (!options.length) return null
+
+  const requestedSheet = extractRequestedSheetSize(args.latestBrief)
+  const topScore = options[0]?.score ?? 0
+  const bestOptions = options.filter((entry) => entry.score === topScore).slice(0, 3)
+  const exactSheetMatch = requestedSheet ? bestOptions.find((entry) => matchesRequestedSheetSize(entry.paper, requestedSheet)) ?? null : null
+  const selected = exactSheetMatch ?? (bestOptions.length === 1 ? bestOptions[0] : null)
+
+  if (!selected) {
+    const lines = bestOptions.map((entry) => {
+      const sheet = entry.paper.pliegoWidthCm && entry.paper.pliegoHeightCm
+        ? `${entry.paper.pliegoWidthCm} x ${entry.paper.pliegoHeightCm} cm`
+        : 'medida de pliego por revisar'
+      return `- ${entry.paper.nombre}: ${formatCopCurrency(entry.paper.costoPliego)} por pliego (${sheet}).`
+    })
+    const message = [
+      'Sí tengo referencias de ese papel en el tarifario, pero necesito el tamaño exacto del pliego para darte el valor correcto.',
+      '',
+      'Opciones encontradas:',
+      ...lines,
+      '',
+      'Indícame cuál pliego necesitas y te respondo sobre esa referencia exacta.',
+    ].join('\n')
+    return {
+      title: 'Valor de papel por pliego pendiente de precisión',
+      message,
+      assumptions: ['La consulta detectó varias referencias de papel compatibles y falta cerrar la medida exacta del pliego.'],
+      copyText: message,
+    }
+  }
+
+  const sheetLabel = selected.paper.pliegoWidthCm && selected.paper.pliegoHeightCm
+    ? `${selected.paper.pliegoWidthCm} x ${selected.paper.pliegoHeightCm} cm`
+    : 'medida de pliego no configurada'
+  const message = [
+    `En el tarifario configurado, ${selected.paper.nombre} vale ${formatCopCurrency(selected.paper.costoPliego)} por pliego.`,
+    `Pliego configurado: ${sheetLabel}.`,
+    'Si quieres, con esa base también te calculo cuántos pliegos requeriría el trabajo y cómo pega eso en la revista que vienes cotizando.',
+  ].join('\n')
+
+  return {
+    title: `Valor de ${selected.paper.nombre} por pliego`,
+    message,
+    assumptions: [`Respuesta tomada directamente del tarifario de papel configurado${sheetLabel ? ` para pliego ${sheetLabel}` : ''}.`],
+    copyText: message,
+  }
 }
 
 type LitografiaAiFinishHints = NonNullable<LitografiaAiHandoff['finishHints']>
@@ -272,13 +382,52 @@ function formatInt(value: number | null | undefined) {
   return new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(value)
 }
 
-function buildAssistantQuoteReply(args: {
+async function buildAssistantQuoteReply(args: {
+  latestBrief: string
   brief: string
+  conversation: Array<{ role: 'user' | 'assistant'; content: string }>
   analysis: Awaited<ReturnType<typeof analyzeLitografiaBrief>>
   configuredSuggestion: ConfiguredPriceSuggestion
   costBreakdown: CostBreakdown
+  catalog: LitografiaCatalogContext
+  knowledgeSource: KnowledgeSourceDescriptor | null
 }): AssistantQuoteReply | null {
-  const { analysis, configuredSuggestion, costBreakdown } = args
+  const { latestBrief, analysis, configuredSuggestion, costBreakdown, catalog, conversation, knowledgeSource } = args
+  const directPaperOptions = asksPaperSheetPrice(latestBrief)
+    ? findRequestedPaperOptions(catalog, latestBrief).slice(0, 3).map((entry) => ({
+        nombre: entry.paper.nombre,
+        tipo: entry.paper.tipo,
+        gramaje: entry.paper.gramaje,
+        costoPliego: entry.paper.costoPliego,
+        pliegoWidthCm: entry.paper.pliegoWidthCm ?? null,
+        pliegoHeightCm: entry.paper.pliegoHeightCm ?? null,
+      }))
+    : []
+
+  const aiReply = await generateLitografiaAssistantReply({
+    latestUserMessage: latestBrief,
+    conversation,
+    grounding: {
+      effectiveBrief: args.brief,
+      analysis,
+      configuredSuggestion,
+      costBreakdown,
+      knowledgeSource,
+      directPaperOptions,
+    },
+  })
+
+  if (aiReply) {
+    return {
+      title: aiReply.title,
+      message: aiReply.message,
+      assumptions: aiReply.assumptions,
+      copyText: aiReply.message,
+    }
+  }
+
+  const directPaperReply = buildPaperSheetPriceReply({ latestBrief, catalog })
+  if (directPaperReply) return directPaperReply
   const productLabel = analysis.extracted.producto ?? analysis.quoteType.toLowerCase()
   const quantityLabel = analysis.extracted.cantidad ? formatInt(analysis.extracted.cantidad) : null
   const sizeLabel = costBreakdown.sizeLabel
@@ -557,6 +706,7 @@ function buildCostBreakdown(args: {
     acabado: analysis.extracted.acabado,
   })
   const transport = findTransportOption(transportOptions, analysis.extracted.entrega)
+  const pickupDelivery = isPickupDelivery(analysis.extracted.entrega)
   const { totalColors, twoSided } = parseColorSpec(args.brief, analysis.extracted.tintas)
   const reusePlate = shouldReusePlate(args.brief)
 
@@ -691,10 +841,10 @@ function buildCostBreakdown(args: {
 
   if (twoSided) notes.push('Se tomó como impresión por ambas caras.')
   if (reusePlate) notes.push('No se cobraron planchas nuevas porque el brief indica reutilizar la plancha.')
-  if (!transport) notes.push('No se sumó transporte porque la entrega no coincide con una opción configurada.')
+  if (!transport) notes.push(pickupDelivery ? 'No se sumó transporte porque el cliente recoge el trabajo.' : 'No se sumó transporte porque la entrega no coincide con una opción configurada.')
 
   return {
-    status: transport ? 'AVAILABLE' : 'PARTIAL',
+    status: transport || pickupDelivery ? 'AVAILABLE' : 'PARTIAL',
     summary: 'Desglose base calculado con la configuración litográfica actual.',
     lines,
     notes,
@@ -1009,11 +1159,15 @@ export async function POST(request: NextRequest) {
       analysis: data,
       configuredSuggestion,
     })
-    const assistantReply = buildAssistantQuoteReply({
+    const assistantReply = await buildAssistantQuoteReply({
+      latestBrief: parsedBody.data.brief,
       brief: effectiveBrief,
+      conversation: parsedBody.data.conversation ?? [],
       analysis: data,
       configuredSuggestion,
       costBreakdown,
+      catalog,
+      knowledgeSource,
     })
     const handoff = buildLitografiaAiHandoff({
       analysis: data,

@@ -29,6 +29,12 @@ export type LitografiaAiResult = {
   }
 }
 
+export type LitografiaAiChatReply = {
+  title: string
+  message: string
+  assumptions: string[]
+}
+
 export type LitografiaCatalogContext = {
   sizes?: Array<{ key: string; nombre: string; widthCm: number; heightCm: number }>
   papers?: Array<{ id: string; nombre: string; tipo: string | null; gramaje: number | null; costoPliego: number; pliegoWidthCm?: number; pliegoHeightCm?: number }>
@@ -94,6 +100,13 @@ const FINISH_PATTERNS = [
 
 const DELIVERY_PATTERNS = ['chapinero', 'suba', 'usaquen', 'engativa', 'norte', 'sur', 'bogota', 'medellin', 'cali', 'barranquilla']
 
+function parseEntrega(brief: string) {
+  if (/(pasa(?:n)?\s+a\s+recoger|va(?:n)?\s+a\s+recoger|recoge(?:r)?\b|retira(?:r)?\b|recogida\s+en\s+planta|retiro\s+en\s+planta)/i.test(brief)) {
+    return 'recoge en planta'
+  }
+  return parseKeyword(brief, DELIVERY_PATTERNS)
+}
+
 const llmResponseSchema = z.object({
   summary: z.string().trim().min(10),
   confidence: z.enum(['ALTA', 'MEDIA', 'BAJA']),
@@ -113,6 +126,12 @@ const llmResponseSchema = z.object({
   missingFields: z.array(z.string().trim()).default([]),
   questions: z.array(z.string().trim()).default([]),
   nextStep: z.string().trim().min(10),
+})
+
+const assistantReplySchema = z.object({
+  title: z.string().trim().min(3),
+  message: z.string().trim().min(20),
+  assumptions: z.array(z.string().trim()).default([]),
 })
 
 function normalizeText(value: string) {
@@ -176,7 +195,19 @@ function parseTintas(brief: string): 1 | 2 | 4 | null {
 }
 
 function parseKeyword(brief: string, candidates: string[]) {
-  return candidates.find((candidate) => brief.includes(candidate)) ?? null
+  let matched: string | null = null
+  let matchedIndex = -1
+
+  for (const candidate of candidates) {
+    const candidateIndex = brief.lastIndexOf(candidate)
+    if (candidateIndex < 0) continue
+    if (candidateIndex >= matchedIndex) {
+      matched = candidate
+      matchedIndex = candidateIndex
+    }
+  }
+
+  return matched
 }
 
 function parseObservaciones(brief: string) {
@@ -291,7 +322,7 @@ export function analyzeLitografiaBriefWithRules(brief: string): LitografiaAiResu
     tintas: parseTintas(lowerBrief),
     material: parseKeyword(lowerBrief, MATERIAL_PATTERNS),
     acabado: parseKeyword(lowerBrief, FINISH_PATTERNS),
-    entrega: parseKeyword(lowerBrief, DELIVERY_PATTERNS),
+    entrega: parseEntrega(lowerBrief),
     observaciones: parseObservaciones(lowerBrief),
   }
 
@@ -394,6 +425,75 @@ export async function analyzeLitografiaBrief(
     }
   } catch {
     return baseAnalysis
+  }
+}
+
+export async function generateLitografiaAssistantReply(args: {
+  latestUserMessage: string
+  conversation?: Array<{ role: 'user' | 'assistant'; content: string }>
+  grounding: unknown
+}): Promise<LitografiaAiChatReply | null> {
+  const config = getOpenAiCompatibleConfig()
+
+  if (!config.enabled || !config.baseUrl || !config.model) return null
+
+  try {
+    const response = await fetch(`${config.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model: config.model,
+        temperature: 0.25,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Eres un asesor comercial senior de litografia en Colombia. Debes responder como chat natural, claro y concreto, pero usando exclusivamente los datos del grounding recibido. No inventes precios, tamaños, papeles, acabados ni tarifas. Si el ERP trae una coincidencia exacta, priorizala. Si solo hay desglose parcial, explicalo sin venderlo como precio cerrado. Si el cliente recoge el trabajo, no pidas direccion de entrega. Responde primero la intencion puntual del ultimo mensaje y luego, si aplica, conecta esa respuesta con la cotizacion en curso. Devuelve solo JSON valido con title, message y assumptions.'
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              latestUserMessage: args.latestUserMessage,
+              conversation: (args.conversation ?? []).slice(-6),
+              grounding: args.grounding,
+              instructions: {
+                output: 'Devuelve exclusivamente JSON con: title, message, assumptions.',
+                constraints: [
+                  'No respondas con markdown.',
+                  'No inventes datos faltantes.',
+                  'Si falta un dato clave, dilo de forma conversacional y concreta.',
+                  'Si hay una pregunta puntual, respondela antes de recapitular la cotizacion.',
+                ],
+              },
+            }),
+          },
+        ],
+        response_format: { type: 'json_object' },
+      }),
+    })
+
+    if (!response.ok) return null
+
+    const payload = (await response.json().catch(() => null)) as
+      | { choices?: Array<{ message?: { content?: string | null } | null }> }
+      | null
+
+    const content = payload?.choices?.[0]?.message?.content
+    if (!content) return null
+
+    const parsed = assistantReplySchema.safeParse(JSON.parse(stripJsonFences(content)))
+    if (!parsed.success) return null
+
+    return {
+      title: parsed.data.title,
+      message: parsed.data.message,
+      assumptions: parsed.data.assumptions,
+    }
+  } catch {
+    return null
   }
 }
 
