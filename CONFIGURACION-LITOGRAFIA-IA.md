@@ -13,7 +13,7 @@ Agrega estas variables en tu entorno de Next.js:
 
 ```env
 LITOGRAFIA_AI_API_KEY="sk-..."
-LITOGRAFIA_AI_MODEL="gpt-4.1-mini"
+LITOGRAFIA_AI_MODEL="gpt-5.4-mini"
 LITOGRAFIA_AI_PROVIDER="openai"
 ```
 
@@ -228,7 +228,7 @@ Archivo sugerido: `.env.local`
 ```env
 LITOGRAFIA_AI_PROVIDER="openai"
 LITOGRAFIA_AI_BASE_URL="https://api.openai.com/v1"
-LITOGRAFIA_AI_MODEL="gpt-4.1-mini"
+LITOGRAFIA_AI_MODEL="gpt-5.4-mini"
 LITOGRAFIA_AI_API_KEY="sk-dev-reemplazar"
 
 LITOGRAFIA_AI_IMAGE_BASE_URL="https://api.openai.com/v1"
@@ -238,12 +238,10 @@ LITOGRAFIA_AI_IMAGE_API_KEY="sk-dev-reemplazar"
 
 ### Bloque exacto para producción
 
-Configúralo como secretos del proveedor de despliegue, no en archivos versionados.
-
 ```env
 LITOGRAFIA_AI_PROVIDER="openai"
 LITOGRAFIA_AI_BASE_URL="https://api.openai.com/v1"
-LITOGRAFIA_AI_MODEL="gpt-4.1-mini"
+LITOGRAFIA_AI_MODEL="gpt-5.4-mini"
 LITOGRAFIA_AI_API_KEY="sk-prod-reemplazar"
 
 LITOGRAFIA_AI_IMAGE_BASE_URL="https://api.openai.com/v1"
@@ -251,17 +249,86 @@ LITOGRAFIA_AI_IMAGE_MODEL="gpt-image-1"
 LITOGRAFIA_AI_IMAGE_API_KEY="sk-prod-reemplazar"
 ```
 
-Si prefieren una sola clave para ambos flujos, pueden dejar la de imágenes sin definir y la ruta de imágenes reutiliza `LITOGRAFIA_AI_API_KEY` y `LITOGRAFIA_AI_BASE_URL`.
+## 11. Datos exactos que necesitas de OpenAI Platform
 
-## 11. Qué variable usa cada parte del sistema
+Para conectar este backend no necesitas el nombre del workspace de ChatGPT Business. Lo que sí necesitas de OpenAI Platform es esto:
+
+1. Un proyecto de API activo.
+2. Facturación o créditos habilitados en Platform.
+3. Una API key del proyecto.
+4. El nombre del modelo de texto.
+5. El nombre del modelo de imágenes, si vas a usar imágenes.
+6. La base URL del proveedor.
+
+Para OpenAI Platform estándar, el bloque práctico queda así:
+
+```text
+Proveedor: openai
+Base URL: https://api.openai.com/v1
+Modelo texto: gpt-5.4-mini
+Modelo imágenes: gpt-image-1
+API key: sk-... o la clave/token del proyecto
+```
+
+Notas importantes:
+
+- si tu proyecto de Platform no tiene créditos, la integración no responderá aunque la key sea válida;
+- el backend usa /chat/completions para texto y /images/generations para imágenes;
+- puedes reutilizar la misma key para texto e imágenes si el proyecto tiene acceso a ambos productos;
+- si prefieres separar costos o permisos, puedes usar una key para texto y otra para imágenes.
+
+## 12. Checklist operativo para dejarlo funcionando
+
+1. En OpenAI Platform crea o selecciona el proyecto del ERP.
+2. Agrega créditos o habilita cobro por uso.
+3. Crea la API key del proyecto.
+4. Copia .env.litografia-ia.example a tu .env.local en desarrollo o usa secretos del servidor en producción.
+5. Reemplaza solo estos valores:
+
+```env
+LITOGRAFIA_AI_API_KEY="TU_KEY_REAL"
+LITOGRAFIA_AI_IMAGE_API_KEY="TU_KEY_REAL_O_OTRA"
+```
+
+6. Reinicia la app.
+7. Prueba primero texto en Dashboard > Litografía > Cotice con IA.
+8. Prueba después imágenes en Dashboard > Litografía > Imágenes IA.
+
+## 13. Qué te voy a pedir cuando la quieras dejar conectada aquí
+
+Para terminar la configuración en este proyecto, solo hace falta que tú pongas estos datos reales en el entorno:
+
+```text
+LITOGRAFIA_AI_API_KEY
+LITOGRAFIA_AI_IMAGE_API_KEY
+```
+
+El resto de valores ya te los dejo definidos así:
+
+```text
+LITOGRAFIA_AI_PROVIDER=openai
+LITOGRAFIA_AI_BASE_URL=https://api.openai.com/v1
+LITOGRAFIA_AI_MODEL=gpt-5.4-mini
+LITOGRAFIA_AI_IMAGE_BASE_URL=https://api.openai.com/v1
+LITOGRAFIA_AI_IMAGE_MODEL=gpt-image-1
+```
+
+Si quieres usar una sola clave para todo, también funciona:
+
+```env
+LITOGRAFIA_AI_API_KEY="TU_KEY_REAL"
+LITOGRAFIA_AI_IMAGE_API_KEY="TU_KEY_REAL"
+```
+
+## 14. Qué variable usa cada parte del sistema
 
 - Cotización IA de litografía: `LITOGRAFIA_AI_API_KEY`, `LITOGRAFIA_AI_MODEL`, `LITOGRAFIA_AI_PROVIDER`, opcional `LITOGRAFIA_AI_BASE_URL`.
 - Imágenes IA: `LITOGRAFIA_AI_IMAGE_API_KEY`, `LITOGRAFIA_AI_IMAGE_MODEL`, opcional `LITOGRAFIA_AI_IMAGE_BASE_URL`.
 - Fallback de compatibilidad adicional:
-  - si no existe `LITOGRAFIA_AI_IMAGE_API_KEY`, la ruta de imágenes intenta reutilizar `LITOGRAFIA_AI_API_KEY`;
-  - si no existe `LITOGRAFIA_AI_IMAGE_BASE_URL`, intenta reutilizar `LITOGRAFIA_AI_BASE_URL`.
+	- si no existe `LITOGRAFIA_AI_IMAGE_API_KEY`, la ruta de imágenes intenta reutilizar `LITOGRAFIA_AI_API_KEY`;
+	- si no existe `LITOGRAFIA_AI_IMAGE_BASE_URL`, intenta reutilizar `LITOGRAFIA_AI_BASE_URL`.
 
-## 12. Error conceptual más común
+## 15. Error conceptual más común
 
 El error más común es pensar esto:
 
@@ -273,7 +340,7 @@ No funciona así. Lo correcto es:
 - API key OpenAI-compatible para el servidor del cotizador.
 - motor determinista del ERP para precios y desglose final.
 
-## 13. Prueba E2E corta
+## 16. Prueba E2E corta
 
 La validación mínima útil de punta a punta es esta:
 

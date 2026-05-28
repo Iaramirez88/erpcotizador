@@ -4,10 +4,13 @@
 
 "use client"
 
+import Link from "next/link"
 import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
+import { ExternalLink } from "lucide-react"
 import { LitografiaAiAssistant } from "@/components/litografia/litografia-ai-assistant"
 import { LitografiaCalculator } from "@/components/litografia/litografia-calculator"
+import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { LitografiaAiHandoff } from "@/lib/litografia-ai-handoff"
 
@@ -25,9 +28,17 @@ export default function LitografiaPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Cotizador litográfico</h1>
-        <p className="text-muted-foreground">Alterna entre la configuración clásica y un ingreso asistido para interpretar briefs comerciales más rápido.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Cotizador litográfico</h1>
+          <p className="text-muted-foreground">Alterna entre la configuración clásica y un ingreso asistido para interpretar briefs comerciales más rápido.</p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/dashboard/litografia/imagenes-ia">
+            <ExternalLink className="mr-2 h-4 w-4" />
+            Módulo imágenes IA
+          </Link>
+        </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "clasico" | "ia")} className="space-y-4">

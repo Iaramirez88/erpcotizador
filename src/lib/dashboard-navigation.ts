@@ -47,6 +47,7 @@ export function sectionForDashboardHref(href: string): string {
     case '/dashboard/ordenes':
     case '/dashboard/litografia':
     case '/dashboard/litografia/auditoria-ia':
+    case '/dashboard/litografia/imagenes-ia':
     case '/dashboard/escaneos':
     case '/dashboard/productos':
       return 'Operaciones'
@@ -129,6 +130,7 @@ export function moduleForDashboardHref(href: string): string | null {
       return 'ORDENES'
     case '/dashboard/litografia':
     case '/dashboard/litografia/auditoria-ia':
+    case '/dashboard/litografia/imagenes-ia':
       return 'COTIZADOR'
     case '/dashboard/escaneos':
       return 'ESCANEOS'
@@ -223,6 +225,7 @@ export function buildDashboardNavDefinitions(t: (key: string) => string): Dashbo
     { name: 'Chat global', href: '/dashboard/chat' },
     { name: t('nav.orders'), href: '/dashboard/ordenes' },
     { name: t('nav.printshop'), href: '/dashboard/litografia' },
+    { name: 'Imágenes IA', href: '/dashboard/litografia/imagenes-ia' },
     { name: 'Auditoría IA', href: '/dashboard/litografia/auditoria-ia' },
     { name: t('nav.scans'), href: '/dashboard/escaneos' },
     { name: t('nav.products'), href: '/dashboard/productos' },

@@ -1,7 +1,8 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useState } from "react"
-import { Sparkles, LoaderCircle, ClipboardCopy, ArrowRight, History, ImagePlus } from "lucide-react"
+import { Sparkles, LoaderCircle, ClipboardCopy, ArrowRight, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -96,31 +97,6 @@ type LitografiaAiPricing = {
   externalBenchmark: ExternalBenchmarkResult
 }
 
-type AiHistoryEntry = {
-  id: string
-  kind: "LITOGRAFIA_QUOTE" | "IMAGE_GENERATION"
-  prompt: string
-  createdAt: string
-  actorLabel: string | null
-  summary: string | null
-  responseText: string | null
-  asset: {
-    name: string
-    path: string
-    url: string
-  } | null
-}
-
-type GeneratedImageResult = {
-  previewDataUrl: string
-  revisedPrompt: string | null
-  file: {
-    name: string
-    path: string
-    url: string | null
-  } | null
-}
-
 type AssistantQuoteReply = {
   title: string
   message: string
@@ -159,11 +135,6 @@ export function LitografiaAiAssistant(props: {
   const [pricing, setPricing] = useState<LitografiaAiPricing | null>(null)
   const [handoff, setHandoff] = useState<LitografiaAiHandoff | null>(null)
   const [assistantReply, setAssistantReply] = useState<AssistantQuoteReply | null>(null)
-  const [history, setHistory] = useState<AiHistoryEntry[]>([])
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [imagePrompt, setImagePrompt] = useState("")
-  const [imageLoading, setImageLoading] = useState(false)
-  const [generatedImage, setGeneratedImage] = useState<GeneratedImageResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -186,28 +157,6 @@ export function LitografiaAiAssistant(props: {
     setError(null)
     setCopied(false)
   }, [props.initialBrief, props.openToken])
-
-  const loadHistory = async () => {
-    setHistoryLoading(true)
-    try {
-      const res = await fetch("/api/litografia/ia/imagenes", { cache: "no-store" })
-      const json = (await res.json().catch(() => null)) as { ok?: boolean; history?: AiHistoryEntry[]; error?: string } | null
-
-      if (!res.ok || !json?.ok || !Array.isArray(json.history)) {
-        throw new Error(json?.error || "No se pudo cargar el historial IA.")
-      }
-
-      setHistory(json.history)
-    } catch {
-      setHistory([])
-    } finally {
-      setHistoryLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    void loadHistory()
-  }, [])
 
   const handleAnalyze = async () => {
     setLoading(true)
@@ -233,7 +182,6 @@ export function LitografiaAiAssistant(props: {
       setPricing(json.pricing ?? null)
       setHandoff(json.handoff ?? null)
       setAssistantReply(json.assistantReply ?? null)
-      await loadHistory()
     } catch (analysisError) {
       setResult(null)
       setConnection(null)
@@ -243,31 +191,6 @@ export function LitografiaAiAssistant(props: {
       setError(analysisError instanceof Error ? analysisError.message : "Error inesperado analizando el brief.")
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleGenerateImage = async () => {
-    setImageLoading(true)
-    setError(null)
-    try {
-      const res = await fetch("/api/litografia/ia/imagenes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: (imagePrompt || brief).trim(), size: "1024x1024", quality: "high" }),
-      })
-
-      const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; image?: GeneratedImageResult | null } | null
-      if (!res.ok || !json?.ok || !json.image) {
-        throw new Error(json?.error || "No fue posible generar la imagen.")
-      }
-
-      setGeneratedImage(json.image)
-      await loadHistory()
-    } catch (imageError) {
-      setGeneratedImage(null)
-      setError(imageError instanceof Error ? imageError.message : "Error generando la imagen.")
-    } finally {
-      setImageLoading(false)
     }
   }
 
@@ -359,9 +282,17 @@ export function LitografiaAiAssistant(props: {
       <div className="space-y-5 overflow-y-auto pr-1">
       <Card className="border-slate-200 shadow-sm">
         <CardHeader className="space-y-3">
-          <div className="flex items-center gap-2 text-slate-700">
-            <Sparkles className="h-5 w-5" />
-            <CardTitle className="text-xl">Cotice con IA</CardTitle>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-center gap-2 text-slate-700">
+              <Sparkles className="h-5 w-5" />
+              <CardTitle className="text-xl">Cotice con IA</CardTitle>
+            </div>
+            <Button asChild type="button" variant="outline" size="sm">
+              <Link href="/dashboard/litografia/imagenes-ia">
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Ir a imágenes IA
+              </Link>
+            </Button>
           </div>
           <CardDescription>
             Describe el trabajo como lo pediría el cliente. La lectura se resume para pasar rápido a la cotización final.
@@ -398,74 +329,6 @@ export function LitografiaAiAssistant(props: {
           {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
         </CardContent>
       </Card>
-
-      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader>
-            <div className="flex items-center gap-2 text-slate-700">
-              <ImagePlus className="h-5 w-5" />
-              <CardTitle className="text-lg">ChatGPT para imágenes</CardTitle>
-            </div>
-            <CardDescription>
-              Genera una imagen con IA y la guarda automáticamente en el administrador de archivos bajo IA/chatgpt-imagenes.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="litografia-ai-image-prompt">Prompt para imagen</Label>
-              <Textarea
-                id="litografia-ai-image-prompt"
-                value={imagePrompt}
-                onChange={(event) => setImagePrompt(event.target.value)}
-                className="min-h-28"
-                placeholder="Ejemplo: mockup fotográfico de brochure corporativo premium sobre escritorio, iluminación natural, estilo realista"
-              />
-            </div>
-            <Button type="button" variant="outline" onClick={handleGenerateImage} disabled={imageLoading || (imagePrompt || brief).trim().length < 12}>
-              {imageLoading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <ImagePlus className="mr-2 h-4 w-4" />}
-              Generar y guardar imagen
-            </Button>
-
-            {generatedImage ? (
-              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-                  <img src={generatedImage.previewDataUrl} alt="Imagen generada con IA" className="max-h-80 w-full object-contain" />
-                </div>
-                {generatedImage.revisedPrompt ? <p className="text-sm text-slate-700">Prompt revisado: {generatedImage.revisedPrompt}</p> : null}
-                {generatedImage.file ? <p className="text-sm text-slate-700">Guardada en: {generatedImage.file.path}</p> : null}
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader>
-            <div className="flex items-center gap-2 text-slate-700">
-              <History className="h-5 w-5" />
-              <CardTitle className="text-lg">Historial IA</CardTitle>
-            </div>
-            <CardDescription>
-              Consultas de cotización y prompts de imágenes recientes, con rastro del usuario y del archivo generado cuando aplica.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {historyLoading ? <p className="text-sm text-muted-foreground">Cargando historial...</p> : null}
-            {!historyLoading && !history.length ? <p className="text-sm text-muted-foreground">Aún no hay actividad IA registrada.</p> : null}
-            {history.slice(0, 6).map((entry) => (
-              <div key={entry.id} className="rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="font-medium text-slate-900">{entry.kind === "IMAGE_GENERATION" ? "Imagen" : "Cotización"}</p>
-                  <span className="text-xs text-slate-500">{new Date(entry.createdAt).toLocaleString("es-CO")}</span>
-                </div>
-                <p className="mt-1 line-clamp-3">{entry.prompt}</p>
-                {entry.summary ? <p className="mt-2 text-xs text-slate-500">{entry.summary}</p> : null}
-                {entry.asset?.path ? <p className="mt-2 text-xs text-slate-500">Archivo: {entry.asset.path}</p> : null}
-                {entry.actorLabel ? <p className="mt-1 text-xs text-slate-500">Usuario: {entry.actorLabel}</p> : null}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
 
       {result ? (
         <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">

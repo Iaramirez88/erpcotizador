@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "509da611-6fa7-4b0e-b67a-623914701824",
+      "createdAt": "2026-05-28T10:43:34.463Z",
+      "kind": "LITOGRAFIA_QUOTE",
+      "prompt": "Quiero 500 tarjetas de presentación 9x5 cm en propalcote 350 g, 4x4, laminado mate y esquinas redondeadas.",
+      "actorUserId": "cmnm6joq9000ibs7kui12j2em",
+      "actorLabel": "IVAN ANTONIO RAMIREZ CELEITA",
+      "summary": "TARJETA · 500 unidades · propalcote 350 g · 4 tintas · 9 x 5 cm · laminado mate",
+      "responseText": null,
+      "metadata": {
+        "quoteType": "TARJETA",
+        "confidence": "ALTA",
+        "missingFields": [
+          "entrega/transporte"
+        ],
+        "finishHints": {
+          "genericLabels": [],
+          "plastificadoLabel": null,
+          "troqueladoLabel": null,
+          "troqueladaLabel": null,
+          "corteLabel": null
+        },
+        "totalSuggested": null
+      },
+      "asset": null
+    },
+    {
+      "id": "88013ce2-d97f-4fa3-a32b-bf2ffabd2fcb",
+      "kind": "LITOGRAFIA_QUOTE",
+      "prompt": "Necesito cotizar 2.000 volantes tamaño media carta en propalcote 150 gramos, impresión full color por una cara y plastificado mate.",
+      "createdAt": "2026-05-26T21:48:12.318Z",
+      "actorUserId": "cmnm6joq9000ibs7kui12j2em",
+      "actorLabel": "IVAN ANTONIO RAMIREZ CELEITA",
+      "summary": "VOLANTE · 2000 unidades · propalcote 150 g · 4 tintas · 14 x 21.5 cm · plastificado mate",
+      "responseText": null,
+      "metadata": {
+        "quoteType": "VOLANTE",
+        "confidence": "ALTA",
+        "missingFields": [
+          "entrega/transporte"
+        ],
+        "finishHints": {
+          "genericLabels": [],
+          "plastificadoLabel": null,
+          "troqueladoLabel": null,
+          "troqueladaLabel": null,
+          "corteLabel": null
+        },
+        "totalSuggested": null
+      },
+      "asset": null
+    }
+  ]
+}
