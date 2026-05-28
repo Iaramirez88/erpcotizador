@@ -44,6 +44,15 @@ type LitografiaAiConnection = {
   model: string | null
 }
 
+type LitografiaAiKnowledgeSource = {
+  enabled: boolean
+  source: "default" | "custom"
+  updatedAt: string | null
+  updatedByLabel: string | null
+  label: string
+  description: string
+}
+
 type ConfiguredPriceSuggestion = {
   status: "MATCHED" | "PARTIAL" | "NO_MATCH"
   confidence: ConfidenceLevel
@@ -102,6 +111,17 @@ type AssistantQuoteReply = {
   message: string
   assumptions: string[]
   copyText: string
+}
+
+type LitografiaAiAnalyzeResponse = {
+  ok?: boolean
+  error?: string
+  data?: LitografiaAiResult
+  connection?: LitografiaAiConnection
+  knowledgeSource?: LitografiaAiKnowledgeSource | null
+  pricing?: LitografiaAiPricing
+  assistantReply?: AssistantQuoteReply | null
+  handoff?: LitografiaAiHandoff | null
 }
 
 const EXAMPLES = [
@@ -207,6 +227,37 @@ function getPricingSourceLabel(pricing: LitografiaAiPricing | null) {
   }
 }
 
+function getKnowledgeSourceLabel(knowledgeSource: LitografiaAiKnowledgeSource | null) {
+  if (!knowledgeSource?.enabled) {
+    return {
+      title: "Sin base JSON aplicada",
+      description: "Esta respuesta no reportó apoyo de la base de conocimiento JSON.",
+      tone: "slate",
+    }
+  }
+
+  if (knowledgeSource.source === "custom") {
+    return {
+      title: "Apoyado por entrenador JSON personalizado",
+      description: knowledgeSource.description,
+      tone: "violet",
+    }
+  }
+
+  return {
+    title: "Apoyado por JSON base por defecto",
+    description: knowledgeSource.description,
+    tone: "sky",
+  }
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return null
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return new Intl.DateTimeFormat("es-CO", { dateStyle: "medium", timeStyle: "short" }).format(parsed)
+}
+
 export function LitografiaAiAssistant(props: {
   onApplyToClassic?: (draft: LitografiaAiHandoff) => void
   initialBrief?: string
@@ -215,6 +266,7 @@ export function LitografiaAiAssistant(props: {
   const [brief, setBrief] = useState(EXAMPLES[0])
   const [result, setResult] = useState<LitografiaAiResult | null>(null)
   const [connection, setConnection] = useState<LitografiaAiConnection | null>(null)
+  const [knowledgeSource, setKnowledgeSource] = useState<LitografiaAiKnowledgeSource | null>(null)
   const [pricing, setPricing] = useState<LitografiaAiPricing | null>(null)
   const [handoff, setHandoff] = useState<LitografiaAiHandoff | null>(null)
   const [assistantReply, setAssistantReply] = useState<AssistantQuoteReply | null>(null)
@@ -234,6 +286,7 @@ export function LitografiaAiAssistant(props: {
     setBrief(seededBrief)
     setResult(null)
     setConnection(null)
+    setKnowledgeSource(null)
     setPricing(null)
     setHandoff(null)
     setAssistantReply(null)
@@ -252,9 +305,7 @@ export function LitografiaAiAssistant(props: {
         body: JSON.stringify({ brief }),
       })
 
-      const json = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: string; data?: LitografiaAiResult; connection?: LitografiaAiConnection; pricing?: LitografiaAiPricing; assistantReply?: AssistantQuoteReply | null; handoff?: LitografiaAiHandoff | null }
-        | null
+      const json = (await res.json().catch(() => null)) as LitografiaAiAnalyzeResponse | null
 
       if (!res.ok || !json?.ok || !json.data) {
         throw new Error(json?.error || "No fue posible analizar el requerimiento.")
@@ -262,12 +313,14 @@ export function LitografiaAiAssistant(props: {
 
       setResult(json.data)
       setConnection(json.connection ?? null)
+      setKnowledgeSource(json.knowledgeSource ?? null)
       setPricing(json.pricing ?? null)
       setHandoff(json.handoff ?? null)
       setAssistantReply(json.assistantReply ?? null)
     } catch (analysisError) {
       setResult(null)
       setConnection(null)
+      setKnowledgeSource(null)
       setPricing(null)
       setHandoff(null)
       setAssistantReply(null)
@@ -305,6 +358,8 @@ export function LitografiaAiAssistant(props: {
       props.onApplyToClassic(handoff)
       return
     }
+
+    if (!result) return
 
     props.onApplyToClassic({
       id: String(Date.now()),
@@ -371,6 +426,8 @@ export function LitografiaAiAssistant(props: {
 
   const analysisSource = result ? getAnalysisSourceLabel({ result, connection }) : null
   const pricingSource = result ? getPricingSourceLabel(pricing) : null
+  const knowledgeSourceLabel = result ? getKnowledgeSourceLabel(knowledgeSource) : null
+  const knowledgeUpdatedAt = formatDateTime(knowledgeSource?.updatedAt ?? null)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -426,15 +483,15 @@ export function LitografiaAiAssistant(props: {
       </Card>
 
       {result ? (
-        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="space-y-4">
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-lg">Resumen para cotizar</CardTitle>
-              <CardDescription>{result.summary}</CardDescription>
+              <CardTitle className="text-lg">Respuesta y origen de la consulta</CardTitle>
+              <CardDescription>Primero te mostramos la respuesta concreta y de dónde salió, antes del resto del detalle.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {analysisSource && pricingSource ? (
-                <div className="grid gap-3 lg:grid-cols-2">
+              {analysisSource && pricingSource && knowledgeSourceLabel ? (
+                <div className="grid gap-3 lg:grid-cols-3">
                   <div className={`rounded-xl border px-3 py-3 text-sm ${analysisSource.tone === "emerald" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
                     <p className="font-medium">{analysisSource.title}</p>
                     <p className="mt-1">{analysisSource.description}</p>
@@ -443,9 +500,33 @@ export function LitografiaAiAssistant(props: {
                     <p className="font-medium">{pricingSource.title}</p>
                     <p className="mt-1">{pricingSource.description}</p>
                   </div>
+                  <div className={`rounded-xl border px-3 py-3 text-sm ${knowledgeSourceLabel.tone === "violet" ? "border-violet-200 bg-violet-50 text-violet-950" : knowledgeSourceLabel.tone === "sky" ? "border-sky-200 bg-sky-50 text-sky-950" : "border-slate-200 bg-slate-50 text-slate-800"}`}>
+                    <p className="font-medium">{knowledgeSourceLabel.title}</p>
+                    <p className="mt-1">{knowledgeSourceLabel.description}</p>
+                    {knowledgeUpdatedAt ? <p className="mt-2 text-xs opacity-80">Actualizado: {knowledgeUpdatedAt}</p> : null}
+                    {knowledgeSource?.updatedByLabel ? <p className="mt-1 text-xs opacity-80">Por: {knowledgeSource.updatedByLabel}</p> : null}
+                  </div>
                 </div>
               ) : null}
 
+              {displayAssistantMessage ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-slate-900">Respuesta de la consulta</p>
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950 whitespace-pre-line">
+                    {displayAssistantMessage}
+                  </div>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+
+        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+          <Card className="border-slate-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">Resumen para cotizar</CardTitle>
+              <CardDescription>{result.summary}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {detectedFields.map((item) => (
                   <div key={`${item.label}-${item.value}`} className="rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
@@ -477,15 +558,6 @@ export function LitografiaAiAssistant(props: {
                         <p>{marketMin && marketMax ? `${marketMin} a ${marketMax}` : marketMin || marketMax}</p>
                       </div>
                     ) : null}
-                  </div>
-                </div>
-              ) : null}
-
-              {displayAssistantMessage ? (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-slate-900">Respuesta de la consulta</p>
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950 whitespace-pre-line">
-                    {displayAssistantMessage}
                   </div>
                 </div>
               ) : null}
@@ -568,6 +640,7 @@ export function LitografiaAiAssistant(props: {
               </CardContent>
             </Card>
           </div>
+        </div>
         </div>
       ) : null}
       </div>

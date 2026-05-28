@@ -281,6 +281,16 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
+    name: 'Conocimiento IA',
+    href: "/dashboard/litografia/conocimiento-ia",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12M6 12h12" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5h14v14H5z" />
+      </svg>
+    ),
+  },
+  {
     name: 'Auditoría IA',
     href: "/dashboard/litografia/auditoria-ia",
     icon: (

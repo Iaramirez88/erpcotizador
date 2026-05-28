@@ -225,6 +225,7 @@ export function buildDashboardNavDefinitions(t: (key: string) => string): Dashbo
     { name: 'Chat global', href: '/dashboard/chat' },
     { name: t('nav.orders'), href: '/dashboard/ordenes' },
     { name: t('nav.printshop'), href: '/dashboard/litografia' },
+    { name: 'Conocimiento IA', href: '/dashboard/litografia/conocimiento-ia' },
     { name: 'Imágenes IA', href: '/dashboard/litografia/imagenes-ia' },
     { name: 'Auditoría IA', href: '/dashboard/litografia/auditoria-ia' },
     { name: t('nav.scans'), href: '/dashboard/escaneos' },

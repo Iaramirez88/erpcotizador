@@ -56,7 +56,7 @@ async function readHistoryStore(empresaId: string): Promise<AiWorkspaceHistorySt
   try {
     const raw = await fs.readFile(filePath, 'utf8')
     const parsed = JSON.parse(raw) as Partial<AiWorkspaceHistoryStore>
-    const entries = Array.isArray(parsed.entries)
+    const entries: AiWorkspaceHistoryEntry[] = Array.isArray(parsed.entries)
       ? parsed.entries
           .filter((entry) => entry && typeof entry === 'object')
           .map((entry) => ({

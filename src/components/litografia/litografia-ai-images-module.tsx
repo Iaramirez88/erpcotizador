@@ -2,10 +2,10 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { ExternalLink, History, ImagePlus, LoaderCircle } from "lucide-react"
+import { Download, ExternalLink, History, ImagePlus, LoaderCircle, RefreshCw, Save } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
@@ -30,13 +30,15 @@ type AiHistoryEntry = {
 }
 
 type GeneratedImageResult = {
+  pendingId: string
   previewDataUrl: string
   revisedPrompt: string | null
-  file: {
-    name: string
-    path: string
-    url: string | null
-  } | null
+  responseText: string
+  source: {
+    provider: string
+    model: string
+    mode: "LLM"
+  }
 }
 
 type HistoryResponse = {
@@ -48,7 +50,19 @@ type HistoryResponse = {
 type ImageResponse = {
   ok?: boolean
   image?: GeneratedImageResult | null
+  saved?: {
+    name: string
+    path: string
+    url: string | null
+  } | null
+  responseText?: string
   error?: string
+}
+
+type SavedImageResult = {
+  name: string
+  path: string
+  url: string | null
 }
 
 const IMAGE_SIZE_OPTIONS: Array<{ value: ImageSize; label: string; hint: string }> = [
@@ -99,8 +113,12 @@ export function LitografiaAiImagesModule() {
   const [history, setHistory] = useState<AiHistoryEntry[]>([])
   const [selectedHistory, setSelectedHistory] = useState<AiHistoryEntry | null>(null)
   const [generatedImage, setGeneratedImage] = useState<GeneratedImageResult | null>(null)
+  const [savedImage, setSavedImage] = useState<SavedImageResult | null>(null)
   const [lastGeneratedConfig, setLastGeneratedConfig] = useState<{ size: ImageSize; quality: ImageQuality } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [generationModalOpen, setGenerationModalOpen] = useState(false)
+  const [approvalLoading, setApprovalLoading] = useState(false)
+  const [generationResponse, setGenerationResponse] = useState<string | null>(null)
 
   const historyCountLabel = useMemo(() => {
     if (historyLoading) return "Cargando historial..."
@@ -133,13 +151,17 @@ export function LitografiaAiImagesModule() {
   }, [])
 
   const handleGenerateImage = async () => {
+    setGenerationModalOpen(true)
     setLoading(true)
+    setApprovalLoading(false)
     setError(null)
+    setGenerationResponse(null)
+    setSavedImage(null)
     try {
       const response = await fetch("/api/litografia/ia/imagenes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: prompt.trim(), size: imageSize, quality: imageQuality }),
+        body: JSON.stringify({ action: "generate", prompt: prompt.trim(), size: imageSize, quality: imageQuality }),
       })
 
       const json = (await response.json().catch(() => null)) as ImageResponse | null
@@ -148,14 +170,56 @@ export function LitografiaAiImagesModule() {
       }
 
       setGeneratedImage(json.image)
+      setGenerationResponse(json.image.responseText)
       setLastGeneratedConfig({ size: imageSize, quality: imageQuality })
-      await loadHistory()
     } catch (imageError) {
       setGeneratedImage(null)
       setError(imageError instanceof Error ? imageError.message : "Error generando la imagen.")
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleApproveSave = async () => {
+    if (!generatedImage) return
+    setApprovalLoading(true)
+    setError(null)
+    try {
+      const response = await fetch("/api/litografia/ia/imagenes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save", pendingId: generatedImage.pendingId }),
+      })
+
+      const json = (await response.json().catch(() => null)) as ImageResponse | null
+      if (!response.ok || !json?.ok || !json.saved) {
+        throw new Error(json?.error || "No fue posible guardar la imagen en el administrador de archivos.")
+      }
+
+      setSavedImage(json.saved)
+      setGenerationResponse(json.responseText || "Imagen aprobada y guardada correctamente.")
+      await loadHistory()
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "No fue posible guardar la imagen.")
+    } finally {
+      setApprovalLoading(false)
+    }
+  }
+
+  const handleDownloadGenerated = () => {
+    if (!generatedImage) return
+    const anchor = document.createElement("a")
+    anchor.href = generatedImage.previewDataUrl
+    anchor.download = `${prompt.trim().slice(0, 48).replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "") || "imagen-ia"}.png`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  }
+
+  const handleRetryFromModal = async () => {
+    setGeneratedImage(null)
+    setSavedImage(null)
+    await handleGenerateImage()
   }
 
   return (
@@ -186,7 +250,7 @@ export function LitografiaAiImagesModule() {
             <CardTitle className="text-lg">Generador de imágenes</CardTitle>
           </div>
           <CardDescription>
-            Cada imagen se guarda automáticamente en el administrador de archivos dentro de IA/chatgpt-imagenes.
+            Genera primero una vista previa en modal, luego decide si la guardas en el administrador de archivos dentro de IA/chatgpt-imagenes.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -262,29 +326,30 @@ export function LitografiaAiImagesModule() {
           <div className="flex flex-wrap items-center gap-3">
             <Button type="button" onClick={handleGenerateImage} disabled={loading || prompt.trim().length < 12}>
               {loading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <ImagePlus className="mr-2 h-4 w-4" />}
-              Generar y guardar imagen
+              Generar imagen
             </Button>
             <p className="text-sm text-muted-foreground">{historyCountLabel}</p>
           </div>
 
           {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
 
-          {generatedImage ? (
+          {savedImage ? (
             <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
               <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-                <img src={generatedImage.previewDataUrl} alt="Imagen generada con IA" className="max-h-[28rem] w-full object-contain" />
+                <img src={generatedImage?.previewDataUrl || savedImage.url || ""} alt="Imagen generada con IA" className="max-h-[28rem] w-full object-contain" />
               </div>
               {lastGeneratedConfig ? (
                 <p className="text-sm text-slate-700">
                   Configuración usada: {lastGeneratedConfig.quality} · {IMAGE_SIZE_OPTIONS.find((option) => option.value === lastGeneratedConfig.size)?.label ?? lastGeneratedConfig.size}
                 </p>
               ) : null}
-              {generatedImage.revisedPrompt ? <p className="text-sm text-slate-700">Prompt revisado: {generatedImage.revisedPrompt}</p> : null}
-              {generatedImage.file ? (
+              {generationResponse ? <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">{generationResponse}</p> : null}
+              {generatedImage?.revisedPrompt ? <p className="text-sm text-slate-700">Prompt revisado: {generatedImage.revisedPrompt}</p> : null}
+              {savedImage ? (
                 <div className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
-                  <span>Guardada en: {generatedImage.file.path}</span>
+                  <span>Guardada en: {savedImage.path}</span>
                   <Button asChild size="sm" variant="outline">
-                    <Link href={`/dashboard/crm/archivos?path=${encodeURIComponent("ia/chatgpt-imagenes")}&preview=${encodeURIComponent(generatedImage.file.path)}`}>
+                    <Link href={`/dashboard/crm/archivos?path=${encodeURIComponent("IA/chatgpt-imagenes")}&preview=${encodeURIComponent(savedImage.path)}`}>
                       Ver en administrador
                     </Link>
                   </Button>
@@ -386,7 +451,7 @@ export function LitografiaAiImagesModule() {
                       <p className="font-medium text-slate-900">Archivo asociado</p>
                       <p className="rounded-xl border border-slate-200 bg-white p-3">{selectedHistory.asset.path}</p>
                       <Button asChild variant="outline" size="sm">
-                        <Link href={`/dashboard/crm/archivos?path=${encodeURIComponent("ia/chatgpt-imagenes")}&preview=${encodeURIComponent(selectedHistory.asset.path)}`}>
+                        <Link href={`/dashboard/crm/archivos?path=${encodeURIComponent("IA/chatgpt-imagenes")}&preview=${encodeURIComponent(selectedHistory.asset.path)}`}>
                           Abrir en administrador de archivos
                         </Link>
                       </Button>
@@ -396,6 +461,119 @@ export function LitografiaAiImagesModule() {
               )}
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={generationModalOpen}
+        onOpenChange={(open) => {
+          if (loading || approvalLoading) return
+          setGenerationModalOpen(open)
+        }}
+      >
+        <DialogContent hideClose={loading || approvalLoading} className="max-h-[92vh] max-w-6xl overflow-hidden border-slate-800 bg-slate-950 text-white">
+          <DialogHeader className="space-y-2 border-b border-slate-800 pb-4 text-left">
+            <DialogTitle className="text-xl text-white">{loading ? "Generando imagen" : savedImage ? "Imagen lista y guardada" : "Revisión de imagen generada"}</DialogTitle>
+            <p className="text-sm text-slate-300">
+              {loading
+                ? "Estamos procesando tu prompt con IA. Cuando termine verás la vista previa aquí mismo antes de guardarla."
+                : generationResponse || "Revisa el resultado, descárgalo si quieres y apruébalo para guardarlo en archivos."}
+            </p>
+          </DialogHeader>
+
+          <div className="overflow-y-auto py-4">
+            {loading ? (
+              <div className="flex min-h-[60vh] flex-col items-center justify-center gap-5 rounded-3xl border border-slate-800 bg-black/40 px-6 text-center">
+                <LoaderCircle className="h-14 w-14 animate-spin text-white" />
+                <div className="space-y-2">
+                  <p className="text-2xl font-semibold text-white">Generando imagen...</p>
+                  <p className="max-w-2xl text-sm text-slate-300">La pantalla queda en foco sobre el resultado. No se guardará nada hasta que la apruebes.</p>
+                </div>
+              </div>
+            ) : generatedImage ? (
+              <div className="space-y-4">
+                <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+                  <div className="overflow-hidden rounded-3xl border border-slate-800 bg-white p-3">
+                    <img src={generatedImage.previewDataUrl} alt="Vista previa de imagen IA" className="max-h-[68vh] w-full rounded-2xl object-contain" />
+                  </div>
+                  <div className="space-y-4 rounded-3xl border border-slate-800 bg-slate-900/90 p-4 text-sm text-slate-200">
+                    <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-300">Origen de la respuesta</p>
+                      <p className="mt-2 text-base font-medium text-white">IA real</p>
+                      <p className="mt-1">Proveedor: {generatedImage.source.provider}</p>
+                      <p>Modelo: {generatedImage.source.model}</p>
+                    </div>
+
+                    {lastGeneratedConfig ? (
+                      <div className="rounded-2xl border border-slate-700 bg-slate-950/70 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Configuración usada</p>
+                        <p className="mt-2 text-white">{IMAGE_QUALITY_OPTIONS.find((option) => option.value === lastGeneratedConfig.quality)?.label} · {IMAGE_SIZE_OPTIONS.find((option) => option.value === lastGeneratedConfig.size)?.label}</p>
+                      </div>
+                    ) : null}
+
+                    <div className="rounded-2xl border border-slate-700 bg-slate-950/70 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Respuesta concreta</p>
+                      <p className="mt-2 whitespace-pre-line text-slate-100">{generationResponse}</p>
+                    </div>
+
+                    {generatedImage.revisedPrompt ? (
+                      <div className="rounded-2xl border border-slate-700 bg-slate-950/70 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Prompt revisado</p>
+                        <p className="mt-2 whitespace-pre-line text-slate-100">{generatedImage.revisedPrompt}</p>
+                      </div>
+                    ) : null}
+
+                    {savedImage ? (
+                      <div className="rounded-2xl border border-sky-500/30 bg-sky-500/10 p-4 text-sky-50">
+                        <p className="font-medium">Guardada correctamente</p>
+                        <p className="mt-1 text-sm">Ruta: {savedImage.path}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex min-h-[40vh] items-center justify-center rounded-3xl border border-dashed border-slate-700 bg-black/30 px-6 text-center text-sm text-slate-400">
+                No se pudo preparar una vista previa. Ajusta el prompt y vuelve a intentarlo.
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="border-t border-slate-800 pt-4 sm:justify-between sm:space-x-0">
+            <div className="flex flex-wrap gap-2">
+              {generatedImage ? (
+                <Button type="button" variant="outline" className="border-slate-700 bg-slate-900 text-white hover:bg-slate-800" onClick={handleDownloadGenerated} disabled={loading || approvalLoading}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Descargar
+                </Button>
+              ) : null}
+              {savedImage ? (
+                <Button asChild type="button" variant="outline" className="border-slate-700 bg-slate-900 text-white hover:bg-slate-800">
+                  <Link href={`/dashboard/crm/archivos?path=${encodeURIComponent("IA/chatgpt-imagenes")}&preview=${encodeURIComponent(savedImage.path)}`}>
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Abrir en archivos
+                  </Link>
+                </Button>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" className="border-slate-700 bg-slate-900 text-white hover:bg-slate-800" onClick={() => setGenerationModalOpen(false)} disabled={loading || approvalLoading}>
+                Cerrar
+              </Button>
+              {generatedImage && !savedImage ? (
+                <Button type="button" variant="outline" className="border-slate-700 bg-slate-900 text-white hover:bg-slate-800" onClick={() => void handleRetryFromModal()} disabled={loading || approvalLoading}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Volver a intentarlo
+                </Button>
+              ) : null}
+              {generatedImage && !savedImage ? (
+                <Button type="button" className="bg-white text-slate-950 hover:bg-slate-200" onClick={handleApproveSave} disabled={loading || approvalLoading}>
+                  {approvalLoading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Aprobar para guardar
+                </Button>
+              ) : null}
+            </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

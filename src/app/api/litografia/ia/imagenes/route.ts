@@ -4,15 +4,24 @@ import { z } from 'zod'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { appendAiWorkspaceHistory, listAiWorkspaceHistory } from '@/lib/ai-workspace-history'
 import { uploadCrmFiles } from '@/lib/crm-files'
+import { createPendingLitografiaAiImage, deletePendingLitografiaAiImage, readPendingLitografiaAiImage } from '@/lib/litografia-ai-pending-images'
 import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
 
-const requestSchema = z.object({
+const generateSchema = z.object({
+  action: z.literal('generate').optional(),
   prompt: z.string().trim().min(12, 'Escribe un prompt más específico para generar la imagen.'),
   size: z.enum(['1024x1024', '1024x1536', '1536x1024']).optional(),
   quality: z.enum(['low', 'medium', 'high', 'auto']).optional(),
 })
+
+const saveSchema = z.object({
+  action: z.literal('save'),
+  pendingId: z.string().trim().min(1, 'No se encontró la imagen pendiente por guardar.'),
+})
+
+const AI_IMAGES_FOLDER = 'IA/chatgpt-imagenes'
 
 function getImageConfig() {
   const apiKey = String(process.env.LITOGRAFIA_AI_IMAGE_API_KEY || process.env.LITOGRAFIA_AI_API_KEY || process.env.LLM_API_KEY || '').trim()
@@ -59,13 +68,88 @@ export async function POST(request: NextRequest) {
     if (!access.ok) return access.response
 
     const body = await request.json().catch(() => null)
-    const parsed = requestSchema.safeParse(body)
-    if (!parsed.success) {
-      return NextResponse.json({ ok: false, error: parsed.error.issues[0]?.message || 'Body inválido.' }, { status: 400 })
-    }
+    const requestedAction = typeof body?.action === 'string' ? body.action : 'generate'
 
     const empresaId = await getEmpresaIdFromSedeId(access.sedeId)
     if (!empresaId) return NextResponse.json({ ok: false, error: 'Empresa no encontrada.' }, { status: 404 })
+
+    if (requestedAction === 'save') {
+      const parsedSave = saveSchema.safeParse(body)
+      if (!parsedSave.success) {
+        return NextResponse.json({ ok: false, error: parsedSave.error.issues[0]?.message || 'Body inválido.' }, { status: 400 })
+      }
+
+      const pending = await readPendingLitografiaAiImage({ empresaId, pendingId: parsedSave.data.pendingId })
+      if (!pending) {
+        return NextResponse.json({ ok: false, error: 'La imagen pendiente expiró o ya no existe. Genera una nueva versión.' }, { status: 404 })
+      }
+
+      const bytes = Buffer.from(pending.base64, 'base64')
+      const fileSlug = pending.prompt
+        .slice(0, 48)
+        .trim()
+        .replace(/[^a-zA-Z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'imagen'
+
+      const uploaded = await uploadCrmFiles({
+        empresaId,
+        currentPath: AI_IMAGES_FOLDER,
+        actor: { userId: access.userId, label: access.session.user.name || access.session.user.email || 'Usuario interno' },
+        files: [{
+          name: `${fileSlug}.png`,
+          type: 'image/png',
+          size: bytes.byteLength,
+          bytes,
+        }],
+      })
+
+      const saved = uploaded[0] ?? null
+      await appendAiWorkspaceHistory({
+        empresaId,
+        entry: {
+          kind: 'IMAGE_GENERATION',
+          prompt: pending.prompt,
+          actorUserId: access.userId,
+          actorLabel: access.session.user.name || access.session.user.email || 'Usuario interno',
+          summary: pending.revisedPrompt || 'Imagen generada con IA',
+          responseText: `Imagen generada por ${pending.provider} con ${pending.model} y aprobada para guardarse en ${saved?.path || AI_IMAGES_FOLDER}.`,
+          metadata: {
+            provider: pending.provider,
+            model: pending.model,
+            size: pending.size,
+            quality: pending.quality,
+            status: 'APPROVED_AND_SAVED',
+          },
+          asset: saved
+            ? {
+                name: saved.name,
+                path: saved.path,
+                url: saved.url || '',
+                mimeType: saved.mimeType,
+                sizeBytes: saved.sizeBytes,
+              }
+            : null,
+        },
+      })
+      await deletePendingLitografiaAiImage({ empresaId, pendingId: pending.id })
+
+      return NextResponse.json({
+        ok: true,
+        saved: saved
+          ? {
+              name: saved.name,
+              path: saved.path,
+              url: saved.url,
+            }
+          : null,
+        responseText: `Imagen aprobada y guardada en ${saved?.path || AI_IMAGES_FOLDER}.`,
+      })
+    }
+
+    const parsed = generateSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ ok: false, error: parsed.error.issues[0]?.message || 'Body inválido.' }, { status: 400 })
+    }
 
     const config = getImageConfig()
     if (!config.enabled) {
@@ -115,65 +199,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'La imagen generada llegó sin contenido utilizable.' }, { status: 400 })
     }
 
-    const fileSlug = parsed.data.prompt
-      .slice(0, 48)
-      .trim()
-      .replace(/[^a-zA-Z0-9]+/g, '-')
-      .replace(/^-|-$/g, '') || 'imagen'
-    const uploaded = await uploadCrmFiles({
+    const pending = await createPendingLitografiaAiImage({
       empresaId,
-      currentPath: 'ia/chatgpt-imagenes',
-      actor: { userId: access.userId, label: access.session.user.name || access.session.user.email || 'Usuario interno' },
-      files: [{
-        name: `${fileSlug}.png`,
-        type: 'image/png',
-        size: bytes.byteLength,
-        bytes,
-      }],
+      prompt: parsed.data.prompt,
+      revisedPrompt: imageItem.revised_prompt || null,
+      size: parsed.data.size || '1024x1024',
+      quality: parsed.data.quality || 'auto',
+      provider: config.baseUrl.includes('openai.com') ? 'OpenAI' : 'Proveedor OpenAI-compatible',
+      model: config.model,
+      mimeType: 'image/png',
+      base64: bytes.toString('base64'),
     })
-
-    const saved = uploaded[0] ?? null
     const previewDataUrl = `data:image/png;base64,${bytes.toString('base64')}`
-    const historyEntry = await appendAiWorkspaceHistory({
-      empresaId,
-      entry: {
-        kind: 'IMAGE_GENERATION',
-        prompt: parsed.data.prompt,
-        actorUserId: access.userId,
-        actorLabel: access.session.user.name || access.session.user.email || 'Usuario interno',
-        summary: imageItem.revised_prompt || 'Imagen generada con IA',
-        responseText: null,
-        metadata: {
-          model: config.model,
-          size: parsed.data.size || '1024x1024',
-          quality: parsed.data.quality || 'auto',
-        },
-        asset: saved
-          ? {
-              name: saved.name,
-              path: saved.path,
-              url: saved.url || '',
-              mimeType: saved.mimeType,
-              sizeBytes: saved.sizeBytes,
-            }
-          : null,
-      },
-    })
 
     return NextResponse.json({
       ok: true,
       image: {
+        pendingId: pending.id,
         previewDataUrl,
         revisedPrompt: imageItem.revised_prompt || null,
-        file: saved
-          ? {
-              name: saved.name,
-              path: saved.path,
-              url: saved.url,
-            }
-          : null,
+        responseText: `Imagen generada por ${pending.provider} con ${config.model}. Revísala y apruébala si quieres guardarla en ${AI_IMAGES_FOLDER}.`,
+        source: {
+          provider: pending.provider,
+          model: config.model,
+          mode: 'LLM',
+        },
       },
-      historyEntry,
     })
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'Error generando la imagen.' }, { status: 500 })

@@ -3,9 +3,10 @@ import { ModuleKey } from '@prisma/client'
 import { z } from 'zod'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { appendAiWorkspaceHistory } from '@/lib/ai-workspace-history'
+import { buildLitografiaKnowledgePromptContext, readLitografiaAiKnowledge } from '@/lib/litografia-ai-knowledge'
 import type { LitografiaAiHandoff } from '@/lib/litografia-ai-handoff'
 import { prisma } from '@/lib/prisma'
-import { analyzeLitografiaBrief, getLitografiaAiConnectionStatus, type ConfidenceLevel, type LitografiaCatalogContext } from '@/lib/litografia-ai'
+import { analyzeLitografiaBrief, analyzeLitografiaBriefWithRules, getLitografiaAiConnectionStatus, type ConfidenceLevel, type LitografiaCatalogContext } from '@/lib/litografia-ai'
 import { computeLitografia } from '@/lib/litografia'
 
 export const runtime = 'nodejs'
@@ -66,6 +67,15 @@ type AssistantQuoteReply = {
   message: string
   assumptions: string[]
   copyText: string
+}
+
+type KnowledgeSourceDescriptor = {
+  enabled: boolean
+  source: 'default' | 'custom'
+  updatedAt: string | null
+  updatedByLabel: string | null
+  label: string
+  description: string
 }
 
 type LitografiaAiFinishHints = NonNullable<LitografiaAiHandoff['finishHints']>
@@ -899,7 +909,24 @@ export async function POST(request: NextRequest) {
       loadCatalogContext(empresaId),
       loadPricingContext(empresaId),
     ])
-    const data = await analyzeLitografiaBrief(parsedBody.data.brief, catalog)
+    const knowledgeStore = await readLitografiaAiKnowledge(empresaId)
+    const rulesAnalysis = analyzeLitografiaBriefWithRules(parsedBody.data.brief)
+    const knowledgeContext = buildLitografiaKnowledgePromptContext({
+      document: knowledgeStore.document,
+      brief: parsedBody.data.brief,
+      extracted: rulesAnalysis.extracted,
+    })
+    const knowledgeSource: KnowledgeSourceDescriptor = {
+      enabled: true,
+      source: knowledgeStore.source,
+      updatedAt: knowledgeStore.updatedAt || null,
+      updatedByLabel: knowledgeStore.updatedByLabel || null,
+      label: knowledgeStore.source === 'custom' ? 'Conocimiento desde JSON personalizado' : 'Conocimiento desde JSON base por defecto',
+      description: knowledgeStore.source === 'custom'
+        ? 'La interpretación también recibió apoyo de la base de conocimiento cargada o editada para esta empresa.'
+        : 'La interpretación también recibió apoyo de la base de conocimiento base del JSON litográfico.',
+    }
+    const data = await analyzeLitografiaBrief(parsedBody.data.brief, catalog, knowledgeContext)
     const connection = getLitografiaAiConnectionStatus()
     const configuredSuggestion = matchConfiguredPrice({ analysis: data, catalog })
     const finishCandidates = getFinishCandidatesForHandoff({
@@ -949,6 +976,7 @@ export async function POST(request: NextRequest) {
           missingFields: data.missingFields,
           finishHints: handoff.finishHints,
           totalSuggested: costBreakdown.totalSuggested,
+          knowledgeSource,
         },
         asset: null,
       },
@@ -958,6 +986,7 @@ export async function POST(request: NextRequest) {
       ok: true,
       data,
       connection,
+      knowledgeSource,
       assistantReply,
       handoff,
       pricing: {

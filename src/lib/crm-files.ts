@@ -382,6 +382,16 @@ function ensureIndexEntry(index: CrmFilesIndex, entryPath: string, kind: 'folder
   return created
 }
 
+function ensureFolderEntries(index: CrmFilesIndex, segments: string[], actor?: CrmFilesActor) {
+  for (let indexPosition = 0; indexPosition < segments.length; indexPosition += 1) {
+    const folderPath = joinClientPath(segments.slice(0, indexPosition + 1))
+    const metadata = ensureIndexEntry(index, folderPath, 'folder', actor)
+    if (!metadata.auditTrail.length) {
+      appendAudit(metadata, 'CREATED', actor, `Carpeta creada por ${actor?.label || 'usuario interno'}.`)
+    }
+  }
+}
+
 function buildExternalProviderLabel(provider: CrmExternalFileProvider | null | undefined) {
   if (provider === 'GOOGLE_DRIVE') return 'Google Drive'
   if (provider === 'ONEDRIVE') return 'OneDrive'
@@ -754,6 +764,7 @@ export async function uploadCrmFiles(args: {
   const currentSegments = normalizeCrmFilesPath(args.currentPath)
   const directory = getAbsolutePathForSegments(root, currentSegments)
   await fs.mkdir(directory, { recursive: true })
+  ensureFolderEntries(index, currentSegments, args.actor)
   const tree = await buildFolderTree({ root, index })
   const visibleFolderPaths = collectVisibleFolderPaths(tree || { name: '/', path: '', children: [] })
   const usage = await walkUsage({ root, empresaId: args.empresaId, index, visibleFolderPaths })

@@ -316,7 +316,11 @@ export function analyzeLitografiaBriefWithRules(brief: string): LitografiaAiResu
   }
 }
 
-export async function analyzeLitografiaBrief(brief: string, catalogContext?: LitografiaCatalogContext): Promise<LitografiaAiResult> {
+export async function analyzeLitografiaBrief(
+  brief: string,
+  catalogContext?: LitografiaCatalogContext,
+  knowledgeContext?: unknown,
+): Promise<LitografiaAiResult> {
   const baseAnalysis = analyzeLitografiaBriefWithRules(brief)
   const config = getOpenAiCompatibleConfig()
 
@@ -336,7 +340,7 @@ export async function analyzeLitografiaBrief(brief: string, catalogContext?: Lit
           {
             role: 'system',
             content:
-              'Eres un analista comercial senior para cotización litográfica en Colombia. Tu trabajo no es dar precio ni inventar datos; debes estructurar el brief, detectar vacíos y devolver solo JSON válido. Usa centímetros, cantidades enteras, tintas solo 1, 2 o 4. Si un dato no está claro, devuelve null y agrégalo a missingFields y questions.',
+              'Eres un analista comercial senior para cotizacion litografica en Colombia. Tu trabajo no es dar precio ni inventar datos; debes estructurar el brief, detectar vacios y devolver solo JSON valido. Usa centimetros, cantidades enteras, tintas solo 1, 2 o 4. Si un dato no esta claro, devuelve null y agregalo a missingFields y questions. Si llega knowledgeContext, usalo solo como apoyo comercial y operativo; no reemplaza las tarifas exactas del ERP.',
           },
           {
             role: 'user',
@@ -344,6 +348,7 @@ export async function analyzeLitografiaBrief(brief: string, catalogContext?: Lit
               brief,
               baseline: baseAnalysis,
               catalogContext: catalogContext ?? null,
+              knowledgeContext: knowledgeContext ?? null,
               instructions: {
                 output: 'Devuelve exclusivamente un objeto JSON con: summary, confidence, quoteType, extracted, missingFields, questions, nextStep.',
                 constraints: [
