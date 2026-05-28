@@ -254,27 +254,49 @@ function buildAssistantQuoteReply(args: {
   costBreakdown: CostBreakdown
 }): AssistantQuoteReply | null {
   const { analysis, configuredSuggestion, costBreakdown } = args
+  const productLabel = analysis.extracted.producto ?? analysis.quoteType.toLowerCase()
+  const quantityLabel = analysis.extracted.cantidad ? formatInt(analysis.extracted.cantidad) : null
+  const sizeLabel = costBreakdown.sizeLabel
+    ?? configuredSuggestion.matchedSize
+    ?? (analysis.extracted.anchoCm && analysis.extracted.altoCm
+      ? `${analysis.extracted.anchoCm} x ${analysis.extracted.altoCm} cm`
+      : 'tamaño por confirmar')
+  const materialLabel = configuredSuggestion.matchedPaper ?? analysis.extracted.material ?? costBreakdown.paperName ?? 'material por confirmar'
+  const finishLabel = configuredSuggestion.matchedFinish ?? analysis.extracted.acabado ?? 'acabado por confirmar'
+  const tintasLabel = analysis.extracted.tintas ? `${analysis.extracted.tintas}x${analysis.extracted.tintas}` : 'tintas por confirmar'
+  const machineLabel = costBreakdown.machineName ?? 'máquina pendiente por definir'
+  const missingSummary = analysis.questions.length
+    ? analysis.questions.slice(0, 3).join(' ')
+    : analysis.missingFields.length
+      ? `Falta confirmar: ${analysis.missingFields.slice(0, 4).join(', ')}.`
+      : 'No hay faltantes críticos reportados por la lectura actual.'
+  const detectedSummary = [
+    quantityLabel ? `Cantidad: ${quantityLabel}` : null,
+    `Producto: ${String(productLabel).toLowerCase()}`,
+    `Tamaño: ${sizeLabel}`,
+    `Material: ${materialLabel}`,
+    `Tintas: ${tintasLabel}`,
+    finishLabel ? `Acabado: ${finishLabel}` : null,
+  ].filter((line): line is string => Boolean(line))
+
   if (
     configuredSuggestion.status === 'MATCHED'
     && configuredSuggestion.total != null
     && configuredSuggestion.unitPrice != null
     && analysis.extracted.cantidad
   ) {
-    const productLabel = analysis.extracted.producto ?? analysis.quoteType.toLowerCase()
-    const sizeLabel = configuredSuggestion.matchedSize
-      ?? (analysis.extracted.anchoCm && analysis.extracted.altoCm
-        ? `${analysis.extracted.anchoCm} x ${analysis.extracted.altoCm} cm`
-        : 'tamaño por confirmar')
-    const materialLabel = configuredSuggestion.matchedPaper ?? analysis.extracted.material ?? 'material por confirmar'
-    const finishLabel = configuredSuggestion.matchedFinish ?? analysis.extracted.acabado ?? 'sin acabado adicional detectado'
     const title = `Cotización exacta según tarifa configurada para ${formatInt(analysis.extracted.cantidad)} ${String(productLabel).toLowerCase()}${analysis.extracted.cantidad === 1 ? '' : 's'}`
     const message = [
       `${title}.`,
       `Se encontró una coincidencia vigente en la configuración del ERP para ${sizeLabel}, ${materialLabel} y ${finishLabel}.`,
       '',
+      'Datos tomados para la respuesta:',
+      ...detectedSummary,
+      '',
       `Total cotizado: ${formatCopCurrency(configuredSuggestion.total)}`,
       `Valor unitario: ${formatCopCurrency(configuredSuggestion.unitPrice)}`,
       configuredSuggestion.reasoning.length ? `Base de la coincidencia: ${configuredSuggestion.reasoning.join(' ')}` : null,
+      missingSummary,
       analysis.nextStep,
     ].filter((line): line is string => Boolean(line)).join('\n')
 
@@ -286,27 +308,24 @@ function buildAssistantQuoteReply(args: {
     }
   }
 
-  if (!costBreakdown.totalSuggested || !analysis.extracted.cantidad) return null
-
-  const sizeLabel = costBreakdown.sizeLabel ?? (analysis.extracted.anchoCm && analysis.extracted.altoCm
-    ? `${analysis.extracted.anchoCm} x ${analysis.extracted.altoCm} cm`
-    : 'tamaño por confirmar')
-  const materialLabel = analysis.extracted.material ?? costBreakdown.paperName ?? 'material por confirmar'
-  const productLabel = analysis.extracted.producto ?? analysis.quoteType.toLowerCase()
-  const tintasLabel = analysis.extracted.tintas ? `${analysis.extracted.tintas}x${analysis.extracted.tintas}` : null
   const finishedLabels = costBreakdown.lines
     .map((line) => line.label)
     .filter((label) => !/^papel\b/i.test(label) && !/^planchas/i.test(label) && !/^impresi[oó]n\b/i.test(label) && !/^entrega\b/i.test(label))
-  const finishSummary = finishedLabels.length ? finishedLabels.join(', ') : 'sin terminados adicionales detectados'
+  const finishSummary = finishedLabels.length ? finishedLabels.join(', ') : finishLabel
 
   const assumptionSet = new Set<string>()
-  if (tintasLabel) assumptionSet.add(`Se asumió impresión ${tintasLabel}.`)
+  if (tintasLabel && tintasLabel !== 'tintas por confirmar') assumptionSet.add(`Se asumió impresión ${tintasLabel}.`)
   for (const note of costBreakdown.notes) assumptionSet.add(note)
   if (!analysis.extracted.acabado && !finishedLabels.length) {
     assumptionSet.add('No se detectó un terminado claro distinto al texto libre del brief.')
   }
+  if (!analysis.extracted.cantidad) assumptionSet.add('La cantidad exacta no está confirmada; cualquier valor total debe tomarse como referencia y no como cierre final.')
+  if (!analysis.extracted.material) assumptionSet.add('El material no está completamente definido; se toma el papel más probable o una referencia operativa.')
+  if (!analysis.extracted.anchoCm || !analysis.extracted.altoCm) assumptionSet.add('El tamaño final no está completamente definido; la imposición y el rendimiento pueden cambiar al confirmarlo.')
 
-  const title = `Cotización preliminar para ${formatInt(analysis.extracted.cantidad)} ${String(productLabel).toLowerCase()}${analysis.extracted.cantidad === 1 ? '' : 's'}`
+  const title = quantityLabel
+    ? `Cotización preliminar para ${quantityLabel} ${String(productLabel).toLowerCase()}${analysis.extracted.cantidad === 1 ? '' : 's'}`
+    : `Estimación preliminar para ${String(productLabel).toLowerCase()}`
   const intro = `${title} en ${sizeLabel}, ${materialLabel}, ${finishSummary}.`
   const lines = costBreakdown.lines.map((line) => {
     const amount = formatCopCurrency(line.amount)
@@ -316,24 +335,41 @@ function buildAssistantQuoteReply(args: {
   const utilityLine = costBreakdown.utility != null ? `Utilidad ${DEFAULT_MARGIN_PCT}%: ${formatCopCurrency(costBreakdown.utility)}` : null
   const subtotalLine = costBreakdown.subtotalBeforeIva != null ? `Subtotal: ${formatCopCurrency(costBreakdown.subtotalBeforeIva)}` : null
   const ivaLine = costBreakdown.ivaValue != null ? `IVA ${costBreakdown.ivaPct}%: ${formatCopCurrency(costBreakdown.ivaValue)}` : null
-  const totalLine = `Total final: ${formatCopCurrency(costBreakdown.totalSuggested)}`
+  const totalLine = costBreakdown.totalSuggested != null ? `Total final estimado: ${formatCopCurrency(costBreakdown.totalSuggested)}` : null
   const unitLine = costBreakdown.unitPriceWithIva != null ? `Valor unitario final aproximado: ${formatCopCurrency(costBreakdown.unitPriceWithIva)}` : null
   const assumptions = Array.from(assumptionSet)
   const assumptionsLine = assumptions.length
     ? `Supuestos usados: ${assumptions.join(' ')}`
     : null
+  const pricingStatusLine = configuredSuggestion.status === 'PARTIAL'
+    ? `Hallazgo ERP: hubo coincidencias parciales (${configuredSuggestion.reasoning.join(' ')}).`
+    : configuredSuggestion.status === 'NO_MATCH'
+      ? 'Hallazgo ERP: no hubo una coincidencia tarifaria exacta, así que se armó la mejor referencia posible con el motor interno.'
+      : null
+
+  const responseGuidance = [
+    costBreakdown.paperSheet ? `Papel base analizado: ${materialLabel} sobre pliego ${costBreakdown.paperSheet}.` : `Papel base analizado: ${materialLabel}.`,
+    `Perfil de producción tomado: ${machineLabel}.`,
+    missingSummary,
+  ]
 
   const message = [
     intro,
     '',
-    'Costo base estimado:',
+    'Datos tomados para la respuesta:',
+    ...detectedSummary,
+    '',
+    lines.length ? 'Costo base estimado:' : 'Costo base estimado: todavía no se pudo cerrar un total, pero sí una lectura operativa útil.',
     ...lines,
     utilityLine,
     subtotalLine,
     ivaLine,
     totalLine,
     unitLine,
+    pricingStatusLine,
+    ...responseGuidance,
     assumptionsLine,
+    `Siguiente paso recomendado: ${analysis.nextStep}`,
   ].filter((line): line is string => Boolean(line)).join('\n')
 
   return {
