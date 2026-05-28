@@ -1,8 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
-import { Sparkles, LoaderCircle, ClipboardCopy, ArrowRight, ExternalLink } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { Sparkles, LoaderCircle, ClipboardCopy, ArrowRight, ExternalLink, MessageSquareText, SendHorizonal } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -124,6 +124,13 @@ type LitografiaAiAnalyzeResponse = {
   handoff?: LitografiaAiHandoff | null
 }
 
+type LitografiaAiConversationMessage = {
+  id: string
+  role: "user" | "assistant"
+  content: string
+  meta?: string[]
+}
+
 const EXAMPLES = [
   "Necesito cotizar 2.000 volantes tamaño media carta en propalcote 150 gramos, impresión full color por una cara y plastificado mate.",
   "Quiero 500 tarjetas de presentación 9x5 cm en propalcote 350 g, 4x4, laminado mate y esquinas redondeadas.",
@@ -176,6 +183,57 @@ function buildAssistantFallbackMessage(args: {
     openQuestions,
     `Siguiente paso: ${result.nextStep}`,
   ].filter(Boolean).join("\n")
+}
+
+function buildDisplayAssistantMessage(args: {
+  result: LitografiaAiResult
+  pricing: LitografiaAiPricing | null
+  assistantReply: AssistantQuoteReply | null
+  formatter: Intl.NumberFormat
+}) {
+  const estimatedTotal = args.pricing ? formatMoney(args.pricing.configuredSuggestion.total, args.formatter) : null
+  const estimatedUnit = args.pricing ? formatMoney(args.pricing.configuredSuggestion.unitPrice, args.formatter) : null
+  const detectedFields = [
+    compactField("Trabajo", args.result.extracted.producto || args.result.quoteType),
+    compactField("Cantidad", args.result.extracted.cantidad),
+    compactField(
+      args.result.extracted.paginas ? "Formato final" : "Tamaño final",
+      args.result.extracted.anchoCm && args.result.extracted.altoCm
+        ? `${args.result.extracted.anchoCm} x ${args.result.extracted.altoCm} cm`
+        : null,
+    ),
+    args.result.extracted.paginas ? compactField("Páginas", args.result.extracted.paginas) : null,
+    compactField("Material", args.result.extracted.material),
+    compactField("Acabado", args.result.extracted.acabado),
+    compactField("Entrega", args.result.extracted.entrega),
+  ].filter((item): item is { label: string; value: string } => Boolean(item))
+
+  return args.assistantReply?.message || buildAssistantFallbackMessage({
+    result: args.result,
+    detectedFields,
+    estimatedTotal,
+    estimatedUnit,
+  })
+}
+
+function buildConversationMeta(args: {
+  result: LitografiaAiResult
+  pricing: LitografiaAiPricing | null
+  knowledgeSource: LitografiaAiKnowledgeSource | null
+}) {
+  const origin = args.result.engine.mode === "LLM" ? "IA" : "Reglas internas"
+  const pricingOrigin = args.pricing?.configuredSuggestion.status === "MATCHED"
+    ? "Tarifa ERP exacta"
+    : args.pricing?.costBreakdown.status === "AVAILABLE"
+      ? "Cálculo interno"
+      : "Referencia parcial"
+  const knowledgeOrigin = args.knowledgeSource?.enabled
+    ? args.knowledgeSource.source === "custom"
+      ? "JSON personalizado"
+      : "JSON base"
+    : "Sin JSON"
+
+  return [origin, pricingOrigin, knowledgeOrigin]
 }
 
 function getAnalysisSourceLabel(args: { result: LitografiaAiResult; connection: LitografiaAiConnection | null }) {
@@ -258,11 +316,16 @@ function formatDateTime(value: string | null) {
   return new Intl.DateTimeFormat("es-CO", { dateStyle: "medium", timeStyle: "short" }).format(parsed)
 }
 
+function getConversationMessageLabel(role: "user" | "assistant") {
+  return role === "user" ? "Tú" : "Asistente IA"
+}
+
 export function LitografiaAiAssistant(props: {
   onApplyToClassic?: (draft: LitografiaAiHandoff) => void
   initialBrief?: string
   openToken?: string | number
 }) {
+  const conversationViewportRef = useRef<HTMLDivElement | null>(null)
   const [brief, setBrief] = useState(EXAMPLES[0])
   const [result, setResult] = useState<LitografiaAiResult | null>(null)
   const [connection, setConnection] = useState<LitografiaAiConnection | null>(null)
@@ -270,6 +333,8 @@ export function LitografiaAiAssistant(props: {
   const [pricing, setPricing] = useState<LitografiaAiPricing | null>(null)
   const [handoff, setHandoff] = useState<LitografiaAiHandoff | null>(null)
   const [assistantReply, setAssistantReply] = useState<AssistantQuoteReply | null>(null)
+  const [conversationMessages, setConversationMessages] = useState<LitografiaAiConversationMessage[]>([])
+  const [followUp, setFollowUp] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -290,19 +355,31 @@ export function LitografiaAiAssistant(props: {
     setPricing(null)
     setHandoff(null)
     setAssistantReply(null)
+    setConversationMessages([])
+    setFollowUp("")
     setError(null)
     setCopied(false)
   }, [props.initialBrief, props.openToken])
 
-  const handleAnalyze = async () => {
+  useEffect(() => {
+    const viewport = conversationViewportRef.current
+    if (!viewport) return
+    viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" })
+  }, [conversationMessages, loading])
+
+  const submitAnalysis = async (args: { userMessage: string; resetConversation?: boolean }) => {
     setLoading(true)
     setError(null)
     setCopied(false)
     try {
+      const nextConversation = args.resetConversation
+        ? []
+        : conversationMessages.map((message) => ({ role: message.role, content: message.content }))
+
       const res = await fetch("/api/litografia/ia/cotizar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief }),
+        body: JSON.stringify({ brief: args.userMessage, conversation: nextConversation }),
       })
 
       const json = (await res.json().catch(() => null)) as LitografiaAiAnalyzeResponse | null
@@ -317,17 +394,57 @@ export function LitografiaAiAssistant(props: {
       setPricing(json.pricing ?? null)
       setHandoff(json.handoff ?? null)
       setAssistantReply(json.assistantReply ?? null)
+      const assistantMessage = buildDisplayAssistantMessage({
+        result: json.data,
+        pricing: json.pricing ?? null,
+        assistantReply: json.assistantReply ?? null,
+        formatter: currencyFormatter,
+      })
+      const assistantMeta = buildConversationMeta({
+        result: json.data,
+        pricing: json.pricing ?? null,
+        knowledgeSource: json.knowledgeSource ?? null,
+      })
+      setConversationMessages((current) => {
+        const base = args.resetConversation ? [] : current
+        return [
+          ...base,
+          { id: `${Date.now()}-user`, role: "user", content: args.userMessage },
+          { id: `${Date.now()}-assistant`, role: "assistant", content: assistantMessage, meta: assistantMeta },
+        ]
+      })
+      setFollowUp("")
     } catch (analysisError) {
-      setResult(null)
-      setConnection(null)
-      setKnowledgeSource(null)
-      setPricing(null)
-      setHandoff(null)
-      setAssistantReply(null)
+      if (args.resetConversation) {
+        setResult(null)
+        setConnection(null)
+        setKnowledgeSource(null)
+        setPricing(null)
+        setHandoff(null)
+        setAssistantReply(null)
+        setConversationMessages([])
+      }
       setError(analysisError instanceof Error ? analysisError.message : "Error inesperado analizando el brief.")
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleAnalyze = async () => {
+    await submitAnalysis({ userMessage: brief.trim(), resetConversation: true })
+  }
+
+  const handleSendFollowUp = async () => {
+    const message = followUp.trim()
+    if (message.length < 3) return
+    await submitAnalysis({ userMessage: message, resetConversation: false })
+  }
+
+  const handleFollowUpKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.shiftKey) return
+    event.preventDefault()
+    if (loading || followUp.trim().length < 3 || !conversationMessages.length) return
+    void handleSendFollowUp()
   }
 
   const handleCopy = async () => {
@@ -416,11 +533,11 @@ export function LitografiaAiAssistant(props: {
     : "Pasar a cotización final"
 
   const displayAssistantMessage = result
-    ? assistantReply?.message || buildAssistantFallbackMessage({
+    ? buildDisplayAssistantMessage({
         result,
-        detectedFields,
-        estimatedTotal,
-        estimatedUnit,
+        pricing,
+        assistantReply,
+        formatter: currencyFormatter,
       })
     : null
 
@@ -517,6 +634,69 @@ export function LitografiaAiAssistant(props: {
                   </div>
                 </div>
               ) : null}
+            </CardContent>
+          </Card>
+
+          <Card className="overflow-hidden border-slate-200 shadow-sm">
+            <CardHeader>
+              <div className="flex items-center gap-2 text-slate-800">
+                <MessageSquareText className="h-5 w-5" />
+                <CardTitle className="text-lg">Conversación del requerimiento</CardTitle>
+              </div>
+              <CardDescription>Mantén el hilo de este requerimiento para refinar materiales, cantidades, soluciones posibles y escenarios alternos.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-0 p-0">
+              <div className="border-t border-slate-200 bg-[linear-gradient(180deg,#f8fafc_0%,#eef7f3_100%)] px-4 py-4 sm:px-5">
+                <div ref={conversationViewportRef} className="max-h-[34rem] space-y-4 overflow-y-auto pr-1">
+                  {conversationMessages.map((message) => (
+                    <div key={message.id} className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                      {message.role === "assistant" ? <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-emerald-900 text-xs font-semibold text-white shadow-sm">IA</div> : null}
+                      <div className={`max-w-[90%] space-y-2 ${message.role === "user" ? "items-end" : "items-start"}`}>
+                        <div className={`text-xs font-medium ${message.role === "user" ? "text-right text-slate-500" : "text-slate-600"}`}>
+                          {getConversationMessageLabel(message.role)}
+                        </div>
+                        <div className={`rounded-[24px] px-4 py-3 text-sm leading-6 shadow-sm ${message.role === "user" ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-800"}`}>
+                          <p className="whitespace-pre-line">{message.content}</p>
+                          {message.meta?.length ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {message.meta.map((item) => (
+                                <span
+                                  key={`${message.id}-${item}`}
+                                  className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${message.role === "user" ? "bg-white/10 text-slate-100" : "border border-slate-200 bg-slate-50 text-slate-600"}`}
+                                >
+                                  {item}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                      {message.role === "user" ? <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-slate-200 text-xs font-semibold text-slate-700 shadow-sm">Tú</div> : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="border-t border-slate-200 bg-white px-4 py-4 sm:px-5">
+                <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-3 shadow-sm">
+                  <Label htmlFor="litografia-ai-follow-up" className="sr-only">Seguir conversación</Label>
+                  <Textarea
+                    id="litografia-ai-follow-up"
+                    value={followUp}
+                    onChange={(event) => setFollowUp(event.target.value)}
+                    onKeyDown={handleFollowUpKeyDown}
+                    className="min-h-[104px] resize-none border-0 bg-transparent px-2 py-2 text-sm shadow-none focus-visible:ring-0"
+                    placeholder="Escribe como si siguieras hablando con el asistente: pide una opción más económica, agrega un acabado, pregunta qué falta o solicita dos soluciones posibles."
+                  />
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
+                    <p className="text-sm text-slate-500">El hilo mantiene el contexto de este requerimiento mientras sigas dentro de esta conversación. Enter envía y Shift+Enter hace salto de línea.</p>
+                    <Button type="button" onClick={handleSendFollowUp} disabled={loading || followUp.trim().length < 3 || !conversationMessages.length} className="rounded-2xl px-5">
+                      {loading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <SendHorizonal className="mr-2 h-4 w-4" />}
+                      Enviar
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
 

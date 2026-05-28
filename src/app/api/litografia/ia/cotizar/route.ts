@@ -11,8 +11,22 @@ import { computeLitografia } from '@/lib/litografia'
 
 export const runtime = 'nodejs'
 
+const conversationMessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string().trim().min(1, 'Cada mensaje del hilo debe tener contenido.'),
+})
+
 const requestSchema = z.object({
-  brief: z.string().trim().min(20, 'Describe mejor el trabajo para que la IA lo pueda interpretar.'),
+  brief: z.string().trim().min(3, 'Escribe un mensaje más claro para continuar la conversación.'),
+  conversation: z.array(conversationMessageSchema).max(24).optional(),
+}).superRefine((value, ctx) => {
+  if ((!value.conversation || !value.conversation.length) && value.brief.trim().length < 20) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['brief'],
+      message: 'Describe mejor el trabajo para que la IA lo pueda interpretar.',
+    })
+  }
 })
 
 type ConfiguredPriceSuggestion = {
@@ -76,6 +90,17 @@ type KnowledgeSourceDescriptor = {
   updatedByLabel: string | null
   label: string
   description: string
+}
+
+function buildConversationBrief(brief: string, conversation: Array<{ role: 'user' | 'assistant'; content: string }> = []) {
+  const userMessages = conversation
+    .filter((message) => message.role === 'user')
+    .map((message) => message.content.trim())
+    .filter(Boolean)
+
+  const latestBrief = brief.trim()
+  const allMessages = [...userMessages, latestBrief].filter(Boolean)
+  return Array.from(new Set(allMessages)).join('\n')
 }
 
 type LitografiaAiFinishHints = NonNullable<LitografiaAiHandoff['finishHints']>
@@ -945,11 +970,12 @@ export async function POST(request: NextRequest) {
       loadCatalogContext(empresaId),
       loadPricingContext(empresaId),
     ])
+    const effectiveBrief = buildConversationBrief(parsedBody.data.brief, parsedBody.data.conversation ?? [])
     const knowledgeStore = await readLitografiaAiKnowledge(empresaId)
-    const rulesAnalysis = analyzeLitografiaBriefWithRules(parsedBody.data.brief)
+    const rulesAnalysis = analyzeLitografiaBriefWithRules(effectiveBrief)
     const knowledgeContext = buildLitografiaKnowledgePromptContext({
       document: knowledgeStore.document,
-      brief: parsedBody.data.brief,
+      brief: effectiveBrief,
       extracted: rulesAnalysis.extracted,
     })
     const knowledgeSource: KnowledgeSourceDescriptor = {
@@ -962,7 +988,7 @@ export async function POST(request: NextRequest) {
         ? 'La interpretación también recibió apoyo de la base de conocimiento cargada o editada para esta empresa.'
         : 'La interpretación también recibió apoyo de la base de conocimiento base del JSON litográfico.',
     }
-    const data = await analyzeLitografiaBrief(parsedBody.data.brief, catalog, knowledgeContext)
+    const data = await analyzeLitografiaBrief(effectiveBrief, catalog, knowledgeContext)
     const connection = getLitografiaAiConnectionStatus()
     const configuredSuggestion = matchConfiguredPrice({ analysis: data, catalog })
     const finishCandidates = getFinishCandidatesForHandoff({
@@ -972,19 +998,19 @@ export async function POST(request: NextRequest) {
     })
     const matchedTransport = findTransportOption(pricingContext.transportOptions, data.extracted.entrega)
     const costBreakdown = buildCostBreakdown({
-      brief: parsedBody.data.brief,
+      brief: effectiveBrief,
       analysis: data,
       catalog,
       profiles: pricingContext.profiles,
       transportOptions: pricingContext.transportOptions,
     })
     const externalBenchmark = await fetchExternalBenchmark({
-      brief: parsedBody.data.brief,
+      brief: effectiveBrief,
       analysis: data,
       configuredSuggestion,
     })
     const assistantReply = buildAssistantQuoteReply({
-      brief: parsedBody.data.brief,
+      brief: effectiveBrief,
       analysis: data,
       configuredSuggestion,
       costBreakdown,
@@ -1012,6 +1038,7 @@ export async function POST(request: NextRequest) {
           missingFields: data.missingFields,
           finishHints: handoff.finishHints,
           totalSuggested: costBreakdown.totalSuggested,
+          conversationTurns: (parsedBody.data.conversation?.length ?? 0) + 1,
           knowledgeSource,
         },
         asset: null,
