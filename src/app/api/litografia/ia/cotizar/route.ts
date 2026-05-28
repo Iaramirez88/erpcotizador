@@ -240,9 +240,42 @@ function formatInt(value: number | null | undefined) {
 function buildAssistantQuoteReply(args: {
   brief: string
   analysis: Awaited<ReturnType<typeof analyzeLitografiaBrief>>
+  configuredSuggestion: ConfiguredPriceSuggestion
   costBreakdown: CostBreakdown
 }): AssistantQuoteReply | null {
-  const { analysis, costBreakdown } = args
+  const { analysis, configuredSuggestion, costBreakdown } = args
+  if (
+    configuredSuggestion.status === 'MATCHED'
+    && configuredSuggestion.total != null
+    && configuredSuggestion.unitPrice != null
+    && analysis.extracted.cantidad
+  ) {
+    const productLabel = analysis.extracted.producto ?? analysis.quoteType.toLowerCase()
+    const sizeLabel = configuredSuggestion.matchedSize
+      ?? (analysis.extracted.anchoCm && analysis.extracted.altoCm
+        ? `${analysis.extracted.anchoCm} x ${analysis.extracted.altoCm} cm`
+        : 'tamaño por confirmar')
+    const materialLabel = configuredSuggestion.matchedPaper ?? analysis.extracted.material ?? 'material por confirmar'
+    const finishLabel = configuredSuggestion.matchedFinish ?? analysis.extracted.acabado ?? 'sin acabado adicional detectado'
+    const title = `Cotización exacta según tarifa configurada para ${formatInt(analysis.extracted.cantidad)} ${String(productLabel).toLowerCase()}${analysis.extracted.cantidad === 1 ? '' : 's'}`
+    const message = [
+      `${title}.`,
+      `Se encontró una coincidencia vigente en la configuración del ERP para ${sizeLabel}, ${materialLabel} y ${finishLabel}.`,
+      '',
+      `Total cotizado: ${formatCopCurrency(configuredSuggestion.total)}`,
+      `Valor unitario: ${formatCopCurrency(configuredSuggestion.unitPrice)}`,
+      configuredSuggestion.reasoning.length ? `Base de la coincidencia: ${configuredSuggestion.reasoning.join(' ')}` : null,
+      analysis.nextStep,
+    ].filter((line): line is string => Boolean(line)).join('\n')
+
+    return {
+      title,
+      message,
+      assumptions: configuredSuggestion.reasoning,
+      copyText: message,
+    }
+  }
+
   if (!costBreakdown.totalSuggested || !analysis.extracted.cantidad) return null
 
   const sizeLabel = costBreakdown.sizeLabel ?? (analysis.extracted.anchoCm && analysis.extracted.altoCm
@@ -890,6 +923,7 @@ export async function POST(request: NextRequest) {
     const assistantReply = buildAssistantQuoteReply({
       brief: parsedBody.data.brief,
       analysis: data,
+      configuredSuggestion,
       costBreakdown,
     })
     const handoff = buildLitografiaAiHandoff({

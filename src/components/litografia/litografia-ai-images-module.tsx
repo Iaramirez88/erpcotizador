@@ -7,7 +7,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+
+type ImageQuality = "low" | "medium" | "high" | "auto"
+
+type ImageSize = "1024x1024" | "1024x1536" | "1536x1024"
 
 type AiHistoryEntry = {
   id: string
@@ -46,6 +51,38 @@ type ImageResponse = {
   error?: string
 }
 
+const IMAGE_SIZE_OPTIONS: Array<{ value: ImageSize; label: string; hint: string }> = [
+  { value: "1024x1024", label: "Cuadrada 1024x1024", hint: "Ideal para logos, mockups simples y piezas de redes." },
+  { value: "1024x1536", label: "Vertical 1024x1536", hint: "Mejor para afiches, portadas y piezas publicitarias altas." },
+  { value: "1536x1024", label: "Horizontal 1536x1024", hint: "Útil para banners, cabeceras y escenas panorámicas." },
+]
+
+const IMAGE_QUALITY_OPTIONS: Array<{ value: ImageQuality; label: string; hint: string }> = [
+  { value: "low", label: "Baja", hint: "Borrador rápido y costo menor." },
+  { value: "medium", label: "Media", hint: "Balance recomendado para trabajo diario." },
+  { value: "high", label: "Alta", hint: "Más detalle, pero mayor costo por intento." },
+  { value: "auto", label: "Auto", hint: "Deja que el proveedor ajuste calidad según el caso." },
+]
+
+const QUALITY_COST_HINTS: Record<ImageQuality, { range: string; note: string }> = {
+  low: { range: "USD 0.01 a 0.03", note: "Úsala para explorar ideas sin gastar de más." },
+  medium: { range: "USD 0.04 a 0.08", note: "Buena relación costo/calidad para la mayoría de consultas." },
+  high: { range: "USD 0.15 a 0.20", note: "Conviene cuando el prompt ya está bien afinado." },
+  auto: { range: "USD 0.05 a 0.12", note: "El costo final depende de cómo resuelva el proveedor." },
+}
+
+const PROMPT_RECOMMENDATIONS = [
+  "Define el tipo de pieza: logo, mockup, portada, banner o empaque.",
+  "Indica estilo visual: minimalista, corporativo, realista, premium, editorial o infantil.",
+  "Especifica colores y restricciones: verdes y azules, sin mascotas caricaturescas, fondo blanco, etc.",
+  "Aclara composición y uso final: centrado, icono con texto, formato vertical, pensado para impresión o redes.",
+]
+
+function getSizeCostNote(size: ImageSize) {
+  if (size === "1024x1024") return "Referencia pensada para una imagen cuadrada estándar."
+  return "Los formatos vertical y horizontal pueden subir un poco el costo frente a la opción cuadrada."
+}
+
 function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "Sin fecha"
@@ -54,12 +91,15 @@ function formatDate(value: string) {
 
 export function LitografiaAiImagesModule() {
   const [prompt, setPrompt] = useState("")
+  const [imageQuality, setImageQuality] = useState<ImageQuality>("medium")
+  const [imageSize, setImageSize] = useState<ImageSize>("1024x1024")
   const [loading, setLoading] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [history, setHistory] = useState<AiHistoryEntry[]>([])
   const [selectedHistory, setSelectedHistory] = useState<AiHistoryEntry | null>(null)
   const [generatedImage, setGeneratedImage] = useState<GeneratedImageResult | null>(null)
+  const [lastGeneratedConfig, setLastGeneratedConfig] = useState<{ size: ImageSize; quality: ImageQuality } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const historyCountLabel = useMemo(() => {
@@ -67,6 +107,9 @@ export function LitografiaAiImagesModule() {
     if (!history.length) return "Sin consultas registradas"
     return `${history.length} registros recientes`
   }, [history, historyLoading])
+
+  const selectedQualityHint = QUALITY_COST_HINTS[imageQuality]
+  const selectedSizeLabel = IMAGE_SIZE_OPTIONS.find((option) => option.value === imageSize)?.label ?? imageSize
 
   const loadHistory = async () => {
     setHistoryLoading(true)
@@ -96,7 +139,7 @@ export function LitografiaAiImagesModule() {
       const response = await fetch("/api/litografia/ia/imagenes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: prompt.trim(), size: "1024x1024", quality: "high" }),
+        body: JSON.stringify({ prompt: prompt.trim(), size: imageSize, quality: imageQuality }),
       })
 
       const json = (await response.json().catch(() => null)) as ImageResponse | null
@@ -105,6 +148,7 @@ export function LitografiaAiImagesModule() {
       }
 
       setGeneratedImage(json.image)
+      setLastGeneratedConfig({ size: imageSize, quality: imageQuality })
       await loadHistory()
     } catch (imageError) {
       setGeneratedImage(null)
@@ -155,6 +199,64 @@ export function LitografiaAiImagesModule() {
               className="min-h-32"
               placeholder="Ejemplo: mockup fotográfico de brochure corporativo premium sobre escritorio, iluminación natural, estilo realista"
             />
+            <p className="text-xs text-slate-500">
+              Ejemplo sólido: logo profesional para veterinaria, colores verde y azul, símbolo limpio con huella y cruz médica, tipografía moderna, fondo blanco, estilo corporativo, sin caricatura.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Calidad de imagen</Label>
+              <Select value={imageQuality} onValueChange={(value) => setImageQuality(value as ImageQuality)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona calidad" />
+                </SelectTrigger>
+                <SelectContent>
+                  {IMAGE_QUALITY_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">{IMAGE_QUALITY_OPTIONS.find((option) => option.value === imageQuality)?.hint}</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Tamaño final</Label>
+              <Select value={imageSize} onValueChange={(value) => setImageSize(value as ImageSize)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona tamaño" />
+                </SelectTrigger>
+                <SelectContent>
+                  {IMAGE_SIZE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">{IMAGE_SIZE_OPTIONS.find((option) => option.value === imageSize)?.hint}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+              <p className="font-medium">Costo estimado por intento</p>
+              <p className="mt-1 text-lg font-semibold">{selectedQualityHint.range}</p>
+              <p className="mt-1 text-xs text-amber-900">{selectedQualityHint.note}</p>
+              <p className="mt-1 text-xs text-amber-900">{getSizeCostNote(imageSize)}</p>
+              <p className="mt-2 text-xs text-amber-900">Referencia orientativa para OpenAI Platform; el valor real depende de la tarifa vigente y del procesamiento aplicado.</p>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <p className="font-medium text-slate-900">Cómo pedir mejores imágenes y evitar varios intentos</p>
+              <div className="mt-3 space-y-2">
+                {PROMPT_RECOMMENDATIONS.map((recommendation) => (
+                  <p key={recommendation}>{recommendation}</p>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -172,6 +274,11 @@ export function LitografiaAiImagesModule() {
               <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
                 <img src={generatedImage.previewDataUrl} alt="Imagen generada con IA" className="max-h-[28rem] w-full object-contain" />
               </div>
+              {lastGeneratedConfig ? (
+                <p className="text-sm text-slate-700">
+                  Configuración usada: {lastGeneratedConfig.quality} · {IMAGE_SIZE_OPTIONS.find((option) => option.value === lastGeneratedConfig.size)?.label ?? lastGeneratedConfig.size}
+                </p>
+              ) : null}
               {generatedImage.revisedPrompt ? <p className="text-sm text-slate-700">Prompt revisado: {generatedImage.revisedPrompt}</p> : null}
               {generatedImage.file ? (
                 <div className="flex flex-wrap items-center gap-2 text-sm text-slate-700">

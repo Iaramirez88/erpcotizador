@@ -124,6 +124,89 @@ function formatMoney(value: number | null, formatter: Intl.NumberFormat) {
   return value != null ? formatter.format(value) : null
 }
 
+function buildAssistantFallbackMessage(args: {
+  result: LitografiaAiResult
+  detectedFields: Array<{ label: string; value: string }>
+  estimatedTotal: string | null
+  estimatedUnit: string | null
+}) {
+  const { result, detectedFields, estimatedTotal, estimatedUnit } = args
+  const detectedSummary = detectedFields.length
+    ? detectedFields.map((item) => `${item.label}: ${item.value}`).join("\n")
+    : "No se detectaron suficientes datos estructurados en el brief."
+
+  const openQuestions = result.questions.length
+    ? result.questions.join(" ")
+    : result.missingFields.length
+      ? `Falta confirmar: ${result.missingFields.join(", ")}.`
+      : "El brief ya trae suficientes datos para pasar al siguiente paso."
+
+  const guideValues = [
+    estimatedTotal ? `Valor guía total: ${estimatedTotal}` : null,
+    estimatedUnit ? `Valor guía unitario: ${estimatedUnit}` : null,
+  ].filter((item): item is string => Boolean(item))
+
+  return [
+    result.summary,
+    "",
+    "Datos detectados:",
+    detectedSummary,
+    "",
+    ...guideValues,
+    openQuestions,
+    `Siguiente paso: ${result.nextStep}`,
+  ].filter(Boolean).join("\n")
+}
+
+function getAnalysisSourceLabel(args: { result: LitografiaAiResult; connection: LitografiaAiConnection | null }) {
+  if (args.result.engine.mode === "LLM") {
+    const modelLabel = args.result.engine.model || args.connection?.model || "modelo configurado"
+    return {
+      title: "Interpretación hecha por IA",
+      description: `El brief se procesó con ${args.result.engine.provider} usando ${modelLabel}.`,
+      tone: "emerald",
+    }
+  }
+
+  return {
+    title: "Interpretación hecha por reglas internas",
+    description: "El sistema respondió con la preconfiguración interna del ERP porque no usó un modelo externo para esta lectura.",
+    tone: "amber",
+  }
+}
+
+function getPricingSourceLabel(pricing: LitografiaAiPricing | null) {
+  if (!pricing) {
+    return {
+      title: "Sin valores configurados cargados",
+      description: "La consulta no devolvió una coincidencia de valores preconfigurados en esta ejecución.",
+      tone: "slate",
+    }
+  }
+
+  if (pricing.configuredSuggestion.status === "MATCHED") {
+    return {
+      title: "Valores tomados de configuraciones del sistema",
+      description: "La respuesta encontró coincidencia en tarifas o configuraciones predefinidas del ERP.",
+      tone: "emerald",
+    }
+  }
+
+  if (pricing.costBreakdown.status === "AVAILABLE") {
+    return {
+      title: "Valores estimados con reglas y costos configurados",
+      description: "La respuesta armó el valor con el motor interno y costos base configurados en el sistema.",
+      tone: "sky",
+    }
+  }
+
+  return {
+    title: "Valores incompletos o parciales",
+    description: "La consulta no encontró una coincidencia cerrada y dejó la cotización como referencia preliminar.",
+    tone: "amber",
+  }
+}
+
 export function LitografiaAiAssistant(props: {
   onApplyToClassic?: (draft: LitografiaAiHandoff) => void
   initialBrief?: string
@@ -277,6 +360,18 @@ export function LitografiaAiAssistant(props: {
     ? "Pasar a cotización final editorial"
     : "Pasar a cotización final"
 
+  const displayAssistantMessage = result
+    ? assistantReply?.message || buildAssistantFallbackMessage({
+        result,
+        detectedFields,
+        estimatedTotal,
+        estimatedUnit,
+      })
+    : null
+
+  const analysisSource = result ? getAnalysisSourceLabel({ result, connection }) : null
+  const pricingSource = result ? getPricingSourceLabel(pricing) : null
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="space-y-5 overflow-y-auto pr-1">
@@ -338,6 +433,19 @@ export function LitografiaAiAssistant(props: {
               <CardDescription>{result.summary}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {analysisSource && pricingSource ? (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <div className={`rounded-xl border px-3 py-3 text-sm ${analysisSource.tone === "emerald" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
+                    <p className="font-medium">{analysisSource.title}</p>
+                    <p className="mt-1">{analysisSource.description}</p>
+                  </div>
+                  <div className={`rounded-xl border px-3 py-3 text-sm ${pricingSource.tone === "emerald" ? "border-emerald-200 bg-emerald-50 text-emerald-950" : pricingSource.tone === "sky" ? "border-sky-200 bg-sky-50 text-sky-950" : pricingSource.tone === "amber" ? "border-amber-200 bg-amber-50 text-amber-950" : "border-slate-200 bg-slate-50 text-slate-800"}`}>
+                    <p className="font-medium">{pricingSource.title}</p>
+                    <p className="mt-1">{pricingSource.description}</p>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {detectedFields.map((item) => (
                   <div key={`${item.label}-${item.value}`} className="rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
@@ -373,11 +481,11 @@ export function LitografiaAiAssistant(props: {
                 </div>
               ) : null}
 
-              {assistantReply ? (
+              {displayAssistantMessage ? (
                 <div className="space-y-2">
-                  <p className="text-sm font-medium text-slate-900">Mensaje listo para cliente</p>
+                  <p className="text-sm font-medium text-slate-900">Respuesta de la consulta</p>
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950 whitespace-pre-line">
-                    {assistantReply.message}
+                    {displayAssistantMessage}
                   </div>
                 </div>
               ) : null}
@@ -457,10 +565,6 @@ export function LitografiaAiAssistant(props: {
                   {copied ? "Resumen copiado" : "Copiar resumen"}
                   <ClipboardCopy className="h-4 w-4" />
                 </Button>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                  <p className="font-medium text-slate-900">Lo que sí se va a pasar</p>
-                  <p>{detectedFields.map((item) => item.label.toLowerCase()).join(", ")}</p>
-                </div>
               </CardContent>
             </Card>
           </div>
