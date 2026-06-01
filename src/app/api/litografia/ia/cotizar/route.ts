@@ -83,6 +83,69 @@ type AssistantQuoteReply = {
   copyText: string
 }
 
+function getPriorityQuestions(analysis: Awaited<ReturnType<typeof analyzeLitografiaBrief>>) {
+  const prioritized: string[] = []
+
+  if (!analysis.extracted.cantidad) prioritized.push('¿Cuál es la cantidad exacta?')
+  if (!analysis.extracted.anchoCm || !analysis.extracted.altoCm) prioritized.push('¿Cuál es el tamaño final exacto?')
+  if (!analysis.extracted.material) prioritized.push('¿Qué papel base debo tomar para costearlo?')
+  if (!analysis.extracted.tintas) prioritized.push('¿La impresión va a 1, 2 o 4 tintas?')
+  if ((analysis.quoteType === 'REVISTA' || analysis.quoteType === 'LIBRO' || analysis.quoteType === 'CARTILLA') && !analysis.extracted.paginas) {
+    prioritized.push('¿Cuántas páginas interiores y cuántas de portada/contra tiene?')
+  }
+  if (!analysis.extracted.acabado && analysis.quoteType !== 'VOLANTE') {
+    prioritized.push('¿Lleva acabado o lo tomo sin acabados para darte el costo?')
+  }
+
+  for (const question of analysis.questions) {
+    if (!prioritized.includes(question)) prioritized.push(question)
+  }
+
+  return prioritized.slice(0, 4)
+}
+
+function buildStrictPendingReply(args: {
+  analysis: Awaited<ReturnType<typeof analyzeLitografiaBrief>>
+  configuredSuggestion: ConfiguredPriceSuggestion
+  costBreakdown: CostBreakdown
+}) {
+  const priorityQuestions = getPriorityQuestions(args.analysis)
+  const isEditorial = args.analysis.quoteType === 'REVISTA' || args.analysis.quoteType === 'LIBRO' || args.analysis.quoteType === 'CARTILLA'
+  const exactBlockedByEditorialFlow = isEditorial && args.costBreakdown.status !== 'AVAILABLE'
+  const title = exactBlockedByEditorialFlow
+    ? 'Faltan datos mínimos para precio editorial exacto'
+    : 'Faltan datos mínimos para precio exacto'
+
+  const opening = exactBlockedByEditorialFlow
+    ? 'Con lo actual todavía no puedo dar un precio exacto desde la configuración porque el flujo editorial necesita cerrar portada, internas y acabados base.'
+    : 'Con lo actual todavía no puedo dar un precio exacto desde la configuración predefinida.'
+
+  const approximation = args.costBreakdown.totalSuggested != null
+    ? `Como aproximación operativa, el motor interno proyecta ${formatCopCurrency(args.costBreakdown.totalSuggested)} y un unitario cercano a ${formatCopCurrency(args.costBreakdown.unitPriceWithIva)}.`
+    : null
+
+  const erpContext = args.configuredSuggestion.status === 'PARTIAL' && args.configuredSuggestion.reasoning.length
+    ? `Sí encontré coincidencias parciales en ERP: ${args.configuredSuggestion.reasoning.join(' ')}`
+    : 'No hay coincidencia tarifaria exacta todavía con los datos actuales.'
+
+  const questionsBlock = priorityQuestions.length
+    ? ['Para cerrarlo rápido, empezaría por estos datos prioritarios:', ...priorityQuestions.map((item, index) => `${index + 1}. ${item}`)].join('\n')
+    : 'Si autorizas una aproximación sin más preguntas, puedo tomar la configuración más cercana y marcarla como referencia no exacta.'
+
+  const message = [opening, erpContext, approximation, '', questionsBlock].filter((line): line is string => Boolean(line)).join('\n')
+
+  return {
+    title,
+    message,
+    assumptions: [
+      exactBlockedByEditorialFlow
+        ? 'La ruta IA todavía no compone el costo editorial exacto con el mismo nivel de detalle del flujo clásico.'
+        : 'El costo exacto requiere cerrar los campos mínimos del tarifario.',
+    ],
+    copyText: message,
+  } satisfies AssistantQuoteReply
+}
+
 type KnowledgeSourceDescriptor = {
   enabled: boolean
   source: 'default' | 'custom'
@@ -438,28 +501,6 @@ async function buildAssistantQuoteReply(args: {
       }))
     : []
 
-  const aiReply = await generateLitografiaAssistantReply({
-    latestUserMessage: latestBrief,
-    conversation,
-    grounding: {
-      effectiveBrief: args.brief,
-      analysis,
-      configuredSuggestion,
-      costBreakdown,
-      knowledgeSource,
-      directPaperOptions,
-    },
-  })
-
-  if (aiReply) {
-    return {
-      title: aiReply.title,
-      message: aiReply.message,
-      assumptions: aiReply.assumptions,
-      copyText: aiReply.message,
-    }
-  }
-
   const directPaperReply = buildPaperSheetPriceReply({ latestBrief, catalog })
   if (directPaperReply) return directPaperReply
   const productLabel = analysis.extracted.producto ?? analysis.quoteType.toLowerCase()
@@ -513,6 +554,50 @@ async function buildAssistantQuoteReply(args: {
       message,
       assumptions: configuredSuggestion.reasoning,
       copyText: message,
+    }
+  }
+
+  if (!analysis.extracted.cantidad || !analysis.extracted.anchoCm || !analysis.extracted.altoCm || !analysis.extracted.material || !analysis.extracted.tintas || costBreakdown.status === 'NOT_AVAILABLE') {
+    return buildStrictPendingReply({
+      analysis,
+      configuredSuggestion,
+      costBreakdown,
+    })
+  }
+
+  const isEditorial = analysis.quoteType === 'REVISTA' || analysis.quoteType === 'LIBRO' || analysis.quoteType === 'CARTILLA'
+  if (isEditorial && costBreakdown.status !== 'AVAILABLE') {
+    return buildStrictPendingReply({
+      analysis,
+      configuredSuggestion,
+      costBreakdown,
+    })
+  }
+
+  const aiReply = await generateLitografiaAssistantReply({
+    latestUserMessage: latestBrief,
+    conversation,
+    grounding: {
+      effectiveBrief: args.brief,
+      analysis,
+      configuredSuggestion,
+      costBreakdown,
+      knowledgeSource,
+      directPaperOptions,
+      responsePolicy: {
+        priority: configuredSuggestion.status === 'MATCHED' ? 'ERP_EXACT' : costBreakdown.totalSuggested != null ? 'APPROXIMATION' : 'MISSING_DATA',
+        askStyle: 'few-priority-questions',
+        neverClaimExactPriceWithoutConfiguredMatch: true,
+      },
+    },
+  })
+
+  if (aiReply) {
+    return {
+      title: aiReply.title,
+      message: aiReply.message,
+      assumptions: aiReply.assumptions,
+      copyText: aiReply.message,
     }
   }
 

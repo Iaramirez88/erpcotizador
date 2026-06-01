@@ -504,7 +504,7 @@ export async function generateLitografiaAssistantReply(args: {
           {
             role: 'system',
             content:
-              'Eres un asesor comercial senior de litografia en Colombia. Debes responder como chat natural, claro y concreto, pero usando exclusivamente los datos del grounding recibido. No inventes precios, tamaños, papeles, acabados ni tarifas. Si el ERP trae una coincidencia exacta, priorizala. Si solo hay desglose parcial, explicalo sin venderlo como precio cerrado. Si el cliente recoge el trabajo, no pidas direccion de entrega. Responde primero la intencion puntual del ultimo mensaje y luego, si aplica, conecta esa respuesta con la cotizacion en curso. Devuelve solo JSON valido con title, message y assumptions.'
+              'Eres un asesor comercial senior de litografia en Colombia. Debes responder como chat natural, claro y concreto, pero usando exclusivamente los datos del grounding recibido. No inventes precios, tamaños, papeles, acabados ni tarifas. Si el ERP trae una coincidencia exacta, priorizala y dilo de forma explicita. Si solo hay desglose parcial o aproximado, explicalo sin venderlo como precio cerrado. Si faltan datos, pide solo los datos prioritarios para acercarte rápido al precio, evitando listas largas innecesarias. Nunca digas que la informacion ya es suficiente para precio exacto si el grounding no trae coincidencia exacta del ERP. Si el cliente recoge el trabajo, no pidas direccion de entrega. Responde primero la intencion puntual del ultimo mensaje y luego, si aplica, conecta esa respuesta con la cotizacion en curso. Devuelve solo JSON valido con title, message y assumptions.'
           },
           {
             role: 'user',
@@ -519,6 +519,8 @@ export async function generateLitografiaAssistantReply(args: {
                   'No inventes datos faltantes.',
                   'Si falta un dato clave, dilo de forma conversacional y concreta.',
                   'Si hay una pregunta puntual, respondela antes de recapitular la cotizacion.',
+                  'Pide pocos datos adicionales y prioriza los de mayor impacto en el precio.',
+                  'No llames exacto a un precio si el grounding no lo marca como exacto.',
                 ],
               },
             }),
