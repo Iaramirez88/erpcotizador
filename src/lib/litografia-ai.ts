@@ -166,6 +166,9 @@ function parseDimensiones(brief: string) {
   }
 
   const aliases: Record<string, { anchoCm: number; altoCm: number }> = {
+    'cuarto de pliego': { anchoCm: 50, altoCm: 35 },
+    'cuarto pliego': { anchoCm: 50, altoCm: 35 },
+    cuarto: { anchoCm: 50, altoCm: 35 },
     'media carta': { anchoCm: 14, altoCm: 21.5 },
     carta: { anchoCm: 21.5, altoCm: 28 },
     oficio: { anchoCm: 21.5, altoCm: 33 },
@@ -224,13 +227,12 @@ function buildQuestions(extracted: ExtractedData, quoteType: string) {
 
   if (!extracted.cantidad) questions.push('¿Cuál es la cantidad exacta de piezas o ejemplares?')
   if (!extracted.anchoCm || !extracted.altoCm) questions.push('¿Cuál es el tamaño final del impreso en centímetros?')
-  if (!extracted.material) questions.push('¿Qué papel o sustrato se debe usar y con qué gramaje?')
+  if (!extracted.material) questions.push('¿Qué papel o sustrato se debe usar? Si conoces el gramaje exacto, también me ayuda para afinar el valor.')
   if (!extracted.tintas) questions.push('¿La impresión es a 1, 2 o 4 tintas?')
   if (!extracted.acabado && quoteType !== 'VOLANTE') questions.push('¿Lleva algún acabado como laminado, barniz UV, troquel o plegado?')
   if ((quoteType === 'REVISTA' || quoteType === 'LIBRO' || quoteType === 'CARTILLA') && !extracted.paginas) {
     questions.push('¿Cuántas páginas interiores y cuántas páginas de portada/contraportada tiene?')
   }
-  if (!extracted.entrega) questions.push('¿Dónde se entrega el trabajo para calcular transporte?')
 
   return questions
 }
@@ -300,11 +302,73 @@ function buildMissingFields(extracted: ExtractedData, quoteType: string) {
     !extracted.producto ? 'producto' : null,
     !extracted.cantidad ? 'cantidad' : null,
     !extracted.anchoCm || !extracted.altoCm ? 'tamaño final' : null,
-    !extracted.material ? 'papel o sustrato' : null,
+    !extracted.material ? 'papel o sustrato base' : null,
     !extracted.tintas ? 'tintas' : null,
     (quoteType === 'REVISTA' || quoteType === 'LIBRO' || quoteType === 'CARTILLA') && !extracted.paginas ? 'paginación' : null,
-    !extracted.entrega ? 'entrega/transporte' : null,
   ].filter((value): value is string => Boolean(value))
+}
+
+function mergeExtractedData(primary: ExtractedData, fallback: ExtractedData): ExtractedData {
+  return {
+    producto: primary.producto ?? fallback.producto,
+    cantidad: primary.cantidad ?? fallback.cantidad,
+    anchoCm: primary.anchoCm ?? fallback.anchoCm,
+    altoCm: primary.altoCm ?? fallback.altoCm,
+    paginas: primary.paginas ?? fallback.paginas,
+    tintas: primary.tintas ?? fallback.tintas,
+    material: primary.material ?? fallback.material,
+    acabado: primary.acabado ?? fallback.acabado,
+    entrega: primary.entrega ?? fallback.entrega,
+    observaciones: Array.from(new Set([...(fallback.observaciones ?? []), ...(primary.observaciones ?? [])])),
+  }
+}
+
+function buildNextStep(extracted: ExtractedData, quoteType: string, missingFields: string[]) {
+  const suggestions: string[] = []
+
+  if (extracted.material) {
+    const normalizedMaterial = normalizeText(extracted.material)
+    if (!/\b\d{2,3}\s*(g|gr|grs|gms)?\b/i.test(normalizedMaterial)) {
+      suggestions.push('Si puedes precisar el gramaje, la referencia del papel queda mejor ajustada.')
+    }
+  }
+
+  if (!extracted.entrega) {
+    suggestions.push('Si el trabajo lleva domicilio, indícame ciudad o zona para sumar transporte; si el cliente recoge, así lo dejamos sin flete.')
+  }
+
+  if (missingFields.length) {
+    const base = `Completa ${missingFields.join(', ')} con el cliente y luego pasa al cotizador litográfico tradicional para cerrar precio exacto.`
+    return suggestions.length ? `${base} ${suggestions.join(' ')}` : base
+  }
+
+  const readyFor = quoteType === 'REVISTA' || quoteType === 'LIBRO' || quoteType === 'CARTILLA'
+    ? 'para cargarlo en el flujo editorial y cerrar la cotización exacta'
+    : 'para cargarlo en el cotizador litográfico y cerrar la cotización exacta'
+  return suggestions.length
+    ? `El brief ya está suficientemente completo ${readyFor}. ${suggestions.join(' ')}`
+    : `El brief ya está suficientemente completo ${readyFor}.`
+}
+
+function finalizeAnalysis(args: {
+  normalizedBrief: string
+  summary: string
+  quoteType: string
+  extracted: ExtractedData
+  engine: LitografiaAiResult['engine']
+}) {
+  const missingFields = buildMissingFields(args.extracted, args.quoteType)
+  return {
+    normalizedBrief: args.normalizedBrief,
+    summary: args.summary,
+    confidence: getConfidenceLevel(missingFields),
+    quoteType: args.quoteType,
+    extracted: args.extracted,
+    missingFields,
+    questions: buildQuestions(args.extracted, args.quoteType),
+    nextStep: buildNextStep(args.extracted, args.quoteType, missingFields),
+    engine: args.engine,
+  } satisfies LitografiaAiResult
 }
 
 export function analyzeLitografiaBriefWithRules(brief: string): LitografiaAiResult {
@@ -326,25 +390,17 @@ export function analyzeLitografiaBriefWithRules(brief: string): LitografiaAiResu
     observaciones: parseObservaciones(lowerBrief),
   }
 
-  const missingFields = buildMissingFields(extracted, quoteType)
-
-  return {
+  return finalizeAnalysis({
     normalizedBrief,
     summary: buildSummary(quoteType, extracted),
-    confidence: getConfidenceLevel(missingFields),
     quoteType,
     extracted,
-    missingFields,
-    questions: buildQuestions(extracted, quoteType),
-    nextStep: missingFields.length
-      ? 'Completa los datos faltantes con el cliente y luego pasa al cotizador litográfico tradicional para cerrar precio exacto.'
-      : 'El brief ya está suficientemente completo para cargarlo en el cotizador litográfico y cerrar la cotización exacta.',
     engine: {
       mode: 'RULES',
       provider: 'internal-rules',
       model: null,
     },
-  }
+  })
 }
 
 export async function analyzeLitografiaBrief(
@@ -371,7 +427,7 @@ export async function analyzeLitografiaBrief(
           {
             role: 'system',
             content:
-              'Eres un analista comercial senior para cotizacion litografica en Colombia. Tu trabajo no es dar precio ni inventar datos; debes estructurar el brief, detectar vacios y devolver solo JSON valido. Usa centimetros, cantidades enteras, tintas solo 1, 2 o 4. Si un dato no esta claro, devuelve null y agregalo a missingFields y questions. Si llega knowledgeContext, usalo solo como apoyo comercial y operativo; no reemplaza las tarifas exactas del ERP.',
+              'Eres un analista comercial senior para cotizacion litografica en Colombia. Tu trabajo no es dar precio ni inventar datos; debes estructurar el brief, detectar vacios y devolver solo JSON valido. Usa centimetros, cantidades enteras, tintas solo 1, 2 o 4. Si un dato no esta claro, devuelve null. Trata direccion de entrega y gramaje exacto como datos recomendables para afinar, no como bloqueadores absolutos, salvo que el brief los pida de forma explicita. Si llega knowledgeContext, usalo solo como apoyo comercial y operativo; no reemplaza las tarifas exactas del ERP.',
           },
           {
             role: 'user',
@@ -408,21 +464,18 @@ export async function analyzeLitografiaBrief(
     const parsed = llmResponseSchema.safeParse(JSON.parse(stripJsonFences(content)))
     if (!parsed.success) return baseAnalysis
 
-    return {
+    const mergedExtracted = mergeExtractedData(parsed.data.extracted, baseAnalysis.extracted)
+    return finalizeAnalysis({
       normalizedBrief: baseAnalysis.normalizedBrief,
       summary: parsed.data.summary,
-      confidence: parsed.data.confidence,
       quoteType: parsed.data.quoteType,
-      extracted: parsed.data.extracted,
-      missingFields: parsed.data.missingFields,
-      questions: parsed.data.questions,
-      nextStep: parsed.data.nextStep,
+      extracted: mergedExtracted,
       engine: {
         mode: 'LLM',
         provider: config.provider,
         model: config.model,
       },
-    }
+    })
   } catch {
     return baseAnalysis
   }

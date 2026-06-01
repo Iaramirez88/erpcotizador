@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
-import { Sparkles, LoaderCircle, ClipboardCopy, ArrowRight, ExternalLink, MessageSquareText, SendHorizonal } from "lucide-react"
+import { Sparkles, LoaderCircle, ClipboardCopy, ArrowRight, ExternalLink, MessageSquareText, SendHorizonal, ChevronLeft, ChevronRight, History } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -122,6 +122,30 @@ type LitografiaAiAnalyzeResponse = {
   pricing?: LitografiaAiPricing
   assistantReply?: AssistantQuoteReply | null
   handoff?: LitografiaAiHandoff | null
+}
+
+type QuoteHistoryEntry = {
+  id: string
+  prompt: string
+  summary: string | null
+  responseText: string | null
+  createdAt: string
+  actorLabel: string | null
+  quoteType: string | null
+  confidence: string | null
+  totalSuggested: number | null
+}
+
+type QuoteHistoryResponse = {
+  ok?: boolean
+  error?: string
+  history?: QuoteHistoryEntry[]
+  total?: number
+  page?: number
+  pageSize?: number
+  totalPages?: number
+  hasNext?: boolean
+  hasPrevious?: boolean
 }
 
 type LitografiaAiConversationMessage = {
@@ -320,6 +344,12 @@ function getConversationMessageLabel(role: "user" | "assistant") {
   return role === "user" ? "Tú" : "Asistente IA"
 }
 
+function formatDateTimeLabel(value: string) {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return "Sin fecha"
+  return new Intl.DateTimeFormat("es-CO", { dateStyle: "medium", timeStyle: "short" }).format(parsed)
+}
+
 export function LitografiaAiAssistant(props: {
   onApplyToClassic?: (draft: LitografiaAiHandoff) => void
   initialBrief?: string
@@ -335,6 +365,12 @@ export function LitografiaAiAssistant(props: {
   const [assistantReply, setAssistantReply] = useState<AssistantQuoteReply | null>(null)
   const [conversationMessages, setConversationMessages] = useState<LitografiaAiConversationMessage[]>([])
   const [followUp, setFollowUp] = useState("")
+  const [historyEntries, setHistoryEntries] = useState<QuoteHistoryEntry[]>([])
+  const [historyPage, setHistoryPage] = useState(1)
+  const [historyTotalPages, setHistoryTotalPages] = useState(1)
+  const [historyTotal, setHistoryTotal] = useState(0)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -366,6 +402,40 @@ export function LitografiaAiAssistant(props: {
     if (!viewport) return
     viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" })
   }, [conversationMessages, loading])
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    const loadHistory = async () => {
+      setHistoryLoading(true)
+      setHistoryError(null)
+      try {
+        const response = await fetch(`/api/litografia/ia/cotizar?page=${historyPage}&pageSize=6`, {
+          cache: "no-store",
+          signal: controller.signal,
+        })
+        const json = (await response.json().catch(() => null)) as QuoteHistoryResponse | null
+        if (!response.ok || !json?.ok || !Array.isArray(json.history)) {
+          throw new Error(json?.error || "No fue posible cargar el historial del cotizador IA.")
+        }
+        setHistoryEntries(json.history)
+        setHistoryTotal(json.total ?? json.history.length)
+        setHistoryPage(json.page ?? historyPage)
+        setHistoryTotalPages(Math.max(1, json.totalPages ?? 1))
+      } catch (historyLoadError) {
+        if (controller.signal.aborted) return
+        setHistoryEntries([])
+        setHistoryTotal(0)
+        setHistoryTotalPages(1)
+        setHistoryError(historyLoadError instanceof Error ? historyLoadError.message : "No fue posible cargar el historial del cotizador IA.")
+      } finally {
+        if (!controller.signal.aborted) setHistoryLoading(false)
+      }
+    }
+
+    void loadHistory()
+    return () => controller.abort()
+  }, [historyPage])
 
   const submitAnalysis = async (args: { userMessage: string; resetConversation?: boolean }) => {
     setLoading(true)
@@ -413,6 +483,7 @@ export function LitografiaAiAssistant(props: {
           { id: `${Date.now()}-assistant`, role: "assistant", content: assistantMessage, meta: assistantMeta },
         ]
       })
+      setHistoryPage(1)
       setFollowUp("")
     } catch (analysisError) {
       if (args.resetConversation) {
@@ -596,6 +667,71 @@ export function LitografiaAiAssistant(props: {
           </div>
 
           {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+        </CardContent>
+      </Card>
+
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader>
+          <div className="flex items-center gap-2 text-slate-800">
+            <History className="h-5 w-5" />
+            <CardTitle className="text-lg">Historial de cotizaciones IA</CardTitle>
+          </div>
+          <CardDescription>Consulta lo que ya han cotizado los usuarios sin traer el historial completo de una sola vez.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between gap-3 text-sm text-slate-500">
+            <span>{historyLoading ? "Cargando historial..." : `${historyTotal} consultas registradas`}</span>
+            <span>Página {historyPage} de {historyTotalPages}</span>
+          </div>
+
+          {historyError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{historyError}</p> : null}
+
+          {!historyError && !historyLoading && !historyEntries.length ? (
+            <p className="text-sm text-muted-foreground">Todavía no hay cotizaciones IA guardadas para esta empresa.</p>
+          ) : null}
+
+          <div className="space-y-3">
+            {historyEntries.map((entry) => (
+              <div key={entry.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-700">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-slate-900">{entry.quoteType || "Cotización IA"}</p>
+                    <p className="mt-1 text-xs text-slate-500">{formatDateTimeLabel(entry.createdAt)}{entry.actorLabel ? ` · ${entry.actorLabel}` : ""}</p>
+                  </div>
+                  <div className="text-right text-xs text-slate-500">
+                    {entry.confidence ? <p>Confianza: {entry.confidence}</p> : null}
+                    {entry.totalSuggested != null ? <p>Total guía: {currencyFormatter.format(entry.totalSuggested)}</p> : null}
+                  </div>
+                </div>
+                <p className="mt-3 whitespace-pre-line text-slate-800">{entry.summary || entry.prompt}</p>
+                {entry.responseText ? <p className="mt-2 line-clamp-3 text-slate-600">{entry.responseText}</p> : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setBrief(entry.prompt)}>
+                    Usar brief
+                  </Button>
+                  {entry.responseText ? (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setFollowUp(`Toma como referencia esta consulta previa: ${entry.prompt}`)}>
+                      Tomar referencia
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
+            <p className="text-sm text-slate-500">El chat puede reutilizar estos briefs como punto de partida sin reescribir todo.</p>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setHistoryPage((current) => Math.max(1, current - 1))} disabled={historyLoading || historyPage <= 1}>
+                <ChevronLeft className="mr-2 h-4 w-4" />
+                Anterior
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setHistoryPage((current) => Math.min(historyTotalPages, current + 1))} disabled={historyLoading || historyPage >= historyTotalPages}>
+                Siguiente
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

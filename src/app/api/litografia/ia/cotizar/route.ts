@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { ModuleKey } from '@prisma/client'
 import { z } from 'zod'
 import { requireApiAccess } from '@/lib/api-rbac'
-import { appendAiWorkspaceHistory } from '@/lib/ai-workspace-history'
+import { appendAiWorkspaceHistory, queryAiWorkspaceHistoryPage } from '@/lib/ai-workspace-history'
 import { buildLitografiaKnowledgePromptContext, readLitografiaAiKnowledge } from '@/lib/litografia-ai-knowledge'
 import type { LitografiaAiHandoff } from '@/lib/litografia-ai-handoff'
 import { prisma } from '@/lib/prisma'
@@ -90,6 +90,40 @@ type KnowledgeSourceDescriptor = {
   updatedByLabel: string | null
   label: string
   description: string
+}
+
+type QuoteHistoryResponseItem = {
+  id: string
+  prompt: string
+  summary: string | null
+  responseText: string | null
+  createdAt: string
+  actorLabel: string | null
+  quoteType: string | null
+  confidence: string | null
+  totalSuggested: number | null
+}
+
+function mapQuoteHistoryEntry(entry: Awaited<ReturnType<typeof queryAiWorkspaceHistoryPage>>['items'][number]): QuoteHistoryResponseItem {
+  const metadata = entry.metadata && typeof entry.metadata === 'object' && !Array.isArray(entry.metadata)
+    ? entry.metadata as Record<string, unknown>
+    : null
+  const totalSuggestedRaw = metadata?.totalSuggested
+  const totalSuggested = typeof totalSuggestedRaw === 'number'
+    ? totalSuggestedRaw
+    : Number(String(totalSuggestedRaw ?? '').trim())
+
+  return {
+    id: entry.id,
+    prompt: entry.prompt,
+    summary: entry.summary,
+    responseText: entry.responseText,
+    createdAt: entry.createdAt,
+    actorLabel: entry.actorLabel,
+    quoteType: typeof metadata?.quoteType === 'string' ? metadata.quoteType : null,
+    confidence: typeof metadata?.confidence === 'string' ? metadata.confidence : null,
+    totalSuggested: Number.isFinite(totalSuggested) ? totalSuggested : null,
+  }
 }
 
 function buildConversationBrief(brief: string, conversation: Array<{ role: 'user' | 'assistant'; content: string }> = []) {
@@ -1215,5 +1249,41 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[litografia][ia][cotizar][POST] Error analizando brief', error)
     return NextResponse.json({ ok: false, error: 'Error interno analizando el brief litográfico.' }, { status: 500 })
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const access = await requireApiAccess(ModuleKey.COTIZADOR, 'READ')
+    if (!access.ok) return access.response
+
+    const empresaId = await getEmpresaIdFromSedeId(access.sedeId)
+    if (!empresaId) return NextResponse.json({ ok: false, error: 'Empresa no encontrada' }, { status: 404 })
+
+    const page = Math.max(1, Math.trunc(Number(request.nextUrl.searchParams.get('page') || '1')) || 1)
+    const pageSize = Math.max(1, Math.min(20, Math.trunc(Number(request.nextUrl.searchParams.get('pageSize') || '6')) || 6))
+    const promptQuery = String(request.nextUrl.searchParams.get('q') || '').trim() || null
+
+    const historyPage = await queryAiWorkspaceHistoryPage({
+      empresaId,
+      kinds: ['LITOGRAFIA_QUOTE'],
+      page,
+      pageSize,
+      promptQuery,
+    })
+
+    return NextResponse.json({
+      ok: true,
+      history: historyPage.items.map(mapQuoteHistoryEntry),
+      total: historyPage.total,
+      page: historyPage.page,
+      pageSize: historyPage.pageSize,
+      totalPages: historyPage.totalPages,
+      hasNext: historyPage.hasNext,
+      hasPrevious: historyPage.hasPrevious,
+    })
+  } catch (error) {
+    console.error('[litografia][ia][cotizar][GET] Error cargando historial', error)
+    return NextResponse.json({ ok: false, error: 'Error interno cargando el historial del cotizador IA.' }, { status: 500 })
   }
 }

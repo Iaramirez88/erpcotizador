@@ -39,6 +39,11 @@ type AiWorkspaceHistoryQueryArgs = {
   to?: string | null
 }
 
+type AiWorkspaceHistoryPaginationArgs = AiWorkspaceHistoryQueryArgs & {
+  page?: number
+  pageSize?: number
+}
+
 const MAX_HISTORY_ITEMS = 120
 
 function getHistoryStorePath(empresaId: string) {
@@ -173,6 +178,55 @@ export async function queryAiWorkspaceHistory(args: AiWorkspaceHistoryQueryArgs)
       return true
     })
     .slice(0, limit)
+}
+
+export async function queryAiWorkspaceHistoryPage(args: AiWorkspaceHistoryPaginationArgs) {
+  const store = await readHistoryStore(args.empresaId)
+  const allowedKinds = Array.isArray(args.kinds) && args.kinds.length ? new Set(args.kinds) : null
+  const actorUserId = typeof args.actorUserId === 'string' && args.actorUserId.trim() ? args.actorUserId.trim() : null
+  const actorNeedle = normalizeSearchText(args.actorQuery)
+  const promptNeedle = normalizeSearchText(args.promptQuery)
+  const fromDate = parseFilterDate(args.from, 'start')
+  const toDate = parseFilterDate(args.to, 'end')
+  const pageSize = Math.max(1, Math.min(MAX_HISTORY_ITEMS, Math.trunc(args.pageSize ?? 10) || 10))
+  const page = Math.max(1, Math.trunc(args.page ?? 1) || 1)
+
+  const filtered = store.entries
+    .filter((entry) => (allowedKinds ? allowedKinds.has(entry.kind) : true))
+    .filter((entry) => (actorUserId ? entry.actorUserId === actorUserId : true))
+    .filter((entry) => {
+      if (!actorNeedle) return true
+      const haystack = normalizeSearchText(`${entry.actorLabel || ''} ${entry.actorUserId || ''}`)
+      return haystack.includes(actorNeedle)
+    })
+    .filter((entry) => {
+      if (!promptNeedle) return true
+      const haystack = normalizeSearchText(`${entry.prompt} ${entry.summary || ''} ${entry.responseText || ''}`)
+      return haystack.includes(promptNeedle)
+    })
+    .filter((entry) => {
+      const createdAt = new Date(entry.createdAt)
+      if (Number.isNaN(createdAt.getTime())) return false
+      if (fromDate && createdAt < fromDate) return false
+      if (toDate && createdAt > toDate) return false
+      return true
+    })
+
+  const total = filtered.length
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const safePage = Math.min(page, totalPages)
+  const start = (safePage - 1) * pageSize
+  const items = filtered.slice(start, start + pageSize)
+
+  return {
+    items,
+    total,
+    page: safePage,
+    pageSize,
+    totalPages,
+    hasNext: safePage < totalPages,
+    hasPrevious: safePage > 1,
+  }
 }
 
 export async function listAiWorkspaceHistory(args: {
