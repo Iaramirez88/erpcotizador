@@ -2225,7 +2225,7 @@ export function LitografiaQuoteDialog(props: {
     if (draft.finishHints) {
       const genericFinishIds = draft.finishHints.genericLabels
         .map((label) => findFinishByLabel(label, activeFinishes))
-        .filter((item): item is { id: string; nombre: string } => Boolean(item))
+        .filter((item): item is FinishOption => Boolean(item))
         .map((item) => item.id)
 
       if (genericFinishIds.length) {

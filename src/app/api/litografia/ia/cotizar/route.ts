@@ -391,7 +391,7 @@ async function buildAssistantQuoteReply(args: {
   costBreakdown: CostBreakdown
   catalog: LitografiaCatalogContext
   knowledgeSource: KnowledgeSourceDescriptor | null
-}): AssistantQuoteReply | null {
+}): Promise<AssistantQuoteReply | null> {
   const { latestBrief, analysis, configuredSuggestion, costBreakdown, catalog, conversation, knowledgeSource } = args
   const directPaperOptions = asksPaperSheetPrice(latestBrief)
     ? findRequestedPaperOptions(catalog, latestBrief).slice(0, 3).map((entry) => ({
