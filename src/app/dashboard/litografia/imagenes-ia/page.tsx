@@ -1,5 +1,5 @@
-import { LitografiaAiImagesModule } from "@/components/litografia/litografia-ai-images-module"
+import { LitografiaAiVisualWorkspace } from "@/components/litografia/litografia-ai-visual-workspace"
 
 export default function LitografiaImagenesIaPage() {
-  return <LitografiaAiImagesModule />
+  return <LitografiaAiVisualWorkspace />
 }

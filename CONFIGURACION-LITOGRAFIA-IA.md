@@ -133,12 +133,18 @@ Variables sugeridas para esta integración:
 LITOGRAFIA_AI_IMAGE_API_KEY="sk-..."
 LITOGRAFIA_AI_IMAGE_MODEL="gpt-image-1"
 LITOGRAFIA_AI_IMAGE_BASE_URL="https://api.openai.com/v1"
+
+LITOGRAFIA_VECTORIZER_API_ID="tu_api_id"
+LITOGRAFIA_VECTORIZER_API_SECRET="tu_api_secret"
+LITOGRAFIA_VECTORIZER_BASE_URL="https://api.vectorizer.ai/api/v1"
 ```
 
 Comportamiento esperado en la implementación actual:
 
 - cada imagen generada se guarda en el administrador de archivos bajo IA/chatgpt-imagenes;
+- cada vector aprobado desde la pestaña Vectorizar se guarda en IA/vectorizer-ai;
 - cada generación deja historial con prompt, usuario y archivo creado;
+- cada vectorización conserva historial y permite descargar SVG, PDF, EPS, DXF o PNG desde la plataforma mientras el token siga activo;
 - el historial también guarda las consultas de cotización hechas desde la pestaña IA;
 - la auditoría consolidada se consulta en Dashboard > Litografía > Auditoría IA.
 
@@ -195,6 +201,10 @@ LITOGRAFIA_AI_BASE_URL="https://api.openai.com/v1"
 LITOGRAFIA_AI_IMAGE_API_KEY="sk-..."
 LITOGRAFIA_AI_IMAGE_MODEL="gpt-image-1"
 LITOGRAFIA_AI_IMAGE_BASE_URL="https://api.openai.com/v1"
+
+LITOGRAFIA_VECTORIZER_API_ID="tu_api_id"
+LITOGRAFIA_VECTORIZER_API_SECRET="tu_api_secret"
+LITOGRAFIA_VECTORIZER_BASE_URL="https://api.vectorizer.ai/api/v1"
 ```
 
 5. Reiniciar la app después de cambiar variables de entorno.
@@ -211,12 +221,20 @@ LITOGRAFIA_AI_IMAGE_BASE_URL="https://api.openai.com/v1"
 	- Verificar que la imagen se genere.
 	- Verificar que aparezca guardada en CRM Archivos dentro de IA/chatgpt-imagenes.
 
-8. Validar la trazabilidad.
+8. Probar el flujo de vectorización.
+	- Ir a Dashboard > Litografía > Imágenes IA > pestaña Vectorizar.
+	- Subir un PNG o JPG del logo o arte raster.
+	- Verificar que se muestre la vista previa SVG.
+	- Aprobar y guardar.
+	- Verificar que quede en CRM Archivos dentro de IA/vectorizer-ai.
+	- Abrir el historial y descargar al menos un formato adicional como PDF o EPS.
+
+9. Validar la trazabilidad.
 	- Abrir Dashboard > Litografía > Auditoría IA.
 	- Filtrar por usuario y fecha.
 	- Confirmar que aparecen prompts, respuestas y archivos asociados.
 
-9. Si quieren usar la misma lógica del cliente en ChatGPT Business.
+10. Si quieren usar la misma lógica del cliente en ChatGPT Business.
 	- cargar el JSON/reglas como conocimiento o instrucciones del GPT interno;
 	- usarlo para asistencia humana y revisión comercial;
 	- mantener el cálculo final dentro del motor del ERP.
@@ -234,6 +252,10 @@ LITOGRAFIA_AI_API_KEY="sk-dev-reemplazar"
 LITOGRAFIA_AI_IMAGE_BASE_URL="https://api.openai.com/v1"
 LITOGRAFIA_AI_IMAGE_MODEL="gpt-image-1"
 LITOGRAFIA_AI_IMAGE_API_KEY="sk-dev-reemplazar"
+
+LITOGRAFIA_VECTORIZER_BASE_URL="https://api.vectorizer.ai/api/v1"
+LITOGRAFIA_VECTORIZER_API_ID="vectorizer-dev-id"
+LITOGRAFIA_VECTORIZER_API_SECRET="vectorizer-dev-secret"
 ```
 
 ### Bloque exacto para producción
@@ -247,6 +269,10 @@ LITOGRAFIA_AI_API_KEY="sk-prod-reemplazar"
 LITOGRAFIA_AI_IMAGE_BASE_URL="https://api.openai.com/v1"
 LITOGRAFIA_AI_IMAGE_MODEL="gpt-image-1"
 LITOGRAFIA_AI_IMAGE_API_KEY="sk-prod-reemplazar"
+
+LITOGRAFIA_VECTORIZER_BASE_URL="https://api.vectorizer.ai/api/v1"
+LITOGRAFIA_VECTORIZER_API_ID="vectorizer-prod-id"
+LITOGRAFIA_VECTORIZER_API_SECRET="vectorizer-prod-secret"
 ```
 
 ## 11. Datos exactos que necesitas de OpenAI Platform
@@ -259,6 +285,7 @@ Para conectar este backend no necesitas el nombre del workspace de ChatGPT Busin
 4. El nombre del modelo de texto.
 5. El nombre del modelo de imágenes, si vas a usar imágenes.
 6. La base URL del proveedor.
+7. Si vas a usar Vectorizer.AI, su API Id y API Secret.
 
 Para OpenAI Platform estándar, el bloque práctico queda así:
 
@@ -324,6 +351,7 @@ LITOGRAFIA_AI_IMAGE_API_KEY="TU_KEY_REAL"
 
 - Cotización IA de litografía: `LITOGRAFIA_AI_API_KEY`, `LITOGRAFIA_AI_MODEL`, `LITOGRAFIA_AI_PROVIDER`, opcional `LITOGRAFIA_AI_BASE_URL`.
 - Imágenes IA: `LITOGRAFIA_AI_IMAGE_API_KEY`, `LITOGRAFIA_AI_IMAGE_MODEL`, opcional `LITOGRAFIA_AI_IMAGE_BASE_URL`.
+- Vectorizer.AI: `LITOGRAFIA_VECTORIZER_API_ID`, `LITOGRAFIA_VECTORIZER_API_SECRET`, opcional `LITOGRAFIA_VECTORIZER_BASE_URL`.
 - Fallback de compatibilidad adicional:
 	- si no existe `LITOGRAFIA_AI_IMAGE_API_KEY`, la ruta de imágenes intenta reutilizar `LITOGRAFIA_AI_API_KEY`;
 	- si no existe `LITOGRAFIA_AI_IMAGE_BASE_URL`, intenta reutilizar `LITOGRAFIA_AI_BASE_URL`.

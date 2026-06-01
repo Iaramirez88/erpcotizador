@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'fs/promises'
 import path from 'path'
 
-export type AiWorkspaceHistoryKind = 'LITOGRAFIA_QUOTE' | 'IMAGE_GENERATION'
+export type AiWorkspaceHistoryKind = 'LITOGRAFIA_QUOTE' | 'IMAGE_GENERATION' | 'IMAGE_VECTORIZATION'
 
 export type AiWorkspaceHistoryEntry = {
   id: string
@@ -61,7 +61,11 @@ async function readHistoryStore(empresaId: string): Promise<AiWorkspaceHistorySt
           .filter((entry) => entry && typeof entry === 'object')
           .map((entry) => ({
             id: typeof entry.id === 'string' && entry.id ? entry.id : crypto.randomUUID(),
-            kind: entry.kind === 'IMAGE_GENERATION' ? 'IMAGE_GENERATION' : 'LITOGRAFIA_QUOTE',
+            kind: entry.kind === 'IMAGE_GENERATION'
+              ? 'IMAGE_GENERATION'
+              : entry.kind === 'IMAGE_VECTORIZATION'
+                ? 'IMAGE_VECTORIZATION'
+                : 'LITOGRAFIA_QUOTE',
             prompt: typeof entry.prompt === 'string' ? entry.prompt : '',
             createdAt: typeof entry.createdAt === 'string' && entry.createdAt ? entry.createdAt : new Date().toISOString(),
             actorUserId: typeof entry.actorUserId === 'string' && entry.actorUserId ? entry.actorUserId : null,

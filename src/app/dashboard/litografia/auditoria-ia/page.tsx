@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ImageIcon, MessageSquareText } from 'lucide-react'
+import { Download, ImageIcon, MessageSquareText } from 'lucide-react'
 import { auth } from '@/lib/auth'
 import { queryAiWorkspaceHistory, type AiWorkspaceHistoryEntry, type AiWorkspaceHistoryKind } from '@/lib/ai-workspace-history'
 import { prisma } from '@/lib/prisma'
@@ -32,12 +32,14 @@ function formatDateTime(value: string) {
 }
 
 function formatKindLabel(kind: AiWorkspaceHistoryKind) {
-  return kind === 'IMAGE_GENERATION' ? 'Imagen IA' : 'Cotización IA'
+  return kind === 'IMAGE_GENERATION' ? 'Imagen IA' : kind === 'IMAGE_VECTORIZATION' ? 'Vectorización IA' : 'Cotización IA'
 }
 
 function kindBadgeClass(kind: AiWorkspaceHistoryKind) {
   return kind === 'IMAGE_GENERATION'
     ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+    : kind === 'IMAGE_VECTORIZATION'
+      ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700'
     : 'border-sky-200 bg-sky-50 text-sky-700'
 }
 
@@ -91,15 +93,17 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
   const kindParam = getSingleParam(searchParams?.tipo)
   const selectedKinds = kindParam === 'imagenes'
     ? ['IMAGE_GENERATION'] satisfies AiWorkspaceHistoryKind[]
+    : kindParam === 'vectorizaciones'
+      ? ['IMAGE_VECTORIZATION'] satisfies AiWorkspaceHistoryKind[]
     : kindParam === 'cotizaciones'
       ? ['LITOGRAFIA_QUOTE'] satisfies AiWorkspaceHistoryKind[]
-      : ['LITOGRAFIA_QUOTE', 'IMAGE_GENERATION'] satisfies AiWorkspaceHistoryKind[]
+      : ['LITOGRAFIA_QUOTE', 'IMAGE_GENERATION', 'IMAGE_VECTORIZATION'] satisfies AiWorkspaceHistoryKind[]
 
   const [allEntries, filteredEntries] = await Promise.all([
     queryAiWorkspaceHistory({
       empresaId: user.empresaId,
       limit: 120,
-      kinds: ['LITOGRAFIA_QUOTE', 'IMAGE_GENERATION'],
+      kinds: ['LITOGRAFIA_QUOTE', 'IMAGE_GENERATION', 'IMAGE_VECTORIZATION'],
     }),
     queryAiWorkspaceHistory({
       empresaId: user.empresaId,
@@ -117,6 +121,7 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
   const totalEntries = filteredEntries.length
   const totalQuotes = filteredEntries.filter((entry) => entry.kind === 'LITOGRAFIA_QUOTE').length
   const totalImages = filteredEntries.filter((entry) => entry.kind === 'IMAGE_GENERATION').length
+  const totalVectorizations = filteredEntries.filter((entry) => entry.kind === 'IMAGE_VECTORIZATION').length
   const uniqueUsers = new Set(filteredEntries.map((entry) => entry.actorUserId).filter(Boolean)).size
 
   return (
@@ -141,7 +146,7 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card className="rounded-[24px] border-slate-200">
           <CardHeader className="pb-2">
             <CardDescription>Eventos filtrados</CardDescription>
@@ -158,6 +163,12 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
           <CardHeader className="pb-2">
             <CardDescription>Imágenes IA</CardDescription>
             <CardTitle className="text-3xl text-slate-950">{totalImages}</CardTitle>
+          </CardHeader>
+        </Card>
+        <Card className="rounded-[24px] border-slate-200">
+          <CardHeader className="pb-2">
+            <CardDescription>Vectorizaciones IA</CardDescription>
+            <CardTitle className="text-3xl text-slate-950">{totalVectorizations}</CardTitle>
           </CardHeader>
         </Card>
         <Card className="rounded-[24px] border-slate-200">
@@ -194,6 +205,7 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
                 <option value="">Todos</option>
                 <option value="cotizaciones">Cotizaciones IA</option>
                 <option value="imagenes">Imágenes IA</option>
+                <option value="vectorizaciones">Vectorizaciones IA</option>
               </select>
             </div>
             <div className="space-y-2">
@@ -266,7 +278,7 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
                       </div>
 
                       <div className="flex items-center gap-2 text-sm text-slate-500">
-                        {entry.kind === 'IMAGE_GENERATION' ? <ImageIcon className="h-4 w-4" /> : <MessageSquareText className="h-4 w-4" />}
+                        {entry.kind === 'IMAGE_GENERATION' ? <ImageIcon className="h-4 w-4" /> : entry.kind === 'IMAGE_VECTORIZATION' ? <Download className="h-4 w-4" /> : <MessageSquareText className="h-4 w-4" />}
                         <span>{entry.asset ? 'Con archivo guardado' : 'Sin archivo adjunto'}</span>
                       </div>
                     </div>
