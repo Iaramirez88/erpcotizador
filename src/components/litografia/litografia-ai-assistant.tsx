@@ -628,7 +628,7 @@ export function LitografiaAiAssistant(props: {
               <CardTitle className="text-xl">Cotice con IA</CardTitle>
             </div>
             <Button asChild type="button" variant="outline" size="sm">
-              <Link href="/dashboard/litografia/imagenes-ia">
+              <Link href="/dashboard/imagenes-ia/generador">
                 <ExternalLink className="mr-2 h-4 w-4" />
                 Ir a imágenes IA
               </Link>

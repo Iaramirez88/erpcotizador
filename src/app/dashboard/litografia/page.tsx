@@ -40,12 +40,6 @@ export default function LitografiaPage() {
               Conocimiento IA
             </Link>
           </Button>
-          <Button asChild variant="outline">
-            <Link href="/dashboard/litografia/imagenes-ia">
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Módulo imágenes IA
-            </Link>
-          </Button>
         </div>
       </div>
 

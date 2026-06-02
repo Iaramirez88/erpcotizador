@@ -47,10 +47,14 @@ export function sectionForDashboardHref(href: string): string {
     case '/dashboard/ordenes':
     case '/dashboard/litografia':
     case '/dashboard/litografia/auditoria-ia':
-    case '/dashboard/litografia/imagenes-ia':
     case '/dashboard/escaneos':
     case '/dashboard/productos':
       return 'Operaciones'
+    case '/dashboard/litografia/imagenes-ia':
+    case '/dashboard/imagenes-ia':
+    case '/dashboard/imagenes-ia/generador':
+    case '/dashboard/imagenes-ia/vectorizador':
+      return 'Módulo imágenes IA'
     case '/dashboard/inventario':
     case '/dashboard/inventario/traslados':
       return 'Inventario'
@@ -131,6 +135,9 @@ export function moduleForDashboardHref(href: string): string | null {
     case '/dashboard/litografia':
     case '/dashboard/litografia/auditoria-ia':
     case '/dashboard/litografia/imagenes-ia':
+    case '/dashboard/imagenes-ia':
+    case '/dashboard/imagenes-ia/generador':
+    case '/dashboard/imagenes-ia/vectorizador':
       return 'COTIZADOR'
     case '/dashboard/escaneos':
       return 'ESCANEOS'
@@ -178,6 +185,7 @@ export function moduleForDashboardPath(pathname: string): string | null {
   if (pathname.startsWith('/dashboard/pos')) return 'POS'
   if (pathname.startsWith('/dashboard/ordenes')) return 'ORDENES'
   if (pathname.startsWith('/dashboard/litografia')) return 'COTIZADOR'
+  if (pathname.startsWith('/dashboard/imagenes-ia')) return 'COTIZADOR'
   if (pathname.startsWith('/dashboard/escaneos')) return 'ESCANEOS'
   if (
     pathname.startsWith('/dashboard/materiales') ||
@@ -226,8 +234,9 @@ export function buildDashboardNavDefinitions(t: (key: string) => string): Dashbo
     { name: t('nav.orders'), href: '/dashboard/ordenes' },
     { name: t('nav.printshop'), href: '/dashboard/litografia' },
     { name: 'Conocimiento IA', href: '/dashboard/litografia/conocimiento-ia' },
-    { name: 'Imágenes IA', href: '/dashboard/litografia/imagenes-ia' },
     { name: 'Auditoría IA', href: '/dashboard/litografia/auditoria-ia' },
+    { name: 'Generador de imágenes', href: '/dashboard/imagenes-ia/generador' },
+    { name: 'Vectorizador de imágenes', href: '/dashboard/imagenes-ia/vectorizador' },
     { name: t('nav.scans'), href: '/dashboard/escaneos' },
     { name: t('nav.products'), href: '/dashboard/productos' },
     { name: t('nav.inventory'), href: '/dashboard/inventario' },

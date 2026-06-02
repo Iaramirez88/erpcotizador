@@ -8,8 +8,40 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 
 type VectorFormat = "svg" | "pdf" | "eps" | "dxf" | "png"
+type VectorSvgVersion = "svg_1_0" | "svg_1_1" | "svg_tiny_1_2"
+type VectorDxfCompatibilityLevel = "lines_only" | "lines_and_arcs" | "lines_arcs_and_splines"
+type VectorDrawStyle = "fill_shapes" | "stroke_shapes" | "stroke_edges"
+type VectorShapeStacking = "cutouts" | "stacked"
+type VectorGroupBy = "none" | "color" | "parent" | "layer"
+
+type VectorizerOutputOptions = {
+  fileFormat: VectorFormat
+  svgVersion: VectorSvgVersion
+  svgFixedSize: boolean
+  svgAdobeCompatibilityMode: boolean
+  dxfCompatibilityLevel: VectorDxfCompatibilityLevel
+  drawStyle: VectorDrawStyle
+  shapeStacking: VectorShapeStacking
+  groupBy: VectorGroupBy
+  parameterizedShapesFlatten: boolean
+  allowQuadraticBezier: boolean
+  allowCubicBezier: boolean
+  allowCircularArc: boolean
+  allowEllipticalArc: boolean
+  lineFitTolerance: number
+  gapFillerEnabled: boolean
+  gapFillerClip: boolean
+  gapFillerNonScalingStroke: boolean
+  gapFillerStrokeWidth: number
+  strokesNonScalingStroke: boolean
+  strokesUseOverrideColor: boolean
+  strokesOverrideColor: string
+  strokesStrokeWidth: number
+}
 
 type VectorHistoryEntry = {
   id: string
@@ -69,6 +101,68 @@ const DOWNLOAD_OPTIONS: Array<{ value: VectorFormat; label: string }> = [
   { value: "png", label: "PNG" },
 ]
 
+const SVG_VERSION_OPTIONS: Array<{ value: VectorSvgVersion; label: string }> = [
+  { value: "svg_1_0", label: "SVG 1.0" },
+  { value: "svg_1_1", label: "SVG 1.1" },
+  { value: "svg_tiny_1_2", label: "SVG Tiny 1.2" },
+]
+
+const DXF_COMPATIBILITY_OPTIONS: Array<{ value: VectorDxfCompatibilityLevel; label: string }> = [
+  { value: "lines_only", label: "Sólo líneas" },
+  { value: "lines_and_arcs", label: "Líneas y arcos" },
+  { value: "lines_arcs_and_splines", label: "Líneas, arcos y splines" },
+]
+
+const DRAW_STYLE_OPTIONS: Array<{ value: VectorDrawStyle; label: string }> = [
+  { value: "fill_shapes", label: "Rellenar figuras" },
+  { value: "stroke_shapes", label: "Delinear la figura" },
+  { value: "stroke_edges", label: "Delinear los bordes entre figuras una vez" },
+]
+
+const SHAPE_STACKING_OPTIONS: Array<{ value: VectorShapeStacking; label: string }> = [
+  { value: "cutouts", label: "Colocar las figuras en los espacios recortados de las figuras abajo" },
+  { value: "stacked", label: "Apilar las figuras" },
+]
+
+const GROUP_BY_OPTIONS: Array<{ value: VectorGroupBy; label: string }> = [
+  { value: "none", label: "Ninguna" },
+  { value: "color", label: "Color" },
+  { value: "parent", label: "Primaria" },
+  { value: "layer", label: "Capa" },
+]
+
+const LINE_FIT_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 0.3, label: "Gruesa" },
+  { value: 0.1, label: "Mediano" },
+  { value: 0.03, label: "Fina" },
+  { value: 0.01, label: "Súper fina" },
+]
+
+const DEFAULT_OUTPUT_OPTIONS: VectorizerOutputOptions = {
+  fileFormat: "svg",
+  svgVersion: "svg_1_1",
+  svgFixedSize: false,
+  svgAdobeCompatibilityMode: false,
+  dxfCompatibilityLevel: "lines_and_arcs",
+  drawStyle: "fill_shapes",
+  shapeStacking: "cutouts",
+  groupBy: "none",
+  parameterizedShapesFlatten: false,
+  allowQuadraticBezier: true,
+  allowCubicBezier: true,
+  allowCircularArc: true,
+  allowEllipticalArc: true,
+  lineFitTolerance: 0.1,
+  gapFillerEnabled: true,
+  gapFillerClip: false,
+  gapFillerNonScalingStroke: true,
+  gapFillerStrokeWidth: 2,
+  strokesNonScalingStroke: true,
+  strokesUseOverrideColor: false,
+  strokesOverrideColor: "#000000",
+  strokesStrokeWidth: 1,
+}
+
 function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "Sin fecha"
@@ -81,9 +175,15 @@ function fileDisplaySize(sizeBytes: number) {
   return `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
+function clampNumber(value: number, min: number, max: number, fallback: number) {
+  if (!Number.isFinite(value)) return fallback
+  return Math.min(max, Math.max(min, value))
+}
+
 export function LitografiaAiVectorizerPanel() {
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [maxColors, setMaxColors] = useState("")
+  const [outputOptions, setOutputOptions] = useState<VectorizerOutputOptions>(DEFAULT_OUTPUT_OPTIONS)
   const [loading, setLoading] = useState(false)
   const [approvalLoading, setApprovalLoading] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -125,6 +225,10 @@ export function LitografiaAiVectorizerPanel() {
     void loadHistory()
   }, [])
 
+  function setVectorizerOption<K extends keyof VectorizerOutputOptions>(key: K, value: VectorizerOutputOptions[K]) {
+    setOutputOptions((current) => ({ ...current, [key]: value }))
+  }
+
   const handleVectorize = async () => {
     if (!sourceFile) return
     setGenerationModalOpen(true)
@@ -139,6 +243,7 @@ export function LitografiaAiVectorizerPanel() {
       body.append("action", "vectorize")
       body.append("file", sourceFile)
       if (maxColors.trim()) body.append("maxColors", maxColors.trim())
+      body.append("options", JSON.stringify(outputOptions))
 
       const response = await fetch("/api/litografia/ia/vectorizar", {
         method: "POST",
@@ -204,7 +309,7 @@ export function LitografiaAiVectorizerPanel() {
       const response = await fetch("/api/litografia/ia/vectorizar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "download", historyId: entry.id, format }),
+        body: JSON.stringify({ action: "download", historyId: entry.id, format, options: { ...outputOptions, fileFormat: format } }),
       })
 
       if (!response.ok) {
@@ -286,12 +391,307 @@ export function LitografiaAiVectorizerPanel() {
             </div>
           </div>
 
+          <div className="space-y-4 rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Opciones avanzadas de exportación</p>
+                <p className="mt-1 max-w-3xl text-xs text-slate-500">La vista previa sigue saliendo en SVG para revisión, pero el trazado y las descargas del historial respetan esta configuración y la combinan con el formato que elijas.</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                Perfil actual: {DOWNLOAD_OPTIONS.find((option) => option.value === outputOptions.fileFormat)?.label}
+              </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-3">
+              <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-slate-900">Salida y compatibilidad</p>
+                  <p className="text-xs text-slate-500">Define el formato principal y las restricciones técnicas del archivo exportado.</p>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label>Formato de archivo</Label>
+                  <Select value={outputOptions.fileFormat} onValueChange={(value) => setVectorizerOption("fileFormat", value as VectorFormat)}>
+                    <SelectTrigger className="h-10 rounded-xl bg-white text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DOWNLOAD_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {outputOptions.fileFormat === "svg" ? (
+                  <>
+                    <div className="grid gap-1.5">
+                      <Label>Versión SVG</Label>
+                      <Select value={outputOptions.svgVersion} onValueChange={(value) => setVectorizerOption("svgVersion", value as VectorSvgVersion)}>
+                        <SelectTrigger className="h-10 rounded-xl bg-white text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SVG_VERSION_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">Tamaño fijo</p>
+                          <p className="text-xs text-slate-500">Mantiene width y height explícitos en el SVG.</p>
+                        </div>
+                        <Switch checked={outputOptions.svgFixedSize} onCheckedChange={(checked) => setVectorizerOption("svgFixedSize", checked)} />
+                      </div>
+                      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">Compatibilidad Adobe</p>
+                          <p className="text-xs text-slate-500">Recorta opciones que Illustrator suele importar mal.</p>
+                        </div>
+                        <Switch checked={outputOptions.svgAdobeCompatibilityMode} onCheckedChange={(checked) => setVectorizerOption("svgAdobeCompatibilityMode", checked)} />
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+
+                {outputOptions.fileFormat === "dxf" ? (
+                  <div className="grid gap-1.5">
+                    <Label>Compatibilidad DXF</Label>
+                    <Select value={outputOptions.dxfCompatibilityLevel} onValueChange={(value) => setVectorizerOption("dxfCompatibilityLevel", value as VectorDxfCompatibilityLevel)}>
+                      <SelectTrigger className="h-10 rounded-xl bg-white text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DXF_COMPATIBILITY_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+
+                <div className="grid gap-1.5">
+                  <Label>Apilar figuras</Label>
+                  <Select value={outputOptions.shapeStacking} onValueChange={(value) => setVectorizerOption("shapeStacking", value as VectorShapeStacking)}>
+                    <SelectTrigger className="h-10 rounded-xl bg-white text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SHAPE_STACKING_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label>Agrupar por</Label>
+                  <Select value={outputOptions.groupBy} onValueChange={(value) => setVectorizerOption("groupBy", value as VectorGroupBy)}>
+                    <SelectTrigger className="h-10 rounded-xl bg-white text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GROUP_BY_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-slate-900">Trazado y geometría</p>
+                  <p className="text-xs text-slate-500">Ajusta cómo se interpretan curvas, agrupación geométrica y simplificación de figuras.</p>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label>Estilo de dibujo</Label>
+                  <Select value={outputOptions.drawStyle} onValueChange={(value) => setVectorizerOption("drawStyle", value as VectorDrawStyle)}>
+                    <SelectTrigger className="h-10 rounded-xl bg-white text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DRAW_STYLE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label>Tolerancia de ajuste de línea</Label>
+                  <Select value={String(outputOptions.lineFitTolerance)} onValueChange={(value) => setVectorizerOption("lineFitTolerance", Number(value))}>
+                    <SelectTrigger className="h-10 rounded-xl bg-white text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LINE_FIT_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={String(option.value)}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">Figuras parametrizadas</p>
+                    <p className="text-xs text-slate-500">Aplana círculos, rectángulos y formas detectadas a curvas normales.</p>
+                  </div>
+                  <Switch checked={outputOptions.parameterizedShapesFlatten} onCheckedChange={(checked) => setVectorizerOption("parameterizedShapesFlatten", checked)} />
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-slate-900">Curvas permitidas</p>
+                  <div className="grid gap-2">
+                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">Líneas</p>
+                        <p className="text-xs text-slate-500">Siempre activas como fallback mínimo.</p>
+                      </div>
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700">Siempre</span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">Bézier cuadrática</p>
+                        <p className="text-xs text-slate-500">Mantiene trayectorias compactas donde aplica.</p>
+                      </div>
+                      <Switch checked={outputOptions.allowQuadraticBezier} onCheckedChange={(checked) => setVectorizerOption("allowQuadraticBezier", checked)} />
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">Bézier cúbica</p>
+                        <p className="text-xs text-slate-500">Compatible con todos los formatos de salida.</p>
+                      </div>
+                      <Switch checked={outputOptions.allowCubicBezier} onCheckedChange={(checked) => setVectorizerOption("allowCubicBezier", checked)} />
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">Arcos circulares</p>
+                        <p className="text-xs text-slate-500">Útiles para DXF, SVG y geometrías más limpias.</p>
+                      </div>
+                      <Switch checked={outputOptions.allowCircularArc} onCheckedChange={(checked) => setVectorizerOption("allowCircularArc", checked)} />
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">Arcos elípticos</p>
+                        <p className="text-xs text-slate-500">Preservan curvas complejas con menos nodos.</p>
+                      </div>
+                      <Switch checked={outputOptions.allowEllipticalArc} onCheckedChange={(checked) => setVectorizerOption("allowEllipticalArc", checked)} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-slate-900">Acabado visual</p>
+                  <p className="text-xs text-slate-500">Controla relleno de espacios y el estilo del delineado cuando el modo de dibujo lo usa.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">Rellenar espacios</p>
+                      <p className="text-xs text-slate-500">Corrige líneas blancas entre figuras adyacentes.</p>
+                    </div>
+                    <Switch checked={outputOptions.gapFillerEnabled} onCheckedChange={(checked) => setVectorizerOption("gapFillerEnabled", checked)} />
+                  </div>
+                  <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">Recortar sobrante</p>
+                      <p className="text-xs text-slate-500">Recorta el reborde del gap filler en apilado stacked.</p>
+                    </div>
+                    <Switch checked={outputOptions.gapFillerClip} onCheckedChange={(checked) => setVectorizerOption("gapFillerClip", checked)} disabled={!outputOptions.gapFillerEnabled} />
+                  </div>
+                  <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">Gap filler sin escala</p>
+                      <p className="text-xs text-slate-500">Mantiene ancho constante en SVG, DXF y PNG.</p>
+                    </div>
+                    <Switch checked={outputOptions.gapFillerNonScalingStroke} onCheckedChange={(checked) => setVectorizerOption("gapFillerNonScalingStroke", checked)} disabled={!outputOptions.gapFillerEnabled} />
+                  </div>
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label htmlFor="vector-gap-width">Ancho del gap filler</Label>
+                  <Input
+                    id="vector-gap-width"
+                    type="number"
+                    min={0}
+                    max={5}
+                    step={0.1}
+                    value={outputOptions.gapFillerStrokeWidth}
+                    className="h-10 rounded-xl bg-white"
+                    disabled={!outputOptions.gapFillerEnabled}
+                    onChange={(event) => setVectorizerOption("gapFillerStrokeWidth", clampNumber(Number.parseFloat(event.target.value), 0, 5, 2))}
+                  />
+                </div>
+
+                {outputOptions.drawStyle !== "fill_shapes" ? (
+                  <div className="space-y-3 border-t border-slate-200 pt-3">
+                    <p className="text-sm font-medium text-slate-900">Estilo del delineado</p>
+                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">Delineado sin escala</p>
+                        <p className="text-xs text-slate-500">Evita que el grosor crezca al escalar.</p>
+                      </div>
+                      <Switch checked={outputOptions.strokesNonScalingStroke} onCheckedChange={(checked) => setVectorizerOption("strokesNonScalingStroke", checked)} />
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">Color de reemplazo</p>
+                        <p className="text-xs text-slate-500">Fuerza un solo color para el contorno exportado.</p>
+                      </div>
+                      <Switch checked={outputOptions.strokesUseOverrideColor} onCheckedChange={(checked) => setVectorizerOption("strokesUseOverrideColor", checked)} />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="vector-stroke-color">Color</Label>
+                        <Input
+                          id="vector-stroke-color"
+                          value={outputOptions.strokesOverrideColor}
+                          className="h-10 rounded-xl bg-white"
+                          disabled={!outputOptions.strokesUseOverrideColor}
+                          onChange={(event) => setVectorizerOption("strokesOverrideColor", event.target.value.toUpperCase())}
+                          placeholder="#000000"
+                        />
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="vector-stroke-width">Ancho</Label>
+                        <Input
+                          id="vector-stroke-width"
+                          type="number"
+                          min={0}
+                          max={5}
+                          step={0.1}
+                          value={outputOptions.strokesStrokeWidth}
+                          className="h-10 rounded-xl bg-white"
+                          onChange={(event) => setVectorizerOption("strokesStrokeWidth", clampNumber(Number.parseFloat(event.target.value), 0, 5, 1))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 px-3 py-3 text-xs text-slate-500">
+                    El estilo de delineado se habilita cuando el modo de dibujo es delinear figura o delinear bordes.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
               <p className="font-medium text-slate-900">Antes de vectorizar</p>
               <p className="mt-2">Evita fotos muy comprimidas o con fondo sucio si el objetivo es sacar un logo limpio.</p>
               <p className="mt-2">Si el cliente trae una pieza compleja, empieza sin límite de color y luego afina una segunda pasada.</p>
               <p className="mt-2">La API permite descargar SVG, PDF, EPS, DXF y PNG desde el mismo historial sin reprocesar mientras el token siga retenido.</p>
+              <p className="mt-2">Los botones de descarga del historial usan la configuración avanzada actual y sólo cambian el formato según el botón elegido.</p>
             </div>
 
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">

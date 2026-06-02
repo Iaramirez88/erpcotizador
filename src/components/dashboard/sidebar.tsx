@@ -302,6 +302,27 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
+    name: 'Generador de imágenes',
+    href: "/dashboard/imagenes-ia/generador",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16v12H4V6z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 13l2.5-2.5 2 2L16 9l2 2.5" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10h.01" />
+      </svg>
+    ),
+  },
+  {
+    name: 'Vectorizador de imágenes',
+    href: "/dashboard/imagenes-ia/vectorizador",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 6h5v5H6V6zM13 13h5v5h-5v-5zM15.5 8.5h2.5V11M8.5 15.5H11V18" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 8.5h4.5a2 2 0 012 2V13M13 15.5H8.5a2 2 0 01-2-2V11" />
+      </svg>
+    ),
+  },
+  {
     name: t('nav.scans'),
     href: "/dashboard/escaneos",
     icon: (
@@ -813,6 +834,13 @@ export default function Sidebar({ user }: SidebarProps) {
           get('/dashboard/litografia'),
           get('/dashboard/escaneos'),
           get('/dashboard/productos'),
+        ].filter(Boolean) as NavItem[], effectiveNavOrder),
+      },
+      {
+        title: 'Módulo imágenes IA',
+        items: sortNavItemsByOrder([
+          get('/dashboard/imagenes-ia/generador'),
+          get('/dashboard/imagenes-ia/vectorizador'),
         ].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
       {

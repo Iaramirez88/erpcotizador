@@ -11,6 +11,38 @@ import { prisma } from '@/lib/prisma'
 export const runtime = 'nodejs'
 
 const VECTOR_OUTPUT_FORMATS = ['svg', 'pdf', 'eps', 'dxf', 'png'] as const
+const VECTOR_SVG_VERSIONS = ['svg_1_0', 'svg_1_1', 'svg_tiny_1_2'] as const
+const VECTOR_DXF_COMPATIBILITY_LEVELS = ['lines_only', 'lines_and_arcs', 'lines_arcs_and_splines'] as const
+const VECTOR_DRAW_STYLES = ['fill_shapes', 'stroke_shapes', 'stroke_edges'] as const
+const VECTOR_SHAPE_STACKING = ['cutouts', 'stacked'] as const
+const VECTOR_GROUP_BY = ['none', 'color', 'parent', 'layer'] as const
+
+const vectorizerOutputOptionsSchema = z.object({
+  fileFormat: z.enum(VECTOR_OUTPUT_FORMATS).default('svg'),
+  svgVersion: z.enum(VECTOR_SVG_VERSIONS).default('svg_1_1'),
+  svgFixedSize: z.boolean().default(false),
+  svgAdobeCompatibilityMode: z.boolean().default(false),
+  dxfCompatibilityLevel: z.enum(VECTOR_DXF_COMPATIBILITY_LEVELS).default('lines_and_arcs'),
+  drawStyle: z.enum(VECTOR_DRAW_STYLES).default('fill_shapes'),
+  shapeStacking: z.enum(VECTOR_SHAPE_STACKING).default('cutouts'),
+  groupBy: z.enum(VECTOR_GROUP_BY).default('none'),
+  parameterizedShapesFlatten: z.boolean().default(false),
+  allowQuadraticBezier: z.boolean().default(true),
+  allowCubicBezier: z.boolean().default(true),
+  allowCircularArc: z.boolean().default(true),
+  allowEllipticalArc: z.boolean().default(true),
+  lineFitTolerance: z.coerce.number().min(0.001).max(1).default(0.1),
+  gapFillerEnabled: z.boolean().default(true),
+  gapFillerClip: z.boolean().default(false),
+  gapFillerNonScalingStroke: z.boolean().default(true),
+  gapFillerStrokeWidth: z.coerce.number().min(0).max(5).default(2),
+  strokesNonScalingStroke: z.boolean().default(true),
+  strokesUseOverrideColor: z.boolean().default(false),
+  strokesOverrideColor: z.string().trim().regex(/^#[0-9A-Fa-f]{6}$/).default('#000000'),
+  strokesStrokeWidth: z.coerce.number().min(0).max(5).default(1),
+})
+
+type VectorizerOutputOptions = z.infer<typeof vectorizerOutputOptionsSchema>
 
 const saveSchema = z.object({
   action: z.literal('save'),
@@ -21,6 +53,7 @@ const downloadSchema = z.object({
   action: z.literal('download'),
   historyId: z.string().trim().min(1, 'No se encontró el historial solicitado.'),
   format: z.enum(VECTOR_OUTPUT_FORMATS),
+  options: vectorizerOutputOptionsSchema.optional(),
 })
 
 const AI_VECTORS_FOLDER = 'IA/vectorizer-ai'
@@ -67,6 +100,63 @@ function slugifyFileName(value: string) {
     .trim()
     .replace(/[^a-zA-Z0-9]+/g, '-')
     .replace(/^-|-$/g, '') || 'vector'
+}
+
+function normalizeVectorizerOutputOptions(input: unknown): VectorizerOutputOptions {
+  const parsed = vectorizerOutputOptionsSchema.safeParse(input ?? {})
+  if (parsed.success) return parsed.data
+  return vectorizerOutputOptionsSchema.parse({})
+}
+
+function parseOptionsFromMultipart(formData: FormData) {
+  const optionsRaw = String(formData.get('options') || '').trim()
+  if (!optionsRaw) return normalizeVectorizerOutputOptions(undefined)
+
+  try {
+    return normalizeVectorizerOutputOptions(JSON.parse(optionsRaw))
+  } catch {
+    throw new Error('Las opciones avanzadas del vectorizador son inválidas.')
+  }
+}
+
+function appendVectorizerOutputOptions(
+  upstream: FormData,
+  options: VectorizerOutputOptions,
+  formatOverride?: typeof VECTOR_OUTPUT_FORMATS[number],
+) {
+  const effectiveFormat = formatOverride ?? options.fileFormat
+
+  upstream.append('output.file_format', effectiveFormat)
+  upstream.append('output.draw_style', options.drawStyle)
+  upstream.append('output.shape_stacking', options.shapeStacking)
+  upstream.append('output.group_by', options.groupBy)
+  upstream.append('output.parameterized_shapes.flatten', String(options.parameterizedShapesFlatten))
+  upstream.append('output.curves.allowed.quadratic_bezier', String(options.allowQuadraticBezier))
+  upstream.append('output.curves.allowed.cubic_bezier', String(options.allowCubicBezier))
+  upstream.append('output.curves.allowed.circular_arc', String(options.allowCircularArc))
+  upstream.append('output.curves.allowed.elliptical_arc', String(options.allowEllipticalArc))
+  upstream.append('output.curves.line_fit_tolerance', String(options.lineFitTolerance))
+  upstream.append('output.gap_filler.enabled', String(options.gapFillerEnabled))
+  upstream.append('output.gap_filler.clip', String(options.gapFillerClip))
+  upstream.append('output.gap_filler.non_scaling_stroke', String(options.gapFillerNonScalingStroke))
+  upstream.append('output.gap_filler.stroke_width', String(options.gapFillerStrokeWidth))
+
+  if (options.drawStyle !== 'fill_shapes') {
+    upstream.append('output.strokes.non_scaling_stroke', String(options.strokesNonScalingStroke))
+    upstream.append('output.strokes.use_override_color', String(options.strokesUseOverrideColor))
+    upstream.append('output.strokes.override_color', options.strokesOverrideColor)
+    upstream.append('output.strokes.stroke_width', String(options.strokesStrokeWidth))
+  }
+
+  if (effectiveFormat === 'svg') {
+    upstream.append('output.svg.version', options.svgVersion)
+    upstream.append('output.svg.fixed_size', String(options.svgFixedSize))
+    upstream.append('output.svg.adobe_compatibility_mode', String(options.svgAdobeCompatibilityMode))
+  }
+
+  if (effectiveFormat === 'dxf') {
+    upstream.append('output.dxf.compatibility_level', options.dxfCompatibilityLevel)
+  }
 }
 
 async function getEmpresaIdFromSedeId(sedeId: string) {
@@ -149,10 +239,11 @@ export async function POST(request: NextRequest) {
       }
 
       const bytes = Buffer.from(await file.arrayBuffer())
+      const options = parseOptionsFromMultipart(formData)
       const upstream = new FormData()
       upstream.append('image', new Blob([bytes], { type: file.type || 'application/octet-stream' }), file.name || 'imagen.png')
-      upstream.append('output.file_format', 'svg')
       upstream.append('policy.retention_days', '1')
+      appendVectorizerOutputOptions(upstream, options, 'svg')
 
       const maxColorsValue = Number.parseInt(String(formData.get('maxColors') || '').trim(), 10)
       if (Number.isFinite(maxColorsValue) && maxColorsValue > 0) {
@@ -292,7 +383,7 @@ export async function POST(request: NextRequest) {
 
       const upstream = new FormData()
       upstream.append('image.token', imageToken)
-      upstream.append('output.file_format', parsed.data.format)
+      appendVectorizerOutputOptions(upstream, normalizeVectorizerOutputOptions(parsed.data.options), parsed.data.format)
 
       const downloadResponse = await fetch(`${config.baseUrl}/download`, {
         method: 'POST',

@@ -1,5 +1,5 @@
-import { LitografiaAiVisualWorkspace } from "@/components/litografia/litografia-ai-visual-workspace"
+import { redirect } from "next/navigation"
 
 export default function LitografiaImagenesIaPage() {
-  return <LitografiaAiVisualWorkspace />
+  redirect("/dashboard/imagenes-ia")
 }
