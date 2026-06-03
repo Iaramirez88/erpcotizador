@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Image as ImageIcon, MoreVertical, Paperclip, Plus, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
+import { ChevronDown, Copy, Image as ImageIcon, LifeBuoy, MoreVertical, Paperclip, Plus, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -107,6 +107,17 @@ type UploadProgressState = {
 }
 
 const EMOJI_CHOICES = ['😀', '😂', '😉', '😍', '🤝', '👏', '🔥', '✅', '🙏', '📌', '📎', '🚀']
+const SUPPORT_EMAIL = 'ivanimage@hotmail.com'
+const SUPPORT_WHATSAPP = '3115385427'
+const SUPPORT_WHATSAPP_URL = 'https://wa.me/573115385427'
+const SUPPORT_EMAIL_SUBJECT = 'Soporte configuración inicial'
+const SUPPORT_REQUEST_TEMPLATE = [
+  'Hola, necesito ayuda con:',
+  '- Empresa o espacio:',
+  '- Usuario que reporta:',
+  '- Cambio o problema:',
+  '- Detalle breve:',
+].join('\n')
 
 function formatDate(value: string | null | undefined, fallback: string) {
   if (!value) return fallback
@@ -199,7 +210,7 @@ export default function FloatingChatDrawer() {
   const previousConversationKeyRef = useRef<string | null>(null)
   const previousThreadKeyRef = useRef<string | null>(null)
   const [open, setOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<'updates' | 'crm' | 'team'>('updates')
+  const [activeTab, setActiveTab] = useState<'updates' | 'crm' | 'team' | 'support'>('updates')
   const [teamView, setTeamView] = useState<'direct' | 'groups'>('direct')
   const [teamMobilePanel, setTeamMobilePanel] = useState<'options' | 'chat'>('options')
   const [loading, setLoading] = useState(true)
@@ -229,6 +240,8 @@ export default function FloatingChatDrawer() {
   const [groupForm, setGroupForm] = useState({ title: '', participantUserIds: [] as string[] })
   const [showCrmScrollToBottom, setShowCrmScrollToBottom] = useState(false)
   const [showTeamScrollToBottom, setShowTeamScrollToBottom] = useState(false)
+  const [supportCopyStatus, setSupportCopyStatus] = useState<string | null>(null)
+
   function clearScrollTimers(timersRef: React.MutableRefObject<number[]>) {
     timersRef.current.forEach((timerId) => window.clearTimeout(timerId))
     timersRef.current = []
@@ -320,7 +333,7 @@ export default function FloatingChatDrawer() {
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(storageTabKey)
-      if (saved === 'updates' || saved === 'crm' || saved === 'team') {
+      if (saved === 'updates' || saved === 'crm' || saved === 'team' || saved === 'support') {
         setActiveTab(saved)
       }
     } catch {
@@ -607,6 +620,22 @@ export default function FloatingChatDrawer() {
     await loadThreadDetail(alert.id)
   }
 
+  function openSupportTab() {
+    setActiveTab('support')
+    setOpen(true)
+  }
+
+  async function copySupportTemplate() {
+    try {
+      await navigator.clipboard.writeText(SUPPORT_REQUEST_TEMPLATE)
+      setSupportCopyStatus('Plantilla copiada')
+      window.setTimeout(() => setSupportCopyStatus(null), 2200)
+    } catch {
+      setSupportCopyStatus('No se pudo copiar')
+      window.setTimeout(() => setSupportCopyStatus(null), 2200)
+    }
+  }
+
   async function handleSendCrmMessage() {
     if (!selectedConversationId || !crmMessageDraft.trim()) {
       alert('Escribe un mensaje antes de enviarlo.')
@@ -843,6 +872,9 @@ export default function FloatingChatDrawer() {
                     <DropdownMenuItem onSelect={() => setActiveTab('team')}>
                       Equipo
                     </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setActiveTab('support')}>
+                      Soporte
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => setOpen(false)}>
@@ -852,7 +884,7 @@ export default function FloatingChatDrawer() {
             </div>
             {activeTab === 'updates' ? (
               <div className="mt-2 space-y-2">
-                <div className="hidden grid-cols-3 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:grid">
+                <div className="hidden grid-cols-4 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:grid">
                   <button type="button" onClick={() => setActiveTab('updates')} className="rounded-xl bg-white px-3 py-1.5 text-[10px] font-medium text-slate-950 shadow-sm">
                     Novedades
                   </button>
@@ -861,6 +893,9 @@ export default function FloatingChatDrawer() {
                   </button>
                   <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                     Equipo
+                  </button>
+                  <button type="button" onClick={() => setActiveTab('support')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                    Soporte
                   </button>
                 </div>
               </div>
@@ -902,7 +937,7 @@ export default function FloatingChatDrawer() {
                   <div className="border-b border-slate-100 px-4 py-2.5">
                     <div className="space-y-2">
                       <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contacto, mensaje o canal..." className="h-9 rounded-xl border-slate-200 bg-white text-sm" />
-                      <div className="hidden grid-cols-3 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:grid">
+                      <div className="hidden grid-cols-4 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:grid">
                         <button type="button" onClick={() => setActiveTab('updates')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                           Novedades
                         </button>
@@ -911,6 +946,9 @@ export default function FloatingChatDrawer() {
                         </button>
                         <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                           Equipo
+                        </button>
+                        <button type="button" onClick={() => setActiveTab('support')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                          Soporte
                         </button>
                       </div>
                     </div>
@@ -1027,7 +1065,7 @@ export default function FloatingChatDrawer() {
                   <div className="border-b border-slate-100 px-4 py-2.5">
                     <div className="space-y-2">
                       <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar contacto, compañero, grupo o mensaje..." className="h-9 rounded-xl border-slate-200 bg-white text-sm" />
-                      <div className="hidden grid-cols-3 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:grid">
+                      <div className="hidden grid-cols-4 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:grid">
                         <button type="button" onClick={() => setActiveTab('updates')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                           Novedades
                         </button>
@@ -1036,6 +1074,9 @@ export default function FloatingChatDrawer() {
                         </button>
                         <button type="button" onClick={() => setActiveTab('team')} className={cn('rounded-xl px-3 py-1.5 text-[10px] font-medium', activeTab === 'team' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
                           Equipo
+                        </button>
+                        <button type="button" onClick={() => setActiveTab('support')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                          Soporte
                         </button>
                       </div>
                     </div>
@@ -1280,10 +1321,78 @@ export default function FloatingChatDrawer() {
                 </div>
               </div>
             ) : null}
+
+            {activeTab === 'support' ? (
+              <div className="flex h-full min-h-0 flex-col overflow-y-auto p-4 sm:p-5">
+                <div className="hidden grid-cols-4 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1 md:grid">
+                  <button type="button" onClick={() => setActiveTab('updates')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                    Novedades
+                  </button>
+                  <button type="button" onClick={() => setActiveTab('crm')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                    CRM
+                  </button>
+                  <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                    Equipo
+                  </button>
+                  <button type="button" onClick={() => setActiveTab('support')} className={cn('rounded-xl px-3 py-1.5 text-[10px] font-medium', activeTab === 'support' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                    Soporte
+                  </button>
+                </div>
+
+                <div className="mt-4 rounded-[22px] border border-sky-200 bg-sky-50 px-4 py-3 md:mt-0">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-950">Envía la solicitud con contexto claro</div>
+                      <p className="mt-1 text-sm text-slate-600">Copia una plantilla rápida y compártela por correo o WhatsApp para acelerar la respuesta.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" className="h-10 rounded-xl px-4 text-[11px]" onClick={() => void copySupportTemplate()}>
+                        <Copy className="mr-2 h-4 w-4" />
+                        Copiar plantilla
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-3 rounded-2xl border border-white/80 bg-white/90 px-4 py-3 text-sm leading-6 text-slate-700 whitespace-pre-line">
+                    {SUPPORT_REQUEST_TEMPLATE}
+                  </div>
+                  {supportCopyStatus ? <div className="mt-2 text-xs font-medium text-sky-800">{supportCopyStatus}</div> : null}
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-[22px] border border-slate-200 bg-white p-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Correo</div>
+                    <div className="mt-2 text-base font-semibold text-slate-950">{SUPPORT_EMAIL}</div>
+                    <p className="mt-2 text-sm text-slate-600">Úsalo para solicitudes formales, detalle del cambio y soporte de configuración.</p>
+                    <Button asChild className="mt-4 h-10 rounded-xl px-4 text-[11px]">
+                      <a href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(SUPPORT_EMAIL_SUBJECT)}&body=${encodeURIComponent(SUPPORT_REQUEST_TEMPLATE)}`}>Escribir por correo</a>
+                    </Button>
+                  </div>
+
+                  <div className="rounded-[22px] border border-slate-200 bg-white p-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">WhatsApp</div>
+                    <div className="mt-2 text-base font-semibold text-slate-950">{SUPPORT_WHATSAPP}</div>
+                    <p className="mt-2 text-sm text-slate-600">Úsalo cuando necesites una respuesta más directa para revisar el cambio solicitado.</p>
+                    <Button asChild variant="outline" className="mt-4 h-10 rounded-xl px-4 text-[11px]">
+                      <a href={SUPPORT_WHATSAPP_URL} target="_blank" rel="noreferrer">Abrir WhatsApp</a>
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
         <div className={cn('pointer-events-auto mb-4 mr-4 flex flex-col items-end gap-2 transition-all duration-300 sm:mb-6 sm:mr-0', open ? 'pointer-events-none translate-y-4 opacity-0' : 'translate-y-0 opacity-100')}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={openSupportTab}
+            className="h-11 rounded-full border-sky-200 bg-white/95 px-4 text-sky-900 shadow-[0_18px_36px_-24px_rgba(14,116,144,0.45)] hover:bg-sky-50"
+          >
+            <LifeBuoy className="mr-2 h-4.5 w-4.5" />
+            <span>Soporte</span>
+          </Button>
+
           <Button
             type="button"
             onClick={() => setOpen((current) => !current)}
