@@ -64,3 +64,18 @@ export async function requireApiAccess(
 
   return { ok: true, session, userId, sedeId: sede.id, empresaId }
 }
+
+export async function canAccessCompanyWideAiHistory(args: {
+  userId: string
+  sedeId: string
+  sessionRole?: string | null
+}) {
+  if (args.sessionRole === 'ADMIN') return true
+
+  const membership = await prisma.sedeMembership.findUnique({
+    where: { sedeId_userId: { sedeId: args.sedeId, userId: args.userId } },
+    select: { role: true },
+  })
+
+  return membership?.role === 'ADMIN' || membership?.role === 'MANAGER'
+}

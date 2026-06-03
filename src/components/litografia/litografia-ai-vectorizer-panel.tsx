@@ -66,6 +66,7 @@ type VectorHistoryResponse = {
 }
 
 type GeneratedVectorResult = {
+  historyId: string
   pendingId: string
   previewDataUrl: string
   responseText: string
@@ -273,7 +274,7 @@ export function LitografiaAiVectorizerPanel() {
       const response = await fetch("/api/litografia/ia/vectorizar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save", pendingId: generatedVector.pendingId }),
+        body: JSON.stringify({ action: "save", pendingId: generatedVector.pendingId, historyId: generatedVector.historyId }),
       })
 
       const json = (await response.json().catch(() => null)) as VectorizeResponse | null

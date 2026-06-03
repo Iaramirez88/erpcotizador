@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ModuleKey } from '@prisma/client'
 import { z } from 'zod'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { canAccessCompanyWideAiHistory, requireApiAccess } from '@/lib/api-rbac'
 import { appendAiWorkspaceHistory, queryAiWorkspaceHistoryPage } from '@/lib/ai-workspace-history'
 import { buildLitografiaKnowledgePromptContext, readLitografiaAiKnowledge } from '@/lib/litografia-ai-knowledge'
 import type { LitografiaAiHandoff } from '@/lib/litografia-ai-handoff'
@@ -1348,6 +1348,11 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, Math.trunc(Number(request.nextUrl.searchParams.get('page') || '1')) || 1)
     const pageSize = Math.max(1, Math.min(20, Math.trunc(Number(request.nextUrl.searchParams.get('pageSize') || '6')) || 6))
     const promptQuery = String(request.nextUrl.searchParams.get('q') || '').trim() || null
+    const canViewCompanyWide = await canAccessCompanyWideAiHistory({
+      userId: access.userId,
+      sedeId: access.sedeId,
+      sessionRole: access.session.user.role,
+    })
 
     const historyPage = await queryAiWorkspaceHistoryPage({
       empresaId,
@@ -1355,6 +1360,7 @@ export async function GET(request: NextRequest) {
       page,
       pageSize,
       promptQuery,
+      actorUserId: canViewCompanyWide ? null : access.userId,
     })
 
     return NextResponse.json({

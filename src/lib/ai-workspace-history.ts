@@ -147,6 +147,28 @@ export async function appendAiWorkspaceHistory(args: {
   return nextEntry
 }
 
+export async function updateAiWorkspaceHistoryEntry(args: {
+  empresaId: string
+  entryId: string
+  patch: Partial<Omit<AiWorkspaceHistoryEntry, 'id' | 'createdAt'>>
+}) {
+  const store = await readHistoryStore(args.empresaId)
+  const entryIndex = store.entries.findIndex((entry) => entry.id === args.entryId)
+  if (entryIndex < 0) return null
+
+  const current = store.entries[entryIndex]
+  const nextEntry: AiWorkspaceHistoryEntry = {
+    ...current,
+    ...args.patch,
+    metadata: args.patch.metadata === undefined ? current.metadata : args.patch.metadata,
+    asset: args.patch.asset === undefined ? current.asset : args.patch.asset,
+  }
+
+  store.entries[entryIndex] = nextEntry
+  await writeHistoryStore(args.empresaId, store)
+  return nextEntry
+}
+
 export async function queryAiWorkspaceHistory(args: AiWorkspaceHistoryQueryArgs) {
   const store = await readHistoryStore(args.empresaId)
   const allowedKinds = Array.isArray(args.kinds) && args.kinds.length ? new Set(args.kinds) : null

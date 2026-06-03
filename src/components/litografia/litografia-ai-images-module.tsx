@@ -30,6 +30,7 @@ type AiHistoryEntry = {
 }
 
 type GeneratedImageResult = {
+  historyId: string
   pendingId: string
   previewDataUrl: string
   revisedPrompt: string | null
@@ -188,7 +189,7 @@ export function LitografiaAiImagesModule() {
       const response = await fetch("/api/litografia/ia/imagenes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save", pendingId: generatedImage.pendingId }),
+        body: JSON.stringify({ action: "save", pendingId: generatedImage.pendingId, historyId: generatedImage.historyId }),
       })
 
       const json = (await response.json().catch(() => null)) as ImageResponse | null

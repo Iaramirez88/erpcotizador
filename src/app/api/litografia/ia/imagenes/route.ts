@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ModuleKey } from '@prisma/client'
 import { z } from 'zod'
-import { requireApiAccess } from '@/lib/api-rbac'
-import { appendAiWorkspaceHistory, listAiWorkspaceHistory } from '@/lib/ai-workspace-history'
+import { canAccessCompanyWideAiHistory, requireApiAccess } from '@/lib/api-rbac'
+import { appendAiWorkspaceHistory, listAiWorkspaceHistory, updateAiWorkspaceHistoryEntry } from '@/lib/ai-workspace-history'
 import { uploadCrmFiles } from '@/lib/crm-files'
 import { createPendingLitografiaAiImage, deletePendingLitografiaAiImage, readPendingLitografiaAiImage } from '@/lib/litografia-ai-pending-images'
 import { prisma } from '@/lib/prisma'
@@ -19,6 +19,7 @@ const generateSchema = z.object({
 const saveSchema = z.object({
   action: z.literal('save'),
   pendingId: z.string().trim().min(1, 'No se encontró la imagen pendiente por guardar.'),
+  historyId: z.string().trim().min(1).optional(),
 })
 
 const AI_IMAGES_FOLDER = 'IA/chatgpt-imagenes'
@@ -50,10 +51,17 @@ export async function GET() {
     const empresaId = await getEmpresaIdFromSedeId(access.sedeId)
     if (!empresaId) return NextResponse.json({ ok: false, error: 'Empresa no encontrada.' }, { status: 404 })
 
+    const canViewCompanyWide = await canAccessCompanyWideAiHistory({
+      userId: access.userId,
+      sedeId: access.sedeId,
+      sessionRole: access.session.user.role,
+    })
+
     const history = await listAiWorkspaceHistory({
       empresaId,
-      limit: 12,
+      limit: 120,
       kinds: ['LITOGRAFIA_QUOTE', 'IMAGE_GENERATION'],
+      actorUserId: canViewCompanyWide ? null : access.userId,
     })
 
     return NextResponse.json({ ok: true, history })
@@ -104,33 +112,46 @@ export async function POST(request: NextRequest) {
       })
 
       const saved = uploaded[0] ?? null
-      await appendAiWorkspaceHistory({
-        empresaId,
-        entry: {
-          kind: 'IMAGE_GENERATION',
-          prompt: pending.prompt,
-          actorUserId: access.userId,
-          actorLabel: access.session.user.name || access.session.user.email || 'Usuario interno',
-          summary: pending.revisedPrompt || 'Imagen generada con IA',
-          responseText: `Imagen generada por ${pending.provider} con ${pending.model} y aprobada para guardarse en ${saved?.path || AI_IMAGES_FOLDER}.`,
-          metadata: {
-            provider: pending.provider,
-            model: pending.model,
-            size: pending.size,
-            quality: pending.quality,
-            status: 'APPROVED_AND_SAVED',
-          },
-          asset: saved
-            ? {
-                name: saved.name,
-                path: saved.path,
-                url: saved.url || '',
-                mimeType: saved.mimeType,
-                sizeBytes: saved.sizeBytes,
-              }
-            : null,
+      const nextEntryPatch = {
+        summary: pending.revisedPrompt || 'Imagen generada con IA',
+        responseText: `Imagen generada por ${pending.provider} con ${pending.model} y aprobada para guardarse en ${saved?.path || AI_IMAGES_FOLDER}.`,
+        metadata: {
+          provider: pending.provider,
+          model: pending.model,
+          size: pending.size,
+          quality: pending.quality,
+          pendingId: pending.id,
+          status: 'APPROVED_AND_SAVED',
         },
-      })
+        asset: saved
+          ? {
+              name: saved.name,
+              path: saved.path,
+              url: saved.url || '',
+              mimeType: saved.mimeType,
+              sizeBytes: saved.sizeBytes,
+            }
+          : null,
+      } satisfies Parameters<typeof updateAiWorkspaceHistoryEntry>[0]['patch']
+
+      if (parsedSave.data.historyId) {
+        await updateAiWorkspaceHistoryEntry({
+          empresaId,
+          entryId: parsedSave.data.historyId,
+          patch: nextEntryPatch,
+        })
+      } else {
+        await appendAiWorkspaceHistory({
+          empresaId,
+          entry: {
+            kind: 'IMAGE_GENERATION',
+            prompt: pending.prompt,
+            actorUserId: access.userId,
+            actorLabel: access.session.user.name || access.session.user.email || 'Usuario interno',
+            ...nextEntryPatch,
+          },
+        })
+      }
       await deletePendingLitografiaAiImage({ empresaId, pendingId: pending.id })
 
       return NextResponse.json({
@@ -210,15 +231,37 @@ export async function POST(request: NextRequest) {
       mimeType: 'image/png',
       base64: bytes.toString('base64'),
     })
+    const responseText = `Imagen generada por ${pending.provider} con ${config.model}. Revísala y apruébala si quieres guardarla en ${AI_IMAGES_FOLDER}.`
+    const historyEntry = await appendAiWorkspaceHistory({
+      empresaId,
+      entry: {
+        kind: 'IMAGE_GENERATION',
+        prompt: parsed.data.prompt,
+        actorUserId: access.userId,
+        actorLabel: access.session.user.name || access.session.user.email || 'Usuario interno',
+        summary: imageItem.revised_prompt || 'Imagen generada con IA pendiente de aprobación',
+        responseText,
+        metadata: {
+          provider: pending.provider,
+          model: config.model,
+          size: parsed.data.size || '1024x1024',
+          quality: parsed.data.quality || 'auto',
+          pendingId: pending.id,
+          status: 'PREVIEW_READY',
+        },
+        asset: null,
+      },
+    })
     const previewDataUrl = `data:image/png;base64,${bytes.toString('base64')}`
 
     return NextResponse.json({
       ok: true,
       image: {
+        historyId: historyEntry.id,
         pendingId: pending.id,
         previewDataUrl,
         revisedPrompt: imageItem.revised_prompt || null,
-        responseText: `Imagen generada por ${pending.provider} con ${config.model}. Revísala y apruébala si quieres guardarla en ${AI_IMAGES_FOLDER}.`,
+        responseText,
         source: {
           provider: pending.provider,
           model: config.model,

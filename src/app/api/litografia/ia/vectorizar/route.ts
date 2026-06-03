@@ -2,8 +2,8 @@ import { Buffer } from 'node:buffer'
 import { NextRequest, NextResponse } from 'next/server'
 import { ModuleKey } from '@prisma/client'
 import { z } from 'zod'
-import { requireApiAccess } from '@/lib/api-rbac'
-import { appendAiWorkspaceHistory, listAiWorkspaceHistory } from '@/lib/ai-workspace-history'
+import { canAccessCompanyWideAiHistory, requireApiAccess } from '@/lib/api-rbac'
+import { appendAiWorkspaceHistory, listAiWorkspaceHistory, updateAiWorkspaceHistoryEntry } from '@/lib/ai-workspace-history'
 import { uploadCrmFiles } from '@/lib/crm-files'
 import { createPendingLitografiaAiVectorization, deletePendingLitografiaAiVectorization, readPendingLitografiaAiVectorization } from '@/lib/litografia-ai-pending-vectorizations'
 import { prisma } from '@/lib/prisma'
@@ -47,6 +47,7 @@ type VectorizerOutputOptions = z.infer<typeof vectorizerOutputOptionsSchema>
 const saveSchema = z.object({
   action: z.literal('save'),
   pendingId: z.string().trim().min(1, 'No se encontró el vector pendiente por guardar.'),
+  historyId: z.string().trim().min(1).optional(),
 })
 
 const downloadSchema = z.object({
@@ -200,10 +201,17 @@ export async function GET() {
     const empresaId = await getEmpresaIdFromSedeId(access.sedeId)
     if (!empresaId) return NextResponse.json({ ok: false, error: 'Empresa no encontrada.' }, { status: 404 })
 
+    const canViewCompanyWide = await canAccessCompanyWideAiHistory({
+      userId: access.userId,
+      sedeId: access.sedeId,
+      sessionRole: access.session.user.role,
+    })
+
     const history = await listAiWorkspaceHistory({
       empresaId,
-      limit: 12,
+      limit: 120,
       kinds: ['IMAGE_VECTORIZATION'],
+      actorUserId: canViewCompanyWide ? null : access.userId,
     })
 
     return NextResponse.json({ ok: true, history: mapVectorHistory(history) })
@@ -274,13 +282,38 @@ export async function POST(request: NextRequest) {
         imageToken: imageToken?.trim() || null,
         base64: vectorBytes.toString('base64'),
       })
+      const responseText = `Vector generado con Vectorizer.AI desde ${pending.sourceFileName}. Revísalo y apruébalo para guardarlo en ${AI_VECTORS_FOLDER}.`
+      const historyEntry = await appendAiWorkspaceHistory({
+        empresaId,
+        entry: {
+          kind: 'IMAGE_VECTORIZATION',
+          prompt: `Vectorizar ${pending.sourceFileName}`,
+          actorUserId: access.userId,
+          actorLabel: access.session.user.name || access.session.user.email || 'Usuario interno',
+          summary: `Vector SVG generado desde ${pending.sourceFileName}`,
+          responseText,
+          metadata: {
+            provider: pending.provider,
+            outputFormat: pending.outputFormat,
+            sourceFileName: pending.sourceFileName,
+            sourceMimeType: pending.sourceMimeType,
+            sourceSizeBytes: pending.sourceSizeBytes,
+            imageToken: pending.imageToken,
+            pendingId: pending.id,
+            status: 'PREVIEW_READY',
+            availableDownloads: VECTOR_OUTPUT_FORMATS,
+          },
+          asset: null,
+        },
+      })
 
       return NextResponse.json({
         ok: true,
         vectorization: {
+          historyId: historyEntry.id,
           pendingId: pending.id,
           previewDataUrl: `data:image/svg+xml;base64,${pending.base64}`,
-          responseText: `Vector generado con Vectorizer.AI desde ${pending.sourceFileName}. Revísalo y apruébalo para guardarlo en ${AI_VECTORS_FOLDER}.`,
+          responseText,
           source: {
             provider: pending.provider,
             outputFormat: pending.outputFormat,
@@ -319,35 +352,49 @@ export async function POST(request: NextRequest) {
       })
 
       const saved = uploaded[0] ?? null
-      await appendAiWorkspaceHistory({
-        empresaId,
-        entry: {
-          kind: 'IMAGE_VECTORIZATION',
-          prompt: `Vectorizar ${pending.sourceFileName}`,
-          actorUserId: access.userId,
-          actorLabel: access.session.user.name || access.session.user.email || 'Usuario interno',
-          summary: `Vector SVG generado desde ${pending.sourceFileName}`,
-          responseText: `Vector generado por ${pending.provider} y guardado en ${saved?.path || AI_VECTORS_FOLDER}.`,
-          metadata: {
-            provider: pending.provider,
-            outputFormat: pending.outputFormat,
-            sourceFileName: pending.sourceFileName,
-            sourceMimeType: pending.sourceMimeType,
-            sourceSizeBytes: pending.sourceSizeBytes,
-            imageToken: pending.imageToken,
-            availableDownloads: VECTOR_OUTPUT_FORMATS,
-          },
-          asset: saved
-            ? {
-                name: saved.name,
-                path: saved.path,
-                url: saved.url || '',
-                mimeType: saved.mimeType,
-                sizeBytes: saved.sizeBytes,
-              }
-            : null,
+      const nextEntryPatch = {
+        summary: `Vector SVG generado desde ${pending.sourceFileName}`,
+        responseText: `Vector generado por ${pending.provider} y guardado en ${saved?.path || AI_VECTORS_FOLDER}.`,
+        metadata: {
+          provider: pending.provider,
+          outputFormat: pending.outputFormat,
+          sourceFileName: pending.sourceFileName,
+          sourceMimeType: pending.sourceMimeType,
+          sourceSizeBytes: pending.sourceSizeBytes,
+          imageToken: pending.imageToken,
+          pendingId: pending.id,
+          status: 'APPROVED_AND_SAVED',
+          availableDownloads: VECTOR_OUTPUT_FORMATS,
         },
-      })
+        asset: saved
+          ? {
+              name: saved.name,
+              path: saved.path,
+              url: saved.url || '',
+              mimeType: saved.mimeType,
+              sizeBytes: saved.sizeBytes,
+            }
+          : null,
+      } satisfies Parameters<typeof updateAiWorkspaceHistoryEntry>[0]['patch']
+
+      if (parsed.data.historyId) {
+        await updateAiWorkspaceHistoryEntry({
+          empresaId,
+          entryId: parsed.data.historyId,
+          patch: nextEntryPatch,
+        })
+      } else {
+        await appendAiWorkspaceHistory({
+          empresaId,
+          entry: {
+            kind: 'IMAGE_VECTORIZATION',
+            prompt: `Vectorizar ${pending.sourceFileName}`,
+            actorUserId: access.userId,
+            actorLabel: access.session.user.name || access.session.user.email || 'Usuario interno',
+            ...nextEntryPatch,
+          },
+        })
+      }
       await deletePendingLitografiaAiVectorization({ empresaId, pendingId: pending.id })
 
       return NextResponse.json({
