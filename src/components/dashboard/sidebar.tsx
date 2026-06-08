@@ -70,6 +70,16 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
+    name: 'Mapa de producto',
+    href: "/dashboard/mapa-producto",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h7" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 16l2 2 4-4" />
+      </svg>
+    ),
+  },
+  {
     name: t('nav.reports'),
     href: "/dashboard/reportes",
     icon: (
@@ -179,6 +189,16 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     ),
   },
   {
+    name: 'Inbox omnicanal',
+    href: "/dashboard/crm/conversations",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16v9H4V6z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 15l4-3h8l4 3" />
+      </svg>
+    ),
+  },
+  {
     name: "Agenda CRM",
     href: "/dashboard/crm/agenda",
     icon: (
@@ -212,6 +232,15 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h8M12 8v8M4 7h4v4H4V7zm12 6h4v4h-4v-4zm0-10h4v4h-4V3zM4 17h4v4H4v-4z" />
+      </svg>
+    ),
+  },
+  {
+    name: "Auditoría IA CRM",
+    href: "/dashboard/crm/auditoria-ia",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-6m4 6V7m4 10v-3M5 21h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2z" />
       </svg>
     ),
   },
@@ -790,7 +819,7 @@ export default function Sidebar({ user }: SidebarProps) {
     const baseSections: NavSection[] = [
       {
         title: 'Centro de Control',
-        items: sortNavItemsByOrder([get('/dashboard'), get('/dashboard/reportes'), get('/dashboard/plantillas')].filter(Boolean) as NavItem[], effectiveNavOrder),
+        items: sortNavItemsByOrder([get('/dashboard'), get('/dashboard/mapa-producto'), get('/dashboard/reportes'), get('/dashboard/plantillas')].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
       {
         title: 'Contabilidad',
@@ -803,44 +832,49 @@ export default function Sidebar({ user }: SidebarProps) {
       {
         title: 'Comercial',
         items: sortNavItemsByOrder([
+          get('/dashboard/crm'),
+          get('/dashboard/crm/conversations'),
+          get('/dashboard/crm/leads'),
+          get('/dashboard/crm/oportunidades'),
+          get('/dashboard/crm/agenda'),
+          get('/dashboard/crm/tareas'),
+          get('/dashboard/crm/chatbot'),
+          get('/dashboard/crm/archivos'),
+          get('/dashboard/crm/integraciones'),
+          get('/dashboard/crm/auditoria-ia'),
+          get('/dashboard/clientes'),
           get('/dashboard/cotizador'),
           get('/dashboard/cotizaciones'),
           get('/dashboard/remisiones'),
           get('/dashboard/pos'),
-          get('/dashboard/clientes'),
-          get('/dashboard/odontologia'),
         ].filter(Boolean) as NavItem[], effectiveNavOrder),
-      },
-      {
-        title: 'CRM',
-        items: sortNavItemsByOrder([
-          get('/dashboard/crm'),
-          get('/dashboard/crm/agenda'),
-          get('/dashboard/crm/chatbot'),
-          get('/dashboard/crm/archivos'),
-          get('/dashboard/crm/integraciones'),
-          get('/dashboard/crm/leads'),
-          get('/dashboard/crm/oportunidades'),
-        ].filter(Boolean) as NavItem[], effectiveNavOrder),
-      },
-      {
-        title: 'Productividad',
-        items: sortNavItemsByOrder([get('/dashboard/espacios-trabajo'), get('/dashboard/crm/tareas')].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
       {
         title: 'Operaciones',
         items: sortNavItemsByOrder([
           get('/dashboard/ordenes'),
+          get('/dashboard/espacios-trabajo'),
+          get('/dashboard/chat'),
           get('/dashboard/litografia'),
           get('/dashboard/escaneos'),
           get('/dashboard/productos'),
         ].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
       {
-        title: 'Módulo imágenes IA',
+        title: 'IA',
         items: sortNavItemsByOrder([
+          get('/dashboard/litografia/conocimiento-ia'),
+          get('/dashboard/litografia/auditoria-ia'),
           get('/dashboard/imagenes-ia/generador'),
           get('/dashboard/imagenes-ia/vectorizador'),
+        ].filter(Boolean) as NavItem[], effectiveNavOrder),
+      },
+      {
+        title: 'Verticales',
+        items: sortNavItemsByOrder([
+          get('/dashboard/restaurante'),
+          get('/dashboard/odontologia'),
+          get('/dashboard/dotaciones'),
         ].filter(Boolean) as NavItem[], effectiveNavOrder),
       },
       {

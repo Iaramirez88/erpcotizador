@@ -16,6 +16,7 @@ export function isOnboardingScopedDashboardHref(href: string): boolean {
 export function sectionForDashboardHref(href: string): string {
   switch (href) {
     case '/dashboard':
+    case '/dashboard/mapa-producto':
     case '/dashboard/reportes':
     case '/dashboard/plantillas':
       return 'Centro de Control'
@@ -27,34 +28,36 @@ export function sectionForDashboardHref(href: string): string {
     case '/dashboard/cotizaciones':
     case '/dashboard/remisiones':
     case '/dashboard/pos':
-    case '/dashboard/restaurante':
     case '/dashboard/clientes':
-    case '/dashboard/odontologia':
-    case '/dashboard/dotaciones':
-      return 'Comercial'
     case '/dashboard/crm':
+    case '/dashboard/crm/conversations':
     case '/dashboard/crm/agenda':
+    case '/dashboard/crm/auditoria-ia':
     case '/dashboard/crm/archivos':
     case '/dashboard/crm/chatbot':
     case '/dashboard/crm/integraciones':
     case '/dashboard/crm/leads':
     case '/dashboard/crm/oportunidades':
-      return 'CRM'
     case '/dashboard/crm/tareas':
+      return 'Comercial'
+    case '/dashboard/restaurante':
+    case '/dashboard/odontologia':
+    case '/dashboard/dotaciones':
+      return 'Verticales'
+    case '/dashboard/ordenes':
     case '/dashboard/espacios-trabajo':
     case '/dashboard/chat':
-      return 'Productividad'
-    case '/dashboard/ordenes':
     case '/dashboard/litografia':
-    case '/dashboard/litografia/auditoria-ia':
     case '/dashboard/escaneos':
     case '/dashboard/productos':
       return 'Operaciones'
+    case '/dashboard/litografia/auditoria-ia':
+    case '/dashboard/litografia/conocimiento-ia':
     case '/dashboard/litografia/imagenes-ia':
     case '/dashboard/imagenes-ia':
     case '/dashboard/imagenes-ia/generador':
     case '/dashboard/imagenes-ia/vectorizador':
-      return 'Módulo imágenes IA'
+      return 'IA'
     case '/dashboard/inventario':
     case '/dashboard/inventario/traslados':
       return 'Inventario'
@@ -83,6 +86,7 @@ export function moduleForDashboardHref(href: string): string | null {
     case '/dashboard/configuracion/servicios-web':
       return null
     case '/dashboard':
+    case '/dashboard/mapa-producto':
       return 'DASHBOARD'
     case '/dashboard/reportes':
       return 'REPORTES'
@@ -120,7 +124,9 @@ export function moduleForDashboardHref(href: string): string | null {
     case '/dashboard/odontologia':
       return 'CLIENTES'
     case '/dashboard/crm':
+    case '/dashboard/crm/conversations':
     case '/dashboard/crm/agenda':
+    case '/dashboard/crm/auditoria-ia':
     case '/dashboard/crm/archivos':
     case '/dashboard/crm/chatbot':
     case '/dashboard/crm/integraciones':
@@ -172,6 +178,7 @@ export function moduleForDashboardPath(pathname: string): string | null {
   if (pathname.startsWith('/dashboard/configuracion/servicios-web')) return null
   if (pathname.startsWith('/dashboard/configuracion/plan')) return null
   if (pathname === '/dashboard') return 'DASHBOARD'
+  if (pathname.startsWith('/dashboard/mapa-producto')) return 'DASHBOARD'
   if (pathname.startsWith('/dashboard/plantillas')) return 'DASHBOARD'
   if (pathname.startsWith('/dashboard/reportes')) return 'REPORTES'
   if (pathname.startsWith('/dashboard/contabilidad')) return 'CONTABILIDAD'
@@ -209,6 +216,7 @@ export function moduleForDashboardPath(pathname: string): string | null {
 export function buildDashboardNavDefinitions(t: (key: string) => string): DashboardNavDefinition[] {
   return [
     { name: t('nav.dashboard'), href: '/dashboard' },
+    { name: 'Mapa de producto', href: '/dashboard/mapa-producto' },
     { name: t('nav.reports'), href: '/dashboard/reportes' },
     { name: t('nav.templates'), href: '/dashboard/plantillas' },
     { name: t('nav.accounting'), href: '/dashboard/contabilidad' },
@@ -222,7 +230,9 @@ export function buildDashboardNavDefinitions(t: (key: string) => string): Dashbo
     { name: t('nav.clients'), href: '/dashboard/clientes' },
     { name: 'Odontología', href: '/dashboard/odontologia' },
     { name: 'Frente comercial', href: '/dashboard/crm' },
+    { name: 'Inbox omnicanal', href: '/dashboard/crm/conversations' },
     { name: 'Agenda CRM', href: '/dashboard/crm/agenda' },
+    { name: 'Auditoría IA CRM', href: '/dashboard/crm/auditoria-ia' },
     { name: 'Administrador de archivos', href: '/dashboard/crm/archivos' },
     { name: 'Chatbot', href: '/dashboard/crm/chatbot' },
     { name: 'Canales e integraciones', href: '/dashboard/crm/integraciones' },

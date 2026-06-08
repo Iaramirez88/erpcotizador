@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'fs/promises'
 import path from 'path'
 
-export type AiWorkspaceHistoryKind = 'LITOGRAFIA_QUOTE' | 'IMAGE_GENERATION' | 'IMAGE_VECTORIZATION'
+export type AiWorkspaceHistoryKind = 'LITOGRAFIA_QUOTE' | 'IMAGE_GENERATION' | 'IMAGE_VECTORIZATION' | 'CRM_CONVERSATION_COPILOT'
 
 export type AiWorkspaceHistoryEntry = {
   id: string
@@ -70,6 +70,8 @@ async function readHistoryStore(empresaId: string): Promise<AiWorkspaceHistorySt
               ? 'IMAGE_GENERATION'
               : entry.kind === 'IMAGE_VECTORIZATION'
                 ? 'IMAGE_VECTORIZATION'
+                : entry.kind === 'CRM_CONVERSATION_COPILOT'
+                  ? 'CRM_CONVERSATION_COPILOT'
                 : 'LITOGRAFIA_QUOTE',
             prompt: typeof entry.prompt === 'string' ? entry.prompt : '',
             createdAt: typeof entry.createdAt === 'string' && entry.createdAt ? entry.createdAt : new Date().toISOString(),
@@ -251,10 +253,6 @@ export async function queryAiWorkspaceHistoryPage(args: AiWorkspaceHistoryPagina
   }
 }
 
-export async function listAiWorkspaceHistory(args: {
-  empresaId: string
-  limit?: number
-  kinds?: AiWorkspaceHistoryKind[]
-}) {
+export async function listAiWorkspaceHistory(args: AiWorkspaceHistoryQueryArgs) {
   return queryAiWorkspaceHistory(args)
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
+import { appendAiWorkspaceHistory } from '@/lib/ai-workspace-history'
 import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 import {
   assertCrmSedeAccess,
@@ -23,6 +24,53 @@ import {
 import { dispatchCrmTaskCalendarBridges } from '@/lib/crm-calendar-bridges'
 
 export const runtime = 'nodejs'
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
+function pickString(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function normalizeAiTaskSuggestion(value: unknown) {
+  const record = asRecord(value)
+  if (!record) return null
+
+  const title = pickString(record.title)
+  const description = pickString(record.description)
+  const priority = parseTaskPriority(record.priority)
+  const dueAtValue = parseOptionalDate(record.dueAt)
+  const assignedToUserId = pickString(record.assignedToUserId)
+  const reason = pickString(record.reason)
+
+  if (!title) return null
+  if (dueAtValue === undefined) return null
+
+  return {
+    title,
+    description,
+    priority: priority ?? 'NORMAL',
+    dueAt: dueAtValue ?? null,
+    assignedToUserId: assignedToUserId || null,
+    reason: reason || null,
+  }
+}
+
+function getChangedTaskFields(args: {
+  original: ReturnType<typeof normalizeAiTaskSuggestion>
+  finalTask: { title: string; description: string | null; priority: string; dueAt: Date | null; assignedToUserId: string | null }
+}) {
+  if (!args.original) return [] as string[]
+
+  const changedFields: string[] = []
+  if (args.original.title !== args.finalTask.title) changedFields.push('title')
+  if ((args.original.description || '') !== (args.finalTask.description || '')) changedFields.push('description')
+  if (args.original.priority !== args.finalTask.priority) changedFields.push('priority')
+  if ((args.original.dueAt?.toISOString() || null) !== (args.finalTask.dueAt?.toISOString() || null)) changedFields.push('dueAt')
+  if ((args.original.assignedToUserId || null) !== (args.finalTask.assignedToUserId || null)) changedFields.push('assignedToUserId')
+  return changedFields
+}
 
 export async function GET(request: Request) {
   try {
@@ -136,6 +184,10 @@ export async function POST(request: Request) {
     const attachmentsJson = normalizeTaskAttachments(body?.attachmentsJson)
     const customFieldsJson = normalizeTaskCustomFields(body?.customFieldsJson)
     const colorHex = normalizeTaskColorHex(body?.colorHex)
+    const aiAudit = asRecord(body?.aiAudit)
+    const aiSuggestionAuditEntryId = pickString(aiAudit?.auditEntryId)
+    const aiConversationId = pickString(aiAudit?.conversationId)
+    const aiOriginalTaskSuggestion = normalizeAiTaskSuggestion(aiAudit?.originalTaskSuggestion)
 
     if (!title) return NextResponse.json({ error: 'title es requerido' }, { status: 400 })
     if (!workspaceId && !leadId && !opportunityId && !clienteId) {
@@ -281,6 +333,59 @@ export async function POST(request: Request) {
         workspaceName: workspace?.name ?? null,
       },
     })
+
+    const changedTaskFields = getChangedTaskFields({
+      original: aiOriginalTaskSuggestion,
+      finalTask: {
+        title: row.title,
+        description: row.description,
+        priority: row.priority,
+        dueAt: row.dueAt,
+        assignedToUserId: row.assignedToUserId,
+      },
+    })
+
+    if (aiConversationId && aiSuggestionAuditEntryId && aiOriginalTaskSuggestion) {
+      await appendAiWorkspaceHistory({
+        empresaId: access.empresaId,
+        entry: {
+          kind: 'CRM_CONVERSATION_COPILOT',
+          prompt: `task-suggestion:${aiConversationId}`,
+          actorUserId: access.userId,
+          actorLabel: access.session.user.name || access.session.user.email || null,
+          summary: changedTaskFields.length
+            ? `Tarea IA editada antes de crearla para la conversación ${aiConversationId}.`
+            : `Tarea IA aceptada sin cambios para la conversación ${aiConversationId}.`,
+          responseText: [
+            `Tarea creada: ${row.title}`,
+            `Prioridad: ${row.priority}`,
+            `Vencimiento: ${row.dueAt ? row.dueAt.toISOString() : 'sin fecha'}`,
+            `Responsable: ${row.assignedToUser?.name || row.assignedToUser?.email || row.assignedToUserId || 'sin asignar'}`,
+          ].join('\n'),
+          metadata: {
+            eventType: 'TASK_SUGGESTION_ACTION',
+            taskSuggestionAction: changedTaskFields.length ? 'EDITED' : 'ACCEPTED',
+            changedTaskFields,
+            sourceAuditEntryId: aiSuggestionAuditEntryId,
+            conversationId: aiConversationId,
+            taskId: row.id,
+            taskTitle: row.title,
+            taskPriority: row.priority,
+            taskDueAt: row.dueAt?.toISOString() || null,
+            taskAssignedToUserId: row.assignedToUserId,
+            originalTaskSuggestion: aiOriginalTaskSuggestion,
+            finalTask: {
+              title: row.title,
+              description: row.description,
+              priority: row.priority,
+              dueAt: row.dueAt?.toISOString() || null,
+              assignedToUserId: row.assignedToUserId,
+            },
+          },
+          asset: null,
+        },
+      })
+    }
 
     return NextResponse.json({ success: true, data: row, calendarSyncs }, { status: 201 })
   } catch (error) {

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { AlertTriangle, Bot, Clock3, FileText, Mail, MessageCircle, PhoneCall } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
@@ -90,6 +90,44 @@ type ConversationDetail = ConversationListItem & {
     normalizedDataJson?: Record<string, unknown> | null
     createdAt: string
   }>
+}
+
+type ConversationAiSuggestion = {
+  summary: string
+  suggestedReply: string
+  nextActions: string[]
+  taskSuggestion: {
+    title: string
+    description: string
+    priority: 'LOW' | 'NORMAL' | 'HIGH'
+    dueAt: string | null
+    assignedToUserId: string | null
+    assignedToLabel: string | null
+    reason: string
+  }
+  sentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE'
+  confidence: 'ALTA' | 'MEDIA' | 'BAJA'
+  engine: {
+    mode: 'RULES' | 'LLM'
+    provider: string
+    model: string | null
+  }
+  connection: {
+    enabled: boolean
+    provider: string
+    model: string | null
+  }
+  auditEntryId?: string | null
+}
+
+type TaskPriority = 'LOW' | 'NORMAL' | 'HIGH'
+
+type AiTaskDraft = {
+  title: string
+  description: string
+  priority: TaskPriority
+  dueAt: string
+  assignedToUserId: string
 }
 
 type MaterialLookupItem = {
@@ -317,6 +355,12 @@ function formatConversationEntryTone(channel: Channel) {
   return 'bg-slate-100 text-slate-700'
 }
 
+function getConversationSentimentMeta(sentiment: ConversationAiSuggestion['sentiment']) {
+  if (sentiment === 'POSITIVE') return { label: 'Interés alto', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' }
+  if (sentiment === 'NEGATIVE') return { label: 'Riesgo', className: 'border-rose-200 bg-rose-50 text-rose-700' }
+  return { label: 'Neutral', className: 'border-slate-200 bg-slate-50 text-slate-700' }
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 }
@@ -351,6 +395,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const naText = '—'
   const searchParams = useSearchParams()
   const requestedConversationId = (searchParams?.get('conversationId') || '').trim() || null
+  const selectedConversationIdRef = useRef<string | null>(null)
 
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -365,6 +410,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [conversations, setConversations] = useState<ConversationListItem[]>([])
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null)
+  const [conversationAi, setConversationAi] = useState<ConversationAiSuggestion | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [assignees, setAssignees] = useState<Assignee[]>([])
   const [channels, setChannels] = useState<Channel[]>([])
@@ -372,6 +418,17 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [assigning, setAssigning] = useState(false)
   const [sending, setSending] = useState(false)
   const [resolving, setResolving] = useState(false)
+  const [generatingAi, setGeneratingAi] = useState(false)
+  const [creatingAiTask, setCreatingAiTask] = useState(false)
+  const [creatingAiOpportunity, setCreatingAiOpportunity] = useState(false)
+  const [aiTaskDialogOpen, setAiTaskDialogOpen] = useState(false)
+  const [aiTaskDraft, setAiTaskDraft] = useState<AiTaskDraft>({
+    title: '',
+    description: '',
+    priority: 'NORMAL',
+    dueAt: '',
+    assignedToUserId: '__none__',
+  })
   const [simulatorOpen, setSimulatorOpen] = useState(false)
   const [simulating, setSimulating] = useState(false)
   const [liveMode, setLiveMode] = useState(true)
@@ -457,17 +514,42 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     }
   }, [])
 
+  const loadConversationAi = useCallback(async (conversationId: string, options?: { silent?: boolean }) => {
+    setGeneratingAi(true)
+    try {
+      const json = await requestJson<ConversationAiSuggestion>(`/api/crm/conversations/${conversationId}/ai`)
+      if (selectedConversationIdRef.current !== conversationId) return
+      if (!json.success || !json.data) {
+        if (!options?.silent) {
+          alert(json.error || 'No se pudo generar la sugerencia IA.')
+        }
+        return
+      }
+      setConversationAi(json.data)
+    } finally {
+      if (selectedConversationIdRef.current === conversationId) {
+        setGeneratingAi(false)
+      }
+    }
+  }, [])
+
   useEffect(() => {
     void Promise.all([loadConversations(), loadMeta()])
   }, [loadConversations, loadMeta])
 
   useEffect(() => {
+    selectedConversationIdRef.current = selectedConversationId
     if (!selectedConversationId) {
       setSelectedConversation(null)
       return
     }
     void loadDetail(selectedConversationId)
   }, [loadDetail, selectedConversationId])
+
+  useEffect(() => {
+    if (!selectedConversationId) return
+    void loadConversationAi(selectedConversationId, { silent: true })
+  }, [loadConversationAi, selectedConversationId])
 
   useEffect(() => {
     if (!liveMode) return
@@ -487,6 +569,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     setMaterialResults([])
     setSelectedMaterial(null)
     setInterestNotes('')
+    setConversationAi(null)
   }, [selectedConversationId])
 
   const stats = useMemo(() => {
@@ -692,6 +775,129 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
     } finally {
       setResolving(false)
+    }
+  }
+
+  async function createTaskFromAiSuggestion() {
+    if (!selectedConversation || !conversationAi) return
+
+    const relationPayload = selectedConversation.opportunity
+      ? { opportunityId: selectedConversation.opportunity.id }
+      : selectedConversation.lead
+        ? { leadId: selectedConversation.lead.id }
+        : selectedConversation.cliente
+          ? { clienteId: selectedConversation.cliente.id }
+          : null
+
+    if (!relationPayload) {
+      alert('La conversación aún no tiene lead, cliente u oportunidad para crear una tarea vinculada.')
+      return
+    }
+
+    setAiTaskDraft({
+      title: conversationAi.taskSuggestion.title,
+      description: conversationAi.taskSuggestion.description,
+      priority: conversationAi.taskSuggestion.priority,
+      dueAt: conversationAi.taskSuggestion.dueAt ? conversationAi.taskSuggestion.dueAt.slice(0, 16) : '',
+      assignedToUserId: conversationAi.taskSuggestion.assignedToUserId || selectedConversation.assignedTo?.id || currentUserId || '__none__',
+    })
+    setAiTaskDialogOpen(true)
+  }
+
+  async function submitAiTaskSuggestion() {
+    if (!selectedConversation || !conversationAi) return
+
+    const relationPayload = selectedConversation.opportunity
+      ? { opportunityId: selectedConversation.opportunity.id }
+      : selectedConversation.lead
+        ? { leadId: selectedConversation.lead.id }
+        : selectedConversation.cliente
+          ? { clienteId: selectedConversation.cliente.id }
+          : null
+
+    if (!relationPayload) {
+      alert('La conversación aún no tiene lead, cliente u oportunidad para crear una tarea vinculada.')
+      return
+    }
+
+    if (!aiTaskDraft.title.trim()) {
+      alert('Debes indicar un título para la tarea.')
+      return
+    }
+
+    setCreatingAiTask(true)
+    try {
+      const json = await requestJson('/api/crm/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: aiTaskDraft.title.trim(),
+          description: aiTaskDraft.description.trim(),
+          priority: aiTaskDraft.priority,
+          dueAt: aiTaskDraft.dueAt ? new Date(aiTaskDraft.dueAt).toISOString() : null,
+          assignedToUserId: aiTaskDraft.assignedToUserId === '__none__' ? null : aiTaskDraft.assignedToUserId,
+          aiAudit: {
+            auditEntryId: conversationAi.auditEntryId || null,
+            conversationId: selectedConversation.id,
+            originalTaskSuggestion: conversationAi.taskSuggestion,
+          },
+          ...relationPayload,
+        }),
+      })
+
+      if (!json.success) {
+        alert(json.error || 'No se pudo crear la tarea desde la sugerencia IA.')
+        return
+      }
+
+      setAiTaskDialogOpen(false)
+      await Promise.all([
+        loadConversations(),
+        loadDetail(selectedConversation.id),
+        loadConversationAi(selectedConversation.id, { silent: true }),
+      ])
+    } finally {
+      setCreatingAiTask(false)
+    }
+  }
+
+  async function createOpportunityFromAiSuggestion() {
+    if (!selectedConversation || !conversationAi) return
+    if (selectedConversation.opportunity) {
+      alert('La conversación ya tiene una oportunidad vinculada.')
+      return
+    }
+    if (!selectedConversation.lead && !selectedConversation.cliente) {
+      alert('Necesitas un lead o cliente asociado para pasar esta conversación a oportunidad.')
+      return
+    }
+
+    const contactLabel = selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'contacto CRM'
+
+    setCreatingAiOpportunity(true)
+    try {
+      const json = await requestJson(`/api/crm/conversations/${selectedConversation.id}/create-opportunity`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `Oportunidad IA · ${contactLabel}`,
+          description: conversationAi.summary,
+          stage: 'NEW',
+        }),
+      })
+
+      if (!json.success) {
+        alert(json.error || 'No se pudo crear la oportunidad desde la sugerencia IA.')
+        return
+      }
+
+      await Promise.all([
+        loadConversations(),
+        loadDetail(selectedConversation.id),
+        loadConversationAi(selectedConversation.id, { silent: true }),
+      ])
+    } finally {
+      setCreatingAiOpportunity(false)
     }
   }
 
@@ -1406,6 +1612,132 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                         <CardDescription>Historial del hilo en modo pruebas.</CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-3">
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                                <Bot className="h-4 w-4 text-emerald-700" />
+                                Copiloto comercial
+                              </div>
+                              <p className="text-xs leading-5 text-slate-600">
+                                Genera un resumen corto del hilo y un borrador de respuesta para el asesor.
+                              </p>
+                              {selectedConversation ? (
+                                <Link href={`/dashboard/crm/auditoria-ia?conversationId=${selectedConversation.id}`} className="inline-flex text-xs font-medium text-emerald-700 hover:text-emerald-800 hover:underline">
+                                  Ver auditoría de este hilo
+                                </Link>
+                              ) : null}
+                            </div>
+                            <Button variant="outline" className="rounded-xl border-emerald-200 bg-white" onClick={() => selectedConversation ? void loadConversationAi(selectedConversation.id) : undefined} disabled={generatingAi}>
+                              {generatingAi ? 'Analizando...' : conversationAi ? 'Regenerar sugerencia' : 'Generar sugerencia IA'}
+                            </Button>
+                          </div>
+
+                          {conversationAi ? (
+                            (() => {
+                              const sentimentMeta = getConversationSentimentMeta(conversationAi.sentiment)
+                              return (
+                                <div className="mt-3 space-y-3">
+                                  <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-wide">
+                                    <span className={`rounded-full border px-2.5 py-1 font-semibold ${sentimentMeta.className}`}>{sentimentMeta.label}</span>
+                                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-700">Confianza {conversationAi.confidence}</span>
+                                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-700">
+                                      {conversationAi.engine.mode === 'LLM' ? `IA ${conversationAi.engine.model || conversationAi.engine.provider}` : 'Reglas internas'}
+                                    </span>
+                                  </div>
+
+                                  <div className="rounded-2xl border border-slate-200 bg-white/90 p-3">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Resumen</p>
+                                    <p className="mt-2 text-sm leading-6 text-slate-700">{conversationAi.summary}</p>
+                                  </div>
+
+                                  <div className="rounded-2xl border border-slate-200 bg-white/90 p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Tarea sugerida</p>
+                                      <span className="text-xs text-slate-500">{conversationAi.taskSuggestion.reason}</span>
+                                    </div>
+                                    <div className="mt-2 grid gap-2 text-sm text-slate-700 sm:grid-cols-3">
+                                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">Prioridad: {conversationAi.taskSuggestion.priority}</div>
+                                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">Vence: {formatDate(conversationAi.taskSuggestion.dueAt, locale, 'Sin fecha')}</div>
+                                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">Responsable: {conversationAi.taskSuggestion.assignedToLabel || 'Sin asignar'}</div>
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-2xl border border-slate-200 bg-white/90 p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Respuesta sugerida</p>
+                                      <Button
+                                        variant="ghost"
+                                        className="h-auto rounded-lg px-2 py-1 text-xs text-emerald-700 hover:text-emerald-800"
+                                        onClick={() => {
+                                          setMessageTypeDraft('TEXT')
+                                          setAttachmentUrlDraft('')
+                                          setAttachmentNameDraft('')
+                                          setMessageDraft(conversationAi.suggestedReply)
+                                        }}
+                                      >
+                                        Usar en borrador
+                                      </Button>
+                                    </div>
+                                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{conversationAi.suggestedReply}</p>
+                                  </div>
+
+                                  <div className="rounded-2xl border border-slate-200 bg-white/90 p-3">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Acciones rápidas</p>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      {!selectedConversation.assignedTo || selectedConversation.assignedTo.id !== currentUserId ? (
+                                        <Button
+                                          variant="outline"
+                                          className="rounded-xl border-slate-200 bg-white"
+                                          onClick={() => void takeConversation(selectedConversation.id)}
+                                          disabled={assigning || !currentUserId}
+                                        >
+                                          {assigning ? 'Asignando...' : 'Asignarme'}
+                                        </Button>
+                                      ) : null}
+                                      <Button
+                                        variant="outline"
+                                        className="rounded-xl border-slate-200 bg-white"
+                                        onClick={() => void createTaskFromAiSuggestion()}
+                                        disabled={creatingAiTask}
+                                      >
+                                        {creatingAiTask ? 'Creando tarea...' : 'Crear tarea'}
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        className="rounded-xl border-slate-200 bg-white"
+                                        onClick={() => void createOpportunityFromAiSuggestion()}
+                                        disabled={creatingAiOpportunity || Boolean(selectedConversation.opportunity) || (!selectedConversation.lead && !selectedConversation.cliente)}
+                                      >
+                                        {creatingAiOpportunity ? 'Creando oportunidad...' : 'Pasar a oportunidad'}
+                                      </Button>
+                                    </div>
+                                  </div>
+
+                                  {conversationAi.nextActions.length ? (
+                                    <div className="rounded-2xl border border-slate-200 bg-white/90 p-3">
+                                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Siguiente paso sugerido</p>
+                                      <div className="mt-2 space-y-2">
+                                        {conversationAi.nextActions.map((action) => (
+                                          <div key={action} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
+                                            {action}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ) : null}
+
+                                  {!conversationAi.connection.enabled ? (
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">
+                                      El proveedor LLM no está configurado. Esta sugerencia salió con reglas internas para que el inbox siga funcionando.
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )
+                            })()
+                          ) : null}
+                        </div>
+
                         <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
                           {selectedConversation.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes registrados.</p> : null}
                           {selectedConversation.messages.map((message: ConversationMessage) => (
@@ -1613,6 +1945,56 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setSimulatorOpen(false)}>Cancelar</Button>
             <Button onClick={() => void runSimulation()} disabled={simulating}>{simulating ? 'Simulando...' : 'Crear inbound'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={aiTaskDialogOpen} onOpenChange={setAiTaskDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Crear tarea desde IA</DialogTitle>
+            <DialogDescription>La sugerencia ya llega prellenada con prioridad, vencimiento y responsable. Ajusta lo que haga falta antes de crearla.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label>Título</Label>
+              <Input value={aiTaskDraft.title} onChange={(e) => setAiTaskDraft((current) => ({ ...current, title: e.target.value }))} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Descripción</Label>
+              <Textarea value={aiTaskDraft.description} onChange={(e) => setAiTaskDraft((current) => ({ ...current, description: e.target.value }))} rows={6} />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-2">
+                <Label>Prioridad</Label>
+                <Select value={aiTaskDraft.priority} onValueChange={(value) => setAiTaskDraft((current) => ({ ...current, priority: value as TaskPriority }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LOW">Baja</SelectItem>
+                    <SelectItem value="NORMAL">Normal</SelectItem>
+                    <SelectItem value="HIGH">Alta</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Vencimiento</Label>
+                <Input type="datetime-local" value={aiTaskDraft.dueAt} onChange={(e) => setAiTaskDraft((current) => ({ ...current, dueAt: e.target.value }))} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Responsable</Label>
+                <Select value={aiTaskDraft.assignedToUserId} onValueChange={(value) => setAiTaskDraft((current) => ({ ...current, assignedToUserId: value }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Sin asesor</SelectItem>
+                    {assignees.map((item) => <SelectItem key={item.id} value={item.id}>{formatAssigneeName(item)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAiTaskDialogOpen(false)} disabled={creatingAiTask}>Cancelar</Button>
+            <Button onClick={() => void submitAiTaskSuggestion()} disabled={creatingAiTask}>{creatingAiTask ? 'Creando tarea...' : 'Crear tarea'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
