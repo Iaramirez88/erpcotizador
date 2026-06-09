@@ -188,7 +188,6 @@ function getFormatLabel(format: VectorFormat) {
 export function LitografiaAiVectorizerPanel() {
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [sourcePreviewUrl, setSourcePreviewUrl] = useState<string | null>(null)
-  const [maxColors, setMaxColors] = useState("")
   const [outputOptions, setOutputOptions] = useState<VectorizerOutputOptions>(DEFAULT_OUTPUT_OPTIONS)
   const [loading, setLoading] = useState(false)
   const [approvalLoading, setApprovalLoading] = useState(false)
@@ -262,7 +261,6 @@ export function LitografiaAiVectorizerPanel() {
       const body = new FormData()
       body.append("action", "vectorize")
       body.append("file", sourceFile)
-      if (maxColors.trim()) body.append("maxColors", maxColors.trim())
       body.append("options", JSON.stringify(outputOptions))
 
       const response = await fetch("/api/litografia/ia/vectorizar", {
@@ -399,7 +397,7 @@ export function LitografiaAiVectorizerPanel() {
   }
 
   const advancedOptionsContent = (
-    <div className="space-y-4 rounded-3xl border border-slate-800 bg-slate-900/90 p-4 text-sm text-slate-200">
+    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto rounded-3xl border border-slate-800 bg-slate-900/90 p-4 pr-3 text-sm text-slate-200">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-white">Opciones avanzadas de exportación</p>
@@ -726,24 +724,17 @@ export function LitografiaAiVectorizerPanel() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
             <div className="space-y-2">
               <Label htmlFor="litografia-vectorizer-file">Imagen raster</Label>
               <Input id="litografia-vectorizer-file" type="file" accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/bmp" onChange={(event) => setSourceFile(event.target.files?.[0] ?? null)} />
               <p className="text-xs text-slate-500">Formatos recomendados: PNG o JPG limpios. Vectorizer.AI también acepta GIF, BMP y WebP.</p>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="litografia-vectorizer-max-colors">Máximo de colores (opcional)</Label>
-              <Input
-                id="litografia-vectorizer-max-colors"
-                inputMode="numeric"
-                value={maxColors}
-                onChange={(event) => setMaxColors(event.target.value.replace(/[^0-9]/g, ""))}
-                placeholder="Ejemplo: 8"
-              />
-              <p className="text-xs text-slate-500">Úsalo cuando quieras simplificar logotipos o artes planas. Déjalo vacío para no limitar colores.</p>
-            </div>
+            <Button type="button" onClick={handleOpenGenerationModal} disabled={!sourceFile} className="w-full lg:w-auto">
+              <Upload className="mr-2 h-4 w-4" />
+              Abrir vectorizador
+            </Button>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
@@ -767,19 +758,6 @@ export function LitografiaAiVectorizerPanel() {
                 <p className="mt-2 text-sm text-amber-900">Aún no has seleccionado una imagen para vectorizar.</p>
               )}
             </div>
-          </div>
-
-          <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-5 shadow-sm">
-            <p className="text-sm font-semibold text-slate-900">Opciones avanzadas de exportación</p>
-            <p className="mt-1 max-w-3xl text-xs text-slate-500">Ahora se configuran dentro del modal para trabajar en dos columnas: vista previa a la izquierda y ajustes a la derecha.</p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" onClick={handleOpenGenerationModal} disabled={!sourceFile}>
-              <Upload className="mr-2 h-4 w-4" />
-              Abrir vectorizador
-            </Button>
-            <p className="text-sm text-muted-foreground">{historyCountLabel}</p>
           </div>
 
           {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
@@ -982,7 +960,7 @@ export function LitografiaAiVectorizerPanel() {
                 )}
               </div>
 
-              <div className="min-h-0 space-y-4 overflow-y-auto pr-2">
+              <div className="flex min-h-0 flex-col gap-4 pr-2">
                 {advancedOptionsContent}
 
                 <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-4 text-sm text-slate-200">
