@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { Download, ExternalLink, History, LoaderCircle, RefreshCw, Save, Upload } from "lucide-react"
+import { ChevronDown, Download, ExternalLink, History, LoaderCircle, RefreshCw, Save, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -482,8 +482,11 @@ export function LitografiaAiVectorizerPanel() {
         ) : null}
       </div>
 
-      <details className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-        <summary className="cursor-pointer list-none text-sm font-semibold text-white">Trazado y geometría</summary>
+      <details className="group rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-white">
+          <span>Trazado y geometría</span>
+          <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+        </summary>
         <div className="mt-4 space-y-4">
           <div className="grid gap-1.5">
             <Label className="text-slate-200">Estilo de dibujo</Label>
@@ -592,8 +595,11 @@ export function LitografiaAiVectorizerPanel() {
         </div>
       </details>
 
-      <details className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-        <summary className="cursor-pointer list-none text-sm font-semibold text-white">Acabado visual</summary>
+      <details className="group rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-white">
+          <span>Acabado visual</span>
+          <ChevronDown className="h-4 w-4 text-slate-400 transition-transform group-open:rotate-180" />
+        </summary>
         <div className="mt-4 space-y-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between rounded-2xl border border-slate-700 bg-slate-950 px-3 py-2.5">
@@ -940,7 +946,7 @@ export function LitografiaAiVectorizerPanel() {
           setGenerationModalOpen(open)
         }}
       >
-        <DialogContent hideClose={loading || approvalLoading} className="max-h-[92vh] max-w-6xl overflow-hidden border-slate-800 bg-slate-950 text-white">
+        <DialogContent hideClose={loading || approvalLoading} className="flex max-h-[92vh] max-w-6xl flex-col overflow-hidden border-slate-800 bg-slate-950 text-white">
           <DialogHeader className="space-y-2 border-b border-slate-800 pb-4 text-left">
             <DialogTitle className="text-xl text-white">{loading ? "Vectorizando imagen" : savedVector ? "Vector listo y guardado" : "Revisión del vector generado"}</DialogTitle>
             <p className="text-sm text-slate-300">
@@ -950,9 +956,9 @@ export function LitografiaAiVectorizerPanel() {
             </p>
           </DialogHeader>
 
-          <div className="overflow-y-auto py-4">
-            <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-              <div>
+          <div className="min-h-0 flex-1 overflow-hidden py-4">
+            <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+              <div className="min-h-0 overflow-y-auto pr-2">
                 {loading ? (
                   <div className="flex min-h-[60vh] flex-col items-center justify-center gap-5 rounded-3xl border border-slate-800 bg-black/40 px-6 text-center">
                     <LoaderCircle className="h-14 w-14 animate-spin text-white" />
@@ -976,7 +982,7 @@ export function LitografiaAiVectorizerPanel() {
                 )}
               </div>
 
-              <div className="space-y-4">
+              <div className="min-h-0 space-y-4 overflow-y-auto pr-2">
                 {advancedOptionsContent}
 
                 <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-4 text-sm text-slate-200">
@@ -1004,7 +1010,7 @@ export function LitografiaAiVectorizerPanel() {
             </div>
           </div>
 
-          <DialogFooter className="border-t border-slate-800 pt-4 sm:justify-between sm:space-x-0">
+          <DialogFooter className="border-t border-slate-800 bg-slate-950 pt-4 sm:justify-between sm:space-x-0">
             <div className="flex flex-wrap gap-2">
               {generatedVector ? (
                 <Button type="button" variant="outline" className="border-slate-700 bg-slate-900 text-white hover:bg-slate-800" onClick={() => void handleDownloadGenerated()} disabled={loading || approvalLoading || downloadingKey === `generated:${outputOptions.fileFormat}`}>
