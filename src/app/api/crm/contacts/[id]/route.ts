@@ -1,14 +1,19 @@
 import { NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { assertCrmSedeAccess, normalizeString } from '@/lib/crm'
 
 export const runtime = 'nodejs'
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'CONTACTS',
+      action: 'UPDATE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const { id } = await context.params

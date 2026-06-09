@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import { ModuleKey } from '@prisma/client'
+import { } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import {
   ensureCrmStageSettings,
   normalizeString,
@@ -18,7 +18,12 @@ function normalizeColor(value: unknown): string | null {
 
 export async function GET() {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'OPPORTUNITIES',
+      action: 'READ',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const rows = await ensureCrmStageSettings(prisma, access.empresaId)
@@ -31,7 +36,12 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'ADMIN')
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'OPPORTUNITIES',
+      action: 'CONFIGURE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const body = (await request.json().catch(() => null)) as { stages?: Array<Record<string, unknown>> } | null

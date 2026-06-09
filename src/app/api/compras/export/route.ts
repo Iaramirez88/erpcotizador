@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
-import { ModuleKey } from '@prisma/client'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { buildXlsxBuffer, formatDateForFilename } from '@/lib/excel-export'
 
 export const runtime = 'nodejs'
@@ -19,7 +18,12 @@ function n(value: unknown, fallback = 0) {
 
 export async function GET(request: NextRequest) {
   try {
-    const access = await requireApiAccess(ModuleKey.COMPRAS, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'RECURSOS',
+      subdomain: 'PURCHASES',
+      action: 'EXPORT',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const { searchParams } = new URL(request.url)

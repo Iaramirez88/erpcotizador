@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
-import { ModuleKey } from '@prisma/client'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import bcrypt from 'bcryptjs'
 import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
 
@@ -12,7 +11,12 @@ function asString(value: unknown): string {
 }
 
 export async function GET() {
-  const access = await requireApiAccess(ModuleKey.CONFIG, 'READ')
+  const access = await requireCapabilityAccess({
+    domain: 'CORE',
+    subdomain: 'COMPANY',
+    action: 'READ',
+    scope: 'EMPRESA',
+  })
   if (!access.ok) return access.response
 
   const sede = await prisma.sede.findUnique({
@@ -52,7 +56,12 @@ export async function GET() {
 }
 
 export async function PUT(request: NextRequest) {
-  const access = await requireApiAccess(ModuleKey.CONFIG, 'WRITE')
+  const access = await requireCapabilityAccess({
+    domain: 'CORE',
+    subdomain: 'COMPANY',
+    action: 'CONFIGURE',
+    scope: 'EMPRESA',
+  })
   if (!access.ok) return access.response
 
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { assertCrmSedeAccess, normalizeString, parseMessageType } from '@/lib/crm'
 import { getMetaMessagingDispatchConfig, sendMetaMediaMessage, sendMetaTextMessage } from '@/lib/crm-meta'
 import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppMediaMessage, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
@@ -39,7 +39,12 @@ type RouteContext = {
 
 export async function POST(request: Request, context: RouteContext) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'INBOX',
+      action: 'UPDATE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const { id } = await context.params

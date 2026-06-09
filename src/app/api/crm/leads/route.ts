@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { AccessLevel, CrmLeadSource, CrmLeadStatus, ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 import { syncCrmLeadFollowUpTaskById } from '@/lib/crm-follow-up'
 import { requireSedeAccess } from '@/lib/rbac'
@@ -98,7 +98,12 @@ async function assertSedeAccess(args: { sedeId: string; empresaId: string; userI
 
 export async function GET(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'LEADS',
+      action: 'READ',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const { searchParams } = new URL(request.url)
@@ -172,7 +177,12 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'LEADS',
+      action: 'CREATE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null

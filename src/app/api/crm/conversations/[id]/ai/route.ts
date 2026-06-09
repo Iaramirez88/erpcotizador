@@ -2,19 +2,20 @@ import crypto from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { assertCrmSedeAccess, normalizeString } from '@/lib/crm'
 import { generateCrmConversationSuggestion, getCrmConversationAiConnectionStatus } from '@/lib/crm-conversation-ai'
 import { appendAiWorkspaceHistory, listAiWorkspaceHistory, updateAiWorkspaceHistoryEntry } from '@/lib/ai-workspace-history'
+import type { CrmConversationAiContext } from '@/lib/crm-conversation-ai'
 
 export const runtime = 'nodejs'
 
 function getConversationOperationalContext(args: {
   status: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM'
   unreadCount: number
-  lastMessageAt: string
+  lastMessageAt: string | Date
   hasAssignedTo: boolean
-}) {
+}): Pick<CrmConversationAiContext, 'slaState' | 'priorityLabel'> {
   if (args.status === 'RESOLVED' || args.status === 'SPAM') {
     return {
       slaState: 'paused' as const,
@@ -51,7 +52,12 @@ type RouteContext = {
 
 export async function GET(_: Request, context: RouteContext) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'IA',
+      subdomain: 'COMMERCIAL_AI',
+      action: 'EXECUTE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const { id } = await context.params
@@ -162,7 +168,7 @@ export async function GET(_: Request, context: RouteContext) {
       assignedToUserId: row.assignedTo?.id || null,
       assignedToLabel: row.assignedTo?.name || row.assignedTo?.email || null,
       unreadCount: row.unreadCount,
-      lastMessageAt: row.lastMessageAt,
+      lastMessageAt: row.lastMessageAt.toISOString(),
       leadId: row.lead?.id || null,
       leadStatus: row.lead?.status || null,
       opportunityId: row.opportunity?.id || null,

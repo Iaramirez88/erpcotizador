@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { assertCrmSedeAccess, normalizeString } from '@/lib/crm'
 import { createInboundArtifacts, parseMaybeDate } from '@/lib/crm-omnichannel'
 
@@ -9,7 +9,12 @@ export const runtime = 'nodejs'
 
 export async function POST(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'INBOX',
+      action: 'UPDATE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null

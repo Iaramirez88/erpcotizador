@@ -1,6 +1,6 @@
 import { AccessLevel, ModuleKey } from '@prisma/client'
 import { NextResponse } from 'next/server'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { assertCrmSedeAccess, normalizeString } from '@/lib/crm'
 import { fetchGoogleSheetsRows, getGoogleSheetsSettings } from '@/lib/crm-google-sheets'
 import { parseJsonObject } from '@/lib/crm-omnichannel'
@@ -14,7 +14,12 @@ type RouteContext = {
 
 export async function GET(request: Request, context: RouteContext) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'CHANNELS',
+      action: 'READ',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const { id } = await context.params

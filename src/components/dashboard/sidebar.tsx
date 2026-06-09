@@ -15,7 +15,7 @@ import { NavSettingsDialog, type NavSettingsItem } from "@/components/dashboard/
 import Image from "next/image"
 import { useI18n } from "@/components/providers/i18n-provider"
 import { useTheme } from "@/components/providers/theme-provider"
-import { buildDashboardNavDefinitions, isOnboardingScopedDashboardHref, moduleForDashboardHref, sectionForDashboardHref } from "@/lib/dashboard-navigation"
+import { buildDashboardNavDefinitions, getDashboardSectionOrder, isOnboardingScopedDashboardHref, moduleForDashboardHref, sectionForDashboardHref } from "@/lib/dashboard-navigation"
 
 interface SidebarProps {
   user: {
@@ -566,6 +566,7 @@ export default function Sidebar({ user }: SidebarProps) {
   const moduleNavigation = useMemo(() => buildModuleNavigation(t), [t])
   const dashboardNavDefinitions = useMemo(() => buildDashboardNavDefinitions(t), [t])
   const preferenceNavigation = useMemo(() => buildPreferenceNavigation(t), [t])
+  const dashboardSectionOrder = useMemo(() => getDashboardSectionOrder(), [])
 
   const allowedModules = useMemo(() => {
     if (!user.allowedModules) return null
@@ -814,106 +815,29 @@ export default function Sidebar({ user }: SidebarProps) {
   }
 
   const sections = useMemo(() => {
-    const get = (href: string) => visibleNavigation.find((it) => it.href === href) ?? null
+    const grouped = new Map<string, NavItem[]>()
 
-    const baseSections: NavSection[] = [
-      {
-        title: 'Centro de Control',
-        items: sortNavItemsByOrder([get('/dashboard'), get('/dashboard/mapa-producto'), get('/dashboard/reportes'), get('/dashboard/plantillas')].filter(Boolean) as NavItem[], effectiveNavOrder),
-      },
-      {
-        title: 'Contabilidad',
-        items: sortNavItemsByOrder([get('/dashboard/contabilidad')].filter(Boolean) as NavItem[], effectiveNavOrder),
-      },
-      {
-        title: 'Nómina',
-        items: sortNavItemsByOrder([get('/dashboard/contabilidad/nomina')].filter(Boolean) as NavItem[], effectiveNavOrder),
-      },
-      {
-        title: 'Comercial',
-        items: sortNavItemsByOrder([
-          get('/dashboard/crm'),
-          get('/dashboard/crm/conversations'),
-          get('/dashboard/crm/leads'),
-          get('/dashboard/crm/oportunidades'),
-          get('/dashboard/crm/agenda'),
-          get('/dashboard/crm/tareas'),
-          get('/dashboard/crm/chatbot'),
-          get('/dashboard/crm/archivos'),
-          get('/dashboard/crm/integraciones'),
-          get('/dashboard/crm/auditoria-ia'),
-          get('/dashboard/clientes'),
-          get('/dashboard/cotizador'),
-          get('/dashboard/cotizaciones'),
-          get('/dashboard/remisiones'),
-          get('/dashboard/pos'),
-        ].filter(Boolean) as NavItem[], effectiveNavOrder),
-      },
-      {
-        title: 'Operaciones',
-        items: sortNavItemsByOrder([
-          get('/dashboard/ordenes'),
-          get('/dashboard/espacios-trabajo'),
-          get('/dashboard/chat'),
-          get('/dashboard/litografia'),
-          get('/dashboard/escaneos'),
-          get('/dashboard/productos'),
-        ].filter(Boolean) as NavItem[], effectiveNavOrder),
-      },
-      {
-        title: 'IA',
-        items: sortNavItemsByOrder([
-          get('/dashboard/litografia/conocimiento-ia'),
-          get('/dashboard/litografia/auditoria-ia'),
-          get('/dashboard/imagenes-ia/generador'),
-          get('/dashboard/imagenes-ia/vectorizador'),
-        ].filter(Boolean) as NavItem[], effectiveNavOrder),
-      },
-      {
-        title: 'Verticales',
-        items: sortNavItemsByOrder([
-          get('/dashboard/restaurante'),
-          get('/dashboard/odontologia'),
-          get('/dashboard/dotaciones'),
-        ].filter(Boolean) as NavItem[], effectiveNavOrder),
-      },
-      {
-        title: 'Inventario',
-        items: sortNavItemsByOrder([
-          get('/dashboard/inventario'),
-          get('/dashboard/inventario/traslados'),
-        ].filter(Boolean) as NavItem[], effectiveNavOrder),
-      },
-      {
-        title: 'Logística',
-        items: sortNavItemsByOrder([
-          get('/dashboard/compras'),
-          get('/dashboard/proveedores'),
-          get('/dashboard/configuracion/desperdicios'),
-        ].filter(Boolean) as NavItem[], effectiveNavOrder),
-      },
-      {
-        title: 'Gestión',
-        items: sortNavItemsByOrder([
-          get('/dashboard/configuracion/sedes'),
-          get('/dashboard/configuracion/usuarios'),
-          get('/dashboard/configuracion/permisos'),
-          get('/dashboard/configuracion/empresa'),
-          get('/dashboard/configuracion/servicios-web'),
-          get('/dashboard/configuracion/plan'),
-        ].filter(Boolean) as NavItem[], effectiveNavOrder),
-      },
-      {
-        title: 'Super Admin',
-        items: sortNavItemsByOrder([
-          get('/dashboard/configuracion/super-admin/empresas'),
-          get('/dashboard/configuracion/super-admin/usuarios'),
-          get('/dashboard/configuracion/super-admin/modulos-por-plan'),
-        ].filter(Boolean) as NavItem[], effectiveNavOrder),
-      },
-    ]
-    return sortSectionsByOrder(baseSections.filter((section) => section.items.length > 0), effectiveNavOrder)
-  }, [visibleNavigation, effectiveNavOrder])
+    for (const item of visibleNavigation) {
+      const section = sectionForDashboardHref(item.href)
+      const current = grouped.get(section) ?? []
+      current.push(item)
+      grouped.set(section, current)
+    }
+
+    const baseSections: NavSection[] = dashboardSectionOrder
+      .map((title) => ({
+        title,
+        items: sortNavItemsByOrder(grouped.get(title) ?? [], effectiveNavOrder),
+      }))
+      .filter((section) => section.items.length > 0)
+
+    for (const [title, items] of grouped.entries()) {
+      if (baseSections.some((section) => section.title === title)) continue
+      baseSections.push({ title, items: sortNavItemsByOrder(items, effectiveNavOrder) })
+    }
+
+    return sortSectionsByOrder(baseSections, effectiveNavOrder)
+  }, [dashboardSectionOrder, visibleNavigation, effectiveNavOrder])
 
   const activeSectionTitle = useMemo(() => {
     // Elegimos el match más específico (href más largo) para evitar que “/dashboard” capture todo.

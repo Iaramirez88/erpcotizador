@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
-import { ModuleKey } from '@prisma/client'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 
 export const runtime = 'nodejs'
 
@@ -21,7 +20,12 @@ function asNumber(value: unknown, fallback: number) {
 }
 
 export async function GET() {
-  const access = await requireApiAccess(ModuleKey.COTIZADOR, 'READ')
+  const access = await requireCapabilityAccess({
+    domain: 'VENTAS',
+    subdomain: 'QUOTER',
+    action: 'READ',
+    scope: 'SEDE',
+  })
   if (!access.ok) return access.response
 
   const sede = await prisma.sede.findUnique({
@@ -52,7 +56,12 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const access = await requireApiAccess(ModuleKey.CONFIG, 'WRITE')
+  const access = await requireCapabilityAccess({
+    domain: 'VENTAS',
+    subdomain: 'QUOTER',
+    action: 'CONFIGURE',
+    scope: 'SEDE',
+  })
   if (!access.ok) return access.response
 
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>

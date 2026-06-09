@@ -1,13 +1,17 @@
 import { NextResponse } from 'next/server'
-import { ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 
 export const runtime = 'nodejs'
 
 export async function GET() {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'CORE',
+      subdomain: 'COMPANY',
+      action: 'READ',
+      scope: 'EMPRESA',
+    })
     if (!access.ok) return access.response
 
     const rows = await prisma.sede.findMany({

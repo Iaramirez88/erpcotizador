@@ -7,8 +7,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import type { EstadoCompra } from "@prisma/client"
-import { requireApiAccess } from "@/lib/api-rbac"
-import { ModuleKey } from "@prisma/client"
+import { requireCapabilityAccess } from "@/lib/api-rbac"
 
 export const runtime = "nodejs"
 
@@ -69,7 +68,12 @@ async function getEmpresaIdFromSedeId(sedeId: string): Promise<{ empresaId: stri
 
 export async function GET(request: NextRequest) {
   try {
-    const access = await requireApiAccess(ModuleKey.COMPRAS, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'RECURSOS',
+      subdomain: 'PURCHASES',
+      action: 'READ',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const userId = access.userId
@@ -139,7 +143,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const access = await requireApiAccess(ModuleKey.COMPRAS, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'RECURSOS',
+      subdomain: 'PURCHASES',
+      action: 'CREATE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const userId = access.userId

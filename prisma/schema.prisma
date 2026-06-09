@@ -106,6 +106,8 @@ model User {
   teamMemberships TeamMember[]
   moduleAccess    UserModuleAccess[]
   globalAccess    UserGlobalAccess?
+  capabilityGrants UserCapabilityGrant[] @relation("UserCapabilityGrantSubject")
+  capabilityGrantsAuthored UserCapabilityGrant[] @relation("UserCapabilityGrantGrantedBy")
 
   // Notificaciones
   notifications Notification[]
@@ -456,6 +458,23 @@ enum AccessLevel {
   ADMIN
 }
 
+enum RbacScopeType {
+  GLOBAL_PLATFORM
+  EMPRESA
+  SEDE
+  TEAM
+  OWN
+  ASSIGNED
+  VERTICAL
+}
+
+enum RbacGrantSource {
+  DIRECT
+  ROLE_TEMPLATE
+  MIGRATION
+  SYSTEM
+}
+
 // ============================================
 // NOTIFICACIONES (MVP)
 // ============================================
@@ -661,6 +680,9 @@ model Empresa {
 
   billingInvoices BillingInvoice[]
   moduleOverrides EmpresaModuleOverride[]
+  domainEntitlements DomainEntitlement[]
+  capabilityEntitlements CapabilityEntitlement[]
+  capabilityGrants UserCapabilityGrant[]
 
   inventoryMovements InventoryMovement[]
 
@@ -778,6 +800,42 @@ model EmpresaModuleOverride {
   @@unique([empresaId, module])
   @@index([empresaId])
   @@map("empresa_module_overrides")
+}
+
+model DomainEntitlement {
+  id       String  @id @default(cuid())
+  empresaId String
+  domain   String
+  enabled  Boolean @default(true)
+  metadata Json    @default("{}")
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, domain])
+  @@index([empresaId])
+  @@map("domain_entitlements")
+}
+
+model CapabilityEntitlement {
+  id        String  @id @default(cuid())
+  empresaId String
+  domain    String
+  subdomain String
+  action    String
+  enabled   Boolean @default(true)
+  metadata  Json    @default("{}")
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, domain, subdomain, action])
+  @@index([empresaId, domain])
+  @@map("capability_entitlements")
 }
 
 model BillingReminderLog {
@@ -1857,6 +1915,34 @@ model UserGlobalAccess {
 
   @@index([empresaId])
   @@map("user_global_access")
+}
+
+model UserCapabilityGrant {
+  id          String          @id @default(cuid())
+  userId       String
+  empresaId    String
+  domain       String
+  subdomain    String
+  action       String
+  scopeType    RbacScopeType
+  scopeValue   String?
+  allowed      Boolean         @default(true)
+  source       RbacGrantSource @default(DIRECT)
+  grantedByUserId String?
+  notes       String?         @db.Text
+  metadata    Json            @default("{}")
+
+  user          User    @relation("UserCapabilityGrantSubject", fields: [userId], references: [id], onDelete: Cascade)
+  empresa       Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  grantedByUser User?   @relation("UserCapabilityGrantGrantedBy", fields: [grantedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, empresaId])
+  @@index([empresaId, domain, subdomain, action])
+  @@index([scopeType, scopeValue])
+  @@map("user_capability_grants")
 }
 
 model WebsiteService {

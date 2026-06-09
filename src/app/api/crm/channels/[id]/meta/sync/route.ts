@@ -1,6 +1,6 @@
 import { AccessLevel, ModuleKey, type Prisma } from '@prisma/client'
 import { NextResponse } from 'next/server'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { prisma } from '@/lib/prisma'
 import { assertCrmSedeAccess, normalizeString } from '@/lib/crm'
 import { buildMetaSettingsPatch, getMetaAccessToken, syncMetaConnection } from '@/lib/crm-meta'
@@ -13,7 +13,12 @@ type RouteContext = {
 
 export async function POST(request: Request, context: RouteContext) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'CHANNELS',
+      action: 'CONFIGURE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const { id } = await context.params

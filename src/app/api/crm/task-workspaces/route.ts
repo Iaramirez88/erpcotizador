@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
-import { ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { normalizeString } from '@/lib/crm'
 import { crmTaskWorkspaceInclude, getAccessibleTaskWorkspaceIds, mapWorkspaceForUser, normalizeUserIdList } from '@/lib/crm-task-workspaces'
 
@@ -9,7 +8,12 @@ export const runtime = 'nodejs'
 
 export async function GET() {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'OPERACIONES',
+      subdomain: 'TASK_WORKSPACES',
+      action: 'READ',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const workspaceIds = await getAccessibleTaskWorkspaceIds(prisma, {
@@ -35,7 +39,12 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'OPERACIONES',
+      subdomain: 'TASK_WORKSPACES',
+      action: 'CREATE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null

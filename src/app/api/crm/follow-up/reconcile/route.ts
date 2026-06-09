@@ -1,14 +1,18 @@
 import { NextResponse } from 'next/server'
-import { ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { reconcileCrmFollowUpTasks } from '@/lib/crm-follow-up'
 
 export const runtime = 'nodejs'
 
 export async function POST() {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'COMMERCIAL_TASKS',
+      action: 'EXECUTE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const data = await prisma.$transaction((tx) => reconcileCrmFollowUpTasks({

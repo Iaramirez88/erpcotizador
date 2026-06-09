@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server'
-import { ModuleKey } from '@prisma/client'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { prisma } from '@/lib/prisma'
 
 export async function GET() {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'OPERACIONES',
+      subdomain: 'FILES',
+      action: 'READ',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const users = await prisma.user.findMany({

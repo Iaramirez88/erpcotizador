@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
-import { ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 
 export const runtime = 'nodejs'
 
@@ -40,7 +39,12 @@ function mapAttachments(value: unknown): ChatAttachment[] {
 
 export async function POST(request: Request, context: RouteContext) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'OPERACIONES',
+      subdomain: 'INTERNAL_CHAT',
+      action: 'CREATE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const { id } = await context.params

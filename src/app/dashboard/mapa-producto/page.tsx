@@ -6,8 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 
 type DomainTone = 'sky' | 'teal' | 'amber'
 
+type DomainId = 'nucleo' | 'comercial' | 'operaciones' | 'inventario' | 'financiero' | 'ia' | 'analitica' | 'verticales'
+
 type Domain = {
-  id: string
+  id: DomainId
   title: string
   description: string
   href: string
@@ -127,7 +129,7 @@ const domainIcon = {
   ia: BrainCircuit,
   analitica: LineChart,
   verticales: Wrench,
-} satisfies Record<string, typeof Compass>
+} satisfies Record<DomainId, typeof Compass>
 
 const toneClasses: Record<DomainTone, string> = {
   sky: 'border-sky-200 bg-sky-50/80',

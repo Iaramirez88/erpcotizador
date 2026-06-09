@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import { ModuleKey, Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 
 export const runtime = 'nodejs'
 
@@ -36,7 +36,12 @@ function isInternalChatSchemaMissing(error: unknown) {
 
 export async function GET(_: Request, context: RouteContext) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'OPERACIONES',
+      subdomain: 'INTERNAL_CHAT',
+      action: 'READ',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const { id } = await context.params
@@ -118,7 +123,12 @@ export async function GET(_: Request, context: RouteContext) {
 
 export async function DELETE(_: Request, context: RouteContext) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'OPERACIONES',
+      subdomain: 'INTERNAL_CHAT',
+      action: 'DELETE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const { id } = await context.params

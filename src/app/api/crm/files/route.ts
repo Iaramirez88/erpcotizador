@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ModuleKey } from '@prisma/client'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { createCrmFolder, deleteCrmEntry, getCrmFilesSnapshot, moveCrmEntry, renameCrmEntry, updateCrmEntrySharing, uploadCrmFiles } from '@/lib/crm-files'
 
 export const runtime = 'nodejs'
 
 export async function GET(request: NextRequest) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'OPERACIONES',
+      subdomain: 'FILES',
+      action: 'READ',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const pathParam = request.nextUrl.searchParams.get('path')
@@ -21,7 +25,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'OPERACIONES',
+      subdomain: 'FILES',
+      action: 'CREATE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const contentType = request.headers.get('content-type') || ''
@@ -81,7 +90,12 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'OPERACIONES',
+      subdomain: 'FILES',
+      action: 'DELETE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const body = (await request.json().catch(() => null)) as { path?: string } | null
@@ -100,7 +114,12 @@ export async function DELETE(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'OPERACIONES',
+      subdomain: 'FILES',
+      action: 'UPDATE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const body = (await request.json().catch(() => null)) as {

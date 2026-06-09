@@ -6,7 +6,7 @@
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireApiAccess } from "@/lib/api-rbac"
+import { requireCapabilityAccess } from "@/lib/api-rbac"
 import { checkPlanLimit } from "@/lib/plan-limits"
 import { AccessLevel, ModuleKey } from "@prisma/client"
 import { requireSedeAccess } from "@/lib/rbac"
@@ -90,7 +90,12 @@ function parseNumberParam(searchParams: URLSearchParams, key: string): number | 
 // GET - Listar todos los clientes
 export async function GET(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.CLIENTES, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'VENTAS',
+      subdomain: 'CUSTOMERS',
+      action: 'READ',
+      scope: 'EMPRESA',
+    })
     if (!access.ok) return access.response
 
     const empresaId = access.empresaId
@@ -317,7 +322,12 @@ export async function GET(request: Request) {
 // POST - Crear nuevo cliente
 export async function POST(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.CLIENTES, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'VENTAS',
+      subdomain: 'CUSTOMERS',
+      action: 'CREATE',
+      scope: 'EMPRESA',
+    })
     if (!access.ok) return access.response
 
     const empresaId = access.empresaId

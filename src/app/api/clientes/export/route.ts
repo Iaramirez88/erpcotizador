@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { AccessLevel, ModuleKey } from '@prisma/client'
 import { requireSedeAccess } from '@/lib/rbac'
 import { buildXlsxBuffer, formatDateForFilename } from '@/lib/excel-export'
@@ -78,7 +78,12 @@ function parseNumberParam(searchParams: URLSearchParams, key: string): number | 
 
 export async function GET(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.CLIENTES, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'VENTAS',
+      subdomain: 'CUSTOMERS',
+      action: 'EXPORT',
+      scope: 'EMPRESA',
+    })
     if (!access.ok) return access.response
 
     const empresaId = access.empresaId

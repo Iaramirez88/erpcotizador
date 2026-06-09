@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { appendAiWorkspaceHistory } from '@/lib/ai-workspace-history'
 import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 import {
@@ -74,7 +74,12 @@ function getChangedTaskFields(args: {
 
 export async function GET(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'COMMERCIAL_TASKS',
+      action: 'READ',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const { searchParams } = new URL(request.url)
@@ -165,7 +170,12 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'COMMERCIAL_TASKS',
+      action: 'CREATE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
@@ -360,7 +370,7 @@ export async function POST(request: Request) {
             `Tarea creada: ${row.title}`,
             `Prioridad: ${row.priority}`,
             `Vencimiento: ${row.dueAt ? row.dueAt.toISOString() : 'sin fecha'}`,
-            `Responsable: ${row.assignedToUser?.name || row.assignedToUser?.email || row.assignedToUserId || 'sin asignar'}`,
+            `Responsable: ${row.assignedTo?.name || row.assignedTo?.email || row.assignedToUserId || 'sin asignar'}`,
           ].join('\n'),
           metadata: {
             eventType: 'TASK_SUGGESTION_ACTION',

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey, SedeRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 
 export const runtime = 'nodejs'
 
@@ -28,7 +28,12 @@ function sedeRoleToBaseAccess(role: SedeRole): AccessLevel {
 
 export async function GET() {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'CAPTACION',
+      subdomain: 'INBOX',
+      action: 'ASSIGN',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const [rows, activeConversations] = await Promise.all([

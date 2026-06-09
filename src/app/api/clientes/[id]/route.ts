@@ -7,8 +7,7 @@
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireApiAccess } from "@/lib/api-rbac"
-import { ModuleKey } from "@prisma/client"
+import { requireCapabilityAccess } from "@/lib/api-rbac"
 
 type ClienteSegmento = "POTENCIAL" | "OCASIONAL" | "FRECUENTE"
 
@@ -39,7 +38,12 @@ export async function GET(
   context: RouteContext
 ) {
   try {
-    const access = await requireApiAccess(ModuleKey.CLIENTES, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'VENTAS',
+      subdomain: 'CUSTOMERS',
+      action: 'READ',
+      scope: 'EMPRESA',
+    })
     if (!access.ok) return access.response
 
     const { id } = await context.params
@@ -129,7 +133,12 @@ export async function PUT(
   context: RouteContext
 ) {
   try {
-    const access = await requireApiAccess(ModuleKey.CLIENTES, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'VENTAS',
+      subdomain: 'CUSTOMERS',
+      action: 'UPDATE',
+      scope: 'EMPRESA',
+    })
     if (!access.ok) return access.response
 
     const { id } = await context.params
@@ -204,7 +213,12 @@ export async function DELETE(
   context: RouteContext
 ) {
   try {
-    const access = await requireApiAccess(ModuleKey.CLIENTES, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'VENTAS',
+      subdomain: 'CUSTOMERS',
+      action: 'DELETE',
+      scope: 'EMPRESA',
+    })
     if (!access.ok) return access.response
 
     const { id } = await context.params

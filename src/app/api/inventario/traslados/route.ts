@@ -6,8 +6,8 @@
 
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
-import { InventoryMovementType, InventoryMovementSourceType, ModuleKey } from '@prisma/client'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
+import { InventoryMovementType, InventoryMovementSourceType } from '@prisma/client'
 
 export const runtime = 'nodejs'
 
@@ -26,7 +26,12 @@ type PostBody = {
 
 export async function GET(request: Request) {
   try {
-    const access = await requireApiAccess('INVENTARIO' as ModuleKey, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'RECURSOS',
+      subdomain: 'TRANSFERS',
+      action: 'READ',
+      scope: 'EMPRESA',
+    })
     if (!access.ok) return access.response
 
     const empresaId = access.empresaId
@@ -73,7 +78,12 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const access = await requireApiAccess('INVENTARIO' as ModuleKey, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'RECURSOS',
+      subdomain: 'TRANSFERS',
+      action: 'CREATE',
+      scope: 'EMPRESA',
+    })
     if (!access.ok) return access.response
 
     const empresaId = access.empresaId

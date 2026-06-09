@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit --incremental false",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "seed:rbac-v2": "tsx scripts/seed-rbac-v2-bootstrap.ts",
     "seed:flyers": "tsx scripts/seed-litografia-flyer-rates.ts",
     "seed:acabados": "tsx scripts/seed-litografia-finish-options.ts",
     "seed:odontologia": "tsx scripts/seed-odontologia-base.ts",

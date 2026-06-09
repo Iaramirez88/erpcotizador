@@ -5,8 +5,7 @@
 
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireApiAccess } from "@/lib/api-rbac"
-import { ModuleKey } from "@prisma/client"
+import { requireCapabilityAccess } from "@/lib/api-rbac"
 
 export const runtime = "nodejs"
 
@@ -16,7 +15,12 @@ interface RouteContext {
 
 export async function POST(request: Request, context: RouteContext) {
   try {
-    const access = await requireApiAccess(ModuleKey.COMPRAS, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'RECURSOS',
+      subdomain: 'PURCHASES',
+      action: 'APPROVE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const { id } = await context.params

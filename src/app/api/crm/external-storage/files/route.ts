@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { ModuleKey } from '@prisma/client'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { listExternalStorageItems, type CrmExternalStorageProvider } from '@/lib/crm-external-storage'
 
 export const runtime = 'nodejs'
@@ -12,7 +11,12 @@ function parseProvider(value: unknown): CrmExternalStorageProvider | null {
 
 export async function GET(request: NextRequest) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'OPERACIONES',
+      subdomain: 'FILES',
+      action: 'READ',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const provider = parseProvider(request.nextUrl.searchParams.get('provider'))

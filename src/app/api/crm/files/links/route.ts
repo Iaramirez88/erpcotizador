@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { AccessLevel, ModuleKey } from '@prisma/client'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { AccessLevel } from '@prisma/client'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { assertCrmSedeAccess } from '@/lib/crm'
 import { createOrLinkCrmExternalEntry, linkCrmEntryToEntity, listCrmLinkedEntries, unlinkCrmEntryFromEntity, type CrmExternalFileProvider, type CrmFileEntityType } from '@/lib/crm-files'
 import { prisma } from '@/lib/prisma'
@@ -59,7 +59,12 @@ async function validateEntityAccess(args: {
 
 export async function GET(request: NextRequest) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    const access = await requireCapabilityAccess({
+      domain: 'OPERACIONES',
+      subdomain: 'FILES',
+      action: 'READ',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const entityType = parseEntityType(request.nextUrl.searchParams.get('entityType'))
@@ -81,7 +86,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'OPERACIONES',
+      subdomain: 'FILES',
+      action: 'UPDATE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const body = (await request.json().catch(() => null)) as {
@@ -146,7 +156,12 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const access = await requireApiAccess(ModuleKey.CRM, 'WRITE')
+    const access = await requireCapabilityAccess({
+      domain: 'OPERACIONES',
+      subdomain: 'FILES',
+      action: 'UPDATE',
+      scope: 'SEDE',
+    })
     if (!access.ok) return access.response
 
     const body = (await request.json().catch(() => null)) as { entityType?: unknown; entityId?: unknown; path?: unknown } | null
