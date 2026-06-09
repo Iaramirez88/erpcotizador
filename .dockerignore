@@ -29,6 +29,7 @@ tsconfig.tsbuildinfo
 scripts/*
 !scripts/ocr-worker.ts
 !scripts/migrate-users-to-sgdigital.ts
+!scripts/seed-rbac-v2-bootstrap.ts
 
 # Artefactos OS
 .DS_Store
