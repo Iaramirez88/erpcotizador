@@ -206,6 +206,23 @@ export function getDefaultChatbotAutomationFlow(): ChatbotAutomationFlow {
   }
 }
 
+export function getEmptyChatbotAutomationFlow(): ChatbotAutomationFlow {
+  return {
+    id: 'flow-empty',
+    name: 'Flujo vacío',
+    description: 'Comienza desde cero y agrega tus propios bloques.',
+    enabled: true,
+    isDefault: true,
+    providers: getDefaultChatbotAutomationProviders(),
+    quickActions: [],
+    flowStages: [],
+    flowTriggers: [],
+    pauseNodes: [],
+    studioNodeLayout: {},
+    studioViewport: { x: 48, y: 36, scale: 0.88 },
+  }
+}
+
 export function normalizeChatbotStudioPauseNodes(value: unknown): ChatbotStudioPauseNode[] {
   const items = Array.isArray(value) ? value : []
   return items

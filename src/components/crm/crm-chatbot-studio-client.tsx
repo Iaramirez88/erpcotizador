@@ -24,6 +24,7 @@ import {
 } from '@/lib/crm-chatbot-flow'
 import {
   getDefaultChatbotAutomationFlow,
+  getEmptyChatbotAutomationFlow,
   getDefaultChatbotAutomationFlowFromSettings,
   getDefaultChatbotAutomationProviders,
   getChatbotStudioSettings,
@@ -740,35 +741,45 @@ function hydrateBuilder(channel?: ChannelConnection | null): BuilderState {
   })
 }
 
+function createChannelBuilderPreset(mode: 'empty' | 'template'): BuilderState {
+  if (mode === 'template') return hydrateBuilder(null)
+
+  const emptyFlow = getEmptyChatbotAutomationFlow()
+  return applySelectedFlowToBuilder({
+    ...hydrateBuilder(null),
+    automationFlows: [emptyFlow],
+    selectedFlowId: emptyFlow.id,
+    quickActions: emptyFlow.quickActions,
+    flowStages: emptyFlow.flowStages,
+    flowTriggers: emptyFlow.flowTriggers,
+    pauseNodes: emptyFlow.pauseNodes,
+    studioNodeLayout: emptyFlow.studioNodeLayout,
+    studioViewport: emptyFlow.studioViewport,
+  }, emptyFlow.id)
+}
+
 function buildSettingsPayload(state: BuilderState) {
-  const selectedFlow = {
-    ...(state.automationFlows.find((flow) => flow.id === state.selectedFlowId) ?? getDefaultChatbotAutomationFlow()),
-    quickActions: state.quickActions,
-    flowStages: state.flowStages,
-    flowTriggers: state.flowTriggers,
-    pauseNodes: state.pauseNodes,
-    studioNodeLayout: state.studioNodeLayout,
-    studioViewport: state.studioViewport,
-  }
-  const automationFlows = state.automationFlows.map((flow) => flow.id === selectedFlow.id ? selectedFlow : flow)
+  const snapshot = materializeSelectedFlow(state)
+  const selectedFlow = snapshot.automationFlows.find((flow) => flow.id === snapshot.selectedFlowId) ?? getDefaultChatbotAutomationFlow()
+  const automationFlows = snapshot.automationFlows.map((flow) => flow.id === selectedFlow.id ? selectedFlow : flow)
   const defaultFlow = automationFlows.find((flow) => flow.isDefault) ?? selectedFlow
 
   return {
-    ...state.rawSettingsJson,
-    chatbotTitle: state.chatbotTitle,
-    chatbotPrompt: state.chatbotPrompt,
-    assistantName: state.assistantName,
-    publicEmbedEnabled: state.publicEmbedEnabled,
-    allowedDomains: state.allowedDomains,
+    ...snapshot.rawSettingsJson,
+    chatbotTitle: snapshot.chatbotTitle,
+    chatbotPrompt: snapshot.chatbotPrompt,
+    assistantName: snapshot.assistantName,
+    publicEmbedEnabled: snapshot.publicEmbedEnabled,
+    allowedDomains: snapshot.allowedDomains,
     automationFlows,
     defaultFlowId: defaultFlow.id,
     quickActions: defaultFlow.quickActions,
     flowStages: defaultFlow.flowStages,
     flowTriggers: defaultFlow.flowTriggers,
     pauseNodes: defaultFlow.pauseNodes,
-    flowVariables: state.flowVariables,
-    assignmentRules: state.assignmentRules,
-    messageCoherence: state.messageCoherence,
+    flowVariables: snapshot.flowVariables,
+    assignmentRules: snapshot.assignmentRules,
+    messageCoherence: snapshot.messageCoherence,
     studioNodeLayout: defaultFlow.studioNodeLayout,
     studioViewport: defaultFlow.studioViewport,
     allowHumanHandoff: true,
@@ -1126,10 +1137,10 @@ export function CrmChatbotStudioClient() {
     scrollConversationThreadToBottom(selectedConversationId === selectedConversation?.id ? 'smooth' : 'auto')
   }, [selectedConversation, selectedConversationId])
 
-  async function handleCreateChannel() {
+  async function handleCreateChannel(mode: 'empty' | 'template') {
     setCreating(true)
     setError(null)
-    const nextBuilder = hydrateBuilder(null)
+    const nextBuilder = createChannelBuilderPreset(mode)
     const json = await requestJson<ChannelConnection>('/api/crm/channels', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1145,7 +1156,7 @@ export function CrmChatbotStudioClient() {
       setCreating(false)
       return
     }
-    setNotice('Canal de chatbot creado.')
+    setNotice(mode === 'empty' ? 'Canal de chatbot vacío creado.' : 'Canal de chatbot creado con plantilla base.')
     await loadBase()
     setSelectedChannelId(json.data.id)
     setCreating(false)
@@ -3729,7 +3740,8 @@ export function CrmChatbotStudioClient() {
                 {hasUnsavedChanges ? 'Cambios pendientes' : 'Sin cambios pendientes'}
               </div>
             ) : null}
-            <Button variant="outline" onClick={() => void handleCreateChannel()} disabled={creating}>{creating ? 'Creando...' : 'Crear canal chatbot'}</Button>
+            <Button variant="outline" onClick={() => void handleCreateChannel('empty')} disabled={creating}>{creating ? 'Creando...' : 'Crear vacío'}</Button>
+            <Button variant="outline" onClick={() => void handleCreateChannel('template')} disabled={creating}>{creating ? 'Creando...' : 'Crear con plantilla'}</Button>
             <Button onClick={() => void handleSaveChannel()} disabled={!selectedChannelId || saving || !hasUnsavedChanges}>{saving ? 'Guardando...' : hasUnsavedChanges ? 'Guardar studio' : 'Studio guardado'}</Button>
           </div>
         </CardContent>

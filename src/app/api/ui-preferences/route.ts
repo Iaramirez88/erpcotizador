@@ -90,17 +90,43 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 export async function GET() {
+  const defaults = defaultPrefs()
   const session = await auth()
-  if (!session?.user) return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
+  if (!session?.user) {
+    return NextResponse.json({
+      success: true,
+      data: {
+        nav: defaults.nav,
+        navOrder: defaults.navOrder,
+        report: defaults.report,
+        tutorial: defaults.tutorial,
+        dataView: defaults.dataView,
+        language: defaults.language,
+        theme: defaults.theme,
+      },
+    })
+  }
 
   const userId = await resolveUserIdFromSession(session)
-  if (!userId) return NextResponse.json({ success: false, error: 'Sesión inválida' }, { status: 401 })
+  if (!userId) {
+    return NextResponse.json({
+      success: true,
+      data: {
+        nav: defaults.nav,
+        navOrder: defaults.navOrder,
+        report: defaults.report,
+        tutorial: defaults.tutorial,
+        dataView: defaults.dataView,
+        language: defaults.language,
+        theme: defaults.theme,
+      },
+    })
+  }
 
   const pref = await prisma.uiPreference.findUnique({
     where: { userId },
     select: { nav: true, report: true, tutorial: true, language: true },
   })
-  const defaults = defaultPrefs()
   const storedNav = normalizeNavPrefs(pref?.nav)
   const storedReport = isPlainObject(pref?.report) ? (pref?.report as StoredReportPrefs) : null
 
