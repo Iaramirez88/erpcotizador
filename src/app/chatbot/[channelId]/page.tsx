@@ -26,14 +26,29 @@ export default async function PublicChatbotPage(props: PageProps) {
   }
 
   const settings = getPublicChatbotSettings(channel.settingsJson)
-  if (!settings.publicEmbedEnabled) {
-    notFound()
-  }
-
   const requestHost = await getRequestHost()
   const referrerHost = await getReferrerHost()
-  if (!isChatbotDomainAllowed({ allowedDomains: settings.allowedDomains, candidateHost: referrerHost || requestHost, appHost: requestHost })) {
-    notFound()
+  const candidateHost = referrerHost || requestHost
+  let accessIssue:
+    | {
+        code: 'embed_disabled' | 'domain_not_allowed'
+        detectedHost: string
+        allowedDomains: string[]
+      }
+    | undefined
+
+  if (!settings.publicEmbedEnabled) {
+    accessIssue = {
+      code: 'embed_disabled',
+      detectedHost: candidateHost,
+      allowedDomains: settings.allowedDomains,
+    }
+  } else if (!isChatbotDomainAllowed({ allowedDomains: settings.allowedDomains, candidateHost, appHost: requestHost })) {
+    accessIssue = {
+      code: 'domain_not_allowed',
+      detectedHost: candidateHost,
+      allowedDomains: settings.allowedDomains,
+    }
   }
 
   return (
@@ -66,6 +81,7 @@ export default async function PublicChatbotPage(props: PageProps) {
       quickActions={settings.quickActions}
       flowStages={settings.flowStages}
       allowHumanHandoff={settings.allowHumanHandoff}
+      accessIssue={accessIssue}
     />
   )
 }

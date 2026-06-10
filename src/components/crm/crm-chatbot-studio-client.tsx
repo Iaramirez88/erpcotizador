@@ -3358,6 +3358,7 @@ export function CrmChatbotStudioClient() {
                     <div className="grid gap-2 md:col-span-2">
                       <Label>Dominios permitidos</Label>
                       <Textarea value={builder.allowedDomains} onChange={(event) => setBuilder((current) => ({ ...current, allowedDomains: event.target.value }))} rows={3} placeholder="midominio.com&#10;app.midominio.com" />
+                      <p className="text-xs text-slate-500">Deja este campo vacio para permitir el iframe en cualquier dominio. Si quieres restringirlo, agrega un dominio por linea, sin protocolo ni rutas.</p>
                     </div>
                   </CardContent>
                 </Card>

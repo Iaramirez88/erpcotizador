@@ -61,6 +61,13 @@ type PublicChatbotEmbedProps = {
   messagePlaceholder: string
   quickActions: ChatbotQuickAction[]
   flowStages: ChatbotFlowStage[]
+  accessIssue?: PublicChatbotAccessIssue
+}
+
+type PublicChatbotAccessIssue = {
+  code: 'embed_disabled' | 'domain_not_allowed'
+  detectedHost: string
+  allowedDomains: string[]
 }
 
 type ChatIdentity = {
@@ -284,6 +291,69 @@ function getStageTheme(stageId: string | null | undefined, accentColor: string) 
 }
 
 export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
+  if (props.accessIssue) {
+    return <CrmPublicChatbotAccessIssue {...props} accessIssue={props.accessIssue} />
+  }
+
+  return <CrmPublicChatbotEmbedLive {...props} />
+}
+
+function CrmPublicChatbotAccessIssue(props: PublicChatbotEmbedProps & { accessIssue: PublicChatbotAccessIssue }) {
+  const accentStyle = {
+    ['--chat-accent' as string]: props.accentColor,
+    ['--chat-background' as string]: props.backgroundColor,
+    ['--chat-page-background' as string]: props.pageBackgroundColor,
+    fontFamily: props.fontFamily,
+  }
+  const isDomainIssue = props.accessIssue.code === 'domain_not_allowed'
+  const issueTitle = isDomainIssue
+    ? 'Este chatbot no esta autorizado para este dominio.'
+    : 'Este chatbot no tiene el embed publico habilitado.'
+  const issueDescription = isDomainIssue
+    ? 'Autoriza el dominio del sitio donde insertaste el iframe para permitir la carga y captura de mensajes.'
+    : 'Activa el embed publico del canal antes de reutilizar este iframe en un sitio externo.'
+
+  return (
+    <div className="sgd-chatbot-page flex min-h-screen items-center justify-center p-4 text-slate-950" style={{ ...accentStyle, background: `radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 30%), linear-gradient(180deg, ${props.pageBackgroundColor} 0%, ${props.pageBackgroundColor} 45%, ${props.backgroundColor} 100%)` }}>
+      {props.customCss.trim() ? <style>{props.customCss}</style> : null}
+      <div className="w-full max-w-[460px] overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_30px_90px_-44px_rgba(15,23,42,0.42)]">
+        <div className="border-b border-slate-100 px-6 py-5 text-white" style={{ background: `linear-gradient(135deg, #0f172a, ${props.accentColor})` }}>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-100">Chatbot CRM</p>
+          <h1 className="mt-1 text-xl font-semibold">{props.title}</h1>
+          <p className="mt-2 text-sm text-white/80">{props.assistantName}</p>
+        </div>
+        <div className="space-y-4 px-6 py-6">
+          <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-4 text-amber-950">
+            <p className="text-sm font-semibold">{issueTitle}</p>
+            <p className="mt-2 text-sm leading-6">{issueDescription}</p>
+          </div>
+
+          <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/80 px-4 py-4 text-sm text-slate-700">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Dominio detectado</p>
+              <p className="mt-1 font-medium text-slate-900">{props.accessIssue.detectedHost || 'No disponible'}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Dominios permitidos</p>
+              <p className="mt-1 leading-6 text-slate-900">
+                {props.accessIssue.allowedDomains.length ? props.accessIssue.allowedDomains.join(', ') : 'Sin restriccion configurada'}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-sm text-slate-700">
+            <p className="font-semibold text-slate-900">Como corregirlo</p>
+            <p className="mt-2 leading-6">
+              Ajusta este canal en Chatbot Studio, panel General. Si quieres usar el iframe en cualquier sitio, deja Dominios permitidos vacio. Si quieres restringirlo, agrega un dominio por linea, sin protocolo ni rutas.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const initialStage = useMemo(() => findChatbotFlowStage(props.flowStages, 'welcome') ?? props.flowStages[0] ?? null, [props.flowStages])
   const [ready, setReady] = useState(false)
