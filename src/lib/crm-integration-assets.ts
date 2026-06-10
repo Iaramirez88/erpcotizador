@@ -57,6 +57,8 @@ type ChatbotIframeArgs = {
   floatingLauncherEnabled?: boolean
 }
 
+type ChatbotEmbedMode = 'iframe' | 'widget'
+
 type GmailSnippetArgs = {
   baseUrl: string
   channelId: string
@@ -287,7 +289,7 @@ export function buildChatbotSnippet(args: ChatbotSnippetArgs) {
   const launcherPosition = args.launcherPosition === 'left' ? 'left' : 'right'
   const launcherSize = args.launcherSize === 'compact' ? 'compact' : args.launcherSize === 'large' ? 'large' : 'standard'
   const customCss = args.customCss || ''
-  const iframeUrl = buildChatbotEmbedUrl(args.baseUrl, args.channelId)
+  const iframeUrl = buildChatbotEmbedUrl(args.baseUrl, args.channelId, 'iframe')
   const iconMarkup = launcherIcon === 'sparkles'
     ? '&#10024;'
     : launcherIcon === 'message-circle'
@@ -376,14 +378,14 @@ export function buildChatbotSnippet(args: ChatbotSnippetArgs) {
 </script>`
 }
 
-export function buildChatbotEmbedUrl(baseUrl: string, channelId: string) {
-  return `${baseUrl}/chatbot/${channelId}`
+export function buildChatbotEmbedUrl(baseUrl: string, channelId: string, mode: ChatbotEmbedMode = 'iframe') {
+  return `${baseUrl}/chatbot/${channelId}?mode=${mode}`
 }
 
 export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   const height = (args.height || '720').replace(/[^0-9]/g, '') || '720'
-  const collapsedHeight = args.floatingLauncherEnabled ? '108' : height
-  const src = buildChatbotEmbedUrl(args.baseUrl, args.channelId)
+  const collapsedHeight = height
+  const src = buildChatbotEmbedUrl(args.baseUrl, args.channelId, 'iframe')
   const iframeId = `sgd-chatbot-iframe-${args.channelId}`
   const embedStyle = 'width:100%;max-width:420px;display:block;'
 

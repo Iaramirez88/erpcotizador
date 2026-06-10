@@ -790,7 +790,7 @@ function serializeBuilderState(state: BuilderState) {
   return JSON.stringify(state)
 }
 
-export function CrmChatbotStudioClient() {
+export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?: string } = {}) {
   const [channels, setChannels] = useState<ChannelConnection[]>([])
   const [assignees, setAssignees] = useState<Assignee[]>([])
   const [selectedChannelId, setSelectedChannelId] = useState<string>('')
@@ -1004,9 +1004,12 @@ export function CrmChatbotStudioClient() {
 
     setChannels(channelsJson.data)
     setAssignees(assigneesJson.data ?? [])
+    const requestedChannelId = initialChannelId && channelsJson.data.some((item) => item.id === initialChannelId)
+      ? initialChannelId
+      : ''
     const nextChannelId = selectedChannelId && channelsJson.data.some((item) => item.id === selectedChannelId)
       ? selectedChannelId
-      : (channelsJson.data[0]?.id ?? '')
+      : (requestedChannelId || channelsJson.data[0]?.id ?? '')
     setSelectedChannelId(nextChannelId)
     replaceBuilder(hydrateBuilder(channelsJson.data.find((item) => item.id === nextChannelId) ?? channelsJson.data[0] ?? null), {
       resetHistory: true,

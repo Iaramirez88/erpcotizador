@@ -1,6 +1,7 @@
 "use client"
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import {
   Bar,
@@ -2058,6 +2059,7 @@ function buildChatbotCanvasModel(stages: ChatbotFlowStage[]) {
 }
 
 export function CrmIntegrationsClient() {
+  const router = useRouter()
   const { language } = useI18n()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -2578,6 +2580,11 @@ export function CrmIntegrationsClient() {
   }
 
   function openEditWizard(channel: ChannelConnection) {
+    if (channel.provider === 'WEB_CHATBOT') {
+      router.push(`/dashboard/crm/chatbot?channelId=${encodeURIComponent(channel.id)}`)
+      return
+    }
+
     const settings = (channel.settingsJson as Record<string, unknown> | null | undefined) ?? null
     const bridgeKind = getBridgeKind(settings) as CrmBridgeKind
     const templateMatch = TEMPLATE_PRESETS.find((preset) => preset.provider === channel.provider && (preset.bridgeKind ?? 'GENERIC') === (bridgeKind || 'GENERIC'))
@@ -3041,6 +3048,9 @@ export function CrmIntegrationsClient() {
       setCreateForm(getInitialChannelForm())
       await loadChannels()
       setSelectedChannelId(json.data.id)
+      if (json.data.provider === 'WEB_CHATBOT') {
+        router.push(`/dashboard/crm/chatbot?channelId=${encodeURIComponent(json.data.id)}`)
+      }
     } finally {
       setSaving(false)
     }
@@ -3978,7 +3988,7 @@ export function CrmIntegrationsClient() {
   const selectedAssetTabs = useMemo(() => {
     if (!selectedChannel) return ['overview']
     const bridgeKind = selectedBridgeKind
-    if (selectedChannel.provider === 'WEB_CHATBOT') return ['overview', 'guide', 'chatbot', 'bridge']
+    if (selectedChannel.provider === 'WEB_CHATBOT') return ['overview', 'guide']
     if (selectedChannel.provider === 'WEB_FORM' && bridgeKind === 'GOOGLE_SHEETS') {
       return ['overview', 'guide', 'bridge']
     }
@@ -4476,8 +4486,8 @@ export function CrmIntegrationsClient() {
                             <p className="mt-2 text-sm leading-6 text-slate-600">{language === 'en' ? 'This preview represents the iframe and launcher with the current channel configuration.' : 'Este preview representa el iframe y el launcher con la configuración actual del canal.'}</p>
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            <Button className="rounded-xl" onClick={() => setChatbotBuilderModalOpen(true)}>
-                              {language === 'en' ? 'Edit builder' : 'Editar constructor'}
+                            <Button asChild className="rounded-xl">
+                              <Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>{language === 'en' ? 'Open Chatbot Studio' : 'Abrir Chatbot Studio'}</Link>
                             </Button>
                             <Button className="rounded-xl" variant="outline" onClick={() => void copyText('preview-chatbot-url', selectedChatbotEmbedUrl)}>
                               {copiedKey === 'preview-chatbot-url' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy URL' : 'Copiar URL')}
@@ -4485,8 +4495,15 @@ export function CrmIntegrationsClient() {
                             <Button asChild className="rounded-xl" variant="outline"><Link href={selectedChatbotEmbedUrl}>{language === 'en' ? 'Open demo' : 'Abrir demo'}</Link></Button>
                           </div>
                         </div>
-                        <div className="mt-4">
-                          {renderChatbotPreview(chatbotBuilderDraft, { mode: 'expanded', viewport: 'desktop', minHeight: 360 })}
+                        <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.12)]">
+                          <iframe
+                            src={selectedChatbotEmbedUrl}
+                            title={language === 'en' ? 'Real chatbot preview' : 'Preview real del chatbot'}
+                            className="block h-[720px] w-full"
+                            style={{ minHeight: '360px', border: 0, background: '#ffffff' }}
+                            loading="lazy"
+                            referrerPolicy="strict-origin-when-cross-origin"
+                          />
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
                           <Button className="rounded-xl" variant="outline" onClick={() => void copyText('preview-chatbot-iframe', snippets?.chatbotIframe || '')}>
@@ -4669,13 +4686,19 @@ export function CrmIntegrationsClient() {
                     <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{language === 'en' ? 'Channel management' : 'Gestión del canal'}</p>
                       <div className="mt-4 flex flex-wrap gap-2">
-                        <Button variant="outline" className="rounded-xl" onClick={() => openEditWizard(selectedChannel)}>
-                          {language === 'en' ? 'Edit channel' : 'Editar canal'}
-                        </Button>
+                        {selectedChannel.provider === 'WEB_CHATBOT' ? (
+                          <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
+                            <Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>{language === 'en' ? 'Open Chatbot Studio' : 'Abrir Chatbot Studio'}</Link>
+                          </Button>
+                        ) : (
+                          <Button variant="outline" className="rounded-xl" onClick={() => openEditWizard(selectedChannel)}>
+                            {language === 'en' ? 'Edit channel' : 'Editar canal'}
+                          </Button>
+                        )}
                         <Button variant="outline" className="rounded-xl" onClick={() => void copyText('selected-endpoint', endpoint)}>
                           {copiedKey === 'selected-endpoint' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy endpoint' : 'Copiar endpoint')}
                         </Button>
-                        {selectedChannel.provider === 'WEB_CHATBOT' ? <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"><Link href="/dashboard/crm/chatbot">{language === 'en' ? 'Chatbot panel' : 'Panel chatbot'}</Link></Button> : null}
+                        {selectedChannel.provider === 'WEB_CHATBOT' ? <Button asChild variant="outline" className="rounded-xl"><Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>{language === 'en' ? 'View Studio' : 'Ver Studio'}</Link></Button> : null}
                         {selectedChannel.provider === 'WEB_CHATBOT' && selectedChatbotEmbedUrl ? <Button asChild variant="outline" className="rounded-xl"><Link href={selectedChatbotEmbedUrl}>{language === 'en' ? 'View iframe' : 'Ver iframe'}</Link></Button> : null}
                         {usesMetaProvider(selectedChannel.provider) ? <Button type="button" variant="outline" className="rounded-xl border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100" onClick={() => openMetaOnboarding(selectedChannel)}><Facebook className="mr-2 h-4 w-4" />{selectedMeta.hasConnection ? (language === 'en' ? 'Reconnect with Facebook' : 'Reconectar con Facebook') : (language === 'en' ? 'Continue with Facebook' : 'Continuar con Facebook')}</Button> : null}
                         {usesMetaProvider(selectedChannel.provider) ? <Button variant="outline" className="rounded-xl" onClick={() => void syncMeta(selectedChannel.id)} disabled={updatingChannelId === selectedChannel.id || !selectedMeta.hasConnection}>{updatingChannelId === selectedChannel.id ? (language === 'en' ? 'Syncing...' : 'Sincronizando...') : (language === 'en' ? 'Sync Meta' : 'Sincronizar Meta')}</Button> : null}
@@ -4888,22 +4911,27 @@ export function CrmIntegrationsClient() {
                     </div>
 
                     {selectedChannel.provider === 'WEB_CHATBOT' ? (
-                      <div className="grid gap-4 lg:grid-cols-3">
-                        <div className="rounded-3xl border border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-900">
-                          <p className="font-semibold">Iframe público</p>
-                          <p className="mt-2 leading-6">{getPublicEmbedEnabled(selectedSettings) ? 'Habilitado para una demo controlada sin token en el frontend.' : 'Deshabilitado. Este canal sigue protegido por token.'}</p>
+                      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                        <div className="rounded-3xl border border-emerald-200 bg-emerald-50/70 p-5 text-sm text-emerald-950">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Chatbot Studio centralizado</p>
+                          <p className="mt-3 text-lg font-semibold">Integraciones ya no edita el chatbot.</p>
+                          <p className="mt-2 leading-6">Este módulo solo crea el canal y entrega accesos rápidos. La configuración del flujo, apariencia, launcher, dominios, inbox y guardado del chatbot continúa únicamente en Chatbot Studio.</p>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <Button asChild className="rounded-xl">
+                              <Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>{language === 'en' ? 'Open Chatbot Studio' : 'Abrir Chatbot Studio'}</Link>
+                            </Button>
+                            {selectedChatbotEmbedUrl ? <Button asChild variant="outline" className="rounded-xl"><Link href={selectedChatbotEmbedUrl}>{language === 'en' ? 'Open iframe demo' : 'Abrir demo iframe'}</Link></Button> : null}
+                          </div>
                         </div>
-                        <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4 text-sm text-slate-700">
-                          <p className="font-semibold text-slate-900">Asistente visible</p>
-                          <p className="mt-2 leading-6">{getAssistantName(selectedSettings)} con color {getAccentColor(selectedSettings)} y fondo {getBackgroundColor(selectedSettings)}.</p>
-                        </div>
-                        <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4 text-sm text-slate-700">
-                          <p className="font-semibold text-slate-900">Launcher flotante</p>
-                          <p className="mt-2 leading-6">{getFloatingLauncherEnabled(selectedSettings) ? `Activo con etiqueta ${getLauncherLabel(selectedSettings)}.` : 'Desactivado desde configuración.'}</p>
-                        </div>
-                        <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4 text-sm text-slate-700">
-                          <p className="font-semibold text-slate-900">Dominios previstos</p>
-                          <p className="mt-2 leading-6">{getAllowedDomains(selectedSettings) || 'Sin restricción declarada todavía para la demo.'}</p>
+                        <div className="grid gap-4">
+                          <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4 text-sm text-slate-700">
+                            <p className="font-semibold text-slate-900">Estado del embed</p>
+                            <p className="mt-2 leading-6">{getPublicEmbedEnabled(selectedSettings) ? 'Publico habilitado para iframe.' : 'Publico deshabilitado. Ajustalo desde Chatbot Studio.'}</p>
+                          </div>
+                          <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4 text-sm text-slate-700">
+                            <p className="font-semibold text-slate-900">Dominios</p>
+                            <p className="mt-2 leading-6">{getAllowedDomains(selectedSettings) || 'Sin restricción declarada todavía.'}</p>
+                          </div>
                         </div>
                       </div>
                     ) : null}
@@ -5174,8 +5202,8 @@ export function CrmIntegrationsClient() {
                     <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
                       <Card className="rounded-3xl border-slate-200 bg-[linear-gradient(180deg,#fff,#f6fffb)]">
                         <CardHeader>
-                          <CardTitle className="text-base">Constructor visual en modal</CardTitle>
-                          <CardDescription>Abre un editor dedicado para ajustar el chatbot sin perder el contexto de integración.</CardDescription>
+                          <CardTitle className="text-base">Edicion centralizada en Chatbot Studio</CardTitle>
+                          <CardDescription>Integraciones crea y publica el canal. La configuracion completa del chatbot vive en Chatbot Studio.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                           <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -5193,8 +5221,8 @@ export function CrmIntegrationsClient() {
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            <Button className="rounded-xl" onClick={() => setChatbotBuilderModalOpen(true)}>
-                              Abrir editor del chatbot
+                            <Button asChild className="rounded-xl">
+                              <Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>Abrir Chatbot Studio</Link>
                             </Button>
                             <Button variant="outline" className="rounded-xl" onClick={() => void copyText('chatbot-builder-url', snippets.chatbotEmbedUrl)}>
                               {copiedKey === 'chatbot-builder-url' ? 'Copiado' : 'Copiar URL pública'}
@@ -5206,10 +5234,19 @@ export function CrmIntegrationsClient() {
                       <Card className="rounded-3xl border-emerald-200 bg-emerald-50/40">
                         <CardHeader>
                           <CardTitle className="text-base">Preview del canal</CardTitle>
-                          <CardDescription>Vista rápida del iframe actual. Para editar, usa el modal dedicado.</CardDescription>
+                          <CardDescription>Vista real del iframe actual. Para editar el canal, abre Chatbot Studio.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                          {renderChatbotPreview(chatbotBuilderDraft, { mode: 'expanded', viewport: 'desktop', minHeight: 360 })}
+                          <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.12)]">
+                            <iframe
+                              src={snippets.chatbotEmbedUrl}
+                              title="Preview real del canal"
+                              className="block h-[720px] w-full"
+                              style={{ minHeight: '360px', border: 0, background: '#ffffff' }}
+                              loading="lazy"
+                              referrerPolicy="strict-origin-when-cross-origin"
+                            />
+                          </div>
                         </CardContent>
                       </Card>
                     </div>

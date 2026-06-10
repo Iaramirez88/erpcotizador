@@ -42,6 +42,7 @@ type PublicChatbotEmbedProps = {
   backgroundColor: string
   fontFamily: string
   customCss: string
+  embedMode: 'iframe' | 'widget'
   floatingLauncherEnabled: boolean
   launcherLabel: string
   launcherIcon: string
@@ -371,6 +372,7 @@ function CrmPublicChatbotAccessIssue(props: PublicChatbotEmbedProps & { accessIs
 
 function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const floatingLauncherActive = props.floatingLauncherEnabled && props.embedMode === 'widget'
   const initialStage = useMemo(() => findChatbotFlowStage(props.flowStages, 'welcome') ?? props.flowStages[0] ?? null, [props.flowStages])
   const [ready, setReady] = useState(false)
   const [sessionId, setSessionId] = useState('')
@@ -382,7 +384,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [messages, setMessages] = useState<PublicChatbotMessage[]>([buildWelcomeMessage(props.prompt, initialStage, props.quickActions)])
   const [isEmbedded, setIsEmbedded] = useState(false)
-  const [panelOpen, setPanelOpen] = useState(!props.floatingLauncherEnabled)
+  const [panelOpen, setPanelOpen] = useState(!floatingLauncherActive)
   const [clockTick, setClockTick] = useState(() => Date.now())
 
   const accentStyle = useMemo(() => ({ ['--chat-accent' as string]: props.accentColor, ['--chat-background' as string]: props.backgroundColor, ['--chat-page-background' as string]: props.pageBackgroundColor, fontFamily: props.fontFamily }), [props.accentColor, props.backgroundColor, props.pageBackgroundColor, props.fontFamily])
@@ -622,7 +624,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   }
 
   function closePanel() {
-    if (!props.floatingLauncherEnabled) return
+    if (!floatingLauncherActive) return
     setPanelOpen(false)
   }
 
@@ -631,7 +633,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
 
     const emitResize = () => {
       const measuredHeight = rootRef.current?.scrollHeight
-      const fallbackHeight = props.floatingLauncherEnabled && !panelOpen
+      const fallbackHeight = floatingLauncherActive && !panelOpen
         ? Number.parseInt(launcherMetrics.buttonHeight, 10) + 28
         : 720
       const nextHeight = Math.max(88, Math.ceil(measuredHeight || fallbackHeight))
@@ -657,12 +659,12 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
       window.clearTimeout(timeout)
       window.removeEventListener('resize', scheduleResize)
     }
-  }, [connectionState, launcherMetrics.buttonHeight, messages.length, panelOpen, props.channelId, props.floatingLauncherEnabled, sending, syncing])
+  }, [connectionState, floatingLauncherActive, launcherMetrics.buttonHeight, messages.length, panelOpen, props.channelId, sending, syncing])
 
   return (
-    <div ref={rootRef} className="sgd-chatbot-page p-3 text-slate-950" style={{ ...accentStyle, minHeight: props.floatingLauncherEnabled && !panelOpen ? '96px' : '100vh', background: props.floatingLauncherEnabled && !panelOpen ? 'transparent' : `radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 30%), linear-gradient(180deg, ${props.pageBackgroundColor} 0%, ${props.pageBackgroundColor} 45%, ${props.backgroundColor} 100%)`, position: 'relative' }}>
+    <div ref={rootRef} className="sgd-chatbot-page p-3 text-slate-950" style={{ ...accentStyle, minHeight: floatingLauncherActive && !panelOpen ? '96px' : '100vh', background: floatingLauncherActive && !panelOpen ? 'transparent' : `radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 30%), linear-gradient(180deg, ${props.pageBackgroundColor} 0%, ${props.pageBackgroundColor} 45%, ${props.backgroundColor} 100%)`, position: 'relative' }}>
       {props.customCss.trim() ? <style>{props.customCss}</style> : null}
-      {props.floatingLauncherEnabled && !panelOpen ? (
+      {floatingLauncherActive && !panelOpen ? (
         <div style={{ minHeight: '80px', position: 'relative' }}>
           <button
             type="button"
@@ -705,7 +707,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
               <div className="rounded-full bg-white/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-white/90">
                 {connectionState === 'online' ? 'En linea' : connectionState === 'error' ? 'Reconectando' : 'Conectando'}
               </div>
-              {props.floatingLauncherEnabled ? (
+              {floatingLauncherActive ? (
                 <button type="button" onClick={closePanel} className="rounded-full bg-white/14 px-3 py-1 text-sm font-semibold text-white transition hover:bg-white/20">
                   ×
                 </button>

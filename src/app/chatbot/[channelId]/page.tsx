@@ -6,10 +6,13 @@ import { getReferrerHost, getRequestHost } from '@/lib/crm-public-chatbot-server
 
 type PageProps = {
   params: Promise<{ channelId: string }>
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>
 }
 
 export default async function PublicChatbotPage(props: PageProps) {
   const { channelId } = await props.params
+  const searchParams = props.searchParams ? await Promise.resolve(props.searchParams) : undefined
+  const embedMode = searchParams?.mode === 'widget' ? 'widget' : 'iframe'
   const channel = await prisma.crmChannelConnection.findUnique({
     where: { id: channelId },
     select: {
@@ -62,6 +65,7 @@ export default async function PublicChatbotPage(props: PageProps) {
       backgroundColor={settings.backgroundColor}
       fontFamily={settings.fontFamily}
       customCss={settings.chatbotCustomCss}
+      embedMode={embedMode}
       floatingLauncherEnabled={settings.floatingLauncherEnabled}
       launcherLabel={settings.launcherLabel}
       launcherIcon={settings.launcherIcon}
