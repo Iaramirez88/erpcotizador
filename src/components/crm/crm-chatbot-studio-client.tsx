@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bot, GitBranch, GripVertical, History, Plus, Save, Trash2, Users, Variable, Zap } from 'lucide-react'
+import { Bot, GitBranch, GripVertical, History, Info, Plus, Redo2, Save, Trash2, Undo2, Users, Variable, Zap } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -196,7 +196,10 @@ type StudioGraphEdge = {
   id: string
   fromId: string
   toId: string
+  sourceKind: StudioGraphNode['kind']
+  targetKind: StudioGraphNode['kind']
   label: string
+  sourceOptionId?: string
   toneClass: string
   showLabel?: boolean
   dashed?: boolean
@@ -308,11 +311,68 @@ function getNodeAnchorY(node: StudioGraphNode) {
   return node.y + 52
 }
 
+function getBezierMidpoint(args: { startX: number; startY: number; control1X: number; control1Y: number; control2X: number; control2Y: number; endX: number; endY: number }) {
+  const t = 0.5
+  const x = ((1 - t) ** 3 * args.startX)
+    + (3 * ((1 - t) ** 2) * t * args.control1X)
+    + (3 * (1 - t) * (t ** 2) * args.control2X)
+    + ((t ** 3) * args.endX)
+  const y = ((1 - t) ** 3 * args.startY)
+    + (3 * ((1 - t) ** 2) * t * args.control1Y)
+    + (3 * (1 - t) * (t ** 2) * args.control2Y)
+    + ((t ** 3) * args.endY)
+  return { x, y }
+}
+
+function getEdgeCurveMetrics(source: StudioGraphNode, target: StudioGraphNode) {
+  const startX = getNodeAnchorX(source, 'right')
+  const startY = getNodeAnchorY(source)
+  const endX = getNodeAnchorX(target, 'left')
+  const endY = getNodeAnchorY(target)
+  const deltaX = Math.max((endX - startX) / 2, 56)
+  const control1X = startX + deltaX
+  const control2X = endX - deltaX
+  const midpoint = getBezierMidpoint({
+    startX,
+    startY,
+    control1X,
+    control1Y: startY,
+    control2X,
+    control2Y: endY,
+    endX,
+    endY,
+  })
+  return {
+    startX,
+    startY,
+    endX,
+    endY,
+    deltaX,
+    midpoint,
+    path: `M ${startX} ${startY} C ${control1X} ${startY}, ${control2X} ${endY}, ${endX} ${endY}`,
+  }
+}
+
 function duplicateResponseOption(option: ChatbotFlowResponseOption): ChatbotFlowResponseOption {
   return {
     ...option,
     id: makeId('option'),
     label: `${option.label} copia`,
+  }
+}
+
+function createStageResponseOption(flowStages: ChatbotFlowStage[], currentStageId: string, patch?: Partial<ChatbotFlowResponseOption>): ChatbotFlowResponseOption {
+  const defaultTargetStageId = flowStages.find((stage) => stage.id !== currentStageId)?.id ?? currentStageId
+
+  return {
+    id: makeId('option'),
+    label: 'Nueva opción',
+    userMessage: 'Quiero continuar por esta ruta.',
+    assistantReply: 'Perfecto. Te llevo al siguiente paso.',
+    matchMode: 'contains',
+    matchValue: '',
+    targetStageId: defaultTargetStageId,
+    ...patch,
   }
 }
 
@@ -496,6 +556,8 @@ function buildStudioGraph(builder: BuilderState) {
       id: 'start-to-first-stage',
       fromId: startNode.id,
       toId: stageNodes[0].id,
+      sourceKind: 'start',
+      targetKind: 'stage',
       label: 'inicio',
       toneClass: 'stroke-emerald-300',
       showLabel: false,
@@ -510,7 +572,10 @@ function buildStudioGraph(builder: BuilderState) {
         id: `${sourceId}-option-${option.id}`,
         fromId: sourceId,
         toId: `stage:${option.targetStageId}`,
+        sourceKind: 'stage',
+        targetKind: 'stage',
         label: option.label || 'ruta',
+        sourceOptionId: option.id,
         toneClass: 'stroke-sky-300',
         showLabel: true,
       })
@@ -522,6 +587,8 @@ function buildStudioGraph(builder: BuilderState) {
         id: `${sourceId}-action-${actionId}`,
         fromId: sourceId,
         toId: `action:${actionId}`,
+        sourceKind: 'stage',
+        targetKind: 'action',
         label: 'accion',
         toneClass: 'stroke-fuchsia-300',
         showLabel: false,
@@ -536,6 +603,8 @@ function buildStudioGraph(builder: BuilderState) {
       id: `trigger-${trigger.id}-to-stage-${trigger.targetStageId}`,
       fromId: `trigger:${trigger.id}`,
       toId: `stage:${trigger.targetStageId}`,
+      sourceKind: 'trigger',
+      targetKind: 'stage',
       label: trigger.event === 'message' ? 'salto' : trigger.event.replaceAll('_', ' '),
       toneClass: trigger.enabled ? 'stroke-amber-300' : 'stroke-slate-300',
       showLabel: false,
@@ -549,6 +618,8 @@ function buildStudioGraph(builder: BuilderState) {
         id: `stage-${pause.sourceStageId}-to-pause-${pause.id}`,
         fromId: `stage:${pause.sourceStageId}`,
         toId: pauseNodeId,
+        sourceKind: 'stage',
+        targetKind: 'pause',
         label: `espera ${pause.durationMinutes} min`,
         toneClass: pause.enabled ? 'stroke-sky-300' : 'stroke-slate-300',
         showLabel: false,
@@ -559,6 +630,8 @@ function buildStudioGraph(builder: BuilderState) {
         id: `pause-${pause.id}-to-stage-${pause.targetStageId}`,
         fromId: pauseNodeId,
         toId: `stage:${pause.targetStageId}`,
+        sourceKind: 'pause',
+        targetKind: 'stage',
         label: 'continua',
         toneClass: pause.enabled ? 'stroke-sky-300' : 'stroke-slate-300',
         showLabel: false,
@@ -679,11 +752,17 @@ function buildSettingsPayload(state: BuilderState) {
   }
 }
 
+function serializeBuilderState(state: BuilderState) {
+  return JSON.stringify(state)
+}
+
 export function CrmChatbotStudioClient() {
   const [channels, setChannels] = useState<ChannelConnection[]>([])
   const [assignees, setAssignees] = useState<Assignee[]>([])
   const [selectedChannelId, setSelectedChannelId] = useState<string>('')
   const [builder, setBuilder] = useState<BuilderState>(() => hydrateBuilder(null))
+  const [historyPast, setHistoryPast] = useState<BuilderState[]>([])
+  const [historyFuture, setHistoryFuture] = useState<BuilderState[]>([])
   const [conversations, setConversations] = useState<ConversationRow[]>([])
   const [selectedConversationId, setSelectedConversationId] = useState<string>('')
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null)
@@ -692,6 +771,7 @@ export function CrmChatbotStudioClient() {
   const [creating, setCreating] = useState(false)
   const [assigningConversationId, setAssigningConversationId] = useState<string | null>(null)
   const [focusedNode, setFocusedNode] = useState<StudioFocusNode | null>(null)
+  const [activeEdgeId, setActiveEdgeId] = useState<string | null>(null)
   const [editingNode, setEditingNode] = useState<StudioEditingNode>(null)
   const [activeStudioPanel, setActiveStudioPanel] = useState<StudioPrimaryPanel>('map')
   const [editingVariableId, setEditingVariableId] = useState<string | null>(null)
@@ -714,10 +794,59 @@ export function CrmChatbotStudioClient() {
   const boardViewportRef = useRef<HTMLDivElement | null>(null)
   const pinchStateRef = useRef<{ initialDistance: number; initialScale: number; centerX: number; centerY: number } | null>(null)
   const minimapDraggingRef = useRef(false)
+  const historyTrackingSuspendedRef = useRef(true)
+  const lastBuilderRef = useRef<BuilderState>(builder)
+  const lastSavedSnapshotRef = useRef(serializeBuilderState(builder))
 
   const selectedChannel = useMemo(() => channels.find((item) => item.id === selectedChannelId) ?? null, [channels, selectedChannelId])
   const selectedFlow = useMemo(() => builder.automationFlows.find((flow) => flow.id === builder.selectedFlowId) ?? null, [builder.automationFlows, builder.selectedFlowId])
   const editingVariable = editingVariableId ? builder.flowVariables.find((variable) => variable.id === editingVariableId) ?? null : null
+  const builderSnapshot = useMemo(() => serializeBuilderState(builder), [builder])
+  const hasUnsavedChanges = builderSnapshot !== lastSavedSnapshotRef.current
+  const canUndo = historyPast.length > 0
+  const canRedo = historyFuture.length > 0
+
+  function replaceBuilder(nextBuilder: BuilderState, options?: { resetHistory?: boolean; markSaved?: boolean }) {
+    historyTrackingSuspendedRef.current = true
+    lastBuilderRef.current = nextBuilder
+
+    if (options?.markSaved) {
+      lastSavedSnapshotRef.current = serializeBuilderState(nextBuilder)
+    }
+
+    if (options?.resetHistory) {
+      setHistoryPast([])
+      setHistoryFuture([])
+    }
+
+    setBuilder(nextBuilder)
+  }
+
+  function handleUndo() {
+    const previousBuilder = historyPast[historyPast.length - 1]
+    if (!previousBuilder) return
+
+    historyTrackingSuspendedRef.current = true
+    lastBuilderRef.current = previousBuilder
+    setHistoryPast((current) => current.slice(0, -1))
+    setHistoryFuture((current) => [builder, ...current].slice(0, 40))
+    setBuilder(previousBuilder)
+    setError(null)
+    setNotice('Se revirtió el último cambio del flujo.')
+  }
+
+  function handleRedo() {
+    const nextBuilder = historyFuture[0]
+    if (!nextBuilder) return
+
+    historyTrackingSuspendedRef.current = true
+    lastBuilderRef.current = nextBuilder
+    setHistoryPast((current) => [...current.slice(-39), builder])
+    setHistoryFuture((current) => current.slice(1))
+    setBuilder(nextBuilder)
+    setError(null)
+    setNotice('Se rehizo el cambio del flujo.')
+  }
 
   async function loadBase() {
     setLoading(true)
@@ -739,7 +868,10 @@ export function CrmChatbotStudioClient() {
       ? selectedChannelId
       : (channelsJson.data[0]?.id ?? '')
     setSelectedChannelId(nextChannelId)
-    setBuilder(hydrateBuilder(channelsJson.data.find((item) => item.id === nextChannelId) ?? channelsJson.data[0] ?? null))
+    replaceBuilder(hydrateBuilder(channelsJson.data.find((item) => item.id === nextChannelId) ?? channelsJson.data[0] ?? null), {
+      resetHistory: true,
+      markSaved: true,
+    })
     setLoading(false)
   }
 
@@ -783,9 +915,23 @@ export function CrmChatbotStudioClient() {
   useEffect(() => {
     if (!selectedChannelId) return
     const channel = channels.find((item) => item.id === selectedChannelId) ?? null
-    setBuilder(hydrateBuilder(channel))
+    replaceBuilder(hydrateBuilder(channel), { resetHistory: true, markSaved: true })
     void loadConversations(selectedChannelId)
   }, [selectedChannelId, channels])
+
+  useEffect(() => {
+    if (historyTrackingSuspendedRef.current) {
+      historyTrackingSuspendedRef.current = false
+      lastBuilderRef.current = builder
+      return
+    }
+
+    if (builderSnapshot === serializeBuilderState(lastBuilderRef.current)) return
+
+    setHistoryPast((current) => [...current.slice(-39), lastBuilderRef.current])
+    setHistoryFuture([])
+    lastBuilderRef.current = builder
+  }, [builder, builderSnapshot])
 
   useEffect(() => {
     if (!selectedConversationId) {
@@ -839,6 +985,9 @@ export function CrmChatbotStudioClient() {
       setSaving(false)
       return
     }
+    lastSavedSnapshotRef.current = serializeBuilderState(builder)
+    setHistoryPast([])
+    setHistoryFuture([])
     setNotice('Studio del chatbot actualizado.')
     await loadBase()
     setSelectedChannelId(json.data.id)
@@ -876,6 +1025,32 @@ export function CrmChatbotStudioClient() {
         return {
           ...stage,
           responseOptions: stage.responseOptions.map((option) => option.id === optionId ? { ...option, ...patch } : option),
+        }
+      }),
+    }))
+  }
+
+  function removeResponseOption(stageId: string, optionId: string) {
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      flowStages: current.flowStages.map((stage) => {
+        if (stage.id !== stageId) return stage
+        return {
+          ...stage,
+          responseOptions: stage.responseOptions.filter((option) => option.id !== optionId),
+        }
+      }),
+    }))
+  }
+
+  function duplicateStageResponseOption(stageId: string, optionId: string) {
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      flowStages: current.flowStages.map((stage) => {
+        if (stage.id !== stageId) return stage
+        const option = stage.responseOptions.find((item) => item.id === optionId)
+        if (!option) return stage
+        return {
+          ...stage,
+          responseOptions: [...stage.responseOptions, duplicateResponseOption(option)],
         }
       }),
     }))
@@ -1282,7 +1457,66 @@ export function CrmChatbotStudioClient() {
     }))
   }
 
+  function replaceStageQuickActionLink(stageId: string, currentActionId: string, nextActionId: string) {
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      flowStages: current.flowStages.map((stage) => {
+        if (stage.id !== stageId) return stage
+        const quickActionIds = stage.quickActionIds.map((actionId) => actionId === currentActionId ? nextActionId : actionId)
+        return {
+          ...stage,
+          quickActionIds: Array.from(new Set(quickActionIds)),
+        }
+      }),
+    }))
+  }
+
+  function updateInlineEdgeTarget(edge: StudioGraphEdge, value: string) {
+    const sourceId = edge.fromId.split(':')[1] || ''
+    const targetId = edge.toId.split(':')[1] || ''
+
+    if (edge.sourceKind === 'start' && edge.targetKind === 'stage') {
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        flowStages: [
+          ...current.flowStages.filter((stage) => stage.id === value),
+          ...current.flowStages.filter((stage) => stage.id !== value),
+        ],
+      }))
+      setNotice('Se actualizó el mensaje inicial del flujo.')
+      return
+    }
+
+    if (edge.sourceKind === 'stage' && edge.targetKind === 'stage' && edge.sourceOptionId) {
+      updateResponseOption(sourceId, edge.sourceOptionId, { targetStageId: value })
+      setNotice('La rama quedó reconectada desde el canvas.')
+      return
+    }
+
+    if (edge.sourceKind === 'stage' && edge.targetKind === 'action') {
+      replaceStageQuickActionLink(sourceId, targetId, value)
+      setNotice('La acción rápida enlazada fue actualizada.')
+      return
+    }
+
+    if (edge.sourceKind === 'stage' && edge.targetKind === 'pause') {
+      updatePauseNode(targetId, { sourceStageId: value })
+      setNotice('Se actualizó el origen de la pausa.')
+      return
+    }
+
+    if (edge.sourceKind === 'trigger' && edge.targetKind === 'stage') {
+      updateTrigger(sourceId, { targetStageId: value })
+      setNotice('El filtro quedó reconectado desde el canvas.')
+      return
+    }
+
+    if (edge.sourceKind === 'pause' && edge.targetKind === 'stage') {
+      updatePauseNode(sourceId, { targetStageId: value })
+      setNotice('Se actualizó el destino de la pausa.')
+    }
+  }
+
   function focusStudioNode(node: StudioFocusNode) {
+    setActiveEdgeId(null)
     setFocusedNode(node)
     setInspectorOpen(true)
     if (typeof document === 'undefined') return
@@ -1304,6 +1538,7 @@ export function CrmChatbotStudioClient() {
   function stopFlowEditing() {
     setFlowEditMode(false)
     setMapFullscreen(false)
+    setActiveEdgeId(null)
     setContextMenu(null)
     setPaletteDragKind(null)
     setConnectionDraft(null)
@@ -1496,6 +1731,7 @@ export function CrmChatbotStudioClient() {
   function handleBoardBackgroundPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return
     setContextMenu(null)
+    setActiveEdgeId(null)
     dragMovedRef.current = false
     setPanState({
       startPointerX: event.clientX,
@@ -2106,6 +2342,11 @@ export function CrmChatbotStudioClient() {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">Zoom {(builder.studioViewport.scale * 100).toFixed(0)}%</span>
                   <span>Pan X {Math.round(builder.studioViewport.x)} · Y {Math.round(builder.studioViewport.y)}</span>
+                  {canEditFlow ? (
+                    <span className={`rounded-full px-2.5 py-1 font-medium ${hasUnsavedChanges ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}`}>
+                      {hasUnsavedChanges ? 'Cambios sin guardar' : 'Todo guardado'}
+                    </span>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {canEditFlow && focusedNode ? (
@@ -2113,10 +2354,25 @@ export function CrmChatbotStudioClient() {
                       {inspectorOpen ? 'Inspector' : 'Mostrar inspector'}
                     </Button>
                   ) : null}
+                  {canEditFlow ? (
+                    <Button type="button" variant="outline" size="sm" onClick={handleUndo} disabled={!canUndo}>
+                      <Undo2 className="mr-1.5 h-3.5 w-3.5" /> Deshacer
+                    </Button>
+                  ) : null}
+                  {canEditFlow ? (
+                    <Button type="button" variant="outline" size="sm" onClick={handleRedo} disabled={!canRedo}>
+                      <Redo2 className="mr-1.5 h-3.5 w-3.5" /> Rehacer
+                    </Button>
+                  ) : null}
                   <Button type="button" variant="outline" size="sm" onClick={() => setStudioScale(builder.studioViewport.scale - 0.1)}>Zoom -</Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => setStudioScale(builder.studioViewport.scale + 0.1)}>Zoom +</Button>
                   <Button type="button" variant="outline" size="sm" onClick={resetStudioViewport}>Centrar vista</Button>
                   {canEditFlow ? <Button type="button" variant="outline" size="sm" onClick={clearStudioLayout}>Auto ordenar</Button> : null}
+                  {canEditFlow ? (
+                    <Button type="button" size="sm" onClick={() => void handleSaveChannel()} disabled={!selectedChannelId || saving || !hasUnsavedChanges}>
+                      <Save className="mr-1.5 h-3.5 w-3.5" /> {saving ? 'Guardando...' : 'Guardar'}
+                    </Button>
+                  ) : null}
                   <Button type="button" variant="outline" size="sm" onClick={canEditFlow ? stopFlowEditing : startFlowEditing}>
                     {canEditFlow ? 'Salir edición' : 'Editar flujo'}
                   </Button>
@@ -2219,30 +2475,163 @@ export function CrmChatbotStudioClient() {
                           const source = studioGraph.nodes.find((node) => node.id === edge.fromId)
                           const target = studioGraph.nodes.find((node) => node.id === edge.toId)
                           if (!source || !target) return null
-                          const startX = getNodeAnchorX(source, 'right')
-                          const startY = getNodeAnchorY(source)
-                          const endX = getNodeAnchorX(target, 'left')
-                          const endY = getNodeAnchorY(target)
-                          const deltaX = Math.max((endX - startX) / 2, 56)
-                          const path = `M ${startX} ${startY} C ${startX + deltaX} ${startY}, ${endX - deltaX} ${endY}, ${endX} ${endY}`
+                          const metrics = getEdgeCurveMetrics(source, target)
                           return (
                             <g key={edge.id}>
-                              <path d={path} className={`${edge.toneClass} fill-none stroke-[2.5]`} strokeDasharray={edge.dashed ? '6 6' : undefined} />
+                              <path d={metrics.path} className={`${edge.toneClass} fill-none stroke-[2.5]`} strokeDasharray={edge.dashed ? '6 6' : undefined} />
                             </g>
                           )
                         })}
                         {connectionDraft ? (() => {
                           const source = studioGraph.nodes.find((node) => node.id === connectionDraft.fromId)
                           if (!source) return null
-                          const startX = getNodeAnchorX(source, 'right')
-                          const startY = getNodeAnchorY(source)
-                          const endX = connectionDraft.currentX
-                          const endY = connectionDraft.currentY
-                          const deltaX = Math.max((endX - startX) / 2, 56)
-                          const path = `M ${startX} ${startY} C ${startX + deltaX} ${startY}, ${endX - deltaX} ${endY}, ${endX} ${endY}`
-                          return <path d={path} className="fill-none stroke-slate-400 stroke-[2.5]" strokeDasharray="8 6" />
+                          const draftTarget = {
+                            ...source,
+                            x: connectionDraft.currentX,
+                            y: connectionDraft.currentY - 52,
+                            width: 0,
+                          } satisfies StudioGraphNode
+                          const metrics = getEdgeCurveMetrics(source, draftTarget)
+                          return <path d={metrics.path} className="fill-none stroke-slate-400 stroke-[2.5]" strokeDasharray="8 6" />
                         })() : null}
                       </svg>
+
+                      {studioGraph.edges.map((edge) => {
+                        const source = studioGraph.nodes.find((node) => node.id === edge.fromId)
+                        const target = studioGraph.nodes.find((node) => node.id === edge.toId)
+                        if (!source || !target) return null
+                        const metrics = getEdgeCurveMetrics(source, target)
+                        const isActiveEdge = activeEdgeId === edge.id
+                        const panelLeft = Math.max(24, Math.min(studioGraph.contentWidth - 232, metrics.midpoint.x - 108))
+                        const panelTop = Math.max(24, metrics.midpoint.y - (isActiveEdge ? 86 : 16))
+                        const edgeTargetId = edge.toId.split(':')[1] || ''
+                        const edgeSourceId = edge.fromId.split(':')[1] || ''
+                        const targetValue = edge.sourceKind === 'stage' && edge.targetKind === 'pause'
+                          ? builder.pauseNodes.find((pause) => pause.id === edgeTargetId)?.sourceStageId || '__none__'
+                          : edge.toId === 'start'
+                            ? '__none__'
+                            : (edge.targetKind === 'action' ? edgeTargetId : edge.targetKind === 'stage' ? edgeTargetId : builder.pauseNodes.find((pause) => pause.id === edgeSourceId)?.targetStageId || '__none__')
+
+                        return (
+                          <div key={`edge-editor-${edge.id}`} className="absolute" style={{ left: `${panelLeft}px`, top: `${panelTop}px` }}>
+                            <button
+                              type="button"
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setActiveEdgeId((current) => current === edge.id ? null : edge.id)
+                              }}
+                              className={`flex max-w-[220px] items-center gap-2 rounded-full border bg-white/96 px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.4)] transition hover:border-slate-300 ${isActiveEdge ? 'border-slate-400 ring-2 ring-slate-900/10' : 'border-slate-200'}`}
+                            >
+                              <span className={`inline-block h-2.5 w-2.5 rounded-full ${edge.sourceKind === 'trigger' ? 'bg-amber-400' : edge.targetKind === 'action' ? 'bg-fuchsia-400' : edge.targetKind === 'pause' || edge.sourceKind === 'pause' ? 'bg-sky-400' : 'bg-emerald-400'}`} />
+                              <span className="truncate">{edge.label || 'Conexion'}</span>
+                            </button>
+
+                            {isActiveEdge ? (
+                              <div
+                                className="mt-2 w-[220px] rounded-2xl border border-slate-200 bg-white/98 p-3 text-xs text-slate-600 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.48)]"
+                                onPointerDown={(event) => event.stopPropagation()}
+                              >
+                                <div className="font-semibold text-slate-900">Editar conexión</div>
+                                <div className="mt-1 leading-5 text-slate-500">{source.title} → {target.title}</div>
+                                {edge.sourceOptionId ? <div className="mt-1 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-700">Rama: {edge.label}</div> : null}
+                                <div className="mt-3 grid gap-2">
+                                  {edge.sourceKind === 'start' && edge.targetKind === 'stage' ? (
+                                    <>
+                                      <Label className="text-[11px]">Mensaje inicial</Label>
+                                      <Select value={targetValue} onValueChange={(value) => updateInlineEdgeTarget(edge, value)}>
+                                        <SelectTrigger className="h-9 bg-white text-xs"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                          {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                                        </SelectContent>
+                                      </Select>
+                                    </>
+                                  ) : null}
+                                  {edge.sourceKind === 'stage' && edge.targetKind === 'stage' ? (
+                                    <>
+                                      <Label className="text-[11px]">Siguiente mensaje</Label>
+                                      <Select value={targetValue} onValueChange={(value) => updateInlineEdgeTarget(edge, value)}>
+                                        <SelectTrigger className="h-9 bg-white text-xs"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                          {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                                        </SelectContent>
+                                      </Select>
+                                    </>
+                                  ) : null}
+                                  {edge.sourceKind === 'stage' && edge.targetKind === 'action' ? (
+                                    <>
+                                      <Label className="text-[11px]">Acción rápida enlazada</Label>
+                                      <Select value={targetValue} onValueChange={(value) => updateInlineEdgeTarget(edge, value)}>
+                                        <SelectTrigger className="h-9 bg-white text-xs"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                          {builder.quickActions.map((action) => <SelectItem key={action.id} value={action.id}>{action.label}</SelectItem>)}
+                                        </SelectContent>
+                                      </Select>
+                                    </>
+                                  ) : null}
+                                  {edge.sourceKind === 'stage' && edge.targetKind === 'pause' ? (
+                                    <>
+                                      <Label className="text-[11px]">Origen de la pausa</Label>
+                                      <Select value={targetValue} onValueChange={(value) => updateInlineEdgeTarget(edge, value)}>
+                                        <SelectTrigger className="h-9 bg-white text-xs"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                          {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                                        </SelectContent>
+                                      </Select>
+                                    </>
+                                  ) : null}
+                                  {edge.sourceKind === 'trigger' && edge.targetKind === 'stage' ? (
+                                    <>
+                                      <Label className="text-[11px]">Mensaje destino del filtro</Label>
+                                      <Select value={targetValue} onValueChange={(value) => updateInlineEdgeTarget(edge, value)}>
+                                        <SelectTrigger className="h-9 bg-white text-xs"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                          {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                                        </SelectContent>
+                                      </Select>
+                                    </>
+                                  ) : null}
+                                  {edge.sourceKind === 'pause' && edge.targetKind === 'stage' ? (
+                                    <>
+                                      <Label className="text-[11px]">Siguiente mensaje después de la pausa</Label>
+                                      <Select value={targetValue} onValueChange={(value) => updateInlineEdgeTarget(edge, value)}>
+                                        <SelectTrigger className="h-9 bg-white text-xs"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                          {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                                        </SelectContent>
+                                      </Select>
+                                    </>
+                                  ) : null}
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {edge.sourceKind !== 'start' ? (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 text-xs"
+                                      onClick={() => openEditor({ kind: edge.sourceKind as StudioFocusNode['kind'], id: edgeSourceId })}
+                                    >
+                                      Editar origen
+                                    </Button>
+                                  ) : null}
+                                  {edge.targetKind !== 'start' ? (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 text-xs"
+                                      onClick={() => edge.targetKind === 'action' || edge.targetKind === 'pause' || edge.targetKind === 'stage' ? openEditor({ kind: edge.targetKind, id: edgeTargetId }) : null}
+                                    >
+                                      Editar destino
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      })}
 
                       {studioGraph.nodes.map((node) => {
                         const nodeKey = node.id.split(':')[1]
@@ -2270,6 +2659,7 @@ export function CrmChatbotStudioClient() {
                             }}
                             onClick={(event) => {
                               event.stopPropagation()
+                              setActiveEdgeId(null)
                               if (node.kind !== 'start') {
                                 focusStudioNode({ kind: node.kind, id: nodeKey })
                               }
@@ -2379,6 +2769,26 @@ export function CrmChatbotStudioClient() {
                                     {option.label}
                                   </span>
                                 ))}
+                              </div>
+                            ) : null}
+                            {node.kind !== 'start' ? (
+                              <div className={`absolute -bottom-4 left-3 right-3 z-10 transition ${active ? 'opacity-100 translate-y-0' : 'translate-y-1 opacity-0 lg:group-hover:translate-y-0 lg:group-hover:opacity-100'}`}>
+                                <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-white/96 p-1 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.4)]">
+                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openEditor({ kind: node.kind as StudioFocusNode['kind'], id: nodeKey }) }} className="rounded-xl px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100">Editar</button>
+                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); duplicateNode({ kind: node.kind as StudioFocusNode['kind'], id: nodeKey }) }} className="rounded-xl px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100">Duplicar</button>
+                                  {node.kind === 'stage' ? (
+                                    <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => {
+                                      event.stopPropagation()
+                                      const stage = builder.flowStages.find((item) => item.id === nodeKey)
+                                      if (!stage) return
+                                      updateStage(stage.id, { responseOptions: [...stage.responseOptions, createStageResponseOption(builder.flowStages, stage.id)] })
+                                      setNotice('Se agregó una nueva rama desde el canvas.')
+                                    }} className="rounded-xl px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100">Rama +</button>
+                                  ) : null}
+                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); reorderNode({ kind: node.kind as StudioFocusNode['kind'], id: nodeKey }, -1) }} className="rounded-xl px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100">Subir</button>
+                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); reorderNode({ kind: node.kind as StudioFocusNode['kind'], id: nodeKey }, 1) }} className="rounded-xl px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100">Bajar</button>
+                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); deleteNodeWithFeedback({ kind: node.kind as StudioFocusNode['kind'], id: nodeKey }) }} className="rounded-xl px-2.5 py-1.5 text-[10px] font-semibold text-rose-700 transition hover:bg-rose-50">Eliminar</button>
+                                </div>
                               </div>
                             ) : null}
                           </div>
@@ -2659,6 +3069,27 @@ export function CrmChatbotStudioClient() {
       if (isTypingElement(event.target)) return
 
       const key = event.key.toLowerCase()
+      const hasModifier = event.ctrlKey || event.metaKey
+
+      if (hasModifier && key === 's') {
+        event.preventDefault()
+        if (selectedChannelId && hasUnsavedChanges && !saving) {
+          void handleSaveChannel()
+        }
+        return
+      }
+
+      if (hasModifier && !event.shiftKey && key === 'z') {
+        event.preventDefault()
+        handleUndo()
+        return
+      }
+
+      if ((hasModifier && key === 'y') || (hasModifier && event.shiftKey && key === 'z')) {
+        event.preventDefault()
+        handleRedo()
+        return
+      }
 
       if (key === 'i' && focusedNode) {
         event.preventDefault()
@@ -2682,7 +3113,7 @@ export function CrmChatbotStudioClient() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [activeStudioPanel, focusedNode, mapFullscreen])
+  }, [activeStudioPanel, focusedNode, hasUnsavedChanges, mapFullscreen, saving, selectedChannelId, historyPast, historyFuture, builder])
 
   return (
     <div className="space-y-4.5">
@@ -2721,8 +3152,13 @@ export function CrmChatbotStudioClient() {
                 {channels.map((channel) => <SelectItem key={channel.id} value={channel.id}>{channel.name}</SelectItem>)}
               </SelectContent>
             </Select>
+            {selectedChannelId ? (
+              <div className={`rounded-full border px-3 py-1 text-xs font-medium ${hasUnsavedChanges ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
+                {hasUnsavedChanges ? 'Cambios pendientes' : 'Sin cambios pendientes'}
+              </div>
+            ) : null}
             <Button variant="outline" onClick={() => void handleCreateChannel()} disabled={creating}>{creating ? 'Creando...' : 'Crear canal chatbot'}</Button>
-            <Button onClick={() => void handleSaveChannel()} disabled={!selectedChannelId || saving}>{saving ? 'Guardando...' : 'Guardar studio'}</Button>
+            <Button onClick={() => void handleSaveChannel()} disabled={!selectedChannelId || saving || !hasUnsavedChanges}>{saving ? 'Guardando...' : hasUnsavedChanges ? 'Guardar studio' : 'Studio guardado'}</Button>
           </div>
         </CardContent>
       </Card>
@@ -3245,14 +3681,26 @@ export function CrmChatbotStudioClient() {
           {editingStage ? (
             <>
               <DialogHeader>
-                <DialogTitle>Editar etapa</DialogTitle>
-                <DialogDescription>Configura el mensaje principal, el dato esperado y las rutas de esta etapa.</DialogDescription>
+                <DialogTitle>Editar mensaje del flujo</DialogTitle>
+                <DialogDescription>Define qué dice el bot, qué respuesta debe entender y a qué mensaje o acción debe pasar después.</DialogDescription>
               </DialogHeader>
               <div className="grid gap-3 py-1.5">
+                <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+                  <div className="flex items-start gap-2">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div className="space-y-1.5">
+                      <div className="font-medium">Cómo interpreta el chatbot esta etapa</div>
+                      <div>1. Primero muestra este mensaje al visitante.</div>
+                      <div>2. Luego compara la respuesta libre o el botón elegido contra las opciones configuradas abajo.</div>
+                      <div>3. Si encuentra match, envía la respuesta del asistente y avanza al destino que definas.</div>
+                      <div>4. Puedes crear tantas rutas como necesites para servicios, tamaños, acabados o escalamiento humano.</div>
+                    </div>
+                  </div>
+                </div>
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="grid gap-1.5">
                     <Label>Título</Label>
-                    <Input value={editingStage.title} onChange={(event) => updateStage(editingStage.id, { title: event.target.value })} />
+                    <Input value={editingStage.title} onChange={(event) => updateStage(editingStage.id, { title: event.target.value })} placeholder="Ej: Inicio, Calificación, Impresión digital" />
                   </div>
                   <div className="grid gap-1.5">
                     <Label>Siguiente dato esperado</Label>
@@ -3271,11 +3719,11 @@ export function CrmChatbotStudioClient() {
                 </div>
                 <div className="grid gap-1.5">
                   <Label>Descripción</Label>
-                  <Textarea value={editingStage.description} onChange={(event) => updateStage(editingStage.id, { description: event.target.value })} rows={2} />
+                  <Textarea value={editingStage.description} onChange={(event) => updateStage(editingStage.id, { description: event.target.value })} rows={2} placeholder="Explica el objetivo de este paso dentro del flujo." />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label>Prompt de etapa</Label>
-                  <Textarea value={editingStage.prompt} onChange={(event) => updateStage(editingStage.id, { prompt: event.target.value })} rows={3} />
+                  <Label>Mensaje del bot en esta etapa</Label>
+                  <Textarea value={editingStage.prompt} onChange={(event) => updateStage(editingStage.id, { prompt: event.target.value })} rows={3} placeholder="Ej: Hola, soy Juan Bot. ¿En qué servicio te puedo ayudar hoy?" />
                 </div>
                 <div className="grid gap-1.5">
                   <Label>Acciones rápidas</Label>
@@ -3293,18 +3741,33 @@ export function CrmChatbotStudioClient() {
                 </div>
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
-                    <Label>Opciones de respuesta</Label>
-                    <Button variant="outline" size="sm" onClick={() => updateStage(editingStage.id, { responseOptions: [...editingStage.responseOptions, { id: makeId('option'), label: 'Nueva opción', userMessage: 'Mensaje esperado del visitante.', assistantReply: 'Respuesta del asistente.', matchMode: 'contains', matchValue: '', targetStageId: editingStage.id }] })}>Agregar opción</Button>
+                    <div>
+                      <Label>Opciones de respuesta y ramas</Label>
+                      <div className="mt-1 text-xs text-slate-500">Cada opción representa una intención posible del prospecto y define a qué mensaje debe saltar el flujo.</div>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => updateStage(editingStage.id, { responseOptions: [...editingStage.responseOptions, createStageResponseOption(builder.flowStages, editingStage.id)] })}>Agregar opción</Button>
                   </div>
+                  {!editingStage.responseOptions.length ? (
+                    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                      Esta etapa todavía no tiene ramas. Agrega una opción para decirle al bot qué debe entender y a dónde debe continuar.
+                    </div>
+                  ) : null}
                   {editingStage.responseOptions.map((option) => (
                     <div key={option.id} className="rounded-xl border border-dashed border-slate-200 p-2.5">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">Ruta {editingStage.responseOptions.findIndex((item) => item.id === option.id) + 1}</div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-xs" onClick={() => duplicateStageResponseOption(editingStage.id, option.id)}>Duplicar</Button>
+                          <Button type="button" variant="outline" size="sm" className="h-8 border-rose-200 px-3 text-xs text-rose-700" onClick={() => removeResponseOption(editingStage.id, option.id)}>Eliminar</Button>
+                        </div>
+                      </div>
                       <div className="grid gap-2.5 md:grid-cols-2">
                         <div className="grid gap-1.5">
-                          <Label>Etiqueta</Label>
-                          <Input value={option.label} onChange={(event) => updateResponseOption(editingStage.id, option.id, { label: event.target.value })} />
+                          <Label>Etiqueta visible</Label>
+                          <Input value={option.label} onChange={(event) => updateResponseOption(editingStage.id, option.id, { label: event.target.value })} placeholder="Ej: Quiero cotizar impresión digital" />
                         </div>
                         <div className="grid gap-1.5">
-                          <Label>Destino</Label>
+                          <Label>Siguiente mensaje</Label>
                           <Select value={option.targetStageId} onValueChange={(value) => updateResponseOption(editingStage.id, option.id, { targetStageId: value })}>
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>
@@ -3313,26 +3776,26 @@ export function CrmChatbotStudioClient() {
                           </Select>
                         </div>
                         <div className="grid gap-1.5">
-                          <Label>Modo de match</Label>
+                          <Label>Cómo interpreta la respuesta</Label>
                           <Select value={option.matchMode} onValueChange={(value) => updateResponseOption(editingStage.id, option.id, { matchMode: value as ChatbotFlowResponseMatchMode })}>
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="contains">Contiene</SelectItem>
-                              <SelectItem value="exact">Exacto</SelectItem>
+                              <SelectItem value="contains">Contiene palabras</SelectItem>
+                              <SelectItem value="exact">Coincidencia exacta</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
                         <div className="grid gap-1.5">
-                          <Label>Términos</Label>
-                          <Input value={option.matchValue} onChange={(event) => updateResponseOption(editingStage.id, option.id, { matchValue: event.target.value })} />
+                          <Label>Palabras o frases que activan esta rama</Label>
+                          <Input value={option.matchValue} onChange={(event) => updateResponseOption(editingStage.id, option.id, { matchValue: event.target.value })} placeholder="Ej: cotizar, impresión digital, volantes" />
                         </div>
                         <div className="grid gap-1.5 md:col-span-2">
-                          <Label>Mensaje del usuario</Label>
-                          <Textarea value={option.userMessage} onChange={(event) => updateResponseOption(editingStage.id, option.id, { userMessage: event.target.value })} rows={2} />
+                          <Label>Texto que representa la intención del visitante</Label>
+                          <Textarea value={option.userMessage} onChange={(event) => updateResponseOption(editingStage.id, option.id, { userMessage: event.target.value })} rows={2} placeholder="Ej: Necesito cotizar impresión digital en tamaño carta." />
                         </div>
                         <div className="grid gap-1.5 md:col-span-2">
-                          <Label>Respuesta del asistente</Label>
-                          <Textarea value={option.assistantReply} onChange={(event) => updateResponseOption(editingStage.id, option.id, { assistantReply: event.target.value })} rows={2} />
+                          <Label>Respuesta del bot cuando toma esta rama</Label>
+                          <Textarea value={option.assistantReply} onChange={(event) => updateResponseOption(editingStage.id, option.id, { assistantReply: event.target.value })} rows={2} placeholder="Ej: Claro, te ayudo con impresión digital. ¿Qué tamaño necesitas?" />
                         </div>
                       </div>
                     </div>
