@@ -3095,15 +3095,15 @@ export function CrmChatbotStudioClient() {
                           <div key={`edge-editor-${edge.id}`} className="absolute" style={{ left: `${panelLeft}px`, top: `${panelTop}px` }}>
                             <button
                               type="button"
+                              aria-label={`Editar conexión ${edge.label || 'del flujo'}`}
                               onPointerDown={(event) => event.stopPropagation()}
                               onClick={(event) => {
                                 event.stopPropagation()
                                 setActiveEdgeId((current) => current === edge.id ? null : edge.id)
                               }}
-                              className={`flex max-w-[220px] items-center gap-2 rounded-full border bg-white/96 px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.4)] transition hover:border-slate-300 ${isActiveEdge ? 'border-slate-400 ring-2 ring-slate-900/10' : 'border-slate-200'}`}
+                              className={`flex h-6 w-6 items-center justify-center rounded-full border bg-white/96 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.4)] transition hover:border-slate-300 ${isActiveEdge ? 'border-slate-400 ring-2 ring-slate-900/10' : 'border-slate-200'}`}
                             >
                               <span className={`inline-block h-2.5 w-2.5 rounded-full ${edge.sourceKind === 'trigger' ? 'bg-amber-400' : edge.targetKind === 'action' ? 'bg-fuchsia-400' : edge.targetKind === 'pause' || edge.sourceKind === 'pause' ? 'bg-sky-400' : 'bg-emerald-400'}`} />
-                              <span className="truncate">{edge.label || 'Conexion'}</span>
                             </button>
 
                             {isActiveEdge ? (
@@ -3220,7 +3220,7 @@ export function CrmChatbotStudioClient() {
                           ? node.id !== connectionDraft.fromId && (connectionDraft.sourceOptionId ? connectionDraft.fromKind === 'stage' && node.kind === 'stage' : canConnectNodes(connectionDraft.fromKind, node.kind))
                           : false
                         const responseHandles = node.kind === 'stage'
-                          ? (stageMap[nodeKey]?.responseOptions ?? []).slice(0, 5)
+                          ? (stageMap[nodeKey]?.responseOptions ?? []).slice(0, 6)
                           : []
                         return (
                           <div
@@ -3290,32 +3290,6 @@ export function CrmChatbotStudioClient() {
                               }}
                               className={`absolute -left-2.5 top-[40px] h-5 w-5 rounded-full border bg-white shadow ${validTarget ? 'border-sky-400' : 'border-slate-300'}`}
                             />
-                            {node.kind === 'stage' && responseHandles.length ? (
-                              <div className={`absolute -right-10 top-7 space-y-2 transition ${active ? 'opacity-100' : 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100'}`}>
-                                {responseHandles.map((option, index) => (
-                                  <button
-                                    key={option.id}
-                                    type="button"
-                                    aria-label={`Reconectar rama ${option.label}`}
-                                    onPointerDown={(event) => {
-                                      if (!canEditFlow) return
-                                      handleConnectionStart(event, node, option.id, option.label)
-                                    }}
-                                    onContextMenu={(event) => {
-                                      if (!canEditFlow) return
-                                      event.preventDefault()
-                                      event.stopPropagation()
-                                      openCreateMenu({ x: node.x + node.width + 30, y: node.y + 50 + (index * 26), target: { sourceNode: { kind: 'stage', id: nodeKey }, sourceOptionId: option.id } })
-                                    }}
-                                    className={`flex items-center gap-2 rounded-full border bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 shadow ${connectionDraft?.sourceOptionId === option.id ? 'border-sky-400' : 'border-slate-300'}`}
-                                    style={{ transform: `translateY(${index * 2}px)` }}
-                                  >
-                                    <span className="inline-block h-3 w-3 rounded-full border border-slate-300 bg-white" />
-                                    <span className="max-w-[84px] truncate">{option.label}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            ) : null}
                             {canStartConnection ? (
                               <button
                                 type="button"
@@ -3341,17 +3315,36 @@ export function CrmChatbotStudioClient() {
                             </div>
                             <div className="mt-1 line-clamp-1 text-xs font-medium opacity-80">{node.subtitle}</div>
                             <div className="mt-2 line-clamp-2 text-[11px] leading-5 opacity-70">{node.description}</div>
-                            {node.kind === 'stage' && stageMap[nodeKey]?.responseOptions.length ? (
-                              <div className="mt-3 flex flex-wrap gap-1.5">
-                                {stageMap[nodeKey]?.responseOptions.slice(0, 3).map((option) => (
-                                  <span key={option.id} className="rounded-full border border-white/70 bg-white/80 px-2 py-1 text-[10px] font-semibold text-slate-700">
-                                    {option.label}
-                                  </span>
+                            {node.kind === 'stage' && responseHandles.length ? (
+                              <div className="mt-3 space-y-2 border-t border-slate-200/70 pt-3">
+                                {responseHandles.map((option) => (
+                                  <div key={option.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white/88 px-2.5 py-2 text-[11px] font-medium text-slate-700 shadow-sm">
+                                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                                    <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                                    <button
+                                      type="button"
+                                      aria-label={`Reconectar rama ${option.label}`}
+                                      onPointerDown={(event) => {
+                                        if (!canEditFlow) return
+                                        event.stopPropagation()
+                                        handleConnectionStart(event, node, option.id, option.label)
+                                      }}
+                                      onContextMenu={(event) => {
+                                        if (!canEditFlow) return
+                                        event.preventDefault()
+                                        event.stopPropagation()
+                                        openCreateMenu({ x: node.x + node.width + 24, y: node.y + 78, target: { sourceNode: { kind: 'stage', id: nodeKey }, sourceOptionId: option.id } })
+                                      }}
+                                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border bg-white ${connectionDraft?.sourceOptionId === option.id ? 'border-sky-400' : 'border-slate-300'}`}
+                                    >
+                                      <span className="inline-block h-2 w-2 rounded-full bg-slate-400" />
+                                    </button>
+                                  </div>
                                 ))}
                               </div>
                             ) : null}
                             {node.kind !== 'start' ? (
-                              <div className={`absolute -bottom-4 left-3 right-3 z-10 transition ${active ? 'opacity-100 translate-y-0' : 'translate-y-1 opacity-0 lg:group-hover:translate-y-0 lg:group-hover:opacity-100'}`}>
+                              <div className={`absolute left-3 right-3 top-full z-10 mt-3 transition ${active ? 'opacity-100 translate-y-0' : 'translate-y-1 opacity-0 lg:group-hover:translate-y-0 lg:group-hover:opacity-100'}`}>
                                 <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-white/96 p-1 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.4)]">
                                   <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openEditor({ kind: node.kind as StudioFocusNode['kind'], id: nodeKey }) }} className="rounded-xl px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100">Editar</button>
                                   <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); duplicateNode({ kind: node.kind as StudioFocusNode['kind'], id: nodeKey }) }} className="rounded-xl px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100">Duplicar</button>
