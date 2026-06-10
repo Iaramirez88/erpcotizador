@@ -412,6 +412,35 @@ function summarizeMatchValue(value: string, fallback: string) {
   return `${items[0]} +${items.length - 1}`
 }
 
+function getStageCardPreview(stage: ChatbotFlowStage) {
+  const lines = (stage.prompt || stage.description || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  return lines.slice(0, 4)
+}
+
+function getStageCardResponsePreview(stage: ChatbotFlowStage) {
+  return stage.responseOptions
+    .map((option) => option.label.trim())
+    .filter(Boolean)
+    .slice(0, 6)
+}
+
+function getStageCardMeta(stage: ChatbotFlowStage) {
+  const responsePreview = getStageCardResponsePreview(stage)
+  const promptPreview = getStageCardPreview(stage)
+  const hasCapture = stage.nextField !== 'none'
+
+  return {
+    title: stage.title?.trim() || 'Mensaje',
+    subtitle: hasCapture ? 'Espera respuesta del usuario' : 'Mensaje regular',
+    description: responsePreview.length
+      ? responsePreview.join(' · ')
+      : (promptPreview.join(' ') || 'Escribe el contenido principal del mensaje.'),
+  }
+}
+
 function buildStudioGraph(builder: BuilderState) {
   const laneY = {
     triggers: 44,
@@ -443,16 +472,17 @@ function buildStudioGraph(builder: BuilderState) {
   const stageNodes: StudioGraphNode[] = builder.flowStages.map((stage, index) => {
     const id = `stage:${stage.id}`
     const layout = builder.studioNodeLayout[id]
+    const meta = getStageCardMeta(stage)
     return {
       id,
       domId: toDomId('stage', stage.id),
       kind: 'stage',
-      title: stage.title || `Etapa ${index + 1}`,
-      subtitle: stage.nextField === 'none' ? 'Mensaje' : `Captura ${stage.nextField}`,
-      description: `${stage.responseOptions.length} rutas · ${stage.quickActionIds.length} acciones`,
+      title: meta.title,
+      subtitle: meta.subtitle,
+      description: meta.description,
       x: layout?.x ?? stageStartX + (index * stageSpacing),
       y: layout?.y ?? laneY.stages,
-      width: 248,
+      width: 232,
       accentClass: 'border-emerald-200 bg-white text-slate-900',
       toneClass: 'stroke-emerald-400',
     }
@@ -474,23 +504,14 @@ function buildStudioGraph(builder: BuilderState) {
       domId: toDomId('trigger', trigger.id),
       kind: 'trigger',
       title: trigger.label || `Disparador ${index + 1}`,
-      subtitle: trigger.event.replaceAll('_', ' '),
-      description: summarizeMatchValue(trigger.matchValue, 'Evento automático'),
+      subtitle: 'Filtro',
+      description: summarizeMatchValue(trigger.matchValue, 'Define la condición de entrada'),
       x: layout?.x ?? (targetStageNode ? targetStageNode.x + 18 : stageStartX + ((stageIndexById.get(trigger.targetStageId) ?? index) * stageSpacing)),
       y: layout?.y ?? laneY.triggers + (triggerCount * triggerStackGap),
       width: 220,
       accentClass: trigger.enabled ? 'border-amber-200 bg-amber-50 text-amber-950' : 'border-slate-200 bg-slate-100 text-slate-500',
       toneClass: trigger.enabled ? 'stroke-amber-400' : 'stroke-slate-300',
     }
-  })
-
-  const actionUsage = new Map<string, string[]>()
-  builder.flowStages.forEach((stage) => {
-    stage.quickActionIds.forEach((actionId) => {
-      const list = actionUsage.get(actionId) ?? []
-      list.push(stage.title || stage.id)
-      actionUsage.set(actionId, list)
-    })
   })
 
   const actionStageIndex = new Map<string, number>()
@@ -515,11 +536,11 @@ function buildStudioGraph(builder: BuilderState) {
       domId: toDomId('action', action.id),
       kind: 'action',
       title: action.label || `Acción ${index + 1}`,
-      subtitle: action.kind,
-      description: actionUsage.get(action.id)?.length ? `${actionUsage.get(action.id)?.length} etapas la usan` : 'Acción disponible',
+      subtitle: 'Acción rápida',
+      description: action.message?.trim() || 'Configura el efecto o mensaje auxiliar de esta acción.',
       x: layout?.x ?? stageStartX + (sourceIndex * stageSpacing) + 20,
       y: layout?.y ?? laneY.actions + (actionCount * actionStackGap),
-      width: 228,
+      width: 220,
       accentClass: action.enabled ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-950' : 'border-slate-200 bg-slate-100 text-slate-500',
       toneClass: action.enabled ? 'stroke-fuchsia-400' : 'stroke-slate-300',
     }
@@ -540,8 +561,8 @@ function buildStudioGraph(builder: BuilderState) {
       domId: toDomId('pause', pause.id),
       kind: 'pause',
       title: pause.title || `Pausa ${index + 1}`,
-      subtitle: `${pause.durationMinutes} min`,
-      description: pause.description || 'Espera antes de continuar con el siguiente mensaje.',
+      subtitle: 'Espera',
+      description: pause.description || `Espera ${pause.durationMinutes} min antes del siguiente mensaje.`,
       x: layout?.x ?? stageStartX + (midpointIndex * stageSpacing) - 94,
       y: layout?.y ?? laneY.pauses + (pauseCount * pauseStackGap),
       width: 206,
@@ -2685,14 +2706,16 @@ export function CrmChatbotStudioClient() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        {conversation.unreadCount > 0 ? <Bell className="h-3.5 w-3.5 shrink-0 text-amber-500" /> : null}
-                        <div className="truncate text-sm font-semibold text-slate-900">{conversation.contactDisplayName || conversation.contactPhone || conversation.contactEmail || 'Visitante web'}</div>
-                      </div>
+                      <div className="truncate text-sm font-semibold text-slate-900">{conversation.contactDisplayName || conversation.contactPhone || conversation.contactEmail || 'Visitante web'}</div>
                       <div className="mt-1 text-xs text-slate-500">{conversation.assignedTo?.name || conversation.assignedTo?.email || 'Sin asignar'} · {conversation.status}</div>
                     </div>
                     <div className="shrink-0 text-right text-[11px] text-slate-500">
-                      <div>{formatDate(conversation.lastMessageAt)}</div>
+                      <div className="flex items-center justify-end gap-2">
+                        <div>{formatDate(conversation.lastMessageAt)}</div>
+                        <div className={`flex h-7 w-7 items-center justify-center rounded-full border ${conversation.unreadCount > 0 ? 'animate-pulse border-amber-300 bg-amber-50 text-amber-600 shadow-[0_0_0_4px_rgba(251,191,36,0.16)]' : 'border-slate-200 bg-slate-50 text-slate-300'}`}>
+                          <Bell className="h-3.5 w-3.5" />
+                        </div>
+                      </div>
                       {conversation.unreadCount > 0 ? <div className="mt-1 rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-800">{conversation.unreadCount}</div> : null}
                     </div>
                   </div>
@@ -2703,7 +2726,7 @@ export function CrmChatbotStudioClient() {
           </CardContent>
         </Card>
 
-        <Card className="overflow-hidden">
+        <Card className="flex h-[72vh] flex-col overflow-hidden">
           <CardHeader className="border-b border-slate-200 bg-white">
             {!selectedConversation ? (
               <>
@@ -2722,10 +2745,10 @@ export function CrmChatbotStudioClient() {
               </div>
             )}
           </CardHeader>
-          <CardContent className="p-0">
-            {!selectedConversation ? <div className="flex min-h-[72vh] items-center justify-center px-6 text-sm text-slate-500">Selecciona una conversación para ver el chat.</div> : (
-              <div className="flex min-h-[72vh] flex-col bg-[linear-gradient(180deg,#ffffff,#f8fbff)]">
-                <div ref={conversationThreadViewportRef} className="flex-1 overflow-y-auto px-4 py-4">
+          <CardContent className="flex-1 min-h-0 p-0">
+            {!selectedConversation ? <div className="flex h-full items-center justify-center px-6 text-sm text-slate-500">Selecciona una conversación para ver el chat.</div> : (
+              <div className="flex h-full min-h-0 flex-col bg-[linear-gradient(180deg,#ffffff,#f8fbff)]">
+                <div ref={conversationThreadViewportRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
                   <div className="space-y-3">
                   {selectedConversation.messages.map((message) => {
                     const isOutbound = message.direction === 'OUTBOUND'
@@ -3439,7 +3462,7 @@ export function CrmChatbotStudioClient() {
                 </div>
               </div>
             ) : !overlay ? (
-              <div className="space-y-3 rounded-[24px] border border-slate-200/80 bg-white/90 p-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-220px)] lg:overflow-y-auto">
+              <div className="space-y-3 rounded-[24px] border border-slate-200/80 bg-white/95 p-4 lg:sticky lg:top-4 lg:h-[calc(100vh-140px)] lg:max-h-[calc(100vh-140px)] lg:overflow-y-auto">
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Vista del flujo</div>
                   <div className="mt-1 text-sm text-slate-600">Activa editar flujo para mostrar el panel de bloques, el arrastre y las acciones avanzadas.</div>
