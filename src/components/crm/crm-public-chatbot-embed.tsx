@@ -394,7 +394,6 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   const activeAssistantMessage = useMemo(() => [...messages].reverse().find((item) => item.role === 'assistant' && item.meta) ?? null, [messages])
   const activeAssistantMeta = activeAssistantMessage?.meta
   const activeStage = useMemo(() => findChatbotFlowStage(props.flowStages, activeAssistantMeta?.stageId || initialStage?.id || null) ?? initialStage, [activeAssistantMeta?.stageId, initialStage, props.flowStages])
-  const activeStageTheme = useMemo(() => getStageTheme(activeStage?.id, props.accentColor), [activeStage?.id, props.accentColor])
   const activePause = useMemo(() => {
     if (!activeAssistantMessage?.meta?.pauseUntil) return null
     const pauseUntilMs = Date.parse(activeAssistantMessage.meta.pauseUntil)
@@ -427,6 +426,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     }
     return getStageResponseOptions(activeStage)
   }, [activeAssistantMeta?.responseOptionIds, activeStage])
+  const hasSelectableOptions = activeResponseOptions.length > 0 || activeQuickActions.length > 0
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -738,80 +738,57 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
               {message.author ? <p className="mt-2 text-[11px] text-slate-500">{message.author}</p> : null}
             </div>
           ))}
+          {hasSelectableOptions ? (
+            <div className="mr-auto max-w-[88%] rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-sm text-slate-700 shadow-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Siguiente paso</p>
+              <p className="mt-2 text-sm font-semibold text-slate-900">Elige una opcion para continuar</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">Las opciones aparecen segun la conversacion actual.</p>
+              <div className="mt-3 space-y-2">
+                {activeResponseOptions.map((option, index) => {
+                  const visual = getResponseOptionVisual()
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => triggerResponseOption(option)}
+                      disabled={sending || !ready || interactionLocked}
+                      className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${visual.className}`}
+                    >
+                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/90 text-xs font-semibold shadow-sm">{index + 1}</span>
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="text-sm font-semibold">{option.label}</span>
+                        <span className="text-[11px] font-medium opacity-80">{visual.badge}</span>
+                      </span>
+                      <span className="text-sm font-semibold opacity-80">{visual.icon}</span>
+                    </button>
+                  )
+                })}
+                {activeQuickActions.map((action, index) => {
+                  const visual = getQuickActionVisual(action.kind)
+                  return (
+                    <button
+                      key={action.id}
+                      type="button"
+                      onClick={() => triggerQuickAction(action)}
+                      disabled={sending || !ready || interactionLocked}
+                      className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${visual.className}`}
+                    >
+                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/90 text-xs font-semibold shadow-sm">{activeResponseOptions.length + index + 1}</span>
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="text-sm font-semibold">{action.label}</span>
+                        <span className="text-[11px] font-medium opacity-80">{visual.badge}</span>
+                      </span>
+                      <span className="text-sm font-semibold opacity-80">{visual.icon}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="sgd-chatbot-composer border-t border-slate-100 bg-white px-4 py-4">
           <div className="grid gap-3">
-            {activeStage ? (
-              <div className={`rounded-[24px] border px-4 py-3 shadow-sm ${activeStageTheme.panel}`} style={{ boxShadow: `0 16px 40px -28px ${activeStageTheme.halo}` }}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Etapa activa</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">{activeStage.title}</p>
-                  </div>
-                  <div className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${activeStageTheme.chip}`}>
-                    {activeStageTheme.label}
-                  </div>
-                  <div className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white" style={{ backgroundColor: props.accentColor }}>
-                    {activeStage.nextField === 'none' ? 'Cierre' : `Siguiente: ${activeStage.nextField}`}
-                  </div>
-                </div>
-                <p className="mt-2 text-xs leading-5 text-slate-600">{activeStage.description}</p>
-              </div>
-            ) : null}
-            {activeResponseOptions.length ? (
-              <div className="grid gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Respuestas guiadas</p>
-                <div className="flex flex-wrap gap-2">
-                  {activeResponseOptions.map((option) => {
-                    const visual = getResponseOptionVisual()
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() => triggerResponseOption(option)}
-                        disabled={sending || !ready || interactionLocked}
-                        className={`rounded-2xl border px-3 py-2 text-left text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${visual.className}`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/80 text-[13px] shadow-sm">{visual.icon}</span>
-                          <span className="flex flex-col">
-                            <span>{option.label}</span>
-                            <span className="text-[10px] font-medium opacity-80">{visual.badge}</span>
-                          </span>
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            ) : null}
-            {activeQuickActions.length ? (
-              <div className="flex flex-wrap gap-2">
-                {activeQuickActions.map((action) => (
-                  (() => {
-                    const visual = getQuickActionVisual(action.kind)
-                    return (
-                  <button
-                    key={action.id}
-                    type="button"
-                    onClick={() => triggerQuickAction(action)}
-                    disabled={sending || !ready || interactionLocked}
-                    className={`rounded-2xl border px-3 py-2 text-left text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${visual.className}`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/80 text-[13px] shadow-sm">{visual.icon}</span>
-                      <span className="flex flex-col">
-                        <span>{action.label}</span>
-                        <span className="text-[10px] font-medium opacity-80">{visual.badge}</span>
-                      </span>
-                    </span>
-                  </button>
-                    )
-                  })()
-                ))}
-              </div>
-            ) : null}
             {activePause ? (
               <div className="rounded-[22px] border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -828,7 +805,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
             ) : null}
             <div className="grid gap-1.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{props.messageLabel}</p>
-              <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} placeholder={interactionLocked ? 'Espera a que termine la pausa para continuar.' : props.messagePlaceholder} className="rounded-2xl border-slate-200" disabled={interactionLocked} />
+              <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} placeholder={interactionLocked ? 'Espera a que termine la pausa para continuar.' : hasSelectableOptions ? 'Selecciona una opcion de la lista o escribe tu respuesta.' : props.messagePlaceholder} className="rounded-2xl border-slate-200" disabled={interactionLocked} />
             </div>
             <div className="flex flex-wrap gap-2">
               <Button className="flex-1 rounded-xl text-white" style={{ backgroundColor: props.accentColor }} onClick={submitDraft} disabled={sending || !ready || interactionLocked}>
