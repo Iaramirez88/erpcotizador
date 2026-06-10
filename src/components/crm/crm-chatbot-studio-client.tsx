@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bot, GitBranch, GripVertical, History, Info, Plus, Redo2, Save, Trash2, Undo2, Users, Variable, Zap } from 'lucide-react'
+import { Bell, Bot, GitBranch, GripVertical, History, Info, Plus, Redo2, Save, Smile, Trash2, Undo2, Users, Variable, Zap } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -136,6 +136,8 @@ type StudioFocusNode = {
 
 type StudioEditingNode = StudioFocusNode | null
 type StudioPrimaryPanel = 'map' | 'general' | 'summary' | 'library' | 'flow' | 'triggers' | 'variables' | 'assignments' | 'conversations'
+
+const STUDIO_EMOJI_CHOICES = ['😀', '😂', '😉', '😍', '🤝', '👏', '🔥', '✅', '🙏', '📌', '📎', '🚀']
 
 type StudioDragState = {
   nodeId: string
@@ -767,6 +769,12 @@ export function CrmChatbotStudioClient() {
   const [selectedConversationId, setSelectedConversationId] = useState<string>('')
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null)
   const [conversationSearch, setConversationSearch] = useState('')
+  const [conversationMessageDraft, setConversationMessageDraft] = useState('')
+  const [conversationMessageTypeDraft, setConversationMessageTypeDraft] = useState<'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT'>('TEXT')
+  const [conversationAttachmentUrlDraft, setConversationAttachmentUrlDraft] = useState('')
+  const [conversationAttachmentNameDraft, setConversationAttachmentNameDraft] = useState('')
+  const [sendingConversationMessage, setSendingConversationMessage] = useState(false)
+  const [showConversationEmojiPicker, setShowConversationEmojiPicker] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -793,11 +801,15 @@ export function CrmChatbotStudioClient() {
   const [notice, setNotice] = useState<string | null>(null)
   const dragMovedRef = useRef(false)
   const boardViewportRef = useRef<HTMLDivElement | null>(null)
+  const conversationThreadViewportRef = useRef<HTMLDivElement | null>(null)
+  const conversationThreadBottomRef = useRef<HTMLDivElement | null>(null)
   const pinchStateRef = useRef<{ initialDistance: number; initialScale: number; centerX: number; centerY: number } | null>(null)
   const minimapDraggingRef = useRef(false)
   const historyTrackingSuspendedRef = useRef(true)
   const lastBuilderRef = useRef<BuilderState>(builder)
   const lastSavedSnapshotRef = useRef(serializeBuilderState(builder))
+  const conversationRowsSnapshotRef = useRef<Map<string, { lastMessageAt: string | null; unreadCount: number; latestDirection: string | null }>>(new Map())
+  const selectedConversationLastMessageRef = useRef<string | null>(null)
   const filteredConversations = useMemo(() => {
     const query = conversationSearch.trim().toLowerCase()
     if (!query) return conversations
@@ -816,6 +828,46 @@ export function CrmChatbotStudioClient() {
       return searchableText.includes(query)
     })
   }, [conversationSearch, conversations])
+  const unreadConversationCount = useMemo(() => conversations.filter((conversation) => conversation.unreadCount > 0).length, [conversations])
+  const unreadMessageCount = useMemo(() => conversations.reduce((total, conversation) => total + conversation.unreadCount, 0), [conversations])
+  const studioMessagingWindowState = useMemo(() => {
+    if (!selectedConversation) return null
+    const provider = selectedConversation.channelConnection.provider
+    const requiresPolicyWindow = provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX' || provider === 'FACEBOOK_PAGE' || provider === 'MESSENGER' || provider === 'INSTAGRAM_DM'
+    if (!requiresPolicyWindow) {
+      return {
+        open: true,
+        label: 'Envío disponible',
+        hint: 'Este canal permite responder desde el Studio sin restricción de ventana.',
+      }
+    }
+
+    const lastInbound = [...selectedConversation.messages]
+      .reverse()
+      .find((message) => message.direction === 'INBOUND')
+
+    if (!lastInbound?.occurredAt) {
+      return {
+        open: false,
+        label: 'Ventana cerrada',
+        hint: 'Todavía no hay un inbound reciente del contacto para abrir la ventana de respuesta.',
+      }
+    }
+
+    const lastInboundTime = Date.parse(lastInbound.occurredAt)
+    const open = Number.isFinite(lastInboundTime) && (Date.now() - lastInboundTime) <= 24 * 60 * 60 * 1000
+    return open
+      ? {
+          open: true,
+          label: 'Ventana abierta',
+          hint: 'Puedes responder texto o multimedia desde este chat.',
+        }
+      : {
+          open: false,
+          label: 'Ventana cerrada',
+          hint: 'Para Meta o WhatsApp debes esperar un nuevo inbound o usar una plantilla externa.',
+        }
+  }, [selectedConversation])
 
   const selectedChannel = useMemo(() => channels.find((item) => item.id === selectedChannelId) ?? null, [channels, selectedChannelId])
   const selectedFlow = useMemo(() => builder.automationFlows.find((flow) => flow.id === builder.selectedFlowId) ?? null, [builder.automationFlows, builder.selectedFlowId])
@@ -824,6 +876,43 @@ export function CrmChatbotStudioClient() {
   const hasUnsavedChanges = builderSnapshot !== lastSavedSnapshotRef.current
   const canUndo = historyPast.length > 0
   const canRedo = historyFuture.length > 0
+
+  function playConversationNotificationSound() {
+    if (typeof window === 'undefined') return
+    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!AudioContextClass) return
+
+    try {
+      const context = new AudioContextClass()
+      const oscillator = context.createOscillator()
+      const gain = context.createGain()
+      const startAt = context.currentTime
+
+      oscillator.type = 'sine'
+      oscillator.frequency.setValueAtTime(880, startAt)
+      oscillator.frequency.exponentialRampToValueAtTime(660, startAt + 0.18)
+      gain.gain.setValueAtTime(0.0001, startAt)
+      gain.gain.exponentialRampToValueAtTime(0.08, startAt + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.2)
+
+      oscillator.connect(gain)
+      gain.connect(context.destination)
+      oscillator.start(startAt)
+      oscillator.stop(startAt + 0.22)
+      window.setTimeout(() => {
+        void context.close().catch(() => undefined)
+      }, 300)
+    } catch {
+      return
+    }
+  }
+
+  function scrollConversationThreadToBottom(behavior: ScrollBehavior = 'smooth') {
+    if (typeof window === 'undefined') return
+    window.requestAnimationFrame(() => {
+      conversationThreadBottomRef.current?.scrollIntoView({ behavior, block: 'end' })
+    })
+  }
 
   function replaceBuilder(nextBuilder: BuilderState, options?: { resetHistory?: boolean; markSaved?: boolean }) {
     historyTrackingSuspendedRef.current = true
@@ -899,6 +988,7 @@ export function CrmChatbotStudioClient() {
       setConversations([])
       setSelectedConversationId('')
       setSelectedConversation(null)
+      conversationRowsSnapshotRef.current = new Map()
       return
     }
 
@@ -907,16 +997,40 @@ export function CrmChatbotStudioClient() {
       setError(json.error || 'No se pudo cargar el historial del chatbot.')
       return
     }
+    const nextSnapshot = new Map<string, { lastMessageAt: string | null; unreadCount: number; latestDirection: string | null }>()
+    let shouldPlayNotification = false
+
+    json.data.forEach((conversation) => {
+      const latestDirection = conversation.messages[0]?.direction ?? null
+      nextSnapshot.set(conversation.id, {
+        lastMessageAt: conversation.lastMessageAt,
+        unreadCount: conversation.unreadCount,
+        latestDirection,
+      })
+
+      const previous = conversationRowsSnapshotRef.current.get(conversation.id)
+      if (!previous) return
+      const hasNewInbound = latestDirection === 'INBOUND' && conversation.lastMessageAt && conversation.lastMessageAt !== previous.lastMessageAt
+      if (hasNewInbound && conversation.id !== selectedConversationId) {
+        shouldPlayNotification = true
+      }
+    })
+
+    conversationRowsSnapshotRef.current = nextSnapshot
     setConversations(json.data)
     const nextConversationId = selectedConversationId && json.data.some((item) => item.id === selectedConversationId)
       ? selectedConversationId
       : (json.data[0]?.id ?? '')
     setSelectedConversationId(nextConversationId)
+    if (shouldPlayNotification) {
+      playConversationNotificationSound()
+    }
   }
 
   async function loadConversationDetail(conversationId: string) {
     if (!conversationId) {
       setSelectedConversation(null)
+      selectedConversationLastMessageRef.current = null
       return
     }
     const json = await requestJson<ConversationDetail>(`/api/crm/conversations/${conversationId}`)
@@ -924,7 +1038,18 @@ export function CrmChatbotStudioClient() {
       setError(json.error || 'No se pudo cargar el detalle de la conversación.')
       return
     }
+    const lastMessage = json.data.messages[json.data.messages.length - 1] ?? null
+    const hasNewInbound = Boolean(
+      selectedConversationLastMessageRef.current
+      && lastMessage
+      && lastMessage.id !== selectedConversationLastMessageRef.current
+      && lastMessage.direction === 'INBOUND'
+    )
     setSelectedConversation(json.data)
+    selectedConversationLastMessageRef.current = lastMessage?.id ?? null
+    if (hasNewInbound) {
+      playConversationNotificationSound()
+    }
   }
 
   useEffect(() => {
@@ -955,10 +1080,30 @@ export function CrmChatbotStudioClient() {
   useEffect(() => {
     if (!selectedConversationId) {
       setSelectedConversation(null)
+      selectedConversationLastMessageRef.current = null
       return
     }
     void loadConversationDetail(selectedConversationId)
   }, [selectedConversationId])
+
+  useEffect(() => {
+    if (!selectedChannelId || activeStudioPanel !== 'conversations') return
+
+    const intervalId = window.setInterval(() => {
+      void loadConversations(selectedChannelId)
+      if (selectedConversationId) {
+        void loadConversationDetail(selectedConversationId)
+      }
+    }, 5000)
+
+    return () => window.clearInterval(intervalId)
+  }, [activeStudioPanel, selectedChannelId, selectedConversationId])
+
+  useEffect(() => {
+    const lastMessageId = selectedConversation?.messages[selectedConversation.messages.length - 1]?.id
+    if (!lastMessageId) return
+    scrollConversationThreadToBottom(selectedConversationId === selectedConversation?.id ? 'smooth' : 'auto')
+  }, [selectedConversation, selectedConversationId])
 
   async function handleCreateChannel() {
     setCreating(true)
@@ -1029,6 +1174,51 @@ export function CrmChatbotStudioClient() {
     await loadConversations(selectedChannelId)
     await loadConversationDetail(conversationId)
     setAssigningConversationId(null)
+  }
+
+  async function submitStudioConversationMessage() {
+    if (!selectedConversation) return
+    const requiresAttachment = conversationMessageTypeDraft === 'IMAGE' || conversationMessageTypeDraft === 'AUDIO' || conversationMessageTypeDraft === 'DOCUMENT'
+    if (conversationMessageTypeDraft === 'TEXT' && !conversationMessageDraft.trim()) {
+      setError('Escribe un mensaje antes de enviarlo.')
+      return
+    }
+    if (requiresAttachment && !conversationAttachmentUrlDraft.trim()) {
+      setError('Debes indicar la URL del archivo multimedia.')
+      return
+    }
+
+    setSendingConversationMessage(true)
+    setError(null)
+    try {
+      const json = await requestJson<ConversationDetail['messages'][number]>(`/api/crm/conversations/${selectedConversation.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bodyText: conversationMessageDraft,
+          messageType: conversationMessageTypeDraft,
+          attachments: requiresAttachment
+            ? [{ type: conversationMessageTypeDraft, url: conversationAttachmentUrlDraft, filename: conversationAttachmentNameDraft || null }]
+            : [],
+        }),
+      })
+
+      if (!json.success) {
+        await Promise.all([loadConversations(selectedChannelId), loadConversationDetail(selectedConversation.id)])
+        setError(json.error || 'No se pudo enviar el mensaje desde el Studio.')
+        return
+      }
+
+      setConversationMessageDraft('')
+      setConversationMessageTypeDraft('TEXT')
+      setConversationAttachmentUrlDraft('')
+      setConversationAttachmentNameDraft('')
+      setShowConversationEmojiPicker(false)
+      await Promise.all([loadConversations(selectedChannelId), loadConversationDetail(selectedConversation.id)])
+      setNotice('Mensaje enviado desde el Studio.')
+    } finally {
+      setSendingConversationMessage(false)
+    }
   }
 
   function updateStage(stageId: string, patch: Partial<ChatbotFlowStage>) {
@@ -2467,6 +2657,15 @@ export function CrmChatbotStudioClient() {
           <CardHeader className="border-b border-slate-200 bg-slate-50/70">
             <CardTitle className="flex items-center gap-2"><History className="h-4 w-4" /> Chats del canal</CardTitle>
             <CardDescription>Bandeja operativa para seguir conversaciones del chatbot en un solo lugar.</CardDescription>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+              <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 font-medium text-amber-800">
+                <Bell className="h-3.5 w-3.5" />
+                {unreadConversationCount} chats con nuevos mensajes
+              </div>
+              <div className="rounded-full border border-slate-200 bg-white px-3 py-1">
+                {unreadMessageCount} mensajes pendientes
+              </div>
+            </div>
             <div className="flex gap-2">
               <Input value={conversationSearch} onChange={(event) => setConversationSearch(event.target.value)} placeholder="Buscar por nombre, teléfono o mensaje" />
               <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => void loadConversations(selectedChannelId)} disabled={!selectedChannelId}>Actualizar</Button>
@@ -2486,7 +2685,10 @@ export function CrmChatbotStudioClient() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-slate-900">{conversation.contactDisplayName || conversation.contactPhone || conversation.contactEmail || 'Visitante web'}</div>
+                      <div className="flex items-center gap-2">
+                        {conversation.unreadCount > 0 ? <Bell className="h-3.5 w-3.5 shrink-0 text-amber-500" /> : null}
+                        <div className="truncate text-sm font-semibold text-slate-900">{conversation.contactDisplayName || conversation.contactPhone || conversation.contactEmail || 'Visitante web'}</div>
+                      </div>
                       <div className="mt-1 text-xs text-slate-500">{conversation.assignedTo?.name || conversation.assignedTo?.email || 'Sin asignar'} · {conversation.status}</div>
                     </div>
                     <div className="shrink-0 text-right text-[11px] text-slate-500">
@@ -2523,7 +2725,8 @@ export function CrmChatbotStudioClient() {
           <CardContent className="p-0">
             {!selectedConversation ? <div className="flex min-h-[72vh] items-center justify-center px-6 text-sm text-slate-500">Selecciona una conversación para ver el chat.</div> : (
               <div className="flex min-h-[72vh] flex-col bg-[linear-gradient(180deg,#ffffff,#f8fbff)]">
-                <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+                <div ref={conversationThreadViewportRef} className="flex-1 overflow-y-auto px-4 py-4">
+                  <div className="space-y-3">
                   {selectedConversation.messages.map((message) => {
                     const isOutbound = message.direction === 'OUTBOUND'
                     return (
@@ -2533,13 +2736,90 @@ export function CrmChatbotStudioClient() {
                           <span>{formatDate(message.occurredAt)}</span>
                         </div>
                         <div className="mt-2 whitespace-pre-wrap break-words leading-6">{message.bodyText || 'Sin texto'}</div>
+                        {Array.isArray(message.payloadJson?.attachmentsJson) ? null : null}
+                        {Array.isArray((message as { attachmentsJson?: Array<{ type?: string | null; url?: string | null; name?: string | null }> }).attachmentsJson) && (message as { attachmentsJson?: Array<{ type?: string | null; url?: string | null; name?: string | null }> }).attachmentsJson?.length ? (
+                          <div className="mt-3 space-y-2">
+                            {(message as { attachmentsJson?: Array<{ type?: string | null; url?: string | null; name?: string | null }> }).attachmentsJson?.map((attachment, index) => (
+                              <a
+                                key={`${message.id}-attachment-${index}`}
+                                href={attachment.url || '#'}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 text-xs text-sky-700 hover:underline"
+                              >
+                                {(attachment.type || 'archivo').toUpperCase()} · {attachment.name || attachment.url || 'Adjunto'}
+                              </a>
+                            ))}
+                          </div>
+                        ) : null}
                         {message.payloadJson?.chatFlowStageId ? <div className="mt-2 text-[11px] text-slate-500">Etapa: {String(message.payloadJson.chatFlowStageId)}</div> : null}
                       </div>
                     )
                   })}
+                    <div ref={conversationThreadBottomRef} />
+                  </div>
                 </div>
-                <div className="border-t border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
-                  Historial de solo lectura dentro del Studio. La asignación y el seguimiento quedan disponibles en el panel lateral.
+                <div className="border-t border-slate-200 bg-white px-4 py-4">
+                  <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label>Responder desde el Studio</Label>
+                      <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" size="icon" className="rounded-xl" onClick={() => setShowConversationEmojiPicker((current) => !current)}>
+                          <Smile className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    {studioMessagingWindowState ? (
+                      <div className={studioMessagingWindowState.open ? 'rounded-2xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs text-emerald-800' : 'rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-800'}>
+                        <span className="font-semibold">{studioMessagingWindowState.label}:</span> {studioMessagingWindowState.hint}
+                      </div>
+                    ) : null}
+                    {showConversationEmojiPicker ? (
+                      <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3">
+                        {STUDIO_EMOJI_CHOICES.map((emoji) => (
+                          <button key={emoji} type="button" onClick={() => setConversationMessageDraft((current) => `${current}${emoji}`)} className="rounded-xl border border-slate-200 px-2.5 py-2 text-lg hover:bg-slate-50">
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className="grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+                      <div className="grid gap-2">
+                        <Label>Tipo</Label>
+                        <Select value={conversationMessageTypeDraft} onValueChange={(value) => setConversationMessageTypeDraft(value as 'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT')}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="TEXT">Texto</SelectItem>
+                            <SelectItem value="IMAGE">Imagen</SelectItem>
+                            <SelectItem value="AUDIO">Audio</SelectItem>
+                            <SelectItem value="DOCUMENT">Documento</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>{conversationMessageTypeDraft === 'TEXT' ? 'Mensaje' : 'Texto o caption opcional'}</Label>
+                        <Textarea value={conversationMessageDraft} onChange={(event) => setConversationMessageDraft(event.target.value)} rows={4} placeholder={conversationMessageTypeDraft === 'TEXT' ? 'Escribe una respuesta...' : 'Opcional para multimedia.'} />
+                      </div>
+                    </div>
+                    {conversationMessageTypeDraft !== 'TEXT' ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="grid gap-2 sm:col-span-2">
+                          <Label>URL del archivo</Label>
+                          <Input value={conversationAttachmentUrlDraft} onChange={(event) => setConversationAttachmentUrlDraft(event.target.value)} placeholder="https://..." />
+                        </div>
+                        <div className="grid gap-2 sm:col-span-2">
+                          <Label>Nombre visible</Label>
+                          <Input value={conversationAttachmentNameDraft} onChange={(event) => setConversationAttachmentNameDraft(event.target.value)} placeholder="catalogo.pdf o imagen-promocion.jpg" />
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs text-slate-500">Puedes enviar texto, emojis y multimedia por URL desde esta bandeja del Studio.</p>
+                      <Button className="rounded-xl" onClick={() => void submitStudioConversationMessage()} disabled={sendingConversationMessage}>
+                        {sendingConversationMessage ? 'Enviando...' : 'Enviar mensaje'}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
