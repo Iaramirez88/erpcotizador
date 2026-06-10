@@ -18,6 +18,12 @@ function isStaticAsset(pathname) {
     || /\.(?:css|js|mjs|png|jpg|jpeg|svg|webp|gif|ico|woff2?)$/i.test(pathname)
 }
 
+function isPublicEmbedPath(pathname) {
+  return pathname.startsWith('/chatbot/')
+    || pathname.startsWith('/form/')
+    || pathname.startsWith('/booking/')
+}
+
 async function networkFirstNavigation(request) {
   try {
     const response = await fetch(request)
@@ -72,6 +78,7 @@ self.addEventListener('fetch', (event) => {
   if (!isSameOrigin) return
   if (requestUrl.pathname.startsWith('/api/')) return
   if (requestUrl.pathname.includes('/_next/webpack-hmr')) return
+  if (isPublicEmbedPath(requestUrl.pathname)) return
 
   if (isNavigation) {
     event.respondWith(networkFirstNavigation(event.request))

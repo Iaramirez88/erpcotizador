@@ -84,6 +84,10 @@ type ConversationSyncResponse = {
   }
 }
 
+type ChatbotErrorResponse = {
+  error?: string
+}
+
 const identityStorageSuffix = 'identity'
 const sessionStorageSuffix = 'session'
 
@@ -93,6 +97,18 @@ function makeSessionId(channelId: string) {
 
 function nowIso() {
   return new Date().toISOString()
+}
+
+async function getResponseErrorMessage(response: Response) {
+  const contentType = response.headers.get('content-type') || ''
+
+  if (contentType.includes('application/json')) {
+    const json = await response.json().catch(() => null) as ChatbotErrorResponse | null
+    if (typeof json?.error === 'string' && json.error.trim()) return json.error.trim()
+  }
+
+  const text = await response.text().catch(() => '')
+  return text.trim() || response.statusText || 'Sin detalle adicional'
 }
 
 function formatRemainingPause(ms: number) {
@@ -363,6 +379,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   const [sending, setSending] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [connectionState, setConnectionState] = useState<'connecting' | 'online' | 'error'>('connecting')
+  const [connectionError, setConnectionError] = useState<string | null>(null)
   const [messages, setMessages] = useState<PublicChatbotMessage[]>([buildWelcomeMessage(props.prompt, initialStage, props.quickActions)])
   const [isEmbedded, setIsEmbedded] = useState(false)
   const [panelOpen, setPanelOpen] = useState(!props.floatingLauncherEnabled)
@@ -473,7 +490,8 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
       })
       const response = await fetch(`/api/public/chatbot/${props.channelId}/conversation?${params.toString()}`)
       if (!response.ok) {
-        throw new Error('No se pudo sincronizar la conversación')
+        const detail = await getResponseErrorMessage(response)
+        throw new Error(`No se pudo sincronizar la conversación (${response.status}). ${detail}`)
       }
 
       const json = await response.json().catch(() => ({})) as ConversationSyncResponse
@@ -483,9 +501,11 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
 
       setMessages(serverMessages.length > 0 ? [buildWelcomeMessage(props.prompt, initialStage, props.quickActions), ...serverMessages] : [buildWelcomeMessage(props.prompt, initialStage, props.quickActions)])
       setConnectionState('online')
+      setConnectionError(null)
     } catch (error) {
       console.error(error)
       setConnectionState('error')
+      setConnectionError(error instanceof Error ? error.message : 'No se pudo sincronizar la conversación.')
     } finally {
       setSyncing(false)
     }
@@ -550,10 +570,12 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
       })
 
       if (!response.ok) {
-        throw new Error('No se pudo enviar el mensaje')
+        const detail = await getResponseErrorMessage(response)
+        throw new Error(`No se pudo enviar el mensaje (${response.status}). ${detail}`)
       }
 
       setConnectionState('online')
+      setConnectionError(null)
       await syncConversation()
     } catch (error) {
       console.error(error)
@@ -567,6 +589,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
         },
       ])
       setConnectionState('error')
+      setConnectionError(error instanceof Error ? error.message : 'No se pudo enviar el mensaje.')
     } finally {
       setSending(false)
     }
@@ -696,6 +719,12 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
         </div>
 
         <div className="sgd-chatbot-messages flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-4">
+          {connectionError ? (
+            <div className="mx-auto max-w-[92%] rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm">
+              <p className="font-semibold">Conexion con el chatbot interrumpida</p>
+              <p className="mt-1 whitespace-pre-wrap leading-6">{connectionError}</p>
+            </div>
+          ) : null}
           {messages.map((message) => (
             <div key={message.id} className={message.role === 'user' ? 'sgd-chatbot-bubble-user ml-auto max-w-[88%] rounded-[22px] bg-slate-950 px-4 py-3 text-sm text-white shadow-sm' : message.role === 'system' ? 'sgd-chatbot-bubble-system mx-auto max-w-[92%] rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900' : 'sgd-chatbot-bubble-assistant mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'}>
               <p className="whitespace-pre-wrap leading-6">{message.body}</p>

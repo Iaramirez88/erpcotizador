@@ -382,19 +382,16 @@ export function buildChatbotEmbedUrl(baseUrl: string, channelId: string) {
 
 export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   const height = (args.height || '720').replace(/[^0-9]/g, '') || '720'
-  const collapsedHeight = args.floatingLauncherEnabled ? '108' : height
   const src = buildChatbotEmbedUrl(args.baseUrl, args.channelId)
   const iframeId = `sgd-chatbot-iframe-${args.channelId}`
-  const floatingStyle = args.floatingLauncherEnabled
-    ? 'position:fixed;bottom:60px;right:60px;z-index:2147483647;width:min(420px,calc(100vw - 32px));max-width:min(420px,calc(100vw - 32px));isolation:isolate;'
-    : 'width:100%;max-width:420px;'
+  const embedStyle = 'width:100%;max-width:420px;display:block;'
 
   return `<iframe
   id="${iframeId}"
   src="${src}"
   title="Chatbot CRM SGDigital"
   loading="lazy"
-  style="${floatingStyle}height:${collapsedHeight}px;border:0;border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.16);background:transparent;overflow:hidden;transition:height .28s ease, box-shadow .28s ease;"
+  style="${embedStyle}height:${height}px;border:0;border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.16);background:#ffffff;overflow:hidden;transition:height .28s ease, box-shadow .28s ease;"
   referrerpolicy="strict-origin-when-cross-origin"
 ></iframe>
 <script>
@@ -404,15 +401,13 @@ export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
 
   const channelId = '${args.channelId}';
   const defaultHeight = ${height};
-  const collapsedHeight = ${collapsedHeight};
+  const minimumHeight = ${height};
 
   function applyHeight(nextHeight) {
-    const safeHeight = Math.max(collapsedHeight, Math.min(Number(nextHeight) || defaultHeight, defaultHeight));
+    const safeHeight = Math.max(minimumHeight, Math.min(Number(nextHeight) || defaultHeight, defaultHeight));
     iframe.style.height = safeHeight + 'px';
-    iframe.style.background = safeHeight <= collapsedHeight + 4 ? 'transparent' : '#ffffff';
-    iframe.style.boxShadow = safeHeight <= collapsedHeight + 4
-      ? 'none'
-      : '0 24px 60px rgba(15,23,42,.16)';
+    iframe.style.background = '#ffffff';
+    iframe.style.boxShadow = '0 24px 60px rgba(15,23,42,.16)';
   }
 
   function handleMessage(event) {
@@ -426,7 +421,7 @@ export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   window.addEventListener('message', handleMessage);
   iframe.addEventListener('load', function () {
     window.setTimeout(function () {
-      applyHeight(collapsedHeight);
+      applyHeight(defaultHeight);
     }, 180);
   });
 })();
