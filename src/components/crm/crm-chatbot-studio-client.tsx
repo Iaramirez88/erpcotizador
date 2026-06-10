@@ -1009,7 +1009,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       : ''
     const nextChannelId = selectedChannelId && channelsJson.data.some((item) => item.id === selectedChannelId)
       ? selectedChannelId
-      : (requestedChannelId || channelsJson.data[0]?.id ?? '')
+      : (requestedChannelId || (channelsJson.data[0]?.id ?? ''))
     setSelectedChannelId(nextChannelId)
     replaceBuilder(hydrateBuilder(channelsJson.data.find((item) => item.id === nextChannelId) ?? channelsJson.data[0] ?? null), {
       resetHistory: true,

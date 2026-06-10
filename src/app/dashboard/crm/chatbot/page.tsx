@@ -8,5 +8,5 @@ export default async function CrmChatbotPanelPage({ searchParams }: { searchPara
   const resolved = searchParams ? await Promise.resolve(searchParams) : undefined
   const requestedChannelId = Array.isArray(resolved?.channelId) ? resolved?.channelId[0] : resolved?.channelId
 
-  return <CrmChatbotStudioClient initialChannelId={requestedChannelId} />
+  return <CrmChatbotStudioClient initialChannelId={requestedChannelId ?? ''} />
 }

@@ -2592,7 +2592,7 @@ export function CrmIntegrationsClient() {
     setEditingChannelId(channel.id)
   setWizardMetaAdvancedOpen(Boolean(channel.externalAccountId || channel.externalPageId || channel.externalPhoneNumberId || getWhatsAppAccessToken(settings) || getWhatsAppApiVersion(settings) !== 'v23.0'))
     setCreateForm({
-      templateKey: templateMatch?.key ?? (channel.provider === 'WEB_CHATBOT' ? 'web-chatbot' : 'web-form'),
+      templateKey: templateMatch?.key ?? 'web-form',
       name: channel.name,
       provider: channel.provider,
       status: channel.status,
