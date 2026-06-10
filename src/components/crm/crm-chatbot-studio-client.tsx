@@ -135,7 +135,7 @@ type StudioFocusNode = {
 }
 
 type StudioEditingNode = StudioFocusNode | null
-type StudioPrimaryPanel = 'map' | 'general' | 'summary' | 'library' | 'flow' | 'triggers' | 'variables' | 'assignments'
+type StudioPrimaryPanel = 'map' | 'general' | 'summary' | 'library' | 'flow' | 'triggers' | 'variables' | 'assignments' | 'conversations'
 
 type StudioDragState = {
   nodeId: string
@@ -766,6 +766,7 @@ export function CrmChatbotStudioClient() {
   const [conversations, setConversations] = useState<ConversationRow[]>([])
   const [selectedConversationId, setSelectedConversationId] = useState<string>('')
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null)
+  const [conversationSearch, setConversationSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -797,6 +798,24 @@ export function CrmChatbotStudioClient() {
   const historyTrackingSuspendedRef = useRef(true)
   const lastBuilderRef = useRef<BuilderState>(builder)
   const lastSavedSnapshotRef = useRef(serializeBuilderState(builder))
+  const filteredConversations = useMemo(() => {
+    const query = conversationSearch.trim().toLowerCase()
+    if (!query) return conversations
+    return conversations.filter((conversation) => {
+      const searchableText = [
+        conversation.contactDisplayName,
+        conversation.contactPhone,
+        conversation.contactEmail,
+        conversation.assignedTo?.name,
+        conversation.assignedTo?.email,
+        conversation.messages[0]?.bodyText,
+      ]
+        .filter((value): value is string => Boolean(value))
+        .join(' ')
+        .toLowerCase()
+      return searchableText.includes(query)
+    })
+  }, [conversationSearch, conversations])
 
   const selectedChannel = useMemo(() => channels.find((item) => item.id === selectedChannelId) ?? null, [channels, selectedChannelId])
   const selectedFlow = useMemo(() => builder.automationFlows.find((flow) => flow.id === builder.selectedFlowId) ?? null, [builder.automationFlows, builder.selectedFlowId])
@@ -1053,6 +1072,54 @@ export function CrmChatbotStudioClient() {
           responseOptions: [...stage.responseOptions, duplicateResponseOption(option)],
         }
       }),
+    }))
+  }
+
+  function addResponseOptionToStage(stageId: string) {
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      flowStages: current.flowStages.map((stage) => stage.id === stageId
+        ? { ...stage, responseOptions: [...stage.responseOptions, createStageResponseOption(current.flowStages, stageId)] }
+        : stage),
+    }))
+  }
+
+  function addExistingQuickActionToStage(stageId: string) {
+    const fallbackActionId = builder.quickActions[0]?.id
+    if (!fallbackActionId) {
+      createAction({ sourceNode: { kind: 'stage', id: stageId } })
+      return
+    }
+
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      flowStages: current.flowStages.map((stage) => {
+        if (stage.id !== stageId) return stage
+        if (stage.quickActionIds.includes(fallbackActionId)) return stage
+        return {
+          ...stage,
+          quickActionIds: [...stage.quickActionIds, fallbackActionId],
+        }
+      }),
+    }))
+  }
+
+  function replaceStageQuickAction(stageId: string, currentActionId: string, nextActionId: string) {
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      flowStages: current.flowStages.map((stage) => {
+        if (stage.id !== stageId) return stage
+        const quickActionIds = stage.quickActionIds.map((actionId) => actionId === currentActionId ? nextActionId : actionId)
+        return {
+          ...stage,
+          quickActionIds: Array.from(new Set(quickActionIds)),
+        }
+      }),
+    }))
+  }
+
+  function removeStageQuickAction(stageId: string, actionId: string) {
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      flowStages: current.flowStages.map((stage) => stage.id === stageId
+        ? { ...stage, quickActionIds: stage.quickActionIds.filter((id) => id !== actionId) }
+        : stage),
     }))
   }
 
@@ -2058,6 +2125,74 @@ export function CrmChatbotStudioClient() {
               <div className="mt-2">{selectedStage.responseOptions.length} rutas configuradas</div>
               <div className="mt-1">{selectedStage.quickActionIds.length} acciones rápidas enlazadas</div>
             </div>
+            <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Opciones del cliente</div>
+                  <div className="text-xs text-slate-500">Crea la opción y elige a qué mensaje debe llevar.</div>
+                </div>
+                <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => addResponseOptionToStage(selectedStage.id)}>Agregar opción</Button>
+              </div>
+              <div className="space-y-2">
+                {selectedStage.responseOptions.length ? selectedStage.responseOptions.map((option) => (
+                  <div key={option.id} className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                    <div className="grid gap-2">
+                      <Label>Texto de la opción</Label>
+                      <Input value={option.label} onChange={(event) => updateResponseOption(selectedStage.id, option.id, { label: event.target.value, userMessage: event.target.value })} placeholder="Ej: Quiero cotizar" />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Ir a mensaje</Label>
+                      <Select value={option.targetStageId} onValueChange={(value) => updateResponseOption(selectedStage.id, option.id, { targetStageId: value })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => duplicateStageResponseOption(selectedStage.id, option.id)}>Duplicar</Button>
+                      <Button type="button" variant="outline" size="sm" className="h-8 border-rose-200 text-xs text-rose-700" onClick={() => removeResponseOption(selectedStage.id, option.id)}>Eliminar</Button>
+                    </div>
+                  </div>
+                )) : <div className="rounded-2xl border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-500">Todavía no hay opciones visibles para este mensaje.</div>}
+              </div>
+            </div>
+            <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Acciones enlazadas</div>
+                  <div className="text-xs text-slate-500">Vincula botones como catálogo, stock o asesor a este mensaje.</div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => addExistingQuickActionToStage(selectedStage.id)}>Vincular acción</Button>
+                  <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => createAction({ sourceNode: { kind: 'stage', id: selectedStage.id } })}>Nueva acción</Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {selectedStage.quickActionIds.length ? selectedStage.quickActionIds.map((actionId) => {
+                  const linkedAction = builder.quickActions.find((action) => action.id === actionId)
+                  if (!linkedAction) return null
+                  return (
+                    <div key={actionId} className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                      <div className="grid gap-2">
+                        <Label>Acción visible</Label>
+                        <Select value={actionId} onValueChange={(value) => replaceStageQuickAction(selectedStage.id, actionId, value)}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {builder.quickActions.map((action) => <SelectItem key={action.id} value={action.id}>{action.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="text-xs text-slate-500">Tipo: {linkedAction.kind}</div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => openEditor({ kind: 'action', id: linkedAction.id })}>Editar acción</Button>
+                        <Button type="button" variant="outline" size="sm" className="h-8 border-rose-200 text-xs text-rose-700" onClick={() => removeStageQuickAction(selectedStage.id, linkedAction.id)}>Quitar</Button>
+                      </div>
+                    </div>
+                  )
+                }).filter(Boolean) : <div className="rounded-2xl border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-500">Este mensaje no tiene acciones rápidas enlazadas.</div>}
+              </div>
+            </div>
           </div>
         ) : null}
 
@@ -2321,6 +2456,147 @@ export function CrmChatbotStudioClient() {
             }}
           />
         </div>
+      </div>
+    )
+  }
+
+  function renderConversationsWorkspace() {
+    return (
+      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)_320px]">
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b border-slate-200 bg-slate-50/70">
+            <CardTitle className="flex items-center gap-2"><History className="h-4 w-4" /> Chats del canal</CardTitle>
+            <CardDescription>Bandeja operativa para seguir conversaciones del chatbot en un solo lugar.</CardDescription>
+            <div className="flex gap-2">
+              <Input value={conversationSearch} onChange={(event) => setConversationSearch(event.target.value)} placeholder="Buscar por nombre, teléfono o mensaje" />
+              <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => void loadConversations(selectedChannelId)} disabled={!selectedChannelId}>Actualizar</Button>
+            </div>
+          </CardHeader>
+          <CardContent className="max-h-[72vh] space-y-2 overflow-y-auto p-3">
+            {!filteredConversations.length ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">No hay conversaciones que coincidan con la búsqueda o este canal aún no tiene chats.</div> : null}
+            {filteredConversations.map((conversation) => {
+              const preview = conversation.messages[0]?.bodyText || 'Sin mensajes visibles'
+              const active = selectedConversationId === conversation.id
+              return (
+                <button
+                  key={conversation.id}
+                  type="button"
+                  onClick={() => setSelectedConversationId(conversation.id)}
+                  className={`w-full rounded-2xl border px-4 py-3 text-left transition ${active ? 'border-emerald-300 bg-emerald-50/80 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-slate-900">{conversation.contactDisplayName || conversation.contactPhone || conversation.contactEmail || 'Visitante web'}</div>
+                      <div className="mt-1 text-xs text-slate-500">{conversation.assignedTo?.name || conversation.assignedTo?.email || 'Sin asignar'} · {conversation.status}</div>
+                    </div>
+                    <div className="shrink-0 text-right text-[11px] text-slate-500">
+                      <div>{formatDate(conversation.lastMessageAt)}</div>
+                      {conversation.unreadCount > 0 ? <div className="mt-1 rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-800">{conversation.unreadCount}</div> : null}
+                    </div>
+                  </div>
+                  <div className="mt-2 line-clamp-2 text-sm text-slate-600">{preview}</div>
+                </button>
+              )
+            })}
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b border-slate-200 bg-white">
+            {!selectedConversation ? (
+              <>
+                <CardTitle>Conversación</CardTitle>
+                <CardDescription>Selecciona un chat en la bandeja izquierda para abrir su historial.</CardDescription>
+              </>
+            ) : (
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <CardTitle>{selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Visitante web'}</CardTitle>
+                  <CardDescription>{selectedConversation.contactPhone || selectedConversation.contactEmail || 'Sin dato principal'} · {selectedConversation.status}</CardDescription>
+                </div>
+                <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                  {selectedConversation.assignedTo?.name || selectedConversation.assignedTo?.email || 'Sin asignar'}
+                </div>
+              </div>
+            )}
+          </CardHeader>
+          <CardContent className="p-0">
+            {!selectedConversation ? <div className="flex min-h-[72vh] items-center justify-center px-6 text-sm text-slate-500">Selecciona una conversación para ver el chat.</div> : (
+              <div className="flex min-h-[72vh] flex-col bg-[linear-gradient(180deg,#ffffff,#f8fbff)]">
+                <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+                  {selectedConversation.messages.map((message) => {
+                    const isOutbound = message.direction === 'OUTBOUND'
+                    return (
+                      <div key={message.id} className={isOutbound ? 'ml-auto max-w-[88%] rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-slate-700' : 'mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'}>
+                        <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-slate-500">
+                          <span>{isOutbound ? (message.sentByUser?.name || 'Bot / asesor') : 'Visitante'}</span>
+                          <span>{formatDate(message.occurredAt)}</span>
+                        </div>
+                        <div className="mt-2 whitespace-pre-wrap break-words leading-6">{message.bodyText || 'Sin texto'}</div>
+                        {message.payloadJson?.chatFlowStageId ? <div className="mt-2 text-[11px] text-slate-500">Etapa: {String(message.payloadJson.chatFlowStageId)}</div> : null}
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="border-t border-slate-200 bg-white px-4 py-3 text-xs text-slate-500">
+                  Historial de solo lectura dentro del Studio. La asignación y el seguimiento quedan disponibles en el panel lateral.
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b border-slate-200 bg-slate-50/70">
+            <CardTitle>Ficha operativa</CardTitle>
+            <CardDescription>Asignación, lead, oportunidad y capturas ligadas al chat.</CardDescription>
+          </CardHeader>
+          <CardContent className="max-h-[72vh] space-y-4 overflow-y-auto p-4">
+            {!selectedConversation ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">Selecciona una conversación para ver su ficha operativa.</div> : (
+              <>
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Contacto</div>
+                  <div className="mt-2 text-base font-semibold text-slate-900">{selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Visitante web'}</div>
+                  <div className="mt-2 text-xs text-slate-500">Correo: {selectedConversation.contactEmail || '—'}</div>
+                  <div className="text-xs text-slate-500">Teléfono: {selectedConversation.contactPhone || '—'}</div>
+                  {selectedConversation.cliente ? <div className="mt-2 text-xs text-slate-500">Cliente CRM: {selectedConversation.cliente.nombre}</div> : null}
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Asignación</div>
+                  <div className="mt-3 grid gap-2">
+                    <Label>Responsable del hilo</Label>
+                    <Select value={selectedConversation.assignedTo?.id || '__none__'} onValueChange={(value) => void handleAssignConversation(selectedConversation.id, value === '__none__' ? '' : value)}>
+                      <SelectTrigger disabled={assigningConversationId === selectedConversation.id}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Sin asignar</SelectItem>
+                        {assignees.map((assignee) => <SelectItem key={assignee.id} value={assignee.id}>{assignee.name || assignee.email}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-700">
+                  <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Contexto comercial</div>
+                  <div className="mt-3">Lead: {selectedConversation.lead?.nombre || 'Sin lead asociado'} {selectedConversation.lead ? `· ${selectedConversation.lead.status}` : ''}</div>
+                  <div className="mt-1">Oportunidad: {selectedConversation.opportunity?.title || 'Sin oportunidad'}</div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Historial de capturas</div>
+                  <div className="mt-3 space-y-2">
+                    {selectedConversation.captures.length ? selectedConversation.captures.map((capture) => (
+                      <div key={capture.id} className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                        <div className="font-medium text-slate-900">Captura {capture.id.slice(0, 8)}</div>
+                        <div className="mt-1">{formatDate(capture.createdAt)}</div>
+                      </div>
+                    )) : <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">Sin capturas asociadas.</div>}
+                  </div>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -3197,6 +3473,7 @@ export function CrmChatbotStudioClient() {
                     { id: 'triggers', label: 'Disparadores', detail: `${builder.flowTriggers.filter((item) => item.enabled).length} activos`, icon: Zap },
                     { id: 'variables', label: 'Variables y coherencia', detail: `${builder.flowVariables.length} variables`, icon: Variable },
                     { id: 'assignments', label: 'Asignaciones automáticas', detail: builder.assignmentRules.assignmentMode, icon: Users },
+                    { id: 'conversations', label: 'Conversaciones', detail: `${conversations.length} chats del canal`, icon: History },
                   ].map((section) => {
                     const Icon = section.icon
                     const active = activeStudioPanel === section.id
@@ -3572,96 +3849,15 @@ export function CrmChatbotStudioClient() {
                   </CardContent>
                 </Card>
               ) : null}
+
+              {activeStudioPanel === 'conversations' ? renderConversationsWorkspace() : null}
             </div>
           </div>
           )}
         </TabsContent>
 
         <TabsContent value="historial" className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><History className="h-4 w-4" /> Conversaciones del chatbot</CardTitle>
-                <CardDescription>Historial real del canal seleccionado, con responsable y estado comercial.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {!conversations.length ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">Aún no hay conversaciones para este canal.</div> : null}
-                {conversations.map((conversation) => (
-                  <button key={conversation.id} type="button" onClick={() => setSelectedConversationId(conversation.id)} className={`w-full rounded-2xl border px-4 py-3 text-left ${selectedConversationId === conversation.id ? 'border-emerald-300 bg-emerald-50/70' : 'border-slate-200 bg-white'}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-semibold text-slate-900">{conversation.contactDisplayName || conversation.contactPhone || conversation.contactEmail || 'Visitante web'}</div>
-                        <div className="mt-1 text-xs text-slate-500">{conversation.assignedTo?.name || conversation.assignedTo?.email || 'Sin asignar'} · {conversation.status}</div>
-                      </div>
-                      <div className="text-right text-xs text-slate-500">
-                        <div>{formatDate(conversation.lastMessageAt)}</div>
-                        {conversation.unreadCount > 0 ? <div className="mt-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800">{conversation.unreadCount} sin leer</div> : null}
-                      </div>
-                    </div>
-                    <div className="mt-2 text-sm text-slate-600">{conversation.messages[0]?.bodyText || 'Sin mensajes visibles'}</div>
-                  </button>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Detalle operativo</CardTitle>
-                <CardDescription>Mensajes, lead asociado y asignación del responsable del hilo.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {!selectedConversation ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">Selecciona una conversación para ver su historial.</div> : (
-                  <>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div className="rounded-2xl border border-slate-200 p-4">
-                        <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Contacto</div>
-                        <div className="mt-1 text-sm font-semibold text-slate-900">{selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Visitante web'}</div>
-                        <div className="mt-2 text-xs text-slate-500">Correo: {selectedConversation.contactEmail || '—'}</div>
-                        <div className="text-xs text-slate-500">Teléfono: {selectedConversation.contactPhone || '—'}</div>
-                      </div>
-                      <div className="rounded-2xl border border-slate-200 p-4">
-                        <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Asignación</div>
-                        <div className="mt-2 grid gap-2">
-                          <Label>Responsable del hilo</Label>
-                          <Select value={selectedConversation.assignedTo?.id || '__none__'} onValueChange={(value) => void handleAssignConversation(selectedConversation.id, value === '__none__' ? '' : value)}>
-                            <SelectTrigger disabled={assigningConversationId === selectedConversation.id}><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__none__">Sin asignar</SelectItem>
-                              {assignees.map((assignee) => <SelectItem key={assignee.id} value={assignee.id}>{assignee.name || assignee.email}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 p-4">
-                      <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Lead y oportunidad</div>
-                      <div className="mt-2 grid gap-2 md:grid-cols-2 text-sm text-slate-700">
-                        <div>Lead: {selectedConversation.lead?.nombre || 'Sin lead asociado'} {selectedConversation.lead ? `· ${selectedConversation.lead.status}` : ''}</div>
-                        <div>Oportunidad: {selectedConversation.opportunity?.title || 'Sin oportunidad'}</div>
-                      </div>
-                    </div>
-
-                    <div className="max-h-[70vh] space-y-3 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
-                      {selectedConversation.messages.map((message) => {
-                        const isOutbound = message.direction === 'OUTBOUND'
-                        return (
-                          <div key={message.id} className={isOutbound ? 'ml-auto max-w-[88%] rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-slate-700' : 'mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}>
-                            <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-slate-500">
-                              <span>{isOutbound ? (message.sentByUser?.name || 'Bot / asesor') : 'Visitante'}</span>
-                              <span>{formatDate(message.occurredAt)}</span>
-                            </div>
-                            <div className="mt-2 whitespace-pre-wrap break-words">{message.bodyText || 'Sin texto'}</div>
-                            {message.payloadJson?.chatFlowStageId ? <div className="mt-2 text-[11px] text-slate-500">Etapa: {String(message.payloadJson.chatFlowStageId)}</div> : null}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+          {renderConversationsWorkspace()}
         </TabsContent>
       </Tabs>
 

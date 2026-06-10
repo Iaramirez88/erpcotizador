@@ -382,6 +382,7 @@ export function buildChatbotEmbedUrl(baseUrl: string, channelId: string) {
 
 export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   const height = (args.height || '720').replace(/[^0-9]/g, '') || '720'
+  const collapsedHeight = args.floatingLauncherEnabled ? '108' : height
   const src = buildChatbotEmbedUrl(args.baseUrl, args.channelId)
   const iframeId = `sgd-chatbot-iframe-${args.channelId}`
   const embedStyle = 'width:100%;max-width:420px;display:block;'
@@ -391,7 +392,7 @@ export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   src="${src}"
   title="Chatbot CRM SGDigital"
   loading="lazy"
-  style="${embedStyle}height:${height}px;border:0;border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.16);background:#ffffff;overflow:hidden;transition:height .28s ease, box-shadow .28s ease;"
+  style="${embedStyle}height:${collapsedHeight}px;border:0;border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.16);background:#ffffff;overflow:hidden;transition:height .28s ease, box-shadow .28s ease;"
   referrerpolicy="strict-origin-when-cross-origin"
 ></iframe>
 <script>
@@ -401,10 +402,10 @@ export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
 
   const channelId = '${args.channelId}';
   const defaultHeight = ${height};
-  const minimumHeight = ${height};
+  const collapsedHeight = ${collapsedHeight};
 
   function applyHeight(nextHeight) {
-    const safeHeight = Math.max(minimumHeight, Math.min(Number(nextHeight) || defaultHeight, defaultHeight));
+    const safeHeight = Math.max(collapsedHeight, Math.min(Number(nextHeight) || defaultHeight, defaultHeight));
     iframe.style.height = safeHeight + 'px';
     iframe.style.background = '#ffffff';
     iframe.style.boxShadow = '0 24px 60px rgba(15,23,42,.16)';
@@ -421,7 +422,7 @@ export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   window.addEventListener('message', handleMessage);
   iframe.addEventListener('load', function () {
     window.setTimeout(function () {
-      applyHeight(defaultHeight);
+      applyHeight(collapsedHeight);
     }, 180);
   });
 })();

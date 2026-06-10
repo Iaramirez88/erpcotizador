@@ -387,6 +387,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
 
   const accentStyle = useMemo(() => ({ ['--chat-accent' as string]: props.accentColor, ['--chat-background' as string]: props.backgroundColor, ['--chat-page-background' as string]: props.pageBackgroundColor, fontFamily: props.fontFamily }), [props.accentColor, props.backgroundColor, props.pageBackgroundColor, props.fontFamily])
   const launcherMetrics = useMemo(() => getLauncherMetrics(props.launcherSize), [props.launcherSize])
+  const latestMessage = messages[messages.length - 1] ?? null
   const latestAssistantPrompt = useMemo(() => {
     const assistantMessages = [...messages].reverse().find((item) => item.role === 'assistant' && item.meta?.nextField)
     return assistantMessages?.meta?.nextField || null
@@ -426,7 +427,8 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     }
     return getStageResponseOptions(activeStage)
   }, [activeAssistantMeta?.responseOptionIds, activeStage])
-  const hasSelectableOptions = activeResponseOptions.length > 0 || activeQuickActions.length > 0
+  const shouldShowSelectableOptions = latestMessage?.role === 'assistant'
+  const hasSelectableOptions = shouldShowSelectableOptions && (activeResponseOptions.length > 0 || activeQuickActions.length > 0)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -458,12 +460,6 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
 
     setReady(true)
   }, [props.channelId])
-
-  useEffect(() => {
-    if (!props.floatingLauncherEnabled) return
-    if (!isEmbedded) return
-    setPanelOpen(true)
-  }, [isEmbedded, props.floatingLauncherEnabled])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !ready) return
@@ -626,7 +622,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   }
 
   function closePanel() {
-    if (!props.floatingLauncherEnabled || isEmbedded) return
+    if (!props.floatingLauncherEnabled) return
     setPanelOpen(false)
   }
 
