@@ -294,6 +294,7 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
   const [syncing, setSyncing] = useState(false)
   const [connectionState, setConnectionState] = useState<'connecting' | 'online' | 'error'>('connecting')
   const [messages, setMessages] = useState<PublicChatbotMessage[]>([buildWelcomeMessage(props.prompt, initialStage, props.quickActions)])
+  const [isEmbedded, setIsEmbedded] = useState(false)
   const [panelOpen, setPanelOpen] = useState(!props.floatingLauncherEnabled)
   const [clockTick, setClockTick] = useState(() => Date.now())
 
@@ -343,6 +344,8 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
+    setIsEmbedded(window.self !== window.top)
+
     const sessionKey = `sgd-crm-chatbot:${props.channelId}:${sessionStorageSuffix}`
     const identityKey = `sgd-crm-chatbot:${props.channelId}:${identityStorageSuffix}`
 
@@ -368,6 +371,12 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
 
     setReady(true)
   }, [props.channelId])
+
+  useEffect(() => {
+    if (!props.floatingLauncherEnabled) return
+    if (!isEmbedded) return
+    setPanelOpen(true)
+  }, [isEmbedded, props.floatingLauncherEnabled])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !ready) return
@@ -524,7 +533,7 @@ export function CrmPublicChatbotEmbed(props: PublicChatbotEmbedProps) {
   }
 
   function closePanel() {
-    if (!props.floatingLauncherEnabled) return
+    if (!props.floatingLauncherEnabled || isEmbedded) return
     setPanelOpen(false)
   }
 

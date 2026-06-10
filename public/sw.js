@@ -1,6 +1,17 @@
 const CACHE_NAME = 'ordex-shell-v3'
 const APP_SHELL = ['/', '/offline', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-512-maskable.png']
 
+function buildOfflineResponse() {
+  return new Response('Offline', {
+    status: 503,
+    statusText: 'Service Unavailable',
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-store',
+    },
+  })
+}
+
 function isStaticAsset(pathname) {
   return pathname.startsWith('/_next/static/')
     || pathname.startsWith('/images/')
@@ -22,7 +33,8 @@ async function networkFirstNavigation(request) {
     const offlinePage = await caches.match('/offline')
     if (offlinePage) return offlinePage
 
-    return caches.match('/')
+    const appShell = await caches.match('/')
+    return appShell || buildOfflineResponse()
   }
 }
 
@@ -71,5 +83,10 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  event.respondWith(fetch(event.request).catch(() => caches.match(event.request)))
+  event.respondWith(
+    fetch(event.request).catch(async () => {
+      const cached = await caches.match(event.request)
+      return cached || buildOfflineResponse()
+    })
+  )
 })
