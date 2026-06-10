@@ -2286,7 +2286,7 @@ export function CrmChatbotStudioClient() {
     const deletionBlocker = getNodeDeletionBlocker(focusedNode)
 
     return (
-      <div className="space-y-3 rounded-[20px] border border-slate-200/80 bg-white/95 p-3 shadow-[0_16px_34px_-24px_rgba(15,23,42,0.25)]">
+      <div className="flex max-h-[calc(100vh-130px)] min-h-0 flex-col rounded-[20px] border border-slate-200/80 bg-white/95 p-3 shadow-[0_16px_34px_-24px_rgba(15,23,42,0.25)]">
         <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Inspector</div>
@@ -2304,7 +2304,7 @@ export function CrmChatbotStudioClient() {
         </div>
 
         {selectedStage ? (
-          <div className="space-y-3">
+          <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
             <div className="grid gap-2">
               <Label>Título</Label>
               <Input value={selectedStage.title} onChange={(event) => updateStage(selectedStage.id, { title: event.target.value })} />
