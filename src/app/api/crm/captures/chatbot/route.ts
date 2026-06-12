@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createInboundArtifacts, getConnectionToken, parseJsonObject } from '@/lib/crm-omnichannel'
 import { normalizeString } from '@/lib/crm'
+import { ensureInvoiceFromQuote } from '@/lib/quote-invoicing'
+import { ensureWorkOrderFromQuote } from '@/lib/work-orders'
 import {
   findChatbotFlowResponseOption,
   findChatbotQuickAction,
@@ -55,6 +57,14 @@ type CatalogInsight = {
   query: string
   catalogIntent: boolean
   lookupKind: MaterialLookupKind
+}
+
+type BusinessActionResult = {
+  kind: 'create_quote' | 'create_invoice' | 'create_work_order'
+  quoteId: string
+  quoteNumber: string
+  invoiceNumber?: string | null
+  workOrderNumber?: string | null
 }
 
 const SERVICE_HINT_TERMS = [
@@ -319,7 +329,223 @@ function extractQuantity(value: string) {
   return match ? Number(match[1]) : null
 }
 
-function resolveChatIdentity(args: { nombre: string; email: string; phone: string; requestedProduct: string; messageText: string; expectedField?: string }) {
+function isAffirmativeMessage(value: string) {
+  const normalized = normalizeString(value).toLowerCase()
+  return /^(si|sí|ok|dale|confirmo|confirmar|correcto|continuar|acepto|listo)\b/.test(normalized)
+}
+
+function isNegativeMessage(value: string) {
+  const normalized = normalizeString(value).toLowerCase()
+  return /^(no|corregir|editar|cambiar|ajustar)\b/.test(normalized)
+}
+
+function guessDocumentType(document: string, companyName: string) {
+  const digits = document.replace(/\D+/g, '')
+  if (companyName.trim()) return 'NIT'
+  if (digits.length >= 9) return 'NIT'
+  return 'CC'
+}
+
+function formatChatSummary(args: {
+  nombre: string
+  email: string
+  phone: string
+  whatsapp: string
+  requestedProduct: string
+  quantity: number | null
+  companyName: string
+  document: string
+  city: string
+  address: string
+}) {
+  return [
+    'Resumen de tu solicitud:',
+    `Nombre: ${args.nombre || 'Pendiente'}`,
+    `Correo: ${args.email || 'Pendiente'}`,
+    `Teléfono: ${args.phone || 'Pendiente'}`,
+    `WhatsApp: ${args.whatsapp || 'Pendiente'}`,
+    `Producto: ${args.requestedProduct || 'Pendiente'}`,
+    `Cantidad: ${args.quantity || 'Pendiente'}`,
+    `Empresa: ${args.companyName || 'Pendiente'}`,
+    `Documento/NIT: ${args.document || 'Pendiente'}`,
+    `Ciudad: ${args.city || 'Pendiente'}`,
+    `Dirección: ${args.address || 'Pendiente'}`,
+  ].join('\n')
+}
+
+async function ensureChatbotCliente(tx: Prisma.TransactionClient, args: {
+  empresaId: string
+  sedeId: string | null
+  nombre: string
+  document: string
+  companyName: string
+  email: string
+  phone: string
+  whatsapp: string
+  city: string
+  address: string
+}) {
+  const normalizedDocument = normalizeString(args.document)
+  const clienteNombre = normalizeString(args.companyName || args.nombre)
+
+  if (!normalizedDocument || !clienteNombre) return null
+
+  const existing = await tx.cliente.findFirst({
+    where: { empresaId: args.empresaId, documento: normalizedDocument },
+    select: { id: true },
+  })
+
+  if (existing) {
+    return tx.cliente.update({
+      where: { id: existing.id },
+      data: {
+        nombre: clienteNombre,
+        tipoDocumento: guessDocumentType(normalizedDocument, args.companyName),
+        email: args.email || null,
+        telefono: args.phone || null,
+        celular: args.whatsapp || args.phone || null,
+        direccion: args.address || null,
+        ciudad: args.city || null,
+        sedeId: args.sedeId,
+      },
+      select: { id: true, nombre: true },
+    })
+  }
+
+  return tx.cliente.create({
+    data: {
+      empresaId: args.empresaId,
+      sedeId: args.sedeId,
+      nombre: clienteNombre,
+      tipoDocumento: guessDocumentType(normalizedDocument, args.companyName),
+      documento: normalizedDocument,
+      email: args.email || null,
+      telefono: args.phone || null,
+      celular: args.whatsapp || args.phone || null,
+      direccion: args.address || null,
+      ciudad: args.city || null,
+    },
+    select: { id: true, nombre: true },
+  })
+}
+
+async function createBusinessEntityFromChatbot(tx: Prisma.TransactionClient, args: {
+  kind: 'create_quote' | 'create_invoice' | 'create_work_order'
+  empresaId: string
+  sedeId: string | null
+  createdById: string
+  nombre: string
+  email: string
+  phone: string
+  whatsapp: string
+  requestedProduct: string
+  quantity: number | null
+  companyName: string
+  document: string
+  city: string
+  address: string
+  material: MaterialMatch | null
+}) {
+  if (!args.sedeId) throw new Error('CHATBOT_CHANNEL_WITHOUT_SEDE')
+  if (!args.document || !args.requestedProduct || !args.quantity) return null
+
+  const cliente = await ensureChatbotCliente(tx, args)
+  if (!cliente) return null
+
+  const sede = await tx.sede.findUnique({
+    where: { id: args.sedeId },
+    select: {
+      codigo: true,
+      cotizacionesPricesIncludeIva: true,
+      cotizacionesIvaPct: true,
+    },
+  })
+  const sedeCodigo = (sede?.codigo || '').trim() || '00'
+  const pricesIncludeIva = sede?.cotizacionesPricesIncludeIva ?? true
+  const ivaPct = Math.min(100, Math.max(0, sede?.cotizacionesIvaPct ?? 19))
+  const seq = await tx.cotizacionSequence.upsert({
+    where: { sedeId: args.sedeId },
+    update: { currentNumber: { increment: 1 } },
+    create: { sedeId: args.sedeId, currentNumber: 1 },
+    select: { currentNumber: true },
+  })
+
+  const numero = `COT-${sedeCodigo}-${String(seq.currentNumber).padStart(4, '0')}`
+  const unitPrice = args.material?.precioUnidad ?? args.material?.precioMetro ?? args.material?.precioM2 ?? 0
+  const lineSubtotal = Math.max(0, unitPrice * args.quantity)
+  const denom = 1 + (ivaPct / 100)
+  const subtotal = pricesIncludeIva && denom > 0 ? lineSubtotal / denom : lineSubtotal
+  const iva = pricesIncludeIva ? lineSubtotal - subtotal : subtotal * (ivaPct / 100)
+  const total = pricesIncludeIva ? lineSubtotal : subtotal + iva
+  const approved = args.kind !== 'create_quote'
+
+  const cotizacion = await tx.cotizacion.create({
+    data: {
+      numero,
+      sedeId: args.sedeId,
+      clienteId: cliente.id,
+      vendedorId: args.createdById,
+      subtotal,
+      descuento: 0,
+      iva,
+      total,
+      validezDias: 15,
+      estado: approved ? 'APROBADA' : 'BORRADOR',
+      observaciones: [
+        'Cotización generada automáticamente desde chatbot.',
+        args.companyName ? `Empresa: ${args.companyName}` : null,
+        args.city ? `Ciudad: ${args.city}` : null,
+        args.address ? `Dirección: ${args.address}` : null,
+        args.whatsapp ? `WhatsApp: ${args.whatsapp}` : null,
+      ].filter(Boolean).join('\n'),
+      items: {
+        create: {
+          descripcion: args.material?.nombre || args.requestedProduct,
+          material: args.material?.id ? { connect: { id: args.material.id } } : undefined,
+          cantidad: args.quantity,
+          unidad: args.material?.unidadMedida || 'unidad',
+          precioUnitario: unitPrice,
+          subtotal: lineSubtotal,
+          costoMaterial: unitPrice,
+          costoImpresion: 0,
+          costoAcabados: 0,
+          costoInstalacion: 0,
+        },
+      },
+    },
+    select: { id: true, numero: true },
+  })
+
+  const result: BusinessActionResult = {
+    kind: args.kind,
+    quoteId: cotizacion.id,
+    quoteNumber: cotizacion.numero,
+  }
+
+  if (args.kind === 'create_invoice') {
+    const invoice = await ensureInvoiceFromQuote(tx, {
+      cotizacionId: cotizacion.id,
+      empresaId: args.empresaId,
+      sedeId: args.sedeId,
+      createdById: args.createdById,
+    })
+    result.invoiceNumber = invoice.numero
+  }
+
+  if (args.kind === 'create_work_order') {
+    const workOrder = await ensureWorkOrderFromQuote(tx, {
+      cotizacionId: cotizacion.id,
+      empresaId: args.empresaId,
+      sedeId: args.sedeId,
+      createdById: args.createdById,
+    })
+    result.workOrderNumber = workOrder?.numero || null
+  }
+
+  return result
+}
+
+function resolveChatIdentity(args: { nombre: string; email: string; phone: string; whatsapp: string; requestedProduct: string; companyName: string; document: string; city: string; address: string; messageText: string; expectedField?: string }) {
   const expectedField = normalizeString(args.expectedField).toLowerCase()
   const inferredName = extractName(args.messageText)
   const inferredEmail = extractEmail(args.messageText)
@@ -329,18 +555,28 @@ function resolveChatIdentity(args: { nombre: string; email: string; phone: strin
     nombre: args.nombre || (expectedField === 'name' ? inferredName || normalizeString(args.messageText) : inferredName),
     email: args.email || inferredEmail,
     phone: args.phone || inferredPhone,
+    whatsapp: args.whatsapp || (expectedField === 'whatsapp' ? inferredPhone || normalizeString(args.messageText) : args.whatsapp),
     requestedProduct: args.requestedProduct || (expectedField === 'product' ? normalizeString(args.messageText) : args.requestedProduct),
+    companyName: args.companyName || (expectedField === 'company' ? normalizeString(args.messageText) : args.companyName),
+    document: args.document || (expectedField === 'document' ? normalizeString(args.messageText) : args.document),
+    city: args.city || (expectedField === 'city' ? normalizeString(args.messageText) : args.city),
+    address: args.address || (expectedField === 'address' ? normalizeString(args.messageText) : args.address),
     quantity: extractQuantity(args.messageText),
   }
 }
 
-function getNextChatField(args: { nombre: string; email: string; phone: string; requestedProduct: string; quantity: number | null; showProductField: boolean }) {
+function getNextChatField(args: { nombre: string; email: string; phone: string; whatsapp: string; requestedProduct: string; companyName: string; document: string; city: string; address: string; quantity: number | null; showProductField: boolean }) {
   if (!args.nombre) return 'name' satisfies ChatFlowNextField
   if (!args.email) return 'email' satisfies ChatFlowNextField
-  if (!args.phone && !args.requestedProduct) return 'phone' satisfies ChatFlowNextField
+  if (!args.phone && !args.whatsapp && !args.requestedProduct) return 'phone' satisfies ChatFlowNextField
+  if (!args.whatsapp) return 'whatsapp' satisfies ChatFlowNextField
   if (args.showProductField && !args.requestedProduct) return 'product' satisfies ChatFlowNextField
   if (args.requestedProduct && !args.quantity) return 'quantity' satisfies ChatFlowNextField
-  return null
+  if (!args.companyName) return 'company' satisfies ChatFlowNextField
+  if (!args.document) return 'document' satisfies ChatFlowNextField
+  if (!args.city) return 'city' satisfies ChatFlowNextField
+  if (!args.address) return 'address' satisfies ChatFlowNextField
+  return 'confirmation' satisfies ChatFlowNextField
 }
 
 function resolveChatStage(args: {
@@ -444,7 +680,14 @@ function buildAssistantReply(args: {
   nombre: string
   email: string
   phone: string
+  whatsapp: string
   quantity: number | null
+  companyName: string
+  document: string
+  city: string
+  address: string
+  expectedField?: string
+  businessActionResult?: BusinessActionResult | null
   showProductField: boolean
   currentStageId: string
   quickActionId: string
@@ -481,7 +724,12 @@ function buildAssistantReply(args: {
     nombre: args.nombre,
     email: args.email,
     phone: args.phone,
+    whatsapp: args.whatsapp,
     requestedProduct: args.requestedProduct,
+    companyName: args.companyName,
+    document: args.document,
+    city: args.city,
+    address: args.address,
     quantity: args.quantity,
     showProductField: args.showProductField,
   })
@@ -508,6 +756,18 @@ function buildAssistantReply(args: {
     }
   }
 
+  if (
+    selectedQuickAction
+    && (selectedQuickAction.kind === 'create_quote' || selectedQuickAction.kind === 'create_invoice' || selectedQuickAction.kind === 'create_work_order')
+    && !args.businessActionResult
+  ) {
+    return {
+      body: decorateAssistantReply(`${formatChatSummary({ nombre: args.nombre, email: args.email, phone: args.phone, whatsapp: args.whatsapp, requestedProduct: args.requestedProduct, quantity: args.quantity, companyName: args.companyName, document: args.document, city: args.city, address: args.address })}\n\nAún no puedo ejecutar esa acción porque faltan datos clave o el producto no tiene suficiente contexto comercial. Completa el resumen y vuelve a intentarlo.`, nextStage, args.currentStageId, args.quickActionId),
+      nextField: 'confirmation' as ChatFlowNextField,
+      stage: nextStage,
+    }
+  }
+
   if (matchedResponseOption) {
     const stageField = nextStage?.nextField === 'none' ? null : nextStage?.nextField || null
     return {
@@ -529,8 +789,65 @@ function buildAssistantReply(args: {
     return { body: decorateAssistantReply('Perfecto. Si gustas, déjame también un teléfono o WhatsApp para que el centro de ventas pueda comunicarse contigo más rápido. Si prefieres, también puedes escribirme de una vez el producto que te interesa.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
   }
 
+  if (nextField === 'whatsapp') {
+    return { body: decorateAssistantReply('Gracias. Ahora déjame un WhatsApp de contacto para enviarte seguimiento y confirmar la solicitud.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
+  }
+
   if (nextField === 'product') {
     return { body: decorateAssistantReply('Gracias. Ahora cuéntame qué producto o servicio te interesa para revisar inventario y precio de referencia.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
+  }
+
+  if (nextField === 'company') {
+    return { body: decorateAssistantReply('Perfecto. Para dejar la solicitud más completa, indícame el nombre de la empresa o razón social.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
+  }
+
+  if (nextField === 'document') {
+    return { body: decorateAssistantReply('Ahora compárteme el documento, NIT o identificación con la que debemos registrar la solicitud.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
+  }
+
+  if (nextField === 'city') {
+    return { body: decorateAssistantReply('Gracias. ¿En qué ciudad debemos registrar esta solicitud?', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
+  }
+
+  if (nextField === 'address') {
+    return { body: decorateAssistantReply('Perfecto. Ahora compárteme la dirección de entrega o facturación que debemos tener como referencia.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
+  }
+
+  if (args.businessActionResult) {
+    const businessSummary = args.businessActionResult.kind === 'create_invoice'
+      ? `Ya generé la cotización ${args.businessActionResult.quoteNumber} y la factura ${args.businessActionResult.invoiceNumber || 'en borrador'}.`
+      : args.businessActionResult.kind === 'create_work_order'
+        ? `Ya generé la cotización ${args.businessActionResult.quoteNumber}${args.businessActionResult.workOrderNumber ? ` y la orden ${args.businessActionResult.workOrderNumber}` : ', aunque este ítem no produjo una orden de trabajo automática'}.`
+        : `Ya generé la cotización ${args.businessActionResult.quoteNumber}.`
+    return {
+      body: decorateAssistantReply(`${businessSummary} El equipo comercial puede continuar desde el CRM con ese registro.`, nextStage, args.currentStageId, args.quickActionId),
+      nextField: null as ChatFlowNextField,
+      stage: nextStage,
+    }
+  }
+
+  if (nextField === 'confirmation') {
+    if (args.expectedField === 'confirmation' && isAffirmativeMessage(args.messageText)) {
+      return {
+        body: decorateAssistantReply('Perfecto. Ya validé el resumen. Si este flujo tiene una acción de negocio activa, ya puedes dispararla; si no, lo dejo listo para seguimiento comercial.', nextStage, args.currentStageId, args.quickActionId),
+        nextField: null as ChatFlowNextField,
+        stage: nextStage,
+      }
+    }
+
+    if (args.expectedField === 'confirmation' && isNegativeMessage(args.messageText)) {
+      return {
+        body: decorateAssistantReply('Entendido. Escríbeme qué dato quieres corregir y hacemos el ajuste antes de continuar.', nextStage, args.currentStageId, args.quickActionId),
+        nextField: 'confirmation' as ChatFlowNextField,
+        stage: nextStage,
+      }
+    }
+
+    return {
+      body: decorateAssistantReply(`${formatChatSummary({ nombre: args.nombre, email: args.email, phone: args.phone, whatsapp: args.whatsapp, requestedProduct: args.requestedProduct, quantity: args.quantity, companyName: args.companyName, document: args.document, city: args.city, address: args.address })}\n\nSi todo está correcto, responde confirmar. Si el flujo tiene botones de negocio, también puedes usarlos ahora.`, nextStage, args.currentStageId, args.quickActionId),
+      nextField,
+      stage: nextStage,
+    }
   }
 
   if (args.insight.catalogIntent && args.insight.catalog.length > 0 && !args.requestedProduct) {
@@ -646,12 +963,14 @@ export async function POST(request: Request) {
     const nombre = normalizeString(body?.nombre || payload.nombre || payload.name)
     const email = normalizeString(body?.email || payload.email).toLowerCase()
     const phone = normalizeString(body?.telefono || body?.celular || payload.telefono || payload.celular || payload.phone)
+    const whatsapp = normalizeString(body?.whatsapp || body?.celular || payload.whatsapp || payload.celular)
     const requestedProduct = normalizeString(body?.producto || body?.product || payload.producto || payload.product)
     const messageText = normalizeString(body?.mensaje || body?.message || payload.mensaje || payload.message || payload.question)
     const expectedField = normalizeString(payload.chatFlowNextField)
     const empresaNombre = normalizeString(body?.empresaNombre || payload.empresaNombre || payload.company)
     const ciudad = normalizeString(body?.ciudad || payload.ciudad || payload.city)
     const document = normalizeString(body?.documento || payload.documento)
+    const address = normalizeString(body?.direccion || payload.direccion || payload.address)
     const landingPageUrl = normalizeString(body?.landingPageUrl || payload.landingPageUrl || payload.pageUrl)
     const referrerUrl = normalizeString(body?.referrerUrl || payload.referrerUrl)
     const requestHuman = Boolean(body?.requestHuman || payload.requestHuman)
@@ -673,7 +992,7 @@ export async function POST(request: Request) {
       const defaultFlow = getDefaultChatbotAutomationFlowFromSettings(studioSettings)
       const conversationFlow = getChatbotAutomationFlowById(studioSettings.automationFlows, currentFlowId) ?? defaultFlow
       const flowVariables = studioSettings.flowVariables.filter((item: { enabled: boolean }) => item.enabled)
-      const resolvedIdentity = resolveChatIdentity({ nombre, email, phone, requestedProduct, messageText, expectedField })
+      const resolvedIdentity = resolveChatIdentity({ nombre, email, phone, whatsapp, requestedProduct, companyName: empresaNombre, document, city: ciudad, address, messageText, expectedField })
       const effectiveProduct = resolvedIdentity.requestedProduct
 
       const artifacts = await createInboundArtifacts({
@@ -689,15 +1008,15 @@ export async function POST(request: Request) {
         messageType: 'TEXT',
         eventAt,
         nombre: resolvedIdentity.nombre,
-        empresaNombre,
+        empresaNombre: resolvedIdentity.companyName,
         email: resolvedIdentity.email,
-        phone: resolvedIdentity.phone,
-        document,
-        ciudad,
+        phone: resolvedIdentity.phone || resolvedIdentity.whatsapp,
+        document: resolvedIdentity.document,
+        ciudad: resolvedIdentity.city,
         messageText,
         externalThreadId: normalizeString(body?.externalThreadId || payload.externalThreadId || `${channel.id}-${resolvedIdentity.phone || resolvedIdentity.email || Date.now()}`),
         providerMessageId: normalizeString(body?.providerMessageId || payload.providerMessageId || `chatbot-${Date.now()}`),
-        providerLeadId: normalizeString(body?.providerLeadId || resolvedIdentity.phone || resolvedIdentity.email || null),
+        providerLeadId: normalizeString(body?.providerLeadId || resolvedIdentity.whatsapp || resolvedIdentity.phone || resolvedIdentity.email || null),
         sourceLabel: 'Chatbot web',
         sourceCampaign: normalizeString(body?.utmCampaign || payload.utmCampaign),
         sourceMedium: normalizeString(body?.utmMedium || payload.utmMedium) || 'web-chatbot',
@@ -713,11 +1032,13 @@ export async function POST(request: Request) {
         normalizedDataJson: {
           nombre: resolvedIdentity.nombre,
           email: resolvedIdentity.email,
-          phone: resolvedIdentity.phone,
+          phone: resolvedIdentity.phone || resolvedIdentity.whatsapp,
+          whatsapp: resolvedIdentity.whatsapp,
           requestedProduct: effectiveProduct,
-          empresaNombre,
-          ciudad,
-          document,
+          empresaNombre: resolvedIdentity.companyName,
+          ciudad: resolvedIdentity.city,
+          document: resolvedIdentity.document,
+          address: resolvedIdentity.address,
           messageText,
           requestHuman,
           quantity: resolvedIdentity.quantity,
@@ -726,7 +1047,7 @@ export async function POST(request: Request) {
         },
       })
 
-      const leadQualified = Boolean((resolvedIdentity.email || resolvedIdentity.phone) && effectiveProduct && resolvedIdentity.quantity)
+      const leadQualified = Boolean((resolvedIdentity.email || resolvedIdentity.phone || resolvedIdentity.whatsapp) && effectiveProduct && resolvedIdentity.quantity)
 
       let activeFlow = conversationFlow
       let matchedTrigger = requestHuman
@@ -755,6 +1076,30 @@ export async function POST(request: Request) {
         lookupKind: resolveMaterialLookupKind({ messageText, requestedProduct: effectiveProduct, quickAction: selectedQuickAction }),
       })
 
+      const businessActionResult = selectedQuickAction && (
+        selectedQuickAction.kind === 'create_quote'
+        || selectedQuickAction.kind === 'create_invoice'
+        || selectedQuickAction.kind === 'create_work_order'
+      )
+        ? await createBusinessEntityFromChatbot(tx, {
+            kind: selectedQuickAction.kind,
+            empresaId: channel.empresaId,
+            sedeId: channel.sedeId,
+            createdById: channel.createdBy.id,
+            nombre: resolvedIdentity.nombre,
+            email: resolvedIdentity.email,
+            phone: resolvedIdentity.phone,
+            whatsapp: resolvedIdentity.whatsapp,
+            requestedProduct: effectiveProduct,
+            quantity: resolvedIdentity.quantity,
+            companyName: resolvedIdentity.companyName,
+            document: resolvedIdentity.document,
+            city: resolvedIdentity.city,
+            address: resolvedIdentity.address,
+            material: catalogInsight.primary,
+          })
+        : null
+
       const assistantReply = buildAssistantReply({
         insight: catalogInsight,
         messageText,
@@ -764,7 +1109,14 @@ export async function POST(request: Request) {
         nombre: resolvedIdentity.nombre,
         email: resolvedIdentity.email,
         phone: resolvedIdentity.phone,
+        whatsapp: resolvedIdentity.whatsapp,
+        companyName: resolvedIdentity.companyName,
+        document: resolvedIdentity.document,
+        city: resolvedIdentity.city,
+        address: resolvedIdentity.address,
         quantity: resolvedIdentity.quantity,
+        expectedField,
+        businessActionResult,
         showProductField: settings.showProductField,
         currentStageId,
         quickActionId,
@@ -788,11 +1140,14 @@ export async function POST(request: Request) {
       const assistantContext = {
         contact_name: resolvedIdentity.nombre,
         contact_email: resolvedIdentity.email,
-        contact_phone: resolvedIdentity.phone,
+        contact_phone: resolvedIdentity.phone || resolvedIdentity.whatsapp,
+        contact_whatsapp: resolvedIdentity.whatsapp,
         product_name: effectiveProduct,
         quantity: resolvedIdentity.quantity,
-        company_name: empresaNombre,
-        city: ciudad,
+        company_name: resolvedIdentity.companyName,
+        document: resolvedIdentity.document,
+        city: resolvedIdentity.city,
+        address: resolvedIdentity.address,
         channel_name: channel.name,
         assistant_name: settings.assistantName,
       }
@@ -855,6 +1210,13 @@ export async function POST(request: Request) {
             chatPauseDescription: resolvedPauseNode?.description || null,
             chatPauseUntil: pauseUntil,
             quantity: resolvedIdentity.quantity,
+            whatsapp: resolvedIdentity.whatsapp,
+            address: resolvedIdentity.address,
+            businessActionKind: businessActionResult?.kind || null,
+            businessQuoteId: businessActionResult?.quoteId || null,
+            businessQuoteNumber: businessActionResult?.quoteNumber || null,
+            businessInvoiceNumber: businessActionResult?.invoiceNumber || null,
+            businessWorkOrderNumber: businessActionResult?.workOrderNumber || null,
             matchedTriggerId: matchedTrigger.matchedTrigger?.id || null,
           },
           attachmentsJson: [catalogInsight.primary, ...catalogInsight.alternatives]
@@ -880,7 +1242,7 @@ export async function POST(request: Request) {
           where: { id: artifacts.lead.id },
           data: {
             status: 'QUALIFIED',
-            notes: [artifacts.lead.notes, `Producto consultado: ${effectiveProduct}`, resolvedIdentity.quantity ? `Cantidad solicitada: ${resolvedIdentity.quantity}` : ''].filter(Boolean).join('\n\n'),
+            notes: [artifacts.lead.notes, `Producto consultado: ${effectiveProduct}`, resolvedIdentity.quantity ? `Cantidad solicitada: ${resolvedIdentity.quantity}` : '', resolvedIdentity.whatsapp ? `WhatsApp: ${resolvedIdentity.whatsapp}` : '', resolvedIdentity.address ? `Dirección: ${resolvedIdentity.address}` : ''].filter(Boolean).join('\n\n'),
           },
         })
       }

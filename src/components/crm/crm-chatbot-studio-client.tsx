@@ -2340,8 +2340,14 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <SelectItem value="name">Nombre</SelectItem>
                   <SelectItem value="email">Correo</SelectItem>
                   <SelectItem value="phone">Teléfono</SelectItem>
+                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
                   <SelectItem value="product">Producto</SelectItem>
                   <SelectItem value="quantity">Cantidad</SelectItem>
+                    <SelectItem value="company">Empresa</SelectItem>
+                    <SelectItem value="document">Documento / NIT</SelectItem>
+                    <SelectItem value="city">Ciudad</SelectItem>
+                    <SelectItem value="address">Dirección</SelectItem>
+                    <SelectItem value="confirmation">Resumen y confirmación</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -2436,6 +2442,9 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <SelectItem value="stock">Stock</SelectItem>
                   <SelectItem value="product_lookup">Lookup producto</SelectItem>
                   <SelectItem value="service_lookup">Lookup servicio</SelectItem>
+                    <SelectItem value="create_quote">Crear cotización</SelectItem>
+                    <SelectItem value="create_invoice">Crear factura</SelectItem>
+                    <SelectItem value="create_work_order">Crear orden</SelectItem>
                   <SelectItem value="url">URL</SelectItem>
                   <SelectItem value="human">Humano</SelectItem>
                   <SelectItem value="message">Mensaje</SelectItem>
@@ -4412,6 +4421,9 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         <SelectItem value="stock">Stock</SelectItem>
                         <SelectItem value="product_lookup">Lookup producto</SelectItem>
                         <SelectItem value="service_lookup">Lookup servicio</SelectItem>
+                        <SelectItem value="create_quote">Crear cotización</SelectItem>
+                        <SelectItem value="create_invoice">Crear factura</SelectItem>
+                        <SelectItem value="create_work_order">Crear orden</SelectItem>
                         <SelectItem value="url">URL</SelectItem>
                         <SelectItem value="human">Humano</SelectItem>
                         <SelectItem value="message">Mensaje</SelectItem>
@@ -4533,10 +4545,13 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         <SelectItem value="contact_name">Nombre del contacto</SelectItem>
                         <SelectItem value="contact_email">Email del contacto</SelectItem>
                         <SelectItem value="contact_phone">Teléfono del contacto</SelectItem>
+                        <SelectItem value="contact_whatsapp">WhatsApp del contacto</SelectItem>
                         <SelectItem value="product">Producto</SelectItem>
                         <SelectItem value="quantity">Cantidad</SelectItem>
                         <SelectItem value="company">Empresa</SelectItem>
+                        <SelectItem value="document">Documento / NIT</SelectItem>
                         <SelectItem value="city">Ciudad</SelectItem>
+                        <SelectItem value="address">Dirección</SelectItem>
                         <SelectItem value="channel_name">Canal</SelectItem>
                         <SelectItem value="assistant_name">Asistente</SelectItem>
                         <SelectItem value="static">Valor fijo</SelectItem>

@@ -1,8 +1,8 @@
-export type ChatbotFlowNextField = 'name' | 'email' | 'phone' | 'product' | 'quantity' | 'none'
+export type ChatbotFlowNextField = 'name' | 'email' | 'phone' | 'whatsapp' | 'product' | 'quantity' | 'company' | 'document' | 'city' | 'address' | 'confirmation' | 'none'
 
 export type ChatbotFlowResponseMatchMode = 'exact' | 'contains'
 
-export type ChatbotQuickActionKind = 'catalog' | 'stock' | 'human' | 'message' | 'url' | 'product_lookup' | 'service_lookup'
+export type ChatbotQuickActionKind = 'catalog' | 'stock' | 'human' | 'message' | 'url' | 'product_lookup' | 'service_lookup' | 'create_quote' | 'create_invoice' | 'create_work_order'
 
 export type ChatbotQuickAction = {
   id: string
@@ -54,7 +54,18 @@ function normalizeIds(value: unknown) {
 }
 
 function isFlowNextField(value: unknown): value is ChatbotFlowNextField {
-  return value === 'name' || value === 'email' || value === 'phone' || value === 'product' || value === 'quantity' || value === 'none'
+  return value === 'name'
+    || value === 'email'
+    || value === 'phone'
+    || value === 'whatsapp'
+    || value === 'product'
+    || value === 'quantity'
+    || value === 'company'
+    || value === 'document'
+    || value === 'city'
+    || value === 'address'
+    || value === 'confirmation'
+    || value === 'none'
 }
 
 function isResponseMatchMode(value: unknown): value is ChatbotFlowResponseMatchMode {
@@ -69,6 +80,9 @@ function isQuickActionKind(value: unknown): value is ChatbotQuickActionKind {
     || value === 'url'
     || value === 'product_lookup'
     || value === 'service_lookup'
+    || value === 'create_quote'
+    || value === 'create_invoice'
+    || value === 'create_work_order'
 }
 
 export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {

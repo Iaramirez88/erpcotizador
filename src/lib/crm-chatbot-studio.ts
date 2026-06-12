@@ -9,7 +9,7 @@ import {
 
 export type ChatbotFlowTriggerEvent = 'message' | 'quick_action' | 'response_option' | 'human_request' | 'lead_qualified'
 export type ChatbotFlowTriggerMatchMode = 'contains' | 'exact'
-export type ChatbotFlowVariableSource = 'contact_name' | 'contact_email' | 'contact_phone' | 'product' | 'quantity' | 'company' | 'city' | 'channel_name' | 'assistant_name' | 'static'
+export type ChatbotFlowVariableSource = 'contact_name' | 'contact_email' | 'contact_phone' | 'contact_whatsapp' | 'product' | 'quantity' | 'company' | 'document' | 'city' | 'address' | 'channel_name' | 'assistant_name' | 'static'
 export type ChatbotAssignmentMode = 'channel-owner' | 'default-user' | 'handoff-user'
 export type ChatbotMessageTone = 'consultivo' | 'directo' | 'amable'
 export type ChatbotAutomationProvider = 'WEB_CHATBOT' | 'WHATSAPP_CLOUD' | 'INSTAGRAM_DM' | 'FACEBOOK_PAGE' | 'MESSENGER'
@@ -120,7 +120,19 @@ function isMatchMode(value: unknown): value is ChatbotFlowTriggerMatchMode {
 }
 
 function isVariableSource(value: unknown): value is ChatbotFlowVariableSource {
-  return value === 'contact_name' || value === 'contact_email' || value === 'contact_phone' || value === 'product' || value === 'quantity' || value === 'company' || value === 'city' || value === 'channel_name' || value === 'assistant_name' || value === 'static'
+  return value === 'contact_name'
+    || value === 'contact_email'
+    || value === 'contact_phone'
+    || value === 'contact_whatsapp'
+    || value === 'product'
+    || value === 'quantity'
+    || value === 'company'
+    || value === 'document'
+    || value === 'city'
+    || value === 'address'
+    || value === 'channel_name'
+    || value === 'assistant_name'
+    || value === 'static'
 }
 
 function isAssignmentMode(value: unknown): value is ChatbotAssignmentMode {
@@ -530,14 +542,20 @@ export function resolveChatbotVariableValue(args: {
         ? resolveFromContext('contact_email')
         : variable.source === 'contact_phone'
           ? resolveFromContext('contact_phone')
+            : variable.source === 'contact_whatsapp'
+              ? resolveFromContext('contact_whatsapp')
           : variable.source === 'product'
             ? resolveFromContext('product_name')
             : variable.source === 'quantity'
               ? resolveFromContext('quantity')
               : variable.source === 'company'
                 ? resolveFromContext('company_name')
+                      : variable.source === 'document'
+                        ? resolveFromContext('document')
                 : variable.source === 'city'
                   ? resolveFromContext('city')
+                  : variable.source === 'address'
+                    ? resolveFromContext('address')
                   : variable.source === 'channel_name'
                     ? resolveFromContext('channel_name')
                     : resolveFromContext('assistant_name')

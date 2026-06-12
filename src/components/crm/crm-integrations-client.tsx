@@ -1606,7 +1606,7 @@ function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
                     {welcomeActions.map((action) => (
                       <div key={action.id} className={`rounded-2xl border px-3 py-2 text-[11px] font-semibold shadow-sm ${getQuickActionTone(action.kind)}`}>
                         <div>{action.label}</div>
-                        <div className="mt-0.5 text-[10px] font-medium opacity-80">{action.kind === 'catalog' ? 'Explora catálogo' : action.kind === 'stock' ? 'Consulta inventario' : action.kind === 'human' ? 'Escala al equipo' : 'Acción rápida'}</div>
+                        <div className="mt-0.5 text-[10px] font-medium opacity-80">{action.kind === 'catalog' ? 'Explora catálogo' : action.kind === 'stock' ? 'Consulta inventario' : action.kind === 'human' ? 'Escala al equipo' : action.kind === 'create_quote' ? 'Genera cotización' : action.kind === 'create_invoice' ? 'Genera factura' : action.kind === 'create_work_order' ? 'Genera orden' : 'Acción rápida'}</div>
                       </div>
                     ))}
                   </div>
@@ -2042,8 +2042,14 @@ function getFlowStageNextFieldLabel(nextField: ChatbotFlowNextField) {
   if (nextField === 'name') return 'Pide nombre'
   if (nextField === 'email') return 'Pide correo'
   if (nextField === 'phone') return 'Pide teléfono'
+  if (nextField === 'whatsapp') return 'Pide WhatsApp'
   if (nextField === 'product') return 'Pide producto'
   if (nextField === 'quantity') return 'Pide cantidad'
+  if (nextField === 'company') return 'Pide empresa'
+  if (nextField === 'document') return 'Pide documento o NIT'
+  if (nextField === 'city') return 'Pide ciudad'
+  if (nextField === 'address') return 'Pide dirección'
+  if (nextField === 'confirmation') return 'Resumen y confirmación'
   return 'Cierre / handoff'
 }
 
@@ -2051,6 +2057,9 @@ function getQuickActionTone(kind: ChatbotQuickAction['kind']) {
   if (kind === 'catalog') return 'border-emerald-200 bg-emerald-50 text-emerald-800'
   if (kind === 'stock') return 'border-sky-200 bg-sky-50 text-sky-800'
   if (kind === 'human') return 'border-amber-200 bg-amber-50 text-amber-900'
+  if (kind === 'create_quote') return 'border-indigo-200 bg-indigo-50 text-indigo-900'
+  if (kind === 'create_invoice') return 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-900'
+  if (kind === 'create_work_order') return 'border-cyan-200 bg-cyan-50 text-cyan-900'
   return 'border-slate-200 bg-slate-50 text-slate-700'
 }
 
@@ -2622,6 +2631,8 @@ export function CrmIntegrationsClient() {
         channelId: selectedChannel.id,
         height: getIframeHeight(selectedSettings),
         floatingLauncherEnabled: getFloatingLauncherEnabled(selectedSettings),
+        chatShellRadius: getChatShellRadius(selectedSettings),
+        backgroundColor: getBackgroundColor(selectedSettings),
       }),
       chatbotEmbedUrl: buildChatbotEmbedUrl(baseUrl, selectedChannel.id),
       gmail: buildGmailAppsScriptSnippet({
@@ -4599,12 +4610,45 @@ export function CrmIntegrationsClient() {
                       </div>
                     </div>
 
+                    <div className="mt-5 rounded-2xl border border-slate-200 bg-white/85 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{language === 'en' ? 'Channel management' : 'Gestión del canal'}</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-600">{language === 'en' ? 'Main actions remain visible here and inside the setup wizard.' : 'Las acciones principales quedan visibles aquí y también dentro del wizard de configuración.'}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedChannel.provider === 'WEB_CHATBOT' ? (
+                            <>
+                              <Button variant="outline" className="rounded-xl border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100" onClick={() => openEditWizard(selectedChannel, { forceWizard: true })}>
+                                {language === 'en' ? 'Edit channel setup' : 'Editar configuración'}
+                              </Button>
+                              <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
+                                <Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>{language === 'en' ? 'Open Chatbot Studio' : 'Abrir Chatbot Studio'}</Link>
+                              </Button>
+                            </>
+                          ) : (
+                            <Button variant="outline" className="rounded-xl" onClick={() => openEditWizard(selectedChannel)}>
+                              {language === 'en' ? 'Edit channel' : 'Editar canal'}
+                            </Button>
+                          )}
+                          <Button variant="outline" className="rounded-xl" onClick={() => void copyText('selected-endpoint-top', endpoint)}>
+                            {copiedKey === 'selected-endpoint-top' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy endpoint' : 'Copiar endpoint')}
+                          </Button>
+                          {selectedChannel.provider === 'WEB_CHATBOT' ? <Button asChild variant="outline" className="rounded-xl"><Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>{language === 'en' ? 'View Studio' : 'Ver Studio'}</Link></Button> : null}
+                          {selectedChannel.provider === 'WEB_CHATBOT' && selectedChatbotEmbedUrl ? <Button asChild variant="outline" className="rounded-xl"><Link href={selectedChatbotEmbedUrl}>{language === 'en' ? 'View iframe' : 'Ver iframe'}</Link></Button> : null}
+                          <Button variant="outline" className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => setDeleteCandidate(selectedChannel)} disabled={deletingChannelId === selectedChannel.id}>
+                            {deletingChannelId === selectedChannel.id ? (language === 'en' ? 'Deleting...' : 'Eliminando...') : (language === 'en' ? 'Delete channel' : 'Eliminar canal')}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
                     {selectedChannel.provider === 'WEB_CHATBOT' && selectedChatbotEmbedUrl ? (
                       <div className="mt-5 rounded-2xl border border-emerald-200 bg-white/85 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
                             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">{language === 'en' ? 'Real chatbot preview' : 'Preview del chatbot real'}</p>
-                            <p className="mt-2 text-sm leading-6 text-slate-600">{language === 'en' ? 'This preview represents the iframe and launcher with the current channel configuration.' : 'Este preview representa el iframe y el launcher con la configuración actual del canal.'}</p>
+                            <p className="mt-2 text-sm leading-6 text-slate-600">{language === 'en' ? 'This preview shows the real iframe and, separately, the launcher settings used by the floating widget. In pure iframe mode the launcher does not render.' : 'Este preview muestra el iframe real y, por separado, la configuración del launcher usada por el widget flotante. En modo iframe puro el launcher no se renderiza.'}</p>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Button asChild className="rounded-xl">
@@ -4620,8 +4664,8 @@ export function CrmIntegrationsClient() {
                           <iframe
                             src={selectedChatbotEmbedUrl}
                             title={language === 'en' ? 'Real chatbot preview' : 'Preview real del chatbot'}
-                            className="block h-[720px] w-full"
-                            style={{ minHeight: '360px', border: 0, background: '#ffffff' }}
+                            className="block w-full"
+                            style={{ minHeight: '360px', height: `${normalizePixelValue(getIframeHeight(selectedSettings), '720')}px`, border: 0, background: getBackgroundColor(selectedSettings) }}
                             loading="lazy"
                             referrerPolicy="strict-origin-when-cross-origin"
                           />
@@ -4803,38 +4847,6 @@ export function CrmIntegrationsClient() {
                         ) : null}
                       </div>
                     ) : null}
-
-                    <div className="rounded-[26px] border border-slate-200 bg-[linear-gradient(180deg,#fff,#f8fafc)] p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{language === 'en' ? 'Channel management' : 'Gestión del canal'}</p>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {selectedChannel.provider === 'WEB_CHATBOT' ? (
-                          <>
-                            <Button variant="outline" className="rounded-xl border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100" onClick={() => openEditWizard(selectedChannel, { forceWizard: true })}>
-                              {language === 'en' ? 'Edit channel setup' : 'Editar configuración'}
-                            </Button>
-                            <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
-                              <Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>{language === 'en' ? 'Open Chatbot Studio' : 'Abrir Chatbot Studio'}</Link>
-                            </Button>
-                          </>
-                        ) : (
-                          <Button variant="outline" className="rounded-xl" onClick={() => openEditWizard(selectedChannel)}>
-                            {language === 'en' ? 'Edit channel' : 'Editar canal'}
-                          </Button>
-                        )}
-                        <Button variant="outline" className="rounded-xl" onClick={() => void copyText('selected-endpoint', endpoint)}>
-                          {copiedKey === 'selected-endpoint' ? (language === 'en' ? 'Copied' : 'Copiado') : (language === 'en' ? 'Copy endpoint' : 'Copiar endpoint')}
-                        </Button>
-                        {selectedChannel.provider === 'WEB_CHATBOT' ? <Button asChild variant="outline" className="rounded-xl"><Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>{language === 'en' ? 'View Studio' : 'Ver Studio'}</Link></Button> : null}
-                        {selectedChannel.provider === 'WEB_CHATBOT' && selectedChatbotEmbedUrl ? <Button asChild variant="outline" className="rounded-xl"><Link href={selectedChatbotEmbedUrl}>{language === 'en' ? 'View iframe' : 'Ver iframe'}</Link></Button> : null}
-                        {usesMetaProvider(selectedChannel.provider) ? <Button type="button" variant="outline" className="rounded-xl border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100" onClick={() => openMetaOnboarding(selectedChannel)}><Facebook className="mr-2 h-4 w-4" />{selectedMeta.hasConnection ? (language === 'en' ? 'Reconnect with Facebook' : 'Reconectar con Facebook') : (language === 'en' ? 'Continue with Facebook' : 'Continuar con Facebook')}</Button> : null}
-                        {usesMetaProvider(selectedChannel.provider) ? <Button variant="outline" className="rounded-xl" onClick={() => void syncMeta(selectedChannel.id)} disabled={updatingChannelId === selectedChannel.id || !selectedMeta.hasConnection}>{updatingChannelId === selectedChannel.id ? (language === 'en' ? 'Syncing...' : 'Sincronizando...') : (language === 'en' ? 'Sync Meta' : 'Sincronizar Meta')}</Button> : null}
-                        {usesMetaProvider(selectedChannel.provider) ? <Button variant="outline" className="rounded-xl border-amber-200 text-amber-800 hover:bg-amber-50" onClick={() => void disconnectMeta(selectedChannel.id)} disabled={updatingChannelId === selectedChannel.id || !selectedMeta.hasConnection}>{language === 'en' ? 'Disconnect Meta' : 'Desconectar Meta'}</Button> : null}
-                        <Button variant="outline" className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => setDeleteCandidate(selectedChannel)} disabled={deletingChannelId === selectedChannel.id}>
-                          {deletingChannelId === selectedChannel.id ? (language === 'en' ? 'Deleting...' : 'Eliminando...') : (language === 'en' ? 'Delete channel' : 'Eliminar canal')}
-                        </Button>
-                      </div>
-                      <p className="mt-3 text-xs leading-5 text-slate-500">{language === 'en' ? 'Only channels without conversations or captures can be deleted. If there was already activity, they must be disabled.' : 'Solo se eliminan canales sin conversaciones ni capturas. Si ya hubo actividad, deben desactivarse.'}</p>
-                    </div>
 
                     {usesMetaProvider(selectedChannel.provider) ? (
                       <div className="rounded-[26px] border border-sky-200 bg-sky-50/60 p-4">
@@ -5827,7 +5839,7 @@ export function CrmIntegrationsClient() {
 
                         <div className="mt-4 grid gap-3 md:grid-cols-2">
                           <div className="grid gap-2"><Label>Título</Label><Input value={selectedChatbotFlowStage.title} onChange={(e) => updateChatbotStage(selectedChatbotFlowStage.id as ChatbotFlowStageId, { title: e.target.value })} className="h-11 rounded-xl" /></div>
-                          <div className="grid gap-2"><Label>Siguiente paso esperado</Label><Select value={selectedChatbotFlowStage.nextField} onValueChange={(value) => updateChatbotStage(selectedChatbotFlowStage.id as ChatbotFlowStageId, { nextField: value as ChatbotFlowNextField })}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="name">Nombre</SelectItem><SelectItem value="email">Correo</SelectItem><SelectItem value="phone">Teléfono</SelectItem><SelectItem value="product">Producto</SelectItem><SelectItem value="quantity">Cantidad</SelectItem><SelectItem value="none">Cierre</SelectItem></SelectContent></Select></div>
+                          <div className="grid gap-2"><Label>Siguiente paso esperado</Label><Select value={selectedChatbotFlowStage.nextField} onValueChange={(value) => updateChatbotStage(selectedChatbotFlowStage.id as ChatbotFlowStageId, { nextField: value as ChatbotFlowNextField })}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="name">Nombre</SelectItem><SelectItem value="email">Correo</SelectItem><SelectItem value="phone">Teléfono</SelectItem><SelectItem value="whatsapp">WhatsApp</SelectItem><SelectItem value="product">Producto</SelectItem><SelectItem value="quantity">Cantidad</SelectItem><SelectItem value="company">Empresa</SelectItem><SelectItem value="document">Documento / NIT</SelectItem><SelectItem value="city">Ciudad</SelectItem><SelectItem value="address">Dirección</SelectItem><SelectItem value="confirmation">Resumen y confirmación</SelectItem><SelectItem value="none">Cierre</SelectItem></SelectContent></Select></div>
                           <div className="grid gap-2 md:col-span-2"><Label>Descripción operativa</Label><Textarea value={selectedChatbotFlowStage.description} onChange={(e) => updateChatbotStage(selectedChatbotFlowStage.id as ChatbotFlowStageId, { description: e.target.value })} rows={2} className="rounded-2xl" /></div>
                           <div className="grid gap-2 md:col-span-2"><Label>Prompt de etapa</Label><Textarea value={selectedChatbotFlowStage.prompt} onChange={(e) => updateChatbotStage(selectedChatbotFlowStage.id as ChatbotFlowStageId, { prompt: e.target.value })} rows={4} className="rounded-2xl" /></div>
                         </div>
@@ -5889,7 +5901,7 @@ export function CrmIntegrationsClient() {
                           <div key={action.id} className="rounded-[22px] border border-slate-200 bg-slate-50/70 p-4">
                             <div className="flex items-center justify-between gap-3">
                               <div>
-                                <p className="text-sm font-semibold text-slate-900">{action.kind === 'human' ? 'Escalamiento humano' : action.kind === 'stock' ? 'Consulta de stock' : action.kind === 'catalog' ? 'Explorar catálogo' : 'Mensaje libre'}</p>
+                                <p className="text-sm font-semibold text-slate-900">{action.kind === 'human' ? 'Escalamiento humano' : action.kind === 'stock' ? 'Consulta de stock' : action.kind === 'catalog' ? 'Explorar catálogo' : action.kind === 'create_quote' ? 'Crear cotización' : action.kind === 'create_invoice' ? 'Crear factura' : action.kind === 'create_work_order' ? 'Crear orden' : 'Mensaje libre'}</p>
                                 <p className="text-xs text-slate-500">ID técnico: {action.id}</p>
                               </div>
                               <Switch checked={action.enabled} onCheckedChange={(checked) => updateChatbotQuickAction(action.id, { enabled: checked })} />
@@ -6258,6 +6270,28 @@ export function CrmIntegrationsClient() {
               <div className="mt-5 flex-1 overflow-y-auto pr-1">
                 {wizardStep === 'config' ? (
                 <div className="grid gap-4 md:grid-cols-2">
+                {editingChannelId && selectedChannel?.id === editingChannelId ? (
+                  <div className="md:col-span-2 rounded-[24px] border border-sky-200 bg-sky-50/70 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700">Gestión del canal</p>
+                        <p className="mt-1 text-sm leading-6 text-slate-700">Mientras editas, aquí también tienes los accesos principales del canal para no bajar a otros bloques.</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-white text-emerald-800 hover:bg-emerald-50">
+                          <Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>Abrir Chatbot Studio</Link>
+                        </Button>
+                        <Button variant="outline" className="rounded-xl" onClick={() => void copyText('wizard-selected-endpoint', endpoint)}>
+                          {copiedKey === 'wizard-selected-endpoint' ? 'Copiado' : 'Copiar endpoint'}
+                        </Button>
+                        {selectedChatbotEmbedUrl ? <Button asChild variant="outline" className="rounded-xl"><Link href={selectedChatbotEmbedUrl}>Ver iframe</Link></Button> : null}
+                        <Button variant="outline" className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => setDeleteCandidate(selectedChannel)} disabled={deletingChannelId === selectedChannel.id}>
+                          {deletingChannelId === selectedChannel.id ? 'Eliminando...' : 'Eliminar canal'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 {!createIsPublicWebForm && !createIsChatbot ? (
                   <>
                 <div className="grid gap-2 md:col-span-2">

@@ -81,7 +81,12 @@ type ChatIdentity = {
   nombre: string
   email: string
   telefono: string
+  whatsapp: string
   producto: string
+  empresaNombre: string
+  documento: string
+  ciudad: string
+  direccion: string
 }
 
 type ConversationSyncResponse = {
@@ -242,7 +247,12 @@ function inferIdentityFromMessage(current: ChatIdentity, messageBody: string, ne
     nombre: current.nombre || (nextField === 'name' ? extractedName || trimmedMessage : extractedName),
     email: current.email || (nextField === 'email' ? extractedEmail : extractedEmail),
     telefono: current.telefono || (nextField === 'phone' ? extractedPhone : extractedPhone),
+    whatsapp: current.whatsapp || (nextField === 'whatsapp' ? extractedPhone || trimmedMessage : current.whatsapp),
     producto: current.producto || ((nextField === 'product' || canTreatAsProduct) ? trimmedMessage : current.producto),
+    empresaNombre: current.empresaNombre || (nextField === 'company' ? trimmedMessage : current.empresaNombre),
+    documento: current.documento || (nextField === 'document' ? trimmedMessage : current.documento),
+    ciudad: current.ciudad || (nextField === 'city' ? trimmedMessage : current.ciudad),
+    direccion: current.direccion || (nextField === 'address' ? trimmedMessage : current.direccion),
   }
 }
 
@@ -273,6 +283,27 @@ function getQuickActionVisual(kind: ChatbotQuickAction['kind']) {
       badge: 'URL',
       icon: '↗',
       className: 'border-indigo-200 bg-indigo-50 text-indigo-800 hover:border-indigo-300 hover:bg-indigo-100',
+    }
+  }
+  if (kind === 'create_quote') {
+    return {
+      badge: 'Cotización',
+      icon: '▣',
+      className: 'border-indigo-200 bg-indigo-50 text-indigo-900 hover:border-indigo-300 hover:bg-indigo-100',
+    }
+  }
+  if (kind === 'create_invoice') {
+    return {
+      badge: 'Factura',
+      icon: '◫',
+      className: 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-900 hover:border-fuchsia-300 hover:bg-fuchsia-100',
+    }
+  }
+  if (kind === 'create_work_order') {
+    return {
+      badge: 'Orden',
+      icon: '▤',
+      className: 'border-cyan-200 bg-cyan-50 text-cyan-900 hover:border-cyan-300 hover:bg-cyan-100',
     }
   }
   if (kind === 'product_lookup') {
@@ -398,7 +429,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   const initialStage = useMemo(() => findChatbotFlowStage(props.flowStages, 'welcome') ?? props.flowStages[0] ?? null, [props.flowStages])
   const [ready, setReady] = useState(false)
   const [sessionId, setSessionId] = useState('')
-  const [identity, setIdentity] = useState<ChatIdentity>({ nombre: '', email: '', telefono: '', producto: '' })
+  const [identity, setIdentity] = useState<ChatIdentity>({ nombre: '', email: '', telefono: '', whatsapp: '', producto: '', empresaNombre: '', documento: '', ciudad: '', direccion: '' })
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -479,7 +510,12 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
           nombre: typeof parsed.nombre === 'string' ? parsed.nombre : '',
           email: typeof parsed.email === 'string' ? parsed.email : '',
           telefono: typeof parsed.telefono === 'string' ? parsed.telefono : '',
+          whatsapp: typeof parsed.whatsapp === 'string' ? parsed.whatsapp : '',
           producto: typeof parsed.producto === 'string' ? parsed.producto : '',
+          empresaNombre: typeof parsed.empresaNombre === 'string' ? parsed.empresaNombre : '',
+          documento: typeof parsed.documento === 'string' ? parsed.documento : '',
+          ciudad: typeof parsed.ciudad === 'string' ? parsed.ciudad : '',
+          direccion: typeof parsed.direccion === 'string' ? parsed.direccion : '',
         })
       } catch {
         window.localStorage.removeItem(identityKey)
@@ -572,7 +608,12 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
           nombre: nextIdentity.nombre,
           email: nextIdentity.email,
           telefono: nextIdentity.telefono,
+          whatsapp: nextIdentity.whatsapp,
           producto: nextIdentity.producto,
+          empresaNombre: nextIdentity.empresaNombre,
+          documento: nextIdentity.documento,
+          ciudad: nextIdentity.ciudad,
+          direccion: nextIdentity.direccion,
           message: trimmedMessage,
           requestHuman,
           externalThreadId: sessionId,

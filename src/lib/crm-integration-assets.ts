@@ -61,6 +61,8 @@ type ChatbotIframeArgs = {
   channelId: string
   height?: string
   floatingLauncherEnabled?: boolean
+  chatShellRadius?: string
+  backgroundColor?: string
 }
 
 type ChatbotEmbedMode = 'iframe' | 'widget'
@@ -395,6 +397,8 @@ export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   const collapsedHeight = height
   const src = buildChatbotEmbedUrl(args.baseUrl, args.channelId, 'iframe')
   const iframeId = `sgd-chatbot-iframe-${args.channelId}`
+  const shellRadius = `${(args.chatShellRadius || '30').replace(/[^0-9]/g, '') || '30'}px`
+  const iframeBackground = args.backgroundColor || '#ffffff'
   const embedStyle = 'width:100%;max-width:420px;display:block;'
 
   return `<iframe
@@ -402,7 +406,7 @@ export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   src="${src}"
   title="Chatbot CRM SGDigital"
   loading="lazy"
-  style="${embedStyle}height:${collapsedHeight}px;border:0;border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.16);background:#ffffff;overflow:hidden;transition:height .28s ease, box-shadow .28s ease;"
+  style="${embedStyle}height:${collapsedHeight}px;border:0;border-radius:${shellRadius};box-shadow:0 24px 60px rgba(15,23,42,.16);background:${iframeBackground};overflow:hidden;transition:height .28s ease, box-shadow .28s ease;"
   referrerpolicy="strict-origin-when-cross-origin"
 ></iframe>
 <script>
@@ -413,11 +417,12 @@ export function buildChatbotIframeSnippet(args: ChatbotIframeArgs) {
   const channelId = '${args.channelId}';
   const defaultHeight = ${height};
   const collapsedHeight = ${collapsedHeight};
+  const maxHeight = Math.max(defaultHeight, 1600);
 
   function applyHeight(nextHeight) {
-    const safeHeight = Math.max(collapsedHeight, Math.min(Number(nextHeight) || defaultHeight, defaultHeight));
+    const safeHeight = Math.max(collapsedHeight, Math.min(Number(nextHeight) || defaultHeight, maxHeight));
     iframe.style.height = safeHeight + 'px';
-    iframe.style.background = '#ffffff';
+    iframe.style.background = '${iframeBackground}';
     iframe.style.boxShadow = '0 24px 60px rgba(15,23,42,.16)';
   }
 
