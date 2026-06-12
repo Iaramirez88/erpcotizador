@@ -3745,6 +3745,17 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
             ) : null}
             <Button variant="outline" onClick={() => void handleCreateChannel('empty')} disabled={creating}>{creating ? 'Creando...' : 'Crear vacío'}</Button>
             <Button variant="outline" onClick={() => void handleCreateChannel('template')} disabled={creating}>{creating ? 'Creando...' : 'Crear con plantilla'}</Button>
+            <Button
+              variant="outline"
+              className="border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100"
+              onClick={() => {
+                if (!selectedChannelId) return
+                window.location.assign(`/dashboard/crm/integraciones?channelId=${encodeURIComponent(selectedChannelId)}&open=wizard`)
+              }}
+              disabled={!selectedChannelId}
+            >
+              Configurar canal
+            </Button>
             <Button onClick={() => void handleSaveChannel()} disabled={!selectedChannelId || saving || !hasUnsavedChanges}>{saving ? 'Guardando...' : hasUnsavedChanges ? 'Guardar studio' : 'Studio guardado'}</Button>
           </div>
         </CardContent>

@@ -2066,6 +2066,7 @@ export function CrmIntegrationsClient() {
   const [deletingChannelId, setDeletingChannelId] = useState<string | null>(null)
   const [updatingChannelId, setUpdatingChannelId] = useState<string | null>(null)
   const [editingChannelId, setEditingChannelId] = useState<string | null>(null)
+  const [pendingWizardChannelId, setPendingWizardChannelId] = useState<string | null>(null)
   const [deleteCandidate, setDeleteCandidate] = useState<ChannelConnection | null>(null)
   const [channels, setChannels] = useState<ChannelConnection[]>([])
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null)
@@ -2192,11 +2193,15 @@ export function CrmIntegrationsClient() {
     if (typeof window === 'undefined') return
     const search = new URLSearchParams(window.location.search)
     const channelId = search.get('channelId')
+    const open = search.get('open')
     const metaStatus = search.get('meta')
     const message = search.get('message')
 
     if (channelId) {
       setSelectedChannelId(channelId)
+      if (open === 'wizard') {
+        setPendingWizardChannelId(channelId)
+      }
     }
 
     if (metaStatus === 'connected') {
@@ -2213,6 +2218,15 @@ export function CrmIntegrationsClient() {
       window.history.replaceState({}, '', window.location.pathname)
     }
   }, [])
+
+  useEffect(() => {
+    if (!pendingWizardChannelId || !channels.length) return
+    const channel = channels.find((item) => item.id === pendingWizardChannelId) ?? null
+    setPendingWizardChannelId(null)
+    if (!channel) return
+    openEditWizard(channel, { forceWizard: true })
+    window.history.replaceState({}, '', window.location.pathname)
+  }, [channels, pendingWizardChannelId])
 
   const selectedChannel = useMemo(() => channels.find((item) => item.id === selectedChannelId) ?? null, [channels, selectedChannelId])
   const createPreset = useMemo(() => TEMPLATE_PRESETS.find((item) => item.key === createForm.templateKey) ?? TEMPLATE_PRESETS[0], [createForm.templateKey])
@@ -2579,8 +2593,8 @@ export function CrmIntegrationsClient() {
     setCreateOpen(true)
   }
 
-  function openEditWizard(channel: ChannelConnection) {
-    if (channel.provider === 'WEB_CHATBOT') {
+  function openEditWizard(channel: ChannelConnection, options?: { forceWizard?: boolean }) {
+    if (channel.provider === 'WEB_CHATBOT' && !options?.forceWizard) {
       router.push(`/dashboard/crm/chatbot?channelId=${encodeURIComponent(channel.id)}`)
       return
     }
@@ -4687,9 +4701,14 @@ export function CrmIntegrationsClient() {
                       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{language === 'en' ? 'Channel management' : 'Gestión del canal'}</p>
                       <div className="mt-4 flex flex-wrap gap-2">
                         {selectedChannel.provider === 'WEB_CHATBOT' ? (
-                          <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
-                            <Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>{language === 'en' ? 'Open Chatbot Studio' : 'Abrir Chatbot Studio'}</Link>
-                          </Button>
+                          <>
+                            <Button variant="outline" className="rounded-xl border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100" onClick={() => openEditWizard(selectedChannel, { forceWizard: true })}>
+                              {language === 'en' ? 'Edit channel setup' : 'Editar configuración'}
+                            </Button>
+                            <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100">
+                              <Link href={`/dashboard/crm/chatbot?channelId=${selectedChannel.id}`}>{language === 'en' ? 'Open Chatbot Studio' : 'Abrir Chatbot Studio'}</Link>
+                            </Button>
+                          </>
                         ) : (
                           <Button variant="outline" className="rounded-xl" onClick={() => openEditWizard(selectedChannel)}>
                             {language === 'en' ? 'Edit channel' : 'Editar canal'}
