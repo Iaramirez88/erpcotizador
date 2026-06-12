@@ -15,8 +15,14 @@ export type PublicChatbotSettings = {
   fontFamily: string
   launcherLabel: string
   launcherIcon: string
-  launcherPosition: 'right' | 'left'
+  launcherPosition: 'right' | 'center' | 'left'
+  launcherPlacement: 'fixed' | 'absolute'
   launcherSize: 'compact' | 'standard' | 'large'
+  launcherOffsetX: string
+  launcherOffsetY: string
+  launcherZIndex: string
+  panelZIndex: string
+  backdropZIndex: string
   chatbotCustomCss: string
   floatingLauncherEnabled: boolean
   publicEmbedEnabled: boolean
@@ -68,8 +74,14 @@ export function getPublicChatbotSettings(settingsJson: unknown): PublicChatbotSe
     fontFamily: typeof settings.fontFamily === 'string' && settings.fontFamily.trim() ? settings.fontFamily.trim() : 'ui-sans-serif, system-ui, sans-serif',
     launcherLabel: typeof settings.launcherLabel === 'string' && settings.launcherLabel.trim() ? settings.launcherLabel.trim() : 'Abrir asesor virtual',
     launcherIcon: typeof settings.launcherIcon === 'string' && settings.launcherIcon.trim() ? settings.launcherIcon.trim() : 'Bot',
-    launcherPosition: settings.launcherPosition === 'left' ? 'left' : 'right',
+    launcherPosition: settings.launcherPosition === 'left' ? 'left' : settings.launcherPosition === 'center' ? 'center' : 'right',
+    launcherPlacement: settings.launcherPlacement === 'absolute' ? 'absolute' : 'fixed',
     launcherSize: settings.launcherSize === 'compact' ? 'compact' : settings.launcherSize === 'large' ? 'large' : 'standard',
+    launcherOffsetX: typeof settings.launcherOffsetX === 'string' && settings.launcherOffsetX.trim() ? settings.launcherOffsetX.trim() : '60',
+    launcherOffsetY: typeof settings.launcherOffsetY === 'string' && settings.launcherOffsetY.trim() ? settings.launcherOffsetY.trim() : '60',
+    launcherZIndex: typeof settings.launcherZIndex === 'string' && settings.launcherZIndex.trim() ? settings.launcherZIndex.trim() : '2147483647',
+    panelZIndex: typeof settings.panelZIndex === 'string' && settings.panelZIndex.trim() ? settings.panelZIndex.trim() : '2147483646',
+    backdropZIndex: typeof settings.backdropZIndex === 'string' && settings.backdropZIndex.trim() ? settings.backdropZIndex.trim() : '2147483645',
     chatbotCustomCss: typeof settings.chatbotCustomCss === 'string' ? settings.chatbotCustomCss : '',
     floatingLauncherEnabled: settings.floatingLauncherEnabled !== false,
     publicEmbedEnabled: settings.publicEmbedEnabled !== false,

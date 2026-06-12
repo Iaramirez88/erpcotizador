@@ -46,8 +46,14 @@ type PublicChatbotEmbedProps = {
   floatingLauncherEnabled: boolean
   launcherLabel: string
   launcherIcon: string
-  launcherPosition: 'right' | 'left'
+  launcherPosition: 'right' | 'center' | 'left'
+  launcherPlacement: 'fixed' | 'absolute'
   launcherSize: 'compact' | 'standard' | 'large'
+  launcherOffsetX: string
+  launcherOffsetY: string
+  launcherZIndex: string
+  panelZIndex: string
+  backdropZIndex: string
   allowHumanHandoff: boolean
   nameLabel: string
   namePlaceholder: string
@@ -184,6 +190,22 @@ function getLauncherMetrics(size: PublicChatbotEmbedProps['launcherSize']) {
     labelVisible: true,
     fontSize: '14px',
   }
+}
+
+function normalizeEmbedPixel(rawValue: string, fallback: string) {
+  const digits = rawValue.replace(/[^0-9]/g, '')
+  return digits || fallback
+}
+
+function normalizeEmbedZIndex(rawValue: string, fallback: string) {
+  const digits = rawValue.replace(/[^0-9-]/g, '')
+  return digits || fallback
+}
+
+function getLauncherAnchor(position: PublicChatbotEmbedProps['launcherPosition'], offsetX: number, offsetY: number) {
+  if (position === 'left') return { bottom: offsetY, left: offsetX }
+  if (position === 'center') return { bottom: offsetY, left: '50%', transform: 'translateX(-50%)' }
+  return { bottom: offsetY, right: offsetX }
 }
 
 function extractEmail(value: string) {
@@ -389,6 +411,10 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
 
   const accentStyle = useMemo(() => ({ ['--chat-accent' as string]: props.accentColor, ['--chat-background' as string]: props.backgroundColor, ['--chat-page-background' as string]: props.pageBackgroundColor, fontFamily: props.fontFamily }), [props.accentColor, props.backgroundColor, props.pageBackgroundColor, props.fontFamily])
   const launcherMetrics = useMemo(() => getLauncherMetrics(props.launcherSize), [props.launcherSize])
+  const launcherOffsetX = useMemo(() => Number.parseInt(normalizeEmbedPixel(props.launcherOffsetX, '60'), 10), [props.launcherOffsetX])
+  const launcherOffsetY = useMemo(() => Number.parseInt(normalizeEmbedPixel(props.launcherOffsetY, '60'), 10), [props.launcherOffsetY])
+  const launcherAnchorStyle = useMemo(() => getLauncherAnchor(props.launcherPosition, launcherOffsetX, launcherOffsetY), [launcherOffsetX, launcherOffsetY, props.launcherPosition])
+  const launcherZIndex = useMemo(() => Number.parseInt(normalizeEmbedZIndex(props.launcherZIndex, '2147483647'), 10), [props.launcherZIndex])
   const latestMessage = messages[messages.length - 1] ?? null
   const latestAssistantPrompt = useMemo(() => {
     const assistantMessages = [...messages].reverse().find((item) => item.role === 'assistant' && item.meta?.nextField)
@@ -662,17 +688,15 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   }, [connectionState, floatingLauncherActive, launcherMetrics.buttonHeight, messages.length, panelOpen, props.channelId, sending, syncing])
 
   return (
-    <div ref={rootRef} className="sgd-chatbot-page p-3 text-slate-950" style={{ ...accentStyle, minHeight: floatingLauncherActive && !panelOpen ? '96px' : '100vh', background: floatingLauncherActive && !panelOpen ? 'transparent' : `radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 30%), linear-gradient(180deg, ${props.pageBackgroundColor} 0%, ${props.pageBackgroundColor} 45%, ${props.backgroundColor} 100%)`, position: 'relative' }}>
+    <div ref={rootRef} className="sgd-chatbot-page p-3 text-slate-950" style={{ ...accentStyle, minHeight: floatingLauncherActive && !panelOpen ? `${launcherOffsetY + 84}px` : '100vh', background: floatingLauncherActive && !panelOpen ? 'transparent' : `radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 30%), linear-gradient(180deg, ${props.pageBackgroundColor} 0%, ${props.pageBackgroundColor} 45%, ${props.backgroundColor} 100%)`, position: 'relative' }}>
       {props.customCss.trim() ? <style>{props.customCss}</style> : null}
       {floatingLauncherActive && !panelOpen ? (
-        <div style={{ minHeight: '80px', position: 'relative' }}>
+        <div style={{ minHeight: `${launcherOffsetY + 84}px`, position: 'relative' }}>
           <button
             type="button"
             onClick={openPanel}
             style={{
-              position: 'absolute',
-              bottom: 12,
-              [props.launcherPosition]: 12,
+              position: props.launcherPlacement,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -688,6 +712,8 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
               fontSize: launcherMetrics.fontSize,
               boxShadow: '0 18px 40px rgba(15,23,42,.22)',
               cursor: 'pointer',
+              zIndex: launcherZIndex,
+              ...launcherAnchorStyle,
             }}
           >
             <span style={{ fontSize: launcherMetrics.iconSize, lineHeight: 1 }}>{getLauncherPreviewIcon(props.launcherIcon)}</span>

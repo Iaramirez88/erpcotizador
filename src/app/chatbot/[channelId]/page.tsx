@@ -70,7 +70,13 @@ export default async function PublicChatbotPage(props: PageProps) {
       launcherLabel={settings.launcherLabel}
       launcherIcon={settings.launcherIcon}
       launcherPosition={settings.launcherPosition}
+      launcherPlacement={settings.launcherPlacement}
       launcherSize={settings.launcherSize}
+      launcherOffsetX={settings.launcherOffsetX}
+      launcherOffsetY={settings.launcherOffsetY}
+      launcherZIndex={settings.launcherZIndex}
+      panelZIndex={settings.panelZIndex}
+      backdropZIndex={settings.backdropZIndex}
       nameLabel={settings.nameLabel}
       namePlaceholder={settings.namePlaceholder}
       emailLabel={settings.emailLabel}

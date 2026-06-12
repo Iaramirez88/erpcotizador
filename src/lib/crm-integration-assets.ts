@@ -45,8 +45,14 @@ type ChatbotSnippetArgs = {
   backgroundColor?: string
   launcherLabel?: string
   launcherIcon?: string
-  launcherPosition?: 'right' | 'left'
+  launcherPosition?: 'right' | 'center' | 'left'
+  launcherPlacement?: 'fixed' | 'absolute'
   launcherSize?: 'compact' | 'standard' | 'large'
+  launcherOffsetX?: string
+  launcherOffsetY?: string
+  launcherZIndex?: string
+  panelZIndex?: string
+  backdropZIndex?: string
   customCss?: string
 }
 
@@ -286,7 +292,8 @@ export function buildChatbotSnippet(args: ChatbotSnippetArgs) {
   const backgroundColor = args.backgroundColor || '#f8fbff'
   const launcherLabel = args.launcherLabel || title
   const launcherIcon = args.launcherIcon || 'chat'
-  const launcherPosition = args.launcherPosition === 'left' ? 'left' : 'right'
+  const launcherPosition = args.launcherPosition === 'left' ? 'left' : args.launcherPosition === 'center' ? 'center' : 'right'
+  const launcherPlacement = args.launcherPlacement === 'absolute' ? 'absolute' : 'fixed'
   const launcherSize = args.launcherSize === 'compact' ? 'compact' : args.launcherSize === 'large' ? 'large' : 'standard'
   const customCss = args.customCss || ''
   const iframeUrl = buildChatbotEmbedUrl(args.baseUrl, args.channelId, 'iframe')
@@ -297,20 +304,21 @@ export function buildChatbotSnippet(args: ChatbotSnippetArgs) {
       : launcherIcon === 'bot'
         ? '&#129302;'
         : '&#128172;'
-  const launcherOffset = '60px'
-  const panelOffset = '148px'
-  const launcherAnchorStyle = launcherPosition === 'left' ? `left:${launcherOffset};` : `right:${launcherOffset};`
-  const panelAnchorStyle = launcherPosition === 'left' ? `left:${launcherOffset};` : `right:${launcherOffset};`
-  const panelTransformOrigin = launcherPosition === 'left' ? 'bottom left' : 'bottom right'
+  const launcherOffset = `${(args.launcherOffsetY || '60').replace(/[^0-9]/g, '') || '60'}px`
+  const launcherOffsetX = `${(args.launcherOffsetX || '60').replace(/[^0-9]/g, '') || '60'}px`
+  const panelOffset = `${Number.parseInt((args.launcherOffsetY || '60').replace(/[^0-9]/g, '') || '60', 10) + 88}px`
+  const launcherAnchorStyle = launcherPosition === 'left' ? `left:${launcherOffsetX};` : launcherPosition === 'center' ? 'left:50%;transform:translateX(-50%);' : `right:${launcherOffsetX};`
+  const panelAnchorStyle = launcherPosition === 'left' ? `left:${launcherOffsetX};` : launcherPosition === 'center' ? 'left:50%;transform:translateX(-50%);' : `right:${launcherOffsetX};`
+  const panelTransformOrigin = launcherPosition === 'left' ? 'bottom left' : launcherPosition === 'center' ? 'bottom center' : 'bottom right'
   const launcherLabelMarkup = launcherSize === 'compact' ? '' : `<span>${launcherLabel}</span>`
-  const backdropZIndex = 2147483645
-  const panelZIndex = 2147483646
-  const launcherZIndex = 2147483647
+  const backdropZIndex = Number.parseInt((args.backdropZIndex || '2147483645').replace(/[^0-9-]/g, '') || '2147483645', 10)
+  const panelZIndex = Number.parseInt((args.panelZIndex || '2147483646').replace(/[^0-9-]/g, '') || '2147483646', 10)
+  const launcherZIndex = Number.parseInt((args.launcherZIndex || '2147483647').replace(/[^0-9-]/g, '') || '2147483647', 10)
   const launcherButtonStyle = launcherSize === 'compact'
-    ? `position:fixed;bottom:${launcherOffset};${launcherAnchorStyle}z-index:${launcherZIndex};border:none;border-radius:999px;width:58px;height:58px;background:${accentColor};color:#fff;font:700 14px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0;backdrop-filter:blur(14px);`
+    ? `position:${launcherPlacement};bottom:${launcherOffset};${launcherAnchorStyle}z-index:${launcherZIndex};border:none;border-radius:999px;width:58px;height:58px;background:${accentColor};color:#fff;font:700 14px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:0;backdrop-filter:blur(14px);`
     : launcherSize === 'large'
-      ? `position:fixed;bottom:${launcherOffset};${launcherAnchorStyle}z-index:${launcherZIndex};border:none;border-radius:999px;padding:0 24px;height:66px;background:${accentColor};color:#fff;font:700 15px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;display:flex;align-items:center;gap:12px;backdrop-filter:blur(14px);`
-      : `position:fixed;bottom:${launcherOffset};${launcherAnchorStyle}z-index:${launcherZIndex};border:none;border-radius:999px;padding:0 20px;height:60px;background:${accentColor};color:#fff;font:700 14px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;display:flex;align-items:center;gap:10px;backdrop-filter:blur(14px);`
+      ? `position:${launcherPlacement};bottom:${launcherOffset};${launcherAnchorStyle}z-index:${launcherZIndex};border:none;border-radius:999px;padding:0 24px;height:66px;background:${accentColor};color:#fff;font:700 15px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;display:flex;align-items:center;gap:12px;backdrop-filter:blur(14px);`
+      : `position:${launcherPlacement};bottom:${launcherOffset};${launcherAnchorStyle}z-index:${launcherZIndex};border:none;border-radius:999px;padding:0 20px;height:60px;background:${accentColor};color:#fff;font:700 14px sans-serif;box-shadow:0 18px 40px rgba(15,23,42,.22);cursor:pointer;display:flex;align-items:center;gap:10px;backdrop-filter:blur(14px);`
 
   return `<script>
 (function () {

@@ -289,8 +289,9 @@ type ChatbotPreviewMode = 'floating' | 'compact' | 'expanded'
 type ChatbotPreviewViewport = 'desktop' | 'mobile'
 type CrmWorkspaceView = 'operations' | 'metrics'
 type CrmOperationsPanelView = 'preview' | 'readiness' | 'assets'
-type LauncherPosition = 'right' | 'left'
+type LauncherPosition = 'left' | 'center' | 'right'
 type LauncherSize = 'compact' | 'standard' | 'large'
+type LauncherPlacement = 'fixed' | 'absolute'
 type PanelShadowPreset = 'soft' | 'medium' | 'strong'
 type ChatbotBuilderSection = 'brand' | 'flow' | 'launcher' | 'copy'
 type ChatbotWizardSection = 'base' | 'brand' | 'launcher' | 'copy'
@@ -421,8 +422,14 @@ type ChatbotBuilderState = Pick<ChannelFormState,
   | 'floatingLauncherEnabled'
   | 'launcherLabel'
   | 'launcherIcon'
+  | 'launcherPlacement'
   | 'launcherPosition'
   | 'launcherSize'
+  | 'launcherOffsetX'
+  | 'launcherOffsetY'
+  | 'launcherZIndex'
+  | 'panelZIndex'
+  | 'backdropZIndex'
   | 'headerBadgeLabel'
   | 'statusBadgeLabel'
   | 'chatShellRadius'
@@ -508,7 +515,13 @@ function getInitialChannelForm() {
     launcherLabel: 'Abrir asesor virtual',
     launcherIcon: 'bot',
     launcherPosition: 'right' as LauncherPosition,
+    launcherPlacement: 'fixed' as LauncherPlacement,
     launcherSize: 'standard' as LauncherSize,
+    launcherOffsetX: '60',
+    launcherOffsetY: '60',
+    launcherZIndex: '2147483647',
+    panelZIndex: '2147483646',
+    backdropZIndex: '2147483645',
     headerBadgeLabel: 'Chatbot CRM',
     statusBadgeLabel: 'En linea',
     chatShellRadius: '30',
@@ -961,7 +974,13 @@ const MANAGED_CHANNEL_SETTING_KEYS = new Set([
   'launcherLabel',
   'launcherIcon',
   'launcherPosition',
+  'launcherPlacement',
   'launcherSize',
+  'launcherOffsetX',
+  'launcherOffsetY',
+  'launcherZIndex',
+  'panelZIndex',
+  'backdropZIndex',
   'headerBadgeLabel',
   'statusBadgeLabel',
   'chatShellRadius',
@@ -1292,13 +1311,45 @@ function getLauncherIcon(settingsJson: Record<string, unknown> | null | undefine
 }
 
 function getLauncherPosition(settingsJson: Record<string, unknown> | null | undefined): LauncherPosition {
-  return settingsJson?.launcherPosition === 'left' ? 'left' : 'right'
+  if (settingsJson?.launcherPosition === 'left') return 'left'
+  if (settingsJson?.launcherPosition === 'center') return 'center'
+  return 'right'
+}
+
+function getLauncherPlacement(settingsJson: Record<string, unknown> | null | undefined): LauncherPlacement {
+  return settingsJson?.launcherPlacement === 'absolute' ? 'absolute' : 'fixed'
 }
 
 function getLauncherSize(settingsJson: Record<string, unknown> | null | undefined): LauncherSize {
   if (settingsJson?.launcherSize === 'compact') return 'compact'
   if (settingsJson?.launcherSize === 'large') return 'large'
   return 'standard'
+}
+
+function getLauncherOffsetX(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.launcherOffsetX === 'string' && settingsJson.launcherOffsetX.trim() ? settingsJson.launcherOffsetX : '60'
+}
+
+function getLauncherOffsetY(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.launcherOffsetY === 'string' && settingsJson.launcherOffsetY.trim() ? settingsJson.launcherOffsetY : '60'
+}
+
+function getLauncherZIndex(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.launcherZIndex === 'string' && settingsJson.launcherZIndex.trim() ? settingsJson.launcherZIndex : '2147483647'
+}
+
+function getPanelZIndex(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.panelZIndex === 'string' && settingsJson.panelZIndex.trim() ? settingsJson.panelZIndex : '2147483646'
+}
+
+function getBackdropZIndex(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.backdropZIndex === 'string' && settingsJson.backdropZIndex.trim() ? settingsJson.backdropZIndex : '2147483645'
+}
+
+function getLauncherPositionLabel(position: LauncherPosition) {
+  if (position === 'left') return 'Izquierda'
+  if (position === 'center') return 'Centro'
+  return 'Derecha'
 }
 
 function getHeaderBadgeLabel(settingsJson: Record<string, unknown> | null | undefined) {
@@ -1353,6 +1404,27 @@ function getPublicEmbedEnabled(settingsJson: Record<string, unknown> | null | un
 function normalizePixelValue(rawValue: string, fallback: string) {
   const digits = rawValue.replace(/[^0-9]/g, '')
   return digits || fallback
+}
+
+function normalizeZIndexValue(rawValue: string, fallback: string) {
+  const digits = rawValue.replace(/[^0-9-]/g, '')
+  return digits || fallback
+}
+
+function getPreviewJustifyContent(position: LauncherPosition) {
+  if (position === 'left') return 'flex-start'
+  if (position === 'center') return 'center'
+  return 'flex-end'
+}
+
+function getPreviewAnchorStyle(position: LauncherPosition, offsetX: number, offsetY: number) {
+  if (position === 'left') {
+    return { bottom: offsetY, left: offsetX, maxWidth: `calc(100% - ${offsetX * 2}px)` }
+  }
+  if (position === 'center') {
+    return { bottom: offsetY, left: '50%', transform: 'translateX(-50%)', maxWidth: `calc(100% - ${offsetX * 2}px)` }
+  }
+  return { bottom: offsetY, right: offsetX, maxWidth: `calc(100% - ${offsetX * 2}px)` }
 }
 
 function getWebFormCustomFieldPlaceholder(field: WebFormCustomField) {
@@ -1473,86 +1545,87 @@ function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
 }) {
   const mode = options?.mode ?? 'expanded'
   const viewport = options?.viewport ?? 'desktop'
-  const minHeight = options?.minHeight ?? (viewport === 'mobile' ? 500 : 420)
+  const minHeight = options?.minHeight ?? (viewport === 'mobile' ? 620 : 560)
   const launcherMetrics = getLauncherPreviewMetrics(builderState.launcherSize)
   const panelShadow = getPanelShadowValue(builderState.panelShadowPreset)
-  const previewOffset = 60
+  const previewOffsetX = Number.parseInt(normalizePixelValue(builderState.launcherOffsetX, '60'), 10)
+  const previewOffsetY = Number.parseInt(normalizePixelValue(builderState.launcherOffsetY, '60'), 10)
+  const previewAnchorStyle = getPreviewAnchorStyle(builderState.launcherPosition, previewOffsetX, previewOffsetY)
   const welcomeStage = builderState.flowStages.find((item) => item.id === 'welcome') ?? builderState.flowStages[0] ?? null
   const catalogStage = builderState.flowStages.find((item) => item.id === 'catalog') ?? builderState.flowStages[1] ?? welcomeStage
   const welcomeActions = builderState.quickActions.filter((item) => welcomeStage?.quickActionIds.includes(item.id) && item.enabled)
   const welcomeResponses = welcomeStage?.responseOptions ?? []
+  const launcherLabelVisible = mode !== 'compact' && launcherMetrics.labelVisible
 
   return (
     <div className="relative overflow-hidden rounded-[26px] border border-emerald-200 p-3 shadow-sm" style={{ background: `radial-gradient(circle at top, rgba(16,185,129,0.12), transparent 30%), linear-gradient(180deg, ${builderState.pageBackgroundColor} 0%, ${builderState.pageBackgroundColor} 55%, ${builderState.backgroundColor} 100%)`, minHeight }}>
-      <div className="flex h-full px-3 pb-20 pt-4" style={{ justifyContent: builderState.launcherPosition === 'left' ? 'flex-start' : 'flex-end' }}>
-        <div className="relative flex min-h-full w-full items-end" style={{ maxWidth: viewport === 'mobile' ? 340 : 420, fontFamily: builderState.fontFamily }}>
-          {mode === 'expanded' ? (
-            <div className="overflow-hidden border border-slate-200 bg-white" style={{ marginTop: 24, marginLeft: builderState.launcherPosition === 'left' ? 0 : 'auto', marginRight: builderState.launcherPosition === 'left' ? 'auto' : 0, borderRadius: `${normalizePixelValue(builderState.chatShellRadius, '30')}px`, boxShadow: panelShadow }}>
-              <div className="px-4 py-4 text-white" style={{ background: `linear-gradient(135deg, #0f172a, ${builderState.accentColor})` }}>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-100">{builderState.headerBadgeLabel}</p>
-                    <p className="mt-1 text-base font-semibold">{builderState.chatbotTitle}</p>
-                  </div>
-                  <div className="rounded-full bg-white/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/90">{builderState.statusBadgeLabel}</div>
+      <div className="flex h-full px-3 pb-24 pt-4" style={{ justifyContent: getPreviewJustifyContent(builderState.launcherPosition) }}>
+        <div className="relative flex min-h-full w-full items-end" style={{ maxWidth: viewport === 'mobile' ? 340 : '100%', fontFamily: builderState.fontFamily }}>
+          <div className="w-full overflow-hidden border border-slate-200 bg-white" style={{ marginTop: 24, marginLeft: builderState.launcherPosition === 'right' ? 'auto' : builderState.launcherPosition === 'center' ? 'auto' : 0, marginRight: builderState.launcherPosition === 'left' ? 'auto' : builderState.launcherPosition === 'center' ? 'auto' : 0, borderRadius: `${normalizePixelValue(builderState.chatShellRadius, '30')}px`, boxShadow: panelShadow }}>
+            <div className="px-4 py-4 text-white" style={{ background: `linear-gradient(135deg, #0f172a, ${builderState.accentColor})` }}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-100">{builderState.headerBadgeLabel}</p>
+                  <p className="mt-1 text-base font-semibold">{builderState.chatbotTitle}</p>
                 </div>
+                <div className="rounded-full bg-white/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/90">{builderState.statusBadgeLabel}</div>
               </div>
-              <div className="space-y-3 px-4 py-4" style={{ backgroundColor: builderState.backgroundColor }}>
-                {welcomeStage ? (
-                  <div className="rounded-[20px] border border-slate-200 bg-slate-50/80 px-4 py-3 shadow-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Etapa activa</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-900">{welcomeStage.title}</p>
-                      </div>
-                      <div className={`rounded-full bg-gradient-to-r ${getFlowStageAccent(welcomeStage.id)} px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white`}>{getFlowStageNextFieldLabel(welcomeStage.nextField)}</div>
+            </div>
+            <div className="space-y-3 px-4 py-4" style={{ backgroundColor: builderState.backgroundColor }}>
+              {welcomeStage ? (
+                <div className="rounded-[20px] border border-slate-200 bg-slate-50/80 px-4 py-3 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Etapa activa</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">{welcomeStage.title}</p>
                     </div>
-                    <p className="mt-2 text-xs leading-5 text-slate-600">{welcomeStage.description}</p>
+                    <div className={`rounded-full bg-gradient-to-r ${getFlowStageAccent(welcomeStage.id)} px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white`}>{getFlowStageNextFieldLabel(welcomeStage.nextField)}</div>
                   </div>
-                ) : null}
-                <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>{welcomeStage?.prompt || builderState.chatbotPrompt}</div>
-                {welcomeResponses.length ? (
-                  <div className="flex max-w-[92%] flex-wrap gap-2">
-                    {welcomeResponses.map((option) => (
-                      <div key={option.id} className="rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] font-semibold text-violet-900 shadow-sm">
-                        <div>{option.label}</div>
-                        <div className="mt-0.5 text-[10px] font-medium opacity-75">Salta a {builderState.flowStages.find((stage) => stage.id === option.targetStageId)?.title || option.targetStageId}</div>
+                  <p className="mt-2 text-xs leading-5 text-slate-600">{welcomeStage.description}</p>
+                </div>
+              ) : null}
+              <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>{welcomeStage?.prompt || builderState.chatbotPrompt}</div>
+              {welcomeResponses.length ? (
+                <div className="flex max-w-[92%] flex-wrap gap-2">
+                  {welcomeResponses.map((option) => (
+                    <div key={option.id} className="rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] font-semibold text-violet-900 shadow-sm">
+                      <div>{option.label}</div>
+                      <div className="mt-0.5 text-[10px] font-medium opacity-75">Salta a {builderState.flowStages.find((stage) => stage.id === option.targetStageId)?.title || option.targetStageId}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {builderState.showProductField ? <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>También puedo tomar producto y contexto inicial para enrutar mejor el lead.</div> : null}
+              <div className="ml-auto max-w-[78%] px-4 py-3 text-xs leading-5 text-white shadow-sm" style={{ backgroundColor: builderState.accentColor, borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>Hola, necesito ayuda para una nueva cotización.</div>
+              <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>{catalogStage?.prompt || `Perfecto. Soy ${builderState.assistantName} y te ayudo a capturar lo necesario.`}</div>
+            </div>
+            <div className="border-t border-slate-100 bg-white px-4 py-4">
+              <div className="grid gap-2">
+                {welcomeActions.length ? (
+                  <div className="flex flex-wrap gap-2">
+                    {welcomeActions.map((action) => (
+                      <div key={action.id} className={`rounded-2xl border px-3 py-2 text-[11px] font-semibold shadow-sm ${getQuickActionTone(action.kind)}`}>
+                        <div>{action.label}</div>
+                        <div className="mt-0.5 text-[10px] font-medium opacity-80">{action.kind === 'catalog' ? 'Explora catálogo' : action.kind === 'stock' ? 'Consulta inventario' : action.kind === 'human' ? 'Escala al equipo' : 'Acción rápida'}</div>
                       </div>
                     ))}
                   </div>
                 ) : null}
-                {builderState.showProductField ? <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>También puedo tomar producto y contexto inicial para enrutar mejor el lead.</div> : null}
-                <div className="ml-auto max-w-[78%] px-4 py-3 text-xs leading-5 text-white shadow-sm" style={{ backgroundColor: builderState.accentColor, borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>Hola, necesito ayuda para una nueva cotización.</div>
-                <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>{catalogStage?.prompt || `Perfecto. Soy ${builderState.assistantName} y te ayudo a capturar lo necesario.`}</div>
-              </div>
-              <div className="border-t border-slate-100 bg-white px-4 py-4">
-                <div className="grid gap-2">
-                  {welcomeActions.length ? (
-                    <div className="flex flex-wrap gap-2">
-                      {welcomeActions.map((action) => (
-                        <div key={action.id} className={`rounded-2xl border px-3 py-2 text-[11px] font-semibold shadow-sm ${getQuickActionTone(action.kind)}`}>
-                          <div>{action.label}</div>
-                          <div className="mt-0.5 text-[10px] font-medium opacity-80">{action.kind === 'catalog' ? 'Explora catálogo' : action.kind === 'stock' ? 'Consulta inventario' : action.kind === 'human' ? 'Escala al equipo' : 'Acción rápida'}</div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  {builderState.showProductField ? <div className="rounded-2xl border border-slate-200 px-3 py-2 text-xs text-slate-400">{builderState.productLabel}: {builderState.productPlaceholder}</div> : null}
-                  <div className="rounded-2xl border border-slate-200 px-3 py-3 text-xs text-slate-400">{builderState.messageLabel}: {builderState.messagePlaceholder}</div>
-                  <div className="flex gap-2">
-                    <div className="flex-1 rounded-xl px-3 py-2 text-center text-xs font-semibold text-white" style={{ backgroundColor: builderState.accentColor }}>Responder</div>
-                    <div className="rounded-xl border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-600">Asesor humano</div>
-                  </div>
+                {builderState.showProductField ? <div className="rounded-2xl border border-slate-200 px-3 py-2 text-xs text-slate-400">{builderState.productLabel}: {builderState.productPlaceholder}</div> : null}
+                <div className="rounded-2xl border border-slate-200 px-3 py-3 text-xs text-slate-400">{builderState.messageLabel}: {builderState.messagePlaceholder}</div>
+                <div className="flex gap-2">
+                  <div className="flex-1 rounded-xl px-3 py-2 text-center text-xs font-semibold text-white" style={{ backgroundColor: builderState.accentColor }}>Responder</div>
+                  <div className="rounded-xl border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-600">Asesor humano</div>
                 </div>
               </div>
             </div>
-          ) : null}
+          </div>
 
           {builderState.floatingLauncherEnabled ? (
-            <div className="absolute z-10" style={{ bottom: previewOffset, left: builderState.launcherPosition === 'left' ? previewOffset : undefined, right: builderState.launcherPosition === 'right' ? previewOffset : undefined, maxWidth: `calc(100% - ${previewOffset * 2}px)` }}>
+            <div className="absolute" style={{ zIndex: Number.parseInt(normalizeZIndexValue(builderState.launcherZIndex, '2147483647'), 10), ...previewAnchorStyle }}>
               <div className="flex max-w-full items-center justify-center whitespace-nowrap text-white shadow-[0_18px_44px_-26px_rgba(15,23,42,0.55)]" style={{ backgroundColor: builderState.accentColor, borderRadius: launcherMetrics.buttonRadius, padding: launcherMetrics.buttonPadding, height: launcherMetrics.buttonHeight, gap: mode === 'compact' ? '0' : launcherMetrics.buttonGap, minWidth: mode === 'compact' ? launcherMetrics.buttonHeight : undefined, fontSize: launcherMetrics.fontSize, fontWeight: 700 }}>
                 <span style={{ fontSize: launcherMetrics.iconSize, lineHeight: 1 }}>{getLauncherPreviewIcon(builderState.launcherIcon)}</span>
-                {mode !== 'compact' && launcherMetrics.labelVisible ? <span>{builderState.launcherLabel}</span> : null}
+                {launcherLabelVisible ? <span>{builderState.launcherLabel}</span> : null}
               </div>
             </div>
           ) : <div className="absolute bottom-0 rounded-full border border-dashed border-slate-300 bg-white/80 px-3 py-2 text-[11px] font-semibold text-slate-500">Launcher flotante desactivado</div>}
@@ -1936,7 +2009,13 @@ function getChatbotBuilderState(settingsJson: Record<string, unknown> | null | u
     launcherLabel: getLauncherLabel(settingsJson),
     launcherIcon: getLauncherIcon(settingsJson),
     launcherPosition: getLauncherPosition(settingsJson),
+    launcherPlacement: getLauncherPlacement(settingsJson),
     launcherSize: getLauncherSize(settingsJson),
+    launcherOffsetX: getLauncherOffsetX(settingsJson),
+    launcherOffsetY: getLauncherOffsetY(settingsJson),
+    launcherZIndex: getLauncherZIndex(settingsJson),
+    panelZIndex: getPanelZIndex(settingsJson),
+    backdropZIndex: getBackdropZIndex(settingsJson),
     headerBadgeLabel: getHeaderBadgeLabel(settingsJson),
     statusBadgeLabel: getStatusBadgeLabel(settingsJson),
     chatShellRadius: getChatShellRadius(settingsJson),
@@ -2102,7 +2181,7 @@ export function CrmIntegrationsClient() {
   const [wizardWebFormSection, setWizardWebFormSection] = useState<WebFormConfigSection>('base')
   const [metaSelectionDraft, setMetaSelectionDraft] = useState({ selectedPageId: '', selectedInstagramAccountId: '', selectedPhoneNumberId: '' })
   const [floatingPreviewOpen, setFloatingPreviewOpen] = useState(false)
-  const [wizardChatPreviewMode, setWizardChatPreviewMode] = useState<ChatbotPreviewMode>('floating')
+  const [wizardChatPreviewMode, setWizardChatPreviewMode] = useState<ChatbotPreviewMode>('expanded')
   const [wizardChatPreviewViewport, setWizardChatPreviewViewport] = useState<ChatbotPreviewViewport>('desktop')
   const [googleSheetsActions, setGoogleSheetsActions] = useState<GoogleSheetsActionState>(getInitialGoogleSheetsActionState())
   const metaPopupRef = useRef<Window | null>(null)
@@ -2234,7 +2313,6 @@ export function CrmIntegrationsClient() {
   const createIsPublicWebForm = createForm.provider === 'WEB_FORM' && (createForm.bridgeKind === 'GENERIC' || createForm.bridgeKind === 'BOOKING')
   const createIsBridge = createForm.provider === 'WEB_FORM' && !createIsPublicWebForm
   const createUsesWebhook = createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' || createForm.provider === 'FACEBOOK_PAGE' || createForm.provider === 'MESSENGER' || createForm.provider === 'INSTAGRAM_DM'
-  const wizardLauncherMetrics = useMemo(() => getLauncherPreviewMetrics(createForm.launcherSize), [createForm.launcherSize])
   const derivedChatbotCustomCss = useMemo(() => buildFriendlyChatbotCustomCss({ chatShellRadius: createForm.chatShellRadius, messageBubbleRadius: createForm.messageBubbleRadius, panelShadowPreset: createForm.panelShadowPreset }), [createForm.chatShellRadius, createForm.messageBubbleRadius, createForm.panelShadowPreset])
 
   const stats = useMemo(() => {
@@ -2530,7 +2608,13 @@ export function CrmIntegrationsClient() {
         launcherLabel: getLauncherLabel(selectedSettings),
         launcherIcon: getLauncherIcon(selectedSettings),
         launcherPosition: getLauncherPosition(selectedSettings),
+        launcherPlacement: getLauncherPlacement(selectedSettings),
         launcherSize: getLauncherSize(selectedSettings),
+        launcherOffsetX: getLauncherOffsetX(selectedSettings),
+        launcherOffsetY: getLauncherOffsetY(selectedSettings),
+        launcherZIndex: getLauncherZIndex(selectedSettings),
+        panelZIndex: getPanelZIndex(selectedSettings),
+        backdropZIndex: getBackdropZIndex(selectedSettings),
         customCss: getChatbotCustomCss(selectedSettings),
       }),
       chatbotIframe: buildChatbotIframeSnippet({
@@ -2585,7 +2669,7 @@ export function CrmIntegrationsClient() {
     setEditingChannelId(null)
     setCreateForm(getInitialChannelForm())
     setWizardMetaAdvancedOpen(false)
-    setWizardChatPreviewMode('floating')
+    setWizardChatPreviewMode('expanded')
     setWizardChatPreviewViewport('desktop')
     setWizardChatbotSection('base')
     setWizardWebFormSection('base')
@@ -2641,7 +2725,13 @@ export function CrmIntegrationsClient() {
       launcherLabel: getLauncherLabel(settings),
       launcherIcon: getLauncherIcon(settings),
       launcherPosition: getLauncherPosition(settings),
+      launcherPlacement: getLauncherPlacement(settings),
       launcherSize: getLauncherSize(settings),
+      launcherOffsetX: getLauncherOffsetX(settings),
+      launcherOffsetY: getLauncherOffsetY(settings),
+      launcherZIndex: getLauncherZIndex(settings),
+      panelZIndex: getPanelZIndex(settings),
+      backdropZIndex: getBackdropZIndex(settings),
       headerBadgeLabel: getHeaderBadgeLabel(settings),
       statusBadgeLabel: getStatusBadgeLabel(settings),
       chatShellRadius: getChatShellRadius(settings),
@@ -2693,7 +2783,7 @@ export function CrmIntegrationsClient() {
       termsLinkText: getSettingText(settings, 'termsLinkText', 'Leer términos'),
       termsLinkUrl: getSettingText(settings, 'termsLinkUrl', ''),
     })
-    setWizardChatPreviewMode('floating')
+    setWizardChatPreviewMode('expanded')
     setWizardChatPreviewViewport('desktop')
     setWizardChatbotSection('base')
     setWizardWebFormSection('base')
@@ -2977,7 +3067,13 @@ export function CrmIntegrationsClient() {
         launcherLabel: createForm.launcherLabel,
         launcherIcon: createForm.launcherIcon,
         launcherPosition: createForm.launcherPosition,
+        launcherPlacement: createForm.launcherPlacement,
         launcherSize: createForm.launcherSize,
+        launcherOffsetX: normalizePixelValue(createForm.launcherOffsetX, '60'),
+        launcherOffsetY: normalizePixelValue(createForm.launcherOffsetY, '60'),
+        launcherZIndex: normalizeZIndexValue(createForm.launcherZIndex, '2147483647'),
+        panelZIndex: normalizeZIndexValue(createForm.panelZIndex, '2147483646'),
+        backdropZIndex: normalizeZIndexValue(createForm.backdropZIndex, '2147483645'),
         headerBadgeLabel: createForm.headerBadgeLabel,
         statusBadgeLabel: createForm.statusBadgeLabel,
         chatShellRadius: normalizePixelValue(createForm.chatShellRadius, '30'),
@@ -3056,7 +3152,7 @@ export function CrmIntegrationsClient() {
       setCreateOpen(false)
       setEditingChannelId(null)
       setWizardStep('template')
-      setWizardChatPreviewMode('floating')
+      setWizardChatPreviewMode('expanded')
       setWizardChatPreviewViewport('desktop')
       setActiveAssetTab(json.data.provider === 'WEB_CHATBOT' ? 'chatbot' : json.data.provider === 'WEB_FORM' ? 'form' : 'overview')
       setCreateForm(getInitialChannelForm())
@@ -3855,8 +3951,14 @@ export function CrmIntegrationsClient() {
             </div>
             <div className="grid gap-2"><Label>Texto del launcher flotante</Label><Input value={createForm.launcherLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, launcherLabel: e.target.value }))} className="h-11 rounded-xl" placeholder="Abrir asesor virtual" /></div>
             <div className="grid gap-2"><Label>Icono del launcher</Label><Select value={createForm.launcherIcon} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherIcon: value }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bot">bot</SelectItem><SelectItem value="message-circle">message-circle</SelectItem><SelectItem value="sparkles">sparkles</SelectItem></SelectContent></Select></div>
-            <div className="grid gap-2"><Label>Posición del launcher</Label><Select value={createForm.launcherPosition} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherPosition: value as LauncherPosition }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="right">Derecha</SelectItem><SelectItem value="left">Izquierda</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2"><Label>Alineación horizontal</Label><Select value={createForm.launcherPosition} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherPosition: value as LauncherPosition }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="right">Derecha</SelectItem><SelectItem value="center">Centro</SelectItem><SelectItem value="left">Izquierda</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2"><Label>Tipo de posición</Label><Select value={createForm.launcherPlacement} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherPlacement: value as LauncherPlacement }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="fixed">Fixed</SelectItem><SelectItem value="absolute">Absolute</SelectItem></SelectContent></Select></div>
             <div className="grid gap-2"><Label>Tamaño del launcher</Label><Select value={createForm.launcherSize} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherSize: value as LauncherSize }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="compact">Compacto</SelectItem><SelectItem value="standard">Estándar</SelectItem><SelectItem value="large">Grande</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2"><Label>Offset horizontal</Label><div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2"><Input value={createForm.launcherOffsetX} onChange={(e) => setCreateForm((prev) => ({ ...prev, launcherOffsetX: normalizePixelValue(e.target.value, '60') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="60" /><span className="text-xs font-medium text-slate-500">px</span></div></div>
+            <div className="grid gap-2"><Label>Offset vertical</Label><div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2"><Input value={createForm.launcherOffsetY} onChange={(e) => setCreateForm((prev) => ({ ...prev, launcherOffsetY: normalizePixelValue(e.target.value, '60') }))} className="h-10 rounded-xl border-0 px-0 shadow-none focus-visible:ring-0" placeholder="60" /><span className="text-xs font-medium text-slate-500">px</span></div></div>
+            <div className="grid gap-2"><Label>Z-index overlay</Label><Input value={createForm.backdropZIndex} onChange={(e) => setCreateForm((prev) => ({ ...prev, backdropZIndex: normalizeZIndexValue(e.target.value, '2147483645') }))} className="h-11 rounded-xl" placeholder="2147483645" /></div>
+            <div className="grid gap-2"><Label>Z-index panel</Label><Input value={createForm.panelZIndex} onChange={(e) => setCreateForm((prev) => ({ ...prev, panelZIndex: normalizeZIndexValue(e.target.value, '2147483646') }))} className="h-11 rounded-xl" placeholder="2147483646" /></div>
+            <div className="grid gap-2"><Label>Z-index launcher</Label><Input value={createForm.launcherZIndex} onChange={(e) => setCreateForm((prev) => ({ ...prev, launcherZIndex: normalizeZIndexValue(e.target.value, '2147483647') }))} className="h-11 rounded-xl" placeholder="2147483647" /></div>
           </div>
         </TabsContent>
 
@@ -3898,6 +4000,11 @@ export function CrmIntegrationsClient() {
         iframeHeight: normalizePixelValue(chatbotBuilderDraft.iframeHeight, '720'),
         chatShellRadius: normalizePixelValue(chatbotBuilderDraft.chatShellRadius, '30'),
         messageBubbleRadius: normalizePixelValue(chatbotBuilderDraft.messageBubbleRadius, '22'),
+        launcherOffsetX: normalizePixelValue(chatbotBuilderDraft.launcherOffsetX, '60'),
+        launcherOffsetY: normalizePixelValue(chatbotBuilderDraft.launcherOffsetY, '60'),
+        launcherZIndex: normalizeZIndexValue(chatbotBuilderDraft.launcherZIndex, '2147483647'),
+        panelZIndex: normalizeZIndexValue(chatbotBuilderDraft.panelZIndex, '2147483646'),
+        backdropZIndex: normalizeZIndexValue(chatbotBuilderDraft.backdropZIndex, '2147483645'),
         chatbotCustomCss: buildFriendlyChatbotCustomCss({
           chatShellRadius: chatbotBuilderDraft.chatShellRadius,
           messageBubbleRadius: chatbotBuilderDraft.messageBubbleRadius,
@@ -5840,8 +5947,14 @@ export function CrmIntegrationsClient() {
                     </div>
                     <div className="grid gap-2"><Label>Texto launcher</Label><Input value={chatbotBuilderDraft.launcherLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, launcherLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
                     <div className="grid gap-2"><Label>Icono launcher</Label><Select value={chatbotBuilderDraft.launcherIcon} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherIcon: value }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bot">bot</SelectItem><SelectItem value="message-circle">message-circle</SelectItem><SelectItem value="sparkles">sparkles</SelectItem></SelectContent></Select></div>
-                    <div className="grid gap-2"><Label>Posición launcher</Label><Select value={chatbotBuilderDraft.launcherPosition} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherPosition: value as LauncherPosition }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="right">Derecha</SelectItem><SelectItem value="left">Izquierda</SelectItem></SelectContent></Select></div>
+                    <div className="grid gap-2"><Label>Alineación launcher</Label><Select value={chatbotBuilderDraft.launcherPosition} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherPosition: value as LauncherPosition }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="right">Derecha</SelectItem><SelectItem value="center">Centro</SelectItem><SelectItem value="left">Izquierda</SelectItem></SelectContent></Select></div>
+                    <div className="grid gap-2"><Label>Tipo posición</Label><Select value={chatbotBuilderDraft.launcherPlacement} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherPlacement: value as LauncherPlacement }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="fixed">Fixed</SelectItem><SelectItem value="absolute">Absolute</SelectItem></SelectContent></Select></div>
                     <div className="grid gap-2"><Label>Tamaño launcher</Label><Select value={chatbotBuilderDraft.launcherSize} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, launcherSize: value as LauncherSize }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="compact">Compacto</SelectItem><SelectItem value="standard">Estándar</SelectItem><SelectItem value="large">Grande</SelectItem></SelectContent></Select></div>
+                    <div className="grid gap-2"><Label>Offset horizontal</Label><Input value={chatbotBuilderDraft.launcherOffsetX} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, launcherOffsetX: normalizePixelValue(e.target.value, '60') }))} className="h-11 rounded-xl bg-white" /></div>
+                    <div className="grid gap-2"><Label>Offset vertical</Label><Input value={chatbotBuilderDraft.launcherOffsetY} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, launcherOffsetY: normalizePixelValue(e.target.value, '60') }))} className="h-11 rounded-xl bg-white" /></div>
+                    <div className="grid gap-2"><Label>Z-index overlay</Label><Input value={chatbotBuilderDraft.backdropZIndex} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, backdropZIndex: normalizeZIndexValue(e.target.value, '2147483645') }))} className="h-11 rounded-xl bg-white" /></div>
+                    <div className="grid gap-2"><Label>Z-index panel</Label><Input value={chatbotBuilderDraft.panelZIndex} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, panelZIndex: normalizeZIndexValue(e.target.value, '2147483646') }))} className="h-11 rounded-xl bg-white" /></div>
+                    <div className="grid gap-2"><Label>Z-index launcher</Label><Input value={chatbotBuilderDraft.launcherZIndex} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, launcherZIndex: normalizeZIndexValue(e.target.value, '2147483647') }))} className="h-11 rounded-xl bg-white" /></div>
                   </div>
                 ) : null}
 
@@ -5864,7 +5977,7 @@ export function CrmIntegrationsClient() {
                     <p className="mt-2 text-sm leading-6 text-slate-600">Puedes alternar entre launcher compacto, launcher visible o panel abierto, y también entre desktop y mobile.</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {[{ value: 'floating', label: 'Launcher' }, { value: 'compact', label: 'Compacto' }, { value: 'expanded', label: 'Abierto' }].map((mode) => (
+                    {[{ value: 'floating', label: 'Visible' }, { value: 'compact', label: 'Launcher compacto' }, { value: 'expanded', label: 'Panel abierto' }].map((mode) => (
                       <button key={mode.value} type="button" onClick={() => setChatbotBuilderPreviewMode(mode.value as ChatbotPreviewMode)} className={chatbotBuilderPreviewMode === mode.value ? 'rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600'}>{mode.label}</button>
                     ))}
                     {[{ value: 'desktop', label: 'Desktop' }, { value: 'mobile', label: 'Mobile' }].map((viewport) => (
@@ -6028,9 +6141,9 @@ export function CrmIntegrationsClient() {
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div className="flex flex-wrap gap-2">
                               {[
-                                { value: 'floating', label: 'Boton flotante' },
-                                { value: 'compact', label: 'Compactado' },
-                                { value: 'expanded', label: 'Desplegado' },
+                                { value: 'floating', label: 'Visible' },
+                                { value: 'compact', label: 'Launcher compacto' },
+                                { value: 'expanded', label: 'Panel abierto' },
                               ].map((mode) => (
                                 <button
                                   key={mode.value}
@@ -6059,63 +6172,22 @@ export function CrmIntegrationsClient() {
                             </div>
                           </div>
 
-                          <div className="relative mt-3 overflow-hidden rounded-[26px] border border-emerald-200 p-3 shadow-sm" style={{ background: `radial-gradient(circle at top, rgba(14,165,233,0.14), transparent 32%), linear-gradient(180deg, ${createForm.pageBackgroundColor} 0%, ${createForm.pageBackgroundColor} 55%, ${createForm.backgroundColor} 100%)`, minHeight: wizardChatPreviewViewport === 'mobile' ? 500 : 420 }}>
-                            {derivedChatbotCustomCss.trim() ? <style>{derivedChatbotCustomCss}</style> : null}
-                            <div className="flex h-full px-3 pb-20 pt-4" style={{ justifyContent: createForm.launcherPosition === 'left' ? 'flex-start' : 'flex-end' }}>
-                              <div className="sgd-preview-root relative flex min-h-full w-full items-end" style={{ maxWidth: wizardChatPreviewViewport === 'mobile' ? 340 : 420, fontFamily: createForm.fontFamily }}>
-                                {wizardChatPreviewMode === 'expanded' ? (
-                                  <div className="sgd-preview-panel overflow-hidden border border-slate-200 bg-white" style={{ marginTop: 24, marginLeft: createForm.launcherPosition === 'left' ? 0 : 'auto', marginRight: createForm.launcherPosition === 'left' ? 'auto' : 0, borderRadius: `${normalizePixelValue(createForm.chatShellRadius, '30')}px`, boxShadow: getPanelShadowValue(createForm.panelShadowPreset) }}>
-                                    <div className="sgd-preview-panel-header px-4 py-4 text-white" style={{ background: `linear-gradient(135deg, #0f172a, ${createForm.accentColor})` }}>
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div>
-                                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-100">{createForm.headerBadgeLabel}</p>
-                                          <p className="mt-1 text-base font-semibold">{createForm.chatbotTitle}</p>
-                                        </div>
-                                        <div className="rounded-full bg-white/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/90">{createForm.statusBadgeLabel}</div>
-                                      </div>
-                                    </div>
-                                    <div className="sgd-preview-messages space-y-3 px-4 py-4" style={{ backgroundColor: createForm.backgroundColor }}>
-                                      <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(createForm.messageBubbleRadius, '22')}px` }}>{createForm.chatbotPrompt}</div>
-                                      {createForm.showProductField ? <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(createForm.messageBubbleRadius, '22')}px` }}>Tambien puedo pedir producto y cantidad para revisar inventario.</div> : null}
-                                      <div className="ml-auto max-w-[78%] px-4 py-3 text-xs leading-5 text-white shadow-sm" style={{ backgroundColor: createForm.accentColor, borderRadius: `${normalizePixelValue(createForm.messageBubbleRadius, '22')}px` }}>Necesito una propuesta comercial para mi marca.</div>
-                                    </div>
-                                    <div className="sgd-preview-composer border-t border-slate-100 bg-white px-4 py-4">
-                                      <div className="grid gap-2">
-                                        {createForm.showProductField ? <div className="rounded-2xl border border-slate-200 px-3 py-2 text-xs text-slate-400">{createForm.productLabel}: {createForm.productPlaceholder}</div> : null}
-                                        <div className="rounded-2xl border border-slate-200 px-3 py-3 text-xs text-slate-400">{createForm.messageLabel}: {createForm.messagePlaceholder}</div>
-                                        <div className="flex gap-2">
-                                          <div className="flex-1 rounded-xl px-3 py-2 text-center text-xs font-semibold text-white" style={{ backgroundColor: createForm.accentColor }}>Responder</div>
-                                          <div className="rounded-xl border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-600">Asesor humano</div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ) : null}
-
-                                {createForm.floatingLauncherEnabled ? (
-                                  <div className="sgd-preview-launcher absolute z-10" style={{ bottom: 60, left: createForm.launcherPosition === 'left' ? 60 : undefined, right: createForm.launcherPosition === 'right' ? 60 : undefined, maxWidth: 'calc(100% - 120px)' }}>
-                                    <div className="flex max-w-full items-center justify-center whitespace-nowrap text-white shadow-[0_18px_44px_-26px_rgba(15,23,42,0.55)]" style={{ backgroundColor: createForm.accentColor, borderRadius: wizardLauncherMetrics.buttonRadius, padding: wizardLauncherMetrics.buttonPadding, height: wizardLauncherMetrics.buttonHeight, gap: wizardChatPreviewMode === 'compact' ? '0' : wizardLauncherMetrics.buttonGap, minWidth: wizardChatPreviewMode === 'compact' ? wizardLauncherMetrics.buttonHeight : undefined, fontSize: wizardLauncherMetrics.fontSize, fontWeight: 700 }}>
-                                      <span style={{ fontSize: wizardLauncherMetrics.iconSize, lineHeight: 1 }}>{getLauncherPreviewIcon(createForm.launcherIcon)}</span>
-                                      {wizardChatPreviewMode !== 'compact' && wizardLauncherMetrics.labelVisible ? <span>{createForm.launcherLabel}</span> : null}
-                                    </div>
-                                  </div>
-                                ) : <div className="absolute bottom-0 rounded-full border border-dashed border-slate-300 bg-white/80 px-3 py-2 text-[11px] font-semibold text-slate-500">Launcher flotante desactivado</div>}
-                              </div>
-                            </div>
+                          <div className="mt-3">
+                            {renderChatbotPreview(createForm, { mode: wizardChatPreviewMode, viewport: wizardChatPreviewViewport, minHeight: wizardChatPreviewViewport === 'mobile' ? 620 : 560 })}
                           </div>
 
                           <div className="mt-3 grid gap-2 text-[11px] text-slate-600 sm:grid-cols-3">
                             <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2">
                               <p className="font-semibold text-slate-900">Launcher</p>
-                              <p className="mt-1">{createForm.launcherPosition === 'left' ? 'Izquierda' : 'Derecha'} · {createForm.launcherSize}</p>
+                              <p className="mt-1">{getLauncherPositionLabel(createForm.launcherPosition)} · {createForm.launcherPlacement} · {createForm.launcherSize}</p>
                             </div>
                             <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2">
-                              <p className="font-semibold text-slate-900">Estado</p>
-                              <p className="mt-1">{wizardChatPreviewMode === 'expanded' ? 'Panel abierto' : wizardChatPreviewMode === 'compact' ? 'Launcher compacto' : 'Launcher visible'}</p>
+                              <p className="font-semibold text-slate-900">Anclaje</p>
+                              <p className="mt-1">X {normalizePixelValue(createForm.launcherOffsetX, '60')}px · Y {normalizePixelValue(createForm.launcherOffsetY, '60')}px</p>
                             </div>
                             <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2">
-                              <p className="font-semibold text-slate-900">Extensión</p>
-                              <p className="mt-1">Radio {normalizePixelValue(createForm.chatShellRadius, '30')}px · Sombra {createForm.panelShadowPreset}</p>
+                              <p className="font-semibold text-slate-900">Capas</p>
+                              <p className="mt-1">L {normalizeZIndexValue(createForm.launcherZIndex, '2147483647')} · P {normalizeZIndexValue(createForm.panelZIndex, '2147483646')}</p>
                             </div>
                           </div>
                         </div>
