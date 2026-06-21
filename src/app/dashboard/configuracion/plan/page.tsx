@@ -10,6 +10,19 @@ import type { ModuleKey } from '@prisma/client'
 import { cn } from "@/lib/utils"
 import { formatCOP, type BillingCycle, type PlanInfo, type PlanTier } from "@/lib/plans"
 import {
+  buildCommercialPricingSnapshot,
+  buildCommercialSegmentMatrix,
+  getHrPlanPricingSummaryFromCatalog,
+  getSystemSuitePricingSummaryFromCatalog,
+} from '@/lib/commercial-price-catalog'
+import {
+  MARKET_PRICING_BENCHMARKS,
+  SGDIGITAL_PRICING_POSITIONING,
+  TARGET_COMMERCIAL_SEGMENT,
+  getPublicBenchmarkBandsCOP,
+  getPublicBenchmarkScenariosCOP,
+} from '@/lib/market-pricing-benchmarks'
+import {
   buildPlanModuleCatalog,
   getModularPlanQuote,
   getDefaultEnabledModulesForPlan,
@@ -39,7 +52,7 @@ type PlanCatalogInfo = PlanInfo & {
   displayOrder?: number
 }
 
-type PlanSectionTab = 'planes' | 'modulos' | 'almacenamiento' | 'historial' | 'comparacion'
+type PlanSectionTab = 'planes' | 'suite' | 'modulos' | 'rrhh' | 'almacenamiento' | 'historial' | 'comparacion'
 
 const PLAN_DETAILS: Record<PlanTier, PlanDetails> = {
   CRM: {
@@ -172,6 +185,7 @@ type PlanApiResponse =
       lastInvoice: LastInvoice | null
       invoices: LastInvoice[]
       modulePrices: Array<{ module: ModuleKey; priceCOP: number }>
+      commercialPrices: Array<{ code: string; priceCOP: number }>
       all: PlanCatalogInfo[]
       storageUsage: {
         totalBytes: number
@@ -230,6 +244,7 @@ export default function PlanPage() {
   const [lastInvoice, setLastInvoice] = useState<LastInvoice | null>(null)
   const [invoices, setInvoices] = useState<LastInvoice[]>([])
   const [modulePriceMap, setModulePriceMap] = useState<Partial<Record<ModuleKey, number>>>({})
+  const [commercialPriceMap, setCommercialPriceMap] = useState<Record<string, number>>({})
   const [cycle, setCycle] = useState<BillingCycle>("MONTHLY")
   const [isPaying, setIsPaying] = useState(false)
   const [selectedModules, setSelectedModules] = useState<(typeof PLAN_MODULE_CATALOG)[number]["module"][]>([])
@@ -290,6 +305,7 @@ export default function PlanPage() {
           setInvoices(json.invoices)
           setStorageUsage(json.storageUsage)
           setModulePriceMap(Object.fromEntries(json.modulePrices.map((row) => [row.module, row.priceCOP])) as Partial<Record<ModuleKey, number>>)
+          setCommercialPriceMap(Object.fromEntries(json.commercialPrices.map((row) => [row.code, row.priceCOP])))
           return
         }
 
@@ -367,6 +383,8 @@ export default function PlanPage() {
   }, [sortedPlans])
 
   const pricedCatalog = useMemo(() => buildPlanModuleCatalog(modulePriceMap), [modulePriceMap])
+  const commercialPricing = useMemo(() => buildCommercialPricingSnapshot(commercialPriceMap), [commercialPriceMap])
+  const commercialSegmentMatrix = useMemo(() => buildCommercialSegmentMatrix(commercialPricing), [commercialPricing])
 
   const modulesByCategory = useMemo(() => {
     return pricedCatalog.reduce<Record<string, typeof pricedCatalog>>((acc, item) => {
@@ -455,6 +473,17 @@ export default function PlanPage() {
     : storageLevel === 'warning'
       ? 'El consumo ya supera el 80%. Conviene vigilar nuevas cargas.'
       : 'El consumo está en rango saludable.'
+
+  const hrPlanPricing = useMemo(
+    () => getHrPlanPricingSummaryFromCatalog(commercialPricing.hrParent, commercialPricing.hrSubmodules, cycle),
+    [commercialPricing, cycle],
+  )
+  const systemSuitePricing = useMemo(
+    () => getSystemSuitePricingSummaryFromCatalog(commercialPricing.systemSuiteGlobal, commercialPricing.systemSuiteParents, cycle),
+    [commercialPricing, cycle],
+  )
+  const publicBenchmarkBands = useMemo(() => getPublicBenchmarkBandsCOP(), [])
+  const publicBenchmarkScenarios = useMemo(() => getPublicBenchmarkScenariosCOP([10, 20]), [])
 
   useEffect(() => {
     if (!current || selectedModules.length > 0) return
@@ -712,7 +741,9 @@ export default function PlanPage() {
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PlanSectionTab)}>
             <TabsList className="h-auto flex-wrap justify-start rounded-2xl bg-slate-100 p-1">
               <TabsTrigger value="planes" className="rounded-xl">Planes base</TabsTrigger>
+              <TabsTrigger value="suite" className="rounded-xl">Suite del sistema</TabsTrigger>
               <TabsTrigger value="modulos" className="rounded-xl">Arma tu plan por módulos</TabsTrigger>
+              <TabsTrigger value="rrhh" className="rounded-xl">Recursos Humanos</TabsTrigger>
               <TabsTrigger value="almacenamiento" className="rounded-xl">Almacenamiento</TabsTrigger>
               <TabsTrigger value="historial" className="rounded-xl">Historial de planes</TabsTrigger>
               <TabsTrigger value="comparacion" className="rounded-xl">Diferencias entre planes</TabsTrigger>
@@ -803,6 +834,205 @@ export default function PlanPage() {
                           >
                             {isPaying ? "Redirigiendo…" : isCurrent ? "Plan actual" : "Cambiar a este plan"}
                           </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="suite" className="space-y-4">
+              <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+                <Card className="border-slate-200 bg-[linear-gradient(135deg,#0f172a_0%,#111827_52%,#1e293b_100%)] text-white">
+                  <CardHeader>
+                    <CardTitle>{commercialPricing.systemSuiteGlobal.title}</CardTitle>
+                    <CardDescription className="text-slate-300">{commercialPricing.systemSuiteGlobal.description}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="rounded-2xl bg-white/10 p-4">
+                      <div className="text-xs uppercase tracking-[0.18em] text-slate-300">Costo global sugerido</div>
+                      <div className="mt-2 text-4xl font-black">{formatCOP(cycle === 'YEARLY' ? systemSuitePricing.suiteTotalCOP : commercialPricing.systemSuiteGlobal.monthlyPriceCOP)}</div>
+                      <div className="text-sm text-slate-300">{cycle === 'YEARLY' ? 'COP / año' : 'COP / mes'}</div>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="text-xs uppercase tracking-[0.16em] text-slate-400">Módulos padre</div>
+                        <div className="mt-2 text-2xl font-semibold">{commercialPricing.systemSuiteParents.length}</div>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div className="text-xs uppercase tracking-[0.16em] text-slate-400">Compra por padres</div>
+                        <div className="mt-2 text-2xl font-semibold">{formatCOP(cycle === 'YEARLY' ? systemSuitePricing.parentsSubtotalCOP : systemSuitePricing.parentsSubtotalMonthlyCOP)}</div>
+                      </div>
+                      <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
+                        <div className="text-xs uppercase tracking-[0.16em] text-emerald-200">Ahorro suite</div>
+                        <div className="mt-2 text-2xl font-semibold text-emerald-100">{formatCOP(cycle === 'YEARLY' ? systemSuitePricing.savingsCOP : systemSuitePricing.monthlySavingsCOP)}</div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 p-4 text-sm text-slate-300">
+                      La lógica comercial recomendada queda en tres niveles: submódulo puntual, módulo padre empaquetado y suite global completa.
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-slate-200">
+                  <CardHeader>
+                    <CardTitle>Cómo vender la suite</CardTitle>
+                    <CardDescription>Marco comercial sugerido para preventa, pricing y cierre.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm text-slate-700">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="font-semibold text-slate-950">Submódulo</div>
+                      <p className="mt-1">Entrada por dolor puntual: agenda CRM, inventario, nómina, ATS, desempeño, reportes, etc.</p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="font-semibold text-slate-950">Módulo padre</div>
+                      <p className="mt-1">Venta por frente de negocio completo: CRM, Ventas, Finanzas, RRHH, Operaciones, IA o Verticales.</p>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="font-semibold text-slate-950">Suite global</div>
+                      <p className="mt-1">Venta corporativa cuando el cliente quiere un solo contrato para toda la operación y evita fragmentación de licencias.</p>
+                    </div>
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                      <div className="font-semibold text-amber-950">Segmento objetivo</div>
+                      <p className="mt-1 text-amber-900">
+                        {TARGET_COMMERCIAL_SEGMENT.market}. Normalmente {TARGET_COMMERCIAL_SEGMENT.employeesRange} y {TARGET_COMMERCIAL_SEGMENT.activeUsersRange}.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card className="border-slate-200">
+                <CardHeader>
+                  <CardTitle>Comparativo de mercado</CardTitle>
+                  <CardDescription>
+                    Referencia comercial usada para defender precios frente a Odoo, Buk, Siesa, SAP, Oracle y Salesforce.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3 lg:grid-cols-3">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Odoo estándar</div>
+                      <div className="mt-2 text-2xl font-bold text-slate-950">{formatCOP(publicBenchmarkBands.odooStandardUserMonthlyCOP)}</div>
+                      <div className="text-sm text-slate-600">aprox. por usuario / mes</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Odoo custom</div>
+                      <div className="mt-2 text-2xl font-bold text-slate-950">{formatCOP(publicBenchmarkBands.odooCustomUserMonthlyCOP)}</div>
+                      <div className="text-sm text-slate-600">aprox. por usuario / mes</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Salesforce Pro</div>
+                      <div className="mt-2 text-2xl font-bold text-slate-950">{formatCOP(publicBenchmarkBands.salesforceProUserMonthlyCOP)}</div>
+                      <div className="text-sm text-slate-600">aprox. por usuario / mes</div>
+                    </div>
+                  </div>
+
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {publicBenchmarkScenarios.map((scenario) => (
+                        <div key={scenario.userCount} className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                          <div className="text-xs uppercase tracking-[0.16em] text-sky-700">Lectura rápida {scenario.userCount} usuarios</div>
+                          <div className="mt-3 space-y-1 text-sm text-sky-950">
+                            <div>Odoo Custom: {formatCOP(scenario.odooCustomMonthlyCOP)} / mes</div>
+                            <div>Salesforce Pro: {formatCOP(scenario.salesforceProMonthlyCOP)} / mes</div>
+                            <div>Salesforce Enterprise: {formatCOP(scenario.salesforceEnterpriseMonthlyCOP)} / mes</div>
+                            <div className="pt-1 font-semibold">SGDigital Suite Global: {formatCOP(commercialPricing.systemSuiteGlobal.monthlyPriceCOP)} / mes</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                  <div className="overflow-hidden rounded-2xl border border-slate-200">
+                    <div className="grid grid-cols-[1.1fr_1fr_1.2fr] bg-slate-100 px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
+                      <span>Proveedor</span>
+                      <span>Modelo</span>
+                      <span>Referencia</span>
+                    </div>
+                    {MARKET_PRICING_BENCHMARKS.map((benchmark) => (
+                      <div key={benchmark.vendor} className="grid grid-cols-[1.1fr_1fr_1.2fr] gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-700">
+                        <div>
+                          <div className="font-semibold text-slate-950">{benchmark.vendor}</div>
+                          <div className="text-xs text-slate-500">{benchmark.focus}</div>
+                        </div>
+                        <div>{benchmark.publicPriceLabel}</div>
+                        <div>{benchmark.benchmarkNote}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+                    <div className="font-semibold">Posicionamiento SGDigital</div>
+                    <p className="mt-1">{SGDIGITAL_PRICING_POSITIONING.summary}</p>
+                    <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                      {SGDIGITAL_PRICING_POSITIONING.rules.map((rule) => (
+                        <div key={rule} className="rounded-xl border border-emerald-200 bg-white/75 px-3 py-2">
+                          {rule}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 lg:grid-cols-3">
+                    {commercialSegmentMatrix.map((segment) => (
+                      <div key={segment.segment} className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div className="text-xs uppercase tracking-[0.16em] text-slate-500">{segment.segment}</div>
+                        <div className="mt-2 text-lg font-bold text-slate-950">{segment.employeesRange}</div>
+                        <div className="text-sm text-slate-600">{segment.activeUsersRange}</div>
+                        <div className="mt-3 text-sm font-medium text-slate-900">{segment.recommendedMotion}</div>
+                        <div className="mt-3 text-sm text-slate-700">
+                          Ticket sugerido: {formatCOP(segment.monthlyFromCOP)}{segment.monthlyToCOP ? ` a ${formatCOP(segment.monthlyToCOP)}` : ''} / mes
+                        </div>
+                        <p className="mt-3 text-sm text-slate-600">{segment.note}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                {commercialPricing.systemSuiteParents.map((parent) => {
+                  const submodulesSubtotal = parent.submodules.reduce((sum, item) => sum + item.monthlyPriceCOP, 0)
+                  const bundlePrice = cycle === 'YEARLY'
+                    ? Math.round(parent.monthlyBundlePriceCOP * 12 * 0.9)
+                    : parent.monthlyBundlePriceCOP
+                  const submodulesPrice = cycle === 'YEARLY'
+                    ? Math.round(submodulesSubtotal * 12 * 0.9)
+                    : submodulesSubtotal
+
+                  return (
+                    <Card key={parent.code} className="border-slate-200">
+                      <CardHeader>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <CardTitle>{parent.title}</CardTitle>
+                            <CardDescription>{parent.description}</CardDescription>
+                          </div>
+                          <div className="rounded-2xl bg-slate-950 px-4 py-3 text-right text-white">
+                            <div className="text-[11px] uppercase tracking-[0.16em] text-slate-300">Paquete padre</div>
+                            <div className="mt-1 text-2xl font-bold">{formatCOP(bundlePrice)}</div>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">{parent.audience}</div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {parent.submodules.map((submodule) => (
+                            <div key={submodule.code} className="rounded-2xl border border-slate-200 bg-white p-4">
+                              <div className="text-sm font-semibold text-slate-950">{submodule.title}</div>
+                              <div className="mt-1 text-xs text-slate-500">{submodule.code}</div>
+                              <p className="mt-3 text-sm text-slate-600">{submodule.description}</p>
+                              <div className="mt-4 text-lg font-bold text-slate-950">{formatCOP(cycle === 'YEARLY' ? Math.round(submodule.monthlyPriceCOP * 12 * 0.9) : submodule.monthlyPriceCOP)}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
+                          <span className="font-medium text-emerald-900">Suma de submódulos: {formatCOP(submodulesPrice)}</span>
+                          <span className="font-semibold text-emerald-900">Ahorro paquete: {formatCOP(Math.max(0, submodulesPrice - bundlePrice))}</span>
                         </div>
                       </CardContent>
                     </Card>
@@ -977,6 +1207,119 @@ export default function PlanPage() {
           </CardContent>
         </Card>
               </div>
+            </TabsContent>
+
+            <TabsContent value="rrhh" className="space-y-4">
+              <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+                <Card className="border-slate-200 bg-[linear-gradient(135deg,#eff6ff_0%,#ffffff_45%,#f8fafc_100%)]">
+                  <CardHeader>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <CardTitle>Módulo padre general: {commercialPricing.hrParent.title}</CardTitle>
+                        <CardDescription>{commercialPricing.hrParent.description}</CardDescription>
+                      </div>
+                      <div className="rounded-2xl bg-slate-950 px-4 py-3 text-right text-white">
+                        <div className="text-xs uppercase tracking-[0.18em] text-slate-300">Suite completa</div>
+                        <div className="mt-1 text-3xl font-black">{formatCOP(cycle === 'YEARLY' ? hrPlanPricing.bundleTotalCOP : commercialPricing.hrParent.monthlyPriceCOP)}</div>
+                        <div className="text-xs text-slate-300">{cycle === 'YEARLY' ? 'COP / año' : 'COP / mes'}</div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="text-sm font-semibold text-slate-900">Enfoque comercial</div>
+                      <p className="mt-2 text-sm text-slate-700">{commercialPricing.hrParent.audience}</p>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {commercialPricing.hrParent.highlights.map((item) => (
+                        <div key={item} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-900">Compra completa vs compra por partes</div>
+                          <div className="mt-1 text-sm text-slate-600">Puedes vender la suite completa o tomar submódulos individuales según la madurez del cliente.</div>
+                        </div>
+                        <div className="rounded-xl bg-emerald-50 px-3 py-2 text-right">
+                          <div className="text-xs uppercase tracking-[0.16em] text-emerald-700">Ahorro estimado</div>
+                          <div className="text-xl font-bold text-emerald-800">{formatCOP(cycle === 'YEARLY' ? hrPlanPricing.savingsCOP : hrPlanPricing.monthlySavingsCOP)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-slate-200 bg-slate-950 text-white">
+                  <CardHeader>
+                    <CardTitle>Definición de precio recomendada</CardTitle>
+                    <CardDescription className="text-slate-300">
+                      Valor comercial sugerido para vender RR. HH. como vertical independiente dentro del catálogo de planes.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="rounded-2xl bg-white/10 p-4">
+                      <div className="flex items-center justify-between gap-3 text-sm text-slate-300">
+                        <span>Suma de submódulos por separado</span>
+                        <span className="font-semibold text-white">{formatCOP(cycle === 'YEARLY' ? hrPlanPricing.modulesSubtotalCOP : hrPlanPricing.modulesSubtotalMonthlyCOP)}</span>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3 text-sm text-slate-300">
+                        <span>Suite completa {commercialPricing.hrParent.code}</span>
+                        <span className="font-semibold text-white">{formatCOP(cycle === 'YEARLY' ? hrPlanPricing.bundleTotalCOP : hrPlanPricing.bundleMonthlyCOP)}</span>
+                      </div>
+                      {cycle === 'YEARLY' ? (
+                        <div className="mt-3 flex items-center justify-between gap-3 text-sm text-emerald-300">
+                          <span>Descuento anual aplicado</span>
+                          <span>{hrPlanPricing.annualDiscountPct}%</span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 p-4 text-sm text-slate-300">
+                      <div className="font-semibold text-white">Lectura comercial recomendada</div>
+                      <ul className="mt-3 list-disc space-y-2 pl-5">
+                        <li>Vende la suite completa cuando el cliente quiera reemplazar Buk o centralizar RR. HH. en una sola compra.</li>
+                        <li>Vende submódulos separados cuando el cliente entre por un dolor puntual: nómina, ATS, desempeño o onboarding.</li>
+                        <li>La suite completa ya contempla descuento frente a la suma individual para empujar ticket mayor y menor fricción comercial.</li>
+                      </ul>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card className="border-slate-200">
+                <CardHeader>
+                  <CardTitle>Submódulos incluidos y precio individual</CardTitle>
+                  <CardDescription>Catálogo sugerido para vender RR. HH. por partes sin perder la lógica de paquete completo.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {commercialPricing.hrSubmodules.map((item) => (
+                    <div key={item.code} className="rounded-[22px] border border-slate-200 bg-white p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-950">{item.title}</div>
+                          <div className="mt-1 text-xs text-slate-500">{item.code}</div>
+                        </div>
+                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                          {item.status}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm text-slate-600">{item.description}</p>
+                      <div className="mt-4 flex items-end justify-between gap-3">
+                        <div>
+                          <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Precio sugerido</div>
+                          <div className="mt-1 text-2xl font-bold text-slate-950">{formatCOP(cycle === 'YEARLY' ? Math.round(item.monthlyPriceCOP * 12 * 0.9) : item.monthlyPriceCOP)}</div>
+                        </div>
+                        <div className="text-xs text-slate-500">{cycle === 'YEARLY' ? 'COP / año' : 'COP / mes'}</div>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="almacenamiento" className="space-y-4">

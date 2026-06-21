@@ -7,6 +7,7 @@ import {
   ArrowRight,
   BarChart3,
   Boxes,
+  BriefcaseBusiness,
   Calculator,
   ClipboardList,
   ClipboardMinus,
@@ -37,6 +38,7 @@ type IconName =
   | 'ocr'
   | 'pos'
   | 'accounting'
+  | 'hr'
   | 'reports'
   | 'deliveries'
 
@@ -65,6 +67,7 @@ const ICONS: Record<IconName, React.ComponentType<{ className?: string }>> = {
   ocr: ScanSearch,
   pos: ReceiptText,
   accounting: Package2,
+  hr: BriefcaseBusiness,
   reports: BarChart3,
   deliveries: ShieldAlert,
 }
@@ -229,6 +232,16 @@ const START_CARDS: StartCardDefinition[] = [
     icon: 'deliveries',
     tone: 'text-stone-950',
     surface: 'border-stone-200 bg-[radial-gradient(circle_at_top_left,rgba(168,162,158,0.24),transparent_34%),linear-gradient(180deg,#fffdfa,#faf7f5)]',
+  },
+  {
+    title: 'Recursos Humanos',
+    description: 'Entra a nómina, empleados, onboarding, beneficios, desempeño y servicio al colaborador desde un frente unificado.',
+    href: '/dashboard/contabilidad/nomina',
+    cta: 'Abrir RRHH',
+    moduleKey: 'CONTABILIDAD',
+    icon: 'hr',
+    tone: 'text-emerald-950',
+    surface: 'border-emerald-200 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.22),transparent_34%),linear-gradient(180deg,#f6fffb,#edfff7)]',
   },
   {
     title: 'Ver contabilidad',

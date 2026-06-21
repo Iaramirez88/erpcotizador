@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey, PayrollSettlementReason, PayrollSettlementStatus } from '@prisma/client'
 import { requireApiAccess } from '@/lib/api-rbac'
+import { ensurePayrollSettlementDemoData } from '@/lib/payroll-operations'
 import { prisma } from '@/lib/prisma'
 import { buildPayrollEmployeeFullName, type PayrollSettlementRow } from '@/lib/payroll'
 
@@ -70,6 +71,7 @@ async function serializeSettlements(empresaId: string): Promise<PayrollSettlemen
 export async function GET() {
   const access = await requireApiAccess(ModuleKey.CONTABILIDAD, AccessLevel.READ)
   if (!access.ok) return access.response
+  await ensurePayrollSettlementDemoData(access.empresaId, access.userId)
   const data = await serializeSettlements(access.empresaId)
   return NextResponse.json({ ok: true, data })
 }

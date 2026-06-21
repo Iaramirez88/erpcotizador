@@ -143,6 +143,180 @@ export type PayrollPayslipRow = {
   deliveredBy: 'PORTAL' | 'EMAIL' | 'PDF' | 'FISICO'
 }
 
+export type PayrollEmployeeDocumentRow = {
+  id: string
+  employeeId: string
+  periodId?: string | null
+  employeeName: string
+  periodLabel: string
+  title: string
+  category: string
+  documentType: string
+  status: string
+  signatureRequired: boolean
+  signatureStatus: string
+  visibleInPortal: boolean
+  deliveryChannel: string
+  fileFormat: string
+  requestedAt?: string | null
+  deliveredAt?: string | null
+  signedAt?: string | null
+  expiresAt?: string | null
+  notes?: string | null
+}
+
+export type PayrollOnboardingJourneyRow = {
+  id: string
+  employeeId: string
+  employeeName: string
+  periodId?: string | null
+  workflowTemplateId?: string | null
+  workflowTemplateName: string | null
+  ownerName: string | null
+  title: string
+  status: string
+  phase: string
+  progress: number
+  employeeRole?: string | null
+  locationLabel?: string | null
+  welcomeMessage?: string | null
+  checklist: Array<{
+    id: string
+    title: string
+    owner: string
+    status: string
+    dueLabel?: string | null
+  }>
+  startDate: string
+  targetDate?: string | null
+  completedAt?: string | null
+  notes?: string | null
+}
+
+export type PayrollEmployeeServiceCaseRow = {
+  id: string
+  employeeId: string
+  employeeName: string
+  periodId?: string | null
+  periodLabel: string
+  assignedToName: string | null
+  resolvedByName: string | null
+  title: string
+  category: string
+  channel: string
+  priority: string
+  status: string
+  portalVisibility: boolean
+  employeeRole?: string | null
+  summary: string
+  resolution?: string | null
+  slaHours: number
+  requestedAt: string
+  firstResponseAt?: string | null
+  resolvedAt?: string | null
+  notes?: string | null
+}
+
+export type PayrollWhistleblowerCaseRow = {
+  id: string
+  employeeId?: string | null
+  employeeName: string | null
+  assignedToName: string | null
+  resolvedByName: string | null
+  title: string
+  category: string
+  severity: string
+  status: string
+  anonymousReport: boolean
+  confidentialityLevel: string
+  reportedChannel: string
+  reporterName?: string | null
+  reporterEmail?: string | null
+  reporterRole?: string | null
+  accusedArea?: string | null
+  occurredAt?: string | null
+  summary: string
+  evidenceSummary?: string | null
+  resolution?: string | null
+  followUpRequired: boolean
+  firstResponseAt?: string | null
+  resolvedAt?: string | null
+  notes?: string | null
+}
+
+export type PayrollRecruitmentCandidateRow = {
+  id: string
+  ownerName: string | null
+  openingTitle: string
+  department: string
+  locationLabel?: string | null
+  candidateName: string
+  candidateEmail?: string | null
+  candidatePhone?: string | null
+  source: string
+  stage: string
+  status: string
+  score: number
+  salaryExpectation?: number | null
+  expectedStartDate?: string | null
+  interviewerNotes?: string | null
+  decisionSummary?: string | null
+  resumeUrl?: string | null
+}
+
+export type PayrollSurveyCampaignRow = {
+  id: string
+  ownerName: string | null
+  title: string
+  category: string
+  status: string
+  anonymous: boolean
+  audience: string
+  channel: string
+  questionsCount: number
+  invitedCount: number
+  responsesCount: number
+  averageScore?: number | null
+  opensAt?: string | null
+  closesAt?: string | null
+  summary?: string | null
+  notes?: string | null
+}
+
+export type PayrollPerformanceReviewRow = {
+  id: string
+  employeeName: string | null
+  ownerName: string | null
+  cycleTitle: string
+  reviewType: string
+  status: string
+  managerName?: string | null
+  competencyFocus: string
+  score?: number | null
+  targetScore?: number | null
+  dueDate?: string | null
+  completedAt?: string | null
+  developmentPlan?: string | null
+  summary?: string | null
+}
+
+export type PayrollTrainingAssignmentRow = {
+  id: string
+  employeeName: string | null
+  ownerName: string | null
+  title: string
+  category: string
+  status: string
+  modality: string
+  provider?: string | null
+  durationHours: number
+  dueDate?: string | null
+  completedAt?: string | null
+  score?: number | null
+  certificateUrl?: string | null
+  summary?: string | null
+}
+
 export function buildPayrollEmployeeFullName(employee: {
   firstName: string
   middleName?: string | null

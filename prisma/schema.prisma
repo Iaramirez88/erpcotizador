@@ -157,6 +157,23 @@ model User {
   payrollNoveltiesCreated  PayrollNovelty[]   @relation("PayrollNoveltyCreatedBy")
   payrollNoveltiesApproved PayrollNovelty[]   @relation("PayrollNoveltyApprovedBy")
   payrollSettlementsCreated PayrollSettlement[] @relation("PayrollSettlementCreatedBy")
+  payrollAttendanceEntriesCreated PayrollAttendanceEntry[] @relation("PayrollAttendanceCreatedBy")
+  payrollAttendanceEntriesApproved PayrollAttendanceEntry[] @relation("PayrollAttendanceApprovedBy")
+  payrollBenefitRequestsCreated PayrollBenefitRequest[] @relation("PayrollBenefitCreatedBy")
+  payrollBenefitRequestsApproved PayrollBenefitRequest[] @relation("PayrollBenefitApprovedBy")
+  payrollDocumentsSigned PayrollEmployeeDocument[] @relation("PayrollDocumentSignedBy")
+  payrollOnboardingJourneysOwned PayrollOnboardingJourney[] @relation("PayrollOnboardingOwner")
+  payrollServiceCasesAssigned PayrollEmployeeServiceCase[] @relation("PayrollServiceAssignedTo")
+  payrollServiceCasesResolved PayrollEmployeeServiceCase[] @relation("PayrollServiceResolvedBy")
+  payrollWhistleblowerCasesAssigned PayrollWhistleblowerCase[] @relation("PayrollWhistleAssignedTo")
+  payrollWhistleblowerCasesResolved PayrollWhistleblowerCase[] @relation("PayrollWhistleResolvedBy")
+  payrollRecruitmentCandidatesOwned PayrollRecruitmentCandidate[] @relation("PayrollRecruitmentOwner")
+  payrollSurveyCampaignsOwned PayrollSurveyCampaign[] @relation("PayrollSurveyOwner")
+  payrollPerformanceReviewsOwned PayrollPerformanceReview[] @relation("PayrollPerformanceOwner")
+  payrollTrainingAssignmentsOwned PayrollTrainingAssignment[] @relation("PayrollTrainingOwner")
+  payrollAccessProfiles PayrollAccessProfile[]
+  payrollWorkflowTemplatesOwned PayrollWorkflowTemplate[] @relation("PayrollWorkflowOwner")
+  payrollPeopleReportsOwned PayrollPeopleReport[] @relation("PayrollPeopleReportOwner")
 
   // Productos personalizados (solicitudes)
   customProductRequestsCreated  CustomProductRequest[] @relation("CustomProductRequestCreatedBy")
@@ -779,6 +796,22 @@ model Empresa {
   payrollNovelties   PayrollNovelty[]
   payrollSettlements PayrollSettlement[]
   payrollPayslips    PayrollPayslip[]
+  payrollAttendanceEntries PayrollAttendanceEntry[]
+  payrollBenefitRequests PayrollBenefitRequest[]
+  payrollEmployeeDocuments PayrollEmployeeDocument[]
+  payrollOnboardingJourneys PayrollOnboardingJourney[]
+  payrollEmployeeServiceCases PayrollEmployeeServiceCase[]
+  payrollWhistleblowerCases PayrollWhistleblowerCase[]
+  payrollRecruitmentCandidates PayrollRecruitmentCandidate[]
+  payrollSurveyCampaigns PayrollSurveyCampaign[]
+  payrollPerformanceReviews PayrollPerformanceReview[]
+  payrollTrainingAssignments PayrollTrainingAssignment[]
+  payrollBenefitOfferings PayrollBenefitOffering[]
+  payrollOrgUnits    PayrollOrgUnit[]
+  payrollPortalHighlights PayrollPortalHighlight[]
+  payrollAccessProfiles PayrollAccessProfile[]
+  payrollWorkflowTemplates PayrollWorkflowTemplate[]
+  payrollPeopleReports PayrollPeopleReport[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1621,6 +1654,7 @@ model Sede {
   payrollEmployees PayrollEmployee[]
   payrollContracts PayrollContract[]
   payrollPeriods   PayrollPeriod[]
+  payrollOrgUnits  PayrollOrgUnit[]
 
   cotizaciones      Cotizacion[]                @relation("SedeCotizaciones")
   ordenes           OrdenTrabajo[]              @relation("SedeOrdenes")
@@ -2103,6 +2137,17 @@ model PlanModulePriceSetting {
 
   @@index([module])
   @@map("plan_module_price_settings")
+}
+
+model PlanCommercialPriceSetting {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  priceCOP  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([code])
+  @@map("plan_commercial_price_settings")
 }
 
 model PlanCatalogSetting {
@@ -4615,6 +4660,18 @@ model PayrollEmployee {
   periodItems PayrollPeriodItem[]
   settlements PayrollSettlement[]
   payslips    PayrollPayslip[]
+  attendanceEntries PayrollAttendanceEntry[]
+  documents PayrollEmployeeDocument[]
+  onboardingJourneys PayrollOnboardingJourney[]
+  serviceCases PayrollEmployeeServiceCase[]
+  whistleblowerCases PayrollWhistleblowerCase[]
+  benefitRequests PayrollBenefitRequest[]
+  performanceReviews PayrollPerformanceReview[]
+  trainingAssignments PayrollTrainingAssignment[]
+  managedOrgUnits PayrollOrgUnit[] @relation("PayrollOrgUnitManager")
+  portalHighlights PayrollPortalHighlight[]
+  accessProfiles PayrollAccessProfile[]
+  workflowTemplatesOwned PayrollWorkflowTemplate[] @relation("PayrollWorkflowEmployeeOwner")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -4625,6 +4682,158 @@ model PayrollEmployee {
   @@index([sedeId, status])
   @@index([costCenterId])
   @@map("payroll_employees")
+}
+
+model PayrollOrgUnit {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  sedeId String?
+  sede   Sede?   @relation(fields: [sedeId], references: [id], onDelete: SetNull)
+
+  parentId String?
+  parent   PayrollOrgUnit?  @relation("PayrollOrgUnitParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children PayrollOrgUnit[] @relation("PayrollOrgUnitParent")
+
+  managerEmployeeId String?
+  managerEmployee   PayrollEmployee? @relation("PayrollOrgUnitManager", fields: [managerEmployeeId], references: [id], onDelete: SetNull)
+
+  code      String
+  name      String
+  level     String
+  status    String @default("ACTIVE")
+  headcount Int    @default(0)
+  location  String?
+  notes     String?
+  metadata  Json   @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, code])
+  @@index([empresaId, status])
+  @@index([parentId])
+  @@index([sedeId])
+  @@index([managerEmployeeId])
+  @@map("payroll_org_units")
+}
+
+model PayrollPortalHighlight {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  employeeId String?
+  employee   PayrollEmployee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  title       String
+  category    String
+  summary     String
+  status      String   @default("PUBLISHED")
+  audience    String   @default("ALL")
+  actionLabel String?
+  actionUrl   String?
+  metricLabel String?
+  metricValue String?
+  publishedAt DateTime?
+  expiresAt   DateTime?
+  metadata    Json     @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([employeeId])
+  @@map("payroll_portal_highlights")
+}
+
+model PayrollAccessProfile {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  employeeId String?
+  employee   PayrollEmployee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  profileName    String
+  roleLabel      String
+  scopeLabel     String
+  status         String   @default("ACTIVE")
+  permissions    Json     @default("[]")
+  lastReviewedAt DateTime?
+  lastAccessAt   DateTime?
+  metadata       Json     @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([userId])
+  @@index([employeeId])
+  @@map("payroll_access_profiles")
+}
+
+model PayrollWorkflowTemplate {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  ownerUserId String?
+  ownerUser   User?   @relation("PayrollWorkflowOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  ownerEmployeeId String?
+  ownerEmployee   PayrollEmployee? @relation("PayrollWorkflowEmployeeOwner", fields: [ownerEmployeeId], references: [id], onDelete: SetNull)
+
+  name            String
+  category        String
+  status          String @default("ACTIVE")
+  triggerType     String
+  slaHours        Int    @default(24)
+  automationLevel String @default("SEMI_AUTOMATIC")
+  steps           Json   @default("[]")
+  notes           String?
+  lastExecutedAt  DateTime?
+  metadata        Json   @default("{}")
+  onboardingJourneys PayrollOnboardingJourney[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([ownerUserId])
+  @@index([ownerEmployeeId])
+  @@map("payroll_workflow_templates")
+}
+
+model PayrollPeopleReport {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  ownerUserId String?
+  ownerUser   User?   @relation("PayrollPeopleReportOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  name            String
+  category        String
+  cadence         String
+  audience        String
+  status          String @default("READY")
+  metricValue     String
+  metricTrend     String?
+  filtersSummary  String?
+  lastGeneratedAt DateTime?
+  metadata        Json   @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([ownerUserId])
+  @@map("payroll_people_reports")
 }
 
 model PayrollContract {
@@ -4706,6 +4915,10 @@ model PayrollPeriod {
   novelties  PayrollNovelty[]
   settlements PayrollSettlement[]
   payslips   PayrollPayslip[]
+  attendanceEntries PayrollAttendanceEntry[]
+  documents PayrollEmployeeDocument[]
+  onboardingJourneys PayrollOnboardingJourney[]
+  serviceCases PayrollEmployeeServiceCase[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -4934,6 +5147,421 @@ model PayrollPayslip {
   @@index([empresaId, generatedAt])
   @@index([employeeId, generatedAt])
   @@map("payroll_payslips")
+}
+
+model PayrollEmployeeDocument {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   PayrollEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  periodId String?
+  period   PayrollPeriod? @relation(fields: [periodId], references: [id], onDelete: SetNull)
+
+  title    String
+  category String
+  documentType String
+  status   String @default("BORRADOR")
+
+  signatureRequired Boolean @default(true)
+  signatureStatus   String  @default("PENDIENTE")
+  visibleInPortal   Boolean @default(true)
+  deliveryChannel   String  @default("PORTAL")
+  fileFormat        String  @default("PDF")
+
+  fileUrl String?
+  requestedAt DateTime?
+  deliveredAt DateTime?
+  signedAt DateTime?
+  expiresAt DateTime?
+  notes String?
+
+  signedById String?
+  signedBy   User? @relation("PayrollDocumentSignedBy", fields: [signedById], references: [id], onDelete: SetNull)
+
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([employeeId, createdAt])
+  @@index([periodId])
+  @@index([signatureStatus, signatureRequired])
+  @@map("payroll_employee_documents")
+}
+
+model PayrollOnboardingJourney {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   PayrollEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  periodId String?
+  period   PayrollPeriod? @relation(fields: [periodId], references: [id], onDelete: SetNull)
+
+  workflowTemplateId String?
+  workflowTemplate   PayrollWorkflowTemplate? @relation(fields: [workflowTemplateId], references: [id], onDelete: SetNull)
+
+  ownerUserId String?
+  ownerUser   User? @relation("PayrollOnboardingOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  title          String
+  status         String @default("PLANIFICADO")
+  phase          String @default("PRE_INGRESO")
+  progress       Int    @default(0)
+  employeeRole   String?
+  locationLabel  String?
+  welcomeMessage String?
+  checklist      Json   @default("[]")
+  startDate      DateTime
+  targetDate     DateTime?
+  completedAt    DateTime?
+  notes          String?
+  metadata       Json   @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([employeeId, startDate])
+  @@index([periodId])
+  @@index([workflowTemplateId])
+  @@index([ownerUserId])
+  @@map("payroll_onboarding_journeys")
+}
+
+model PayrollEmployeeServiceCase {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   PayrollEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  periodId String?
+  period   PayrollPeriod? @relation(fields: [periodId], references: [id], onDelete: SetNull)
+
+  assignedToUserId String?
+  assignedToUser   User? @relation("PayrollServiceAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  resolvedByUserId String?
+  resolvedByUser   User? @relation("PayrollServiceResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  title            String
+  category         String
+  channel          String @default("PORTAL")
+  priority         String @default("MEDIA")
+  status           String @default("ABIERTO")
+  portalVisibility Boolean @default(true)
+  employeeRole     String?
+  summary          String
+  resolution       String?
+  slaHours         Int    @default(24)
+  requestedAt      DateTime @default(now())
+  firstResponseAt  DateTime?
+  resolvedAt       DateTime?
+  notes            String?
+  metadata         Json   @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([employeeId, requestedAt])
+  @@index([periodId])
+  @@index([assignedToUserId])
+  @@index([resolvedByUserId])
+  @@map("payroll_employee_service_cases")
+}
+
+model PayrollWhistleblowerCase {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  employeeId String?
+  employee   PayrollEmployee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  assignedToUserId String?
+  assignedToUser   User? @relation("PayrollWhistleAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  resolvedByUserId String?
+  resolvedByUser   User? @relation("PayrollWhistleResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  title                String
+  category             String
+  severity             String @default("MEDIA")
+  status               String @default("RECIBIDA")
+  anonymousReport      Boolean @default(false)
+  confidentialityLevel String @default("ALTA")
+  reportedChannel      String @default("PORTAL")
+  reporterName         String?
+  reporterEmail        String?
+  reporterRole         String?
+  accusedArea          String?
+  occurredAt           DateTime?
+  summary              String
+  evidenceSummary      String?
+  resolution           String?
+  followUpRequired     Boolean @default(true)
+  firstResponseAt      DateTime?
+  resolvedAt           DateTime?
+  notes                String?
+  metadata             Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([employeeId, createdAt])
+  @@index([assignedToUserId])
+  @@index([resolvedByUserId])
+  @@map("payroll_whistleblower_cases")
+}
+
+model PayrollRecruitmentCandidate {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  ownerUserId String?
+  ownerUser   User? @relation("PayrollRecruitmentOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  openingTitle      String
+  department        String
+  locationLabel     String?
+  candidateName     String
+  candidateEmail    String?
+  candidatePhone    String?
+  source            String @default("REFERIDO")
+  stage             String @default("SCREENING")
+  status            String @default("ACTIVO")
+  score             Int    @default(0)
+  salaryExpectation Float?
+  expectedStartDate DateTime?
+  interviewerNotes  String?
+  decisionSummary   String?
+  resumeUrl         String?
+  metadata          Json   @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([ownerUserId])
+  @@index([openingTitle])
+  @@map("payroll_recruitment_candidates")
+}
+
+model PayrollSurveyCampaign {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  ownerUserId String?
+  ownerUser   User? @relation("PayrollSurveyOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  title          String
+  category       String
+  status         String @default("BORRADOR")
+  anonymous      Boolean @default(true)
+  audience       String
+  channel        String @default("PORTAL")
+  questionsCount Int    @default(0)
+  invitedCount   Int    @default(0)
+  responsesCount Int    @default(0)
+  averageScore   Float?
+  opensAt        DateTime?
+  closesAt       DateTime?
+  summary        String?
+  notes          String?
+  metadata       Json   @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([ownerUserId])
+  @@index([category])
+  @@map("payroll_survey_campaigns")
+}
+
+model PayrollPerformanceReview {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  employeeId String?
+  employee   PayrollEmployee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  ownerUserId String?
+  ownerUser   User? @relation("PayrollPerformanceOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  cycleTitle      String
+  reviewType      String
+  status          String @default("BORRADOR")
+  managerName     String?
+  competencyFocus String
+  score           Float?
+  targetScore     Float?
+  dueDate         DateTime?
+  completedAt     DateTime?
+  developmentPlan String?
+  summary         String?
+  metadata        Json   @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([employeeId])
+  @@index([ownerUserId])
+  @@index([reviewType])
+  @@map("payroll_performance_reviews")
+}
+
+model PayrollTrainingAssignment {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  employeeId String?
+  employee   PayrollEmployee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  ownerUserId String?
+  ownerUser   User? @relation("PayrollTrainingOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  title         String
+  category      String
+  status        String @default("PLANIFICADA")
+  modality      String @default("VIRTUAL")
+  provider      String?
+  durationHours Int    @default(0)
+  dueDate       DateTime?
+  completedAt   DateTime?
+  score         Float?
+  certificateUrl String?
+  summary       String?
+  metadata      Json   @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([employeeId])
+  @@index([ownerUserId])
+  @@index([category])
+  @@map("payroll_training_assignments")
+}
+
+model PayrollAttendanceEntry {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   PayrollEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  periodId String?
+  period   PayrollPeriod? @relation(fields: [periodId], references: [id], onDelete: SetNull)
+
+  entryDate DateTime
+  shiftName String
+  status    String @default("PRESENTE")
+
+  checkInAt      DateTime?
+  checkOutAt     DateTime?
+  minutesLate    Int @default(0)
+  overtimeMinutes Int @default(0)
+  leaveType      String?
+  notes          String?
+
+  createdById String?
+  createdBy   User? @relation("PayrollAttendanceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  approvedById String?
+  approvedBy   User? @relation("PayrollAttendanceApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt   DateTime?
+
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, entryDate])
+  @@index([employeeId, entryDate])
+  @@index([periodId])
+  @@map("payroll_attendance_entries")
+}
+
+model PayrollBenefitRequest {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   PayrollEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  type        String
+  title       String
+  description String
+  planName    String?
+  vendorName  String?
+  status      String @default("SOLICITADA")
+  pointsCost  Int    @default(0)
+  amount      Float?
+
+  requestedAt DateTime @default(now())
+  approvedAt  DateTime?
+  deliveredAt DateTime?
+
+  createdById String?
+  createdBy   User? @relation("PayrollBenefitCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  approvedById String?
+  approvedBy   User? @relation("PayrollBenefitApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([employeeId, requestedAt])
+  @@map("payroll_benefit_requests")
+}
+
+model PayrollBenefitOffering {
+  id        String  @id @default(cuid())
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  title        String
+  kind         String @default("PLAN")
+  category     String
+  vendorName   String?
+  status       String @default("ACTIVO")
+  pricingModel String @default("PUNTOS")
+  pointsCost   Int    @default(0)
+  employerCost Float?
+  employeeCopay Float?
+  discountRate Float?
+  spotlight    Boolean @default(false)
+  description  String
+  metadata     Json   @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresaId, status])
+  @@index([kind])
+  @@index([category])
+  @@map("payroll_benefit_offerings")
 }
 
 // Tesorería (cuentas bancarias, movimientos y conciliación)

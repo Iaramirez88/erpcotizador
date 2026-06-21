@@ -95,6 +95,22 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasPayrollNoveltyDelegate = typeof (prismaClient as any)?.payrollNovelty?.findMany === 'function'
   const hasPayrollSettlementDelegate = typeof (prismaClient as any)?.payrollSettlement?.findMany === 'function'
   const hasPayrollPayslipDelegate = typeof (prismaClient as any)?.payrollPayslip?.findMany === 'function'
+  const hasPayrollEmployeeDocumentDelegate = typeof (prismaClient as any)?.payrollEmployeeDocument?.findMany === 'function'
+  const hasPayrollOnboardingJourneyDelegate = typeof (prismaClient as any)?.payrollOnboardingJourney?.findMany === 'function'
+  const hasPayrollEmployeeServiceCaseDelegate = typeof (prismaClient as any)?.payrollEmployeeServiceCase?.findMany === 'function'
+  const hasPayrollWhistleblowerCaseDelegate = typeof (prismaClient as any)?.payrollWhistleblowerCase?.findMany === 'function'
+  const hasPayrollRecruitmentCandidateDelegate = typeof (prismaClient as any)?.payrollRecruitmentCandidate?.findMany === 'function'
+  const hasPayrollSurveyCampaignDelegate = typeof (prismaClient as any)?.payrollSurveyCampaign?.findMany === 'function'
+  const hasPayrollPerformanceReviewDelegate = typeof (prismaClient as any)?.payrollPerformanceReview?.findMany === 'function'
+  const hasPayrollTrainingAssignmentDelegate = typeof (prismaClient as any)?.payrollTrainingAssignment?.findMany === 'function'
+  const hasPayrollAttendanceEntryDelegate = typeof (prismaClient as any)?.payrollAttendanceEntry?.findMany === 'function'
+  const hasPayrollBenefitRequestDelegate = typeof (prismaClient as any)?.payrollBenefitRequest?.findMany === 'function'
+  const hasPayrollBenefitOfferingDelegate = typeof (prismaClient as any)?.payrollBenefitOffering?.findMany === 'function'
+  const hasPayrollOrgUnitDelegate = typeof (prismaClient as any)?.payrollOrgUnit?.findMany === 'function'
+  const hasPayrollPortalHighlightDelegate = typeof (prismaClient as any)?.payrollPortalHighlight?.findMany === 'function'
+  const hasPayrollAccessProfileDelegate = typeof (prismaClient as any)?.payrollAccessProfile?.findMany === 'function'
+  const hasPayrollWorkflowTemplateDelegate = typeof (prismaClient as any)?.payrollWorkflowTemplate?.findMany === 'function'
+  const hasPayrollPeopleReportDelegate = typeof (prismaClient as any)?.payrollPeopleReport?.findMany === 'function'
   const hasAccountingPeriodDelegate = typeof (prismaClient as any)?.accountingPeriod?.findMany === 'function'
   const hasAccountingVoucherDelegate = typeof (prismaClient as any)?.accountingVoucher?.findMany === 'function'
   const hasAccountingVoucherLineDelegate = typeof (prismaClient as any)?.accountingVoucherLine?.findMany === 'function'
@@ -153,6 +169,22 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasPayrollNoveltyDelegate ||
     !hasPayrollSettlementDelegate ||
     !hasPayrollPayslipDelegate ||
+    !hasPayrollEmployeeDocumentDelegate ||
+    !hasPayrollOnboardingJourneyDelegate ||
+    !hasPayrollEmployeeServiceCaseDelegate ||
+    !hasPayrollWhistleblowerCaseDelegate ||
+    !hasPayrollRecruitmentCandidateDelegate ||
+    !hasPayrollSurveyCampaignDelegate ||
+    !hasPayrollPerformanceReviewDelegate ||
+    !hasPayrollTrainingAssignmentDelegate ||
+    !hasPayrollAttendanceEntryDelegate ||
+    !hasPayrollBenefitRequestDelegate ||
+    !hasPayrollBenefitOfferingDelegate ||
+    !hasPayrollOrgUnitDelegate ||
+    !hasPayrollPortalHighlightDelegate ||
+    !hasPayrollAccessProfileDelegate ||
+    !hasPayrollWorkflowTemplateDelegate ||
+    !hasPayrollPeopleReportDelegate ||
     !hasAccountingPeriodDelegate ||
     !hasAccountingVoucherDelegate ||
     !hasAccountingVoucherLineDelegate ||

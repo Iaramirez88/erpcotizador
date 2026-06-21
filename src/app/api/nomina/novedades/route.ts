@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { AccessLevel, ModuleKey, PayrollNoveltyStatus, PayrollNoveltyType } from '@prisma/client'
 import { requireApiAccess } from '@/lib/api-rbac'
+import { ensurePayrollNoveltyDemoData } from '@/lib/payroll-operations'
 import { prisma } from '@/lib/prisma'
 import { buildPayrollEmployeeFullName, type PayrollNoveltyRow } from '@/lib/payroll'
 
@@ -71,6 +72,7 @@ async function serializeNovelties(empresaId: string): Promise<PayrollNoveltyRow[
 export async function GET() {
   const access = await requireApiAccess(ModuleKey.CONTABILIDAD, AccessLevel.READ)
   if (!access.ok) return access.response
+  await ensurePayrollNoveltyDemoData(access.empresaId, access.userId)
   const data = await serializeNovelties(access.empresaId)
   return NextResponse.json({ ok: true, data })
 }

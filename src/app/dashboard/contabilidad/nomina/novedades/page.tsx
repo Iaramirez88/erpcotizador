@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useI18n } from '@/components/providers/i18n-provider'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
@@ -16,6 +17,31 @@ import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import type { PayrollEmployeeRow, PayrollNoveltyRow, PayrollPeriodRow } from '@/lib/payroll'
 import { formatCurrency } from '@/lib/utils'
 
+const EMPTY_FORM = {
+  employeeId: '',
+  type: 'HORA_EXTRA',
+  detail: '',
+  status: 'RADICADA',
+  source: 'MANUAL',
+  amount: '',
+  days: '',
+  quantity: '',
+  periodId: '',
+  occurredOn: '',
+  startsAt: '',
+  endsAt: '',
+  supportNumber: '',
+}
+
+function formatDate(value: string | null | undefined, locale: string) {
+  if (!value) return '—'
+  try {
+    return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(value))
+  } catch {
+    return value
+  }
+}
+
 export default function NominaNovedadesPage() {
   const [rows, setRows] = useState<PayrollNoveltyRow[]>([])
   const [employees, setEmployees] = useState<PayrollEmployeeRow[]>([])
@@ -24,26 +50,140 @@ export default function NominaNovedadesPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({
-    employeeId: '',
-    type: 'HORA_EXTRA',
-    detail: '',
-    status: 'RADICADA',
-    source: 'MANUAL',
-    amount: '',
-    days: '',
-    quantity: '',
-    periodId: '',
-    occurredOn: '',
-    startsAt: '',
-    endsAt: '',
-    supportNumber: '',
-  })
+  const [form, setForm] = useState(EMPTY_FORM)
   const { mode, setMode } = useDataViewMode('nomina.novedades', 'list')
+  const { language } = useI18n()
+  const locale = language === 'en' ? 'en-US' : 'es-CO'
+
+  const copy = language === 'en'
+    ? {
+        eyebrow: 'Payroll',
+        title: 'Payroll Changes and Leave',
+        description: 'Operational register for overtime, allowances, absences, medical leave, loans and payroll deductions.',
+        stats: {
+          filed: 'Filed',
+          applied: 'Applied',
+          leave: 'Medical leave',
+          filedHint: 'Pending validation',
+          appliedHint: 'Already impacts payroll',
+          leaveHint: 'With support attached',
+        },
+        actions: { create: 'Create payroll change', save: 'Save changes', add: 'Create change', cancel: 'Cancel', edit: 'Edit', remove: 'Delete' },
+        tabs: { operational: 'Changes', leave: 'Medical leave' },
+        sections: {
+          operationalTitle: 'Changes applied to the period',
+          operationalDescription: 'Overtime, deductions, leave and other payroll calculation events.',
+          leaveTitle: 'Medical leave and health absences',
+          leaveDescription: 'Base record for supports, origin, approved days and subsidy calculation.',
+        },
+        dialog: {
+          titleCreate: 'Create payroll change',
+          titleEdit: 'Edit payroll change',
+          description: 'Record medical leave, overtime, deductions or leave entries directly from payroll.',
+        },
+        labels: {
+          employee: 'Employee',
+          period: 'Period',
+          noPeriod: 'No period',
+          type: 'Type',
+          status: 'Status',
+          amount: 'Amount',
+          days: 'Days',
+          quantity: 'Quantity',
+          occurredOn: 'Occurrence date',
+          startsAt: 'From',
+          endsAt: 'To',
+          supportNumber: 'Support number',
+          detail: 'Detail',
+          value: 'Amount',
+          source: 'Source',
+        },
+        types: {
+          INCAPACIDAD: 'Medical leave',
+          HORA_EXTRA: 'Overtime',
+          AUSENCIA: 'Absence',
+          LICENCIA: 'Leave',
+          BONIFICACION: 'Bonus',
+          DESCUENTO: 'Deduction',
+          RECARGO: 'Surcharge',
+          COMISION: 'Commission',
+          EMBARGO: 'Garnishment',
+          PRESTAMO: 'Loan',
+          VACACIONES: 'Vacation',
+        },
+        statuses: {
+          RADICADA: 'Filed',
+          VALIDADA: 'Validated',
+          APLICADA: 'Applied',
+          RECHAZADA: 'Rejected',
+        },
+      }
+    : {
+        eyebrow: 'Nómina',
+        title: 'Novedades e incapacidades',
+        description: 'Registro operativo de horas extra, bonificaciones, ausencias, incapacidades, préstamos y descuentos de nómina.',
+        stats: {
+          filed: 'Radicadas',
+          applied: 'Aplicadas',
+          leave: 'Incapacidades',
+          filedHint: 'Pendientes de validar',
+          appliedHint: 'Ya afectan nómina',
+          leaveHint: 'Con soporte adjunto',
+        },
+        actions: { create: 'Crear novedad', save: 'Guardar cambios', add: 'Crear novedad', cancel: 'Cancelar', edit: 'Editar', remove: 'Eliminar' },
+        tabs: { operational: 'Novedades', leave: 'Incapacidades' },
+        sections: {
+          operationalTitle: 'Novedades aplicables al período',
+          operationalDescription: 'Horas extra, descuentos, licencias y otros eventos de cálculo.',
+          leaveTitle: 'Incapacidades y licencias médicas',
+          leaveDescription: 'Base para soportes, origen, días reconocidos y cálculo del auxilio.',
+        },
+        dialog: {
+          titleCreate: 'Crear novedad',
+          titleEdit: 'Editar novedad',
+          description: 'Registra incapacidades, horas extra, descuentos o licencias desde nómina.',
+        },
+        labels: {
+          employee: 'Empleado',
+          period: 'Período',
+          noPeriod: 'Sin período',
+          type: 'Tipo',
+          status: 'Estado',
+          amount: 'Valor',
+          days: 'Días',
+          quantity: 'Cantidad',
+          occurredOn: 'Fecha ocurrencia',
+          startsAt: 'Desde',
+          endsAt: 'Hasta',
+          supportNumber: 'Número soporte',
+          detail: 'Detalle',
+          value: 'Valor',
+          source: 'Fuente',
+        },
+        types: {
+          INCAPACIDAD: 'Incapacidad',
+          HORA_EXTRA: 'Hora extra',
+          AUSENCIA: 'Ausencia',
+          LICENCIA: 'Licencia',
+          BONIFICACION: 'Bonificación',
+          DESCUENTO: 'Descuento',
+          RECARGO: 'Recargo',
+          COMISION: 'Comisión',
+          EMBARGO: 'Embargo',
+          PRESTAMO: 'Préstamo',
+          VACACIONES: 'Vacaciones',
+        },
+        statuses: {
+          RADICADA: 'Radicada',
+          VALIDADA: 'Validada',
+          APLICADA: 'Aplicada',
+          RECHAZADA: 'Rechazada',
+        },
+      }
 
   useEffect(() => {
     let cancelled = false
-    async function load() {
+    async function initialLoad() {
       const [noveltiesRes, employeesRes, periodsRes] = await Promise.all([
         fetch('/api/nomina/novedades', { cache: 'no-store' }),
         fetch('/api/nomina/empleados', { cache: 'no-store' }),
@@ -63,7 +203,7 @@ export default function NominaNovedadesPage() {
         setForm((current) => ({ ...current, employeeId: current.employeeId || nextEmployees[0]?.id || '', periodId: current.periodId || nextPeriods[0]?.id || '' }))
       }
     }
-    void load()
+    void initialLoad()
     return () => {
       cancelled = true
     }
@@ -91,7 +231,7 @@ export default function NominaNovedadesPage() {
   function openCreate() {
     setEditingId(null)
     setError(null)
-    setForm({ employeeId: employees[0]?.id || '', type: 'HORA_EXTRA', detail: '', status: 'RADICADA', source: 'MANUAL', amount: '', days: '', quantity: '', periodId: periods[0]?.id || '', occurredOn: '', startsAt: '', endsAt: '', supportNumber: '' })
+    setForm({ ...EMPTY_FORM, employeeId: employees[0]?.id || '', periodId: periods[0]?.id || '', occurredOn: new Date().toISOString().slice(0, 10) })
     setDialogOpen(true)
   }
 
@@ -134,19 +274,19 @@ export default function NominaNovedadesPage() {
     })
     const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null
     if (!res.ok || !json?.ok) {
-      setError(json?.error ?? 'No fue posible crear la novedad')
+      setError(json?.error ?? (language === 'en' ? 'Could not save payroll change' : 'No fue posible guardar la novedad'))
       setSaving(false)
       return
     }
     setDialogOpen(false)
     setEditingId(null)
-    setForm({ employeeId: employees[0]?.id || '', type: 'HORA_EXTRA', detail: '', status: 'RADICADA', source: 'MANUAL', amount: '', days: '', quantity: '', periodId: periods[0]?.id || '', occurredOn: '', startsAt: '', endsAt: '', supportNumber: '' })
+    setForm({ ...EMPTY_FORM, employeeId: employees[0]?.id || '', periodId: periods[0]?.id || '' })
     await load()
     setSaving(false)
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm('Eliminar esta novedad?')) return
+    if (!window.confirm(language === 'en' ? 'Delete this payroll change?' : '¿Eliminar esta novedad?')) return
     const res = await fetch('/api/nomina/novedades', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -154,7 +294,7 @@ export default function NominaNovedadesPage() {
     })
     const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null
     if (!res.ok || !json?.ok) {
-      setError(json?.error ?? 'No fue posible eliminar la novedad')
+      setError(json?.error ?? (language === 'en' ? 'Could not delete payroll change' : 'No fue posible eliminar la novedad'))
       return
     }
     await load()
@@ -166,13 +306,13 @@ export default function NominaNovedadesPage() {
   return (
     <div className="space-y-4">
       <ErpPageHero
-        eyebrow="Nómina"
-        title={<span data-tour="nomina-novedades-title">Novedades e incapacidades</span>}
-        description="Registro de horas extra, recargos, ausencias, incapacidades, licencias, embargos, préstamos y descuentos."
+        eyebrow={copy.eyebrow}
+        title={<span data-tour="nomina-novedades-title">{copy.title}</span>}
+        description={copy.description}
         stats={[
-          { label: 'Radicadas', value: rows.filter((item) => item.status === 'RADICADA').length, hint: 'Pendientes de validar', tone: 'amber' },
-          { label: 'Aplicadas', value: rows.filter((item) => item.status === 'APLICADA').length, hint: 'Ya afectan nómina', tone: 'teal' },
-          { label: 'Incapacidades', value: incapacidades.length, hint: 'Con soporte médico', tone: 'sky' },
+          { label: copy.stats.filed, value: rows.filter((item) => item.status === 'RADICADA').length, hint: copy.stats.filedHint, tone: 'amber' },
+          { label: copy.stats.applied, value: rows.filter((item) => item.status === 'APLICADA').length, hint: copy.stats.appliedHint, tone: 'teal' },
+          { label: copy.stats.leave, value: incapacidades.length, hint: copy.stats.leaveHint, tone: 'sky' },
         ]}
       />
 
@@ -181,20 +321,20 @@ export default function NominaNovedadesPage() {
       <div className="flex justify-end" data-tour="nomina-novedades-actions">
         <div className="flex flex-wrap gap-2">
           <DataViewToggle mode={mode} onChange={setMode} />
-          <Button className="rounded-xl" onClick={openCreate}>Crear novedad</Button>
+          <Button className="rounded-xl" onClick={openCreate}>{copy.actions.create}</Button>
         </div>
       </div>
 
       <Tabs defaultValue="operativas" className="space-y-4">
         <TabsList className="grid w-full max-w-md grid-cols-2 rounded-2xl">
-          <TabsTrigger value="operativas">Novedades</TabsTrigger>
-          <TabsTrigger value="incapacidades">Incapacidades</TabsTrigger>
+          <TabsTrigger value="operativas">{copy.tabs.operational}</TabsTrigger>
+          <TabsTrigger value="incapacidades">{copy.tabs.leave}</TabsTrigger>
         </TabsList>
         <TabsContent value="operativas">
           <Card className="rounded-[26px] border-slate-200" data-tour="nomina-novedades-list">
             <CardHeader>
-              <CardTitle>Novedades aplicables al período</CardTitle>
-              <CardDescription>Horas extra, descuentos, licencias y otros eventos de cálculo.</CardDescription>
+              <CardTitle>{copy.sections.operationalTitle}</CardTitle>
+              <CardDescription>{copy.sections.operationalDescription}</CardDescription>
             </CardHeader>
             <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
               {operativas.map((item) => (
@@ -204,18 +344,20 @@ export default function NominaNovedadesPage() {
                       <div className="font-semibold text-slate-950">{item.employeeName}</div>
                       <div className="text-sm text-slate-500">{item.periodLabel}</div>
                     </div>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{item.type}</span>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{copy.types[item.type]}</span>
                   </div>
                   <div className="mt-2 text-sm text-slate-600">{item.detail}</div>
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                    {typeof item.amount === 'number' ? <span className="rounded-full border border-slate-200 px-2.5 py-1">Valor: {formatCurrency(item.amount)}</span> : null}
-                    {typeof item.days === 'number' ? <span className="rounded-full border border-slate-200 px-2.5 py-1">Días: {item.days}</span> : null}
-                    <span className="rounded-full border border-slate-200 px-2.5 py-1">{item.status}</span>
-                    <span className="rounded-full border border-slate-200 px-2.5 py-1">{item.source}</span>
+                    {typeof item.amount === 'number' ? <span className="rounded-full border border-slate-200 px-2.5 py-1">{copy.labels.value}: {formatCurrency(item.amount)}</span> : null}
+                    {typeof item.days === 'number' ? <span className="rounded-full border border-slate-200 px-2.5 py-1">{copy.labels.days}: {item.days}</span> : null}
+                    {typeof item.quantity === 'number' ? <span className="rounded-full border border-slate-200 px-2.5 py-1">{copy.labels.quantity}: {item.quantity}</span> : null}
+                    <span className="rounded-full border border-slate-200 px-2.5 py-1">{copy.statuses[item.status]}</span>
+                    <span className="rounded-full border border-slate-200 px-2.5 py-1">{copy.labels.source}: {item.source}</span>
+                    <span className="rounded-full border border-slate-200 px-2.5 py-1">{formatDate(item.occurredOn, locale)}</span>
                   </div>
                   <div className="mt-3 flex justify-end gap-2">
-                    <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>Editar</Button>
-                    <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>Eliminar</Button>
+                    <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
+                    <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
                   </div>
                 </div>
               ))}
@@ -225,8 +367,8 @@ export default function NominaNovedadesPage() {
         <TabsContent value="incapacidades">
           <Card className="rounded-[26px] border-slate-200">
             <CardHeader>
-              <CardTitle>Incapacidades y licencias médicas</CardTitle>
-              <CardDescription>Base para soportes, origen, días reconocidos y cálculo del auxilio.</CardDescription>
+              <CardTitle>{copy.sections.leaveTitle}</CardTitle>
+              <CardDescription>{copy.sections.leaveDescription}</CardDescription>
             </CardHeader>
             <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
               {incapacidades.map((item) => (
@@ -236,16 +378,17 @@ export default function NominaNovedadesPage() {
                       <div className="font-semibold text-slate-950">{item.employeeName}</div>
                       <div className="text-sm text-slate-600">{item.detail}</div>
                     </div>
-                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">{item.status}</span>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">{copy.statuses[item.status]}</span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
                     <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{item.periodLabel}</span>
-                    <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{item.days ?? 0} días</span>
-                    <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{item.source}</span>
+                    <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{copy.labels.days}: {item.days ?? 0}</span>
+                    <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{copy.labels.supportNumber}: {item.supportNumber ?? '—'}</span>
+                    <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1">{formatDate(item.startsAt, locale)} - {formatDate(item.endsAt, locale)}</span>
                   </div>
                   <div className="mt-3 flex justify-end gap-2">
-                    <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>Editar</Button>
-                    <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>Eliminar</Button>
+                    <Button variant="outline" className="rounded-xl" onClick={() => openEdit(item)}>{copy.actions.edit}</Button>
+                    <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(item.id)}>{copy.actions.remove}</Button>
                   </div>
                 </div>
               ))}
@@ -257,27 +400,27 @@ export default function NominaNovedadesPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl rounded-[28px]">
           <DialogHeader>
-            <DialogTitle>Crear novedad</DialogTitle>
-            <DialogDescription>Registra incapacidades, horas extra, descuentos o licencias desde nómina.</DialogDescription>
+            <DialogTitle>{editingId ? copy.dialog.titleEdit : copy.dialog.titleCreate}</DialogTitle>
+            <DialogDescription>{copy.dialog.description}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid gap-2 md:col-span-2"><Label>Empleado</Label><Select value={form.employeeId} onValueChange={(value) => setForm((current) => ({ ...current, employeeId: value }))}><SelectTrigger><SelectValue placeholder="Selecciona empleado" /></SelectTrigger><SelectContent>{employees.map((employee) => <SelectItem key={employee.id} value={employee.id}>{employee.fullName}</SelectItem>)}</SelectContent></Select></div>
-            <div className="grid gap-2 md:col-span-2"><Label>Período</Label><Select value={form.periodId || '__none__'} onValueChange={(value) => setForm((current) => ({ ...current, periodId: value === '__none__' ? '' : value }))}><SelectTrigger><SelectValue placeholder="Sin período" /></SelectTrigger><SelectContent><SelectItem value="__none__">Sin período</SelectItem>{periods.map((period) => <SelectItem key={period.id} value={period.id}>{period.label}</SelectItem>)}</SelectContent></Select></div>
-            <div className="grid gap-2"><Label>Tipo</Label><Select value={form.type} onValueChange={(value) => setForm((current) => ({ ...current, type: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="INCAPACIDAD">Incapacidad</SelectItem><SelectItem value="HORA_EXTRA">Hora extra</SelectItem><SelectItem value="AUSENCIA">Ausencia</SelectItem><SelectItem value="LICENCIA">Licencia</SelectItem><SelectItem value="BONIFICACION">Bonificación</SelectItem><SelectItem value="DESCUENTO">Descuento</SelectItem><SelectItem value="RECARGO">Recargo</SelectItem><SelectItem value="COMISION">Comisión</SelectItem><SelectItem value="EMBARGO">Embargo</SelectItem><SelectItem value="PRESTAMO">Préstamo</SelectItem><SelectItem value="VACACIONES">Vacaciones</SelectItem></SelectContent></Select></div>
-            <div className="grid gap-2"><Label>Estado</Label><Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="RADICADA">Radicada</SelectItem><SelectItem value="VALIDADA">Validada</SelectItem><SelectItem value="APLICADA">Aplicada</SelectItem><SelectItem value="RECHAZADA">Rechazada</SelectItem></SelectContent></Select></div>
-            <div className="grid gap-2"><Label>Valor</Label><Input type="number" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} /></div>
-            <div className="grid gap-2"><Label>Días</Label><Input type="number" value={form.days} onChange={(event) => setForm((current) => ({ ...current, days: event.target.value }))} /></div>
-            <div className="grid gap-2"><Label>Cantidad</Label><Input type="number" value={form.quantity} onChange={(event) => setForm((current) => ({ ...current, quantity: event.target.value }))} /></div>
-            <div className="grid gap-2"><Label>Fecha ocurrencia</Label><Input type="date" value={form.occurredOn} onChange={(event) => setForm((current) => ({ ...current, occurredOn: event.target.value }))} /></div>
-            <div className="grid gap-2"><Label>Desde</Label><Input type="date" value={form.startsAt} onChange={(event) => setForm((current) => ({ ...current, startsAt: event.target.value }))} /></div>
-            <div className="grid gap-2"><Label>Hasta</Label><Input type="date" value={form.endsAt} onChange={(event) => setForm((current) => ({ ...current, endsAt: event.target.value }))} /></div>
-            <div className="grid gap-2"><Label>Número soporte</Label><Input value={form.supportNumber} onChange={(event) => setForm((current) => ({ ...current, supportNumber: event.target.value }))} /></div>
-            <div className="grid gap-2 md:col-span-2"><Label>Detalle</Label><Textarea value={form.detail} onChange={(event) => setForm((current) => ({ ...current, detail: event.target.value }))} rows={3} /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>{copy.labels.employee}</Label><Select value={form.employeeId} onValueChange={(value) => setForm((current) => ({ ...current, employeeId: value }))}><SelectTrigger><SelectValue placeholder={copy.labels.employee} /></SelectTrigger><SelectContent>{employees.map((employee) => <SelectItem key={employee.id} value={employee.id}>{employee.fullName}</SelectItem>)}</SelectContent></Select></div>
+            <div className="grid gap-2 md:col-span-2"><Label>{copy.labels.period}</Label><Select value={form.periodId || '__none__'} onValueChange={(value) => setForm((current) => ({ ...current, periodId: value === '__none__' ? '' : value }))}><SelectTrigger><SelectValue placeholder={copy.labels.noPeriod} /></SelectTrigger><SelectContent><SelectItem value="__none__">{copy.labels.noPeriod}</SelectItem>{periods.map((period) => <SelectItem key={period.id} value={period.id}>{period.label}</SelectItem>)}</SelectContent></Select></div>
+            <div className="grid gap-2"><Label>{copy.labels.type}</Label><Select value={form.type} onValueChange={(value) => setForm((current) => ({ ...current, type: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="INCAPACIDAD">{copy.types.INCAPACIDAD}</SelectItem><SelectItem value="HORA_EXTRA">{copy.types.HORA_EXTRA}</SelectItem><SelectItem value="AUSENCIA">{copy.types.AUSENCIA}</SelectItem><SelectItem value="LICENCIA">{copy.types.LICENCIA}</SelectItem><SelectItem value="BONIFICACION">{copy.types.BONIFICACION}</SelectItem><SelectItem value="DESCUENTO">{copy.types.DESCUENTO}</SelectItem><SelectItem value="RECARGO">{copy.types.RECARGO}</SelectItem><SelectItem value="COMISION">{copy.types.COMISION}</SelectItem><SelectItem value="EMBARGO">{copy.types.EMBARGO}</SelectItem><SelectItem value="PRESTAMO">{copy.types.PRESTAMO}</SelectItem><SelectItem value="VACACIONES">{copy.types.VACACIONES}</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2"><Label>{copy.labels.status}</Label><Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="RADICADA">{copy.statuses.RADICADA}</SelectItem><SelectItem value="VALIDADA">{copy.statuses.VALIDADA}</SelectItem><SelectItem value="APLICADA">{copy.statuses.APLICADA}</SelectItem><SelectItem value="RECHAZADA">{copy.statuses.RECHAZADA}</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2"><Label>{copy.labels.amount}</Label><Input type="number" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>{copy.labels.days}</Label><Input type="number" value={form.days} onChange={(event) => setForm((current) => ({ ...current, days: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>{copy.labels.quantity}</Label><Input type="number" value={form.quantity} onChange={(event) => setForm((current) => ({ ...current, quantity: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>{copy.labels.occurredOn}</Label><Input type="date" value={form.occurredOn} onChange={(event) => setForm((current) => ({ ...current, occurredOn: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>{copy.labels.startsAt}</Label><Input type="date" value={form.startsAt} onChange={(event) => setForm((current) => ({ ...current, startsAt: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>{copy.labels.endsAt}</Label><Input type="date" value={form.endsAt} onChange={(event) => setForm((current) => ({ ...current, endsAt: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>{copy.labels.supportNumber}</Label><Input value={form.supportNumber} onChange={(event) => setForm((current) => ({ ...current, supportNumber: event.target.value }))} /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>{copy.labels.detail}</Label><Textarea value={form.detail} onChange={(event) => setForm((current) => ({ ...current, detail: event.target.value }))} rows={3} /></div>
           </div>
           {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={() => void handleSave()} disabled={saving}>{saving ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear novedad'}</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>{copy.actions.cancel}</Button>
+            <Button onClick={() => void handleSave()} disabled={saving}>{saving ? (language === 'en' ? 'Saving...' : 'Guardando...') : editingId ? copy.actions.save : copy.actions.add}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

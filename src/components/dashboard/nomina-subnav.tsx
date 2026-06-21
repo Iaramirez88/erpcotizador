@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useI18n } from '@/components/providers/i18n-provider'
 import { cn } from '@/lib/utils'
 
 type NominaNavItem = {
@@ -9,15 +10,6 @@ type NominaNavItem = {
   href: string
   shortLabel?: string
 }
-
-const nominaNavItems: NominaNavItem[] = [
-  { label: 'Resumen', href: '/dashboard/contabilidad/nomina' },
-  { label: 'Empleados', href: '/dashboard/contabilidad/nomina/empleados' },
-  { label: 'Períodos', href: '/dashboard/contabilidad/nomina/periodos' },
-  { label: 'Novedades', href: '/dashboard/contabilidad/nomina/novedades' },
-  { label: 'Liquidaciones', href: '/dashboard/contabilidad/nomina/liquidaciones', shortLabel: 'Liquidar' },
-  { label: 'Reportes', href: '/dashboard/contabilidad/nomina/reportes' },
-]
 
 function isItemActive(pathname: string, href: string) {
   if (href === '/dashboard/contabilidad/nomina') {
@@ -29,6 +21,44 @@ function isItemActive(pathname: string, href: string) {
 
 export function NominaSubnav() {
   const pathname = usePathname() ?? ''
+  const { language } = useI18n()
+  const nominaNavItems: NominaNavItem[] = language === 'en'
+    ? [
+        { label: 'Overview', href: '/dashboard/contabilidad/nomina' },
+        { label: 'Employees', href: '/dashboard/contabilidad/nomina/empleados' },
+        { label: 'Attendance', href: '/dashboard/contabilidad/nomina/asistencia', shortLabel: 'Attend.' },
+        { label: 'Benefits', href: '/dashboard/contabilidad/nomina/beneficios' },
+        { label: 'Onboarding', href: '/dashboard/contabilidad/nomina/onboarding' },
+        { label: 'Service', href: '/dashboard/contabilidad/nomina/servicio-colaborador' },
+        { label: 'Ethics', href: '/dashboard/contabilidad/nomina/canal-denuncias' },
+        { label: 'Recruiting', href: '/dashboard/contabilidad/nomina/seleccion' },
+        { label: 'Surveys', href: '/dashboard/contabilidad/nomina/encuestas' },
+        { label: 'Performance', href: '/dashboard/contabilidad/nomina/desempeno' },
+        { label: 'Learning', href: '/dashboard/contabilidad/nomina/capacitaciones' },
+        { label: 'People', href: '/dashboard/contabilidad/nomina/gestion-personas' },
+        { label: 'Periods', href: '/dashboard/contabilidad/nomina/periodos' },
+        { label: 'Changes', href: '/dashboard/contabilidad/nomina/novedades' },
+        { label: 'Settlements', href: '/dashboard/contabilidad/nomina/liquidaciones', shortLabel: 'Settle' },
+        { label: 'Reports', href: '/dashboard/contabilidad/nomina/reportes' },
+      ]
+    : [
+        { label: 'Resumen', href: '/dashboard/contabilidad/nomina' },
+        { label: 'Empleados', href: '/dashboard/contabilidad/nomina/empleados' },
+        { label: 'Asistencia', href: '/dashboard/contabilidad/nomina/asistencia' },
+        { label: 'Beneficios', href: '/dashboard/contabilidad/nomina/beneficios' },
+        { label: 'Onboarding', href: '/dashboard/contabilidad/nomina/onboarding' },
+        { label: 'Servicio', href: '/dashboard/contabilidad/nomina/servicio-colaborador' },
+        { label: 'Denuncias', href: '/dashboard/contabilidad/nomina/canal-denuncias' },
+        { label: 'Selección', href: '/dashboard/contabilidad/nomina/seleccion' },
+        { label: 'Encuestas', href: '/dashboard/contabilidad/nomina/encuestas' },
+        { label: 'Desempeño', href: '/dashboard/contabilidad/nomina/desempeno' },
+        { label: 'Capacitaciones', href: '/dashboard/contabilidad/nomina/capacitaciones' },
+        { label: 'Gestión de personas', href: '/dashboard/contabilidad/nomina/gestion-personas', shortLabel: 'Personas' },
+        { label: 'Períodos', href: '/dashboard/contabilidad/nomina/periodos' },
+        { label: 'Novedades', href: '/dashboard/contabilidad/nomina/novedades' },
+        { label: 'Liquidaciones', href: '/dashboard/contabilidad/nomina/liquidaciones', shortLabel: 'Liquidar' },
+        { label: 'Reportes', href: '/dashboard/contabilidad/nomina/reportes' },
+      ]
 
   return (
     <div className="overflow-x-auto">

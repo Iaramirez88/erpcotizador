@@ -51,6 +51,19 @@ type PricesResponse =
   | { ok: true; rows: PriceRow[] }
   | { ok?: false; error?: string }
 
+type CommercialPriceRow = {
+  code: string
+  title: string
+  category: string
+  description: string
+  defaultPriceCOP: number
+  priceCOP: number
+}
+
+type CommercialPricesResponse =
+  | { ok: true; rows: CommercialPriceRow[] }
+  | { ok?: false; error?: string }
+
 type PlanCatalogRow = {
   tier: PlanTier
   nombre: string
@@ -144,6 +157,8 @@ export default function SuperAdminPlanModulesClient() {
   const [savingKey, setSavingKey] = useState<string | null>(null)
   const [priceRows, setPriceRows] = useState<PriceRow[]>([])
   const [savingPriceKey, setSavingPriceKey] = useState<string | null>(null)
+  const [commercialPriceRows, setCommercialPriceRows] = useState<CommercialPriceRow[]>([])
+  const [savingCommercialPriceKey, setSavingCommercialPriceKey] = useState<string | null>(null)
   const [planRows, setPlanRows] = useState<PlanCatalogRow[]>([])
   const [savingPlanTier, setSavingPlanTier] = useState<PlanTier | null>(null)
   const [copySourceByTier, setCopySourceByTier] = useState<Partial<Record<PlanTier, PlanTier>>>({})
@@ -165,6 +180,8 @@ export default function SuperAdminPlanModulesClient() {
         const json = (await res.json().catch(() => ({}))) as GetResponse
         const pricesRes = await fetch('/api/super-admin/module-prices', { cache: 'no-store' })
         const pricesJson = (await pricesRes.json().catch(() => ({}))) as PricesResponse
+        const commercialPricesRes = await fetch('/api/super-admin/commercial-prices', { cache: 'no-store' })
+        const commercialPricesJson = (await commercialPricesRes.json().catch(() => ({}))) as CommercialPricesResponse
         const planCatalogRes = await fetch('/api/super-admin/plan-catalog', { cache: 'no-store' })
         const planCatalogJson = (await planCatalogRes.json().catch(() => ({}))) as PlanCatalogResponse
         if (!res.ok || !('ok' in json) || !json.ok) {
@@ -173,6 +190,10 @@ export default function SuperAdminPlanModulesClient() {
         }
         if (!pricesRes.ok || !('ok' in pricesJson) || !pricesJson.ok) {
           setError(('error' in pricesJson && pricesJson.error) || 'No se pudo cargar los precios')
+          return
+        }
+        if (!commercialPricesRes.ok || !('ok' in commercialPricesJson) || !commercialPricesJson.ok) {
+          setError(('error' in commercialPricesJson && commercialPricesJson.error) || 'No se pudo cargar el pricing comercial')
           return
         }
         if (!planCatalogRes.ok || !('ok' in planCatalogJson) || !planCatalogJson.ok) {
@@ -185,6 +206,7 @@ export default function SuperAdminPlanModulesClient() {
           setModules(json.modules)
           setRows(json.rows)
           setPriceRows(pricesJson.rows)
+          setCommercialPriceRows(commercialPricesJson.rows)
           setPlanRows(planCatalogJson.rows)
         }
       } catch (e) {
@@ -281,6 +303,35 @@ export default function SuperAdminPlanModulesClient() {
       setError(e instanceof Error ? e.message : 'Error inesperado')
     } finally {
       setSavingPriceKey(null)
+    }
+  }
+
+  async function setCommercialPrice(code: string, value: string) {
+    const numericValue = Number(value)
+    if (!Number.isFinite(numericValue) || numericValue < 0) {
+      setError('El precio comercial debe ser un número mayor o igual a cero')
+      return
+    }
+
+    setSavingCommercialPriceKey(code)
+    setError(null)
+    try {
+      const res = await fetch('/api/super-admin/commercial-prices', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, priceCOP: numericValue }),
+      })
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; row?: { code: string; priceCOP: number }; error?: string }
+      if (!res.ok || !json.ok || !json.row) {
+        setError(json.error || 'No se pudo guardar el precio comercial')
+        return
+      }
+
+      setCommercialPriceRows((prev) => prev.map((row) => row.code === code ? { ...row, priceCOP: json.row!.priceCOP } : row))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error inesperado')
+    } finally {
+      setSavingCommercialPriceKey(null)
     }
   }
 
@@ -532,6 +583,35 @@ export default function SuperAdminPlanModulesClient() {
                     defaultValue={row.priceCOP}
                     disabled={savingPriceKey === row.module}
                     onBlur={(event) => void setPrice(row.module, event.target.value)}
+                  />
+                  <span className="text-xs text-slate-500">COP/mes</span>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {!loading && !error ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Pricing comercial editable</CardTitle>
+            <CardDescription>Edita suite global, módulos padre y submódulos comerciales sin tocar código.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {commercialPriceRows.map((row) => (
+              <div key={row.code} className="rounded-lg border p-3">
+                <div className="text-sm font-semibold text-slate-900">{row.title}</div>
+                <div className="mt-1 text-xs text-slate-500">{row.description}</div>
+                <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-slate-400">{row.category}</div>
+                <div className="mt-2 text-[11px] text-slate-500">Base: {row.defaultPriceCOP.toLocaleString('es-CO')} COP</div>
+                <div className="mt-3 flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    defaultValue={row.priceCOP}
+                    disabled={savingCommercialPriceKey === row.code}
+                    onBlur={(event) => void setCommercialPrice(row.code, event.target.value)}
                   />
                   <span className="text-xs text-slate-500">COP/mes</span>
                 </div>

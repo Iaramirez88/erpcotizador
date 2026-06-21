@@ -1,0 +1,2 @@
+-- RenameIndex
+ALTER INDEX "payroll_employee_documents_signatureStatus_signatureRequired_id" RENAME TO "payroll_employee_documents_signatureStatus_signatureRequire_idx";

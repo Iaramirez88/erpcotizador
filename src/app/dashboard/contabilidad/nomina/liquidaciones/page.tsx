@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useI18n } from '@/components/providers/i18n-provider'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { NominaSubnav } from '@/components/dashboard/nomina-subnav'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
@@ -15,6 +16,28 @@ import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import type { PayrollEmployeeRow, PayrollPeriodRow, PayrollSettlementRow } from '@/lib/payroll'
 import { formatCurrency } from '@/lib/utils'
 
+const EMPTY_FORM = {
+  employeeId: '',
+  reason: 'RENUNCIA',
+  status: 'PENDIENTE',
+  retirementDate: '',
+  liquidationDate: '',
+  paymentDate: '',
+  periodId: '',
+  workedDays: '',
+  total: '',
+  notes: '',
+}
+
+function formatDate(value: string | null | undefined, locale: string) {
+  if (!value) return '—'
+  try {
+    return new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(value))
+  } catch {
+    return value
+  }
+}
+
 export default function NominaLiquidacionesPage() {
   const [rows, setRows] = useState<PayrollSettlementRow[]>([])
   const [employees, setEmployees] = useState<PayrollEmployeeRow[]>([])
@@ -23,19 +46,108 @@ export default function NominaLiquidacionesPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({
-    employeeId: '',
-    reason: 'RENUNCIA',
-    status: 'PENDIENTE',
-    retirementDate: '',
-    liquidationDate: '',
-    paymentDate: '',
-    periodId: '',
-    workedDays: '',
-    total: '',
-    notes: '',
-  })
+  const [form, setForm] = useState(EMPTY_FORM)
   const { mode, setMode } = useDataViewMode('nomina.liquidaciones', 'list')
+  const { language } = useI18n()
+  const locale = language === 'en' ? 'en-US' : 'es-CO'
+
+  const copy = language === 'en'
+    ? {
+        eyebrow: 'Payroll',
+        title: 'Settlements and Offboarding',
+        description: 'Final settlement control for terminations, pending payment, accounting handoff and payroll exit follow-up.',
+        stats: {
+          pending: 'Pending',
+          paid: 'Paid',
+          total: 'Estimated total',
+          pendingHint: 'Offboardings awaiting payout',
+          paidHint: 'Closed settlements',
+          totalHint: 'Current tray total',
+        },
+        actions: { create: 'Create settlement', save: 'Save changes', add: 'Create settlement', cancel: 'Cancel', edit: 'Edit', remove: 'Delete', post: 'Post to accounting' },
+        list: { title: 'Settlement tray', description: 'Preview of termination calculations and final payment control.' },
+        dialog: { titleCreate: 'Create settlement', titleEdit: 'Edit settlement', description: 'Register the employee exit and the final payroll settlement.' },
+        labels: {
+          employee: 'Employee',
+          period: 'Period',
+          noPeriod: 'No period',
+          reason: 'Reason',
+          status: 'Status',
+          retirementDate: 'Retirement date',
+          liquidationDate: 'Settlement date',
+          paymentDate: 'Payment date',
+          workedDays: 'Worked days',
+          total: 'Settlement total',
+          notes: 'Notes',
+          accounting: 'Accounting',
+          payout: 'Settlement total',
+        },
+        reasons: {
+          RENUNCIA: 'Resignation',
+          TERMINACION: 'Termination',
+          MUTUO_ACUERDO: 'Mutual agreement',
+          JUSTA_CAUSA: 'Just cause',
+          FIN_CONTRATO: 'End of contract',
+        },
+        statuses: {
+          PENDIENTE: 'Pending',
+          LIQUIDADA: 'Settled',
+          PAGADA: 'Paid',
+          ANULADA: 'Voided',
+        },
+        accountingStatus: {
+          PENDIENTE: 'Pending',
+          CONTABILIZADA: 'Posted',
+        },
+      }
+    : {
+        eyebrow: 'Nómina',
+        title: 'Liquidaciones y retiro',
+        description: 'Control de liquidación final por retiro, pago pendiente, pase contable y seguimiento de salida del colaborador.',
+        stats: {
+          pending: 'Pendientes',
+          paid: 'Pagadas',
+          total: 'Total estimado',
+          pendingHint: 'Retiros sin desembolso',
+          paidHint: 'Liquidaciones cerradas',
+          totalHint: 'Acumulado de la bandeja',
+        },
+        actions: { create: 'Crear liquidación', save: 'Guardar cambios', add: 'Crear liquidación', cancel: 'Cancelar', edit: 'Editar', remove: 'Eliminar', post: 'Contabilizar' },
+        list: { title: 'Bandeja de liquidaciones', description: 'Vista previa de cálculos por retiro y control del pago final.' },
+        dialog: { titleCreate: 'Crear liquidación', titleEdit: 'Editar liquidación', description: 'Registra el retiro y el cálculo final del colaborador.' },
+        labels: {
+          employee: 'Empleado',
+          period: 'Período',
+          noPeriod: 'Sin período',
+          reason: 'Motivo',
+          status: 'Estado',
+          retirementDate: 'Fecha retiro',
+          liquidationDate: 'Fecha liquidación',
+          paymentDate: 'Fecha pago',
+          workedDays: 'Días trabajados',
+          total: 'Total liquidación',
+          notes: 'Notas',
+          accounting: 'Contabilización',
+          payout: 'Total liquidación',
+        },
+        reasons: {
+          RENUNCIA: 'Renuncia',
+          TERMINACION: 'Terminación',
+          MUTUO_ACUERDO: 'Mutuo acuerdo',
+          JUSTA_CAUSA: 'Justa causa',
+          FIN_CONTRATO: 'Fin de contrato',
+        },
+        statuses: {
+          PENDIENTE: 'Pendiente',
+          LIQUIDADA: 'Liquidada',
+          PAGADA: 'Pagada',
+          ANULADA: 'Anulada',
+        },
+        accountingStatus: {
+          PENDIENTE: 'Pendiente',
+          CONTABILIZADA: 'Contabilizada',
+        },
+      }
 
   async function load() {
     const [settlementsRes, employeesRes, periodsRes] = await Promise.all([
@@ -68,7 +180,7 @@ export default function NominaLiquidacionesPage() {
   function openCreate() {
     setEditingId(null)
     setError(null)
-    setForm({ employeeId: employees[0]?.id || '', reason: 'RENUNCIA', status: 'PENDIENTE', retirementDate: '', liquidationDate: '', paymentDate: '', periodId: periods[0]?.id || '', workedDays: '', total: '', notes: '' })
+    setForm({ ...EMPTY_FORM, employeeId: employees[0]?.id || '', periodId: periods[0]?.id || '', retirementDate: new Date().toISOString().slice(0, 10) })
     setDialogOpen(true)
   }
 
@@ -107,19 +219,19 @@ export default function NominaLiquidacionesPage() {
     })
     const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null
     if (!res.ok || !json?.ok) {
-      setError(json?.error ?? 'No fue posible crear la liquidación')
+      setError(json?.error ?? (language === 'en' ? 'Could not save settlement' : 'No fue posible guardar la liquidación'))
       setSaving(false)
       return
     }
     setDialogOpen(false)
     setEditingId(null)
-    setForm({ employeeId: employees[0]?.id || '', reason: 'RENUNCIA', status: 'PENDIENTE', retirementDate: '', liquidationDate: '', paymentDate: '', periodId: periods[0]?.id || '', workedDays: '', total: '', notes: '' })
+    setForm({ ...EMPTY_FORM, employeeId: employees[0]?.id || '', periodId: periods[0]?.id || '' })
     await load()
     setSaving(false)
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm('Eliminar esta liquidación?')) return
+    if (!window.confirm(language === 'en' ? 'Delete this settlement?' : '¿Eliminar esta liquidación?')) return
     const res = await fetch('/api/nomina/liquidaciones', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -127,7 +239,7 @@ export default function NominaLiquidacionesPage() {
     })
     const json = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null
     if (!res.ok || !json?.ok) {
-      setError(json?.error ?? 'No fue posible eliminar la liquidación')
+      setError(json?.error ?? (language === 'en' ? 'Could not delete settlement' : 'No fue posible eliminar la liquidación'))
       return
     }
     await load()
@@ -136,13 +248,13 @@ export default function NominaLiquidacionesPage() {
   return (
     <div className="space-y-4">
       <ErpPageHero
-        eyebrow="Nómina"
-        title={<span data-tour="nomina-liquidaciones-title">Liquidaciones y retiro</span>}
-        description="Liquidación final por retiro, vacaciones, cesantías, intereses y demás conceptos prestacionales."
+        eyebrow={copy.eyebrow}
+        title={<span data-tour="nomina-liquidaciones-title">{copy.title}</span>}
+        description={copy.description}
         stats={[
-          { label: 'Pendientes', value: rows.filter((item) => item.status === 'PENDIENTE').length, hint: 'Retiros sin desembolso', tone: 'amber' },
-          { label: 'Pagadas', value: rows.filter((item) => item.status === 'PAGADA').length, hint: 'Liquidaciones cerradas', tone: 'teal' },
-          { label: 'Total estimado', value: formatCurrency(rows.reduce((sum, item) => sum + item.total, 0)), hint: 'Acumulado de la bandeja', tone: 'sky' },
+          { label: copy.stats.pending, value: rows.filter((item) => item.status === 'PENDIENTE').length, hint: copy.stats.pendingHint, tone: 'amber' },
+          { label: copy.stats.paid, value: rows.filter((item) => item.status === 'PAGADA').length, hint: copy.stats.paidHint, tone: 'teal' },
+          { label: copy.stats.total, value: formatCurrency(rows.reduce((sum, item) => sum + item.total, 0)), hint: copy.stats.totalHint, tone: 'sky' },
         ]}
       />
 
@@ -151,14 +263,14 @@ export default function NominaLiquidacionesPage() {
       <div className="flex justify-end" data-tour="nomina-liquidaciones-actions">
         <div className="flex flex-wrap gap-2">
           <DataViewToggle mode={mode} onChange={setMode} />
-          <Button className="rounded-xl" onClick={openCreate}>Crear liquidación</Button>
+          <Button className="rounded-xl" onClick={openCreate}>{copy.actions.create}</Button>
         </div>
       </div>
 
       <Card className="rounded-[26px] border-slate-200" data-tour="nomina-liquidaciones-list">
         <CardHeader>
-          <CardTitle>Bandeja de liquidaciones</CardTitle>
-          <CardDescription>Vista previa de cálculos por retiro y control del pago final.</CardDescription>
+          <CardTitle>{copy.list.title}</CardTitle>
+          <CardDescription>{copy.list.description}</CardDescription>
         </CardHeader>
         <CardContent className={mode === 'grid' ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
           {rows.map((settlement) => (
@@ -166,21 +278,27 @@ export default function NominaLiquidacionesPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="font-semibold text-slate-950">{settlement.employeeName}</div>
-                  <div className="text-sm text-slate-500">Retiro: {settlement.retirementDate} · Motivo: {settlement.reason}</div>
+                  <div className="text-sm text-slate-500">{copy.labels.retirementDate}: {formatDate(settlement.retirementDate, locale)} · {copy.labels.reason}: {copy.reasons[settlement.reason]}</div>
                 </div>
                 <span className={settlement.status === 'PAGADA' ? 'rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800' : settlement.status === 'LIQUIDADA' ? 'rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-800' : 'rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800'}>
-                  {settlement.status}
+                  {copy.statuses[settlement.status]}
                 </span>
               </div>
               <div className="mt-3 grid gap-2 text-sm text-slate-600 md:grid-cols-3">
-                <div>Días trabajados: {settlement.workedDays}</div>
-                <div>Total liquidación: {formatCurrency(settlement.total)}</div>
-                <div>Contabilización: {settlement.accountingStatus}</div>
+                <div>{copy.labels.workedDays}: {settlement.workedDays}</div>
+                <div>{copy.labels.payout}: {formatCurrency(settlement.total)}</div>
+                <div>{copy.labels.accounting}: {copy.accountingStatus[settlement.accountingStatus]}</div>
               </div>
-              {settlement.accountingStatus === 'PENDIENTE' && settlement.total > 0 ? <div className="mt-3 flex justify-end"><Button variant="outline" className="rounded-xl" onClick={() => void contabilizar(settlement.id)}>Contabilizar</Button></div> : null}
+              <div className="mt-2 grid gap-2 text-sm text-slate-500 md:grid-cols-3">
+                <div>{copy.labels.period}: {settlement.periodId ? periods.find((period) => period.id === settlement.periodId)?.label ?? copy.labels.noPeriod : copy.labels.noPeriod}</div>
+                <div>{copy.labels.liquidationDate}: {formatDate(settlement.liquidationDate, locale)}</div>
+                <div>{copy.labels.paymentDate}: {formatDate(settlement.paymentDate, locale)}</div>
+              </div>
+              {settlement.notes ? <div className="mt-2 text-sm text-slate-600">{copy.labels.notes}: {settlement.notes}</div> : null}
+              {settlement.accountingStatus === 'PENDIENTE' && settlement.total > 0 ? <div className="mt-3 flex justify-end"><Button variant="outline" className="rounded-xl" onClick={() => void contabilizar(settlement.id)}>{copy.actions.post}</Button></div> : null}
               <div className="mt-3 flex justify-end gap-2">
-                <Button variant="outline" className="rounded-xl" onClick={() => openEdit(settlement)}>Editar</Button>
-                <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(settlement.id)}>Eliminar</Button>
+                <Button variant="outline" className="rounded-xl" onClick={() => openEdit(settlement)}>{copy.actions.edit}</Button>
+                <Button variant="outline" className="rounded-xl" onClick={() => void handleDelete(settlement.id)}>{copy.actions.remove}</Button>
               </div>
             </div>
           ))}
@@ -190,25 +308,25 @@ export default function NominaLiquidacionesPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-xl rounded-[28px]">
           <DialogHeader>
-            <DialogTitle>Crear liquidación</DialogTitle>
-            <DialogDescription>Registra el retiro y el cálculo final del colaborador.</DialogDescription>
+            <DialogTitle>{editingId ? copy.dialog.titleEdit : copy.dialog.titleCreate}</DialogTitle>
+            <DialogDescription>{copy.dialog.description}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid gap-2 md:col-span-2"><Label>Empleado</Label><Select value={form.employeeId} onValueChange={(value) => setForm((current) => ({ ...current, employeeId: value }))}><SelectTrigger><SelectValue placeholder="Selecciona empleado" /></SelectTrigger><SelectContent>{employees.map((employee) => <SelectItem key={employee.id} value={employee.id}>{employee.fullName}</SelectItem>)}</SelectContent></Select></div>
-            <div className="grid gap-2 md:col-span-2"><Label>Período</Label><Select value={form.periodId || '__none__'} onValueChange={(value) => setForm((current) => ({ ...current, periodId: value === '__none__' ? '' : value }))}><SelectTrigger><SelectValue placeholder="Sin período" /></SelectTrigger><SelectContent><SelectItem value="__none__">Sin período</SelectItem>{periods.map((period) => <SelectItem key={period.id} value={period.id}>{period.label}</SelectItem>)}</SelectContent></Select></div>
-            <div className="grid gap-2"><Label>Motivo</Label><Select value={form.reason} onValueChange={(value) => setForm((current) => ({ ...current, reason: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="RENUNCIA">Renuncia</SelectItem><SelectItem value="TERMINACION">Terminación</SelectItem><SelectItem value="MUTUO_ACUERDO">Mutuo acuerdo</SelectItem><SelectItem value="JUSTA_CAUSA">Justa causa</SelectItem><SelectItem value="FIN_CONTRATO">Fin de contrato</SelectItem></SelectContent></Select></div>
-            <div className="grid gap-2"><Label>Estado</Label><Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PENDIENTE">Pendiente</SelectItem><SelectItem value="LIQUIDADA">Liquidada</SelectItem><SelectItem value="PAGADA">Pagada</SelectItem><SelectItem value="ANULADA">Anulada</SelectItem></SelectContent></Select></div>
-            <div className="grid gap-2"><Label>Fecha retiro</Label><Input type="date" value={form.retirementDate} onChange={(event) => setForm((current) => ({ ...current, retirementDate: event.target.value }))} /></div>
-            <div className="grid gap-2"><Label>Fecha liquidación</Label><Input type="date" value={form.liquidationDate} onChange={(event) => setForm((current) => ({ ...current, liquidationDate: event.target.value }))} /></div>
-            <div className="grid gap-2"><Label>Fecha pago</Label><Input type="date" value={form.paymentDate} onChange={(event) => setForm((current) => ({ ...current, paymentDate: event.target.value }))} /></div>
-            <div className="grid gap-2"><Label>Días trabajados</Label><Input type="number" value={form.workedDays} onChange={(event) => setForm((current) => ({ ...current, workedDays: event.target.value }))} /></div>
-            <div className="grid gap-2 md:col-span-2"><Label>Total liquidación</Label><Input type="number" value={form.total} onChange={(event) => setForm((current) => ({ ...current, total: event.target.value }))} /></div>
-            <div className="grid gap-2 md:col-span-2"><Label>Notas</Label><Textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} rows={3} /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>{copy.labels.employee}</Label><Select value={form.employeeId} onValueChange={(value) => setForm((current) => ({ ...current, employeeId: value }))}><SelectTrigger><SelectValue placeholder={copy.labels.employee} /></SelectTrigger><SelectContent>{employees.map((employee) => <SelectItem key={employee.id} value={employee.id}>{employee.fullName}</SelectItem>)}</SelectContent></Select></div>
+            <div className="grid gap-2 md:col-span-2"><Label>{copy.labels.period}</Label><Select value={form.periodId || '__none__'} onValueChange={(value) => setForm((current) => ({ ...current, periodId: value === '__none__' ? '' : value }))}><SelectTrigger><SelectValue placeholder={copy.labels.noPeriod} /></SelectTrigger><SelectContent><SelectItem value="__none__">{copy.labels.noPeriod}</SelectItem>{periods.map((period) => <SelectItem key={period.id} value={period.id}>{period.label}</SelectItem>)}</SelectContent></Select></div>
+            <div className="grid gap-2"><Label>{copy.labels.reason}</Label><Select value={form.reason} onValueChange={(value) => setForm((current) => ({ ...current, reason: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="RENUNCIA">{copy.reasons.RENUNCIA}</SelectItem><SelectItem value="TERMINACION">{copy.reasons.TERMINACION}</SelectItem><SelectItem value="MUTUO_ACUERDO">{copy.reasons.MUTUO_ACUERDO}</SelectItem><SelectItem value="JUSTA_CAUSA">{copy.reasons.JUSTA_CAUSA}</SelectItem><SelectItem value="FIN_CONTRATO">{copy.reasons.FIN_CONTRATO}</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2"><Label>{copy.labels.status}</Label><Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PENDIENTE">{copy.statuses.PENDIENTE}</SelectItem><SelectItem value="LIQUIDADA">{copy.statuses.LIQUIDADA}</SelectItem><SelectItem value="PAGADA">{copy.statuses.PAGADA}</SelectItem><SelectItem value="ANULADA">{copy.statuses.ANULADA}</SelectItem></SelectContent></Select></div>
+            <div className="grid gap-2"><Label>{copy.labels.retirementDate}</Label><Input type="date" value={form.retirementDate} onChange={(event) => setForm((current) => ({ ...current, retirementDate: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>{copy.labels.liquidationDate}</Label><Input type="date" value={form.liquidationDate} onChange={(event) => setForm((current) => ({ ...current, liquidationDate: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>{copy.labels.paymentDate}</Label><Input type="date" value={form.paymentDate} onChange={(event) => setForm((current) => ({ ...current, paymentDate: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>{copy.labels.workedDays}</Label><Input type="number" value={form.workedDays} onChange={(event) => setForm((current) => ({ ...current, workedDays: event.target.value }))} /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>{copy.labels.total}</Label><Input type="number" value={form.total} onChange={(event) => setForm((current) => ({ ...current, total: event.target.value }))} /></div>
+            <div className="grid gap-2 md:col-span-2"><Label>{copy.labels.notes}</Label><Textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} rows={3} /></div>
           </div>
           {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={() => void handleSave()} disabled={saving}>{saving ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Crear liquidación'}</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>{copy.actions.cancel}</Button>
+            <Button onClick={() => void handleSave()} disabled={saving}>{saving ? (language === 'en' ? 'Saving...' : 'Guardando...') : editingId ? copy.actions.save : copy.actions.add}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -5,6 +5,7 @@ import { getDefaultPlanTier } from '@/lib/plans'
 import { resolvePaywallState } from '@/lib/plan-access'
 import type { ModuleKey } from '@prisma/client'
 import { getPlanModulePriceRows } from '@/lib/plan-module-prices'
+import { getCommercialPriceRows } from '@/lib/commercial-price-settings'
 import { getManagedPlanByTier, getManagedPlans } from '@/lib/managed-plans'
 import { getCrmStorageUsageSummary } from '@/lib/crm-files'
 
@@ -67,7 +68,10 @@ export async function GET() {
       : []
 
     const lastInvoice = invoices[0] ?? null
-    const modulePrices = await getPlanModulePriceRows()
+    const [modulePrices, commercialPrices] = await Promise.all([
+      getPlanModulePriceRows(),
+      getCommercialPriceRows(),
+    ])
 
     const paywall = empresa ? resolvePaywallState(empresa, new Date()) : null
 
@@ -144,6 +148,7 @@ export async function GET() {
         createdAt: invoice.createdAt.toISOString(),
       })),
       modulePrices,
+      commercialPrices,
       all: allPlans,
         storageUsage,
       devDefault: getDefaultPlanTier(),
