@@ -1,4 +1,4 @@
-CREATE TABLE "payroll_performance_reviews" (
+CREATE TABLE IF NOT EXISTS "payroll_performance_reviews" (
   "id" TEXT NOT NULL,
   "empresaId" TEXT NOT NULL,
   "employeeId" TEXT,
@@ -21,11 +21,20 @@ CREATE TABLE "payroll_performance_reviews" (
   CONSTRAINT "payroll_performance_reviews_pkey" PRIMARY KEY ("id")
 );
 
-CREATE INDEX "payroll_performance_reviews_empresaId_status_idx" ON "payroll_performance_reviews"("empresaId", "status");
-CREATE INDEX "payroll_performance_reviews_employeeId_idx" ON "payroll_performance_reviews"("employeeId");
-CREATE INDEX "payroll_performance_reviews_ownerUserId_idx" ON "payroll_performance_reviews"("ownerUserId");
-CREATE INDEX "payroll_performance_reviews_reviewType_idx" ON "payroll_performance_reviews"("reviewType");
+CREATE INDEX IF NOT EXISTS "payroll_performance_reviews_empresaId_status_idx" ON "payroll_performance_reviews"("empresaId", "status");
+CREATE INDEX IF NOT EXISTS "payroll_performance_reviews_employeeId_idx" ON "payroll_performance_reviews"("employeeId");
+CREATE INDEX IF NOT EXISTS "payroll_performance_reviews_ownerUserId_idx" ON "payroll_performance_reviews"("ownerUserId");
+CREATE INDEX IF NOT EXISTS "payroll_performance_reviews_reviewType_idx" ON "payroll_performance_reviews"("reviewType");
 
-ALTER TABLE "payroll_performance_reviews" ADD CONSTRAINT "payroll_performance_reviews_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "empresas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "payroll_performance_reviews" ADD CONSTRAINT "payroll_performance_reviews_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "payroll_employees"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-ALTER TABLE "payroll_performance_reviews" ADD CONSTRAINT "payroll_performance_reviews_ownerUserId_fkey" FOREIGN KEY ("ownerUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_performance_reviews_empresaId_fkey') THEN
+    ALTER TABLE "payroll_performance_reviews" ADD CONSTRAINT "payroll_performance_reviews_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "empresas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_performance_reviews_employeeId_fkey') THEN
+    ALTER TABLE "payroll_performance_reviews" ADD CONSTRAINT "payroll_performance_reviews_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "payroll_employees"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_performance_reviews_ownerUserId_fkey') THEN
+    ALTER TABLE "payroll_performance_reviews" ADD CONSTRAINT "payroll_performance_reviews_ownerUserId_fkey" FOREIGN KEY ("ownerUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;

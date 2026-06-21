@@ -1,4 +1,4 @@
-CREATE TABLE "payroll_recruitment_candidates" (
+CREATE TABLE IF NOT EXISTS "payroll_recruitment_candidates" (
   "id" TEXT NOT NULL,
   "empresaId" TEXT NOT NULL,
   "ownerUserId" TEXT,
@@ -24,9 +24,16 @@ CREATE TABLE "payroll_recruitment_candidates" (
   CONSTRAINT "payroll_recruitment_candidates_pkey" PRIMARY KEY ("id")
 );
 
-CREATE INDEX "payroll_recruitment_candidates_empresaId_status_idx" ON "payroll_recruitment_candidates"("empresaId", "status");
-CREATE INDEX "payroll_recruitment_candidates_ownerUserId_idx" ON "payroll_recruitment_candidates"("ownerUserId");
-CREATE INDEX "payroll_recruitment_candidates_openingTitle_idx" ON "payroll_recruitment_candidates"("openingTitle");
+CREATE INDEX IF NOT EXISTS "payroll_recruitment_candidates_empresaId_status_idx" ON "payroll_recruitment_candidates"("empresaId", "status");
+CREATE INDEX IF NOT EXISTS "payroll_recruitment_candidates_ownerUserId_idx" ON "payroll_recruitment_candidates"("ownerUserId");
+CREATE INDEX IF NOT EXISTS "payroll_recruitment_candidates_openingTitle_idx" ON "payroll_recruitment_candidates"("openingTitle");
 
-ALTER TABLE "payroll_recruitment_candidates" ADD CONSTRAINT "payroll_recruitment_candidates_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "empresas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "payroll_recruitment_candidates" ADD CONSTRAINT "payroll_recruitment_candidates_ownerUserId_fkey" FOREIGN KEY ("ownerUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_recruitment_candidates_empresaId_fkey') THEN
+    ALTER TABLE "payroll_recruitment_candidates" ADD CONSTRAINT "payroll_recruitment_candidates_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "empresas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_recruitment_candidates_ownerUserId_fkey') THEN
+    ALTER TABLE "payroll_recruitment_candidates" ADD CONSTRAINT "payroll_recruitment_candidates_ownerUserId_fkey" FOREIGN KEY ("ownerUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;

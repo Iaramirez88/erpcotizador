@@ -1,4 +1,4 @@
-CREATE TABLE "payroll_whistleblower_cases" (
+CREATE TABLE IF NOT EXISTS "payroll_whistleblower_cases" (
   "id" TEXT NOT NULL,
   "empresaId" TEXT NOT NULL,
   "employeeId" TEXT,
@@ -30,12 +30,23 @@ CREATE TABLE "payroll_whistleblower_cases" (
   CONSTRAINT "payroll_whistleblower_cases_pkey" PRIMARY KEY ("id")
 );
 
-CREATE INDEX "payroll_whistleblower_cases_empresaId_status_idx" ON "payroll_whistleblower_cases"("empresaId", "status");
-CREATE INDEX "payroll_whistleblower_cases_employeeId_createdAt_idx" ON "payroll_whistleblower_cases"("employeeId", "createdAt");
-CREATE INDEX "payroll_whistleblower_cases_assignedToUserId_idx" ON "payroll_whistleblower_cases"("assignedToUserId");
-CREATE INDEX "payroll_whistleblower_cases_resolvedByUserId_idx" ON "payroll_whistleblower_cases"("resolvedByUserId");
+CREATE INDEX IF NOT EXISTS "payroll_whistleblower_cases_empresaId_status_idx" ON "payroll_whistleblower_cases"("empresaId", "status");
+CREATE INDEX IF NOT EXISTS "payroll_whistleblower_cases_employeeId_createdAt_idx" ON "payroll_whistleblower_cases"("employeeId", "createdAt");
+CREATE INDEX IF NOT EXISTS "payroll_whistleblower_cases_assignedToUserId_idx" ON "payroll_whistleblower_cases"("assignedToUserId");
+CREATE INDEX IF NOT EXISTS "payroll_whistleblower_cases_resolvedByUserId_idx" ON "payroll_whistleblower_cases"("resolvedByUserId");
 
-ALTER TABLE "payroll_whistleblower_cases" ADD CONSTRAINT "payroll_whistleblower_cases_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "empresas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "payroll_whistleblower_cases" ADD CONSTRAINT "payroll_whistleblower_cases_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "payroll_employees"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-ALTER TABLE "payroll_whistleblower_cases" ADD CONSTRAINT "payroll_whistleblower_cases_assignedToUserId_fkey" FOREIGN KEY ("assignedToUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-ALTER TABLE "payroll_whistleblower_cases" ADD CONSTRAINT "payroll_whistleblower_cases_resolvedByUserId_fkey" FOREIGN KEY ("resolvedByUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_whistleblower_cases_empresaId_fkey') THEN
+    ALTER TABLE "payroll_whistleblower_cases" ADD CONSTRAINT "payroll_whistleblower_cases_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "empresas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_whistleblower_cases_employeeId_fkey') THEN
+    ALTER TABLE "payroll_whistleblower_cases" ADD CONSTRAINT "payroll_whistleblower_cases_employeeId_fkey" FOREIGN KEY ("employeeId") REFERENCES "payroll_employees"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_whistleblower_cases_assignedToUserId_fkey') THEN
+    ALTER TABLE "payroll_whistleblower_cases" ADD CONSTRAINT "payroll_whistleblower_cases_assignedToUserId_fkey" FOREIGN KEY ("assignedToUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_whistleblower_cases_resolvedByUserId_fkey') THEN
+    ALTER TABLE "payroll_whistleblower_cases" ADD CONSTRAINT "payroll_whistleblower_cases_resolvedByUserId_fkey" FOREIGN KEY ("resolvedByUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;

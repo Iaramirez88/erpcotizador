@@ -1,4 +1,4 @@
-CREATE TABLE "payroll_survey_campaigns" (
+CREATE TABLE IF NOT EXISTS "payroll_survey_campaigns" (
   "id" TEXT NOT NULL,
   "empresaId" TEXT NOT NULL,
   "ownerUserId" TEXT,
@@ -23,9 +23,16 @@ CREATE TABLE "payroll_survey_campaigns" (
   CONSTRAINT "payroll_survey_campaigns_pkey" PRIMARY KEY ("id")
 );
 
-CREATE INDEX "payroll_survey_campaigns_empresaId_status_idx" ON "payroll_survey_campaigns"("empresaId", "status");
-CREATE INDEX "payroll_survey_campaigns_ownerUserId_idx" ON "payroll_survey_campaigns"("ownerUserId");
-CREATE INDEX "payroll_survey_campaigns_category_idx" ON "payroll_survey_campaigns"("category");
+CREATE INDEX IF NOT EXISTS "payroll_survey_campaigns_empresaId_status_idx" ON "payroll_survey_campaigns"("empresaId", "status");
+CREATE INDEX IF NOT EXISTS "payroll_survey_campaigns_ownerUserId_idx" ON "payroll_survey_campaigns"("ownerUserId");
+CREATE INDEX IF NOT EXISTS "payroll_survey_campaigns_category_idx" ON "payroll_survey_campaigns"("category");
 
-ALTER TABLE "payroll_survey_campaigns" ADD CONSTRAINT "payroll_survey_campaigns_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "empresas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "payroll_survey_campaigns" ADD CONSTRAINT "payroll_survey_campaigns_ownerUserId_fkey" FOREIGN KEY ("ownerUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_survey_campaigns_empresaId_fkey') THEN
+    ALTER TABLE "payroll_survey_campaigns" ADD CONSTRAINT "payroll_survey_campaigns_empresaId_fkey" FOREIGN KEY ("empresaId") REFERENCES "empresas"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'payroll_survey_campaigns_ownerUserId_fkey') THEN
+    ALTER TABLE "payroll_survey_campaigns" ADD CONSTRAINT "payroll_survey_campaigns_ownerUserId_fkey" FOREIGN KEY ("ownerUserId") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+END $$;
