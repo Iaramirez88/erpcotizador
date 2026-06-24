@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ChevronDown, MoreVertical } from 'lucide-react'
+import { ChevronDown, MoreVertical, Plus } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -45,6 +45,16 @@ type WorkspaceMember = {
   user: TeamUser
 }
 
+type WorkspaceProject = {
+  id: string
+  workspaceId: string
+  name: string
+  description?: string | null
+  createdAt: string
+  updatedAt: string
+  _count?: { tasks: number }
+}
+
 type Workspace = {
   id: string
   name: string
@@ -53,6 +63,7 @@ type Workspace = {
   sede?: SedeOption | null
   ownerUser?: TeamUser | null
   members: WorkspaceMember[]
+  projects: WorkspaceProject[]
   createdBy?: TeamUser | null
   _count?: { tasks: number; members: number }
   currentUserRole?: WorkspaceRole | null
@@ -110,6 +121,7 @@ type TaskItem = {
   createdAt: string
   updatedAt: string
   workspace?: Workspace | null
+  project?: WorkspaceProject | null
   assignments: TaskAssignment[]
   createdBy?: TeamUser | null
   history: TaskHistoryEntry[]
@@ -295,6 +307,7 @@ export function CrmTaskWorkspacesClient() {
 
   const [loading, setLoading] = useState(true)
   const [savingWorkspace, setSavingWorkspace] = useState(false)
+  const [savingProject, setSavingProject] = useState(false)
   const [savingTask, setSavingTask] = useState(false)
   const [savingDetail, setSavingDetail] = useState(false)
   const [savingNote, setSavingNote] = useState(false)
@@ -303,6 +316,7 @@ export function CrmTaskWorkspacesClient() {
   const [showArchived, setShowArchived] = useState(false)
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false)
   const [workspaceSettingsOpen, setWorkspaceSettingsOpen] = useState(false)
+  const [projectDialogOpen, setProjectDialogOpen] = useState(false)
   const [taskDialogOpen, setTaskDialogOpen] = useState(false)
   const [detailDialogOpen, setDetailDialogOpen] = useState(false)
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false)
@@ -325,11 +339,13 @@ export function CrmTaskWorkspacesClient() {
   const [users, setUsers] = useState<TeamUser[]>([])
   const [sedes, setSedes] = useState<SedeOption[]>([])
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('')
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('')
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null)
   const [customFieldUploadTarget, setCustomFieldUploadTarget] = useState<string | null>(null)
   const [workspaceForm, setWorkspaceForm] = useState({ name: '', description: '', scope: 'SEDE' as WorkspaceScope, sedeId: '', ownerUserId: '', memberUserIds: [] as string[] })
-  const [taskForm, setTaskForm] = useState({ title: '', description: '', dueAt: '', priority: 'NORMAL' as TaskPriority, status: 'OPEN' as TaskStatus, colorHex: '#1D4ED8', assignedToUserIds: [] as string[] })
-  const [detailForm, setDetailForm] = useState({ id: '', title: '', description: '', dueAt: '', priority: 'NORMAL' as TaskPriority, status: 'OPEN' as TaskStatus, colorHex: '#1D4ED8', attachmentsJson: [] as TaskAttachment[], customFieldsJson: [] as TaskCustomField[], assignedToUserIds: [] as string[], archived: false })
+  const [projectForm, setProjectForm] = useState({ workspaceId: '', projectId: '', name: '', description: '' })
+  const [taskForm, setTaskForm] = useState({ title: '', description: '', dueAt: '', priority: 'NORMAL' as TaskPriority, status: 'OPEN' as TaskStatus, colorHex: '#1D4ED8', assignedToUserIds: [] as string[], projectId: '' })
+  const [detailForm, setDetailForm] = useState({ id: '', title: '', description: '', dueAt: '', priority: 'NORMAL' as TaskPriority, status: 'OPEN' as TaskStatus, colorHex: '#1D4ED8', attachmentsJson: [] as TaskAttachment[], customFieldsJson: [] as TaskCustomField[], assignedToUserIds: [] as string[], archived: false, projectId: '' })
   const [customFieldDraft, setCustomFieldDraft] = useState({ label: '', type: 'TEXT' as TaskCustomFieldType, textValue: '', file: null as TaskAttachment | null })
   const [workspaceSettingsForm, setWorkspaceSettingsForm] = useState({ id: '', name: '', description: '', ownerUserId: '', members: [] as Array<{ userId: string; role: WorkspaceRole }> })
   const [externalAttachmentForm, setExternalAttachmentForm] = useState(getInitialExternalAttachmentForm())
@@ -337,6 +353,7 @@ export function CrmTaskWorkspacesClient() {
   const requestedWorkspaceId = searchParams?.get('workspaceId') || ''
 
   const selectedWorkspace = useMemo(() => workspaces.find((workspace) => workspace.id === selectedWorkspaceId) ?? null, [selectedWorkspaceId, workspaces])
+  const selectedProject = useMemo(() => selectedWorkspace?.projects.find((project) => project.id === selectedProjectId) ?? null, [selectedProjectId, selectedWorkspace])
   const canEditTasks = Boolean(selectedWorkspace?.permissions?.canEditTasks)
   const canManageWorkspace = Boolean(selectedWorkspace?.permissions?.canManage)
   const clampedTaskColumnWidth = useMemo(() => Math.min(240, Math.max(140, taskColumnWidth)), [taskColumnWidth])
@@ -382,6 +399,9 @@ export function CrmTaskWorkspacesClient() {
       if (row.workspace?.id && row.workspace.id !== selectedWorkspaceId) {
         setSelectedWorkspaceId(row.workspace.id)
       }
+      if (row.project?.id) {
+        setSelectedProjectId(row.project.id)
+      }
       setDetailForm({
         id: row.id,
         title: row.title,
@@ -394,6 +414,7 @@ export function CrmTaskWorkspacesClient() {
         customFieldsJson: row.customFieldsJson || [],
         assignedToUserIds: row.assignments.map((assignment) => assignment.userId),
         archived: Boolean(row.archivedAt),
+        projectId: row.project?.id || '',
       })
       setCustomFieldDraft({ label: '', type: 'TEXT', textValue: '', file: null })
       setDetailDialogOpen(true)
@@ -454,14 +475,27 @@ export function CrmTaskWorkspacesClient() {
     setWorkspaceSettingsForm({ id: selectedWorkspace.id, name: selectedWorkspace.name, description: selectedWorkspace.description || '', ownerUserId: selectedWorkspace.ownerUser?.id || '', members: selectedWorkspace.members.map((member) => ({ userId: member.userId, role: member.role })) })
   }, [selectedWorkspace])
 
+  useEffect(() => {
+    if (!selectedWorkspace) {
+      setSelectedProjectId('')
+      return
+    }
+    setSelectedProjectId((current) => current && selectedWorkspace.projects.some((project) => project.id === current) ? current : selectedWorkspace.projects[0]?.id || '')
+  }, [selectedWorkspace])
+
+  useEffect(() => {
+    setTaskForm((current) => current.projectId === selectedProjectId ? current : { ...current, projectId: selectedProjectId })
+  }, [selectedProjectId])
+
   const filteredTasks = useMemo(() => {
     const term = search.trim().toLowerCase()
-    if (!term) return tasks
-    return tasks.filter((task) => {
+    const projectScopedTasks = selectedProjectId ? tasks.filter((task) => task.project?.id === selectedProjectId) : tasks
+    if (!term) return projectScopedTasks
+    return projectScopedTasks.filter((task) => {
       const haystack = [task.title, task.description, task.createdBy?.name, task.workspace?.name, task.lead?.nombre, task.opportunity?.title, task.cliente?.nombre, ...task.assignments.map((assignment) => assignment.user.name || assignment.user.email || ''), ...(task.customFieldsJson || []).map((field) => `${field.label} ${field.textValue || field.file?.name || ''}`)].filter(Boolean).join(' ').toLowerCase()
       return haystack.includes(term)
     })
-  }, [search, tasks])
+  }, [search, selectedProjectId, tasks])
 
   const workspaceCandidates = useMemo(() => {
     const term = workspaceSearch.trim().toLowerCase()
@@ -489,10 +523,35 @@ export function CrmTaskWorkspacesClient() {
 
   const noteEntries = useMemo(() => selectedTask?.history.filter((entry) => entry.type === 'NOTE_ADDED') ?? [], [selectedTask])
 
-  function openWorkspaceSettings() {
-    if (!selectedWorkspace) return
-    setWorkspaceSettingsForm({ id: selectedWorkspace.id, name: selectedWorkspace.name, description: selectedWorkspace.description || '', ownerUserId: selectedWorkspace.ownerUser?.id || '', members: selectedWorkspace.members.map((member) => ({ userId: member.userId, role: member.role })) })
+  function openWorkspaceSettings(workspace = selectedWorkspace) {
+    if (!workspace) return
+    setWorkspaceSettingsForm({ id: workspace.id, name: workspace.name, description: workspace.description || '', ownerUserId: workspace.ownerUser?.id || '', members: workspace.members.map((member) => ({ userId: member.userId, role: member.role })) })
     setWorkspaceSettingsOpen(true)
+  }
+
+  function openProjectDialog(workspaceId = selectedWorkspaceId, project?: WorkspaceProject | null) {
+    if (!workspaceId) return alert('Selecciona primero un espacio de trabajo.')
+    const workspace = workspaces.find((item) => item.id === workspaceId) ?? null
+    setProjectForm({
+      workspaceId,
+      projectId: project?.id || '',
+      name: project?.name || '',
+      description: project?.description || workspace?.description || '',
+    })
+    setProjectDialogOpen(true)
+  }
+
+  function openTaskCreationDialog(projectId = selectedProjectId) {
+    if (!selectedWorkspaceId) return alert('Selecciona primero un espacio de trabajo.')
+    if (!canEditTasks) return alert('Tu rol actual en este espacio es solo de lectura.')
+    if (!projectId) return alert('Crea o selecciona primero un proyecto dentro del espacio.')
+    setTaskForm((current) => ({ ...current, projectId }))
+    setTaskDialogOpen(true)
+  }
+
+  function moveDetailTaskToSelectedProject() {
+    if (!selectedProjectId) return alert('Selecciona un proyecto de destino en el panel del espacio.')
+    setDetailForm((current) => ({ ...current, projectId: selectedProjectId }))
   }
 
   async function handleCreateWorkspace() {
@@ -528,16 +587,58 @@ export function CrmTaskWorkspacesClient() {
     }
   }
 
+  async function handleDeleteWorkspace(workspace: Workspace) {
+    if (!workspace.permissions?.canManage) return alert('Solo un manager puede eliminar este espacio.')
+    if (!window.confirm(`Se eliminará el espacio "${workspace.name}" si está vacío. ¿Deseas continuar?`)) return
+    const json = await requestJson<null>(`/api/crm/task-workspaces/${workspace.id}`, { method: 'DELETE' })
+    if (!json.success) return alert(json.error || 'No se pudo eliminar el espacio.')
+    await loadBase()
+  }
+
+  async function handleDeleteProject(project: WorkspaceProject) {
+    if (!selectedWorkspaceId) return alert('Selecciona primero un espacio de trabajo.')
+    if (!window.confirm(`Se eliminará el proyecto "${project.name}" si no tiene tareas. ¿Deseas continuar?`)) return
+    const json = await requestJson<null>(`/api/crm/task-workspaces/${selectedWorkspaceId}/projects/${project.id}`, { method: 'DELETE' })
+    if (!json.success) return alert(json.error || 'No se pudo eliminar el proyecto.')
+    await loadBase()
+    if (selectedProjectId === project.id) {
+      setSelectedProjectId('')
+    }
+  }
+
+  async function handleSaveProject() {
+    if (!projectForm.workspaceId) return alert('Selecciona primero un espacio de trabajo.')
+    if (!projectForm.name.trim()) return alert('El nombre del proyecto es requerido.')
+    setSavingProject(true)
+    try {
+      const isEditing = Boolean(projectForm.projectId)
+      const url = isEditing
+        ? `/api/crm/task-workspaces/${projectForm.workspaceId}/projects/${projectForm.projectId}`
+        : `/api/crm/task-workspaces/${projectForm.workspaceId}/projects`
+      const method = isEditing ? 'PATCH' : 'POST'
+      const json = await requestJson<WorkspaceProject>(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: projectForm.name, description: projectForm.description }) })
+      if (!json.success || !json.data) return alert(json.error || `No se pudo ${isEditing ? 'actualizar' : 'crear'} el proyecto.`)
+      setProjectDialogOpen(false)
+      setProjectForm({ workspaceId: '', projectId: '', name: '', description: '' })
+      await loadBase()
+      setSelectedWorkspaceId(projectForm.workspaceId)
+      setSelectedProjectId(json.data.id)
+    } finally {
+      setSavingProject(false)
+    }
+  }
+
   async function handleCreateTask() {
     if (!selectedWorkspaceId) return alert('Selecciona primero un espacio de trabajo.')
     if (!canEditTasks) return alert('Tu rol actual en este espacio es solo de lectura.')
+    if (!taskForm.projectId) return alert('Selecciona un proyecto para la tarea.')
     if (!taskForm.title.trim()) return alert('El título de la tarea es requerido.')
     setSavingTask(true)
     try {
-      const json = await requestJson<TaskItem>('/api/crm/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workspaceId: selectedWorkspaceId, title: taskForm.title, description: taskForm.description, dueAt: taskForm.dueAt || null, priority: taskForm.priority, status: taskForm.status, colorHex: normalizeHex(taskForm.colorHex), assignedToUserIds: taskForm.assignedToUserIds }) })
+      const json = await requestJson<TaskItem>('/api/crm/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ workspaceId: selectedWorkspaceId, projectId: taskForm.projectId, title: taskForm.title, description: taskForm.description, dueAt: taskForm.dueAt || null, priority: taskForm.priority, status: taskForm.status, colorHex: normalizeHex(taskForm.colorHex), assignedToUserIds: taskForm.assignedToUserIds }) })
       if (!json.success) return alert(json.error || 'No se pudo crear la tarea.')
       setTaskDialogOpen(false)
-      setTaskForm({ title: '', description: '', dueAt: '', priority: 'NORMAL', status: 'OPEN', colorHex: '#1D4ED8', assignedToUserIds: [] })
+      setTaskForm({ title: '', description: '', dueAt: '', priority: 'NORMAL', status: 'OPEN', colorHex: '#1D4ED8', assignedToUserIds: [], projectId: selectedProjectId || '' })
       await loadTasks(selectedWorkspaceId)
     } finally {
       setSavingTask(false)
@@ -558,9 +659,12 @@ export function CrmTaskWorkspacesClient() {
   async function handleSaveDetail() {
     if (!detailForm.id) return
     if (!canEditTasks) return alert('Tu rol actual en este espacio es solo de lectura.')
+    if (selectedWorkspace?.projects.length && !detailForm.projectId) return alert('Selecciona un proyecto antes de guardar la tarea.')
     setSavingDetail(true)
     try {
-      await handleUpdateTask(detailForm.id, { title: detailForm.title, description: detailForm.description, dueAt: detailForm.dueAt || null, priority: detailForm.priority, status: detailForm.status, colorHex: normalizeHex(detailForm.colorHex), attachmentsJson: detailForm.attachmentsJson, customFieldsJson: detailForm.customFieldsJson, assignedToUserIds: detailForm.assignedToUserIds, archived: detailForm.archived })
+      const patch: Record<string, unknown> = { title: detailForm.title, description: detailForm.description, dueAt: detailForm.dueAt || null, priority: detailForm.priority, status: detailForm.status, colorHex: normalizeHex(detailForm.colorHex), attachmentsJson: detailForm.attachmentsJson, customFieldsJson: detailForm.customFieldsJson, assignedToUserIds: detailForm.assignedToUserIds, archived: detailForm.archived }
+      if (selectedWorkspace?.projects.length || detailForm.projectId) patch.projectId = detailForm.projectId
+      await handleUpdateTask(detailForm.id, patch)
     } finally {
       setSavingDetail(false)
     }
@@ -910,7 +1014,7 @@ export function CrmTaskWorkspacesClient() {
         eyebrow="Operación colaborativa"
         title="Espacios de trabajo y seguimiento interno"
         description="Administra espacios transversales del ERP, organiza tareas colaborativas, adjunta evidencia y centraliza seguimiento con estados más claros y visuales más fuertes."
-        actions={<><Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85" onClick={() => setWorkspaceDialogOpen(true)}>Nuevo espacio</Button><Button className="rounded-2xl bg-slate-950 text-white hover:bg-slate-800" onClick={() => setTaskDialogOpen(true)} disabled={!selectedWorkspaceId || !canEditTasks}>Nueva tarea</Button></>}
+        actions={<Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85" onClick={() => setWorkspaceDialogOpen(true)}>Nuevo espacio</Button>}
         stats={[
           { label: 'Espacios', value: workspaces.length, hint: 'Contextos colaborativos visibles', tone: 'sky' },
           { label: 'No iniciadas', value: filteredTasks.filter((task) => task.status === 'OPEN' && !task.archivedAt).length, hint: 'Pendiente de arrancar', tone: 'amber' },
@@ -920,7 +1024,121 @@ export function CrmTaskWorkspacesClient() {
       />
 
       <div className={`grid gap-4 ${workspacePanelCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[320px_minmax(0,1fr)]'}`}>
-        {!workspacePanelCollapsed ? <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]"><CardHeader className="border-b border-slate-100 pb-5"><CardTitle className="text-xl">Espacios de trabajo</CardTitle><CardDescription>Selecciona un espacio para ver tareas, miembros y permisos efectivos.</CardDescription></CardHeader><CardContent className="space-y-3 p-4 md:p-5">{loading ? <p className="text-sm text-muted-foreground">Cargando espacios...</p> : null}{!loading && workspaces.length === 0 ? <p className="text-sm text-muted-foreground">No tienes espacios de trabajo todavía.</p> : null}{workspaces.map((workspace) => <button key={workspace.id} type="button" onClick={() => setSelectedWorkspaceId(workspace.id)} className={selectedWorkspaceId === workspace.id ? 'w-full rounded-3xl border border-sky-300 bg-sky-50/80 p-4 text-left shadow-sm' : 'w-full rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-4 text-left shadow-sm transition-shadow hover:shadow-md'}><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-slate-950">{workspace.name}</p><p className="mt-1 text-sm text-slate-600">{workspace.description || (workspace.scope === 'SEDE' ? workspace.sede?.nombre || 'Espacio por sede' : workspace.ownerUser?.name || workspace.ownerUser?.email || 'Espacio por usuario')}</p></div><div className="flex flex-col items-end gap-1"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{workspace.scope}</span><span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">{formatRole(workspace.currentUserRole)}</span></div></div><div className="mt-3 flex items-center justify-between text-xs text-slate-500"><span>{workspace._count?.tasks ?? 0} tareas</span><span>{workspace._count?.members ?? workspace.members.length} miembros</span></div></button>)}</CardContent></Card> : null}
+        {!workspacePanelCollapsed ? (
+          <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
+            <CardHeader className="border-b border-slate-100 pb-5">
+              <CardTitle className="text-xl">Espacios de trabajo</CardTitle>
+              <CardDescription>Selecciona un espacio, ajusta sus opciones desde el menú y crea tareas solo dentro de un proyecto.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 p-4 md:p-5">
+              {loading ? <p className="text-sm text-muted-foreground">Cargando espacios...</p> : null}
+              {!loading && workspaces.length === 0 ? <p className="text-sm text-muted-foreground">No tienes espacios de trabajo todavía.</p> : null}
+              {workspaces.map((workspace) => {
+                const isSelected = selectedWorkspaceId === workspace.id
+                const canManageCurrentWorkspace = Boolean(workspace.permissions?.canManage)
+
+                return (
+                  <div key={workspace.id} className={isSelected ? 'w-full rounded-3xl border border-sky-300 bg-sky-50/80 p-4 text-left shadow-sm' : 'w-full rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-4 text-left shadow-sm transition-shadow hover:shadow-md'}>
+                    <div className="flex items-start justify-between gap-3">
+                      <button type="button" onClick={() => setSelectedWorkspaceId(workspace.id)} className="min-w-0 flex-1 text-left">
+                        <p className="font-semibold text-slate-950">{workspace.name}</p>
+                        <p className="mt-1 text-sm text-slate-600">{workspace.description || (workspace.scope === 'SEDE' ? workspace.sede?.nombre || 'Espacio por sede' : workspace.ownerUser?.name || workspace.ownerUser?.email || 'Espacio por usuario')}</p>
+                      </button>
+                      <div className="flex items-start gap-2">
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">{workspace.scope}</span>
+                          <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">{formatRole(workspace.currentUserRole)}</span>
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label={`Opciones de ${workspace.name}`}>
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-52 rounded-2xl p-1.5">
+                            <DropdownMenuItem onSelect={() => setSelectedWorkspaceId(workspace.id)}>
+                              Ver proyectos
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => { setSelectedWorkspaceId(workspace.id); openWorkspaceSettings(workspace) }}>
+                              Asignar espacio
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => { setSelectedWorkspaceId(workspace.id); void openProjectDialog(workspace.id) }} disabled={!canManageCurrentWorkspace}>
+                              Crear proyecto
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => { setSelectedWorkspaceId(workspace.id); openWorkspaceSettings(workspace) }} disabled={!canManageCurrentWorkspace}>
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => void handleDeleteWorkspace(workspace)} disabled={!canManageCurrentWorkspace} className="text-rose-600 focus:text-rose-700">
+                              Eliminar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                      <span>{workspace._count?.tasks ?? 0} tareas</span>
+                      <span>{workspace._count?.members ?? workspace.members.length} miembros</span>
+                    </div>
+
+                    {isSelected ? (
+                      <div className="mt-4 space-y-3 border-t border-sky-200/70 pt-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">Proyectos</p>
+                            <p className="text-xs text-slate-500">Selecciona un proyecto para habilitar el botón de crear tarea.</p>
+                          </div>
+                          <Button type="button" size="icon" className="h-10 w-10 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => void openProjectDialog(workspace.id)} disabled={!canManageCurrentWorkspace}>
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button type="button" variant={!selectedProjectId ? 'default' : 'outline'} className={!selectedProjectId ? 'rounded-2xl bg-slate-950 text-white hover:bg-slate-800' : 'rounded-2xl'} onClick={() => setSelectedProjectId('')}>
+                            Todos
+                          </Button>
+                          {workspace.projects.map((project) => (
+                            <div key={project.id} className={selectedProjectId === project.id ? 'flex items-center gap-2 rounded-2xl border border-sky-300 bg-sky-700 px-3 py-2 text-white' : 'flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-slate-700'}>
+                              <button type="button" className="text-left" onClick={() => setSelectedProjectId(project.id)}>
+                                <span className="block text-sm font-semibold">{project.name}</span>
+                                <span className={selectedProjectId === project.id ? 'block text-[11px] text-sky-100' : 'block text-[11px] text-slate-500'}>{project._count?.tasks ?? 0} tarea(s)</span>
+                              </button>
+                              {canManageCurrentWorkspace ? (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button type="button" variant="ghost" size="icon" className={selectedProjectId === project.id ? 'h-7 w-7 rounded-full text-white hover:bg-white/15 hover:text-white' : 'h-7 w-7 rounded-full text-slate-500 hover:text-slate-700'}>
+                                      <MoreVertical className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-44 rounded-2xl p-1.5">
+                                    <DropdownMenuItem onSelect={() => openProjectDialog(workspace.id, project)}>
+                                      Renombrar
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={() => void handleDeleteProject(project)} className="text-rose-600 focus:text-rose-700">
+                                      Eliminar
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                        {!workspace.projects.length ? <p className="text-xs text-slate-500">Este espacio aún no tiene proyectos. Crea uno para empezar a registrar tareas.</p> : null}
+                        <div className="flex items-center justify-between rounded-2xl border border-dashed border-slate-300 bg-white/70 px-3 py-2.5">
+                          <div>
+                            <p className="text-sm font-medium text-slate-900">Crear tarea</p>
+                            <p className="text-xs text-slate-500">Disponible solo cuando elijas un proyecto del espacio.</p>
+                          </div>
+                          <Button type="button" size="icon" className="h-10 w-10 rounded-xl bg-slate-950 text-white hover:bg-slate-800 disabled:bg-slate-300" onClick={() => openTaskCreationDialog()} disabled={!selectedProjectId || !workspace.permissions?.canEditTasks}>
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card className="min-w-0 rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
           <CardHeader className="border-b border-slate-100 pb-5">
@@ -929,7 +1147,7 @@ export function CrmTaskWorkspacesClient() {
                 <CardTitle className="text-xl">Tareas del espacio</CardTitle>
                 <CardDescription>
                   {selectedWorkspace
-                    ? `${selectedWorkspace.name} · ${formatRole(selectedWorkspace.currentUserRole)}${selectedWorkspace.permissions?.canEditTasks ? ' con edición de tareas' : ' solo lectura'}`
+                    ? `${selectedWorkspace.name}${selectedProject ? ` · Proyecto ${selectedProject.name}` : ' · Todos los proyectos'} · ${formatRole(selectedWorkspace.currentUserRole)}${selectedWorkspace.permissions?.canEditTasks ? ' con edición de tareas' : ' solo lectura'}`
                     : 'Tabla operativa con responsables, estado, color, evidencia y acceso a detalle completo.'}
                 </CardDescription>
               </div>
@@ -937,7 +1155,7 @@ export function CrmTaskWorkspacesClient() {
                 <Button variant="outline" className="rounded-xl" onClick={() => setWorkspacePanelCollapsed((current) => !current)}>
                   {workspacePanelCollapsed ? 'Mostrar espacios' : 'Ocultar espacios'}
                 </Button>
-                {canManageWorkspace ? <Button variant="outline" className="rounded-xl" onClick={openWorkspaceSettings}>Miembros y roles</Button> : null}
+                {canManageWorkspace ? <Button variant="outline" className="rounded-xl" onClick={() => openWorkspaceSettings()}>Miembros y roles</Button> : null}
                 <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por tarea, responsable, campo o descripción..." className="w-full rounded-xl sm:w-[320px]" />
                 <Button variant="outline" className="rounded-xl" onClick={() => setShowArchived((current) => !current)}>{showArchived ? 'Ocultar archivadas' : 'Ver archivadas'}</Button>
                 <DropdownMenu>
@@ -1039,7 +1257,7 @@ export function CrmTaskWorkspacesClient() {
                     </div>
                   )
                 })}
-                {!filteredTasks.length ? <div className="px-6 py-8 text-sm text-slate-500">No hay tareas para mostrar en este espacio.</div> : null}
+                {!filteredTasks.length ? <div className="px-6 py-8 text-sm text-slate-500">{selectedWorkspace ? (selectedProject ? 'No hay tareas para mostrar en este proyecto.' : selectedWorkspace.projects.length ? 'Selecciona un proyecto o crea una tarea desde el botón +.' : 'Crea primero un proyecto dentro del espacio para empezar a registrar tareas.') : 'Selecciona un espacio de trabajo para ver tareas.'}</div> : null}
               </div>
             </div>
           </CardContent>
@@ -1144,6 +1362,7 @@ export function CrmTaskWorkspacesClient() {
       <Dialog open={taskDialogOpen} onOpenChange={setTaskDialogOpen}><DialogContent className="max-h-[90vh] max-w-[760px] overflow-y-auto"><DialogHeader><DialogTitle>Nueva tarea</DialogTitle><DialogDescription>Crea una tarea con estado inicial, color visual fuerte y responsables dentro del espacio seleccionado.</DialogDescription></DialogHeader><div className="grid gap-3 py-1.5"><div className="grid gap-1.5"><Label>Título</Label><Input value={taskForm.title} onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))} /></div><div className="grid gap-1.5"><Label>Descripción</Label><Textarea value={taskForm.description} onChange={(event) => setTaskForm((current) => ({ ...current, description: event.target.value }))} rows={4} /></div><div className="grid gap-3 md:grid-cols-2"><div className="grid gap-1.5"><Label>Estado inicial</Label><Select value={taskForm.status} onValueChange={(value) => setTaskForm((current) => ({ ...current, status: value as TaskStatus }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="OPEN">No iniciado</SelectItem><SelectItem value="IN_PROGRESS">En curso</SelectItem><SelectItem value="DONE">Finalizada</SelectItem><SelectItem value="CANCELED">Cancelada</SelectItem></SelectContent></Select></div><div className="grid gap-1.5"><Label>Prioridad</Label><Select value={taskForm.priority} onValueChange={(value) => setTaskForm((current) => ({ ...current, priority: value as TaskPriority }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="LOW">Baja</SelectItem><SelectItem value="NORMAL">Normal</SelectItem><SelectItem value="HIGH">Alta</SelectItem></SelectContent></Select></div></div><div className="grid gap-1.5"><Label>Color de la tarea</Label><div className="flex flex-wrap items-center gap-2.5">{COLOR_PRESETS.map((color) => <button key={color} type="button" className={normalizeHex(taskForm.colorHex) === color ? 'h-9 w-9 rounded-full ring-4 ring-slate-300' : 'h-9 w-9 rounded-full ring-1 ring-slate-200'} style={{ backgroundColor: color }} onClick={() => setTaskForm((current) => ({ ...current, colorHex: color }))} />)}<Input type="color" value={normalizeHex(taskForm.colorHex)} onChange={(event) => setTaskForm((current) => ({ ...current, colorHex: event.target.value.toUpperCase() }))} className="h-9 w-12 rounded-lg p-1" /></div></div><div className="grid gap-3 md:grid-cols-2"><div className="grid gap-1.5"><Label>Fecha y hora de entrega</Label><Input type="datetime-local" value={taskForm.dueAt} onChange={(event) => setTaskForm((current) => ({ ...current, dueAt: event.target.value }))} /></div><div className="rounded-xl border border-slate-200 p-3" style={{ background: `linear-gradient(135deg, ${normalizeHex(taskForm.colorHex)} 0%, #ffffff 120%)` }}><p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/80">Vista rápida</p><p className="mt-1.5 font-semibold text-white">{taskForm.title || 'Nueva tarea'}</p><p className="mt-1 text-sm text-white/85">{formatStatus(taskForm.status)} · {PRIORITY_META[taskForm.priority].label}</p></div></div><div className="grid gap-1.5"><Label>Asignar usuarios</Label><Input value={assigneeSearch} onChange={(event) => setAssigneeSearch(event.target.value)} placeholder="Busca usuarios por nombre o correo..." /><div className="max-h-40 space-y-1.5 overflow-y-auto rounded-xl border border-slate-200 p-2.5">{taskAssigneeCandidates.map((user) => { const selected = taskForm.assignedToUserIds.includes(user.id); return <button key={user.id} type="button" onClick={() => setTaskForm((current) => ({ ...current, assignedToUserIds: selected ? current.assignedToUserIds.filter((item) => item !== user.id) : [...current.assignedToUserIds, user.id] }))} className={selected ? 'flex w-full items-center justify-between rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-left' : 'flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-left'}><span>{user.name || user.email || user.id}</span><span className="text-xs text-slate-500">{selected ? 'Asignado' : 'Asignar'}</span></button>})}</div></div></div><DialogFooter><Button variant="outline" onClick={() => setTaskDialogOpen(false)}>Cancelar</Button><Button onClick={() => void handleCreateTask()} disabled={savingTask || !canEditTasks}>{savingTask ? 'Guardando...' : 'Crear tarea'}</Button></DialogFooter></DialogContent></Dialog>
 
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}><DialogContent className="max-w-5xl max-h-[94vh] overflow-y-auto"><DialogHeader><DialogTitle>{detailForm.title || 'Detalle de tarea'}</DialogTitle><DialogDescription>Edita todos los campos operativos, adjunta evidencia, agrega campos personalizados y controla el color visual de la tarea desde este modal.</DialogDescription></DialogHeader><input ref={attachmentInputRef} type="file" accept={attachmentAccept()} className="hidden" onChange={(event) => void handleAttachmentFile(event.target.files?.[0] || null)} /><input ref={customFieldFileInputRef} type="file" accept={attachmentAccept()} className="hidden" onChange={(event) => void handleCustomFieldFile(event.target.files?.[0] || null)} /><div className="grid gap-4 py-2"><Card className="overflow-hidden border-0 shadow-none"><CardContent className="rounded-[28px] border p-5" style={{ background: `radial-gradient(circle at top right, ${normalizeHex(detailForm.colorHex)}33, transparent 30%), linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)`, borderColor: `${normalizeHex(detailForm.colorHex)}55` }}><div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]"><div className="space-y-4"><div className="grid gap-2"><Label>Título</Label><Input value={detailForm.title} onChange={(event) => setDetailForm((current) => ({ ...current, title: event.target.value }))} disabled={!canEditTasks} /></div><div className="grid gap-2"><Label>Descripción</Label><Textarea value={detailForm.description} onChange={(event) => setDetailForm((current) => ({ ...current, description: event.target.value }))} rows={5} disabled={!canEditTasks} /></div></div><div className="space-y-4"><div className="grid gap-2"><Label>Estado</Label><Select value={detailForm.status} onValueChange={(value) => setDetailForm((current) => ({ ...current, status: value as TaskStatus }))} disabled={!canEditTasks}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="OPEN">No iniciado</SelectItem><SelectItem value="IN_PROGRESS">En curso</SelectItem><SelectItem value="DONE">Finalizada</SelectItem><SelectItem value="CANCELED">Cancelada</SelectItem></SelectContent></Select></div><div className="grid gap-2"><Label>Prioridad</Label><Select value={detailForm.priority} onValueChange={(value) => setDetailForm((current) => ({ ...current, priority: value as TaskPriority }))} disabled={!canEditTasks}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="LOW">Baja</SelectItem><SelectItem value="NORMAL">Normal</SelectItem><SelectItem value="HIGH">Alta</SelectItem></SelectContent></Select></div><div className="grid gap-2"><Label>Entrega</Label><Input type="datetime-local" value={detailForm.dueAt} onChange={(event) => setDetailForm((current) => ({ ...current, dueAt: event.target.value }))} disabled={!canEditTasks} /></div><div className="grid gap-2"><Label>Color de la tarea</Label><div className="flex flex-wrap items-center gap-2">{COLOR_PRESETS.map((color) => <button key={color} type="button" className={normalizeHex(detailForm.colorHex) === color ? 'h-9 w-9 rounded-full ring-4 ring-slate-300' : 'h-9 w-9 rounded-full ring-1 ring-slate-200'} style={{ backgroundColor: color }} onClick={() => setDetailForm((current) => ({ ...current, colorHex: color }))} disabled={!canEditTasks} />)}<Input type="color" value={normalizeHex(detailForm.colorHex)} onChange={(event) => setDetailForm((current) => ({ ...current, colorHex: event.target.value.toUpperCase() }))} className="h-10 w-14 rounded-xl p-1" disabled={!canEditTasks} /></div></div></div></div><div className="mt-4 flex flex-wrap gap-2"><span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${STATUS_META[detailForm.status].badgeClass}`}>{STATUS_META[detailForm.status].label}</span><span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${PRIORITY_META[detailForm.priority].badgeClass}`}>{PRIORITY_META[detailForm.priority].label}</span><span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">Creada: {formatDate(selectedTask?.createdAt, 'Sin fecha')}</span><span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">Actualizada: {formatDate(selectedTask?.updatedAt, 'Sin fecha')}</span></div></CardContent></Card><Card><CardHeader><CardTitle className="text-base">Responsables</CardTitle></CardHeader><CardContent className="grid gap-4 md:grid-cols-[220px_1fr]"><div className="grid gap-2"><Label>Asignar colaborador</Label><Input value={detailAssigneeSearch} onChange={(event) => setDetailAssigneeSearch(event.target.value)} placeholder="Correo o nombre" disabled={!canEditTasks} /></div><div className="grid gap-3"><div className="flex flex-wrap gap-2">{detailForm.assignedToUserIds.map((userId) => { const user = users.find((item) => item.id === userId); return <button key={userId} type="button" onClick={() => setDetailForm((current) => ({ ...current, assignedToUserIds: current.assignedToUserIds.filter((item) => item !== userId) }))} className="rounded-full bg-sky-100 px-3 py-1.5 text-sm text-sky-800" disabled={!canEditTasks}>{user?.name || user?.email || userId} ×</button> })}{!detailForm.assignedToUserIds.length ? <span className="text-sm text-slate-400">Sin colaboradores asignados</span> : null}</div><div className="max-h-36 space-y-2 overflow-y-auto rounded-2xl border border-slate-200 p-3">{detailAssigneeCandidates.map((user) => { const selected = detailForm.assignedToUserIds.includes(user.id); return <button key={user.id} type="button" onClick={() => setDetailForm((current) => ({ ...current, assignedToUserIds: selected ? current.assignedToUserIds.filter((item) => item !== user.id) : [...current.assignedToUserIds, user.id] }))} className={selected ? 'flex w-full items-center justify-between rounded-xl border border-sky-300 bg-sky-50 px-3 py-2 text-left' : 'flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-left'} disabled={!canEditTasks}><span>{user.name || user.email || user.id}</span><span className="text-xs text-slate-500">{selected ? 'Asignado' : 'Agregar'}</span></button> })}</div></div></CardContent></Card><Card><CardHeader><CardTitle className="text-base">Adjuntos de la tarea</CardTitle><CardDescription>Sube imágenes, audios, videos o documentos que sirvan como evidencia o referencia directa de la tarea.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="flex flex-wrap items-center gap-3"><Button variant="outline" onClick={() => attachmentInputRef.current?.click()} disabled={!canEditTasks || uploadingAttachment}>{uploadingAttachment ? 'Subiendo...' : 'Agregar adjunto'}</Button><Button variant="outline" onClick={() => setLibraryPickerOpen(true)} disabled={!canEditTasks}>Elegir desde biblioteca</Button><Button variant="outline" onClick={() => setExternalAttachmentDialogOpen(true)} disabled={!canEditTasks || uploadingAttachment}>Vincular Drive/OneDrive</Button><span className="text-sm text-slate-500">{detailForm.attachmentsJson.length} archivo(s) vinculados</span></div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{detailForm.attachmentsJson.map((attachment) => <div key={attachment.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3"><div className="flex items-start justify-between gap-2"><div><p className="font-medium text-slate-950 line-clamp-1">{attachment.name}</p><p className="mt-1 text-xs text-slate-500">{attachment.type.toUpperCase()} · {formatAttachmentSize(attachment.sizeBytes)}</p></div>{canEditTasks ? <Button variant="outline" className="h-8 rounded-lg px-2" onClick={() => setDetailForm((current) => ({ ...current, attachmentsJson: current.attachmentsJson.filter((item) => item.id !== attachment.id) }))}>Quitar</Button> : null}</div><div className="mt-3 rounded-xl border border-slate-200 bg-white p-2">{attachment.type === 'image' ? <div className="relative h-40 w-full overflow-hidden rounded-lg"><Image src={attachment.url} alt={attachment.name} fill className="object-cover" sizes="(max-width: 768px) 100vw, 33vw" unoptimized /></div> : null}{attachment.type === 'audio' ? <audio src={attachment.url} controls className="w-full" /> : null}{attachment.type === 'video' ? <video src={attachment.url} controls className="h-40 w-full rounded-lg bg-black object-cover" /> : null}{attachment.type === 'document' ? <div className="flex h-40 items-center justify-center rounded-lg bg-slate-100 text-sm text-slate-600">Documento disponible</div> : null}</div><a href={attachment.url} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-sm font-medium text-sky-700 hover:text-sky-900">Abrir archivo</a></div>)}{!detailForm.attachmentsJson.length ? <p className="text-sm text-slate-400">No hay adjuntos todavía.</p> : null}</div></CardContent></Card><Card><CardHeader><CardTitle className="text-base">Campos personalizados</CardTitle><CardDescription>Agrega campos de texto o de archivo y luego edítalos o elimínalos individualmente.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 md:grid-cols-[1fr_160px_1fr_140px] md:items-end"><div className="grid gap-2"><Label>Etiqueta</Label><Input value={customFieldDraft.label} onChange={(event) => setCustomFieldDraft((current) => ({ ...current, label: event.target.value }))} disabled={!canEditTasks} /></div><div className="grid gap-2"><Label>Tipo</Label><Select value={customFieldDraft.type} onValueChange={(value) => setCustomFieldDraft((current) => ({ ...current, type: value as TaskCustomFieldType, textValue: '', file: null }))} disabled={!canEditTasks}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TEXT">Texto</SelectItem><SelectItem value="FILE">Archivo</SelectItem></SelectContent></Select></div>{customFieldDraft.type === 'TEXT' ? <div className="grid gap-2"><Label>Valor</Label><Input value={customFieldDraft.textValue} onChange={(event) => setCustomFieldDraft((current) => ({ ...current, textValue: event.target.value }))} disabled={!canEditTasks} /></div> : <div className="grid gap-2"><Label>Archivo</Label><Button variant="outline" onClick={() => { setCustomFieldUploadTarget('new'); customFieldFileInputRef.current?.click() }} disabled={!canEditTasks || uploadingAttachment}>{customFieldDraft.file ? 'Reemplazar archivo' : uploadingAttachment ? 'Subiendo...' : 'Subir archivo'}</Button>{customFieldDraft.file ? <p className="text-xs text-slate-500">{customFieldDraft.file.name}</p> : null}</div>}<Button onClick={handleAddCustomField} disabled={!canEditTasks}>Agregar campo</Button></div><div className="space-y-3">{detailForm.customFieldsJson.map((field) => <div key={field.id} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="grid gap-3 lg:grid-cols-[1fr_160px_1fr_110px] lg:items-start"><div className="grid gap-2"><Label>Etiqueta</Label><Input value={field.label} onChange={(event) => setDetailForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? { ...item, label: event.target.value } : item) }))} disabled={!canEditTasks} /></div><div className="grid gap-2"><Label>Tipo</Label><Select value={field.type} onValueChange={(value) => setDetailForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? { ...item, type: value as TaskCustomFieldType, textValue: value === 'TEXT' ? item.textValue || '' : null, file: value === 'FILE' ? item.file || null : null } : item) }))} disabled={!canEditTasks}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TEXT">Texto</SelectItem><SelectItem value="FILE">Archivo</SelectItem></SelectContent></Select></div>{field.type === 'TEXT' ? <div className="grid gap-2"><Label>Contenido</Label><Input value={field.textValue || ''} onChange={(event) => setDetailForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? { ...item, textValue: event.target.value } : item) }))} disabled={!canEditTasks} /></div> : <div className="grid gap-2"><Label>Archivo</Label><div className="flex flex-wrap items-center gap-2"><Button variant="outline" onClick={() => { setCustomFieldUploadTarget(field.id); customFieldFileInputRef.current?.click() }} disabled={!canEditTasks || uploadingAttachment}>{field.file ? 'Reemplazar' : 'Subir'}</Button>{field.file ? <Button variant="outline" onClick={() => setDetailForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.map((item) => item.id === field.id ? { ...item, file: null } : item) }))} disabled={!canEditTasks}>Quitar archivo</Button> : null}</div>{field.file ? <a href={field.file.url} target="_blank" rel="noreferrer" className="text-sm font-medium text-sky-700">{field.file.name}</a> : <span className="text-sm text-slate-400">Sin archivo</span>}</div>}<div className="pt-6 lg:pt-7"><Button variant="outline" onClick={() => setDetailForm((current) => ({ ...current, customFieldsJson: current.customFieldsJson.filter((item) => item.id !== field.id) }))} disabled={!canEditTasks}>Quitar</Button></div></div></div>)}{!detailForm.customFieldsJson.length ? <p className="text-sm text-slate-400">No hay campos personalizados todavía.</p> : null}</div></CardContent></Card><Card><CardHeader><CardTitle className="text-base">Historial de cambios</CardTitle></CardHeader><CardContent className="space-y-3">{selectedTask?.history.length ? selectedTask.history.map((entry) => <div key={entry.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600"><div className="flex items-center justify-between gap-3"><p className="font-medium text-slate-900">{entry.message}</p><span className="text-xs text-slate-500">{formatDate(entry.createdAt, 'Sin fecha')}</span></div><p className="mt-1 text-xs text-slate-500">{entry.actorUser?.name || entry.actorUser?.email || 'Sistema'} · {entry.type}</p></div>) : <p className="text-sm text-muted-foreground">Sin historial todavía.</p>}</CardContent></Card><Card><CardContent className="grid gap-4 p-4 md:grid-cols-[160px_1fr_140px] md:items-start"><Label className="pt-2">Crear nota</Label><Textarea value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} placeholder="Contenido de la nota" rows={3} disabled={!canEditTasks} /><Button onClick={() => void handleAddNote()} disabled={savingNote || !canEditTasks}>{savingNote ? 'Guardando...' : 'Crear nota'}</Button><div className="md:col-span-3 space-y-2">{noteEntries.length ? noteEntries.map((entry) => <div key={entry.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 text-sm text-slate-600"><p className="font-medium text-slate-900">{entry.message}</p><p className="mt-1 text-xs text-slate-500">{entry.actorUser?.name || entry.actorUser?.email || 'Sistema'} · {formatDate(entry.createdAt, 'Sin fecha')}</p></div>) : <p className="text-sm text-muted-foreground">No hay notas.</p>}</div></CardContent></Card><Card><CardContent className="flex items-center justify-between gap-3 p-4"><div><p className="font-medium text-slate-900">Archivo</p><p className="text-sm text-slate-500">Puedes archivar la tarea sin perder historial, adjuntos ni responsables.</p></div><Button variant="outline" onClick={() => setDetailForm((current) => ({ ...current, archived: !current.archived }))} disabled={!canEditTasks}>{detailForm.archived ? 'Quitar de archivo' : 'Archivar tarea'}</Button></CardContent></Card></div><DialogFooter><Button variant="outline" onClick={() => setDetailDialogOpen(false)}>Cerrar</Button><Button onClick={() => void handleSaveDetail()} disabled={savingDetail || !canEditTasks}>{savingDetail ? 'Guardando...' : 'Guardar cambios'}</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={projectDialogOpen} onOpenChange={setProjectDialogOpen}><DialogContent className="max-w-[680px]"><DialogHeader><DialogTitle>{projectForm.projectId ? 'Editar proyecto' : 'Crear proyecto'}</DialogTitle><DialogDescription>Define el nombre y la descripción operativa del proyecto dentro del espacio seleccionado.</DialogDescription></DialogHeader><div className="grid gap-3 py-1.5"><div className="grid gap-1.5"><Label>Nombre del proyecto</Label><Input value={projectForm.name} onChange={(event) => setProjectForm((current) => ({ ...current, name: event.target.value }))} placeholder="ecommerce" /></div><div className="grid gap-1.5"><Label>Descripción</Label><Textarea value={projectForm.description} onChange={(event) => setProjectForm((current) => ({ ...current, description: event.target.value }))} rows={4} placeholder="Objetivo, entregables o contexto operativo del proyecto" /></div></div><DialogFooter><Button variant="outline" onClick={() => setProjectDialogOpen(false)}>Cancelar</Button><Button onClick={() => void handleSaveProject()} disabled={savingProject}>{savingProject ? 'Guardando...' : projectForm.projectId ? 'Guardar cambios' : 'Crear proyecto'}</Button></DialogFooter></DialogContent></Dialog>
       <CrmFileLibraryPicker open={libraryPickerOpen} onOpenChange={setLibraryPickerOpen} onPick={handleLibraryAttachment} title="Seleccionar archivo del repositorio CRM" allowFolders={false} />
       <Dialog open={externalAttachmentDialogOpen} onOpenChange={setExternalAttachmentDialogOpen}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>Vincular desde Drive o OneDrive</DialogTitle><DialogDescription>Pega una URL compartida para registrarla como adjunto externo de esta tarea.</DialogDescription></DialogHeader><div className="grid gap-3 py-2"><div className="grid gap-2"><Label>Proveedor</Label><Select value={externalAttachmentForm.provider} onValueChange={(value) => setExternalAttachmentForm((current) => ({ ...current, provider: value as ExternalAttachmentProvider }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="GOOGLE_DRIVE">Google Drive</SelectItem><SelectItem value="ONEDRIVE">OneDrive</SelectItem></SelectContent></Select></div><div className="grid gap-2"><Label>Nombre visible</Label><Input value={externalAttachmentForm.name} onChange={(event) => setExternalAttachmentForm((current) => ({ ...current, name: event.target.value }))} placeholder="Propuesta comercial Q2" /></div><div className="grid gap-2"><Label>URL compartida</Label><Input value={externalAttachmentForm.url} onChange={(event) => setExternalAttachmentForm((current) => ({ ...current, url: event.target.value }))} placeholder="https://drive.google.com/... o https://onedrive.live.com/..." /></div></div><DialogFooter><Button variant="outline" onClick={() => { setExternalAttachmentDialogOpen(false); setExternalAttachmentForm(getInitialExternalAttachmentForm()) }}>Cancelar</Button><Button onClick={() => void handleExternalAttachmentLink()} disabled={uploadingAttachment}>{uploadingAttachment ? 'Vinculando...' : 'Vincular adjunto'}</Button></DialogFooter></DialogContent></Dialog>
     </div>

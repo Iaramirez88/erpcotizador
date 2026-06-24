@@ -69,6 +69,7 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
   const hasCrmActivityDelegate = typeof (prismaClient as any)?.crmActivity?.findMany === 'function'
   const hasCrmTaskDelegate = typeof (prismaClient as any)?.crmTask?.findMany === 'function'
   const hasCrmTaskWorkspaceDelegate = typeof (prismaClient as any)?.crmTaskWorkspace?.findMany === 'function'
+  const hasCrmTaskWorkspaceProjectDelegate = typeof (prismaClient as any)?.crmTaskWorkspaceProject?.findMany === 'function'
   const hasCrmTaskWorkspaceMemberDelegate = typeof (prismaClient as any)?.crmTaskWorkspaceMember?.findMany === 'function'
   const hasCrmTaskAssignmentDelegate = typeof (prismaClient as any)?.crmTaskAssignment?.findMany === 'function'
   const hasCrmTaskHistoryDelegate = typeof (prismaClient as any)?.crmTaskHistory?.findMany === 'function'
@@ -143,6 +144,7 @@ if (process.env.NODE_ENV !== 'production' && prismaClient) {
     !hasCrmActivityDelegate ||
     !hasCrmTaskDelegate ||
     !hasCrmTaskWorkspaceDelegate ||
+    !hasCrmTaskWorkspaceProjectDelegate ||
     !hasCrmTaskWorkspaceMemberDelegate ||
     !hasCrmTaskAssignmentDelegate ||
     !hasCrmTaskHistoryDelegate ||

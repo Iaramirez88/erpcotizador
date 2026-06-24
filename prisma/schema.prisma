@@ -72,6 +72,7 @@ model User {
   crmTasksCreated CrmTask[] @relation("CrmTaskCreatedBy")
   crmTaskWorkspacesCreated CrmTaskWorkspace[] @relation("CrmTaskWorkspaceCreatedBy")
   crmTaskWorkspacesOwned CrmTaskWorkspace[] @relation("CrmTaskWorkspaceOwner")
+  crmTaskWorkspaceProjectsCreated CrmTaskWorkspaceProject[] @relation("CrmTaskWorkspaceProjectCreatedBy")
   crmTaskWorkspaceMemberships CrmTaskWorkspaceMember[] @relation("CrmTaskWorkspaceMemberUser")
   crmTaskAssignments CrmTaskAssignment[] @relation("CrmTaskAssignmentUser")
   crmTaskHistoriesActed CrmTaskHistory[] @relation("CrmTaskHistoryActor")
@@ -725,6 +726,7 @@ model Empresa {
   crmActivities  CrmActivity[]
   crmTasks       CrmTask[]
   crmTaskWorkspaces CrmTaskWorkspace[]
+  crmTaskWorkspaceProjects CrmTaskWorkspaceProject[]
   crmTaskAssignments CrmTaskAssignment[]
   crmTaskHistories CrmTaskHistory[]
   crmChannelConnections CrmChannelConnection[]
@@ -2604,6 +2606,9 @@ model CrmTask {
   workspaceId String?
   workspace   CrmTaskWorkspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
 
+  projectId String?
+  project   CrmTaskWorkspaceProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
   title       String
   description String? @db.Text
   colorHex    String?
@@ -2641,6 +2646,7 @@ model CrmTask {
   @@index([empresaId, status, dueAt])
   @@index([assignedToUserId, status, dueAt])
   @@index([workspaceId, status, dueAt])
+  @@index([projectId, status, dueAt])
   @@index([leadId])
   @@index([opportunityId])
   @@index([clienteId])
@@ -2668,6 +2674,7 @@ model CrmTaskWorkspace {
   createdBy   User @relation("CrmTaskWorkspaceCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
   members CrmTaskWorkspaceMember[]
+  projects CrmTaskWorkspaceProject[]
   tasks   CrmTask[]
 
   createdAt DateTime @default(now())
@@ -2677,6 +2684,32 @@ model CrmTaskWorkspace {
   @@index([sedeId, createdAt])
   @@index([ownerUserId, createdAt])
   @@map("crm_task_workspaces")
+}
+
+model CrmTaskWorkspaceProject {
+  id String @id @default(cuid())
+
+  empresaId String
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  workspaceId String
+  workspace   CrmTaskWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  name String
+  description String? @db.Text
+
+  createdById String
+  createdBy   User @relation("CrmTaskWorkspaceProjectCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  tasks CrmTask[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, name])
+  @@index([empresaId, workspaceId, createdAt])
+  @@index([createdById, createdAt])
+  @@map("crm_task_workspace_projects")
 }
 
 model CrmTaskWorkspaceMember {

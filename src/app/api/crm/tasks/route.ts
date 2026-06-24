@@ -88,6 +88,7 @@ export async function GET(request: Request) {
     const opportunityId = normalizeString(searchParams.get('opportunityId'))
     const clienteId = normalizeString(searchParams.get('clienteId'))
     const workspaceId = normalizeString(searchParams.get('workspaceId'))
+    const projectId = normalizeString(searchParams.get('projectId'))
     const assignedToUserId = normalizeString(searchParams.get('assignedToUserId'))
     const sedeId = normalizeString(searchParams.get('sedeId'))
     const status = parseTaskStatus(searchParams.get('status'))
@@ -105,6 +106,16 @@ export async function GET(request: Request) {
         userId: access.userId,
       })
       if (!workspace) return NextResponse.json({ error: 'workspaceId inválido' }, { status: 400 })
+
+      if (projectId) {
+        const project = await prisma.crmTaskWorkspaceProject.findFirst({
+          where: { id: projectId, workspaceId, empresaId: access.empresaId },
+          select: { id: true },
+        })
+        if (!project) return NextResponse.json({ error: 'projectId inválido' }, { status: 400 })
+      }
+    } else if (projectId) {
+      return NextResponse.json({ error: 'projectId requiere workspaceId' }, { status: 400 })
     }
 
     const rows = await prisma.crmTask.findMany({
@@ -114,6 +125,7 @@ export async function GET(request: Request) {
         ...(opportunityId ? { opportunityId } : {}),
         ...(clienteId ? { clienteId } : {}),
         ...(workspaceId ? { workspaceId } : {}),
+        ...(projectId ? { projectId } : {}),
         ...(assignedToUserId ? { assignedToUserId } : {}),
         ...(sedeId ? { sedeId } : {}),
         ...(status ? { status } : {}),
@@ -185,6 +197,7 @@ export async function POST(request: Request) {
     const opportunityId = normalizeString(body?.opportunityId)
     const clienteId = normalizeString(body?.clienteId)
     const workspaceId = normalizeString(body?.workspaceId)
+    const projectId = normalizeString(body?.projectId)
     const assignedToUserId = normalizeString(body?.assignedToUserId)
     const assignedToUserIds = normalizeUserIdList(body?.assignedToUserIds)
     const explicitSedeId = normalizeString(body?.sedeId)
@@ -218,6 +231,28 @@ export async function POST(request: Request) {
     }
     if (workspace && !canUserAccessWorkspace(workspace, access.userId, 'edit')) {
       return NextResponse.json({ error: 'No tienes permisos para crear tareas en este espacio.' }, { status: 403 })
+    }
+
+    if (projectId && !workspaceId) {
+      return NextResponse.json({ error: 'projectId requiere workspaceId' }, { status: 400 })
+    }
+
+    const project = projectId
+      ? await prisma.crmTaskWorkspaceProject.findFirst({
+          where: {
+            id: projectId,
+            workspaceId: workspaceId || '__none__',
+            empresaId: access.empresaId,
+          },
+          select: { id: true },
+        })
+      : null
+
+    if (workspaceId && !projectId) {
+      return NextResponse.json({ error: 'Selecciona un proyecto antes de crear la tarea.' }, { status: 400 })
+    }
+    if (projectId && !project) {
+      return NextResponse.json({ error: 'projectId inválido' }, { status: 400 })
     }
 
     const lead = leadId
@@ -264,6 +299,7 @@ export async function POST(request: Request) {
           empresaId: access.empresaId,
           sedeId: finalSedeId || null,
           workspaceId: workspaceId || null,
+          projectId: projectId || null,
           title,
           description: description || null,
           colorHex,

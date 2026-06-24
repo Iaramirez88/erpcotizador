@@ -176,3 +176,48 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: 'Error actualizando espacio de trabajo' }, { status: 500 })
   }
 }
+
+export async function DELETE(_: Request, context: RouteContext) {
+  try {
+    const access = await requireCapabilityAccess({
+      domain: 'OPERACIONES',
+      subdomain: 'TASK_WORKSPACES',
+      action: 'DELETE',
+      scope: 'SEDE',
+    })
+    if (!access.ok) return access.response
+
+    const { id } = await context.params
+    const current = await getAccessibleTaskWorkspace(prisma, {
+      workspaceId: id,
+      empresaId: access.empresaId,
+      userId: access.userId,
+    })
+
+    if (!current) {
+      return NextResponse.json({ error: 'Espacio de trabajo no encontrado' }, { status: 404 })
+    }
+
+    if (!canUserAccessWorkspace(current, access.userId, 'manage')) {
+      return NextResponse.json({ error: 'No tienes permisos para eliminar este espacio.' }, { status: 403 })
+    }
+
+    const [taskCount, projectCount] = await Promise.all([
+      prisma.crmTask.count({ where: { workspaceId: current.id, empresaId: access.empresaId } }),
+      prisma.crmTaskWorkspaceProject.count({ where: { workspaceId: current.id, empresaId: access.empresaId } }),
+    ])
+
+    if (taskCount > 0 || projectCount > 0) {
+      return NextResponse.json({
+        error: 'El espacio todavía tiene proyectos o tareas. Elimínalos o reasígnalos antes de borrar el espacio.',
+      }, { status: 400 })
+    }
+
+    await prisma.crmTaskWorkspace.delete({ where: { id: current.id } })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Error eliminando espacio de trabajo:', error)
+    return NextResponse.json({ error: 'Error eliminando espacio de trabajo' }, { status: 500 })
+  }
+}

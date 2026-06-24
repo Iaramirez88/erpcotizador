@@ -26,6 +26,18 @@ export type TaskCustomField = {
   file: TaskAttachment | null
 }
 
+export type WorkspaceProjectSummary = {
+  id: string
+  workspaceId: string
+  name: string
+  description: string | null
+  createdAt: string
+  updatedAt: string
+  _count?: {
+    tasks: number
+  }
+}
+
 const TASK_ATTACHMENT_TYPES: TaskAttachmentType[] = ['image', 'audio', 'video', 'document']
 
 function normalizeString(value: unknown): string {
@@ -104,6 +116,18 @@ export const crmTaskWorkspaceInclude = {
   createdBy: { select: { id: true, name: true, email: true } },
   ownerUser: { select: { id: true, name: true, email: true } },
   sede: { select: { id: true, nombre: true, codigo: true } },
+  projects: {
+    orderBy: [{ updatedAt: 'desc' as const }, { createdAt: 'desc' as const }],
+    select: {
+      id: true,
+      workspaceId: true,
+      name: true,
+      description: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: { select: { tasks: true } },
+    },
+  },
   members: {
     orderBy: [{ role: 'desc' as const }, { user: { name: 'asc' as const } }],
     include: {
@@ -120,6 +144,17 @@ export type CrmTaskWorkspaceWithAccess = Prisma.CrmTaskWorkspaceGetPayload<{
 export const crmTaskInclude = {
   workspace: {
     include: crmTaskWorkspaceInclude,
+  },
+  project: {
+    select: {
+      id: true,
+      workspaceId: true,
+      name: true,
+      description: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: { select: { tasks: true } },
+    },
   },
   assignedTo: { select: { id: true, name: true, email: true } },
   assignments: {

@@ -109,6 +109,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const assignedToUserId = normalizeString(body?.assignedToUserId)
     const assignedToUserIds = normalizeUserIdList(body?.assignedToUserIds)
     const workspaceId = normalizeString(body?.workspaceId)
+    const projectId = normalizeString(body?.projectId)
     const explicitSedeId = normalizeString(body?.sedeId)
     const status = Object.prototype.hasOwnProperty.call(body ?? {}, 'status') ? parseTaskStatus(body?.status) : undefined
     const priority = Object.prototype.hasOwnProperty.call(body ?? {}, 'priority') ? parseTaskPriority(body?.priority) : undefined
@@ -145,6 +146,37 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: 'No tienes permisos para mover o editar tareas en ese espacio.' }, { status: 403 })
     }
 
+    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'projectId') && projectId && !(Object.prototype.hasOwnProperty.call(body ?? {}, 'workspaceId') ? workspaceId : nextWorkspace?.id)) {
+      return NextResponse.json({ error: 'projectId requiere workspaceId' }, { status: 400 })
+    }
+
+    const resolvedWorkspaceId = Object.prototype.hasOwnProperty.call(body ?? {}, 'workspaceId')
+      ? workspaceId
+      : nextWorkspace?.id || current.workspaceId || ''
+
+    const nextProject = Object.prototype.hasOwnProperty.call(body ?? {}, 'projectId')
+      ? (projectId
+          ? await prisma.crmTaskWorkspaceProject.findFirst({
+              where: {
+                id: projectId,
+                workspaceId: resolvedWorkspaceId || '__none__',
+                empresaId: access.empresaId,
+              },
+              select: { id: true },
+            })
+          : null)
+      : current.project
+
+    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'workspaceId') && workspaceId && !(Object.prototype.hasOwnProperty.call(body ?? {}, 'projectId') ? projectId : current.projectId)) {
+      return NextResponse.json({ error: 'Selecciona un proyecto antes de mover la tarea a un espacio de trabajo.' }, { status: 400 })
+    }
+    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'projectId') && projectId && !nextProject) {
+      return NextResponse.json({ error: 'projectId inválido' }, { status: 400 })
+    }
+    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'projectId') && !projectId) {
+      return NextResponse.json({ error: 'La tarea debe permanecer asociada a un proyecto del espacio.' }, { status: 400 })
+    }
+
     const normalizedAssigneeIds = Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserIds')
       ? assignedToUserIds
       : Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId')
@@ -174,6 +206,7 @@ export async function PATCH(request: Request, context: RouteContext) {
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'title') ? { title: title || current.title } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'description') ? { description: description || null } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'workspaceId') ? { workspaceId: workspaceId || null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'projectId') ? { projectId: projectId || null } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'colorHex') ? { colorHex } : {}),
           ...(status ? { status } : {}),
           ...(priority ? { priority } : {}),
@@ -203,7 +236,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
 
       const historyWrites: Array<Promise<unknown>> = []
-      if (Object.prototype.hasOwnProperty.call(body ?? {}, 'title') || Object.prototype.hasOwnProperty.call(body ?? {}, 'description') || Object.prototype.hasOwnProperty.call(body ?? {}, 'workspaceId')) {
+      if (Object.prototype.hasOwnProperty.call(body ?? {}, 'title') || Object.prototype.hasOwnProperty.call(body ?? {}, 'description') || Object.prototype.hasOwnProperty.call(body ?? {}, 'workspaceId') || Object.prototype.hasOwnProperty.call(body ?? {}, 'projectId')) {
         historyWrites.push(
           appendTaskHistory(tx, {
             empresaId: access.empresaId,
