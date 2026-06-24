@@ -324,7 +324,8 @@ export function getDefaultChatbotStudioSettings(): ChatbotStudioSettings {
 
 export function normalizeChatbotFlowTriggers(value: unknown): ChatbotFlowTrigger[] {
   const defaults = getDefaultChatbotFlowTriggers()
-  const items = Array.isArray(value) ? value : []
+  if (!Array.isArray(value)) return defaults
+  const items = value
   const normalized = items
     .map((item) => {
       const record = asRecord(item)
@@ -342,10 +343,7 @@ export function normalizeChatbotFlowTriggers(value: unknown): ChatbotFlowTrigger
     })
     .filter((item): item is ChatbotFlowTrigger => Boolean(item?.id && item.label && item.targetStageId))
 
-  if (!normalized.length) return defaults
-  const mergedDefaults = defaults.map((defaultItem) => normalized.find((item) => item.id === defaultItem.id) ?? defaultItem)
-  const extra = normalized.filter((item) => !defaults.some((defaultItem) => defaultItem.id === item.id))
-  return [...mergedDefaults, ...extra]
+  return normalized
 }
 
 export function normalizeChatbotAutomationFlows(value: unknown, fallback?: { quickActions?: unknown; flowStages?: unknown; flowTriggers?: unknown; pauseNodes?: unknown; studioNodeLayout?: unknown; studioViewport?: unknown }): ChatbotAutomationFlow[] {

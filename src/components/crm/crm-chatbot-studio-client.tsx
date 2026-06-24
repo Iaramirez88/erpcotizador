@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, Bot, GitBranch, GripVertical, History, Info, Plus, Redo2, Save, Smile, Trash2, Undo2, Users, Variable, Zap } from 'lucide-react'
+import { Bell, Bot, ChevronDown, ChevronUp, GitBranch, GripVertical, History, Info, Plus, Redo2, Save, Smile, Trash2, Undo2, Users, Variable, Zap } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -166,6 +166,8 @@ type StudioGraphNode = {
   y: number
   width: number
   accentClass: string
+  headerClass: string
+  headerBadgeClass: string
   toneClass: string
 }
 
@@ -203,6 +205,7 @@ type StudioGraphEdge = {
   targetKind: StudioGraphNode['kind']
   label: string
   sourceOptionId?: string
+  sourceOptionIndex?: number
   toneClass: string
   showLabel?: boolean
   dashed?: boolean
@@ -314,6 +317,10 @@ function getNodeAnchorY(node: StudioGraphNode) {
   return node.y + 52
 }
 
+function getStageOptionAnchorY(node: StudioGraphNode, optionIndex: number) {
+  return node.y + 118 + (optionIndex * 42)
+}
+
 function getBezierMidpoint(args: { startX: number; startY: number; control1X: number; control1Y: number; control2X: number; control2Y: number; endX: number; endY: number }) {
   const t = 0.5
   const x = ((1 - t) ** 3 * args.startX)
@@ -327,11 +334,11 @@ function getBezierMidpoint(args: { startX: number; startY: number; control1X: nu
   return { x, y }
 }
 
-function getEdgeCurveMetrics(source: StudioGraphNode, target: StudioGraphNode) {
-  const startX = getNodeAnchorX(source, 'right')
-  const startY = getNodeAnchorY(source)
-  const endX = getNodeAnchorX(target, 'left')
-  const endY = getNodeAnchorY(target)
+function getEdgeCurveMetrics(source: StudioGraphNode, target: StudioGraphNode, anchors?: { startX?: number; startY?: number; endX?: number; endY?: number }) {
+  const startX = anchors?.startX ?? getNodeAnchorX(source, 'right')
+  const startY = anchors?.startY ?? getNodeAnchorY(source)
+  const endX = anchors?.endX ?? getNodeAnchorX(target, 'left')
+  const endY = anchors?.endY ?? getNodeAnchorY(target)
   const deltaX = Math.max((endX - startX) / 2, 56)
   const control1X = startX + deltaX
   const control2X = endX - deltaX
@@ -466,7 +473,9 @@ function buildStudioGraph(builder: BuilderState) {
     x: startX,
     y: laneY.stages,
     width: 172,
-    accentClass: 'border-emerald-300 bg-emerald-50 text-emerald-900',
+    accentClass: 'border-emerald-200 bg-white text-slate-900',
+    headerClass: 'bg-emerald-50 text-emerald-900',
+    headerBadgeClass: 'bg-white/90 text-emerald-700',
     toneClass: 'stroke-emerald-400',
   }
 
@@ -485,6 +494,8 @@ function buildStudioGraph(builder: BuilderState) {
       y: layout?.y ?? laneY.stages,
       width: 232,
       accentClass: 'border-emerald-200 bg-white text-slate-900',
+      headerClass: 'bg-emerald-50 text-emerald-900',
+      headerBadgeClass: 'bg-white/90 text-emerald-700',
       toneClass: 'stroke-emerald-400',
     }
   })
@@ -510,7 +521,9 @@ function buildStudioGraph(builder: BuilderState) {
       x: layout?.x ?? (targetStageNode ? targetStageNode.x + 18 : stageStartX + ((stageIndexById.get(trigger.targetStageId) ?? index) * stageSpacing)),
       y: layout?.y ?? laneY.triggers + (triggerCount * triggerStackGap),
       width: 220,
-      accentClass: trigger.enabled ? 'border-amber-200 bg-amber-50 text-amber-950' : 'border-slate-200 bg-slate-100 text-slate-500',
+      accentClass: 'border-slate-200 bg-white text-slate-900',
+      headerClass: trigger.enabled ? 'bg-amber-400 text-white' : 'bg-slate-200 text-slate-600',
+      headerBadgeClass: trigger.enabled ? 'bg-white/90 text-amber-700' : 'bg-white/75 text-slate-500',
       toneClass: trigger.enabled ? 'stroke-amber-400' : 'stroke-slate-300',
     }
   })
@@ -542,7 +555,9 @@ function buildStudioGraph(builder: BuilderState) {
       x: layout?.x ?? stageStartX + (sourceIndex * stageSpacing) + 20,
       y: layout?.y ?? laneY.actions + (actionCount * actionStackGap),
       width: 220,
-      accentClass: action.enabled ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-950' : 'border-slate-200 bg-slate-100 text-slate-500',
+      accentClass: 'border-slate-200 bg-white text-slate-900',
+      headerClass: action.enabled ? 'bg-fuchsia-500 text-white' : 'bg-slate-200 text-slate-600',
+      headerBadgeClass: action.enabled ? 'bg-white/90 text-fuchsia-700' : 'bg-white/75 text-slate-500',
       toneClass: action.enabled ? 'stroke-fuchsia-400' : 'stroke-slate-300',
     }
   })
@@ -567,7 +582,9 @@ function buildStudioGraph(builder: BuilderState) {
       x: layout?.x ?? stageStartX + (midpointIndex * stageSpacing) - 94,
       y: layout?.y ?? laneY.pauses + (pauseCount * pauseStackGap),
       width: 206,
-      accentClass: pause.enabled ? 'border-sky-200 bg-sky-50 text-sky-950' : 'border-slate-200 bg-slate-100 text-slate-500',
+      accentClass: 'border-slate-200 bg-white text-slate-900',
+      headerClass: pause.enabled ? 'bg-sky-500 text-white' : 'bg-slate-200 text-slate-600',
+      headerBadgeClass: pause.enabled ? 'bg-white/90 text-sky-700' : 'bg-white/75 text-slate-500',
       toneClass: pause.enabled ? 'stroke-sky-400' : 'stroke-slate-300',
     }
   })
@@ -590,7 +607,7 @@ function buildStudioGraph(builder: BuilderState) {
 
   builder.flowStages.forEach((stage) => {
     const sourceId = `stage:${stage.id}`
-    stage.responseOptions.forEach((option) => {
+    stage.responseOptions.forEach((option, optionIndex) => {
       if (!option.targetStageId || !stageIndexById.has(option.targetStageId)) return
       edges.push({
         id: `${sourceId}-option-${option.id}`,
@@ -600,6 +617,7 @@ function buildStudioGraph(builder: BuilderState) {
         targetKind: 'stage',
         label: option.label || 'ruta',
         sourceOptionId: option.id,
+        sourceOptionIndex: optionIndex,
         toneClass: 'stroke-sky-300',
         showLabel: true,
       })
@@ -826,6 +844,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const [mapFullscreen, setMapFullscreen] = useState(false)
   const [flowEditMode, setFlowEditMode] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(true)
+  const [inspectorAdvancedOpen, setInspectorAdvancedOpen] = useState(false)
   const [minimapOpen, setMinimapOpen] = useState(true)
   const [studioMounted, setStudioMounted] = useState(false)
   const [boardViewportSize, setBoardViewportSize] = useState({ width: 0, height: 0 })
@@ -2251,12 +2270,24 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               ) : null}
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-3">
-              <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => openEditor(focusedNode)}>Editar</Button>
-              <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => duplicateNode(focusedNode)}>Duplicar</Button>
-              <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => reorderNode(focusedNode, -1)}>Subir</Button>
-              <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => reorderNode(focusedNode, 1)}>Bajar</Button>
-              <Button type="button" variant="outline" size="sm" className="col-span-2 h-8 border-rose-200 text-xs text-rose-700" onClick={() => deleteNodeWithFeedback(focusedNode)}>Eliminar bloque</Button>
+            <div className="mt-3 border-t border-slate-200 pt-3">
+              <button
+                type="button"
+                onClick={() => setInspectorAdvancedOpen((current) => !current)}
+                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-white"
+              >
+                <span>Mas opciones</span>
+                {inspectorAdvancedOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </button>
+              {inspectorAdvancedOpen ? (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => openEditor(focusedNode)}>Editar</Button>
+                  <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => duplicateNode(focusedNode)}>Duplicar</Button>
+                  <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => reorderNode(focusedNode, -1)}>Subir</Button>
+                  <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => reorderNode(focusedNode, 1)}>Bajar</Button>
+                  <Button type="button" variant="outline" size="sm" className="col-span-2 h-8 border-rose-200 text-xs text-rose-700" onClick={() => deleteNodeWithFeedback(focusedNode)}>Eliminar bloque</Button>
+                </div>
+              ) : null}
             </div>
 
             {deletionBlocker ? (
@@ -3077,7 +3108,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                           const source = studioGraph.nodes.find((node) => node.id === edge.fromId)
                           const target = studioGraph.nodes.find((node) => node.id === edge.toId)
                           if (!source || !target) return null
-                          const metrics = getEdgeCurveMetrics(source, target)
+                          const metrics = getEdgeCurveMetrics(source, target, {
+                            startY: edge.sourceKind === 'stage' && typeof edge.sourceOptionIndex === 'number'
+                              ? getStageOptionAnchorY(source, edge.sourceOptionIndex)
+                              : undefined,
+                          })
                           return (
                             <g key={edge.id}>
                               <path d={metrics.path} className={`${edge.toneClass} fill-none stroke-[2.5]`} strokeDasharray={edge.dashed ? '6 6' : undefined} />
@@ -3093,7 +3128,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                             y: connectionDraft.currentY - 52,
                             width: 0,
                           } satisfies StudioGraphNode
-                          const metrics = getEdgeCurveMetrics(source, draftTarget)
+                          const metrics = getEdgeCurveMetrics(source, draftTarget, {
+                            startX: connectionDraft.startX,
+                            startY: connectionDraft.startY,
+                            endX: connectionDraft.currentX,
+                            endY: connectionDraft.currentY,
+                          })
                           return <path d={metrics.path} className="fill-none stroke-slate-400 stroke-[2.5]" strokeDasharray="8 6" />
                         })() : null}
                       </svg>
@@ -3102,7 +3142,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         const source = studioGraph.nodes.find((node) => node.id === edge.fromId)
                         const target = studioGraph.nodes.find((node) => node.id === edge.toId)
                         if (!source || !target) return null
-                        const metrics = getEdgeCurveMetrics(source, target)
+                        const metrics = getEdgeCurveMetrics(source, target, {
+                          startY: edge.sourceKind === 'stage' && typeof edge.sourceOptionIndex === 'number'
+                            ? getStageOptionAnchorY(source, edge.sourceOptionIndex)
+                            : undefined,
+                        })
                         const isActiveEdge = activeEdgeId === edge.id
                         const panelLeft = Math.max(24, Math.min(studioGraph.contentWidth - 232, metrics.midpoint.x - 108))
                         const panelTop = Math.max(24, metrics.midpoint.y - (isActiveEdge ? 86 : 16))
@@ -3266,7 +3310,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                 focusStudioNode({ kind: node.kind, id: nodeKey })
                               }
                             }}
-                            className={`group absolute cursor-grab rounded-[20px] border px-4 py-3 text-left shadow-[0_14px_30px_-24px_rgba(15,23,42,0.35)] transition active:cursor-grabbing ${node.accentClass} ${active ? 'ring-2 ring-slate-900/15 shadow-[0_18px_40px_-22px_rgba(15,23,42,0.32)]' : 'hover:-translate-y-0.5 hover:shadow-[0_16px_34px_-22px_rgba(15,23,42,0.3)]'} ${validTarget ? 'ring-2 ring-sky-300 ring-offset-2' : ''}`}
+                            className={`group absolute cursor-grab overflow-hidden rounded-[20px] border text-left shadow-[0_14px_30px_-24px_rgba(15,23,42,0.35)] transition active:cursor-grabbing ${node.accentClass} ${active ? 'ring-2 ring-slate-900/15 shadow-[0_18px_40px_-22px_rgba(15,23,42,0.32)]' : 'hover:-translate-y-0.5 hover:shadow-[0_16px_34px_-22px_rgba(15,23,42,0.3)]'} ${validTarget ? 'ring-2 ring-sky-300 ring-offset-2' : ''}`}
                             style={{ left: `${node.x}px`, top: `${node.y}px`, width: `${node.width}px` }}
                           >
                             {node.kind !== 'start' ? (
@@ -3324,24 +3368,27 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                 className="absolute -right-2.5 top-[40px] h-5 w-5 rounded-full border border-slate-300 bg-white shadow"
                               />
                             ) : null}
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <div className="inline-flex rounded-full bg-white/88 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] opacity-90">{getNodeTypeLabel(node.kind)}</div>
-                                  {active ? <div className="rounded-full border border-white/70 bg-white/90 px-2 py-1 text-[10px] font-semibold text-slate-700">Activo</div> : null}
+                            <div className={`px-4 py-3 ${node.headerClass}`}>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <div className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${node.headerBadgeClass}`}>{getNodeTypeLabel(node.kind)}</div>
+                                    {active ? <div className="rounded-full border border-white/70 bg-white/90 px-2 py-1 text-[10px] font-semibold text-slate-700">Activo</div> : null}
+                                  </div>
+                                  <div className="mt-2 truncate text-[15px] font-semibold">{node.title}</div>
                                 </div>
-                                <div className="mt-2 truncate text-[15px] font-semibold">{node.title}</div>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <div data-node-drag-handle="true" className="rounded-full border border-current/15 bg-white/80 p-1 opacity-70 lg:opacity-0 lg:group-hover:opacity-100"><GripVertical className="h-3.5 w-3.5" /></div>
+                                <div className="flex items-center gap-1">
+                                  <div data-node-drag-handle="true" className="rounded-full border border-current/15 bg-white/80 p-1 opacity-70 lg:opacity-0 lg:group-hover:opacity-100"><GripVertical className="h-3.5 w-3.5" /></div>
+                                </div>
                               </div>
                             </div>
-                            <div className="mt-1 line-clamp-1 text-xs font-medium opacity-80">{node.subtitle}</div>
-                            <div className="mt-2 line-clamp-2 text-[11px] leading-5 opacity-70">{node.description}</div>
+                            <div className="px-4 py-3">
+                              <div className="line-clamp-1 text-xs font-medium text-slate-600">{node.subtitle}</div>
+                              <div className="mt-2 line-clamp-2 text-[11px] leading-5 text-slate-500">{node.description}</div>
                             {node.kind === 'stage' && responseHandles.length ? (
                               <div className="mt-3 space-y-2 border-t border-slate-200/70 pt-3">
                                 {responseHandles.map((option) => (
-                                  <div key={option.id} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white/88 px-2.5 py-2 text-[11px] font-medium text-slate-700 shadow-sm">
+                                  <div key={option.id} className="relative flex items-center gap-2 rounded-xl border border-slate-200 bg-white/88 px-2.5 py-2 pr-7 text-[11px] font-medium text-slate-700 shadow-sm">
                                     <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-400" />
                                     <span className="min-w-0 flex-1 truncate">{option.label}</span>
                                     <button
@@ -3358,7 +3405,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                         event.stopPropagation()
                                         openCreateMenu({ x: node.x + node.width + 24, y: node.y + 78, target: { sourceNode: { kind: 'stage', id: nodeKey }, sourceOptionId: option.id } })
                                       }}
-                                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border bg-white ${connectionDraft?.sourceOptionId === option.id ? 'border-sky-400' : 'border-slate-300'}`}
+                                      className={`absolute -right-2.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border bg-white shadow ${connectionDraft?.sourceOptionId === option.id ? 'border-sky-400' : 'border-slate-300'}`}
                                     >
                                       <span className="inline-block h-2 w-2 rounded-full bg-slate-400" />
                                     </button>
@@ -3366,6 +3413,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                 ))}
                               </div>
                             ) : null}
+                            </div>
                             {node.kind !== 'start' ? (
                               <div className={`absolute left-3 right-3 top-full z-10 mt-3 transition ${active ? 'opacity-100 translate-y-0' : 'translate-y-1 opacity-0 lg:group-hover:translate-y-0 lg:group-hover:opacity-100'}`}>
                                 <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-white/96 p-1 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.4)]">

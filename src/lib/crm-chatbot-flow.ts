@@ -222,7 +222,8 @@ export function getDefaultChatbotFlowResponseOptions(stageId: string) {
 
 export function normalizeChatbotFlowResponseOptions(value: unknown, stageId: string): ChatbotFlowResponseOption[] {
   const defaults = getDefaultChatbotFlowResponseOptions(stageId)
-  const items = Array.isArray(value) ? value : []
+  if (!Array.isArray(value)) return defaults
+  const items = value
   const normalized = items
     .map((item) => {
       const record = asRecord(item)
@@ -239,17 +240,13 @@ export function normalizeChatbotFlowResponseOptions(value: unknown, stageId: str
     })
     .filter((item): item is ChatbotFlowResponseOption => Boolean(item?.id && item.label && item.userMessage && item.targetStageId))
 
-  if (!normalized.length) return defaults
-
-  const mergedDefaults = defaults.map((defaultOption) => normalized.find((item) => item.id === defaultOption.id) ?? defaultOption)
-  const extraOptions = normalized.filter((item) => !defaults.some((defaultOption) => defaultOption.id === item.id))
-
-  return [...mergedDefaults, ...extraOptions]
+  return normalized
 }
 
 export function normalizeChatbotQuickActions(value: unknown): ChatbotQuickAction[] {
   const defaults = getDefaultChatbotQuickActions()
-  const items = Array.isArray(value) ? value : []
+  if (!Array.isArray(value)) return defaults
+  const items = value
   const normalized = items
     .map((item) => {
       const record = asRecord(item)
@@ -266,16 +263,13 @@ export function normalizeChatbotQuickActions(value: unknown): ChatbotQuickAction
     })
     .filter((item): item is ChatbotQuickAction => Boolean(item?.id && item.label && item.message))
 
-  if (!normalized.length) return defaults
-
-  const mergedDefaults = defaults.map((defaultAction) => normalized.find((item) => item.id === defaultAction.id) ?? defaultAction)
-  const extraActions = normalized.filter((item) => !defaults.some((defaultAction) => defaultAction.id === item.id))
-  return [...mergedDefaults, ...extraActions]
+  return normalized
 }
 
 export function normalizeChatbotFlowStages(value: unknown): ChatbotFlowStage[] {
   const defaults = getDefaultChatbotFlowStages()
-  const items = Array.isArray(value) ? value : []
+  if (!Array.isArray(value)) return defaults
+  const items = value
   const normalized = items
     .map((item) => {
       const record = asRecord(item)
@@ -292,23 +286,7 @@ export function normalizeChatbotFlowStages(value: unknown): ChatbotFlowStage[] {
     })
     .filter((item): item is ChatbotFlowStage => Boolean(item?.id && item.title))
 
-  if (!normalized.length) return defaults
-
-  const mergedDefaults = defaults.map((defaultStage) => {
-    const stage = normalized.find((item) => item.id === defaultStage.id)
-    return stage
-      ? {
-          ...defaultStage,
-          ...stage,
-          quickActionIds: stage.quickActionIds.length ? stage.quickActionIds : defaultStage.quickActionIds,
-          responseOptions: stage.responseOptions,
-        }
-      : defaultStage
-  })
-
-  const extraStages = normalized.filter((stage) => !defaults.some((defaultStage) => defaultStage.id === stage.id))
-
-  return [...mergedDefaults, ...extraStages]
+  return normalized
 }
 
 export function findChatbotQuickAction(actions: ChatbotQuickAction[], actionId: string | null | undefined) {
