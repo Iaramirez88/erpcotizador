@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createInboundArtifacts, getConnectionToken, parseJsonObject } from '@/lib/crm-omnichannel'
 import { normalizeString } from '@/lib/crm'
+import { fetchGoogleSheetsRows } from '@/lib/crm-google-sheets'
 import { ensureInvoiceFromQuote } from '@/lib/quote-invoicing'
 import { ensureWorkOrderFromQuote } from '@/lib/work-orders'
 import {
@@ -65,6 +66,19 @@ type BusinessActionResult = {
   quoteNumber: string
   invoiceNumber?: string | null
   workOrderNumber?: string | null
+}
+
+type ChatbotRuntimeState = {
+  botSubscriptionActive: boolean
+  pauseUntil: string | null
+  variables: Record<string, string>
+  googleSheetsRow: Record<string, string> | null
+  lastA360EventName: string | null
+}
+
+type ChatbotWebhookJob = {
+  url: string
+  payload: Record<string, unknown>
 }
 
 const SERVICE_HINT_TERMS = [
@@ -671,6 +685,92 @@ function appendPauseCopy(baseBody: string, pauseNode: ChatbotStudioPauseNode | n
   return [baseBody.trim(), pauseSummary].filter(Boolean).join('\n\n')
 }
 
+function splitConfigValues(value: string) {
+  return value.split(/[\n,;|]+/).map((item) => item.trim()).filter(Boolean)
+}
+
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return Array.from(new Set(values.map((item) => normalizeString(item)).filter(Boolean)))
+}
+
+function parsePauseDurationMinutes(value: string) {
+  const normalized = normalizeString(value).toLowerCase()
+  if (!normalized) return null
+
+  const numericMatch = normalized.match(/(\d+(?:[.,]\d+)?)/)
+  const numericValue = numericMatch ? Number.parseFloat(numericMatch[1].replace(',', '.')) : NaN
+  const amount = Number.isFinite(numericValue) && numericValue > 0 ? numericValue : 1
+
+  if (normalized.includes('dia')) return Math.round(amount * 24 * 60)
+  if (normalized.includes('hora') || normalized === 'h') return Math.round(amount * 60)
+  if (normalized.includes('min')) return Math.round(amount)
+  return Math.round(amount * 60)
+}
+
+function normalizeOpportunityStage(value: string) {
+  const normalized = normalizeString(value).toUpperCase()
+  if (normalized === 'NEW' || normalized === 'QUALIFIED' || normalized === 'PROPOSAL' || normalized === 'NEGOTIATION' || normalized === 'WON' || normalized === 'LOST') {
+    return normalized as 'NEW' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON' | 'LOST'
+  }
+  return 'QUALIFIED' as const
+}
+
+function getDefaultRuntimeState(): ChatbotRuntimeState {
+  return {
+    botSubscriptionActive: true,
+    pauseUntil: null,
+    variables: {},
+    googleSheetsRow: null,
+    lastA360EventName: null,
+  }
+}
+
+function parseRuntimeState(value: unknown): ChatbotRuntimeState {
+  const normalizedData = parseJsonObject(value)
+  const runtime = parseJsonObject(normalizedData.chatbotRuntime)
+  const rawVariables = parseJsonObject(runtime.variables)
+  const rawSheetsRow = parseJsonObject(runtime.googleSheetsRow)
+
+  return {
+    botSubscriptionActive: typeof runtime.botSubscriptionActive === 'boolean' ? runtime.botSubscriptionActive : true,
+    pauseUntil: typeof runtime.pauseUntil === 'string' && runtime.pauseUntil.trim() ? runtime.pauseUntil : null,
+    variables: Object.fromEntries(
+      Object.entries(rawVariables)
+        .map(([key, item]) => [key, normalizeString(item)] as const)
+        .filter(([, item]) => Boolean(item)),
+    ),
+    googleSheetsRow: Object.keys(rawSheetsRow).length
+      ? Object.fromEntries(
+          Object.entries(rawSheetsRow)
+            .map(([key, item]) => [key, normalizeString(item)] as const)
+            .filter(([, item]) => Boolean(item)),
+        )
+      : null,
+    lastA360EventName: typeof runtime.lastA360EventName === 'string' && runtime.lastA360EventName.trim()
+      ? runtime.lastA360EventName
+      : null,
+  }
+}
+
+function buildNormalizedCaptureData(value: unknown, runtimeState: ChatbotRuntimeState) {
+  return {
+    ...parseJsonObject(value),
+    chatbotRuntime: {
+      botSubscriptionActive: runtimeState.botSubscriptionActive,
+      pauseUntil: runtimeState.pauseUntil,
+      variables: runtimeState.variables,
+      googleSheetsRow: runtimeState.googleSheetsRow,
+      lastA360EventName: runtimeState.lastA360EventName,
+    },
+  } satisfies Prisma.InputJsonValue
+}
+
+function hasFuturePause(pauseUntil: string | null) {
+  if (!pauseUntil) return false
+  const pauseUntilMs = Date.parse(pauseUntil)
+  return Number.isFinite(pauseUntilMs) && pauseUntilMs > Date.now()
+}
+
 function buildAssistantReply(args: {
   insight: CatalogInsight
   messageText: string
@@ -978,6 +1078,7 @@ export async function POST(request: Request) {
     const responseOptionId = normalizeString(body?.responseOptionId || payload.responseOptionId)
     const currentStageId = normalizeString(body?.currentStageId || payload.currentStageId)
     const currentFlowId = normalizeString(body?.currentFlowId || payload.currentFlowId || payload.chatFlowId)
+    const externalThreadId = normalizeString(body?.externalThreadId || payload.externalThreadId || `${channel.id}-${phone || email || Date.now()}`)
 
     if (publicEmbedEnabled) {
       const requestHost = await getRequestHost()
@@ -989,6 +1090,25 @@ export async function POST(request: Request) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      const existingConversation = await tx.crmConversation.findFirst({
+        where: {
+          channelConnectionId: channel.id,
+          externalThreadId,
+        },
+        select: {
+          id: true,
+          status: true,
+          assignedToUserId: true,
+          opportunityId: true,
+          captures: {
+            orderBy: [{ createdAt: 'desc' }],
+            take: 1,
+            select: { normalizedDataJson: true },
+          },
+        },
+      })
+
+      const priorRuntimeState = parseRuntimeState(existingConversation?.captures[0]?.normalizedDataJson)
       const defaultFlow = getDefaultChatbotAutomationFlowFromSettings(studioSettings)
       const conversationFlow = getChatbotAutomationFlowById(studioSettings.automationFlows, currentFlowId) ?? defaultFlow
       const flowVariables = studioSettings.flowVariables.filter((item: { enabled: boolean }) => item.enabled)
@@ -1014,7 +1134,7 @@ export async function POST(request: Request) {
         document: resolvedIdentity.document,
         ciudad: resolvedIdentity.city,
         messageText,
-        externalThreadId: normalizeString(body?.externalThreadId || payload.externalThreadId || `${channel.id}-${resolvedIdentity.phone || resolvedIdentity.email || Date.now()}`),
+        externalThreadId,
         providerMessageId: normalizeString(body?.providerMessageId || payload.providerMessageId || `chatbot-${Date.now()}`),
         providerLeadId: normalizeString(body?.providerLeadId || resolvedIdentity.whatsapp || resolvedIdentity.phone || resolvedIdentity.email || null),
         sourceLabel: 'Chatbot web',
@@ -1068,6 +1188,34 @@ export async function POST(request: Request) {
       const quickActions = activeFlow.quickActions.length ? activeFlow.quickActions : settings.quickActions
       const pauseNodes = activeFlow.pauseNodes
       const selectedQuickAction = findChatbotQuickAction(quickActions, quickActionId)
+      const selectedAutomation = selectedQuickAction?.automation || null
+
+      if (!selectedAutomation?.chat.openChat && (priorRuntimeState.botSubscriptionActive === false || hasFuturePause(priorRuntimeState.pauseUntil))) {
+        await tx.crmLeadCapture.update({
+          where: { id: artifacts.capture.id },
+          data: {
+            normalizedDataJson: buildNormalizedCaptureData(artifacts.capture.normalizedDataJson, priorRuntimeState),
+          },
+        })
+
+        await tx.crmConversation.update({
+          where: { id: artifacts.conversation.id },
+          data: {
+            status: priorRuntimeState.botSubscriptionActive === false ? 'RESOLVED' : 'PENDING',
+            directionLastMessage: 'INBOUND',
+            lastMessageAt: new Date(),
+            resolvedAt: priorRuntimeState.botSubscriptionActive === false ? new Date() : null,
+          },
+        })
+
+        await tx.crmChannelConnection.update({
+          where: { id: channel.id },
+          data: { lastWebhookAt: eventAt, lastErrorAt: null, lastErrorMessage: null },
+        })
+
+        return { artifacts, autoReply: false, webhookJobs: [] as ChatbotWebhookJob[] }
+      }
+
       const catalogInsight = await resolveCatalogInsight({
         tx,
         empresaId: channel.empresaId,
@@ -1133,9 +1281,6 @@ export async function POST(request: Request) {
         resolvedStage,
         pauseNodes,
       })
-      const pauseUntil = resolvedPauseNode
-        ? new Date(Date.now() + (resolvedPauseNode.durationMinutes * 60 * 1000)).toISOString()
-        : null
 
       const assistantContext = {
         contact_name: resolvedIdentity.nombre,
@@ -1152,6 +1297,285 @@ export async function POST(request: Request) {
         assistant_name: settings.assistantName,
       }
 
+      let runtimeState = priorRuntimeState
+      let automationPauseDescription: string | null = null
+      let automationPauseDurationMinutes: number | null = null
+      const webhookJobs: ChatbotWebhookJob[] = []
+
+      const assignedToUserIdCandidate = resolveChatbotAssignmentUserId({
+        rules: studioSettings.assignmentRules,
+        requestHuman,
+        leadQualified,
+        channelOwnerUserId: channel.createdBy.id,
+      })
+
+      const assignedToUser = assignedToUserIdCandidate === channel.createdBy.id
+        ? { id: channel.createdBy.id }
+        : await tx.user.findFirst({ where: { id: assignedToUserIdCandidate, empresaId: channel.empresaId }, select: { id: true } })
+
+      let conversationAssignedToUserId: string | null = assignedToUser?.id || existingConversation?.assignedToUserId || channel.createdBy.id
+      let conversationStatus: 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM' = requestHuman ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE'
+      let conversationResolvedAt: Date | null = null
+
+      if (selectedAutomation) {
+        if (selectedAutomation.chat.openChat) {
+          runtimeState = {
+            ...runtimeState,
+            botSubscriptionActive: true,
+            pauseUntil: null,
+          }
+          conversationStatus = requestHuman ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE'
+        }
+
+        if (selectedAutomation.chat.changeAssignee && selectedAutomation.chat.assigneeUserId) {
+          const nextAssignee = await tx.user.findFirst({
+            where: { id: selectedAutomation.chat.assigneeUserId, empresaId: channel.empresaId },
+            select: { id: true },
+          })
+          if (nextAssignee) {
+            conversationAssignedToUserId = nextAssignee.id
+          }
+        }
+
+        if (selectedAutomation.chat.unassignOperator) {
+          conversationAssignedToUserId = null
+        }
+
+        if (selectedAutomation.chat.pauseAutomation) {
+          const durationMinutes = parsePauseDurationMinutes(selectedAutomation.chat.pauseDuration)
+          if (durationMinutes) {
+            runtimeState = {
+              ...runtimeState,
+              pauseUntil: new Date(Date.now() + (durationMinutes * 60 * 1000)).toISOString(),
+            }
+            automationPauseDescription = `Pausa automática desde la acción ${selectedQuickAction?.label || 'chatbot'}`
+            automationPauseDurationMinutes = durationMinutes
+            conversationStatus = 'PENDING'
+          }
+        }
+
+        if (selectedAutomation.chat.closeChat) {
+          conversationStatus = 'RESOLVED'
+          conversationResolvedAt = new Date()
+        }
+
+        if (selectedAutomation.chat.cancelBotSubscription) {
+          runtimeState = {
+            ...runtimeState,
+            botSubscriptionActive: false,
+            pauseUntil: null,
+          }
+          conversationStatus = 'RESOLVED'
+          conversationResolvedAt = new Date()
+        }
+
+        const nextLeadTags = new Set(artifacts.lead.tags)
+        if (selectedAutomation.variables.addTagEnabled) {
+          for (const tag of selectedAutomation.variables.addTags) {
+            if (normalizeString(tag)) nextLeadTags.add(tag.trim())
+          }
+        }
+        if (selectedAutomation.variables.removeTagEnabled) {
+          for (const tag of selectedAutomation.variables.removeTags) {
+            nextLeadTags.delete(tag)
+          }
+        }
+        if (selectedAutomation.variables.addTagEnabled || selectedAutomation.variables.removeTagEnabled) {
+          await tx.crmLead.update({
+            where: { id: artifacts.lead.id },
+            data: { tags: Array.from(nextLeadTags) },
+          })
+        }
+
+        const nextRuntimeVariables = { ...runtimeState.variables }
+        if (selectedAutomation.variables.setVariableEnabled && selectedAutomation.variables.variableKey) {
+          nextRuntimeVariables[selectedAutomation.variables.variableKey] = interpolateChatbotVariables({
+            template: selectedAutomation.variables.variableValue,
+            variables: flowVariables,
+            context: assistantContext,
+          })
+        }
+        if (selectedAutomation.variables.deleteVariableEnabled && selectedAutomation.variables.deleteVariableKey) {
+          delete nextRuntimeVariables[selectedAutomation.variables.deleteVariableKey]
+        }
+        runtimeState = {
+          ...runtimeState,
+          variables: nextRuntimeVariables,
+        }
+
+        let opportunityId = existingConversation?.opportunityId || artifacts.conversation.opportunityId || null
+        if (selectedAutomation.crm.createDeal && !opportunityId) {
+          const opportunity = await tx.crmOpportunity.create({
+            data: {
+              empresaId: channel.empresaId,
+              sedeId: channel.sedeId,
+              title: effectiveProduct ? `Oportunidad · ${effectiveProduct}` : `Oportunidad · ${resolvedIdentity.nombre || 'Chatbot web'}`,
+              description: [
+                selectedAutomation.crm.pipelineName ? `Pipeline: ${selectedAutomation.crm.pipelineName}` : '',
+                messageText ? `Mensaje: ${messageText}` : '',
+              ].filter(Boolean).join('\n'),
+              stage: normalizeOpportunityStage(selectedAutomation.crm.dealStage),
+              leadId: artifacts.lead.id,
+              assignedToUserId: conversationAssignedToUserId,
+              createdById: channel.createdBy.id,
+            },
+            select: { id: true },
+          })
+          opportunityId = opportunity.id
+          await tx.crmConversation.update({
+            where: { id: artifacts.conversation.id },
+            data: { opportunityId },
+          })
+        }
+
+        if (selectedAutomation.crm.editDeal && opportunityId) {
+          await tx.crmOpportunity.update({
+            where: { id: opportunityId },
+            data: {
+              stage: normalizeOpportunityStage(selectedAutomation.crm.dealStage),
+              assignedToUserId: conversationAssignedToUserId,
+              description: selectedAutomation.crm.pipelineName
+                ? { set: `Pipeline: ${selectedAutomation.crm.pipelineName}` }
+                : undefined,
+            },
+          })
+        }
+
+        if (selectedAutomation.googleSheets.fetchRow && selectedAutomation.googleSheets.spreadsheetId) {
+          const lookupColumn = normalizeString(selectedAutomation.googleSheets.lookupColumn)
+          const lookupValue = interpolateChatbotVariables({
+            template: selectedAutomation.googleSheets.lookupValue,
+            variables: flowVariables,
+            context: assistantContext,
+          })
+          if (lookupColumn && lookupValue) {
+            try {
+              const sheetResult = await fetchGoogleSheetsRows({
+                googleSheetsSpreadsheetId: selectedAutomation.googleSheets.spreadsheetId,
+                googleSheetsSheetName: selectedAutomation.googleSheets.sheetName,
+              })
+              const matchedRow = sheetResult.rows.find((row) => normalizeString(row.raw[lookupColumn]).toLowerCase() === normalizeString(lookupValue).toLowerCase())
+              if (matchedRow) {
+                runtimeState = {
+                  ...runtimeState,
+                  googleSheetsRow: matchedRow.raw,
+                }
+              }
+            } catch (error) {
+              console.error('Error leyendo Google Sheets desde chatbot:', error)
+            }
+          }
+        }
+
+        const notificationRecipients = selectedAutomation.notifications.notifyMe
+          ? uniqueStrings(splitConfigValues(selectedAutomation.notifications.notifyRecipients))
+          : []
+
+        if (selectedAutomation.notifications.notifyMe) {
+          const users = notificationRecipients.length
+            ? await tx.user.findMany({
+                where: {
+                  empresaId: channel.empresaId,
+                  OR: [
+                    { id: { in: notificationRecipients } },
+                    { email: { in: notificationRecipients } },
+                  ],
+                },
+                select: { id: true },
+              })
+            : []
+          const targetUserIds = uniqueStrings([
+            ...users.map((item) => item.id),
+            notificationRecipients.length ? null : conversationAssignedToUserId,
+            notificationRecipients.length ? null : channel.createdBy.id,
+          ])
+          if (targetUserIds.length) {
+            await tx.notification.createMany({
+              data: targetUserIds.map((userId) => ({
+                type: 'INFO',
+                title: selectedQuickAction?.label ? `Automatización del chatbot: ${selectedQuickAction.label}` : 'Automatización del chatbot',
+                body: [
+                  resolvedIdentity.nombre ? `Contacto: ${resolvedIdentity.nombre}` : '',
+                  effectiveProduct ? `Interés: ${effectiveProduct}` : '',
+                  selectedAutomation.notifications.notifyChannels.length ? `Canales: ${selectedAutomation.notifications.notifyChannels.join(', ')}` : '',
+                ].filter(Boolean).join(' · ') || 'Se ejecutó una acción avanzada desde el chatbot.',
+                empresaId: channel.empresaId,
+                sedeId: channel.sedeId,
+                userId,
+                actionUrl: '/dashboard/crm',
+                actionLabel: 'Abrir CRM',
+              })),
+            })
+          }
+        }
+
+        if (selectedAutomation.notifications.addNote && selectedAutomation.notifications.noteText) {
+          await tx.crmActivity.create({
+            data: {
+              empresaId: channel.empresaId,
+              sedeId: channel.sedeId,
+              type: 'NOTE',
+              summary: 'Nota privada agregada por acción del chatbot',
+              details: interpolateChatbotVariables({
+                template: selectedAutomation.notifications.noteText,
+                variables: flowVariables,
+                context: assistantContext,
+              }),
+              leadId: artifacts.lead.id,
+              opportunityId: existingConversation?.opportunityId || artifacts.conversation.opportunityId || null,
+              occurredAt: new Date(),
+              createdById: channel.createdBy.id,
+            },
+          })
+        }
+
+        if (selectedAutomation.notifications.startA360Event && selectedAutomation.notifications.a360EventName) {
+          runtimeState = {
+            ...runtimeState,
+            lastA360EventName: selectedAutomation.notifications.a360EventName,
+          }
+          await tx.crmActivity.create({
+            data: {
+              empresaId: channel.empresaId,
+              sedeId: channel.sedeId,
+              type: 'OTHER',
+              summary: 'Evento A360 solicitado por chatbot',
+              details: selectedAutomation.notifications.a360EventName,
+              leadId: artifacts.lead.id,
+              opportunityId: existingConversation?.opportunityId || artifacts.conversation.opportunityId || null,
+              occurredAt: new Date(),
+              createdById: channel.createdBy.id,
+            },
+          })
+        }
+
+        if (selectedAutomation.notifications.sendWebhook && selectedAutomation.notifications.webhookUrl) {
+          webhookJobs.push({
+            url: selectedAutomation.notifications.webhookUrl,
+            payload: {
+              source: 'crm-chatbot',
+              channelId: channel.id,
+              quickActionId: selectedQuickAction?.id || null,
+              quickActionLabel: selectedQuickAction?.label || null,
+              leadId: artifacts.lead.id,
+              conversationId: artifacts.conversation.id,
+              contact: {
+                name: resolvedIdentity.nombre,
+                email: resolvedIdentity.email,
+                phone: resolvedIdentity.phone,
+                whatsapp: resolvedIdentity.whatsapp,
+              },
+              product: effectiveProduct,
+              quantity: resolvedIdentity.quantity,
+              runtime: runtimeState,
+              targetContact: selectedAutomation.notifications.notifyOtherContact ? selectedAutomation.notifications.targetContact : null,
+              a360EventName: selectedAutomation.notifications.startA360Event ? selectedAutomation.notifications.a360EventName : null,
+              requestedAt: new Date().toISOString(),
+            },
+          })
+        }
+      }
+
       const assistantBodyTemplate = matchedTrigger.matchedTrigger?.assistantReply || assistantReply.body
       const assistantBody = applyChatbotMessageCoherence({
         body: interpolateChatbotVariables({
@@ -1166,21 +1590,20 @@ export async function POST(request: Request) {
         context: assistantContext,
       })
 
-      const assignedToUserIdCandidate = resolveChatbotAssignmentUserId({
-        rules: studioSettings.assignmentRules,
-        requestHuman,
-        leadQualified,
-        channelOwnerUserId: channel.createdBy.id,
-      })
-
-      const assignedToUser = assignedToUserIdCandidate === channel.createdBy.id
-        ? { id: channel.createdBy.id }
-        : await tx.user.findFirst({ where: { id: assignedToUserIdCandidate, empresaId: channel.empresaId }, select: { id: true } })
-
-      const assignedToUserId = assignedToUser?.id || channel.createdBy.id
-
       const stageQuickActions = getStageQuickActions(resolvedStage, quickActions)
       const stageResponseOptions = getStageResponseOptions(resolvedStage)
+
+      let pauseUntil = resolvedPauseNode
+        ? new Date(Date.now() + (resolvedPauseNode.durationMinutes * 60 * 1000)).toISOString()
+        : null
+      let pauseDescription = resolvedPauseNode?.description || null
+      let pauseDurationMinutes = resolvedPauseNode?.durationMinutes || null
+
+      if (runtimeState.pauseUntil && (!pauseUntil || Date.parse(runtimeState.pauseUntil) > Date.parse(pauseUntil))) {
+        pauseUntil = runtimeState.pauseUntil
+        pauseDescription = automationPauseDescription || pauseDescription
+        pauseDurationMinutes = automationPauseDurationMinutes || pauseDurationMinutes
+      }
 
       await tx.crmMessage.create({
         data: {
@@ -1206,9 +1629,10 @@ export async function POST(request: Request) {
             chatQuickActionIds: stageQuickActions.map((item) => item.id),
             chatFlowResponseOptionIds: stageResponseOptions.map((item) => item.id),
             chatPauseNodeId: resolvedPauseNode?.id || null,
-            chatPauseDurationMinutes: resolvedPauseNode?.durationMinutes || null,
-            chatPauseDescription: resolvedPauseNode?.description || null,
+            chatPauseDurationMinutes: pauseDurationMinutes,
+            chatPauseDescription: pauseDescription,
             chatPauseUntil: pauseUntil,
+            chatbotRuntime: runtimeState,
             quantity: resolvedIdentity.quantity,
             whatsapp: resolvedIdentity.whatsapp,
             address: resolvedIdentity.address,
@@ -1230,10 +1654,18 @@ export async function POST(request: Request) {
       await tx.crmConversation.update({
         where: { id: artifacts.conversation.id },
         data: {
-          assignedToUserId,
-          status: requestHuman ? 'HUMAN_ACTIVE' : 'BOT_ACTIVE',
+          assignedToUserId: conversationAssignedToUserId,
+          status: conversationStatus,
           directionLastMessage: 'OUTBOUND',
           lastMessageAt: new Date(),
+          resolvedAt: conversationResolvedAt,
+        },
+      })
+
+      await tx.crmLeadCapture.update({
+        where: { id: artifacts.capture.id },
+        data: {
+          normalizedDataJson: buildNormalizedCaptureData(artifacts.capture.normalizedDataJson, runtimeState),
         },
       })
 
@@ -1265,17 +1697,32 @@ export async function POST(request: Request) {
         data: { lastWebhookAt: eventAt, lastErrorAt: null, lastErrorMessage: null },
       })
 
-      return artifacts
+      return { artifacts, autoReply: true, webhookJobs }
     })
+
+    if (result.webhookJobs.length) {
+      await Promise.allSettled(
+        result.webhookJobs.map(async (job) => {
+          const response = await fetch(job.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(job.payload),
+          })
+          if (!response.ok) {
+            throw new Error(`Webhook ${job.url} respondió ${response.status}`)
+          }
+        }),
+      )
+    }
 
     return NextResponse.json({
       success: true,
       data: {
-        leadId: result.lead.id,
-        conversationId: result.conversation.id,
-        messageId: result.message.id,
-        captureId: result.capture.id,
-        autoReply: true,
+        leadId: result.artifacts.lead.id,
+        conversationId: result.artifacts.conversation.id,
+        messageId: result.artifacts.message.id,
+        captureId: result.artifacts.capture.id,
+        autoReply: result.autoReply,
         testing: channel.status === 'TESTING',
         publicEmbedEnabled,
       },

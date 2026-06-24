@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, Bot, ChevronDown, ChevronUp, GitBranch, GripVertical, History, Info, Plus, Redo2, Save, Smile, Trash2, Undo2, Users, Variable, Zap } from 'lucide-react'
+import { Bell, Bot, ChevronDown, ChevronUp, Copy, GitBranch, GripVertical, History, Info, Plus, Redo2, Save, Smile, Trash2, Undo2, Users, Variable, Zap } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,7 +14,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import {
   getDefaultChatbotFlowStages,
+  getDefaultChatbotQuickActionAutomationConfig,
   getDefaultChatbotQuickActions,
+  type ChatbotQuickActionAutomationConfig,
   type ChatbotFlowNextField,
   type ChatbotFlowResponseMatchMode,
   type ChatbotFlowResponseOption,
@@ -176,6 +178,7 @@ type StudioConnectionDraft = {
   fromKind: StudioGraphNode['kind']
   sourceOptionId?: string
   sourceLabel?: string
+  sourceOptionIndex?: number
   startX: number
   startY: number
   currentX: number
@@ -321,6 +324,10 @@ function getStageOptionAnchorY(node: StudioGraphNode, optionIndex: number) {
   return node.y + 118 + (optionIndex * 42)
 }
 
+function getStageOptionAnchorX(node: StudioGraphNode) {
+  return node.x + node.width - 16
+}
+
 function getBezierMidpoint(args: { startX: number; startY: number; control1X: number; control1Y: number; control2X: number; control2Y: number; endX: number; endY: number }) {
   const t = 0.5
   const x = ((1 - t) ** 3 * args.startX)
@@ -368,12 +375,11 @@ function duplicateResponseOption(option: ChatbotFlowResponseOption): ChatbotFlow
     ...option,
     id: makeId('option'),
     label: `${option.label} copia`,
+    targetStageId: '',
   }
 }
 
 function createStageResponseOption(flowStages: ChatbotFlowStage[], currentStageId: string, patch?: Partial<ChatbotFlowResponseOption>): ChatbotFlowResponseOption {
-  const defaultTargetStageId = flowStages.find((stage) => stage.id !== currentStageId)?.id ?? currentStageId
-
   return {
     id: makeId('option'),
     label: 'Nueva opción',
@@ -381,7 +387,7 @@ function createStageResponseOption(flowStages: ChatbotFlowStage[], currentStageI
     assistantReply: 'Perfecto. Te llevo al siguiente paso.',
     matchMode: 'contains',
     matchValue: '',
-    targetStageId: defaultTargetStageId,
+    targetStageId: '',
     ...patch,
   }
 }
@@ -1373,6 +1379,24 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     }))
   }
 
+  function updateQuickActionAutomation(actionId: string, patch: Partial<ChatbotQuickActionAutomationConfig>) {
+    const action = builder.quickActions.find((item) => item.id === actionId)
+    const defaults = getDefaultChatbotQuickActionAutomationConfig()
+    const currentAutomation = action?.automation ?? defaults
+    updateQuickAction(actionId, {
+      automation: {
+        ...defaults,
+        ...currentAutomation,
+        ...patch,
+        chat: { ...defaults.chat, ...currentAutomation.chat, ...patch.chat },
+        variables: { ...defaults.variables, ...currentAutomation.variables, ...patch.variables },
+        googleSheets: { ...defaults.googleSheets, ...currentAutomation.googleSheets, ...patch.googleSheets },
+        crm: { ...defaults.crm, ...currentAutomation.crm, ...patch.crm },
+        notifications: { ...defaults.notifications, ...currentAutomation.notifications, ...patch.notifications },
+      },
+    })
+  }
+
   function updateTrigger(triggerId: string, patch: Partial<ChatbotFlowTrigger>) {
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
       flowTriggers: current.flowTriggers.map((item) => item.id === triggerId ? { ...item, ...patch } : item),
@@ -1449,6 +1473,202 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const selectedTrigger = focusedNode?.kind === 'trigger' ? builder.flowTriggers.find((trigger) => trigger.id === focusedNode.id) ?? null : null
   const selectedAction = focusedNode?.kind === 'action' ? builder.quickActions.find((action) => action.id === focusedNode.id) ?? null : null
   const selectedPause = focusedNode?.kind === 'pause' ? builder.pauseNodes.find((pause) => pause.id === focusedNode.id) ?? null : null
+
+  function renderQuickActionAutomationFields(action: ChatbotQuickAction) {
+    const automation = action.automation ?? getDefaultChatbotQuickActionAutomationConfig()
+
+    return (
+      <div className="grid gap-4">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Gestion de chat</div>
+          <div className="mt-3 grid gap-3">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-900">Abrir el chat</div>
+                  <div className="text-xs text-slate-500">Escalar el chat a un administrador.</div>
+                </div>
+                <Switch checked={automation.chat.openChat} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { chat: { ...automation.chat, openChat: checked } })} />
+              </div>
+              {automation.chat.openChat ? (
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <div className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2">
+                    <span className="text-xs text-slate-600">Cambiar el asignado del chat</span>
+                    <Switch checked={automation.chat.changeAssignee} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { chat: { ...automation.chat, changeAssignee: checked } })} />
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2">
+                    <span className="text-xs text-slate-600">Pausar la automatizacion</span>
+                    <Switch checked={automation.chat.pauseAutomation} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { chat: { ...automation.chat, pauseAutomation: checked } })} />
+                  </div>
+                  {automation.chat.changeAssignee ? (
+                    <div className="grid gap-2">
+                      <Label>Asignar a</Label>
+                      <Select value={automation.chat.assigneeUserId || '__none__'} onValueChange={(value) => updateQuickActionAutomation(action.id, { chat: { ...automation.chat, assigneeUserId: value === '__none__' ? '' : value } })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Sin asignacion</SelectItem>
+                          {assignees.map((assignee) => <SelectItem key={assignee.id} value={assignee.id}>{assignee.name || assignee.email}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : null}
+                  {automation.chat.pauseAutomation ? (
+                    <div className="grid gap-2">
+                      <Label>Duracion</Label>
+                      <Select value={automation.chat.pauseDuration} onValueChange={(value) => updateQuickActionAutomation(action.id, { chat: { ...automation.chat, pauseDuration: value } })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1 hora">1 hora</SelectItem>
+                          <SelectItem value="8 horas">8 horas</SelectItem>
+                          <SelectItem value="1 dia">1 dia</SelectItem>
+                          <SelectItem value="3 dias">3 dias</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-900">Cerrar el chat</div>
+                  <div className="text-xs text-slate-500">Marcar el chat como completado y bajar la prioridad.</div>
+                </div>
+                <Switch checked={automation.chat.closeChat} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { chat: { ...automation.chat, closeChat: checked } })} />
+              </div>
+              {automation.chat.closeChat ? (
+                <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2">
+                  <span className="text-xs text-slate-600">Desasignar el chat del operador responsable</span>
+                  <Switch checked={automation.chat.unassignOperator} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { chat: { ...automation.chat, unassignOperator: checked } })} />
+                </div>
+              ) : null}
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-900">Cancelar suscripcion del bot</div>
+                  <div className="text-xs text-slate-500">Cancelar la suscripcion a correos masivos y campañas automatizadas.</div>
+                </div>
+                <Switch checked={automation.chat.cancelBotSubscription} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { chat: { ...automation.chat, cancelBotSubscription: checked } })} />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Gestionar variables</div>
+          <div className="mt-3 grid gap-3">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-900">Añadir etiqueta</div>
+                  <div className="text-xs text-slate-500">Asignar etiquetas al suscriptor.</div>
+                </div>
+                <Switch checked={automation.variables.addTagEnabled} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { variables: { ...automation.variables, addTagEnabled: checked } })} />
+              </div>
+              {automation.variables.addTagEnabled ? <Input className="mt-3" value={joinConfigValues(automation.variables.addTags)} onChange={(event) => updateQuickActionAutomation(action.id, { variables: { ...automation.variables, addTags: event.target.value.split(/[\n,;|]+/).map((item) => item.trim()).filter(Boolean) } })} placeholder="vip, seguimiento, prioridad" /> : null}
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-900">Eliminar etiquetas</div>
+                  <div className="text-xs text-slate-500">Remover etiquetas existentes.</div>
+                </div>
+                <Switch checked={automation.variables.removeTagEnabled} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { variables: { ...automation.variables, removeTagEnabled: checked } })} />
+              </div>
+              {automation.variables.removeTagEnabled ? <Input className="mt-3" value={joinConfigValues(automation.variables.removeTags)} onChange={(event) => updateQuickActionAutomation(action.id, { variables: { ...automation.variables, removeTags: event.target.value.split(/[\n,;|]+/).map((item) => item.trim()).filter(Boolean) } })} placeholder="prospecto-frio, spam" /> : null}
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-900">Establecer variable</div>
+                  <div className="text-xs text-slate-500">Actualizar el valor de una variable.</div>
+                </div>
+                <Switch checked={automation.variables.setVariableEnabled} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { variables: { ...automation.variables, setVariableEnabled: checked } })} />
+              </div>
+              {automation.variables.setVariableEnabled ? (
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <Input value={automation.variables.variableKey} onChange={(event) => updateQuickActionAutomation(action.id, { variables: { ...automation.variables, variableKey: event.target.value } })} placeholder="estado_lead" />
+                  <Input value={automation.variables.variableValue} onChange={(event) => updateQuickActionAutomation(action.id, { variables: { ...automation.variables, variableValue: event.target.value } })} placeholder="calificado" />
+                </div>
+              ) : null}
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-900">Eliminar variable</div>
+                  <div className="text-xs text-slate-500">Eliminar una variable del contexto.</div>
+                </div>
+                <Switch checked={automation.variables.deleteVariableEnabled} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { variables: { ...automation.variables, deleteVariableEnabled: checked } })} />
+              </div>
+              {automation.variables.deleteVariableEnabled ? <Input className="mt-3" value={automation.variables.deleteVariableKey} onChange={(event) => updateQuickActionAutomation(action.id, { variables: { ...automation.variables, deleteVariableKey: event.target.value } })} placeholder="variable_a_borrar" /> : null}
+            </div>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Google Sheets acciones</div>
+          <div className="mt-3 grid gap-3">
+            <div className="grid gap-2 md:grid-cols-3">
+              <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2"><span className="text-xs text-slate-700">Insertar fila</span><Switch checked={automation.googleSheets.insertRow} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { googleSheets: { ...automation.googleSheets, insertRow: checked } })} /></div>
+              <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2"><span className="text-xs text-slate-700">Buscar y actualizar fila</span><Switch checked={automation.googleSheets.upsertRow} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { googleSheets: { ...automation.googleSheets, upsertRow: checked } })} /></div>
+              <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2"><span className="text-xs text-slate-700">Recuperar datos</span><Switch checked={automation.googleSheets.fetchRow} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { googleSheets: { ...automation.googleSheets, fetchRow: checked } })} /></div>
+            </div>
+            {(automation.googleSheets.insertRow || automation.googleSheets.upsertRow || automation.googleSheets.fetchRow) ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <Input value={automation.googleSheets.spreadsheetId} onChange={(event) => updateQuickActionAutomation(action.id, { googleSheets: { ...automation.googleSheets, spreadsheetId: event.target.value } })} placeholder="Spreadsheet ID" />
+                <Input value={automation.googleSheets.sheetName} onChange={(event) => updateQuickActionAutomation(action.id, { googleSheets: { ...automation.googleSheets, sheetName: event.target.value } })} placeholder="Hoja / pestaña" />
+                <Input value={automation.googleSheets.lookupColumn} onChange={(event) => updateQuickActionAutomation(action.id, { googleSheets: { ...automation.googleSheets, lookupColumn: event.target.value } })} placeholder="Columna de busqueda" />
+                <Input value={automation.googleSheets.lookupValue} onChange={(event) => updateQuickActionAutomation(action.id, { googleSheets: { ...automation.googleSheets, lookupValue: event.target.value } })} placeholder="Valor de busqueda" />
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">CRM y cursos</div>
+          <div className="mt-3 grid gap-3">
+            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2"><span className="text-sm text-slate-800">Crear trato</span><Switch checked={automation.crm.createDeal} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { crm: { ...automation.crm, createDeal: checked } })} /></div>
+            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2"><span className="text-sm text-slate-800">Editar trato CRM</span><Switch checked={automation.crm.editDeal} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { crm: { ...automation.crm, editDeal: checked } })} /></div>
+            {(automation.crm.createDeal || automation.crm.editDeal) ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <Input value={automation.crm.pipelineName} onChange={(event) => updateQuickActionAutomation(action.id, { crm: { ...automation.crm, pipelineName: event.target.value } })} placeholder="Pipeline o curso" />
+                <Input value={automation.crm.dealStage} onChange={(event) => updateQuickActionAutomation(action.id, { crm: { ...automation.crm, dealStage: event.target.value } })} placeholder="Paso del trato" />
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Notificaciones o actualizaciones</div>
+          <div className="mt-3 grid gap-3">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-3"><span className="text-sm text-slate-900">Enviar un mensaje a otro contacto del bot</span><Switch checked={automation.notifications.notifyOtherContact} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, notifyOtherContact: checked } })} /></div>
+              {automation.notifications.notifyOtherContact ? <Input className="mt-3" value={automation.notifications.targetContact} onChange={(event) => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, targetContact: event.target.value } })} placeholder="Telefono, email o ID del contacto" /> : null}
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-3"><span className="text-sm text-slate-900">Iniciar flujo A360 por evento</span><Switch checked={automation.notifications.startA360Event} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, startA360Event: checked } })} /></div>
+              {automation.notifications.startA360Event ? <Input className="mt-3" value={automation.notifications.a360EventName} onChange={(event) => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, a360EventName: event.target.value } })} placeholder="Nombre del evento" /> : null}
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-3"><span className="text-sm text-slate-900">Notificarme</span><Switch checked={automation.notifications.notifyMe} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, notifyMe: checked } })} /></div>
+              {automation.notifications.notifyMe ? (
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <Input value={joinConfigValues(automation.notifications.notifyChannels)} onChange={(event) => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, notifyChannels: event.target.value.split(/[\n,;|]+/).map((item) => item.trim()).filter(Boolean) } })} placeholder="telegram, whatsapp, correo" />
+                  <Input value={automation.notifications.notifyRecipients} onChange={(event) => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, notifyRecipients: event.target.value } })} placeholder="Destinatarios" />
+                </div>
+              ) : null}
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-3"><span className="text-sm text-slate-900">Añadir nota</span><Switch checked={automation.notifications.addNote} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, addNote: checked } })} /></div>
+              {automation.notifications.addNote ? <Textarea className="mt-3" rows={3} value={automation.notifications.noteText} onChange={(event) => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, noteText: event.target.value } })} placeholder="Nota privada para el dialogo" /> : null}
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-3"><span className="text-sm text-slate-900">Enviar webhook</span><Switch checked={automation.notifications.sendWebhook} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, sendWebhook: checked } })} /></div>
+              {automation.notifications.sendWebhook ? <Input className="mt-3" value={automation.notifications.webhookUrl} onChange={(event) => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, webhookUrl: event.target.value } })} placeholder="https://tu-endpoint.com/hook" /> : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   function getNodeDeletionBlocker(node: StudioFocusNode) {
     if (node.kind === 'stage' && builder.flowStages.length <= 1) {
@@ -1539,7 +1759,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     const nextActionId = makeId('action')
     const position = args?.position ?? getVisibleInsertPosition()
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
-      quickActions: [...current.quickActions, { id: nextActionId, label: 'Nueva accion', kind: 'message', message: 'Mensaje de accion rapida.', actionUrl: null, enabled: true }],
+      quickActions: [...current.quickActions, { id: nextActionId, label: 'Nueva accion', kind: 'message', message: 'Mensaje de accion rapida.', actionUrl: null, enabled: true, automation: getDefaultChatbotQuickActionAutomationConfig() }],
       flowStages: args?.sourceNode?.kind === 'stage'
         ? current.flowStages.map((stage) => stage.id === args.sourceNode?.id ? { ...stage, quickActionIds: [...stage.quickActionIds, nextActionId] } : stage)
         : current.flowStages,
@@ -1936,18 +2156,17 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     }
   }
 
-  function handleConnectionStart(event: React.PointerEvent<HTMLButtonElement>, node: StudioGraphNode, sourceOptionId?: string, sourceLabel?: string) {
+  function handleConnectionStart(event: React.PointerEvent<HTMLButtonElement>, node: StudioGraphNode, sourceOptionId?: string, sourceLabel?: string, sourceOptionIndex?: number) {
     if (event.button !== 0 || node.kind === 'action') return
     event.stopPropagation()
-    const rect = boardViewportRef.current?.getBoundingClientRect()
-    if (!rect) return
-    const startX = (event.clientX - rect.left - builder.studioViewport.x) / builder.studioViewport.scale
-    const startY = (event.clientY - rect.top - builder.studioViewport.y) / builder.studioViewport.scale
+    const startX = sourceOptionId && typeof sourceOptionIndex === 'number' ? getStageOptionAnchorX(node) : getNodeAnchorX(node, 'right')
+    const startY = sourceOptionId && typeof sourceOptionIndex === 'number' ? getStageOptionAnchorY(node, sourceOptionIndex) : getNodeAnchorY(node)
     setConnectionDraft({
       fromId: node.id,
       fromKind: node.kind,
       sourceOptionId,
       sourceLabel,
+      sourceOptionIndex,
       startX,
       startY,
       currentX: startX,
@@ -2391,7 +2610,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">Opciones del cliente</div>
-                  <div className="text-xs text-slate-500">Crea la opción y elige a qué mensaje debe llevar.</div>
+                  <div className="text-xs text-slate-500">Crea la opción y enlázala después cuando quieras.</div>
                 </div>
                 <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => addResponseOptionToStage(selectedStage.id)}>Agregar opción</Button>
               </div>
@@ -2404,9 +2623,10 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                     </div>
                     <div className="grid gap-2">
                       <Label>Ir a mensaje</Label>
-                      <Select value={option.targetStageId} onValueChange={(value) => updateResponseOption(selectedStage.id, option.id, { targetStageId: value })}>
+                      <Select value={option.targetStageId || '__none__'} onValueChange={(value) => updateResponseOption(selectedStage.id, option.id, { targetStageId: value === '__none__' ? '' : value })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="__none__">Sin enlazar</SelectItem>
                           {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
                         </SelectContent>
                       </Select>
@@ -2492,6 +2712,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                 <Input value={selectedAction.actionUrl || ''} onChange={(event) => updateQuickAction(selectedAction.id, { actionUrl: event.target.value })} placeholder="https://... o /ruta-interna" />
               </div>
             ) : null}
+            {renderQuickActionAutomationFields(selectedAction)}
           </div>
         ) : null}
 
@@ -3109,6 +3330,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                           const target = studioGraph.nodes.find((node) => node.id === edge.toId)
                           if (!source || !target) return null
                           const metrics = getEdgeCurveMetrics(source, target, {
+                            startX: edge.sourceKind === 'stage' && typeof edge.sourceOptionIndex === 'number' ? getStageOptionAnchorX(source) : undefined,
                             startY: edge.sourceKind === 'stage' && typeof edge.sourceOptionIndex === 'number'
                               ? getStageOptionAnchorY(source, edge.sourceOptionIndex)
                               : undefined,
@@ -3143,6 +3365,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         const target = studioGraph.nodes.find((node) => node.id === edge.toId)
                         if (!source || !target) return null
                         const metrics = getEdgeCurveMetrics(source, target, {
+                          startX: edge.sourceKind === 'stage' && typeof edge.sourceOptionIndex === 'number' ? getStageOptionAnchorX(source) : undefined,
                           startY: edge.sourceKind === 'stage' && typeof edge.sourceOptionIndex === 'number'
                             ? getStageOptionAnchorY(source, edge.sourceOptionIndex)
                             : undefined,
@@ -3387,7 +3610,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                               <div className="mt-2 line-clamp-2 text-[11px] leading-5 text-slate-500">{node.description}</div>
                             {node.kind === 'stage' && responseHandles.length ? (
                               <div className="mt-3 space-y-2 border-t border-slate-200/70 pt-3">
-                                {responseHandles.map((option) => (
+                                {responseHandles.map((option, index) => (
                                   <div key={option.id} className="relative flex items-center gap-2 rounded-xl border border-slate-200 bg-white/88 px-2.5 py-2 pr-7 text-[11px] font-medium text-slate-700 shadow-sm">
                                     <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-400" />
                                     <span className="min-w-0 flex-1 truncate">{option.label}</span>
@@ -3397,7 +3620,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                       onPointerDown={(event) => {
                                         if (!canEditFlow) return
                                         event.stopPropagation()
-                                        handleConnectionStart(event, node, option.id, option.label)
+                                        handleConnectionStart(event, node, option.id, option.label, index)
                                       }}
                                       onContextMenu={(event) => {
                                         if (!canEditFlow) return
@@ -3415,22 +3638,14 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                             ) : null}
                             </div>
                             {node.kind !== 'start' ? (
-                              <div className={`absolute left-3 right-3 top-full z-10 mt-3 transition ${active ? 'opacity-100 translate-y-0' : 'translate-y-1 opacity-0 lg:group-hover:translate-y-0 lg:group-hover:opacity-100'}`}>
-                                <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-white/96 p-1 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.4)]">
-                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); openEditor({ kind: node.kind as StudioFocusNode['kind'], id: nodeKey }) }} className="rounded-xl px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100">Editar</button>
-                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); duplicateNode({ kind: node.kind as StudioFocusNode['kind'], id: nodeKey }) }} className="rounded-xl px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100">Duplicar</button>
-                                  {node.kind === 'stage' ? (
-                                    <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => {
-                                      event.stopPropagation()
-                                      const stage = builder.flowStages.find((item) => item.id === nodeKey)
-                                      if (!stage) return
-                                      updateStage(stage.id, { responseOptions: [...stage.responseOptions, createStageResponseOption(builder.flowStages, stage.id)] })
-                                      setNotice('Se agregó una nueva rama desde el canvas.')
-                                    }} className="rounded-xl px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100">Rama +</button>
-                                  ) : null}
-                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); reorderNode({ kind: node.kind as StudioFocusNode['kind'], id: nodeKey }, -1) }} className="rounded-xl px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100">Subir</button>
-                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); reorderNode({ kind: node.kind as StudioFocusNode['kind'], id: nodeKey }, 1) }} className="rounded-xl px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-100">Bajar</button>
-                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); deleteNodeWithFeedback({ kind: node.kind as StudioFocusNode['kind'], id: nodeKey }) }} className="rounded-xl px-2.5 py-1.5 text-[10px] font-semibold text-rose-700 transition hover:bg-rose-50">Eliminar</button>
+                              <div className={`absolute left-1/2 top-full z-10 mt-3 -translate-x-1/2 transition ${active ? 'opacity-100 translate-y-0' : 'translate-y-1 opacity-0 lg:group-hover:translate-y-0 lg:group-hover:opacity-100'}`}>
+                                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/96 p-1.5 shadow-[0_18px_36px_-24px_rgba(15,23,42,0.4)]">
+                                  <button type="button" aria-label="Duplicar bloque" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); duplicateNode({ kind: node.kind as StudioFocusNode['kind'], id: nodeKey }) }} className="rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900">
+                                    <Copy className="h-4 w-4" />
+                                  </button>
+                                  <button type="button" aria-label="Eliminar bloque" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); deleteNodeWithFeedback({ kind: node.kind as StudioFocusNode['kind'], id: nodeKey }) }} className="rounded-xl border border-rose-200 p-2 text-rose-700 transition hover:bg-rose-50">
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
                                 </div>
                               </div>
                             ) : null}
@@ -4319,7 +4534,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <Label>Opciones de respuesta y ramas</Label>
-                      <div className="mt-1 text-xs text-slate-500">Cada opción representa una intención posible del prospecto y define a qué mensaje debe saltar el flujo.</div>
+                      <div className="mt-1 text-xs text-slate-500">Cada opción representa una intención posible del prospecto. Puedes dejarla sin destino y enlazarla después.</div>
                     </div>
                     <Button variant="outline" size="sm" onClick={() => updateStage(editingStage.id, { responseOptions: [...editingStage.responseOptions, createStageResponseOption(builder.flowStages, editingStage.id)] })}>Agregar opción</Button>
                   </div>
@@ -4344,9 +4559,10 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         </div>
                         <div className="grid gap-1.5">
                           <Label>Siguiente mensaje</Label>
-                          <Select value={option.targetStageId} onValueChange={(value) => updateResponseOption(editingStage.id, option.id, { targetStageId: value })}>
+                          <Select value={option.targetStageId || '__none__'} onValueChange={(value) => updateResponseOption(editingStage.id, option.id, { targetStageId: value === '__none__' ? '' : value })}>
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>
+                              <SelectItem value="__none__">Sin enlazar</SelectItem>
                               {builder.flowStages.map((targetStage) => <SelectItem key={targetStage.id} value={targetStage.id}>{targetStage.title}</SelectItem>)}
                             </SelectContent>
                           </Select>
@@ -4496,6 +4712,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   </div>
                   <Switch checked={editingAction.enabled} onCheckedChange={(checked) => updateQuickAction(editingAction.id, { enabled: checked })} />
                 </div>
+                {renderQuickActionAutomationFields(editingAction)}
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setEditingNode(null)}>Cerrar</Button>
@@ -4741,4 +4958,8 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       </Dialog>
     </div>
   )
+}
+
+function joinConfigValues(values: string[]) {
+  return values.join(', ')
 }

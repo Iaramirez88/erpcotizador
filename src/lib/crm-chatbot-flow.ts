@@ -4,6 +4,68 @@ export type ChatbotFlowResponseMatchMode = 'exact' | 'contains'
 
 export type ChatbotQuickActionKind = 'catalog' | 'stock' | 'human' | 'message' | 'url' | 'product_lookup' | 'service_lookup' | 'create_quote' | 'create_invoice' | 'create_work_order'
 
+export type ChatbotQuickActionChatConfig = {
+  openChat: boolean
+  changeAssignee: boolean
+  assigneeUserId: string
+  pauseAutomation: boolean
+  pauseDuration: string
+  closeChat: boolean
+  unassignOperator: boolean
+  cancelBotSubscription: boolean
+}
+
+export type ChatbotQuickActionVariableConfig = {
+  addTagEnabled: boolean
+  addTags: string[]
+  removeTagEnabled: boolean
+  removeTags: string[]
+  setVariableEnabled: boolean
+  variableKey: string
+  variableValue: string
+  deleteVariableEnabled: boolean
+  deleteVariableKey: string
+}
+
+export type ChatbotQuickActionGoogleSheetsConfig = {
+  insertRow: boolean
+  upsertRow: boolean
+  fetchRow: boolean
+  spreadsheetId: string
+  sheetName: string
+  lookupColumn: string
+  lookupValue: string
+}
+
+export type ChatbotQuickActionCrmConfig = {
+  createDeal: boolean
+  editDeal: boolean
+  dealStage: string
+  pipelineName: string
+}
+
+export type ChatbotQuickActionNotificationConfig = {
+  notifyOtherContact: boolean
+  targetContact: string
+  startA360Event: boolean
+  a360EventName: string
+  notifyMe: boolean
+  notifyChannels: string[]
+  notifyRecipients: string
+  addNote: boolean
+  noteText: string
+  sendWebhook: boolean
+  webhookUrl: string
+}
+
+export type ChatbotQuickActionAutomationConfig = {
+  chat: ChatbotQuickActionChatConfig
+  variables: ChatbotQuickActionVariableConfig
+  googleSheets: ChatbotQuickActionGoogleSheetsConfig
+  crm: ChatbotQuickActionCrmConfig
+  notifications: ChatbotQuickActionNotificationConfig
+}
+
 export type ChatbotQuickAction = {
   id: string
   label: string
@@ -11,6 +73,7 @@ export type ChatbotQuickAction = {
   message: string
   actionUrl: string | null
   enabled: boolean
+  automation: ChatbotQuickActionAutomationConfig
 }
 
 export type ChatbotFlowResponseOption = {
@@ -53,6 +116,16 @@ function normalizeIds(value: unknown) {
     : []
 }
 
+function normalizeStringList(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim())
+  }
+  if (typeof value === 'string') {
+    return value.split(/[\n,;|]+/).map((item) => item.trim()).filter(Boolean)
+  }
+  return []
+}
+
 function isFlowNextField(value: unknown): value is ChatbotFlowNextField {
   return value === 'name'
     || value === 'email'
@@ -85,6 +158,122 @@ function isQuickActionKind(value: unknown): value is ChatbotQuickActionKind {
     || value === 'create_work_order'
 }
 
+export function getDefaultChatbotQuickActionAutomationConfig(): ChatbotQuickActionAutomationConfig {
+  return {
+    chat: {
+      openChat: false,
+      changeAssignee: false,
+      assigneeUserId: '',
+      pauseAutomation: false,
+      pauseDuration: '1 hora',
+      closeChat: false,
+      unassignOperator: false,
+      cancelBotSubscription: false,
+    },
+    variables: {
+      addTagEnabled: false,
+      addTags: [],
+      removeTagEnabled: false,
+      removeTags: [],
+      setVariableEnabled: false,
+      variableKey: '',
+      variableValue: '',
+      deleteVariableEnabled: false,
+      deleteVariableKey: '',
+    },
+    googleSheets: {
+      insertRow: false,
+      upsertRow: false,
+      fetchRow: false,
+      spreadsheetId: '',
+      sheetName: '',
+      lookupColumn: '',
+      lookupValue: '',
+    },
+    crm: {
+      createDeal: false,
+      editDeal: false,
+      dealStage: '',
+      pipelineName: '',
+    },
+    notifications: {
+      notifyOtherContact: false,
+      targetContact: '',
+      startA360Event: false,
+      a360EventName: '',
+      notifyMe: false,
+      notifyChannels: [],
+      notifyRecipients: '',
+      addNote: false,
+      noteText: '',
+      sendWebhook: false,
+      webhookUrl: '',
+    },
+  }
+}
+
+function normalizeChatbotQuickActionAutomationConfig(value: unknown): ChatbotQuickActionAutomationConfig {
+  const defaults = getDefaultChatbotQuickActionAutomationConfig()
+  const record = asRecord(value)
+  const chat = asRecord(record?.chat)
+  const variables = asRecord(record?.variables)
+  const googleSheets = asRecord(record?.googleSheets)
+  const crm = asRecord(record?.crm)
+  const notifications = asRecord(record?.notifications)
+
+  return {
+    chat: {
+      openChat: asBoolean(chat?.openChat, defaults.chat.openChat),
+      changeAssignee: asBoolean(chat?.changeAssignee, defaults.chat.changeAssignee),
+      assigneeUserId: asText(chat?.assigneeUserId),
+      pauseAutomation: asBoolean(chat?.pauseAutomation, defaults.chat.pauseAutomation),
+      pauseDuration: asText(chat?.pauseDuration, defaults.chat.pauseDuration),
+      closeChat: asBoolean(chat?.closeChat, defaults.chat.closeChat),
+      unassignOperator: asBoolean(chat?.unassignOperator, defaults.chat.unassignOperator),
+      cancelBotSubscription: asBoolean(chat?.cancelBotSubscription, defaults.chat.cancelBotSubscription),
+    },
+    variables: {
+      addTagEnabled: asBoolean(variables?.addTagEnabled, defaults.variables.addTagEnabled),
+      addTags: normalizeStringList(variables?.addTags),
+      removeTagEnabled: asBoolean(variables?.removeTagEnabled, defaults.variables.removeTagEnabled),
+      removeTags: normalizeStringList(variables?.removeTags),
+      setVariableEnabled: asBoolean(variables?.setVariableEnabled, defaults.variables.setVariableEnabled),
+      variableKey: asText(variables?.variableKey),
+      variableValue: asText(variables?.variableValue),
+      deleteVariableEnabled: asBoolean(variables?.deleteVariableEnabled, defaults.variables.deleteVariableEnabled),
+      deleteVariableKey: asText(variables?.deleteVariableKey),
+    },
+    googleSheets: {
+      insertRow: asBoolean(googleSheets?.insertRow, defaults.googleSheets.insertRow),
+      upsertRow: asBoolean(googleSheets?.upsertRow, defaults.googleSheets.upsertRow),
+      fetchRow: asBoolean(googleSheets?.fetchRow, defaults.googleSheets.fetchRow),
+      spreadsheetId: asText(googleSheets?.spreadsheetId),
+      sheetName: asText(googleSheets?.sheetName),
+      lookupColumn: asText(googleSheets?.lookupColumn),
+      lookupValue: asText(googleSheets?.lookupValue),
+    },
+    crm: {
+      createDeal: asBoolean(crm?.createDeal, defaults.crm.createDeal),
+      editDeal: asBoolean(crm?.editDeal, defaults.crm.editDeal),
+      dealStage: asText(crm?.dealStage),
+      pipelineName: asText(crm?.pipelineName),
+    },
+    notifications: {
+      notifyOtherContact: asBoolean(notifications?.notifyOtherContact, defaults.notifications.notifyOtherContact),
+      targetContact: asText(notifications?.targetContact),
+      startA360Event: asBoolean(notifications?.startA360Event, defaults.notifications.startA360Event),
+      a360EventName: asText(notifications?.a360EventName),
+      notifyMe: asBoolean(notifications?.notifyMe, defaults.notifications.notifyMe),
+      notifyChannels: normalizeStringList(notifications?.notifyChannels),
+      notifyRecipients: asText(notifications?.notifyRecipients),
+      addNote: asBoolean(notifications?.addNote, defaults.notifications.addNote),
+      noteText: asText(notifications?.noteText),
+      sendWebhook: asBoolean(notifications?.sendWebhook, defaults.notifications.sendWebhook),
+      webhookUrl: asText(notifications?.webhookUrl),
+    },
+  }
+}
+
 export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
   return [
     {
@@ -94,6 +283,7 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       message: 'Quiero ver el catálogo disponible.',
       actionUrl: null,
       enabled: true,
+      automation: getDefaultChatbotQuickActionAutomationConfig(),
     },
     {
       id: 'products-in-stock',
@@ -102,6 +292,7 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       message: 'Muéstrame productos con stock disponible.',
       actionUrl: null,
       enabled: true,
+      automation: getDefaultChatbotQuickActionAutomationConfig(),
     },
     {
       id: 'talk-to-advisor',
@@ -110,6 +301,15 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       message: 'Quiero hablar con un asesor humano.',
       actionUrl: null,
       enabled: true,
+      automation: {
+        ...getDefaultChatbotQuickActionAutomationConfig(),
+        chat: {
+          ...getDefaultChatbotQuickActionAutomationConfig().chat,
+          openChat: true,
+          pauseAutomation: true,
+          pauseDuration: '1 hora',
+        },
+      },
     },
   ]
 }
@@ -259,6 +459,7 @@ export function normalizeChatbotQuickActions(value: unknown): ChatbotQuickAction
         message: asText(record.message),
         actionUrl: actionUrl || null,
         enabled: asBoolean(record.enabled, true),
+        automation: normalizeChatbotQuickActionAutomationConfig(record.automation),
       } satisfies ChatbotQuickAction
     })
     .filter((item): item is ChatbotQuickAction => Boolean(item?.id && item.label && item.message))
