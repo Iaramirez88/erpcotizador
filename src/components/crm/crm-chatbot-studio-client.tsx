@@ -2568,7 +2568,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
         </div>
 
         {selectedStage ? (
-          <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+          <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 pb-24">
             <div className="grid gap-2">
               <Label>Título</Label>
               <Input value={selectedStage.title} onChange={(event) => updateStage(selectedStage.id, { title: event.target.value })} />
@@ -2679,7 +2679,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
         ) : null}
 
         {selectedAction ? (
-          <div className="space-y-4">
+          <div className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pb-24">
             <div className="grid gap-2">
               <Label>Nombre</Label>
               <Input value={selectedAction.label} onChange={(event) => updateQuickAction(selectedAction.id, { label: event.target.value })} />
@@ -2717,7 +2717,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
         ) : null}
 
         {selectedTrigger ? (
-          <div className="space-y-4">
+          <div className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pb-24">
             <div className="grid gap-2">
               <Label>Nombre</Label>
               <Input value={selectedTrigger.label} onChange={(event) => updateTrigger(selectedTrigger.id, { label: event.target.value })} />
@@ -2762,7 +2762,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
         ) : null}
 
         {selectedPause ? (
-          <div className="space-y-4">
+          <div className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pb-24">
             <div className="grid gap-2">
               <Label>Título</Label>
               <Input value={selectedPause.title} onChange={(event) => updatePauseNode(selectedPause.id, { title: event.target.value })} />
@@ -3657,31 +3657,37 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         <div
                           className="absolute z-20 min-w-[200px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.3)]"
                           style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+                          onPointerDown={(event) => {
+                            event.stopPropagation()
+                          }}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                          }}
                         >
                           {contextMenu.mode === 'node' && contextMenu.node ? (
                             <>
                               <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Menu del bloque</div>
-                              <button type="button" onClick={() => { openEditor(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { openEditor(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
                                 <span>Editar bloque</span>
                                 <span>✎</span>
                               </button>
-                              <button type="button" onClick={() => openCreateMenu({ x: contextMenu.x + 18, y: contextMenu.y + 12, target: { sourceNode: contextMenu.node } })} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => openCreateMenu({ x: contextMenu.x + 18, y: contextMenu.y + 12, target: { sourceNode: contextMenu.node } })} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
                                 <span>Crear desde aqui</span>
                                 <Plus className="h-4 w-4" />
                               </button>
-                              <button type="button" onClick={() => { duplicateNode(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { duplicateNode(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
                                 <span>Duplicar bloque</span>
                                 <span>+</span>
                               </button>
-                              <button type="button" onClick={() => { reorderNode(contextMenu.node!, -1); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { reorderNode(contextMenu.node!, -1); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
                                 <span>Mover antes</span>
                                 <span>↑</span>
                               </button>
-                              <button type="button" onClick={() => { reorderNode(contextMenu.node!, 1); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { reorderNode(contextMenu.node!, 1); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
                                 <span>Mover despues</span>
                                 <span>↓</span>
                               </button>
-                              <button type="button" onClick={() => { deleteNodeWithFeedback(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-rose-700 transition hover:bg-rose-50">
+                              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { deleteNodeWithFeedback(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-rose-700 transition hover:bg-rose-50">
                                 <span>Eliminar bloque</span>
                                 <Trash2 className="h-4 w-4" />
                               </button>
