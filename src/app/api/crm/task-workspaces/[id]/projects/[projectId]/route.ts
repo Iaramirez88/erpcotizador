@@ -7,7 +7,7 @@ import { canUserAccessWorkspace, getAccessibleTaskWorkspace } from '@/lib/crm-ta
 export const runtime = 'nodejs'
 
 type RouteContext = {
-  params: Promise<{ workspaceId: string; projectId: string }>
+  params: Promise<{ id: string; projectId: string }>
 }
 
 export async function PATCH(request: Request, context: RouteContext) {
@@ -20,9 +20,9 @@ export async function PATCH(request: Request, context: RouteContext) {
     })
     if (!access.ok) return access.response
 
-    const { workspaceId, projectId } = await context.params
+    const { id, projectId } = await context.params
     const workspace = await getAccessibleTaskWorkspace(prisma, {
-      workspaceId,
+      workspaceId: id,
       empresaId: access.empresaId,
       userId: access.userId,
     })
@@ -104,9 +104,9 @@ export async function DELETE(_: Request, context: RouteContext) {
     })
     if (!access.ok) return access.response
 
-    const { workspaceId, projectId } = await context.params
+    const { id, projectId } = await context.params
     const workspace = await getAccessibleTaskWorkspace(prisma, {
-      workspaceId,
+      workspaceId: id,
       empresaId: access.empresaId,
       userId: access.userId,
     })
