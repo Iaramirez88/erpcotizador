@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { ErpBreadcrumbs } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -393,6 +393,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
     opportunityId: '',
     dueAt: '',
   })
+  const handledRequestedTaskIdRef = useRef<string | null>(null)
   const requestedTaskId = searchParams?.get('taskId') || ''
 
   const loadData = useCallback(async () => {
@@ -442,9 +443,15 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
 
   useEffect(() => {
     if (isFocusedOpportunities) return
+    if (!requestedTaskId) {
+      handledRequestedTaskIdRef.current = null
+      return
+    }
     if (!requestedTaskId || !tasks.length) return
+    if (handledRequestedTaskIdRef.current === requestedTaskId) return
     const task = tasks.find((item) => item.id === requestedTaskId)
     if (!task) return
+    handledRequestedTaskIdRef.current = requestedTaskId
     setActiveTab('tasks')
     openEditTaskDialog(task)
   }, [isFocusedOpportunities, requestedTaskId, tasks])
@@ -726,6 +733,24 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
     setTaskForm({ title: '', description: '', status: 'OPEN', priority: 'NORMAL', leadId: '', opportunityId: '', dueAt: '' })
   }
 
+  function closeLeadDialog() {
+    setLeadDialogOpen(false)
+    setEditingLeadId(null)
+    resetLeadForm()
+  }
+
+  function closeOpportunityDialog() {
+    setOpportunityDialogOpen(false)
+    setEditingOpportunityId(null)
+    resetOpportunityForm()
+  }
+
+  function closeTaskDialog() {
+    setTaskDialogOpen(false)
+    setEditingTaskId(null)
+    resetTaskForm()
+  }
+
   function openCreateTaskDialog() {
     setEditingTaskId(null)
     resetTaskForm()
@@ -910,10 +935,8 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
       }
 
       const savedLead = json.data
-      setLeadDialogOpen(false)
-      setEditingLeadId(null)
-      resetLeadForm()
       await loadData()
+      closeLeadDialog()
 
       if (options?.openOpportunityAfterSave && savedLead?.id) {
         openCreateOpportunityForLead({
@@ -946,10 +969,8 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
         alert(json.error || (isEditing ? 'No se pudo actualizar la oportunidad.' : 'No se pudo crear la oportunidad.'))
         return
       }
-      setOpportunityDialogOpen(false)
-      setEditingOpportunityId(null)
-      resetOpportunityForm()
       await loadData()
+      closeOpportunityDialog()
     } finally {
       setSavingOpportunity(false)
     }
@@ -1042,10 +1063,8 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
         alert(json.error || (isEditing ? 'No se pudo actualizar la tarea.' : 'No se pudo crear la tarea.'))
         return
       }
-      setTaskDialogOpen(false)
-      setEditingTaskId(null)
-      resetTaskForm()
       await loadData()
+      closeTaskDialog()
     } finally {
       setSavingTask(false)
     }
@@ -1953,7 +1972,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={leadDialogOpen} onOpenChange={setLeadDialogOpen}>
+      <Dialog open={leadDialogOpen} onOpenChange={(open) => { if (open) setLeadDialogOpen(true); else closeLeadDialog() }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingLeadId ? 'Editar lead' : 'Nuevo lead'}</DialogTitle>
@@ -2026,7 +2045,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setLeadDialogOpen(false); setEditingLeadId(null); resetLeadForm() }}>Cancelar</Button>
+            <Button variant="outline" onClick={closeLeadDialog}>Cancelar</Button>
             {editingLeadId ? (
               <Button variant="outline" onClick={() => void submitLead({ openOpportunityAfterSave: true })} disabled={savingLead}>
                 {savingLead ? 'Guardando...' : 'Guardar y pasar a pipeline'}
@@ -2037,7 +2056,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={opportunityDialogOpen} onOpenChange={setOpportunityDialogOpen}>
+      <Dialog open={opportunityDialogOpen} onOpenChange={(open) => { if (open) setOpportunityDialogOpen(true); else closeOpportunityDialog() }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingOpportunityId ? 'Editar oportunidad' : 'Nueva oportunidad'}</DialogTitle>
@@ -2088,13 +2107,13 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setOpportunityDialogOpen(false); setEditingOpportunityId(null); resetOpportunityForm() }}>Cancelar</Button>
+            <Button variant="outline" onClick={closeOpportunityDialog}>Cancelar</Button>
             <Button onClick={() => void submitOpportunity()} disabled={savingOpportunity}>{savingOpportunity ? 'Guardando...' : editingOpportunityId ? 'Guardar cambios' : 'Crear oportunidad'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={taskDialogOpen} onOpenChange={setTaskDialogOpen}>
+      <Dialog open={taskDialogOpen} onOpenChange={(open) => { if (open) setTaskDialogOpen(true); else closeTaskDialog() }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingTaskId ? 'Editar tarea' : 'Nueva tarea'}</DialogTitle>
@@ -2159,7 +2178,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setTaskDialogOpen(false); setEditingTaskId(null); resetTaskForm() }}>Cancelar</Button>
+            <Button variant="outline" onClick={closeTaskDialog}>Cancelar</Button>
             <Button onClick={() => void submitTask()} disabled={savingTask}>{savingTask ? 'Guardando...' : editingTaskId ? 'Guardar cambios' : 'Crear tarea'}</Button>
           </DialogFooter>
         </DialogContent>
