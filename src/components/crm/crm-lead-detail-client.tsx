@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { ErpBreadcrumbs } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
+import { CardInfoHeader } from '@/components/ui/card-info-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -421,8 +422,11 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Resumen</CardTitle>
-            <CardDescription>Estado comercial y datos principales del lead.</CardDescription>
+            <CardInfoHeader
+              title={<CardTitle>Resumen</CardTitle>}
+              description="Estado comercial y datos principales del lead."
+              tone="data"
+            />
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -463,8 +467,11 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Indicadores</CardTitle>
-            <CardDescription>Actividad acumulada del lead.</CardDescription>
+            <CardInfoHeader
+              title={<CardTitle>Indicadores</CardTitle>}
+              description="Actividad acumulada del lead."
+              tone="data"
+            />
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -486,8 +493,11 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
       <div className="grid gap-4 xl:grid-cols-[1.3fr_1fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Timeline</CardTitle>
-            <CardDescription>Notas, tareas y cambios relevantes asociados al lead.</CardDescription>
+            <CardInfoHeader
+              title={<CardTitle>Timeline</CardTitle>}
+              description="Notas, tareas y cambios relevantes asociados al lead."
+              tone="data"
+            />
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -536,8 +546,11 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
 
           <Card>
             <CardHeader>
-              <CardTitle>Contactos</CardTitle>
-              <CardDescription>{lead.convertedCliente ? 'Contactos migrados al cliente convertido.' : 'Contactos asociados a este lead.'}</CardDescription>
+              <CardInfoHeader
+                title={<CardTitle>Contactos</CardTitle>}
+                description={lead.convertedCliente ? 'Contactos migrados al cliente convertido.' : 'Contactos asociados a este lead.'}
+                tone="data"
+              />
             </CardHeader>
             <CardContent className="space-y-3">
               {contacts.length === 0 ? <p className="text-sm text-muted-foreground">Sin contactos registrados.</p> : null}

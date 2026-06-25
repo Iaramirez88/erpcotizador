@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { CardInfoHeader } from '@/components/ui/card-info-header'
 import { Input } from '@/components/ui/input'
+import { InfoHint } from '@/components/ui/info-hint'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
@@ -172,8 +174,11 @@ export default function ConfigEmpresaPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Branding</CardTitle>
-          <CardDescription>Este nombre y logo se usan en pantallas públicas y el dashboard.</CardDescription>
+          <CardInfoHeader
+            title={<CardTitle>Branding</CardTitle>}
+            description="Este nombre y logo se usan en pantallas públicas y el dashboard."
+            tone="action"
+          />
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
@@ -183,12 +188,11 @@ export default function ConfigEmpresaPage() {
           {config ? (
             <>
               <div className="space-y-2">
-                <Label>Código para solicitar acceso (WS-...)</Label>
+                <div className="flex items-center gap-2">
+                  <Label>Código para solicitar acceso (WS-...)</Label>
+                  <InfoHint content="Este es el código que debes enviar a un usuario existente para que pida acceso desde Mi perfil. Es único y no cambia." label="Ver ayuda del código de acceso" />
+                </div>
                 <Input value={config.workspaceCode} readOnly disabled className="font-mono" />
-                <p className="text-xs text-muted-foreground">
-                  Este es el código que debes enviar a un usuario existente para que pida acceso (Mi perfil → Acceso a otro espacio).
-                  Este código es único y no cambia.
-                </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -203,7 +207,10 @@ export default function ConfigEmpresaPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Logo</Label>
+                <div className="flex items-center gap-2">
+                  <Label>Logo</Label>
+                  <InfoHint content="Recomendado: 512x512. Máximo 400KB." label="Ver recomendación del logo" />
+                </div>
                 <div className="flex items-center gap-4 flex-wrap">
                   <div className="relative h-14 w-14 rounded-md overflow-hidden border bg-white">
                     {logoPreview ? (
@@ -228,7 +235,6 @@ export default function ConfigEmpresaPage() {
                     Quitar
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">Recomendado: 512×512. Máx 400KB.</p>
               </div>
             </>
           ) : null}
@@ -242,10 +248,11 @@ export default function ConfigEmpresaPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Preset de operación</CardTitle>
-          <CardDescription>
-            El nicho inicial define qué módulos se muestran en este espacio y qué frentes quedan ocultos para el equipo.
-          </CardDescription>
+          <CardInfoHeader
+            title={<CardTitle>Preset de operación</CardTitle>}
+            description="El nicho inicial define qué módulos se muestran en este espacio y qué frentes quedan ocultos para el equipo."
+            tone="data"
+          />
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? <p className="text-sm text-muted-foreground">Cargando preset…</p> : null}

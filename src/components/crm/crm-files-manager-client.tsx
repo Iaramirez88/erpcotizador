@@ -444,8 +444,10 @@ export function CrmFilesManagerClient() {
                     <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white shadow-sm">
                       <Plus className="h-8 w-8 text-slate-500" />
                     </div>
-                    <p className="mt-4 text-base font-semibold text-slate-900">Esta carpeta está vacía</p>
-                    <p className="mt-1 text-sm text-slate-500">Crea una carpeta nueva o sube archivos para empezar a organizar el CRM.</p>
+                    <div className="mt-4 flex items-center justify-center gap-2">
+                      <p className="text-base font-semibold text-slate-900">Esta carpeta está vacía</p>
+                      <InfoHint content="Crea una carpeta nueva o sube archivos para empezar a organizar el CRM." label="Ver ayuda de carpeta vacía" />
+                    </div>
                     <div className="mt-5 flex flex-wrap justify-center gap-2">
                       <Button variant="outline" className="rounded-xl" onClick={() => setFolderDialogOpen(true)} disabled={busy}>
                         <FolderPlus className="mr-2 h-4 w-4" />

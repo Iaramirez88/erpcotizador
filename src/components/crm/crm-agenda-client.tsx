@@ -5,8 +5,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Bot, FileText, Mail, MessageCircle, PhoneCall } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { CardInfoHeader } from '@/components/ui/card-info-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { InfoHint } from '@/components/ui/info-hint'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -387,20 +389,21 @@ export function CrmAgendaClient() {
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
           <CardHeader className="border-b border-slate-100 pb-5">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <CardTitle className="text-xl">{formatMonth(visibleMonth)}</CardTitle>
-                <CardDescription>Selecciona un día para ver y operar la agenda comercial.</CardDescription>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" className="rounded-xl" onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}>
-                  Mes anterior
-                </Button>
-                <Button variant="outline" className="rounded-xl" onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}>
-                  Mes siguiente
-                </Button>
-              </div>
-            </div>
+            <CardInfoHeader
+              title={<CardTitle className="text-xl">{formatMonth(visibleMonth)}</CardTitle>}
+              description="Selecciona un día para ver y operar la agenda comercial."
+              tone="action"
+              actions={
+                <div className="flex gap-2">
+                  <Button variant="outline" className="rounded-xl" onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}>
+                    Mes anterior
+                  </Button>
+                  <Button variant="outline" className="rounded-xl" onClick={() => setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}>
+                    Mes siguiente
+                  </Button>
+                </div>
+              }
+            />
           </CardHeader>
           <CardContent className="space-y-4 p-4 md:p-5">
             <div className="grid grid-cols-7 gap-2 text-center text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -436,8 +439,11 @@ export function CrmAgendaClient() {
 
             <Card className="rounded-3xl border-slate-200 bg-slate-50/70">
               <CardHeader>
-                <CardTitle className="text-base">Agenda del {selectedDate}</CardTitle>
-                <CardDescription>{loading ? 'Cargando tareas...' : `${selectedDayTasks.length} registros para el día seleccionado.`}</CardDescription>
+                <CardInfoHeader
+                  title={<CardTitle className="text-base">Agenda del {selectedDate}</CardTitle>}
+                  description={loading ? 'Cargando tareas...' : `${selectedDayTasks.length} registros para el día seleccionado.`}
+                  tone="data"
+                />
               </CardHeader>
               <CardContent className="space-y-3">
                 {!loading && selectedDayTasks.length === 0 ? <p className="text-sm text-muted-foreground">No hay tareas agendadas para este día.</p> : null}
@@ -487,21 +493,18 @@ export function CrmAgendaClient() {
         <div className="space-y-4">
           <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
             <CardHeader className="border-b border-slate-100 pb-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <CardTitle className="text-xl">Nueva agenda</CardTitle>
-                  <CardDescription>{agendaPanelPinned ? 'El panel queda fijo a la derecha para crear tareas sin abrir modal.' : 'Haz click en un día para abrir el modal rápido de nueva agenda.'}</CardDescription>
-                </div>
-                <Button variant="outline" className="rounded-xl" onClick={() => setAgendaDialogOpen(true)}>
-                  Abrir modal
-                </Button>
-              </div>
+              <CardInfoHeader
+                title={<CardTitle className="text-xl">Nueva agenda</CardTitle>}
+                description={agendaPanelPinned ? 'El panel queda fijo a la derecha para crear tareas sin abrir modal.' : 'Haz click en un día para abrir el modal rápido de nueva agenda.'}
+                tone="action"
+                actions={<Button variant="outline" className="rounded-xl" onClick={() => setAgendaDialogOpen(true)}>Abrir modal</Button>}
+              />
             </CardHeader>
             <CardContent className="space-y-4 p-4 md:p-5">
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
-                <div>
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-sky-200 bg-sky-50/70 p-3">
+                <div className="flex items-center gap-2">
                   <p className="text-sm font-semibold text-slate-950">Anclar panel nueva agenda</p>
-                  <p className="text-xs text-slate-600">Si está apagado, el formulario vive solo dentro del modal al seleccionar un día.</p>
+                  <InfoHint content="Si está apagado, el formulario vive solo dentro del modal al seleccionar un día." label="Ver ayuda de anclar panel" />
                 </div>
                 <Switch checked={agendaPanelPinned} onCheckedChange={setAgendaPanelPinned} aria-label="Anclar panel nueva agenda" />
               </div>
@@ -509,9 +512,9 @@ export function CrmAgendaClient() {
               {agendaPanelPinned ? (
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                   <div className="mb-4 flex items-center justify-between gap-3">
-                    <div>
+                    <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-slate-950">Agenda para {selectedDate}</p>
-                      <p className="text-xs text-slate-600">Usa este panel fijo solo si necesitas crear varias tareas seguidas.</p>
+                      <InfoHint content="Usa este panel fijo solo si necesitas crear varias tareas seguidas." label="Ver ayuda del panel fijo" />
                     </div>
                   </div>
                   <AgendaTaskForm
@@ -534,8 +537,11 @@ export function CrmAgendaClient() {
 
           <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
             <CardHeader className="border-b border-slate-100 pb-5">
-              <CardTitle className="text-xl">Buscar prospectos</CardTitle>
-              <CardDescription>Selecciona un lead y llévalo directo a la agenda.</CardDescription>
+              <CardInfoHeader
+                title={<CardTitle className="text-xl">Buscar prospectos</CardTitle>}
+                description="Selecciona un lead y llévalo directo a la agenda."
+                tone="action"
+              />
             </CardHeader>
             <CardContent className="space-y-3 p-4 md:p-5">
               <Input value={leadSearch} onChange={(event) => setLeadSearch(event.target.value)} placeholder="Buscar lead por nombre, correo o teléfono..." />
@@ -556,8 +562,11 @@ export function CrmAgendaClient() {
 
           <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
             <CardHeader className="border-b border-slate-100 pb-5">
-              <CardTitle className="text-xl">Consultar clientes</CardTitle>
-              <CardDescription>Busca clientes existentes y agenda seguimiento comercial.</CardDescription>
+              <CardInfoHeader
+                title={<CardTitle className="text-xl">Consultar clientes</CardTitle>}
+                description="Busca clientes existentes y agenda seguimiento comercial."
+                tone="action"
+              />
             </CardHeader>
             <CardContent className="space-y-3 p-4 md:p-5">
               <Input value={clientSearch} onChange={(event) => setClientSearch(event.target.value)} placeholder="Buscar cliente por nombre, documento o correo..." />
