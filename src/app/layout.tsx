@@ -3,10 +3,13 @@ import Script from "next/script";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/providers/auth-provider";
+import { GlobalAlertToast } from "@/components/providers/global-alert-toast";
 import { I18nProvider } from "@/components/providers/i18n-provider";
+import { NotificationToastBridge } from "@/components/providers/notification-toast-bridge";
 import ThemeProvider from "@/components/providers/theme-provider";
 import { PwaInstallCta } from "@/components/pwa/pwa-install-cta";
 import { PwaProvider } from "@/components/pwa/pwa-provider";
+import { Toaster } from "@/components/ui/toaster";
 import { getServerLanguage } from "@/lib/i18n/server";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -96,8 +99,13 @@ export default async function RootLayout({
           <PwaProvider />
           <PwaInstallCta />
           <AuthProvider>
-            <I18nProvider initialLanguage={language}>{children}</I18nProvider>
+            <I18nProvider initialLanguage={language}>
+              {children}
+              <NotificationToastBridge />
+            </I18nProvider>
           </AuthProvider>
+          <GlobalAlertToast />
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>

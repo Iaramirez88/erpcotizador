@@ -11,7 +11,6 @@ type Props = {
 export default function NotificationsBell({ onUnreadCountChange }: Props) {
   const [open, setOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
-  const [showTip, setShowTip] = useState(false)
 
   const buttonRef = useRef<HTMLButtonElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
@@ -27,13 +26,7 @@ export default function NotificationsBell({ onUnreadCountChange }: Props) {
       const json = (await res.json().catch(() => null)) as { unreadCount?: number } | null
       const next = typeof json?.unreadCount === 'number' ? json.unreadCount : 0
 
-      setUnreadCount((prev) => {
-        if (next > prev && !open) {
-          setShowTip(true)
-          window.setTimeout(() => setShowTip(false), 2500)
-        }
-        return next
-      })
+      setUnreadCount(next)
 
       onUnreadCountChange?.(next)
     } catch {
@@ -99,14 +92,6 @@ export default function NotificationsBell({ onUnreadCountChange }: Props) {
           </span>
         ) : null}
       </Button>
-
-      {showTip ? (
-        <div className="absolute right-0 mt-2 w-56 z-50">
-          <div className="rounded-md border bg-background px-3 py-2 text-xs">
-            Nueva notificación
-          </div>
-        </div>
-      ) : null}
 
       {open ? (
         <div

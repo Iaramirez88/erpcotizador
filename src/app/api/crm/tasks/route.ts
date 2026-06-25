@@ -22,6 +22,7 @@ import {
   normalizeUserIdList,
 } from '@/lib/crm-task-workspaces'
 import { dispatchCrmTaskCalendarBridges } from '@/lib/crm-calendar-bridges'
+import { notifyTaskUsers } from '@/lib/crm-task-notifications'
 
 export const runtime = 'nodejs'
 
@@ -338,6 +339,20 @@ export async function POST(request: Request) {
           attachmentsCount: attachmentsJson.length,
           customFieldsCount: customFieldsJson.length,
         },
+      })
+
+      await notifyTaskUsers({
+        client: tx,
+        empresaId: access.empresaId,
+        sedeId: finalSedeId || null,
+        actorUserId: access.userId,
+        recipientUserIds: normalizedAssigneeIds,
+        title: normalizedAssigneeIds.length > 1 ? 'Nueva tarea asignada al equipo' : 'Nueva tarea asignada',
+        body: workspace
+          ? `${title} fue creada en el espacio ${workspace.name}.`
+          : `${title} fue creada y ya está lista para gestión.`,
+        taskId: created.id,
+        workspaceId: workspace?.id ?? workspaceId ?? null,
       })
 
       return tx.crmTask.findUniqueOrThrow({ where: { id: created.id }, include: crmTaskInclude })

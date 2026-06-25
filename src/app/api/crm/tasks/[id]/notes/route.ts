@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { normalizeString } from '@/lib/crm'
 import { appendTaskHistory, canUserAccessWorkspace, getAccessibleTaskWorkspace, crmTaskInclude } from '@/lib/crm-task-workspaces'
+import { notifyTaskUsers } from '@/lib/crm-task-notifications'
 
 export const runtime = 'nodejs'
 
@@ -30,7 +31,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     const current = await prisma.crmTask.findUnique({
       where: { id },
-      include: { workspace: true },
+      include: { workspace: true, assignments: { select: { userId: true } } },
     })
 
     if (!current || current.empresaId !== access.empresaId) {
@@ -53,6 +54,19 @@ export async function POST(request: Request, context: RouteContext) {
       actorUserId: access.userId,
       type: 'NOTE_ADDED',
       message: note,
+    })
+
+    await notifyTaskUsers({
+      client: prisma,
+      empresaId: access.empresaId,
+      sedeId: current.sedeId,
+      actorUserId: access.userId,
+      recipientUserIds: current.assignments.map((assignment) => assignment.userId),
+      title: 'Nueva nota en tarea',
+      body: `Agregaron una nota en ${current.title}.`,
+      taskId: current.id,
+      workspaceId: current.workspaceId,
+      type: 'INFO',
     })
 
     const row = await prisma.crmTask.findUnique({

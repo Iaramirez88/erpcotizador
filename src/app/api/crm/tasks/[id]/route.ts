@@ -19,6 +19,7 @@ import {
   normalizeTaskCustomFields,
   normalizeUserIdList,
 } from '@/lib/crm-task-workspaces'
+import { notifyTaskUsers } from '@/lib/crm-task-notifications'
 
 export const runtime = 'nodejs'
 
@@ -199,6 +200,10 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     const nextStatus = status ?? current.status
+    const assigneesWereUpdated = Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId') || Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserIds')
+    const newlyAssignedUserIds = assigneesWereUpdated
+      ? normalizedAssigneeIds.filter((userId) => !current.assignments.some((assignment) => assignment.userId === userId))
+      : []
     const row = await prisma.$transaction(async (tx) => {
       const updated = await tx.crmTask.update({
         where: { id: current.id },
@@ -222,7 +227,7 @@ export async function PATCH(request: Request, context: RouteContext) {
         include: crmTaskInclude,
       })
 
-      if (Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId') || Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserIds')) {
+      if (assigneesWereUpdated) {
         await tx.crmTaskAssignment.deleteMany({ where: { taskId: current.id } })
         if (normalizedAssigneeIds.length) {
           await tx.crmTaskAssignment.createMany({
@@ -308,7 +313,7 @@ export async function PATCH(request: Request, context: RouteContext) {
           )
         }
       }
-      if (Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserId') || Object.prototype.hasOwnProperty.call(body ?? {}, 'assignedToUserIds')) {
+      if (assigneesWereUpdated) {
         historyWrites.push(
           appendTaskHistory(tx, {
             empresaId: access.empresaId,
@@ -333,6 +338,35 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
 
       await Promise.all(historyWrites)
+
+      if (newlyAssignedUserIds.length) {
+        await notifyTaskUsers({
+          client: tx,
+          empresaId: access.empresaId,
+          sedeId: updated.sedeId,
+          actorUserId: access.userId,
+          recipientUserIds: newlyAssignedUserIds,
+          title: newlyAssignedUserIds.length > 1 ? 'Fuiste agregado a una tarea de equipo' : 'Te asignaron una tarea',
+          body: `La tarea ${updated.title} fue actualizada y ahora requiere tu seguimiento.`,
+          taskId: updated.id,
+          workspaceId: updated.workspaceId,
+        })
+      }
+
+      if (status && status !== current.status) {
+        await notifyTaskUsers({
+          client: tx,
+          empresaId: access.empresaId,
+          sedeId: updated.sedeId,
+          actorUserId: access.userId,
+          recipientUserIds: normalizedAssigneeIds,
+          title: 'Estado de tarea actualizado',
+          body: `La tarea ${updated.title} cambió a ${updated.status}.`,
+          taskId: updated.id,
+          workspaceId: updated.workspaceId,
+          type: updated.status === 'DONE' ? 'SUCCESS' : 'INFO',
+        })
+      }
 
       if (nextStatus === 'DONE' && current.status !== 'DONE') {
         await tx.crmActivity.create({
