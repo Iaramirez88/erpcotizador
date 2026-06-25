@@ -6,8 +6,10 @@ import { Check, ChevronRight, Copy, Download, Eye, FileText, Folder, FolderInput
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
+import { CardInfoHeader } from '@/components/ui/card-info-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { InfoHint } from '@/components/ui/info-hint'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -389,8 +391,11 @@ export function CrmFilesManagerClient() {
       <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)]">
         <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
           <CardHeader className="border-b border-slate-100 pb-5">
-            <CardTitle className="text-xl">Estructura</CardTitle>
-            <CardDescription>Navega carpetas del CRM y mantén assets organizados por área, cliente o canal.</CardDescription>
+            <CardInfoHeader
+              title={<CardTitle className="text-xl">Estructura</CardTitle>}
+              description="Navega carpetas del CRM y mantén assets organizados por área, cliente o canal."
+              tone="data"
+            />
           </CardHeader>
           <CardContent className="max-h-[70vh] space-y-3 overflow-y-auto p-4 md:p-5">
             {snapshot ? renderTree(snapshot.tree) : <p className="text-sm text-slate-500">Cargando árbol...</p>}
@@ -399,19 +404,18 @@ export function CrmFilesManagerClient() {
 
         <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
           <CardHeader className="border-b border-slate-100 pb-5">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <CardTitle className="text-xl">Studio de archivos</CardTitle>
-                <CardDescription>{snapshot?.currentPath ? `Carpeta actual: /${snapshot.currentPath}` : 'Carpeta raíz del CRM con historial reciente y vista por grid o lista.'}</CardDescription>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
+            <CardInfoHeader
+              title={<CardTitle className="text-xl">Studio de archivos</CardTitle>}
+              description={snapshot?.currentPath ? `Carpeta actual: /${snapshot.currentPath}` : 'Carpeta raíz del CRM con historial reciente y vista por grid o lista.'}
+              tone="action"
+              actions={<div className="flex flex-wrap items-center gap-2">
                 <div className="relative min-w-[260px]">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por nombre" className="rounded-xl pl-9" />
                 </div>
                 <DataViewToggle mode={viewMode} onChange={setViewMode} />
-              </div>
-            </div>
+              </div>}
+            />
           </CardHeader>
           <CardContent className="space-y-4 p-4 md:p-5">
             <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-600">

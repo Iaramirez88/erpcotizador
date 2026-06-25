@@ -6,6 +6,7 @@ import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { InfoHint } from '@/components/ui/info-hint'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -3996,14 +3997,16 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-700">{notice}</div> : null}
 
       <Card className="border-slate-200">
-        <CardContent className="flex flex-wrap items-center justify-between gap-2.5 p-3.5">
+        <CardContent className="flex flex-wrap items-center justify-between gap-2 p-3">
           <div className="flex flex-wrap items-center gap-2.5">
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2.5 text-emerald-700">
-              <Bot className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-sm font-semibold text-slate-900">Canal de trabajo</div>
-              <div className="text-xs text-slate-500">Selecciona el chatbot web que vas a diseñar u operar.</div>
+            <div className="flex items-center gap-2 rounded-xl">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-emerald-700">
+                <Bot className="h-4.5 w-4.5" />
+              </div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <span>Canal de trabajo</span>
+                <InfoHint content="Selecciona el chatbot web que vas a diseñar u operar." label="Ver ayuda del canal de trabajo" />
+              </div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">

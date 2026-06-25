@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Copy, Image as ImageIcon, LifeBuoy, MoreVertical, Paperclip, Plus, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
+import { ChevronDown, Copy, Image as ImageIcon, MoreVertical, Paperclip, Plus, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -111,6 +111,7 @@ const SUPPORT_EMAIL = 'ivanimage@hotmail.com'
 const SUPPORT_WHATSAPP = '3115385427'
 const SUPPORT_WHATSAPP_URL = 'https://wa.me/573115385427'
 const SUPPORT_EMAIL_SUBJECT = 'Soporte configuración inicial'
+const SUPPORT_TAB_LABEL = 'Ayuda y soporte'
 const SUPPORT_REQUEST_TEMPLATE = [
   'Hola, necesito ayuda con:',
   '- Empresa o espacio:',
@@ -118,6 +119,10 @@ const SUPPORT_REQUEST_TEMPLATE = [
   '- Cambio o problema:',
   '- Detalle breve:',
 ].join('\n')
+
+function shouldDefaultToSupport(role: string | null) {
+  return Boolean(role && role !== 'ADMIN' && role !== 'MANAGER')
+}
 
 function formatDate(value: string | null | undefined, fallback: string) {
   if (!value) return fallback
@@ -195,6 +200,8 @@ function renderAttachments(attachments: ChatAttachment[] | undefined, onImageLoa
 
 export default function FloatingChatDrawer() {
   const storageTabKey = 'sg_floating_chat_last_tab'
+  const hasStoredTabPreferenceRef = useRef(false)
+  const hasHydratedTabPersistenceRef = useRef(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const teamTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const crmMessagesRef = useRef<HTMLDivElement | null>(null)
@@ -224,6 +231,7 @@ export default function FloatingChatDrawer() {
   const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null)
   const [groupDialogOpen, setGroupDialogOpen] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [groupSearch, setGroupSearch] = useState('')
   const [teamUsers, setTeamUsers] = useState<TeamUser[]>([])
@@ -334,6 +342,7 @@ export default function FloatingChatDrawer() {
     try {
       const saved = window.localStorage.getItem(storageTabKey)
       if (saved === 'updates' || saved === 'crm' || saved === 'team' || saved === 'support') {
+        hasStoredTabPreferenceRef.current = true
         setActiveTab(saved)
       }
     } catch {
@@ -342,6 +351,12 @@ export default function FloatingChatDrawer() {
   }, [])
 
   useEffect(() => {
+    if (hasHydratedTabPersistenceRef.current) {
+      hasStoredTabPreferenceRef.current = true
+    } else {
+      hasHydratedTabPersistenceRef.current = true
+    }
+
     try {
       window.localStorage.setItem(storageTabKey, activeTab)
     } catch {
@@ -353,7 +368,7 @@ export default function FloatingChatDrawer() {
     setLoading(true)
     try {
       const [meResult, usersResult, conversationsResult, threadsResult] = await Promise.allSettled([
-        requestJson<{ id: string }>('/api/me'),
+        requestJson<{ id: string; role?: string | null }>('/api/me'),
         requestJson<TeamUser[]>('/api/crm/assignees'),
         requestJson<ConversationListItem[]>('/api/crm/conversations'),
         requestJson<InternalThreadSummary[]>('/api/crm/internal-chat/threads'),
@@ -365,6 +380,7 @@ export default function FloatingChatDrawer() {
       const threadsRes = threadsResult.status === 'fulfilled' ? threadsResult.value : null
 
       setCurrentUserId(meRes?.data?.id ?? null)
+      setCurrentUserRole(meRes?.data?.role ?? null)
       setTeamUsers(Array.isArray(usersRes?.data) ? usersRes.data : [])
       const nextConversations = Array.isArray(conversationsRes?.data) ? conversationsRes.data : []
       const nextVisibleConversations = nextConversations.filter((item) => !shouldHideFromGlobalChat(item))
@@ -620,11 +636,6 @@ export default function FloatingChatDrawer() {
     await loadThreadDetail(alert.id)
   }
 
-  function openSupportTab() {
-    setActiveTab('support')
-    setOpen(true)
-  }
-
   async function copySupportTemplate() {
     try {
       await navigator.clipboard.writeText(SUPPORT_REQUEST_TEMPLATE)
@@ -866,14 +877,14 @@ export default function FloatingChatDrawer() {
                     <DropdownMenuItem onSelect={() => setActiveTab('updates')}>
                       Novedades
                     </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setActiveTab('support')}>
+                      {SUPPORT_TAB_LABEL}
+                    </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => setActiveTab('crm')}>
                       CRM
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => setActiveTab('team')}>
                       Equipo
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setActiveTab('support')}>
-                      Soporte
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -888,14 +899,14 @@ export default function FloatingChatDrawer() {
                   <button type="button" onClick={() => setActiveTab('updates')} className="rounded-xl bg-white px-3 py-1.5 text-[10px] font-medium text-slate-950 shadow-sm">
                     Novedades
                   </button>
+                  <button type="button" onClick={() => setActiveTab('support')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                    {SUPPORT_TAB_LABEL}
+                  </button>
                   <button type="button" onClick={() => setActiveTab('crm')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                     CRM
                   </button>
                   <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                     Equipo
-                  </button>
-                  <button type="button" onClick={() => setActiveTab('support')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
-                    Soporte
                   </button>
                 </div>
               </div>
@@ -941,14 +952,14 @@ export default function FloatingChatDrawer() {
                         <button type="button" onClick={() => setActiveTab('updates')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                           Novedades
                         </button>
+                        <button type="button" onClick={() => setActiveTab('support')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                          {SUPPORT_TAB_LABEL}
+                        </button>
                         <button type="button" onClick={() => setActiveTab('crm')} className={cn('rounded-xl px-3 py-1.5 text-[10px] font-medium', activeTab === 'crm' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
                           CRM
                         </button>
                         <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                           Equipo
-                        </button>
-                        <button type="button" onClick={() => setActiveTab('support')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
-                          Soporte
                         </button>
                       </div>
                     </div>
@@ -1069,14 +1080,14 @@ export default function FloatingChatDrawer() {
                         <button type="button" onClick={() => setActiveTab('updates')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                           Novedades
                         </button>
+                        <button type="button" onClick={() => setActiveTab('support')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                          {SUPPORT_TAB_LABEL}
+                        </button>
                         <button type="button" onClick={() => setActiveTab('crm')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                           CRM
                         </button>
                         <button type="button" onClick={() => setActiveTab('team')} className={cn('rounded-xl px-3 py-1.5 text-[10px] font-medium', activeTab === 'team' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
                           Equipo
-                        </button>
-                        <button type="button" onClick={() => setActiveTab('support')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
-                          Soporte
                         </button>
                       </div>
                     </div>
@@ -1328,14 +1339,14 @@ export default function FloatingChatDrawer() {
                   <button type="button" onClick={() => setActiveTab('updates')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                     Novedades
                   </button>
+                  <button type="button" onClick={() => setActiveTab('support')} className={cn('rounded-xl px-3 py-1.5 text-[10px] font-medium', activeTab === 'support' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                    {SUPPORT_TAB_LABEL}
+                  </button>
                   <button type="button" onClick={() => setActiveTab('crm')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                     CRM
                   </button>
                   <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                     Equipo
-                  </button>
-                  <button type="button" onClick={() => setActiveTab('support')} className={cn('rounded-xl px-3 py-1.5 text-[10px] font-medium', activeTab === 'support' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
-                    Soporte
                   </button>
                 </div>
 
@@ -1385,17 +1396,13 @@ export default function FloatingChatDrawer() {
         <div className={cn('pointer-events-auto mb-4 mr-4 flex flex-col items-end gap-2 transition-all duration-300 sm:mb-6 sm:mr-0', open ? 'pointer-events-none translate-y-4 opacity-0' : 'translate-y-0 opacity-100')}>
           <Button
             type="button"
-            variant="outline"
-            onClick={openSupportTab}
-            className="h-11 rounded-full border-sky-200 bg-white/95 px-4 text-sky-900 shadow-[0_18px_36px_-24px_rgba(14,116,144,0.45)] hover:bg-sky-50"
-          >
-            <LifeBuoy className="mr-2 h-4.5 w-4.5" />
-            <span>Soporte</span>
-          </Button>
-
-          <Button
-            type="button"
-            onClick={() => setOpen((current) => !current)}
+            onClick={() => setOpen((current) => {
+              const nextOpen = !current
+              if (nextOpen && !hasStoredTabPreferenceRef.current && shouldDefaultToSupport(currentUserRole)) {
+                setActiveTab('support')
+              }
+              return nextOpen
+            })}
             className="relative h-14 rounded-full bg-slate-950 px-5 text-white shadow-[0_20px_40px_-20px_rgba(15,23,42,0.65)] hover:bg-slate-800"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h8M8 14h5M5 5h14a2 2 0 012 2v8a2 2 0 01-2 2H9l-4 4v-4H5a2 2 0 01-2-2V7a2 2 0 012-2z" /></svg>

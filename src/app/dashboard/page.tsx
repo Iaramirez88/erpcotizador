@@ -7,6 +7,8 @@ import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import StartCardsGrid from '@/components/dashboard/start-cards-grid'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { CardInfoHeader } from '@/components/ui/card-info-header'
+import { InfoHint } from '@/components/ui/info-hint'
 import { getActiveSedeForUser, getEffectiveAccessMap, NAV_MODULES } from '@/lib/rbac'
 import { prisma } from '@/lib/prisma'
 import { getEnabledModulesForEmpresa, ALL_MODULE_KEYS } from '@/lib/plan-modules'
@@ -134,21 +136,20 @@ export default async function DashboardPage() {
       {storageUsage ? (
         <Card className="rounded-[28px] border-slate-200 shadow-[0_20px_50px_-34px_rgba(15,23,42,0.3)]">
           <CardHeader className="border-b border-slate-100 pb-5">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <CardTitle className="text-2xl text-slate-950">Almacenamiento de la empresa</CardTitle>
-                <CardDescription>
-                  {storageLevel === 'critical'
-                    ? 'El espacio está cerca del límite. Conviene liberar archivos o ampliar el plan.'
-                    : storageLevel === 'warning'
-                      ? 'El consumo ya entró en zona de atención.'
-                      : 'El consumo actual sigue en una zona saludable.'}
-                </CardDescription>
-              </div>
-              <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/90">
-                <Link href="/dashboard/configuracion/plan?tab=almacenamiento">Ver almacenamiento</Link>
-              </Button>
-            </div>
+            <CardInfoHeader
+              title={<CardTitle className="text-2xl text-slate-950">Almacenamiento de la empresa</CardTitle>}
+              description={storageLevel === 'critical'
+                ? 'El espacio está cerca del límite. Conviene liberar archivos o ampliar el plan.'
+                : storageLevel === 'warning'
+                  ? 'El consumo ya entró en zona de atención.'
+                  : 'El consumo actual sigue en una zona saludable.'}
+              tone="data"
+              actions={
+                <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/90">
+                  <Link href="/dashboard/configuracion/plan?tab=almacenamiento">Ver almacenamiento</Link>
+                </Button>
+              }
+            />
           </CardHeader>
           <CardContent className="grid gap-4 p-6 lg:grid-cols-[1.1fr_0.9fr]">
             <div className={storageLevel === 'critical' ? 'rounded-2xl border border-rose-200 bg-rose-50/70 p-4' : storageLevel === 'warning' ? 'rounded-2xl border border-amber-200 bg-amber-50/70 p-4' : 'rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4'}>
@@ -196,8 +197,11 @@ export default async function DashboardPage() {
 
       <Card className="rounded-[28px] border-slate-200 shadow-[0_20px_50px_-34px_rgba(15,23,42,0.3)]">
         <CardHeader className="border-b border-slate-100 pb-5">
-          <CardTitle className="text-2xl text-slate-950">¿Qué quieres hacer hoy?</CardTitle>
-          <CardDescription>Escoge un frente de trabajo y entra directo a la gestión que necesitas.</CardDescription>
+          <CardInfoHeader
+            title={<CardTitle className="text-2xl text-slate-950">¿Qué quieres hacer hoy?</CardTitle>}
+            description="Escoge un frente de trabajo y entra directo a la gestión que necesitas."
+            tone="action"
+          />
         </CardHeader>
         <CardContent className="p-0">
           <StartCardsGrid

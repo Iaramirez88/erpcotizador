@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { AlertTriangle, Bot, Clock3, FileText, Mail, MessageCircle, PhoneCall } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
+import { CardInfoHeader } from '@/components/ui/card-info-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -1247,14 +1248,17 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
       <Card className="rounded-[24px] border-slate-200 bg-white/90 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.2)]">
         <CardHeader className="border-b border-slate-100 pb-4">
-          <CardTitle className="text-lg">Vista por asesor</CardTitle>
-          <CardDescription>Usa responsables elegibles de CRM para cortar la cola y ver carga, urgencias y espera de cliente por asesor.</CardDescription>
+          <CardInfoHeader
+            title={<CardTitle className="text-lg">Vista por asesor</CardTitle>}
+            description="Usa responsables elegibles de CRM para cortar la cola y ver carga, urgencias y espera de cliente por asesor."
+            tone="action"
+          />
         </CardHeader>
         <CardContent className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-4 md:p-4">
           <button
             type="button"
             onClick={() => setAssignedFilter('ALL')}
-            className={assignedFilter === 'ALL' ? 'rounded-2xl border border-sky-300 bg-sky-50 px-3 py-3 text-left' : 'rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left'}
+            className={assignedFilter === 'ALL' ? 'rounded-2xl border border-sky-300 bg-sky-50 px-3 py-3 text-left' : 'rounded-2xl border border-sky-100 bg-sky-50/40 px-3 py-3 text-left hover:bg-sky-50/70'}
           >
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Todos los asesores</p>
             <p className="mt-1 text-lg font-semibold text-slate-950">{queueSummary.teamCount}</p>
@@ -1267,7 +1271,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                 key={assignee.id}
                 type="button"
                 onClick={() => setAssignedFilter(assignee.id)}
-                className={isActive ? 'rounded-2xl border border-emerald-300 bg-emerald-50 px-3 py-3 text-left' : 'rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left'}
+                className={isActive ? 'rounded-2xl border border-emerald-300 bg-emerald-50 px-3 py-3 text-left' : 'rounded-2xl border border-emerald-100 bg-emerald-50/35 px-3 py-3 text-left hover:bg-emerald-50/60'}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -1300,16 +1304,11 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       <div className="grid gap-3 xl:grid-cols-[340px_minmax(0,1fr)]">
         <Card className="rounded-[24px] border-slate-200 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.28)]">
           <CardHeader className="border-b border-slate-100 pb-4">
-            <CardTitle className="text-lg">
-              {queueScope === 'TEAM' ? 'Cola del equipo' : queueScope === 'MINE' ? 'Mis conversaciones' : 'Conversaciones sin tomar'} ({visibleConversations.length})
-            </CardTitle>
-            <CardDescription>
-              {queueFocus === 'ALL' ? 'Hilos omnicanal ordenados por urgencia operativa, SLA y prioridad comercial.' : null}
-              {queueFocus === 'IMMEDIATE' ? 'Ataca primero los hilos con SLA vencido o criticidad alta.' : null}
-              {queueFocus === 'NEW_UNASSIGNED' ? 'Reclama rápido las conversaciones nuevas para que no queden sin responsable.' : null}
-              {queueFocus === 'BOT_HANDOFF' ? 'Revisa los casos donde el bot ya dejó contexto y hace falta intervención humana.' : null}
-              {queueFocus === 'WAITING_CUSTOMER' ? 'Monitorea hilos pausados esperando respuesta del cliente.' : null}
-            </CardDescription>
+            <CardInfoHeader
+              title={<CardTitle className="text-lg">{queueScope === 'TEAM' ? 'Cola del equipo' : queueScope === 'MINE' ? 'Mis conversaciones' : 'Conversaciones sin tomar'} ({visibleConversations.length})</CardTitle>}
+              description={queueFocus === 'ALL' ? 'Hilos omnicanal ordenados por urgencia operativa, SLA y prioridad comercial.' : queueFocus === 'IMMEDIATE' ? 'Ataca primero los hilos con SLA vencido o criticidad alta.' : queueFocus === 'NEW_UNASSIGNED' ? 'Reclama rápido las conversaciones nuevas para que no queden sin responsable.' : queueFocus === 'BOT_HANDOFF' ? 'Revisa los casos donde el bot ya dejó contexto y hace falta intervención humana.' : 'Monitorea hilos pausados esperando respuesta del cliente.'}
+              tone="action"
+            />
           </CardHeader>
           <CardContent className="space-y-2.5 p-3 md:p-4">
             {loading ? <p className="text-sm text-muted-foreground">Cargando conversaciones...</p> : null}
@@ -1326,7 +1325,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                   key={item.id}
                   type="button"
                   onClick={() => setSelectedConversationId(item.id)}
-                  className={isActive ? 'w-full rounded-3xl border border-sky-300 bg-sky-50/80 p-4 text-left shadow-sm' : 'w-full rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-4 text-left shadow-sm transition-shadow hover:shadow-md'}
+                  className={isActive ? 'w-full rounded-3xl border border-sky-300 bg-sky-50/80 p-4 text-left shadow-sm' : 'w-full rounded-3xl border border-sky-100 bg-[linear-gradient(180deg,_rgba(240,249,255,0.72),_#ffffff)] p-4 text-left shadow-sm transition-shadow hover:shadow-md hover:bg-sky-50/70'}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-2">
@@ -1370,8 +1369,11 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
         <Card className="rounded-[24px] border-slate-200 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.28)]">
           <CardHeader className="border-b border-slate-100 pb-4">
-            <CardTitle className="text-lg">Detalle</CardTitle>
-            <CardDescription>Asignación, contexto del lead, oportunidad y mensajes del hilo seleccionado.</CardDescription>
+            <CardInfoHeader
+              title={<CardTitle className="text-lg">Detalle</CardTitle>}
+              description="Asignación, contexto del lead, oportunidad y mensajes del hilo seleccionado."
+              tone="data"
+            />
           </CardHeader>
           <CardContent className="space-y-4 p-3 md:p-4" aria-busy={detailLoading}>
             {detailLoading ? <span className="sr-only">Cargando detalle...</span> : null}
