@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CrmFileLibraryPicker } from '@/components/crm/crm-file-library-picker'
+import { useToast } from '@/hooks/use-toast'
 import type { CrmFileItem } from '@/components/crm/crm-files-types'
 
 type WorkspaceScope = 'SEDE' | 'USER'
@@ -304,6 +305,7 @@ export function CrmTaskWorkspacesClient() {
   const searchParams = useSearchParams()
   const attachmentInputRef = useRef<HTMLInputElement | null>(null)
   const customFieldFileInputRef = useRef<HTMLInputElement | null>(null)
+  const { toast } = useToast()
 
   const [loading, setLoading] = useState(true)
   const [savingWorkspace, setSavingWorkspace] = useState(false)
@@ -640,12 +642,18 @@ export function CrmTaskWorkspacesClient() {
       setTaskDialogOpen(false)
       setTaskForm({ title: '', description: '', dueAt: '', priority: 'NORMAL', status: 'OPEN', colorHex: '#1D4ED8', assignedToUserIds: [], projectId: selectedProjectId || '' })
       await loadTasks(selectedWorkspaceId)
+      toast({
+        title: 'Tarea creada',
+        description: taskForm.assignedToUserIds.length
+          ? 'La tarea se creó y se notificó a los responsables asignados.'
+          : 'La tarea se creó correctamente en el espacio de trabajo.',
+      })
     } finally {
       setSavingTask(false)
     }
   }
 
-  async function handleUpdateTask(taskId: string, patch: Record<string, unknown>) {
+  async function handleUpdateTask(taskId: string, patch: Record<string, unknown>, successMessage?: { title: string; description?: string }) {
     const json = await requestJson<TaskItem>(`/api/crm/tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) })
     if (!json.success) {
       alert(json.error || 'No se pudo actualizar la tarea.')
@@ -653,6 +661,9 @@ export function CrmTaskWorkspacesClient() {
     }
     await loadTasks(selectedWorkspaceId)
     if (detailDialogOpen) await loadTaskDetail(taskId)
+    if (successMessage) {
+      toast(successMessage)
+    }
     return true
   }
 
@@ -664,7 +675,12 @@ export function CrmTaskWorkspacesClient() {
     try {
       const patch: Record<string, unknown> = { title: detailForm.title, description: detailForm.description, dueAt: detailForm.dueAt || null, priority: detailForm.priority, status: detailForm.status, colorHex: normalizeHex(detailForm.colorHex), attachmentsJson: detailForm.attachmentsJson, customFieldsJson: detailForm.customFieldsJson, assignedToUserIds: detailForm.assignedToUserIds, archived: detailForm.archived }
       if (selectedWorkspace?.projects.length || detailForm.projectId) patch.projectId = detailForm.projectId
-      await handleUpdateTask(detailForm.id, patch)
+      await handleUpdateTask(detailForm.id, patch, {
+        title: 'Tarea actualizada',
+        description: detailForm.assignedToUserIds.length
+          ? 'Se guardaron los cambios y se mantuvo la asignación de responsables.'
+          : 'Los cambios de la tarea se guardaron correctamente.',
+      })
     } finally {
       setSavingDetail(false)
     }
@@ -680,6 +696,10 @@ export function CrmTaskWorkspacesClient() {
       setSelectedTask(normalizeTask(json.data))
       setNoteDraft('')
       await loadTasks(selectedWorkspaceId)
+      toast({
+        title: 'Nota registrada',
+        description: 'La nota quedó en el historial y se notificó a los responsables.',
+      })
     } finally {
       setSavingNote(false)
     }
@@ -707,6 +727,10 @@ export function CrmTaskWorkspacesClient() {
       replaceTaskInState(normalizeTask(json.data))
       setQuickNoteDraft('')
       setQuickTaskPanel(null)
+      toast({
+        title: 'Nota registrada',
+        description: 'La nota se agregó y los responsables recibieron la novedad.',
+      })
     } finally {
       setSavingQuickNote(false)
     }
@@ -857,7 +881,7 @@ export function CrmTaskWorkspacesClient() {
           {statusOptions.map((option) => (
             <DropdownMenuItem
               key={option.value}
-              onSelect={() => void handleUpdateTask(task.id, { status: option.value })}
+              onSelect={() => void handleUpdateTask(task.id, { status: option.value }, { title: 'Estado actualizado', description: `La tarea quedó en estado ${option.label.toLowerCase()}.` })}
               className="rounded-xl px-2 py-1.5"
             >
               <span className={`inline-flex w-full items-center justify-between rounded-full border px-3 py-2 text-sm font-semibold ${option.className}`}>
@@ -904,7 +928,7 @@ export function CrmTaskWorkspacesClient() {
           {priorityOptions.map((option) => (
             <DropdownMenuItem
               key={option.value}
-              onSelect={() => void handleUpdateTask(task.id, { priority: option.value })}
+              onSelect={() => void handleUpdateTask(task.id, { priority: option.value }, { title: 'Prioridad actualizada', description: `La tarea quedó con prioridad ${option.label.toLowerCase()}.` })}
               className="rounded-xl px-2 py-1.5"
             >
               <span className={`inline-flex w-full items-center justify-between rounded-full border px-3 py-2 text-sm font-semibold ${option.className}`}>
@@ -1248,7 +1272,7 @@ export function CrmTaskWorkspacesClient() {
                             <DropdownMenuItem onSelect={() => void loadTaskDetail(task.id)}>
                               Ver detalles
                             </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => void handleUpdateTask(task.id, { archived: !task.archivedAt })} disabled={!canEditTasks}>
+                            <DropdownMenuItem onSelect={() => void handleUpdateTask(task.id, { archived: !task.archivedAt }, { title: task.archivedAt ? 'Tarea restaurada' : 'Tarea archivada', description: task.archivedAt ? 'La tarea volvió a estar activa.' : 'La tarea se movió a archivadas.' })} disabled={!canEditTasks}>
                               {task.archivedAt ? 'Restaurar' : 'Archivar'}
                             </DropdownMenuItem>
                           </DropdownMenuContent>

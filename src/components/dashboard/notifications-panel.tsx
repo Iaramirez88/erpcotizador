@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { subscribeToNotificationReceivedEvent } from '@/lib/notification-browser-events'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { DEFAULT_NOTIFICATION_ACTION_LABEL } from '@/lib/notifications'
@@ -57,8 +58,14 @@ export default function NotificationsPanel({ onUnreadCountChange }: Props) {
 
   useEffect(() => {
     void load()
-    const id = setInterval(() => void load(), 30_000)
-    return () => clearInterval(id)
+    const unsubscribe = subscribeToNotificationReceivedEvent(() => {
+      void load()
+    })
+    const id = setInterval(() => void load(), 60_000)
+    return () => {
+      unsubscribe()
+      clearInterval(id)
+    }
   }, [load])
 
   return (

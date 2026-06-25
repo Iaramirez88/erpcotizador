@@ -283,6 +283,15 @@ html {
   }
 }
 
+@keyframes toast-progress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
 .sgd-skeleton {
   position: relative;
   overflow: hidden;

@@ -4,6 +4,8 @@ import {
   Toast,
   ToastClose,
   ToastDescription,
+  ToastIcon,
+  ToastProgress,
   ToastProvider,
   ToastTitle,
   ToastViewport,
@@ -16,14 +18,18 @@ export function Toaster() {
   return (
     <ToastProvider>
       {toasts.map(function ({ id, title, description, action, ...props }) {
+        const duration = typeof props.duration === "number" ? props.duration : 5000
+
         return (
           <Toast key={id} {...props}>
-            <div className="grid gap-1">
+            <ToastIcon variant={props.variant} />
+            <div className="grid flex-1 gap-1 pr-2">
               {title ? <ToastTitle>{title}</ToastTitle> : null}
               {description ? <ToastDescription>{description}</ToastDescription> : null}
             </div>
             {action}
             <ToastClose />
+            <ToastProgress variant={props.variant} duration={duration} />
           </Toast>
         )
       })}

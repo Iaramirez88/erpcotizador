@@ -1,7 +1,9 @@
+import { publishRealtimeNotification } from '@/lib/notification-realtime'
+
 type NotificationWriter = {
   notification: {
-    createMany: (args: {
-      data: Array<{
+    create: (args: {
+      data: {
         type: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR'
         title: string
         body: string | null
@@ -10,8 +12,18 @@ type NotificationWriter = {
         empresaId: string
         sedeId: string | null
         userId: string
-      }>
-    }) => Promise<unknown>
+      }
+    }) => Promise<{
+      id: string
+      type: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR'
+      title: string
+      body: string | null
+      actionUrl: string | null
+      actionLabel: string | null
+      readAt: Date | null
+      createdAt: Date
+      userId: string | null
+    }>
   }
 }
 
@@ -43,16 +55,33 @@ export async function notifyTaskUsers(args: TaskUserNotificationArgs) {
 
   const actionUrl = buildTaskNotificationUrl(args.taskId, args.workspaceId)
 
-  await args.client.notification.createMany({
-    data: uniqueRecipients.map((userId) => ({
-      type: args.type ?? 'INFO',
-      title: args.title,
-      body: args.body ?? null,
-      actionUrl,
-      actionLabel: args.actionLabel ?? 'Abrir tarea',
-      empresaId: args.empresaId,
-      sedeId: args.sedeId ?? null,
-      userId,
+  const createdNotifications = await Promise.all(
+    uniqueRecipients.map((userId) => args.client.notification.create({
+      data: {
+        type: args.type ?? 'INFO',
+        title: args.title,
+        body: args.body ?? null,
+        actionUrl,
+        actionLabel: args.actionLabel ?? 'Abrir tarea',
+        empresaId: args.empresaId,
+        sedeId: args.sedeId ?? null,
+        userId,
+      },
     })),
+  )
+
+  createdNotifications.forEach((notification) => {
+    if (!notification.userId) return
+    publishRealtimeNotification({
+      id: notification.id,
+      type: notification.type,
+      title: notification.title,
+      body: notification.body,
+      actionUrl: notification.actionUrl,
+      actionLabel: notification.actionLabel,
+      readAt: notification.readAt ? notification.readAt.toISOString() : null,
+      createdAt: notification.createdAt.toISOString(),
+      userId: notification.userId,
+    })
   })
 }

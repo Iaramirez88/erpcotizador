@@ -1,82 +1,44 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
+import { dispatchNotificationReceivedEvent } from '@/lib/notification-browser-events';
+import type { RealtimeNotificationPayload } from '@/lib/notification-realtime';
 import { ToastAction } from "@/components/ui/toast";
 import { toast } from "@/hooks/use-toast";
 
-type NotificationItem = {
-  id: string;
-  type: "INFO" | "SUCCESS" | "WARNING" | "ERROR" | string;
-  title: string;
-  body: string | null;
-  actionUrl: string | null;
-  actionLabel: string | null;
-};
-
-function mapVariant(type: NotificationItem["type"]) {
+function mapVariant(type: RealtimeNotificationPayload["type"]) {
   return type === "ERROR" ? "destructive" as const : "default" as const;
 }
 
 export function NotificationToastBridge() {
-  const initializedRef = useRef(false);
-  const seenIdsRef = useRef<Set<string>>(new Set());
-
   useEffect(() => {
-    let cancelled = false;
+    if (typeof window === 'undefined' || typeof window.EventSource === 'undefined') return
 
-    async function pollNotifications() {
-      try {
-        const response = await fetch("/api/notificaciones?unread=true&limit=10", { cache: "no-store" });
-        if (!response.ok) return;
+    const stream = new window.EventSource('/api/notificaciones/stream')
 
-        const json = (await response.json().catch(() => null)) as
-          | { ok?: boolean; items?: NotificationItem[] }
-          | null;
-
-        if (cancelled || !json?.ok || !Array.isArray(json.items)) return;
-
-        const items = json.items;
-        const nextIds = new Set(items.map((item) => item.id));
-
-        if (!initializedRef.current) {
-          seenIdsRef.current = nextIds;
-          initializedRef.current = true;
-          return;
-        }
-
-        const freshItems = items.filter((item) => !seenIdsRef.current.has(item.id));
-        seenIdsRef.current = nextIds;
-
-        freshItems
-          .slice()
-          .reverse()
-          .slice(0, 3)
-          .forEach((item) => {
-            toast({
-              title: item.title,
-              description: item.body || "Nueva notificación del sistema.",
-              variant: mapVariant(item.type),
-              action: item.actionUrl ? (
-                <ToastAction altText={item.actionLabel || "Abrir notificación"} asChild>
-                  <Link href={`/dashboard/notificaciones/open/${item.id}`}>{item.actionLabel || "Abrir"}</Link>
-                </ToastAction>
-              ) : undefined,
-            });
-          });
-      } catch {
-        // ignore polling errors
-      }
+    const handleNotification = (event: MessageEvent<string>) => {
+      const payload = JSON.parse(event.data) as RealtimeNotificationPayload
+      dispatchNotificationReceivedEvent(payload)
+      toast({
+        title: payload.title,
+        description: payload.body || 'Nueva notificación del sistema.',
+        variant: mapVariant(payload.type),
+        action: payload.actionUrl ? (
+          <ToastAction altText={payload.actionLabel || 'Abrir notificación'} asChild>
+            <Link href={`/dashboard/notificaciones/open/${payload.id}`}>{payload.actionLabel || 'Abrir'}</Link>
+          </ToastAction>
+        ) : undefined,
+      })
     }
 
-    void pollNotifications();
-    const intervalId = window.setInterval(() => void pollNotifications(), 15000);
+    stream.addEventListener('notification', handleNotification as EventListener)
 
     return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, []);
+      stream.removeEventListener('notification', handleNotification as EventListener)
+      stream.close()
+    }
+  }, [])
 
-  return null;
+  return null
 }

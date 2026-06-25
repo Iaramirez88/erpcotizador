@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { subscribeToNotificationReceivedEvent } from '@/lib/notification-browser-events'
 import { Button } from '@/components/ui/button'
 import NotificationsPanel from '@/components/dashboard/notifications-panel'
 
@@ -36,8 +37,14 @@ export default function NotificationsBell({ onUnreadCountChange }: Props) {
 
   useEffect(() => {
     void loadUnread()
-    const id = window.setInterval(() => void loadUnread(), 15_000)
-    return () => window.clearInterval(id)
+    const unsubscribe = subscribeToNotificationReceivedEvent(() => {
+      void loadUnread()
+    })
+    const id = window.setInterval(() => void loadUnread(), 60_000)
+    return () => {
+      unsubscribe()
+      window.clearInterval(id)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
