@@ -12,6 +12,7 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useUiStore } from "@/lib/ui-store"
 import { NavSettingsDialog, type NavSettingsItem } from "@/components/dashboard/nav-settings-dialog"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import Image from "next/image"
 import { useI18n } from "@/components/providers/i18n-provider"
 import { useTheme } from "@/components/providers/theme-provider"
@@ -31,11 +32,80 @@ interface NavItem {
   href: string
   icon: React.ReactElement
   badge?: string
+  description?: string
 }
 
 interface NavSection {
   title: string
   items: NavItem[]
+}
+
+const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
+  "/dashboard": "Resumen rapido de ventas, tareas y actividad del negocio.",
+  "/dashboard/mapa-producto": "Vista general del sistema y sus modulos disponibles.",
+  "/dashboard/reportes": "Indicadores, resultados y analisis para tomar decisiones.",
+  "/dashboard/plantillas": "Formatos reutilizables para cotizaciones, mensajes y documentos.",
+  "/dashboard/contabilidad": "Movimientos contables, comprobantes y control financiero.",
+  "/dashboard/contabilidad/nomina": "Liquidacion y seguimiento de pagos al personal.",
+  "/dashboard/cotizador": "Crea cotizaciones nuevas de forma rapida y guiada.",
+  "/dashboard/cotizaciones": "Consulta, edita y da seguimiento a cotizaciones creadas.",
+  "/dashboard/remisiones": "Gestiona entregas, despachos y soportes de salida.",
+  "/dashboard/pos": "Factura, cobra y registra ventas del punto de venta.",
+  "/dashboard/clientes": "Base de clientes con datos, historial y relacion comercial.",
+  "/dashboard/odontologia": "Opera pacientes, tratamientos y procesos odontologicos.",
+  "/dashboard/crm": "Panel comercial para captar, atender y convertir oportunidades.",
+  "/dashboard/crm/conversations": "Centraliza conversaciones de WhatsApp, redes y chatbot.",
+  "/dashboard/crm/agenda": "Programa seguimientos, citas y recordatorios comerciales.",
+  "/dashboard/crm/chatbot": "Automatiza conversaciones para atender y vender sin estar presente.",
+  "/dashboard/crm/archivos": "Guarda y organiza archivos del proceso comercial.",
+  "/dashboard/crm/integraciones": "Conecta canales, APIs y automatizaciones del CRM.",
+  "/dashboard/crm/auditoria-ia": "Revisa calidad, contexto y decisiones de la IA comercial.",
+  "/dashboard/crm/leads": "Captura clientes potenciales y haz seguimiento a cada contacto.",
+  "/dashboard/crm/oportunidades": "Gestiona etapas de negocio hasta cerrar la venta.",
+  "/dashboard/crm/tareas": "Controla pendientes, seguimientos y trabajo del equipo.",
+  "/dashboard/espacios-trabajo": "Separa operaciones por equipos, marcas o unidades.",
+  "/dashboard/chat": "Chat interno o global para coordinar al equipo.",
+  "/dashboard/ordenes": "Administra ordenes de produccion, servicio o trabajo.",
+  "/dashboard/litografia": "Opera cotizacion, produccion y control de litografia.",
+  "/dashboard/litografia/conocimiento-ia": "Entrena la IA con reglas, productos y criterios del negocio.",
+  "/dashboard/litografia/auditoria-ia": "Supervisa respuestas y decisiones de la IA de litografia.",
+  "/dashboard/imagenes-ia/generador": "Genera imagenes de apoyo para ventas y produccion.",
+  "/dashboard/imagenes-ia/vectorizador": "Convierte imagenes en vectores listos para produccion.",
+  "/dashboard/escaneos": "Digitaliza documentos y extrae informacion util.",
+  "/dashboard/productos": "Catalogo de productos, precios y configuraciones.",
+  "/dashboard/inventario": "Existencias, movimientos y control de stock.",
+  "/dashboard/inventario/traslados": "Mueve inventario entre sedes o bodegas.",
+  "/dashboard/compras": "Gestiona compras, abastecimiento y costos.",
+  "/dashboard/proveedores": "Base de proveedores, contactos y condiciones de compra.",
+  "/dashboard/configuracion/desperdicios": "Controla mermas y desperdicios operativos.",
+  "/dashboard/configuracion/sedes": "Administra sucursales, ubicaciones y operacion por sede.",
+  "/dashboard/configuracion/usuarios": "Crea usuarios y asigna acceso al sistema.",
+  "/dashboard/configuracion/permisos": "Define que puede ver o hacer cada rol.",
+  "/dashboard/configuracion/empresa": "Configura datos, imagen y parametros de la empresa.",
+  "/dashboard/configuracion/servicios-web": "Administra servicios web y modulos conectados.",
+  "/dashboard/configuracion/plan": "Consulta tu plan, limites y opciones de actualizacion.",
+  "/dashboard/configuracion/super-admin/modulos-por-plan": "Configura modulos y alcances por tipo de plan.",
+  "/dashboard/configuracion/super-admin/empresas": "Administra empresas registradas en la plataforma.",
+  "/dashboard/configuracion/super-admin/usuarios": "Gestiona usuarios globales de todas las empresas.",
+  "/dashboard/perfil": "Actualiza tus datos personales y preferencias de cuenta.",
+  "/dashboard/notificaciones": "Revisa alertas, avisos y eventos pendientes.",
+  "/dashboard/ayuda": "Encuentra guias, soporte y documentacion del sistema.",
+}
+
+function getNavItemDescription(item: NavItem) {
+  return item.description ?? NAV_ITEM_DESCRIPTIONS[item.href] ?? item.name
+}
+
+function NavItemTooltipContent({ item, isBlocked, upgradePlanLabel }: { item: NavItem; isBlocked?: boolean; upgradePlanLabel: string }) {
+  return (
+    <TooltipContent side="right" align="center" className="max-w-64 text-[11px] leading-4">
+      <div className="font-medium text-foreground">{item.name}</div>
+      <div className="mt-1 text-muted-foreground">{getNavItemDescription(item)}</div>
+      {isBlocked ? (
+        <div className="mt-2 text-[10px] font-medium text-amber-600">Disponible al actualizar a plan {upgradePlanLabel}.</div>
+      ) : null}
+    </TooltipContent>
+  )
 }
 
 function sortNavItemsByOrder(items: NavItem[], order: string[]) {
@@ -965,6 +1035,7 @@ export default function Sidebar({ user }: SidebarProps) {
         </div>
 
         {/* Navigation */}
+        <TooltipProvider delayDuration={150}>
         <nav className={cn("flex-1 space-y-0.5 overflow-y-auto py-2", sidebarCollapsed ? "px-1.5" : "px-2")}>
           {sections.map((section) => {
             const visibleItems = section.items.filter((it) => visibleHrefs.has(it.href))
@@ -978,38 +1049,33 @@ export default function Sidebar({ user }: SidebarProps) {
                     const isActive = isNavActive(item.href)
                     const isBlocked = isPersonal && blockedModules.has(item.href)
                     return (
-                      <div key={item.name} className="relative group">
-                        <Link
-                          href={item.href}
-                          onClick={e => {
-                            if (isBlocked) e.preventDefault()
-                            else {
-                              beginRouteLoadingIfNeeded(item.href)
-                              setMobileNavOpen(false)
-                            }
-                          }}
-                          className={cn(
-                            "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
-                            isActive ? navActive : cn(navText, navHover),
-                            isBlocked ? "opacity-60 cursor-not-allowed" : ""
-                          )}
-                          title={item.name}
-                        >
-                          <div className={cn("flex items-center", "justify-center w-full")}> 
-                            {item.icon}
-                            {isBlocked && (
-                              <Lock className={cn("ml-1.5 h-3.5 w-3.5", sectionTitleText)} />
+                      <Tooltip key={item.name}>
+                        <TooltipTrigger asChild>
+                          <Link
+                            href={item.href}
+                            onClick={e => {
+                              if (isBlocked) e.preventDefault()
+                              else {
+                                beginRouteLoadingIfNeeded(item.href)
+                                setMobileNavOpen(false)
+                              }
+                            }}
+                            className={cn(
+                              "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
+                              isActive ? navActive : cn(navText, navHover),
+                              isBlocked ? "opacity-60 cursor-not-allowed" : ""
                             )}
-                          </div>
-                        </Link>
-                        {isBlocked && (
-                          <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 z-50 hidden group-hover:block">
-                            <span className="bg-slate-900 text-slate-100 text-xs rounded px-2 py-1 shadow-lg whitespace-nowrap">
-                              Actualiza a plan {upgradePlanLabel}
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                          >
+                            <div className={cn("flex items-center", "justify-center w-full")}>
+                              {item.icon}
+                              {isBlocked && (
+                                <Lock className={cn("ml-1.5 h-3.5 w-3.5", sectionTitleText)} />
+                              )}
+                            </div>
+                          </Link>
+                        </TooltipTrigger>
+                        <NavItemTooltipContent item={item} isBlocked={isBlocked} upgradePlanLabel={upgradePlanLabel} />
+                      </Tooltip>
                     )
                   })}
                 </div>
@@ -1064,41 +1130,37 @@ export default function Sidebar({ user }: SidebarProps) {
                       const isActive = isNavActive(item.href)
                       const isBlocked = isPersonal && blockedModules.has(item.href)
                       return (
-                        <div key={item.name} className="relative group">
-                          <Link
-                            href={item.href}
-                            onClick={e => {
-                              if (isBlocked) e.preventDefault()
-                              else {
-                                beginRouteLoadingIfNeeded(item.href)
-                                setMobileNavOpen(false)
-                              }
-                            }}
-                            className={cn(
-                              "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
-                              isActive ? navActive : cn(navText, navHover),
-                              isBlocked ? "opacity-60 cursor-not-allowed" : ""
-                            )}
-                          >
-                            <div className="flex items-center space-x-2.5">
-                              {item.icon}
-                              <span className="text-[12px] font-medium leading-4">{item.name}</span>
-                              {isBlocked && (
-                                <Lock className={cn("ml-1.5 h-3.5 w-3.5", sectionTitleText)} />
+                        <Tooltip key={item.name}>
+                          <TooltipTrigger asChild>
+                            <Link
+                              href={item.href}
+                              onClick={e => {
+                                if (isBlocked) e.preventDefault()
+                                else {
+                                  beginRouteLoadingIfNeeded(item.href)
+                                  setMobileNavOpen(false)
+                                }
+                              }}
+                              className={cn(
+                                "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
+                                isActive ? navActive : cn(navText, navHover),
+                                isBlocked ? "opacity-60 cursor-not-allowed" : ""
                               )}
-                            </div>
-                            {item.badge ? (
-                              <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", badgeSurface)}>{item.badge}</span>
-                            ) : null}
-                          </Link>
-                          {isBlocked && (
-                            <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 z-50 hidden group-hover:block">
-                              <span className="bg-slate-900 text-slate-100 text-xs rounded px-2 py-1 shadow-lg whitespace-nowrap">
-                                Actualiza a plan {upgradePlanLabel}
-                              </span>
-                            </div>
-                          )}
-                        </div>
+                            >
+                              <div className="flex items-center space-x-2.5">
+                                {item.icon}
+                                <span className="text-[12px] font-medium leading-4">{item.name}</span>
+                                {isBlocked && (
+                                  <Lock className={cn("ml-1.5 h-3.5 w-3.5", sectionTitleText)} />
+                                )}
+                              </div>
+                              {item.badge ? (
+                                <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", badgeSurface)}>{item.badge}</span>
+                              ) : null}
+                            </Link>
+                          </TooltipTrigger>
+                          <NavItemTooltipContent item={item} isBlocked={isBlocked} upgradePlanLabel={upgradePlanLabel} />
+                        </Tooltip>
                       )
                     })}
                   </div>
@@ -1116,20 +1178,23 @@ export default function Sidebar({ user }: SidebarProps) {
                 {preferenceNavigation.map((item) => {
                   const isActive = isNavActive(item.href)
                   return (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      onClick={() => setMobileNavOpen(false)}
-                      className={cn(
-                        "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
-                        isActive ? navActive : cn(navText, navHover)
-                      )}
-                      title={item.name}
-                    >
-                      <div className={cn("flex items-center", "justify-center w-full")}>
-                        {item.icon}
-                      </div>
-                    </Link>
+                    <Tooltip key={item.name}>
+                      <TooltipTrigger asChild>
+                        <Link
+                          href={item.href}
+                          onClick={() => setMobileNavOpen(false)}
+                          className={cn(
+                            "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
+                            isActive ? navActive : cn(navText, navHover)
+                          )}
+                        >
+                          <div className={cn("flex items-center", "justify-center w-full")}>
+                            {item.icon}
+                          </div>
+                        </Link>
+                      </TooltipTrigger>
+                      <NavItemTooltipContent item={item} upgradePlanLabel={upgradePlanLabel} />
+                    </Tooltip>
                   )
                 })}
               </>
@@ -1188,23 +1253,27 @@ export default function Sidebar({ user }: SidebarProps) {
                     {preferenceNavigation.map((item) => {
                       const isActive = isNavActive(item.href)
                       return (
-                        <Link
-                          key={item.name}
-                          href={item.href}
-                          onClick={() => {
-                            setMobileNavOpen(false)
-                            setOpenSectionTitle(activeSectionTitle ?? null)
-                          }}
-                          className={cn(
-                            "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
-                            isActive ? navActive : cn(navText, navHover)
-                          )}
-                        >
-                          <div className="flex items-center space-x-2.5">
-                            {item.icon}
-                            <span className="text-[12px] font-medium leading-4">{item.name}</span>
-                          </div>
-                        </Link>
+                        <Tooltip key={item.name}>
+                          <TooltipTrigger asChild>
+                            <Link
+                              href={item.href}
+                              onClick={() => {
+                                setMobileNavOpen(false)
+                                setOpenSectionTitle(activeSectionTitle ?? null)
+                              }}
+                              className={cn(
+                                "flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors",
+                                isActive ? navActive : cn(navText, navHover)
+                              )}
+                            >
+                              <div className="flex items-center space-x-2.5">
+                                {item.icon}
+                                <span className="text-[12px] font-medium leading-4">{item.name}</span>
+                              </div>
+                            </Link>
+                          </TooltipTrigger>
+                          <NavItemTooltipContent item={item} upgradePlanLabel={upgradePlanLabel} />
+                        </Tooltip>
                       )
                     })}
                       {navPrefs ? (
@@ -1245,6 +1314,7 @@ export default function Sidebar({ user }: SidebarProps) {
           </div>
 
         </nav>
+        </TooltipProvider>
 
         {/* User Info + Cambiar contraseña */}
         <div className={cn("border-t p-2.5", sectionBorder, sidebarCollapsed ? "px-1.5" : "px-2.5")}>
