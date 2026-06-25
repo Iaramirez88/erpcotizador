@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { useI18n } from '@/components/providers/i18n-provider'
 
 type NavPrefs = Record<string, boolean>
@@ -21,6 +22,11 @@ export type NavSettingsItem = {
   name: string
   href: string
   section?: string
+}
+
+export type SidebarTooltipPrefs = {
+  desktop: boolean
+  mobile: boolean
 }
 
 function normalizeOrder(items: NavSettingsItem[], order: NavOrder | undefined): NavOrder {
@@ -96,6 +102,7 @@ export function NavSettingsDialog({
   value,
   order,
   onSave,
+  tooltipPrefs,
   open: controlledOpen,
   onOpenChange,
   trigger,
@@ -103,7 +110,8 @@ export function NavSettingsDialog({
   items: NavSettingsItem[]
   value: NavPrefs
   order?: NavOrder
-  onSave: (next: NavPrefs, nextOrder: NavOrder) => Promise<void> | void
+  onSave: (next: NavPrefs, nextOrder: NavOrder, nextTooltipPrefs: SidebarTooltipPrefs) => Promise<void> | void
+  tooltipPrefs?: SidebarTooltipPrefs
   open?: boolean
   onOpenChange?: (open: boolean) => void
   trigger?: (open: () => void) => React.ReactNode
@@ -114,6 +122,7 @@ export function NavSettingsDialog({
   const [draft, setDraft] = useState<NavPrefs>(value)
   const [draftOrder, setDraftOrder] = useState<NavOrder>(() => normalizeOrder(items, order))
   const [draftSectionOrder, setDraftSectionOrder] = useState<SectionOrder>(() => normalizeSectionOrder(items, order))
+  const [draftTooltipPrefs, setDraftTooltipPrefs] = useState<SidebarTooltipPrefs>(tooltipPrefs ?? { desktop: true, mobile: true })
   const [draggingHref, setDraggingHref] = useState<string | null>(null)
   const [draggingSection, setDraggingSection] = useState<string | null>(null)
   const open = controlledOpen ?? uncontrolledOpen
@@ -140,6 +149,7 @@ export function NavSettingsDialog({
     setDraft(value)
     setDraftOrder(normalizeOrder(items, order))
     setDraftSectionOrder(normalizeSectionOrder(items, order))
+    setDraftTooltipPrefs(tooltipPrefs ?? { desktop: true, mobile: true })
   }
 
   function setDialogOpen(nextOpen: boolean) {
@@ -158,7 +168,7 @@ export function NavSettingsDialog({
     if (controlledOpen) {
       syncDrafts()
     }
-  }, [controlledOpen, value, order, items])
+  }, [controlledOpen, value, order, items, tooltipPrefs])
 
   function resetAll(enabled: boolean) {
     const next: NavPrefs = {}
@@ -210,7 +220,7 @@ export function NavSettingsDialog({
   async function save() {
     setSaving(true)
     try {
-      await onSave(draft, groupOrderBySections(items, draftOrder, draftSectionOrder))
+      await onSave(draft, groupOrderBySections(items, draftOrder, draftSectionOrder), draftTooltipPrefs)
       setDialogOpen(false)
     } finally {
       setSaving(false)
@@ -257,6 +267,39 @@ export function NavSettingsDialog({
 
           <div className="min-h-0 overflow-y-auto px-6 py-5">
             <div className="space-y-5 pb-1">
+              <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                <div className="mb-3">
+                  <h3 className="text-sm font-semibold text-slate-900">Tooltips del menu</h3>
+                  <p className="text-xs text-slate-500">Activa o desactiva las ayudas del menu lateral en escritorio y movil.</p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">Escritorio</div>
+                      <div className="text-xs text-slate-500">Muestra tooltips con el menu abierto o colapsado.</div>
+                    </div>
+                    <Switch
+                      checked={draftTooltipPrefs.desktop}
+                      onCheckedChange={(checked) => setDraftTooltipPrefs((current) => ({ ...current, desktop: checked }))}
+                      disabled={saving}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <div>
+                      <div className="text-sm font-medium text-slate-900">Movil</div>
+                      <div className="text-xs text-slate-500">Permite usar tooltips tambien en la navegacion movil.</div>
+                    </div>
+                    <Switch
+                      checked={draftTooltipPrefs.mobile}
+                      onCheckedChange={(checked) => setDraftTooltipPrefs((current) => ({ ...current, mobile: checked }))}
+                      disabled={saving}
+                    />
+                  </div>
+                </div>
+              </section>
+
               {groupedItems.map((group) => (
                 <section
                   key={group.section}

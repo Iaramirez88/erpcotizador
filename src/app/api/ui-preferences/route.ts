@@ -38,9 +38,26 @@ type TutorialPrefs = {
 
 type DataViewPrefs = Record<string, 'list' | 'grid'>
 
+type SidebarTooltipPrefs = {
+  desktop?: boolean
+  mobile?: boolean
+}
+
 type StoredReportPrefs = ReportPrefs & {
   dataView?: DataViewPrefs
   theme?: UiTheme
+  sidebarTooltips?: SidebarTooltipPrefs
+}
+
+function normalizeSidebarTooltipPrefs(value: unknown): Required<SidebarTooltipPrefs> {
+  if (!isPlainObject(value)) {
+    return { desktop: true, mobile: true }
+  }
+
+  return {
+    desktop: value.desktop !== false,
+    mobile: value.mobile !== false,
+  }
 }
 
 function normalizeNavPrefs(value: unknown): { visibility: NavPrefs; order: NavOrderPrefs } {
@@ -71,7 +88,8 @@ function defaultPrefs() {
   const dataView: DataViewPrefs = {}
   const language: UiLanguage = 'es'
   const theme: UiTheme = 'system'
-  return { nav, navOrder, report, tutorial, dataView, language, theme }
+  const sidebarTooltips = { desktop: true, mobile: true }
+  return { nav, navOrder, report, tutorial, dataView, language, theme, sidebarTooltips }
 }
 
 async function resolveUserIdFromSession(session: { user?: { id?: string; email?: string | null } }) {
@@ -103,6 +121,7 @@ export async function GET() {
         dataView: defaults.dataView,
         language: defaults.language,
         theme: defaults.theme,
+        sidebarTooltips: defaults.sidebarTooltips,
       },
     })
   }
@@ -119,6 +138,7 @@ export async function GET() {
         dataView: defaults.dataView,
         language: defaults.language,
         theme: defaults.theme,
+        sidebarTooltips: defaults.sidebarTooltips,
       },
     })
   }
@@ -140,6 +160,7 @@ export async function GET() {
       dataView: storedReport?.dataView ?? defaults.dataView,
       language: (pref?.language as UiLanguage | null) ?? defaults.language,
       theme: storedReport?.theme ?? defaults.theme,
+      sidebarTooltips: normalizeSidebarTooltipPrefs(storedReport?.sidebarTooltips),
     },
   })
 }
@@ -165,6 +186,7 @@ export async function PUT(req: NextRequest) {
   const report = isPlainObject(body.report) ? (body.report as ReportPrefs) : undefined
   const tutorial = isPlainObject(body.tutorial) ? (body.tutorial as TutorialPrefs) : undefined
   const dataView = isPlainObject(body.dataView) ? (body.dataView as DataViewPrefs) : undefined
+  const sidebarTooltips = isPlainObject(body.sidebarTooltips) ? normalizeSidebarTooltipPrefs(body.sidebarTooltips) : undefined
 
   const languageRaw = typeof body.language === 'string' ? body.language.trim().toLowerCase() : ''
   const language: UiLanguage | undefined = languageRaw === 'es' || languageRaw === 'en' ? (languageRaw as UiLanguage) : undefined
@@ -185,6 +207,7 @@ export async function PUT(req: NextRequest) {
     ...(report ?? {}),
     dataView: dataView ?? currentReport.dataView ?? defaults.dataView,
     theme: theme ?? currentReport.theme ?? defaults.theme,
+    sidebarTooltips: sidebarTooltips ?? normalizeSidebarTooltipPrefs(currentReport.sidebarTooltips),
   }
   const nextNav = {
     visibility: nav ?? currentNav.visibility ?? defaults.nav,
@@ -222,6 +245,7 @@ export async function PUT(req: NextRequest) {
       dataView: updatedReport?.dataView ?? defaults.dataView,
       language: updated.language as UiLanguage,
       theme: updatedReport?.theme ?? defaults.theme,
+      sidebarTooltips: normalizeSidebarTooltipPrefs(updatedReport?.sidebarTooltips),
     },
   })
 }

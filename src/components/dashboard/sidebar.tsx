@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from "react"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useUiStore } from "@/lib/ui-store"
-import { NavSettingsDialog, type NavSettingsItem } from "@/components/dashboard/nav-settings-dialog"
+import { NavSettingsDialog, type NavSettingsItem, type SidebarTooltipPrefs } from "@/components/dashboard/nav-settings-dialog"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import Image from "next/image"
 import { useI18n } from "@/components/providers/i18n-provider"
@@ -39,6 +39,8 @@ interface NavSection {
   title: string
   items: NavItem[]
 }
+
+const DEFAULT_SIDEBAR_TOOLTIP_PREFS: SidebarTooltipPrefs = { desktop: true, mobile: true }
 
 const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
   "/dashboard": "Resumen rapido de ventas, tareas y actividad del negocio.",
@@ -96,6 +98,13 @@ function getNavItemDescription(item: NavItem) {
   return item.description ?? NAV_ITEM_DESCRIPTIONS[item.href] ?? item.name
 }
 
+function normalizeSidebarTooltipPrefs(value: Partial<SidebarTooltipPrefs> | null | undefined): SidebarTooltipPrefs {
+  return {
+    desktop: value?.desktop !== false,
+    mobile: value?.mobile !== false,
+  }
+}
+
 function NavItemTooltipContent({ item, isBlocked, upgradePlanLabel }: { item: NavItem; isBlocked?: boolean; upgradePlanLabel: string }) {
   return (
     <TooltipContent side="right" align="center" className="max-w-64 text-[11px] leading-4">
@@ -105,6 +114,29 @@ function NavItemTooltipContent({ item, isBlocked, upgradePlanLabel }: { item: Na
         <div className="mt-2 text-[10px] font-medium text-amber-600">Disponible al actualizar a plan {upgradePlanLabel}.</div>
       ) : null}
     </TooltipContent>
+  )
+}
+
+function SidebarNavTooltip({
+  children,
+  item,
+  isBlocked,
+  upgradePlanLabel,
+  enabled,
+}: {
+  children: React.ReactNode
+  item: NavItem
+  isBlocked?: boolean
+  upgradePlanLabel: string
+  enabled: boolean
+}) {
+  if (!enabled) return <>{children}</>
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <NavItemTooltipContent item={item} isBlocked={isBlocked} upgradePlanLabel={upgradePlanLabel} />
+    </Tooltip>
   )
 }
 
@@ -618,6 +650,8 @@ type UiPrefsResponse = {
   success: boolean
   data?: {
     nav?: Record<string, boolean>
+    navOrder?: string[]
+    sidebarTooltips?: SidebarTooltipPrefs
   }
 }
 
@@ -655,6 +689,7 @@ export default function Sidebar({ user }: SidebarProps) {
 
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
   const [navOrder, setNavOrder] = useState<string[]>([])
+  const [sidebarTooltipPrefs, setSidebarTooltipPrefs] = useState<SidebarTooltipPrefs>(DEFAULT_SIDEBAR_TOOLTIP_PREFS)
   const [recommendedNavOrder, setRecommendedNavOrder] = useState<string[]>([])
   const [allowedNavHrefs, setAllowedNavHrefs] = useState<string[]>([])
   const [enabledModules, setEnabledModules] = useState<Set<string> | null>(null)
@@ -663,6 +698,7 @@ export default function Sidebar({ user }: SidebarProps) {
   const [isPersonal, setIsPersonal] = useState<boolean>(false)
   const [openSectionTitle, setOpenSectionTitle] = useState<string | null>(null)
   const [canAccessWebsiteServices, setCanAccessWebsiteServices] = useState(false)
+  const [isMobileViewport, setIsMobileViewport] = useState(false)
 
   useEffect(() => {
     if (user.role === 'ADMIN') setCanManageBilling(true)
@@ -690,10 +726,11 @@ export default function Sidebar({ user }: SidebarProps) {
     async function load() {
       try {
         const res = await fetch('/api/ui-preferences')
-        const json: (UiPrefsResponse & { data?: UiPrefsResponse['data'] & { navOrder?: string[] } }) = await res.json().catch(() => ({ success: false }))
+        const json: UiPrefsResponse = await res.json().catch(() => ({ success: false }))
         if (!cancelled && json?.success) {
           setNavPrefs(json.data?.nav ?? {})
           setNavOrder(Array.isArray(json.data?.navOrder) ? json.data.navOrder : [])
+          setSidebarTooltipPrefs(normalizeSidebarTooltipPrefs(json.data?.sidebarTooltips))
         }
       } catch {}
       try {
@@ -745,8 +782,33 @@ export default function Sidebar({ user }: SidebarProps) {
     }
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const mediaQuery = window.matchMedia('(max-width: 767px)')
+    const applyMatch = (matches: boolean) => setIsMobileViewport(matches)
+
+    applyMatch(mediaQuery.matches)
+    const onChange = (event: MediaQueryListEvent) => applyMatch(event.matches)
+    mediaQuery.addEventListener('change', onChange)
+    return () => mediaQuery.removeEventListener('change', onChange)
+  }, [])
+
+  useEffect(() => {
+    function handleUiPreferencesUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ nav?: Record<string, boolean>; navOrder?: string[]; sidebarTooltips?: SidebarTooltipPrefs }>).detail
+      if (!detail) return
+      if (detail.nav) setNavPrefs(detail.nav)
+      if (Array.isArray(detail.navOrder)) setNavOrder(detail.navOrder)
+      if (detail.sidebarTooltips) setSidebarTooltipPrefs(normalizeSidebarTooltipPrefs(detail.sidebarTooltips))
+    }
+
+    window.addEventListener('ui-preferences:nav-updated', handleUiPreferencesUpdated)
+    return () => window.removeEventListener('ui-preferences:nav-updated', handleUiPreferencesUpdated)
+  }, [])
+
   const effectiveNavOrder = useMemo(() => (navOrder.length ? navOrder : recommendedNavOrder), [navOrder, recommendedNavOrder])
   const allowedNavHrefSet = useMemo(() => (allowedNavHrefs.length ? new Set(allowedNavHrefs) : null), [allowedNavHrefs])
+  const areSidebarTooltipsEnabled = isMobileViewport ? sidebarTooltipPrefs.mobile : sidebarTooltipPrefs.desktop
 
   const upgradePlanLabel = useMemo(() => {
     if (planTier === 'BASIC') return 'Intermedio'
@@ -874,13 +936,17 @@ export default function Sidebar({ user }: SidebarProps) {
     return base
   }, [canAccessWebsiteServices, canManageBilling, user?.role, allowedModules, dashboardNavDefinitions, allowedNavHrefSet])
 
-  async function saveNav(next: Record<string, boolean>, nextOrder: string[]) {
+  async function saveNav(next: Record<string, boolean>, nextOrder: string[], nextTooltipPrefs: SidebarTooltipPrefs) {
     setNavPrefs(next)
     setNavOrder(nextOrder)
+    setSidebarTooltipPrefs(nextTooltipPrefs)
+    window.dispatchEvent(new CustomEvent('ui-preferences:nav-updated', {
+      detail: { nav: next, navOrder: nextOrder, sidebarTooltips: nextTooltipPrefs },
+    }))
     await fetch('/api/ui-preferences', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nav: next, navOrder: nextOrder }),
+      body: JSON.stringify({ nav: next, navOrder: nextOrder, sidebarTooltips: nextTooltipPrefs }),
     }).catch(() => null)
   }
 
@@ -1049,8 +1115,7 @@ export default function Sidebar({ user }: SidebarProps) {
                     const isActive = isNavActive(item.href)
                     const isBlocked = isPersonal && blockedModules.has(item.href)
                     return (
-                      <Tooltip key={item.name}>
-                        <TooltipTrigger asChild>
+                      <SidebarNavTooltip key={item.name} item={item} isBlocked={isBlocked} upgradePlanLabel={upgradePlanLabel} enabled={areSidebarTooltipsEnabled}>
                           <Link
                             href={item.href}
                             onClick={e => {
@@ -1073,9 +1138,7 @@ export default function Sidebar({ user }: SidebarProps) {
                               )}
                             </div>
                           </Link>
-                        </TooltipTrigger>
-                        <NavItemTooltipContent item={item} isBlocked={isBlocked} upgradePlanLabel={upgradePlanLabel} />
-                      </Tooltip>
+                      </SidebarNavTooltip>
                     )
                   })}
                 </div>
@@ -1130,8 +1193,7 @@ export default function Sidebar({ user }: SidebarProps) {
                       const isActive = isNavActive(item.href)
                       const isBlocked = isPersonal && blockedModules.has(item.href)
                       return (
-                        <Tooltip key={item.name}>
-                          <TooltipTrigger asChild>
+                        <SidebarNavTooltip key={item.name} item={item} isBlocked={isBlocked} upgradePlanLabel={upgradePlanLabel} enabled={areSidebarTooltipsEnabled}>
                             <Link
                               href={item.href}
                               onClick={e => {
@@ -1158,9 +1220,7 @@ export default function Sidebar({ user }: SidebarProps) {
                                 <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", badgeSurface)}>{item.badge}</span>
                               ) : null}
                             </Link>
-                          </TooltipTrigger>
-                          <NavItemTooltipContent item={item} isBlocked={isBlocked} upgradePlanLabel={upgradePlanLabel} />
-                        </Tooltip>
+                        </SidebarNavTooltip>
                       )
                     })}
                   </div>
@@ -1178,8 +1238,7 @@ export default function Sidebar({ user }: SidebarProps) {
                 {preferenceNavigation.map((item) => {
                   const isActive = isNavActive(item.href)
                   return (
-                    <Tooltip key={item.name}>
-                      <TooltipTrigger asChild>
+                    <SidebarNavTooltip key={item.name} item={item} upgradePlanLabel={upgradePlanLabel} enabled={areSidebarTooltipsEnabled}>
                         <Link
                           href={item.href}
                           onClick={() => setMobileNavOpen(false)}
@@ -1192,9 +1251,7 @@ export default function Sidebar({ user }: SidebarProps) {
                             {item.icon}
                           </div>
                         </Link>
-                      </TooltipTrigger>
-                      <NavItemTooltipContent item={item} upgradePlanLabel={upgradePlanLabel} />
-                    </Tooltip>
+                    </SidebarNavTooltip>
                   )
                 })}
               </>
@@ -1253,8 +1310,7 @@ export default function Sidebar({ user }: SidebarProps) {
                     {preferenceNavigation.map((item) => {
                       const isActive = isNavActive(item.href)
                       return (
-                        <Tooltip key={item.name}>
-                          <TooltipTrigger asChild>
+                        <SidebarNavTooltip key={item.name} item={item} upgradePlanLabel={upgradePlanLabel} enabled={areSidebarTooltipsEnabled}>
                             <Link
                               href={item.href}
                               onClick={() => {
@@ -1271,9 +1327,7 @@ export default function Sidebar({ user }: SidebarProps) {
                                 <span className="text-[12px] font-medium leading-4">{item.name}</span>
                               </div>
                             </Link>
-                          </TooltipTrigger>
-                          <NavItemTooltipContent item={item} upgradePlanLabel={upgradePlanLabel} />
-                        </Tooltip>
+                        </SidebarNavTooltip>
                       )
                     })}
                       {navPrefs ? (
@@ -1281,6 +1335,7 @@ export default function Sidebar({ user }: SidebarProps) {
                           items={navSettingsItems}
                           value={navPrefs}
                           order={navOrder}
+                          tooltipPrefs={sidebarTooltipPrefs}
                           onSave={saveNav}
                           trigger={(open) => (
                             <button

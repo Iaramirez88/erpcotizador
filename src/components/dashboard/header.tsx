@@ -12,7 +12,7 @@ import { useEffect, useMemo, useState } from "react"
 import { signOut } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { useUiStore } from "@/lib/ui-store"
-import { NavSettingsDialog } from "@/components/dashboard/nav-settings-dialog"
+import { NavSettingsDialog, type SidebarTooltipPrefs } from "@/components/dashboard/nav-settings-dialog"
 import { useTheme } from "@/components/providers/theme-provider"
 import { useTour } from "@/components/tour/tour-provider"
 import NotificationsBell from "@/components/dashboard/notifications-bell"
@@ -38,6 +38,15 @@ interface HeaderProps {
   }
 }
 
+const DEFAULT_SIDEBAR_TOOLTIP_PREFS: SidebarTooltipPrefs = { desktop: true, mobile: true }
+
+function normalizeSidebarTooltipPrefs(value: Partial<SidebarTooltipPrefs> | null | undefined): SidebarTooltipPrefs {
+  return {
+    desktop: value?.desktop !== false,
+    mobile: value?.mobile !== false,
+  }
+}
+
 export default function Header({ user }: HeaderProps) {
   const { t, language, setLanguage } = useI18n()
   const { theme, setTheme } = useTheme()
@@ -47,6 +56,7 @@ export default function Header({ user }: HeaderProps) {
   const [trialBadgeVisible, setTrialBadgeVisible] = useState(false)
   const [navPrefs, setNavPrefs] = useState<Record<string, boolean> | null>(null)
   const [navOrder, setNavOrder] = useState<string[]>([])
+  const [sidebarTooltipPrefs, setSidebarTooltipPrefs] = useState<SidebarTooltipPrefs>(DEFAULT_SIDEBAR_TOOLTIP_PREFS)
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
   const [navSettingsOpen, setNavSettingsOpen] = useState(false)
   const [canManageBilling] = useState(Boolean(user.canManageBilling))
@@ -92,10 +102,11 @@ export default function Header({ user }: HeaderProps) {
 
       try {
         const res = await fetch('/api/ui-preferences')
-        const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { nav?: Record<string, boolean>; navOrder?: string[] } } | null
+        const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { nav?: Record<string, boolean>; navOrder?: string[]; sidebarTooltips?: SidebarTooltipPrefs } } | null
         if (!cancelled && json?.success) {
           setNavPrefs(json.data?.nav ?? {})
           setNavOrder(Array.isArray(json.data?.navOrder) ? json.data.navOrder : [])
+          setSidebarTooltipPrefs(normalizeSidebarTooltipPrefs(json.data?.sidebarTooltips))
         }
       } catch {
         // ignore
@@ -106,6 +117,19 @@ export default function Header({ user }: HeaderProps) {
     return () => {
       cancelled = true
     }
+  }, [])
+
+  useEffect(() => {
+    function handleUiPreferencesUpdated(event: Event) {
+      const detail = (event as CustomEvent<{ nav?: Record<string, boolean>; navOrder?: string[]; sidebarTooltips?: SidebarTooltipPrefs }>).detail
+      if (!detail) return
+      if (detail.nav) setNavPrefs(detail.nav)
+      if (Array.isArray(detail.navOrder)) setNavOrder(detail.navOrder)
+      if (detail.sidebarTooltips) setSidebarTooltipPrefs(normalizeSidebarTooltipPrefs(detail.sidebarTooltips))
+    }
+
+    window.addEventListener('ui-preferences:nav-updated', handleUiPreferencesUpdated)
+    return () => window.removeEventListener('ui-preferences:nav-updated', handleUiPreferencesUpdated)
   }, [])
 
   const navItems = useMemo(() => {
@@ -127,13 +151,17 @@ export default function Header({ user }: HeaderProps) {
     }).map((it) => ({ ...it, section: sectionForDashboardHref(it.href) }))
   }, [canAccessWebsiteServices, canManageBilling, t, allowedModules, user.role])
 
-  async function saveNav(next: Record<string, boolean>, nextOrder: string[]) {
+  async function saveNav(next: Record<string, boolean>, nextOrder: string[], nextTooltipPrefs: SidebarTooltipPrefs) {
     setNavPrefs(next)
     setNavOrder(nextOrder)
+    setSidebarTooltipPrefs(nextTooltipPrefs)
+    window.dispatchEvent(new CustomEvent('ui-preferences:nav-updated', {
+      detail: { nav: next, navOrder: nextOrder, sidebarTooltips: nextTooltipPrefs },
+    }))
     await fetch('/api/ui-preferences', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nav: next, navOrder: nextOrder }),
+      body: JSON.stringify({ nav: next, navOrder: nextOrder, sidebarTooltips: nextTooltipPrefs }),
     }).catch(() => null)
   }
 
@@ -167,6 +195,7 @@ export default function Header({ user }: HeaderProps) {
               items={navItems}
               value={navPrefs}
               order={navOrder}
+              tooltipPrefs={sidebarTooltipPrefs}
               onSave={saveNav}
               open={navSettingsOpen}
               onOpenChange={setNavSettingsOpen}
