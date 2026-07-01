@@ -3,7 +3,9 @@ import { ModuleKey } from '@prisma/client'
 import { z } from 'zod'
 import { canAccessCompanyWideAiHistory, requireApiAccess } from '@/lib/api-rbac'
 import { appendAiWorkspaceHistory, queryAiWorkspaceHistoryPage } from '@/lib/ai-workspace-history'
+import { estimateEditorialKnowledgeCost } from '@/lib/litografia-ai-editorial'
 import { buildLitografiaKnowledgePromptContext, readLitografiaAiKnowledge } from '@/lib/litografia-ai-knowledge'
+import type { LitografiaAiKnowledgeDocument } from '@/lib/litografia-ai-knowledge'
 import type { LitografiaAiHandoff } from '@/lib/litografia-ai-handoff'
 import { prisma } from '@/lib/prisma'
 import { analyzeLitografiaBrief, analyzeLitografiaBriefWithRules, generateLitografiaAssistantReply, getLitografiaAiConnectionStatus, type ConfidenceLevel, type LitografiaCatalogContext } from '@/lib/litografia-ai'
@@ -510,12 +512,15 @@ async function buildAssistantQuoteReply(args: {
     ?? (analysis.extracted.anchoCm && analysis.extracted.altoCm
       ? `${analysis.extracted.anchoCm} x ${analysis.extracted.altoCm} cm`
       : 'tamaño por confirmar')
-  const materialLabel = configuredSuggestion.matchedPaper ?? analysis.extracted.material ?? costBreakdown.paperName ?? 'material por confirmar'
-  const finishLabel = configuredSuggestion.matchedFinish ?? analysis.extracted.acabado ?? 'acabado por confirmar'
+  const materialLabel = configuredSuggestion.matchedPaper ?? costBreakdown.paperName ?? analysis.extracted.material ?? 'material por confirmar'
+  const finishLabel = configuredSuggestion.matchedFinish ?? analysis.extracted.acabado ?? (costBreakdown.lines.some((line) => /uv|plastific|holmet|compaginado|refile/i.test(line.label)) ? 'acabados incluidos en la estimación' : 'acabado por confirmar')
   const tintasLabel = analysis.extracted.tintas ? `${analysis.extracted.tintas}x${analysis.extracted.tintas}` : 'tintas por confirmar'
   const machineLabel = costBreakdown.machineName ?? 'máquina pendiente por definir'
+  const hasUsableApproximation = costBreakdown.status === 'AVAILABLE' && costBreakdown.totalSuggested != null
   const missingSummary = analysis.questions.length
-    ? analysis.questions.slice(0, 3).join(' ')
+    ? (hasUsableApproximation
+      ? 'La lectura ya permite una estimación razonable; faltan solo confirmaciones finas para cerrar el valor definitivo.'
+      : analysis.questions.slice(0, 3).join(' '))
     : analysis.missingFields.length
       ? `Falta confirmar: ${analysis.missingFields.slice(0, 4).join(', ')}.`
       : 'No hay faltantes críticos reportados por la lectura actual.'
@@ -557,7 +562,7 @@ async function buildAssistantQuoteReply(args: {
     }
   }
 
-  if (!analysis.extracted.cantidad || !analysis.extracted.anchoCm || !analysis.extracted.altoCm || !analysis.extracted.material || !analysis.extracted.tintas || costBreakdown.status === 'NOT_AVAILABLE') {
+  if ((!analysis.extracted.cantidad || !analysis.extracted.anchoCm || !analysis.extracted.altoCm || !analysis.extracted.material || !analysis.extracted.tintas || costBreakdown.status === 'NOT_AVAILABLE') && !hasUsableApproximation) {
     return buildStrictPendingReply({
       analysis,
       configuredSuggestion,
@@ -646,6 +651,10 @@ async function buildAssistantQuoteReply(args: {
     missingSummary,
   ]
 
+  const nextStepLine = hasUsableApproximation
+    ? 'Siguiente paso recomendado: validar tintas exactas y tarifa de UV para convertir esta referencia editorial en cierre final.'
+    : `Siguiente paso recomendado: ${analysis.nextStep}`
+
   const message = [
     intro,
     '',
@@ -662,7 +671,7 @@ async function buildAssistantQuoteReply(args: {
     pricingStatusLine,
     ...responseGuidance,
     assumptionsLine,
-    `Siguiente paso recomendado: ${analysis.nextStep}`,
+    nextStepLine,
   ].filter((line): line is string => Boolean(line)).join('\n')
 
   return {
@@ -814,8 +823,9 @@ function buildCostBreakdown(args: {
   catalog: LitografiaCatalogContext
   profiles: PrintProfile[]
   transportOptions: TransportOption[]
+  knowledgeDocument?: LitografiaAiKnowledgeDocument | null
 }): CostBreakdown {
-  const { analysis, catalog, profiles, transportOptions } = args
+  const { analysis, catalog, profiles, transportOptions, knowledgeDocument } = args
   const quantity = analysis.extracted.cantidad ?? 0
   const size = findMatchedSize(catalog, analysis.extracted.anchoCm, analysis.extracted.altoCm)
   const paper = findMatchedPaper(catalog, analysis.extracted.material)
@@ -830,6 +840,39 @@ function buildCostBreakdown(args: {
   const reusePlate = shouldReusePlate(args.brief)
 
   if (analysis.extracted.paginas) {
+    if (knowledgeDocument) {
+      const editorialEstimate = estimateEditorialKnowledgeCost({
+        brief: args.brief,
+        extracted: analysis.extracted,
+        document: knowledgeDocument,
+        catalogFinishes: (catalog.finishes ?? []).map((finish) => ({
+          nombre: finish.nombre,
+          grupo: finish.grupo ?? null,
+          valor: Number(finish.valor) || 0,
+        })),
+      })
+
+      if (editorialEstimate.status === 'AVAILABLE') {
+        return {
+          status: 'AVAILABLE',
+          summary: editorialEstimate.summary,
+          lines: editorialEstimate.lines,
+          notes: editorialEstimate.notes,
+          machineName: 'Estimador editorial desde JSON',
+          paperName: editorialEstimate.paperName,
+          paperSheet: editorialEstimate.paperSheet,
+          sizeLabel: editorialEstimate.sizeLabel,
+          productionCost: editorialEstimate.productionCost,
+          utility: editorialEstimate.utility,
+          subtotalBeforeIva: editorialEstimate.subtotalBeforeIva,
+          ivaPct: editorialEstimate.ivaPct,
+          ivaValue: editorialEstimate.ivaValue,
+          totalSuggested: editorialEstimate.totalSuggested,
+          unitPriceWithIva: editorialEstimate.unitPriceWithIva,
+        }
+      }
+    }
+
     return {
       status: 'PARTIAL',
       summary: 'El desglose automático de costos editoriales todavía requiere completar portada, internas y encuadernación.',
@@ -1272,6 +1315,7 @@ export async function POST(request: NextRequest) {
       catalog,
       profiles: pricingContext.profiles,
       transportOptions: pricingContext.transportOptions,
+      knowledgeDocument: knowledgeStore.document,
     })
     const externalBenchmark = await fetchExternalBenchmark({
       brief: effectiveBrief,

@@ -55,6 +55,8 @@ export type LitografiaCatalogContext = {
 
 type ExtractedData = LitografiaAiResult['extracted']
 
+const TINTAS_QUESTION = '¿La impresión va a 1, 2 o 4 tintas?'
+
 const PRODUCT_PATTERNS: Array<{ type: string; expressions: RegExp[] }> = [
   { type: 'REVISTA', expressions: [/\brevista\b/i] },
   { type: 'CARTILLA', expressions: [/\bcartilla\b/i] },
@@ -89,6 +91,8 @@ const FINISH_PATTERNS = [
   'plastificado brillante',
   'laminado mate',
   'laminado brillante',
+  'parcial uv',
+  'uv parcial',
   'troquelado',
   'barniz uv',
   'sectorizado',
@@ -191,7 +195,7 @@ function parsePaginas(brief: string) {
 }
 
 function parseTintas(brief: string): 1 | 2 | 4 | null {
-  if (/\b4x4\b|\bfull color\b|\bpolicromia\b|\bcuatricromia\b/i.test(brief)) return 4
+  if (/\b4x4\b|\bfull color\b|\bpolicromia\b|\bcuatricromia\b|\bcmyk\b/i.test(brief)) return 4
   if (/\b2x0\b|\b2x2\b|\bdos tintas\b/i.test(brief)) return 2
   if (/\b1x0\b|\b1x1\b|\buna tinta\b|\bblanco y negro\b/i.test(brief)) return 1
   return null
@@ -228,7 +232,7 @@ function buildQuestions(extracted: ExtractedData, quoteType: string) {
   if (!extracted.cantidad) questions.push('¿Cuál es la cantidad exacta de piezas o ejemplares?')
   if (!extracted.anchoCm || !extracted.altoCm) questions.push('¿Cuál es el tamaño final del impreso en centímetros?')
   if (!extracted.material) questions.push('¿Qué papel o sustrato se debe usar? Si conoces el gramaje exacto, también me ayuda para afinar el valor.')
-  if (!extracted.tintas) questions.push('¿La impresión es a 1, 2 o 4 tintas?')
+  if (!extracted.tintas) questions.push(TINTAS_QUESTION)
   if (!extracted.acabado && quoteType !== 'VOLANTE') questions.push('¿Lleva algún acabado como laminado, barniz UV, troquel o plegado?')
   if ((quoteType === 'REVISTA' || quoteType === 'LIBRO' || quoteType === 'CARTILLA') && !extracted.paginas) {
     questions.push('¿Cuántas páginas interiores y cuántas páginas de portada/contraportada tiene?')
