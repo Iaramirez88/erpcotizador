@@ -18,6 +18,7 @@ export type EditorialKnowledgeEstimate = {
   summary: string | null
   lines: CostLine[]
   notes: string[]
+  machineName?: string | null
   paperName: string | null
   paperSheet: string | null
   sizeLabel: string | null
@@ -242,6 +243,14 @@ function findPartSegment(brief: string, marker: string) {
   return normalized.slice(index, nextDivider)
 }
 
+function findFirstPartSegment(brief: string, markers: string[]) {
+  for (const marker of markers) {
+    const segment = findPartSegment(brief, marker)
+    if (segment) return segment
+  }
+  return ''
+}
+
 function selectPaperBySegment(args: {
   segment: string
   fallbackSegment: string
@@ -253,6 +262,7 @@ function selectPaperBySegment(args: {
 }) {
   const { segment, fallbackSegment, paperOptions, formatWidthCm, formatHeightCm, qty, sobranteMinimo } = args
   const searchSegments = [segment, fallbackSegment].map((value) => normalizeText(value)).filter(Boolean)
+  const prefersNarrowSheet = searchSegments.some((value) => value.includes('90x60') || value.includes('60x90'))
 
   const scored = paperOptions
     .map((paper) => {
@@ -291,10 +301,11 @@ function selectPaperBySegment(args: {
         score,
         paperCost: compute.papel,
         paperSheet: `${paper.widthCm} x ${paper.heightCm} cm`,
+        sheetPriority: prefersNarrowSheet ? (paper.widthCm === 90 || paper.heightCm === 90 ? 0 : 1) : (paper.widthCm === 70 || paper.heightCm === 70 ? 0 : 1),
       }
     })
-    .filter((item): item is { paper: PaperOption; score: number; paperCost: number; paperSheet: string } => Boolean(item))
-    .sort((left, right) => left.paperCost - right.paperCost || right.score - left.score)
+    .filter((item): item is { paper: PaperOption; score: number; paperCost: number; paperSheet: string; sheetPriority: number } => Boolean(item))
+    .sort((left, right) => left.sheetPriority - right.sheetPriority || left.paperCost - right.paperCost || right.score - left.score)
 
   return scored[0] ?? null
 }
@@ -400,12 +411,13 @@ export function estimateEditorialKnowledgeCost(args: {
   const openSize = inferOpenSize(widthCm, heightCm)
   const machineSize = pickMachineSize(openSize.widthCm, openSize.heightCm)
   const paperOptions = parsePaperOptions(document)
-  const coverSegment = findPartSegment(brief, 'portada')
+  const coverSegment = findFirstPartSegment(brief, ['caratula', 'carátula', 'portada'])
   const innerSegment = normalizedBrief.replace(coverSegment, '')
-  const coverPages = /portada|contraportada/.test(normalizedBrief) ? 4 : 0
-  const innerForms = Math.max(1, Math.ceil(innerPages / 8))
+  const coverPages = /caratula|carátula|portada|contraportada/.test(normalizedBrief) ? 4 : 0
+  const innerForms = Math.max(1, Math.ceil(innerPages / 4))
   const coverForms = coverPages > 0 ? 1 : 0
-  const tintas = extracted.tintas ?? 4
+  const innerTintas = parseSectionTintas(innerSegment, extracted.tintas ?? 4)
+  const coverTintas = parseSectionTintas(coverSegment || normalizedBrief, extracted.tintas ?? 4)
   const sobranteMinimo = 100
 
   if (!finalSizeName || !machineSize) {
@@ -465,9 +477,11 @@ export function estimateEditorialKnowledgeCost(args: {
     }
   }
 
-  const planchaRate = findKnowledgeRate(document.costos.planchas, machineSize.key, tintas)
-  const impresionRate = findKnowledgeRate(document.costos.impresion, machineSize.key, tintas)
-  if (!planchaRate || !impresionRate) {
+  const innerPlanchaRate = findKnowledgeRate(document.costos.planchas, machineSize.key, innerTintas)
+  const innerImpresionRate = findKnowledgeRate(document.costos.impresion, machineSize.key, innerTintas)
+  const coverPlanchaRate = coverForms > 0 ? findKnowledgeRate(document.costos.planchas, machineSize.key, coverTintas) : null
+  const coverImpresionRate = coverForms > 0 ? findKnowledgeRate(document.costos.impresion, machineSize.key, coverTintas) : null
+  if (!innerPlanchaRate || !innerImpresionRate || (coverForms > 0 && (!coverPlanchaRate || !coverImpresionRate))) {
     return {
       status: 'PARTIAL',
       summary: 'La base editorial encontró el papel, pero no una tarifa clara de plancha o impresión para el montaje asumido.',
@@ -486,16 +500,19 @@ export function estimateEditorialKnowledgeCost(args: {
     }
   }
 
-  const innerPlancha = (planchaRate.valor || 0) * innerForms
-  const coverPlancha = coverForms > 0 ? (planchaRate.valor || 0) * coverForms : 0
-  const innerImpresion = Math.max(1, Math.ceil(quantity / 1000)) * (impresionRate.valor || 0) * innerForms
-  const coverImpresion = coverForms > 0 ? Math.max(1, Math.ceil(quantity / 1000)) * (impresionRate.valor || 0) * coverForms : 0
+  const innerTwoSided = isTwoSidedSegment(innerSegment)
+  const coverTwoSided = isTwoSidedSegment(coverSegment || normalizedBrief)
+  const innerPlancha = (innerPlanchaRate.valor || 0) * innerForms * (innerTwoSided ? 2 : 1)
+  const coverPlancha = coverForms > 0 ? (coverPlanchaRate?.valor || 0) * coverForms * (coverTwoSided ? 2 : 1) : 0
+  const innerImpresion = Math.max(1, Math.ceil((quantity * (innerTwoSided ? 2 : 1)) / 1000)) * (innerImpresionRate.valor || 0) * innerForms
+  const coverImpresion = coverForms > 0 ? Math.max(1, Math.ceil((quantity * (coverTwoSided ? 2 : 1)) / 1000)) * (coverImpresionRate?.valor || 0) * coverForms : 0
   const innerPaper = innerPaperSelection.paperCost
   const coverPaper = coverPaperSelection.paperCost
 
   const hasPlastificadoMate = /plastificado mate|laminado mate/.test(normalizedBrief)
   const hasUv = /barniz uv|uv parcial|parcial uv|uv/.test(normalizedBrief)
   const hasHolmet = /holmet/.test(normalizedBrief)
+  const hasCosida = /cosida|caballete|grapad|grafa/.test(normalizedBrief)
 
   const plastificadoPerThousand = hasPlastificadoMate ? findPerThousandPrice(document, finalSizeName) : 0
   const plastificadoCost = plastificadoPerThousand > 0 ? Math.max(1, Math.ceil(quantity / 1000)) * plastificadoPerThousand : 0
@@ -507,8 +524,15 @@ export function estimateEditorialKnowledgeCost(args: {
   const compaginadoCost = compaginadoUnitCost > 0 ? compaginadoUnitCost * compaginadoQty : 0
   const refileCartillaEntry = document.costos.terminados.find((entry) => normalizeText(entry.nombre).includes('refile cartilla') && entry.valor > 0)
   const refileCartillaCost = refileCartillaEntry ? refileCartillaEntry.valor * quantity : 0
+  const cosidaEntry = hasCosida
+    ? document.costos.terminados.find((entry) => {
+        const name = normalizeText(entry.nombre)
+        return name.includes('cosida') || name.includes('grafa media carta a cuarto')
+      })
+    : null
+  const cosidaCost = cosidaEntry ? cosidaEntry.valor : 0
 
-  const productionCost = innerPlancha + coverPlancha + innerImpresion + coverImpresion + innerPaper + coverPaper + plastificadoCost + uvCost + holmetCost + compaginadoCost + refileCartillaCost
+  const productionCost = innerPlancha + coverPlancha + innerImpresion + coverImpresion + innerPaper + coverPaper + plastificadoCost + uvCost + holmetCost + compaginadoCost + refileCartillaCost + cosidaCost
   const subtotalBeforeIva = productionCost * (1 + (marginPct / 100))
   const utility = subtotalBeforeIva - productionCost
   const ivaValue = subtotalBeforeIva * (ivaPct / 100)
@@ -529,14 +553,13 @@ export function estimateEditorialKnowledgeCost(args: {
   if (holmetCost > 0) lines.push({ label: 'Holmet', amount: holmetCost })
   if (compaginadoCost > 0) lines.push({ label: 'Compaginado internas', amount: compaginadoCost })
   if (refileCartillaCost > 0) lines.push({ label: 'Refile cartilla', amount: refileCartillaCost })
+  if (cosidaCost > 0) lines.push({ label: cosidaEntry?.nombre || 'Cosida / caballete', amount: cosidaCost })
 
   const notes = [
     `Se leyó el trabajo como ${finalSizeName} cerrado con hoja abierta ${openSize.widthCm} x ${openSize.heightCm} cm.`,
     `Internas calculadas en ${innerForms} pliegos por ejemplar; portada en ${coverForms || 1} pliego por ejemplar.`,
     `Montaje tentativo: ${machineSize.key} usando la base de conocimiento editorial.`,
-    extracted.tintas
-      ? `Se respetó la indicación de ${extracted.tintas} tintas reportada en el brief.`
-      : 'Se asumió policromia 4 tintas para portada e internas al no venir la tinta explícita en el brief.',
+    `Internas interpretadas como ${innerTintas} tintas${innerTwoSided ? ' por ambas caras' : ' por una cara'}; carátula como ${coverTintas} tintas${coverTwoSided ? ' por ambas caras' : ' por una cara'}.`,
   ]
 
   if (hasUv && uvCost <= 0) {
@@ -559,4 +582,243 @@ export function estimateEditorialKnowledgeCost(args: {
     totalSuggested,
     unitPriceWithIva,
   }
+}
+
+function inferMachineSize(widthCm: number, heightCm: number, tintas: 1 | 2 | 4) {
+  const picked = pickMachineSize(widthCm, heightCm)
+  if (!picked) return null
+  if (picked.key === 'octavo' && tintas === 4) {
+    return DEFAULT_MACHINE_SIZES.find((size) => size.key === 'cuarto') || picked
+  }
+  return picked
+}
+
+function inferSidesMultiplier(brief: string, tintas: 1 | 2 | 4) {
+  const normalized = normalizeText(brief)
+  const explicit = normalized.match(/\b([124])x([014])\b/)
+  if (explicit) {
+    const front = Math.max(0, Math.trunc(Number(explicit[1]) || 0))
+    const back = Math.max(0, Math.trunc(Number(explicit[2]) || 0))
+    return {
+      totalColors: Math.max(1, front + back),
+      twoSided: back > 0,
+      platesMultiplier: back > 0 && front > 0 ? 2 : 1,
+      printThousands: Math.max(1, Math.ceil((back > 0 ? 2 : 1) / 1)),
+    }
+  }
+
+  const twoSided = /tiro y retiro|doble cara|ambas caras/.test(normalized)
+  return {
+    totalColors: twoSided ? tintas * 2 : tintas,
+    twoSided,
+    platesMultiplier: twoSided ? 2 : 1,
+    printThousands: twoSided ? 2 : 1,
+  }
+}
+
+function findFinishRateBySize(document: LitografiaAiKnowledgeDocument, sizeName: string, matcher: RegExp) {
+  const normalizedSize = normalizeText(sizeName)
+  return document.costos.plastificado.find((entry) => {
+    return normalizeText(entry.nombre).includes(normalizedSize) && matcher.test(normalizeText(entry.nombre))
+  }) || null
+}
+
+export function estimateKnowledgeOnlyCost(args: {
+  brief: string
+  extracted: ExtractedData
+  document: LitografiaAiKnowledgeDocument
+}): EditorialKnowledgeEstimate {
+  const { brief, extracted, document } = args
+  const quantity = Math.max(0, Math.trunc(Number(extracted.cantidad || 0)))
+  const widthCm = Number(extracted.anchoCm || 0)
+  const heightCm = Number(extracted.altoCm || 0)
+  const tintas = extracted.tintas ?? 4
+  const marginPct = Number(document.parametros.margen_utilidad_porcentaje || 40)
+  const ivaPct = Number(document.parametros.iva_porcentaje || 19)
+
+  if (quantity <= 0 || widthCm <= 0 || heightCm <= 0 || !extracted.material) {
+    return {
+      status: 'NOT_AVAILABLE',
+      summary: null,
+      lines: [],
+      notes: [],
+      machineName: null,
+      paperName: null,
+      paperSheet: null,
+      sizeLabel: null,
+      productionCost: null,
+      utility: null,
+      subtotalBeforeIva: null,
+      ivaPct,
+      ivaValue: null,
+      totalSuggested: null,
+      unitPriceWithIva: null,
+    }
+  }
+
+  const isEditorial = /cartilla|revista|libro/.test(normalizeText(brief))
+  if (isEditorial) return estimateEditorialKnowledgeCost({ brief, extracted, document })
+
+  const sizeLabel = findFinalSizeName(document, widthCm, heightCm) ?? `${widthCm} x ${heightCm} cm`
+  const machineSize = inferMachineSize(widthCm, heightCm, tintas)
+  const paper = findKnowledgeBackedPaperCandidate({
+    document,
+    material: extracted.material,
+    widthCm,
+    heightCm,
+    quantity,
+    sobranteMinimo: 100,
+  })
+
+  if (!machineSize || !paper) {
+    return {
+      status: 'PARTIAL',
+      summary: 'La base JSON identificó el trabajo, pero no alcanzó para cerrar tamaño operativo o papel de referencia.',
+      lines: [],
+      notes: ['Confirma tamaño final y papel base exactamente como aparecen en la base JSON.'],
+      machineName: machineSize ? `Montaje ${machineSize.key}` : null,
+      paperName: paper?.nombre ?? null,
+      paperSheet: paper ? `${paper.pliegoWidthCm} x ${paper.pliegoHeightCm} cm` : null,
+      sizeLabel,
+      productionCost: null,
+      utility: null,
+      subtotalBeforeIva: null,
+      ivaPct,
+      ivaValue: null,
+      totalSuggested: null,
+      unitPriceWithIva: null,
+    }
+  }
+
+  const colorSpec = inferSidesMultiplier(brief, tintas)
+  const planchaRate = findKnowledgeRate(document.costos.planchas, machineSize.key, tintas)
+  const impresionRate = findKnowledgeRate(document.costos.impresion, machineSize.key, tintas)
+
+  if (!planchaRate || !impresionRate) {
+    return {
+      status: 'PARTIAL',
+      summary: 'La base JSON encontró papel y tamaño, pero no una tarifa clara de plancha o impresión para este montaje.',
+      lines: [],
+      notes: [`Montaje tentativo: ${machineSize.key}. Revisa si la base JSON necesita una tarifa adicional para esta combinación.`],
+      machineName: `Montaje ${machineSize.key}`,
+      paperName: paper.nombre,
+      paperSheet: `${paper.pliegoWidthCm} x ${paper.pliegoHeightCm} cm`,
+      sizeLabel,
+      productionCost: null,
+      utility: null,
+      subtotalBeforeIva: null,
+      ivaPct,
+      ivaValue: null,
+      totalSuggested: null,
+      unitPriceWithIva: null,
+    }
+  }
+
+  const printThousands = Math.max(1, Math.ceil((quantity * (colorSpec.twoSided ? 2 : 1)) / 1000))
+  const plancha = (planchaRate.valor || 0) * colorSpec.platesMultiplier
+  const impresion = (impresionRate.valor || 0) * printThousands
+  const paperCost = computeLitografia({
+    cantidad: quantity,
+    colores: 1,
+    desperdicioPct: 0,
+    sobranteMinimo: 100,
+    sobranteMinimoUnidad: 'pieza_final',
+    costoPlanchaPorColor: 0,
+    costoTintaPorColor: 0,
+    costoPapelUnidad: 0,
+    papelModo: 'pliego',
+    papelTipo: normalizeText(paper.nombre).includes('bond') ? 'bond' : normalizeText(paper.nombre).includes('propal') ? 'propalcote' : 'otro',
+    papelPliegoWidthCm: paper.pliegoWidthCm,
+    papelPliegoHeightCm: paper.pliegoHeightCm,
+    papelFormatoWidthCm: widthCm,
+    papelFormatoHeightCm: heightCm,
+    costoPliego: paper.costoPliego,
+    costoCorte: 0,
+    costoAcabados: 0,
+    costoTransporte: 0,
+    margenPct: 0,
+  }).papel
+
+  let acabados = 0
+  const lines: CostLine[] = [
+    { label: `Papel ${paper.nombre}`, amount: paperCost },
+    { label: `Planchas ${machineSize.key}`, amount: plancha },
+    { label: `Impresión ${machineSize.key}`, amount: impresion },
+  ]
+  const notes: string[] = [
+    `La referencia se armó únicamente con la base JSON en tamaño ${sizeLabel}.`,
+    `Montaje tentativo: ${machineSize.key}.`,
+    paper.source === 'knowledge-nearest' && paper.assumedFrom
+      ? `El papel exacto ${paper.assumedFrom} no existe en la base JSON; se tomó la referencia más cercana: ${paper.nombre}.`
+      : `Se tomó ${paper.nombre} sobre pliego ${paper.pliegoWidthCm} x ${paper.pliegoHeightCm} cm.`,
+  ]
+
+  const normalizedBrief = normalizeText(brief)
+  const plastificadoRate = /(plastificad|laminad)\s+mate/.test(normalizedBrief)
+    ? findPerThousandPrice(document, sizeLabel)
+    : /(plastificad|laminad)\s+(brillante|brillo)/.test(normalizedBrief)
+      ? findPerThousandPrice(document, sizeLabel)
+      : 0
+  if (plastificadoRate > 0) {
+    const plastQty = quantity <= 500 ? 0.5 : Math.max(1, Math.ceil(quantity / 1000))
+    const plastCost = plastificadoRate * plastQty
+    acabados += plastCost
+    lines.push({ label: 'Plastificado / laminado', amount: plastCost })
+  } else if (/(plastificad|laminad)/.test(normalizedBrief)) {
+    notes.push('El laminado/plastificado pedido no tiene una tarifa específica compatible en la base JSON y quedó fuera del total.')
+  }
+
+  if (/holmet/.test(normalizedBrief)) {
+    const holmetUnit = findTerminadoUnitCost(document, 'holmet', quantity)
+    if (holmetUnit > 0) {
+      const holmetCost = holmetUnit * quantity
+      acabados += holmetCost
+      lines.push({ label: 'Holmet', amount: holmetCost })
+    }
+  }
+
+  if (/esquinas redondeadas/.test(normalizedBrief)) {
+    notes.push('Esquinas redondeadas no tiene tarifa explícita en la base JSON; quedó reportado pero no sumado al total.')
+  }
+
+  const productionCost = paperCost + plancha + impresion + acabados
+  const subtotalBeforeIva = productionCost * (1 + (marginPct / 100))
+  const utility = subtotalBeforeIva - productionCost
+  const ivaValue = subtotalBeforeIva * (ivaPct / 100)
+  const totalSuggested = subtotalBeforeIva + ivaValue
+
+  return {
+    status: 'AVAILABLE',
+    summary: 'Estimación operativa armada únicamente desde la base JSON.',
+    lines,
+    notes,
+    machineName: `Montaje ${machineSize.key}`,
+    paperName: paper.nombre,
+    paperSheet: `${paper.pliegoWidthCm} x ${paper.pliegoHeightCm} cm`,
+    sizeLabel,
+    productionCost,
+    utility,
+    subtotalBeforeIva,
+    ivaPct,
+    ivaValue,
+    totalSuggested,
+    unitPriceWithIva: quantity > 0 ? totalSuggested / quantity : null,
+  }
+}
+
+function parseSectionTintas(segment: string, fallback: 1 | 2 | 4 | null | undefined) {
+  const normalized = normalizeText(segment)
+  if (/\b4x[04]\b|\bfull color\b|\bpolicromia\b|\bcuatricromia\b|\bcmyk\b/.test(normalized)) return 4 as const
+  if (/\b2x[02]\b|\bdos tintas\b/.test(normalized)) return 2 as const
+  if (/\b1x[01]\b|\buna tinta\b|\bblanco y negro\b/.test(normalized)) return 1 as const
+  return fallback ?? 4
+}
+
+function isTwoSidedSegment(segment: string) {
+  const normalized = normalizeText(segment)
+  const explicit = normalized.match(/\b([124])x([014])\b/)
+  if (explicit) {
+    return Number(explicit[2]) > 0
+  }
+  return /tiro y retiro|doble cara|ambas caras/.test(normalized)
 }
