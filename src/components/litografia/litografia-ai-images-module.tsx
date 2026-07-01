@@ -79,13 +79,6 @@ const IMAGE_QUALITY_OPTIONS: Array<{ value: ImageQuality; label: string; hint: s
   { value: "auto", label: "Auto", hint: "Deja que el proveedor ajuste calidad según el caso." },
 ]
 
-const QUALITY_COST_HINTS: Record<ImageQuality, { range: string; note: string }> = {
-  low: { range: "USD 0.01 a 0.03", note: "Úsala para explorar ideas sin gastar de más." },
-  medium: { range: "USD 0.04 a 0.08", note: "Buena relación costo/calidad para la mayoría de consultas." },
-  high: { range: "USD 0.15 a 0.20", note: "Conviene cuando el prompt ya está bien afinado." },
-  auto: { range: "USD 0.05 a 0.12", note: "El costo final depende de cómo resuelva el proveedor." },
-}
-
 const PROMPT_RECOMMENDATIONS = [
   "Define el tipo de pieza: logo, mockup, portada, banner o empaque.",
   "Indica estilo visual: minimalista, corporativo, realista, premium, editorial o infantil.",
@@ -93,10 +86,28 @@ const PROMPT_RECOMMENDATIONS = [
   "Aclara composición y uso final: centrado, icono con texto, formato vertical, pensado para impresión o redes.",
 ]
 
-function getSizeCostNote(size: ImageSize) {
-  if (size === "1024x1024") return "Referencia pensada para una imagen cuadrada estándar."
-  return "Los formatos vertical y horizontal pueden subir un poco el costo frente a la opción cuadrada."
-}
+const SAMPLE_PROMPTS: Array<{ title: string; prompt: string }> = [
+  {
+    title: "Logo corporativo",
+    prompt:
+      "Logo profesional para clínica veterinaria, símbolo geométrico con huella y cruz médica integradas, colores verde esmeralda y azul petróleo, tipografía sans serif moderna, composición limpia, fondo blanco, estilo corporativo premium, vectorial, sin caricatura, alta legibilidad para impresión y redes.",
+  },
+  {
+    title: "Brochure institucional",
+    prompt:
+      "Brochure tríptico corporativo para empresa de tecnología, portada elegante con fotografía realista de equipo en oficina moderna, paleta azul marino y cian, diagramación editorial con amplios espacios en blanco, estilo premium, iluminación natural, enfoque comercial, listo como referencia visual para impresión litográfica.",
+  },
+  {
+    title: "Poster promocional",
+    prompt:
+      "Afiche publicitario vertical para lanzamiento de evento empresarial, composición impactante con titular protagonista, fondo con degradado sobrio azul y dorado, fotografía realista del producto o servicio en primer plano, estilo moderno y premium, jerarquía visual clara, acabado de alta calidad pensado para impresión gran formato.",
+  },
+  {
+    title: "Flyer comercial",
+    prompt:
+      "Flyer publicitario tamaño carta para promoción de apertura, diseño limpio y persuasivo, imagen principal realista del producto, bloques de información bien separados, colores corporativos rojo vino y crema, tipografía moderna, estilo retail premium, espacio para llamado a la acción y datos de contacto, optimizado para litografía.",
+  },
+]
 
 function formatDate(value: string) {
   const date = new Date(value)
@@ -127,7 +138,6 @@ export function LitografiaAiImagesModule() {
     return `${history.length} registros recientes`
   }, [history, historyLoading])
 
-  const selectedQualityHint = QUALITY_COST_HINTS[imageQuality]
   const selectedSizeLabel = IMAGE_SIZE_OPTIONS.find((option) => option.value === imageSize)?.label ?? imageSize
 
   const loadHistory = async () => {
@@ -306,12 +316,16 @@ export function LitografiaAiImagesModule() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-              <p className="font-medium">Costo estimado por intento</p>
-              <p className="mt-1 text-lg font-semibold">{selectedQualityHint.range}</p>
-              <p className="mt-1 text-xs text-amber-900">{selectedQualityHint.note}</p>
-              <p className="mt-1 text-xs text-amber-900">{getSizeCostNote(imageSize)}</p>
-              <p className="mt-2 text-xs text-amber-900">Referencia orientativa para OpenAI Platform; el valor real depende de la tarifa vigente y del procesamiento aplicado.</p>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+              <p className="font-medium">Prompts de muestra para piezas litográficas</p>
+              <div className="mt-3 space-y-3">
+                {SAMPLE_PROMPTS.map((sample) => (
+                  <div key={sample.title} className="rounded-lg border border-emerald-200 bg-white/70 p-3">
+                    <p className="font-medium text-emerald-950">{sample.title}</p>
+                    <p className="mt-1 text-xs leading-5 text-emerald-900">{sample.prompt}</p>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
