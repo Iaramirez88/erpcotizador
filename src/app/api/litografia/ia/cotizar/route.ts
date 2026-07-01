@@ -3,7 +3,7 @@ import { ModuleKey } from '@prisma/client'
 import { z } from 'zod'
 import { canAccessCompanyWideAiHistory, requireApiAccess } from '@/lib/api-rbac'
 import { appendAiWorkspaceHistory, queryAiWorkspaceHistoryPage } from '@/lib/ai-workspace-history'
-import { estimateEditorialKnowledgeCost } from '@/lib/litografia-ai-editorial'
+import { estimateEditorialKnowledgeCost, findKnowledgeBackedPaperCandidate } from '@/lib/litografia-ai-editorial'
 import { buildLitografiaKnowledgePromptContext, readLitografiaAiKnowledge } from '@/lib/litografia-ai-knowledge'
 import type { LitografiaAiKnowledgeDocument } from '@/lib/litografia-ai-knowledge'
 import type { LitografiaAiHandoff } from '@/lib/litografia-ai-handoff'
@@ -43,6 +43,16 @@ type ConfiguredPriceSuggestion = {
   matchedSize: string | null
   matchedPaper: string | null
   matchedFinish: string | null
+}
+
+function buildPricingContextLine(configuredSuggestion: ConfiguredPriceSuggestion, fallbackWhenNoMatch: string) {
+  if (configuredSuggestion.status === 'PARTIAL') {
+    return `Contexto de configuración: hubo coincidencias parciales (${configuredSuggestion.reasoning.join(' ')}).`
+  }
+  if (configuredSuggestion.status === 'NO_MATCH') {
+    return fallbackWhenNoMatch
+  }
+  return null
 }
 
 type ExternalBenchmarkResult = {
@@ -579,6 +589,58 @@ async function buildAssistantQuoteReply(args: {
     })
   }
 
+  if (hasUsableApproximation) {
+    const finishedLabels = costBreakdown.lines
+      .map((line) => line.label)
+      .filter((label) => !/^papel\b/i.test(label) && !/^planchas/i.test(label) && !/^impresi[oó]n\b/i.test(label) && !/^entrega\b/i.test(label))
+    const finishSummary = finishedLabels.length ? finishedLabels.join(', ') : finishLabel
+    const assumptionSet = new Set<string>()
+    if (tintasLabel && tintasLabel !== 'tintas por confirmar') assumptionSet.add(`Se asumió impresión ${tintasLabel}.`)
+    for (const note of costBreakdown.notes) assumptionSet.add(note)
+    const assumptions = Array.from(assumptionSet)
+    const lines = costBreakdown.lines.map((line) => {
+      const amount = formatCopCurrency(line.amount)
+      return amount ? `${line.label}: ${amount}` : null
+    }).filter((line): line is string => Boolean(line))
+    const utilityLine = costBreakdown.utility != null ? `Utilidad ${DEFAULT_MARGIN_PCT}%: ${formatCopCurrency(costBreakdown.utility)}` : null
+    const subtotalLine = costBreakdown.subtotalBeforeIva != null ? `Subtotal: ${formatCopCurrency(costBreakdown.subtotalBeforeIva)}` : null
+    const ivaLine = costBreakdown.ivaValue != null ? `IVA ${costBreakdown.ivaPct}%: ${formatCopCurrency(costBreakdown.ivaValue)}` : null
+    const totalLine = costBreakdown.totalSuggested != null ? `Total final estimado: ${formatCopCurrency(costBreakdown.totalSuggested)}` : null
+    const unitLine = costBreakdown.unitPriceWithIva != null ? `Valor unitario final aproximado: ${formatCopCurrency(costBreakdown.unitPriceWithIva)}` : null
+    const pricingStatusLine = buildPricingContextLine(
+      configuredSuggestion,
+      'Contexto de configuración: no hubo una tarifa cerrada coincidente, así que se armó la mejor referencia posible con configuración litográfica y respaldo del entrenador JSON.',
+    )
+    const message = [
+      `${quantityLabel ? `Cotización preliminar para ${quantityLabel} ${String(productLabel).toLowerCase()}${analysis.extracted.cantidad === 1 ? '' : 's'}` : `Estimación preliminar para ${String(productLabel).toLowerCase()}`}.`,
+      `Se armó una referencia operativa en ${sizeLabel}, ${materialLabel}, ${finishSummary}.`,
+      '',
+      'Datos tomados para la respuesta:',
+      ...detectedSummary,
+      '',
+      'Costo base estimado:',
+      ...lines,
+      utilityLine,
+      subtotalLine,
+      ivaLine,
+      totalLine,
+      unitLine,
+      pricingStatusLine,
+      costBreakdown.paperSheet ? `Papel base analizado: ${materialLabel} sobre pliego ${costBreakdown.paperSheet}.` : `Papel base analizado: ${materialLabel}.`,
+      `Perfil de producción tomado: ${machineLabel}.`,
+      'Siguiente paso recomendado: si quieres cerrarlo exacto, valida transporte y confirma si los acabados configurados coinciden exactamente con lo pedido por el cliente.',
+    ].filter((line): line is string => Boolean(line)).join('\n')
+
+    return {
+      title: quantityLabel
+        ? `Cotización preliminar para ${quantityLabel} ${String(productLabel).toLowerCase()}${analysis.extracted.cantidad === 1 ? '' : 's'}`
+        : `Estimación preliminar para ${String(productLabel).toLowerCase()}`,
+      message,
+      assumptions,
+      copyText: message,
+    }
+  }
+
   const aiReply = await generateLitografiaAssistantReply({
     latestUserMessage: latestBrief,
     conversation,
@@ -590,9 +652,9 @@ async function buildAssistantQuoteReply(args: {
       knowledgeSource,
       directPaperOptions,
       responsePolicy: {
-        priority: configuredSuggestion.status === 'MATCHED' ? 'ERP_EXACT' : costBreakdown.totalSuggested != null ? 'APPROXIMATION' : 'MISSING_DATA',
+        priority: configuredSuggestion.status === 'MATCHED' ? 'CONFIG_MATCH' : costBreakdown.totalSuggested != null ? 'APPROXIMATION' : 'MISSING_DATA',
         askStyle: 'few-priority-questions',
-        neverClaimExactPriceWithoutConfiguredMatch: true,
+        neverClaimClosedPriceWithoutSufficientGrounding: true,
       },
     },
   })
@@ -639,11 +701,10 @@ async function buildAssistantQuoteReply(args: {
   const assumptionsLine = assumptions.length
     ? `Supuestos usados: ${assumptions.join(' ')}`
     : null
-  const pricingStatusLine = configuredSuggestion.status === 'PARTIAL'
-    ? `Hallazgo ERP: hubo coincidencias parciales (${configuredSuggestion.reasoning.join(' ')}).`
-    : configuredSuggestion.status === 'NO_MATCH'
-      ? 'Hallazgo ERP: no hubo una coincidencia tarifaria exacta, así que se armó la mejor referencia posible con el motor interno.'
-      : null
+  const pricingStatusLine = buildPricingContextLine(
+    configuredSuggestion,
+    'Contexto de configuración: no hubo una tarifa cerrada coincidente, así que se armó la mejor referencia posible con el motor interno.',
+  )
 
   const responseGuidance = [
     costBreakdown.paperSheet ? `Papel base analizado: ${materialLabel} sobre pliego ${costBreakdown.paperSheet}.` : `Papel base analizado: ${materialLabel}.`,
@@ -828,7 +889,20 @@ function buildCostBreakdown(args: {
   const { analysis, catalog, profiles, transportOptions, knowledgeDocument } = args
   const quantity = analysis.extracted.cantidad ?? 0
   const size = findMatchedSize(catalog, analysis.extracted.anchoCm, analysis.extracted.altoCm)
-  const paper = findMatchedPaper(catalog, analysis.extracted.material)
+  const configuredPaper = findMatchedPaper(catalog, analysis.extracted.material)
+  const knowledgePaper = knowledgeDocument && analysis.extracted.anchoCm && analysis.extracted.altoCm && quantity > 0
+    ? findKnowledgeBackedPaperCandidate({
+        document: knowledgeDocument,
+        material: analysis.extracted.material,
+        widthCm: analysis.extracted.anchoCm,
+        heightCm: analysis.extracted.altoCm,
+        quantity,
+        sobranteMinimo: DEFAULT_SOBRANTE_MINIMO,
+      })
+    : null
+  const paper = configuredPaper && Number(configuredPaper.costoPliego || 0) > 0
+    ? configuredPaper
+    : knowledgePaper
   const finishes = findFinishCandidates(catalog, {
     brief: args.brief,
     quoteType: analysis.quoteType,
@@ -1000,6 +1074,14 @@ function buildCostBreakdown(args: {
     `Se tomó ${paper.nombre} en pliego ${paper.pliegoWidthCm ?? 0} x ${paper.pliegoHeightCm ?? 0} cm.`,
     `La mejor opción actual es ${best.profile.nombre} con ${best.result.piezasPorPliego ?? 0} piezas por pliego.`,
   ]
+
+  if (knowledgePaper && (!configuredPaper || Number(configuredPaper.costoPliego || 0) <= 0)) {
+    notes.push(
+      knowledgePaper.source === 'knowledge-nearest' && knowledgePaper.assumedFrom
+        ? `No había un papel configurado con costo para ${knowledgePaper.assumedFrom}; se estimó con la referencia más cercana del entrenador JSON: ${knowledgePaper.nombre}.`
+        : `El costo de papel se respaldó con la base del entrenador JSON usando ${knowledgePaper.nombre}.`,
+    )
+  }
 
   if (twoSided) notes.push('Se tomó como impresión por ambas caras.')
   if (reusePlate) notes.push('No se cobraron planchas nuevas porque el brief indica reutilizar la plancha.')

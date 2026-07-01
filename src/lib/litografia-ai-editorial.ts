@@ -40,6 +40,17 @@ type PaperOption = {
   unitLabel: string
 }
 
+export type KnowledgeBackedPaperCandidate = {
+  nombre: string
+  tipo: string | null
+  gramaje: number | null
+  costoPliego: number
+  pliegoWidthCm: number
+  pliegoHeightCm: number
+  source: 'knowledge-exact' | 'knowledge-nearest'
+  assumedFrom: string | null
+}
+
 type MachineSizeOption = {
   key: 'octavo' | 'cuarto' | 'medio' | 'pliego'
   widthCm: number
@@ -94,6 +105,96 @@ function parsePaperOptions(document: LitografiaAiKnowledgeDocument): PaperOption
       } satisfies PaperOption
     })
     .filter((paper): paper is PaperOption => Boolean(paper))
+}
+
+function parsePaperGramaje(value: string | null | undefined) {
+  const match = normalizeText(value).match(/(\d{2,3})\s*(g|gr|gms)?\b/)
+  if (!match) return null
+  const parsed = Number(match[1])
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function parseMaterialRequest(material: string | null | undefined) {
+  const normalized = normalizeText(material)
+  const gramaje = parsePaperGramaje(material)
+  const family = normalized
+    .replace(/\b\d{2,3}\s*(g|gr|gms)?\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return { normalized, family, gramaje }
+}
+
+export function findKnowledgeBackedPaperCandidate(args: {
+  document: LitografiaAiKnowledgeDocument
+  material: string | null | undefined
+  widthCm: number
+  heightCm: number
+  quantity: number
+  sobranteMinimo?: number
+}) {
+  const { document, material, widthCm, heightCm, quantity } = args
+  const sobranteMinimo = Math.max(0, Math.trunc(Number(args.sobranteMinimo || 0)))
+  const request = parseMaterialRequest(material)
+  if (!request.family) return null
+
+  const options = parsePaperOptions(document)
+    .map((paper) => {
+      const normalizedName = normalizeText(paper.nombre)
+      if (!normalizedName.includes(request.family) && !request.family.includes(normalizedName.split(' ')[0] || '')) return null
+
+      const paperGramaje = parsePaperGramaje(paper.nombre)
+      const exactGram = request.gramaje != null && paperGramaje === request.gramaje
+      const diff = request.gramaje != null && paperGramaje != null ? Math.abs(paperGramaje - request.gramaje) : 0
+      const compute = computeLitografia({
+        cantidad: Math.max(1, Math.trunc(quantity) || 1),
+        colores: 1,
+        desperdicioPct: 0,
+        sobranteMinimo,
+        sobranteMinimoUnidad: 'pieza_final',
+        costoPlanchaPorColor: 0,
+        costoTintaPorColor: 0,
+        costoPapelUnidad: 0,
+        papelModo: 'pliego',
+        papelTipo: normalizedName.includes('bond') ? 'bond' : normalizedName.includes('propal') ? 'propalcote' : 'otro',
+        papelPliegoWidthCm: paper.widthCm,
+        papelPliegoHeightCm: paper.heightCm,
+        papelFormatoWidthCm: widthCm,
+        papelFormatoHeightCm: heightCm,
+        costoPliego: paper.valor,
+        costoCorte: 0,
+        costoAcabados: 0,
+        costoTransporte: 0,
+        margenPct: 0,
+      })
+
+      return {
+        paper,
+        paperGramaje,
+        exactGram,
+        diff,
+        paperCost: compute.papel,
+      }
+    })
+    .filter((entry): entry is { paper: PaperOption; paperGramaje: number | null; exactGram: boolean; diff: number; paperCost: number } => Boolean(entry))
+    .sort((left, right) => {
+      if (left.exactGram !== right.exactGram) return left.exactGram ? -1 : 1
+      if (left.diff !== right.diff) return left.diff - right.diff
+      return left.paperCost - right.paperCost
+    })
+
+  const best = options[0] ?? null
+  if (!best) return null
+
+  return {
+    nombre: best.paper.nombre,
+    tipo: request.family || null,
+    gramaje: best.paperGramaje,
+    costoPliego: best.paper.valor,
+    pliegoWidthCm: best.paper.widthCm,
+    pliegoHeightCm: best.paper.heightCm,
+    source: best.exactGram ? 'knowledge-exact' : 'knowledge-nearest',
+    assumedFrom: request.gramaje != null && !best.exactGram ? `${request.family} ${request.gramaje} g` : null,
+  } satisfies KnowledgeBackedPaperCandidate
 }
 
 function findFinalSizeName(document: LitografiaAiKnowledgeDocument, widthCm: number, heightCm: number) {
