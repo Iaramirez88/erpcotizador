@@ -195,9 +195,9 @@ function parsePaginas(brief: string) {
 }
 
 function parseTintas(brief: string): 1 | 2 | 4 | null {
-  if (/\b4x4\b|\bfull color\b|\bpolicromia\b|\bcuatricromia\b|\bcmyk\b/i.test(brief)) return 4
-  if (/\b2x0\b|\b2x2\b|\bdos tintas\b/i.test(brief)) return 2
-  if (/\b1x0\b|\b1x1\b|\buna tinta\b|\bblanco y negro\b/i.test(brief)) return 1
+  if (/\b4x4\b|\b4x0\b|\b4 tintas?\b|\b4 colores\b|\bfull color\b|\bpolicromia\b|\bcuatricromia\b|\bcmyk\b/i.test(brief)) return 4
+  if (/\b2x0\b|\b2x2\b|\b2 tintas?\b|\b2 colores\b|\bdos tintas\b/i.test(brief)) return 2
+  if (/\b1x0\b|\b1x1\b|\b1 tinta\b|\b1 color\b|\buna tinta\b|\bblanco y negro\b/i.test(brief)) return 1
   return null
 }
 

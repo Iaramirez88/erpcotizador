@@ -491,6 +491,17 @@ function formatInt(value: number | null | undefined) {
   return new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(value)
 }
 
+function formatTintasLabel(brief: string, tintas: 1 | 2 | 4 | null | undefined) {
+  const { totalColors, twoSided } = parseColorSpec(brief, tintas ?? null)
+  const normalized = normalizeText(brief)
+  const explicit = normalized.match(/\b([124])x([014])\b/)
+
+  if (explicit) return `${explicit[1]}x${explicit[2]}`
+  if (!tintas || !totalColors) return 'tintas por confirmar'
+  if (twoSided) return `${tintas} tintas por cara`
+  return `${tintas} tintas`
+}
+
 async function buildAssistantQuoteReply(args: {
   latestBrief: string
   brief: string
@@ -510,7 +521,7 @@ async function buildAssistantQuoteReply(args: {
       : 'tamaño por confirmar')
   const materialLabel = costBreakdown.paperName ?? analysis.extracted.material ?? 'material por confirmar'
   const finishLabel = analysis.extracted.acabado ?? (costBreakdown.lines.some((line) => /uv|plastific|holmet|compaginado|refile/i.test(line.label)) ? 'acabados incluidos en la estimación' : 'acabado por confirmar')
-  const tintasLabel = analysis.extracted.tintas ? `${analysis.extracted.tintas}x${analysis.extracted.tintas}` : 'tintas por confirmar'
+  const tintasLabel = formatTintasLabel(args.brief, analysis.extracted.tintas)
   const machineLabel = costBreakdown.machineName ?? 'máquina pendiente por definir'
   const hasUsableApproximation = costBreakdown.status === 'AVAILABLE' && costBreakdown.totalSuggested != null
   const missingSummary = analysis.questions.length
