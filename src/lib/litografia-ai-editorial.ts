@@ -363,6 +363,12 @@ function findPerThousandPrice(document: LitografiaAiKnowledgeDocument, sizeName:
   return document.costos.plastificado.find((entry) => normalizeText(entry.nombre).includes(normalized) && entry.valor > 0)?.valor ?? 0
 }
 
+function findTerminadoPerThousandCost(document: LitografiaAiKnowledgeDocument, nameNeedle: string) {
+  return document.costos.terminados.find((entry) => {
+    return normalizeText(entry.nombre).includes(nameNeedle) && normalizeText(entry.unidad).includes('millar') && entry.valor > 0
+  })?.valor ?? 0
+}
+
 function buildMaterialSummary(innerPaper: string | null, coverPaper: string | null) {
   if (innerPaper && coverPaper && innerPaper !== coverPaper) {
     return `Internas ${innerPaper} / Portada ${coverPaper}`
@@ -774,6 +780,15 @@ export function estimateKnowledgeOnlyCost(args: {
       const holmetCost = holmetUnit * quantity
       acabados += holmetCost
       lines.push({ label: 'Holmet', amount: holmetCost })
+    }
+  }
+
+  if (/plegable|diptico|triptico|plegad|cuerpos?/.test(normalizedBrief)) {
+    const refilePlegadoRate = findTerminadoPerThousandCost(document, 'refile y plegado')
+    if (refilePlegadoRate > 0) {
+      const refilePlegadoCost = refilePlegadoRate * Math.max(1, Math.ceil(quantity / 1000))
+      acabados += refilePlegadoCost
+      lines.push({ label: 'Refile y plegado', amount: refilePlegadoCost })
     }
   }
 
