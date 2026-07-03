@@ -64,6 +64,7 @@ const PRODUCT_PATTERNS: Array<{ type: string; expressions: RegExp[] }> = [
   { type: 'VOLANTE', expressions: [/\bvolante(s)?\b/i, /\bflyer(s)?\b/i] },
   { type: 'PLEGABLE', expressions: [/\bplegable(s)?\b/i, /\bdiptico(s)?\b/i, /\btriptico(s)?\b/i] },
   { type: 'TARJETA', expressions: [/\btarjeta(s)?\b/i] },
+  { type: 'CARPETA', expressions: [/\bcarpeta(s)?\b/i, /\bfolder(s)?\b/i] },
   { type: 'AFICHE', expressions: [/\bafiche(s)?\b/i, /\bposter(es)?\b/i] },
   { type: 'ETIQUETA', expressions: [/\betiqueta(s)?\b/i, /\bsticker(s)?\b/i] },
   { type: 'CAJA', expressions: [/\bcaja(s)?\b/i, /\bempaque(s)?\b/i] },
@@ -160,12 +161,24 @@ function parseCantidad(brief: string) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
-function parseDimensiones(brief: string) {
+function parseDimensiones(brief: string, quoteType: string) {
   const directMatch = brief.match(/(\d{1,3}(?:[.,]\d{1,2})?)\s*(?:x|por)\s*(\d{1,3}(?:[.,]\d{1,2})?)\s*cm/i)
   if (directMatch) {
     return {
       anchoCm: Number(directMatch[1].replace(',', '.')),
       altoCm: Number(directMatch[2].replace(',', '.')),
+    }
+  }
+
+  if (quoteType === 'CARPETA') {
+    if (/carpeta\s+carta|carta\s+final(?:izada)?|folder\s+letter/.test(brief)) {
+      return { anchoCm: 45.72, altoCm: 30.48 }
+    }
+    if (/carpeta\s+a4|folder\s+a4/.test(brief)) {
+      return { anchoCm: 47, altoCm: 32 }
+    }
+    if (/carpeta\s+oficio|folder\s+oficio|folder\s+legal/.test(brief)) {
+      return { anchoCm: 50, altoCm: 35 }
     }
   }
 
@@ -379,7 +392,7 @@ export function analyzeLitografiaBriefWithRules(brief: string): LitografiaAiResu
   const normalizedBrief = normalizeText(brief)
   const lowerBrief = normalizedBrief.toLowerCase()
   const quoteType = parseProductType(lowerBrief)
-  const { anchoCm, altoCm } = parseDimensiones(lowerBrief)
+  const { anchoCm, altoCm } = parseDimensiones(lowerBrief, quoteType)
 
   const extracted: ExtractedData = {
     producto: quoteType === 'OTRO' ? null : quoteType,
@@ -446,6 +459,7 @@ export async function analyzeLitografiaBrief(
                   'No respondas con markdown.',
                   'No inventes precios ni tiempos de producción.',
                   'Si el producto es editorial, intenta identificar páginas.',
+                  'Si el producto es común y el brief es suficientemente claro, puedes inferir una medida operativa estándar para producción, por ejemplo carpeta carta abierta.',
                   'Si el material o acabado es ambiguo, usa null.',
                 ],
               },

@@ -155,11 +155,73 @@ type LitografiaAiConversationMessage = {
   meta?: string[]
 }
 
-const EXAMPLES = [
-  "Necesito cotizar 2.000 volantes tamaño media carta en propalcote 150 gramos, impresión full color por una cara y plastificado mate.",
-  "Quiero 500 tarjetas de presentación 9x5 cm en propalcote 350 g, 4x4, laminado mate y esquinas redondeadas.",
-  "Cotízame una revista de 32 páginas tamaño carta, portada en propalcote 300 g, internas bond 90 g, full color, 1.000 unidades.",
-]
+type BriefRequirement = {
+  key: string
+  label: string
+  met: boolean
+  hint: string
+}
+
+function normalizeBrief(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+}
+
+function evaluateBriefRequirements(brief: string): BriefRequirement[] {
+  const normalized = normalizeBrief(brief)
+  const hasFolderLetter = /(carpeta).*(carta)|(carta).*(carpeta)|(folder).*(letter)/.test(normalized)
+  const hasProduct = /(volante|flyer|tarjeta|revista|cartilla|libro|carpeta|folder|plegable|diptico|triptico|afiche|poster|etiqueta|sticker|caja|empaque)/.test(normalized)
+  const hasQuantity = /(?:^|\s)(\d{1,3}(?:[.,]\d{3})+|\d{2,6})(?:\s+unidades|\s+unds?|\s+ejemplares|\s+piezas|\s+volantes|\s+tarjetas|\s+revistas|\s+libros|\s+carpetas|\s*$)/.test(normalized)
+  const hasSize = /(\d{1,3}(?:[.,]\d{1,2})?\s*(?:x|por)\s*\d{1,3}(?:[.,]\d{1,2})?\s*cm)|media carta|carta|oficio|a4|cuarto|octavo|doble carta|pliego/.test(normalized)
+  const hasMaterial = /(propalcote|bond|cartulina|opalina|adhesivo|kimberly|periodico)/.test(normalized)
+  const hasTintas = /\b([124])x([014])\b|full color|policromia|cuatricromia|cmyk|\b[124]\s*tintas?\b/.test(normalized)
+  const hasFinish = /(plastificad|laminad|barniz uv|uv parcial|parcial uv|troquelad|grafad|plegad|perforad|esquinas redondeadas)/.test(normalized)
+
+  return [
+    {
+      key: "product",
+      label: "Producto",
+      met: hasProduct,
+      hint: hasProduct ? "Producto detectado." : "Indica qué producto es: volante, carpeta, revista, tarjeta o similar.",
+    },
+    {
+      key: "quantity",
+      label: "Cantidad",
+      met: hasQuantity,
+      hint: hasQuantity ? "Cantidad detectada." : "Incluye la cantidad exacta de piezas o ejemplares.",
+    },
+    {
+      key: "size",
+      label: "Tamaño o formato",
+      met: hasSize,
+      hint: hasFolderLetter
+        ? "Si dices carpeta carta, la IA la toma como carpeta abierta aproximada para escoger plancha y plastificado." 
+        : hasSize
+          ? "Tamaño o referencia comercial detectada."
+          : "Escribe la medida en cm o una referencia comercial como carta, oficio, A4 o cuarto.",
+    },
+    {
+      key: "material",
+      label: "Papel o material",
+      met: hasMaterial,
+      hint: hasMaterial ? "Material detectado." : "Indica el papel base y, si puedes, el gramaje.",
+    },
+    {
+      key: "inks",
+      label: "Tintas",
+      met: hasTintas,
+      hint: hasTintas ? "Configuración de tintas detectada." : "Aclara si va 1x0, 2x0, 4x0, 4x4 o full color.",
+    },
+    {
+      key: "finish",
+      label: "Acabados",
+      met: hasFinish,
+      hint: hasFinish ? "Acabado detectado." : "Si lleva laminado, plastificado, troquel, UV u otro acabado, inclúyelo.",
+    },
+  ]
+}
 
 function formatFieldValue(label: string, value: string | number | null) {
   if (value == null || value === "") return `${label}: pendiente`
@@ -356,7 +418,8 @@ export function LitografiaAiAssistant(props: {
   openToken?: string | number
 }) {
   const conversationViewportRef = useRef<HTMLDivElement | null>(null)
-  const [brief, setBrief] = useState(EXAMPLES[0])
+  const responseSectionRef = useRef<HTMLDivElement | null>(null)
+  const [brief, setBrief] = useState("")
   const [result, setResult] = useState<LitografiaAiResult | null>(null)
   const [connection, setConnection] = useState<LitografiaAiConnection | null>(null)
   const [knowledgeSource, setKnowledgeSource] = useState<LitografiaAiKnowledgeSource | null>(null)
@@ -374,6 +437,7 @@ export function LitografiaAiAssistant(props: {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [showResponsePanel, setShowResponsePanel] = useState(false)
 
   const currencyFormatter = new Intl.NumberFormat("es-CO", {
     style: "currency",
@@ -402,6 +466,11 @@ export function LitografiaAiAssistant(props: {
     if (!viewport) return
     viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" })
   }, [conversationMessages, loading])
+
+  useEffect(() => {
+    if (!showResponsePanel) return
+    responseSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }, [showResponsePanel, loading, result, error])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -438,6 +507,7 @@ export function LitografiaAiAssistant(props: {
   }, [historyPage])
 
   const submitAnalysis = async (args: { userMessage: string; resetConversation?: boolean }) => {
+    setShowResponsePanel(true)
     setLoading(true)
     setError(null)
     setCopied(false)
@@ -503,6 +573,13 @@ export function LitografiaAiAssistant(props: {
 
   const handleAnalyze = async () => {
     await submitAnalysis({ userMessage: brief.trim(), resetConversation: true })
+  }
+
+  const handleBriefKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.shiftKey) return
+    event.preventDefault()
+    if (loading || brief.trim().length < 20) return
+    void handleAnalyze()
   }
 
   const handleSendFollowUp = async () => {
@@ -616,6 +693,8 @@ export function LitografiaAiAssistant(props: {
   const pricingSource = result ? getPricingSourceLabel(pricing) : null
   const knowledgeSourceLabel = result ? getKnowledgeSourceLabel(knowledgeSource) : null
   const knowledgeUpdatedAt = formatDateTime(knowledgeSource?.updatedAt ?? null)
+  const briefRequirements = evaluateBriefRequirements(brief)
+  const readyRequirements = briefRequirements.filter((item) => item.met).length
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -645,17 +724,30 @@ export function LitografiaAiAssistant(props: {
               id="litografia-ai-brief"
               value={brief}
               onChange={(event) => setBrief(event.target.value)}
+              onKeyDown={handleBriefKeyDown}
               className="min-h-36"
               placeholder="Ejemplo: 5.000 plegables media carta en propalcote 150 g, 4x4, dos cuerpos, entrega en Chapinero..."
             />
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {EXAMPLES.map((example) => (
-              <Button key={example} type="button" variant="outline" className="h-auto whitespace-normal text-left" onClick={() => setBrief(example)}>
-                {example}
-              </Button>
-            ))}
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-slate-900">Guía básica del requerimiento</p>
+                <p className="text-sm text-slate-500">Cumplidos {readyRequirements} de {briefRequirements.length}. Enter analiza y Shift+Enter agrega salto de línea.</p>
+              </div>
+              <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
+                {brief.trim().length} caracteres
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {briefRequirements.map((item) => (
+                <div key={item.key} className={`rounded-xl border px-3 py-3 text-sm ${item.met ? "border-emerald-200 bg-emerald-50 text-emerald-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
+                  <p className="font-medium">{item.label}</p>
+                  <p className="mt-1">{item.hint}</p>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -669,73 +761,23 @@ export function LitografiaAiAssistant(props: {
           {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
         </CardContent>
       </Card>
-
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader>
-          <div className="flex items-center gap-2 text-slate-800">
-            <History className="h-5 w-5" />
-            <CardTitle className="text-lg">Historial de cotizaciones IA</CardTitle>
-          </div>
-          <CardDescription>Consulta lo que ya han cotizado los usuarios sin traer el historial completo de una sola vez.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between gap-3 text-sm text-slate-500">
-            <span>{historyLoading ? "Cargando historial..." : `${historyTotal} consultas registradas`}</span>
-            <span>Página {historyPage} de {historyTotalPages}</span>
-          </div>
-
-          {historyError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{historyError}</p> : null}
-
-          {!historyError && !historyLoading && !historyEntries.length ? (
-            <p className="text-sm text-muted-foreground">Todavía no hay cotizaciones IA guardadas para esta empresa.</p>
+      {showResponsePanel ? (
+        <div ref={responseSectionRef} className="space-y-4">
+          {loading ? (
+            <Card className="border-sky-200 shadow-sm">
+              <CardContent className="flex flex-col items-center justify-center gap-4 py-12 text-center">
+                <div className="flex h-20 w-20 items-center justify-center rounded-full bg-sky-50 text-sky-700">
+                  <LoaderCircle className="h-10 w-10 animate-spin" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-lg font-semibold text-slate-900">Consultando...</p>
+                  <p className="text-sm text-slate-600">Interpretando formato, material, tintas, acabados y costos base para llevarte a la respuesta final.</p>
+                </div>
+              </CardContent>
+            </Card>
           ) : null}
 
-          <div className="space-y-3">
-            {historyEntries.map((entry) => (
-              <div key={entry.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-700">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-slate-900">{entry.quoteType || "Cotización IA"}</p>
-                    <p className="mt-1 text-xs text-slate-500">{formatDateTimeLabel(entry.createdAt)}{entry.actorLabel ? ` · ${entry.actorLabel}` : ""}</p>
-                  </div>
-                  <div className="text-right text-xs text-slate-500">
-                    {entry.confidence ? <p>Confianza: {entry.confidence}</p> : null}
-                    {entry.totalSuggested != null ? <p>Total guía: {currencyFormatter.format(entry.totalSuggested)}</p> : null}
-                  </div>
-                </div>
-                <p className="mt-3 whitespace-pre-line text-slate-800">{entry.summary || entry.prompt}</p>
-                {entry.responseText ? <p className="mt-2 line-clamp-3 text-slate-600">{entry.responseText}</p> : null}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => setBrief(entry.prompt)}>
-                    Usar brief
-                  </Button>
-                  {entry.responseText ? (
-                    <Button type="button" variant="outline" size="sm" onClick={() => setFollowUp(`Toma como referencia esta consulta previa: ${entry.prompt}`)}>
-                      Tomar referencia
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
-            <p className="text-sm text-slate-500">El chat puede reutilizar estos briefs como punto de partida sin reescribir todo.</p>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => setHistoryPage((current) => Math.max(1, current - 1))} disabled={historyLoading || historyPage <= 1}>
-                <ChevronLeft className="mr-2 h-4 w-4" />
-                Anterior
-              </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => setHistoryPage((current) => Math.min(historyTotalPages, current + 1))} disabled={historyLoading || historyPage >= historyTotalPages}>
-                Siguiente
-                <ChevronRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {result ? (
+          {result ? (
         <div className="space-y-4">
           <Card className="border-slate-200 shadow-sm">
             <CardHeader>
@@ -836,129 +878,196 @@ export function LitografiaAiAssistant(props: {
             </CardContent>
           </Card>
 
-        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-          <Card className="border-slate-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-lg">Resumen para cotizar</CardTitle>
-              <CardDescription>{result.summary}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {detectedFields.map((item) => (
-                  <div key={`${item.label}-${item.value}`} className="rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
-                    <p className="font-medium text-slate-900">{item.label}</p>
-                    <p>{item.value}</p>
-                  </div>
-                ))}
-              </div>
-
-              {pricing && (estimatedTotal || estimatedUnit || marketMin || marketMax) ? (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-slate-900">Valores guía</p>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {estimatedTotal ? (
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                        <p className="font-medium text-slate-900">Valor estimado total</p>
-                        <p>{estimatedTotal}</p>
-                      </div>
-                    ) : null}
-                    {estimatedUnit ? (
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                        <p className="font-medium text-slate-900">Valor unitario guía</p>
-                        <p>{estimatedUnit}</p>
-                      </div>
-                    ) : null}
-                    {marketMin || marketMax ? (
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 sm:col-span-2">
-                        <p className="font-medium text-slate-900">Referencia de mercado</p>
-                        <p>{marketMin && marketMax ? `${marketMin} a ${marketMax}` : marketMin || marketMax}</p>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
-
-              {pricing?.costBreakdown.lines.length ? (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-slate-900">Costos base</p>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                    <div className="space-y-2">
-                      {pricing.costBreakdown.lines.map((line) => (
-                        <div key={`${line.label}-${line.amount}`} className="flex items-start justify-between gap-4">
-                          <span>{line.label}</span>
-                          <span className="font-medium text-slate-900">{currencyFormatter.format(line.amount)}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-3 space-y-1 border-t pt-3">
-                      {breakdownProduction ? <div className="flex items-start justify-between gap-4"><span>Costo producción</span><span className="font-medium text-slate-900">{breakdownProduction}</span></div> : null}
-                      {breakdownUtility ? <div className="flex items-start justify-between gap-4"><span>Utilidad 40%</span><span className="font-medium text-slate-900">{breakdownUtility}</span></div> : null}
-                      {breakdownIva ? <div className="flex items-start justify-between gap-4"><span>IVA 19%</span><span className="font-medium text-slate-900">{breakdownIva}</span></div> : null}
-                      {breakdownTotal ? <div className="flex items-start justify-between gap-4 text-base"><span className="font-semibold text-slate-900">Total sugerido</span><span className="font-semibold text-slate-900">{breakdownTotal}</span></div> : null}
-                      {breakdownUnit ? <div className="flex items-start justify-between gap-4"><span>Unitario con IVA</span><span className="font-medium text-slate-900">{breakdownUnit}</span></div> : null}
-                    </div>
-                  </div>
-                  {pricing.costBreakdown.notes.length ? (
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                      <p className="font-medium text-slate-900">Notas del cálculo</p>
-                      <p>{pricing.costBreakdown.notes.slice(0, 2).join(" ")}</p>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {result.extracted.observaciones.length ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                  <p className="font-medium text-slate-900">Notas útiles</p>
-                  <p>{result.extracted.observaciones.slice(0, 2).join(". ")}</p>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <div className="space-y-4">
-            <Card className="border-amber-200 bg-amber-50/70 shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-lg text-amber-950">Qué falta confirmar</CardTitle>
-                <CardDescription className="text-amber-900/80">
-                  Con esto completo, la cotización final sale mucho más rápido.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm text-amber-950">
-                {missingSummary.length ? (
-                  missingSummary.map((question) => (
-                    <div key={question} className="rounded-xl border border-amber-200 bg-white/70 px-3 py-2">
-                      {question}
-                    </div>
-                  ))
-                ) : (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
-                    El brief ya trae suficientes datos para pasar al cotizador litográfico.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
+          <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
             <Card className="border-slate-200 shadow-sm">
               <CardHeader>
-                <CardTitle className="text-lg">Listo para el siguiente paso</CardTitle>
-                <CardDescription>
-                  {result.extracted.paginas
-                    ? "Se enviará al flujo editorial para completar portada, internas y producción."
-                    : "Se enviará al flujo normal con los campos principales ya diligenciados."}
-                </CardDescription>
+                <CardTitle className="text-lg">Resumen para cotizar</CardTitle>
+                <CardDescription>{result.summary}</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <Button type="button" variant="outline" onClick={handleCopy} className="w-full justify-between">
-                  {copied ? "Resumen copiado" : "Copiar resumen"}
-                  <ClipboardCopy className="h-4 w-4" />
-                </Button>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {detectedFields.map((item) => (
+                    <div key={`${item.label}-${item.value}`} className="rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
+                      <p className="font-medium text-slate-900">{item.label}</p>
+                      <p>{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {pricing && (estimatedTotal || estimatedUnit || marketMin || marketMax) ? (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-slate-900">Valores guía</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {estimatedTotal ? (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                          <p className="font-medium text-slate-900">Valor estimado total</p>
+                          <p>{estimatedTotal}</p>
+                        </div>
+                      ) : null}
+                      {estimatedUnit ? (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                          <p className="font-medium text-slate-900">Valor unitario guía</p>
+                          <p>{estimatedUnit}</p>
+                        </div>
+                      ) : null}
+                      {marketMin || marketMax ? (
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 sm:col-span-2">
+                          <p className="font-medium text-slate-900">Referencia de mercado</p>
+                          <p>{marketMin && marketMax ? `${marketMin} a ${marketMax}` : marketMin || marketMax}</p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                {pricing?.costBreakdown.lines.length ? (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-slate-900">Costos base</p>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                      <div className="space-y-2">
+                        {pricing.costBreakdown.lines.map((line) => (
+                          <div key={`${line.label}-${line.amount}`} className="flex items-start justify-between gap-4">
+                            <span>{line.label}</span>
+                            <span className="font-medium text-slate-900">{currencyFormatter.format(line.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 space-y-1 border-t pt-3">
+                        {breakdownProduction ? <div className="flex items-start justify-between gap-4"><span>Costo producción</span><span className="font-medium text-slate-900">{breakdownProduction}</span></div> : null}
+                        {breakdownUtility ? <div className="flex items-start justify-between gap-4"><span>Utilidad 40%</span><span className="font-medium text-slate-900">{breakdownUtility}</span></div> : null}
+                        {breakdownIva ? <div className="flex items-start justify-between gap-4"><span>IVA 19%</span><span className="font-medium text-slate-900">{breakdownIva}</span></div> : null}
+                        {breakdownTotal ? <div className="flex items-start justify-between gap-4 text-base"><span className="font-semibold text-slate-900">Total sugerido</span><span className="font-semibold text-slate-900">{breakdownTotal}</span></div> : null}
+                        {breakdownUnit ? <div className="flex items-start justify-between gap-4"><span>Unitario con IVA</span><span className="font-medium text-slate-900">{breakdownUnit}</span></div> : null}
+                      </div>
+                    </div>
+                    {pricing.costBreakdown.notes.length ? (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                        <p className="font-medium text-slate-900">Notas del cálculo</p>
+                        <p>{pricing.costBreakdown.notes.slice(0, 2).join(" ")}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {result.extracted.observaciones.length ? (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                    <p className="font-medium text-slate-900">Notas útiles</p>
+                    <p>{result.extracted.observaciones.slice(0, 2).join(". ")}</p>
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
+
+            <div className="space-y-4">
+              <Card className="border-amber-200 bg-amber-50/70 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-lg text-amber-950">Qué falta confirmar</CardTitle>
+                  <CardDescription className="text-amber-900/80">
+                    Con esto completo, la cotización final sale mucho más rápido.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm text-amber-950">
+                  {missingSummary.length ? (
+                    missingSummary.map((question) => (
+                      <div key={question} className="rounded-xl border border-amber-200 bg-white/70 px-3 py-2">
+                        {question}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+                      El brief ya trae suficientes datos para pasar al cotizador litográfico.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-slate-200 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-lg">Listo para el siguiente paso</CardTitle>
+                  <CardDescription>
+                    {result.extracted.paginas
+                      ? "Se enviará al flujo editorial para completar portada, internas y producción."
+                      : "Se enviará al flujo normal con los campos principales ya diligenciados."}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Button type="button" variant="outline" onClick={handleCopy} className="w-full justify-between">
+                    {copied ? "Resumen copiado" : "Copiar resumen"}
+                    <ClipboardCopy className="h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
+      ) : null}
         </div>
       ) : null}
+
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader>
+          <div className="flex items-center gap-2 text-slate-800">
+            <History className="h-5 w-5" />
+            <CardTitle className="text-lg">Historial de cotizaciones IA</CardTitle>
+          </div>
+          <CardDescription>Consulta lo que ya han cotizado los usuarios sin traer el historial completo de una sola vez.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between gap-3 text-sm text-slate-500">
+            <span>{historyLoading ? "Cargando historial..." : `${historyTotal} consultas registradas`}</span>
+            <span>Página {historyPage} de {historyTotalPages}</span>
+          </div>
+
+          {historyError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{historyError}</p> : null}
+
+          {!historyError && !historyLoading && !historyEntries.length ? (
+            <p className="text-sm text-muted-foreground">Todavía no hay cotizaciones IA guardadas para esta empresa.</p>
+          ) : null}
+
+          <div className="space-y-3">
+            {historyEntries.map((entry) => (
+              <div key={entry.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-700">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-slate-900">{entry.quoteType || "Cotización IA"}</p>
+                    <p className="mt-1 text-xs text-slate-500">{formatDateTimeLabel(entry.createdAt)}{entry.actorLabel ? ` · ${entry.actorLabel}` : ""}</p>
+                  </div>
+                  <div className="text-right text-xs text-slate-500">
+                    {entry.confidence ? <p>Confianza: {entry.confidence}</p> : null}
+                    {entry.totalSuggested != null ? <p>Total guía: {currencyFormatter.format(entry.totalSuggested)}</p> : null}
+                  </div>
+                </div>
+                <p className="mt-3 whitespace-pre-line text-slate-800">{entry.summary || entry.prompt}</p>
+                {entry.responseText ? <p className="mt-2 line-clamp-3 text-slate-600">{entry.responseText}</p> : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setBrief(entry.prompt)}>
+                    Usar brief
+                  </Button>
+                  {entry.responseText ? (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setFollowUp(`Toma como referencia esta consulta previa: ${entry.prompt}`)}>
+                      Tomar referencia
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-3">
+            <p className="text-sm text-slate-500">El chat puede reutilizar estos briefs como punto de partida sin reescribir todo.</p>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setHistoryPage((current) => Math.max(1, current - 1))} disabled={historyLoading || historyPage <= 1}>
+                <ChevronLeft className="mr-2 h-4 w-4" />
+                Anterior
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setHistoryPage((current) => Math.min(historyTotalPages, current + 1))} disabled={historyLoading || historyPage >= historyTotalPages}>
+                Siguiente
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
       </div>
 
       <div className="mt-4 border-t bg-background pt-4">

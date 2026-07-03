@@ -363,6 +363,44 @@ function findPerThousandPrice(document: LitografiaAiKnowledgeDocument, sizeName:
   return document.costos.plastificado.find((entry) => normalizeText(entry.nombre).includes(normalized) && entry.valor > 0)?.valor ?? 0
 }
 
+function findPerThousandPriceByFit(document: LitografiaAiKnowledgeDocument, widthCm: number, heightCm: number) {
+  const shortSide = Math.min(widthCm, heightCm)
+  const longSide = Math.max(widthCm, heightCm)
+
+  const candidates = document.costos.plastificado
+    .map((entry) => {
+      if (!entry.valor || entry.valor <= 0) return null
+      const dims = parseDimensionsFromText(entry.medidas_cm)
+      if (!dims) return null
+
+      const entryShort = Math.min(dims.widthCm, dims.heightCm)
+      const entryLong = Math.max(dims.widthCm, dims.heightCm)
+      if (shortSide > entryShort + 0.8 || longSide > entryLong + 0.8) return null
+
+      return {
+        nombre: entry.nombre,
+        valor: entry.valor,
+        area: dims.widthCm * dims.heightCm,
+      }
+    })
+    .filter((entry): entry is { nombre: string; valor: number; area: number } => Boolean(entry))
+    .sort((left, right) => left.area - right.area || left.valor - right.valor)
+
+  return candidates[0] ?? null
+}
+
+function resolvePerThousandPrice(document: LitografiaAiKnowledgeDocument, args: { sizeName: string; widthCm: number; heightCm: number }) {
+  const direct = findPerThousandPrice(document, args.sizeName)
+  if (direct > 0) {
+    return {
+      nombre: args.sizeName,
+      valor: direct,
+    }
+  }
+
+  return findPerThousandPriceByFit(document, args.widthCm, args.heightCm)
+}
+
 function findTerminadoPerThousandCost(document: LitografiaAiKnowledgeDocument, nameNeedle: string) {
   return document.costos.terminados.find((entry) => {
     return normalizeText(entry.nombre).includes(nameNeedle) && normalizeText(entry.unidad).includes('millar') && entry.valor > 0
@@ -763,15 +801,15 @@ export function estimateKnowledgeOnlyCost(args: {
 
   const normalizedBrief = normalizeText(brief)
   const plastificadoRate = /(plastificad|laminad)\s+mate/.test(normalizedBrief)
-    ? findPerThousandPrice(document, sizeLabel)
+    ? resolvePerThousandPrice(document, { sizeName: sizeLabel, widthCm, heightCm })
     : /(plastificad|laminad)\s+(brillante|brillo)/.test(normalizedBrief)
-      ? findPerThousandPrice(document, sizeLabel)
-      : 0
-  if (plastificadoRate > 0) {
+      ? resolvePerThousandPrice(document, { sizeName: sizeLabel, widthCm, heightCm })
+      : null
+  if ((plastificadoRate?.valor || 0) > 0) {
     const plastQty = quantity <= 500 ? 0.5 : Math.max(1, Math.ceil(quantity / 1000))
-    const plastCost = plastificadoRate * plastQty
+    const plastCost = plastificadoRate!.valor * plastQty
     acabados += plastCost
-    lines.push({ label: 'Plastificado / laminado', amount: plastCost })
+    lines.push({ label: plastificadoRate?.nombre || 'Plastificado / laminado', amount: plastCost })
   } else if (/(plastificad|laminad)/.test(normalizedBrief)) {
     notes.push('El laminado/plastificado pedido no tiene una tarifa específica compatible en la base JSON y quedó fuera del total.')
   }
