@@ -1289,6 +1289,20 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
         setFormatoW(String(matchedSize.widthCm))
         setFormatoH(String(matchedSize.heightCm))
       }
+
+      if (!matchedSize && draft.pricingHints?.sizeLabel) {
+        const matchedPricingSize = sizeOptions.find((size) => {
+          const haystack = normalizeHandoffText(size.nombre)
+          const needle = normalizeHandoffText(draft.pricingHints?.sizeLabel)
+          return Boolean(needle) && (haystack.includes(needle) || needle.includes(haystack))
+        })
+
+        if (matchedPricingSize) {
+          setFormatoKey(matchedPricingSize.key)
+          setFormatoW(String(matchedPricingSize.widthCm))
+          setFormatoH(String(matchedPricingSize.heightCm))
+        }
+      }
     }
 
     const inferredPaperType = inferPaperTypeFromMaterial(draft.material)
@@ -1311,6 +1325,18 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
       setSelectedPaperId(directPaperMatch.id)
       setSelectedPaperTipo(String(directPaperMatch.tipo || "otro").trim() || "otro")
       setSelectedPaperGramaje(directPaperMatch.gramaje != null ? String(directPaperMatch.gramaje) : "")
+    } else if (draft.pricingHints?.paperName) {
+      const matchedPricingPaper = activePapers.find((paper) => {
+        const haystack = normalizeHandoffText(`${paper.nombre} ${paper.tipo || ""} ${paper.gramaje ?? ""}`)
+        const needle = normalizeHandoffText(draft.pricingHints?.paperName)
+        return Boolean(needle) && (haystack.includes(needle) || needle.includes(haystack))
+      })
+
+      if (matchedPricingPaper) {
+        setSelectedPaperId(matchedPricingPaper.id)
+        setSelectedPaperTipo(String(matchedPricingPaper.tipo || "otro").trim() || "otro")
+        setSelectedPaperGramaje(matchedPricingPaper.gramaje != null ? String(matchedPricingPaper.gramaje) : "")
+      }
     } else if (inferredPaperType) {
       setSelectedPaperTipo(inferredPaperType)
     }
@@ -1322,6 +1348,25 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
         return name.includes(normalizedFinish) || normalizedFinish.includes(name)
       })
       if (finishMatch) setSelectedFinishId(finishMatch.id)
+    } else if (draft.finishHints?.genericLabels.length) {
+      const finishHint = normalizeHandoffText(draft.finishHints.genericLabels[0])
+      const finishMatch = activeFinishes.find((finish) => {
+        const name = normalizeHandoffText(finish.nombre)
+        return Boolean(finishHint) && (name.includes(finishHint) || finishHint.includes(name))
+      })
+      if (finishMatch) setSelectedFinishId(finishMatch.id)
+    }
+
+    if (draft.pricingHints?.machineName) {
+      const profileMatch = profiles.find((profile) => {
+        const haystack = normalizeHandoffText(profile.nombre)
+        const needle = normalizeHandoffText(draft.pricingHints?.machineName)
+        return Boolean(needle) && (haystack.includes(needle) || needle.includes(haystack))
+      })
+      if (profileMatch) {
+        setSelectedPlanchaProfileId(profileMatch.id)
+        setSelectedTintaProfileId(profileMatch.id)
+      }
     }
 
     const normalizedEntrega = normalizeHandoffText(draft.entrega)
@@ -1329,6 +1374,13 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
       const transportMatch = transporteOptions.find((option) => {
         const haystack = normalizeHandoffText(`${option.value} ${option.label}`)
         return haystack.includes(normalizedEntrega) || normalizedEntrega.includes(haystack)
+      })
+      if (transportMatch) setSelectedTransporteKey(transportMatch.value)
+    } else if (draft.pricingHints?.transportLabel) {
+      const transportMatch = transporteOptions.find((option) => {
+        const haystack = normalizeHandoffText(`${option.value} ${option.label}`)
+        const needle = normalizeHandoffText(draft.pricingHints?.transportLabel)
+        return Boolean(needle) && (haystack.includes(needle) || needle.includes(haystack))
       })
       if (transportMatch) setSelectedTransporteKey(transportMatch.value)
     }

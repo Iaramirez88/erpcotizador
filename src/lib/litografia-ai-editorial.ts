@@ -21,7 +21,9 @@ export type EditorialKnowledgeEstimate = {
   machineName?: string | null
   paperName: string | null
   paperSheet: string | null
+  paperQuantityLabel?: string | null
   sizeLabel: string | null
+  productionCutLabel?: string | null
   productionCost: number | null
   utility: number | null
   subtotalBeforeIva: number | null
@@ -739,7 +741,9 @@ export function estimateKnowledgeOnlyCost(args: {
       machineName: null,
       paperName: null,
       paperSheet: null,
+      paperQuantityLabel: null,
       sizeLabel: null,
+      productionCutLabel: null,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -775,7 +779,9 @@ export function estimateKnowledgeOnlyCost(args: {
       machineName: machineSize ? `Montaje ${machineSize.key}` : null,
       paperName: paper?.nombre ?? null,
       paperSheet: paper ? `${paper.pliegoWidthCm} x ${paper.pliegoHeightCm} cm` : null,
+      paperQuantityLabel: null,
       sizeLabel,
+      productionCutLabel: machineSize?.key ?? null,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -799,7 +805,9 @@ export function estimateKnowledgeOnlyCost(args: {
       machineName: `Montaje ${machineSize.key}`,
       paperName: paper.nombre,
       paperSheet: `${paper.pliegoWidthCm} x ${paper.pliegoHeightCm} cm`,
+      paperQuantityLabel: null,
       sizeLabel,
+      productionCutLabel: machineSize.key,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -823,7 +831,7 @@ export function estimateKnowledgeOnlyCost(args: {
   const printThousands = Math.max(1, Math.ceil((machineSheets * (colorSpec.twoSided ? 2 : 1)) / 1000))
   const plancha = (planchaRate.valor || 0) * colorSpec.platesMultiplier
   const impresion = (impresionRate.valor || 0) * printThousands
-  const paperCost = computeLitografia({
+  const paperResult = computeLitografia({
     cantidad: quantity,
     colores: 1,
     desperdicioPct: 0,
@@ -845,7 +853,9 @@ export function estimateKnowledgeOnlyCost(args: {
     costoAcabados: 0,
     costoTransporte: 0,
     margenPct: 0,
-  }).papel
+  })
+  const paperCost = paperResult.papel
+  const paperPliegos = paperResult.pliegosNecesarios ?? (paper.costoPliego > 0 ? Math.round(paperCost / paper.costoPliego) : null)
 
   let acabados = 0
   const lines: CostLine[] = [
@@ -863,17 +873,14 @@ export function estimateKnowledgeOnlyCost(args: {
   ]
 
   const normalizedBrief = normalizeText(brief)
-  const plastificadoRate = /(plastificad|laminad)\s+mate/.test(normalizedBrief)
-    ? findPerThousandPrice(document, sizeLabel)
-    : /(plastificad|laminad)\s+(brillante|brillo)/.test(normalizedBrief)
-      ? findPerThousandPrice(document, sizeLabel)
-      : 0
+  const hasPlastificado = /(plastificad|laminad)/.test(normalizedBrief)
+  const plastificadoRate = hasPlastificado ? findPerThousandPrice(document, sizeLabel) : 0
   if (plastificadoRate > 0) {
     const plastQty = quantity <= 500 ? 0.5 : Math.max(1, Math.ceil(quantity / 1000))
     const plastCost = plastificadoRate * plastQty
     acabados += plastCost
     lines.push({ label: 'Plastificado / laminado', amount: plastCost })
-  } else if (/(plastificad|laminad)/.test(normalizedBrief)) {
+  } else if (hasPlastificado) {
     notes.push('El laminado/plastificado pedido no tiene una tarifa específica compatible en la base JSON y quedó fuera del total.')
   }
 
@@ -913,7 +920,9 @@ export function estimateKnowledgeOnlyCost(args: {
     machineName: `Montaje ${machineSize.key}`,
     paperName: paper.nombre,
     paperSheet: `${paper.pliegoWidthCm} x ${paper.pliegoHeightCm} cm`,
+    paperQuantityLabel: paperPliegos != null ? `${paperPliegos} pliegos` : null,
     sizeLabel,
+    productionCutLabel: machineSize.key,
     productionCost,
     utility,
     subtotalBeforeIva,

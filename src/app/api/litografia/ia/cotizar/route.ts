@@ -78,7 +78,9 @@ type CostBreakdown = {
   machineName: string | null
   paperName: string | null
   paperSheet: string | null
+  paperQuantityLabel: string | null
   sizeLabel: string | null
+  productionCutLabel: string | null
   productionCost: number | null
   utility: number | null
   subtotalBeforeIva: number | null
@@ -609,6 +611,8 @@ async function buildAssistantQuoteReply(args: {
       ivaLine,
       totalLine,
       unitLine,
+      costBreakdown.paperQuantityLabel ? `Papel estimado: ${costBreakdown.paperQuantityLabel} de ${materialLabel} sobre pliego ${costBreakdown.paperSheet}.` : null,
+      costBreakdown.productionCutLabel ? `Montaje o corte de producción: ${costBreakdown.productionCutLabel}.` : null,
       costBreakdown.paperSheet ? `Papel base analizado: ${materialLabel} sobre pliego ${costBreakdown.paperSheet}.` : `Papel base analizado: ${materialLabel}.`,
       `Perfil de producción tomado: ${machineLabel}.`,
       'Siguiente paso recomendado: si quieres afinarla, confirma solo los acabados o costos que no existan explícitamente en la base JSON.',
@@ -658,6 +662,8 @@ async function buildAssistantQuoteReply(args: {
     ? `Supuestos usados: ${assumptions.join(' ')}`
     : null
   const responseGuidance = [
+    costBreakdown.paperQuantityLabel ? `Papel estimado: ${costBreakdown.paperQuantityLabel} de ${materialLabel} sobre pliego ${costBreakdown.paperSheet}.` : null,
+    costBreakdown.productionCutLabel ? `Montaje o corte de producción: ${costBreakdown.productionCutLabel}.` : null,
     costBreakdown.paperSheet ? `Papel base analizado: ${materialLabel} sobre pliego ${costBreakdown.paperSheet}.` : `Papel base analizado: ${materialLabel}.`,
     `Perfil de producción tomado: ${machineLabel}.`,
     missingSummary,
@@ -853,7 +859,9 @@ function buildCostBreakdown(args: {
       machineName: knowledgeEstimate.machineName ?? 'Base JSON',
       paperName: knowledgeEstimate.paperName,
       paperSheet: knowledgeEstimate.paperSheet,
+      paperQuantityLabel: knowledgeEstimate.paperQuantityLabel ?? null,
       sizeLabel: knowledgeEstimate.sizeLabel,
+      productionCutLabel: knowledgeEstimate.productionCutLabel ?? null,
       productionCost: knowledgeEstimate.productionCost,
       utility: knowledgeEstimate.utility,
       subtotalBeforeIva: knowledgeEstimate.subtotalBeforeIva,
@@ -886,7 +894,9 @@ function buildCostBreakdown(args: {
       machineName: null,
       paperName: null,
       paperSheet: null,
+      paperQuantityLabel: null,
       sizeLabel: null,
+      productionCutLabel: null,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -906,7 +916,9 @@ function buildCostBreakdown(args: {
       machineName: null,
       paperName: paper?.nombre ?? null,
       paperSheet: paper ? `${paper.pliegoWidthCm ?? 0} x ${paper.pliegoHeightCm ?? 0} cm` : null,
+      paperQuantityLabel: null,
       sizeLabel: size?.nombre ?? null,
+      productionCutLabel: null,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -967,7 +979,9 @@ function buildCostBreakdown(args: {
       machineName: null,
       paperName: paper.nombre,
       paperSheet: `${paper.pliegoWidthCm ?? 0} x ${paper.pliegoHeightCm ?? 0} cm`,
+      paperQuantityLabel: null,
       sizeLabel: size?.nombre ?? `${analysis.extracted.anchoCm} x ${analysis.extracted.altoCm} cm`,
+      productionCutLabel: null,
       productionCost: null,
       utility: null,
       subtotalBeforeIva: null,
@@ -1018,7 +1032,9 @@ function buildCostBreakdown(args: {
     machineName: best.profile.nombre,
     paperName: paper.nombre,
     paperSheet: `${paper.pliegoWidthCm ?? 0} x ${paper.pliegoHeightCm ?? 0} cm`,
+    paperQuantityLabel: best.result.pliegosNecesarios != null ? `${best.result.pliegosNecesarios} pliegos` : null,
     sizeLabel: size?.nombre ?? `${analysis.extracted.anchoCm} x ${analysis.extracted.altoCm} cm`,
+    productionCutLabel: best.profile.nombre,
     productionCost,
     utility,
     subtotalBeforeIva,

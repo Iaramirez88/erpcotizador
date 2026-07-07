@@ -2191,6 +2191,19 @@ export function LitografiaQuoteDialog(props: {
       setCustomFormatoHeightCm(String(draft.altoCm))
     }
 
+    if (!matchedSize && draft.pricingHints?.sizeLabel) {
+      const matchedPricingSize = sizeOptions.find((size) => {
+        const haystack = normalizeAiDraftText(size.nombre)
+        const needle = normalizeAiDraftText(draft.pricingHints?.sizeLabel)
+        return Boolean(needle) && (haystack.includes(needle) || needle.includes(haystack))
+      })
+      if (matchedPricingSize) {
+        setFormatoKey(matchedPricingSize.key)
+        setCustomFormatoWidthCm("")
+        setCustomFormatoHeightCm("")
+      }
+    }
+
     const inferredPaperType = inferAiDraftPaperType(draft.material)
     if (inferredPaperType) {
       setPapelTipo(inferredPaperType)
@@ -2208,6 +2221,18 @@ export function LitografiaQuoteDialog(props: {
       setPaperRows([{ paperId: matchedPaper.id, qty: "1", formatoKey: "" }])
       setSelectedPaperTipo(String(matchedPaper.tipo || "").trim())
       setSelectedPaperGramaje(matchedPaper.gramaje != null ? String(matchedPaper.gramaje) : "")
+    } else if (draft.pricingHints?.paperName) {
+      const matchedPricingPaper = activePapers.find((paper) => {
+        const haystack = normalizeAiDraftText(`${paper.nombre} ${paper.tipo || ""} ${paper.gramaje ?? ""}`)
+        const needle = normalizeAiDraftText(draft.pricingHints?.paperName)
+        return Boolean(needle) && (haystack.includes(needle) || needle.includes(haystack))
+      })
+
+      if (matchedPricingPaper) {
+        setPaperRows([{ paperId: matchedPricingPaper.id, qty: "1", formatoKey: "" }])
+        setSelectedPaperTipo(String(matchedPricingPaper.tipo || "").trim())
+        setSelectedPaperGramaje(matchedPricingPaper.gramaje != null ? String(matchedPricingPaper.gramaje) : "")
+      }
     }
 
     const normalizedFinish = normalizeAiDraftText(draft.acabado)
@@ -2253,6 +2278,22 @@ export function LitografiaQuoteDialog(props: {
       }
     }
 
+    if (draft.pricingHints?.machineName) {
+      const matchedMachine = activePlanchaProfiles.find((profile) => {
+        const haystack = normalizeAiDraftText(profile.nombre)
+        const needle = normalizeAiDraftText(draft.pricingHints?.machineName)
+        return Boolean(needle) && (haystack.includes(needle) || needle.includes(haystack))
+      })
+
+      if (matchedMachine) {
+        setSelectedMachineProfileId(matchedMachine.id)
+        setSelectedPlanchaProfileIds([matchedMachine.id])
+        setSelectedPlanchaProfileQtys(["1"])
+        setSelectedTintaProfileIds([matchedMachine.id])
+        setSelectedTintaProfileQtys(["1"])
+      }
+    }
+
     const normalizedEntrega = normalizeAiDraftText(draft.entrega)
     if (normalizedEntrega) {
       const matchedTransport = transporteOptions.find((option) => {
@@ -2261,6 +2302,15 @@ export function LitografiaQuoteDialog(props: {
       })
       if (matchedTransport) {
         setSelectedTransporteKey(matchedTransport.value)
+      }
+    } else if (draft.pricingHints?.transportLabel) {
+      const matchedPricingTransport = transporteOptions.find((option) => {
+        const haystack = normalizeAiDraftText(`${option.value} ${option.label}`)
+        const needle = normalizeAiDraftText(draft.pricingHints?.transportLabel)
+        return Boolean(needle) && (haystack.includes(needle) || needle.includes(haystack))
+      })
+      if (matchedPricingTransport) {
+        setSelectedTransporteKey(matchedPricingTransport.value)
       }
     }
 

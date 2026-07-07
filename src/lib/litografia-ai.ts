@@ -211,7 +211,7 @@ function parseDimensiones(brief: string, quoteType: string) {
 
   if (quoteType === 'CARPETA') {
     if (/carpeta\s+carta|carta\s+final(?:izada)?|folder\s+letter/.test(brief)) {
-      return { anchoCm: 45.72, altoCm: 30.48 }
+      return { anchoCm: 43, altoCm: 28 }
     }
     if (/carpeta\s+a4|folder\s+a4/.test(brief)) {
       return { anchoCm: 47, altoCm: 32 }
