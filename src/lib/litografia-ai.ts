@@ -244,18 +244,24 @@ function parseDimensiones(brief: string, quoteType: string) {
 }
 
 function parsePaginas(brief: string, quoteType: string) {
-  const match = brief.match(/(\d{1,4})\s+pag(?:inas|s)?/i)
-  if (match) {
-    const pages = Number(match[1])
-    return Number.isFinite(pages) && pages > 0 ? pages : null
-  }
-
   if (isEditorialQuoteType(quoteType)) {
+    const innerPagesMatch = brief.match(/(\d{1,4})\s+pag(?:inas|s)?\s+internas?/i)
+    if (innerPagesMatch) {
+      const pages = Number(innerPagesMatch[1])
+      return Number.isFinite(pages) && pages > 0 ? pages : null
+    }
+
     const innerSheetsMatch = brief.match(/(\d{1,4})\s+hojas?\s+internas?/i)
     if (innerSheetsMatch) {
       const pages = Number(innerSheetsMatch[1]) * 2
       return Number.isFinite(pages) && pages > 0 ? pages : null
     }
+  }
+
+  const match = brief.match(/(\d{1,4})\s+pag(?:inas|s)?/i)
+  if (match) {
+    const pages = Number(match[1])
+    return Number.isFinite(pages) && pages > 0 ? pages : null
   }
 
   return null

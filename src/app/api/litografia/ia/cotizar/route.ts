@@ -501,6 +501,19 @@ function formatInt(value: number | null | undefined) {
 function formatTintasLabel(brief: string, tintas: 1 | 2 | 4 | null | undefined) {
   const { totalColors, twoSided } = parseColorSpec(brief, tintas ?? null)
   const normalized = normalizeText(brief)
+  const isEditorial = /revista|cartilla|libro/.test(normalized)
+  if (isEditorial) {
+    const coverMatch = normalized.match(/caratula[^\n]*?\b([124]x[014])\b|portada[^\n]*?\b([124]x[014])\b/)
+    const innerMatch = normalized.match(/internas?[^\n]*?\b([124]x[014])\b|interiores?[^\n]*?\b([124]x[014])\b/)
+    const coverTintas = coverMatch?.[1] || coverMatch?.[2] || null
+    const innerTintas = innerMatch?.[1] || innerMatch?.[2] || null
+    if (coverTintas || innerTintas) {
+      const parts = []
+      if (coverTintas) parts.push(`carátula ${coverTintas}`)
+      if (innerTintas) parts.push(`internas ${innerTintas}`)
+      return parts.join(' / ')
+    }
+  }
   const explicit = normalized.match(/\b([124])x([014])\b/)
 
   if (explicit) return `${explicit[1]}x${explicit[2]}`
