@@ -125,6 +125,13 @@ function parseMaterialRequest(material: string | null | undefined) {
   return { normalized, family, gramaje }
 }
 
+function extractMaterialHint(value: string | null | undefined) {
+  const normalized = normalizeText(value)
+  if (!normalized) return ''
+  const match = normalized.match(/(propalcote|bond|opalina|carton|maule|adhesivo|eart pack)(?:\s+\d{2,3}\s*(?:g|gr|gms)?)?/)
+  return match?.[0] ?? normalized
+}
+
 export function findKnowledgeBackedPaperCandidate(args: {
   document: LitografiaAiKnowledgeDocument
   material: string | null | undefined
@@ -268,16 +275,36 @@ function selectPaperBySegment(args: {
 }) {
   const { segment, fallbackSegment, paperOptions, formatWidthCm, formatHeightCm, qty, sobranteMinimo } = args
   const searchSegments = [segment, fallbackSegment].map((value) => normalizeText(value)).filter(Boolean)
+  const primaryRequest = parseMaterialRequest(extractMaterialHint(segment))
+  const fallbackRequest = parseMaterialRequest(extractMaterialHint(fallbackSegment))
+  const materialRequests = (primaryRequest.family ? [primaryRequest] : [primaryRequest, fallbackRequest])
+    .filter((value) => value.family)
   const prefersNarrowSheet = searchSegments.some((value) => value.includes('90x60') || value.includes('60x90'))
 
   const scored = paperOptions
     .map((paper) => {
       const paperName = normalizeText(paper.nombre)
-      const score = searchSegments.reduce((total, value, index) => {
+      const paperRequestScore = materialRequests.reduce((best, request, index) => {
+        const paperRequestFamily = request.family
+        if (!paperRequestFamily) return best
+
+        const paperNameMatchesFamily = paperName.includes(paperRequestFamily) || paperRequestFamily.includes(paperName.split(' ')[0] || '')
+        if (!paperNameMatchesFamily) return best
+
+        const paperGramaje = parsePaperGramaje(paper.nombre)
+        const gramajeDiff = request.gramaje != null && paperGramaje != null ? Math.abs(request.gramaje - paperGramaje) : null
+        const baseScore = index === 0 ? 120 : 80
+        const exactGramBonus = gramajeDiff === 0 ? 60 : 0
+        const nearestGramBonus = gramajeDiff != null ? Math.max(0, 120 - gramajeDiff) : 10
+        return Math.max(best, baseScore + exactGramBonus + nearestGramBonus)
+      }, 0)
+
+      const textScore = searchSegments.reduce((total, value, index) => {
         if (!value.includes(paperName)) return total
         return total + (index === 0 ? 100 : 50)
       }, 0)
 
+      const score = Math.max(textScore, paperRequestScore)
       if (!score) return null
 
       const compute = computeLitografia({
@@ -311,7 +338,7 @@ function selectPaperBySegment(args: {
       }
     })
     .filter((item): item is { paper: PaperOption; score: number; paperCost: number; paperSheet: string; sheetPriority: number } => Boolean(item))
-    .sort((left, right) => left.sheetPriority - right.sheetPriority || left.paperCost - right.paperCost || right.score - left.score)
+    .sort((left, right) => left.sheetPriority - right.sheetPriority || right.score - left.score || left.paperCost - right.paperCost)
 
   return scored[0] ?? null
 }
@@ -366,7 +393,28 @@ function findCompaginadoUnitCost(document: LitografiaAiKnowledgeDocument, qty: n
 
 function findPerThousandPrice(document: LitografiaAiKnowledgeDocument, sizeName: string) {
   const normalized = normalizeText(sizeName)
-  return document.costos.plastificado.find((entry) => normalizeText(entry.nombre).includes(normalized) && entry.valor > 0)?.valor ?? 0
+  const direct = document.costos.plastificado.find((entry) => normalizeText(entry.nombre).includes(normalized) && entry.valor > 0)
+  if (direct) return direct.valor
+
+  const targetDims = parseDimensionsFromText(sizeName)
+  if (!targetDims) return 0
+
+  const candidates = document.costos.plastificado
+    .map((entry) => {
+      const dims = parseDimensionsFromText(entry.medidas_cm)
+      if (!dims || entry.valor <= 0) return null
+      const fitsDirect = dims.widthCm + 0.8 >= targetDims.widthCm && dims.heightCm + 0.8 >= targetDims.heightCm
+      const fitsRotated = dims.widthCm + 0.8 >= targetDims.heightCm && dims.heightCm + 0.8 >= targetDims.widthCm
+      if (!fitsDirect && !fitsRotated) return null
+      return {
+        entry,
+        area: dims.widthCm * dims.heightCm,
+      }
+    })
+    .filter((item): item is { entry: LitografiaAiKnowledgeDocument['costos']['plastificado'][number]; area: number } => Boolean(item))
+    .sort((left, right) => left.area - right.area)
+
+  return candidates[0]?.entry.valor ?? 0
 }
 
 function findTerminadoPerThousandCost(document: LitografiaAiKnowledgeDocument, nameNeedle: string) {
@@ -421,15 +469,16 @@ export function estimateEditorialKnowledgeCost(args: {
 
   const finalSizeName = findFinalSizeName(document, widthCm, heightCm)
   const openSize = inferOpenSize(widthCm, heightCm)
-  const machineSize = pickMachineSize(openSize.widthCm, openSize.heightCm)
-  const paperOptions = parsePaperOptions(document)
   const coverSegment = findFirstPartSegment(brief, ['caratula', 'carátula', 'portada'])
   const innerSegment = normalizedBrief.replace(coverSegment, '')
+  const innerTintas = parseSectionTintas(innerSegment, extracted.tintas ?? 4)
+  const coverTintas = parseSectionTintas(coverSegment || normalizedBrief, extracted.tintas ?? 4)
+  const machineTintas = innerTintas === 4 || coverTintas === 4 ? 4 : (Math.max(innerTintas, coverTintas) as 1 | 2 | 4)
+  const machineSize = inferMachineSize(openSize.widthCm, openSize.heightCm, machineTintas)
+  const paperOptions = parsePaperOptions(document)
   const coverPages = /caratula|carátula|portada|contraportada/.test(normalizedBrief) ? 4 : 0
   const innerForms = Math.max(1, Math.ceil(innerPages / 4))
   const coverForms = coverPages > 0 ? 1 : 0
-  const innerTintas = parseSectionTintas(innerSegment, extracted.tintas ?? 4)
-  const coverTintas = parseSectionTintas(coverSegment || normalizedBrief, extracted.tintas ?? 4)
   const sobranteMinimo = 100
 
   if (!finalSizeName || !machineSize) {
@@ -522,11 +571,13 @@ export function estimateEditorialKnowledgeCost(args: {
   const coverPaper = coverPaperSelection.paperCost
 
   const hasPlastificadoMate = /plastificado mate|laminado mate/.test(normalizedBrief)
+  const hasGenericPlastificado = /plastificad|laminad/.test(normalizedBrief)
   const hasUv = /barniz uv|uv parcial|parcial uv|uv/.test(normalizedBrief)
   const hasHolmet = /holmet/.test(normalizedBrief)
   const hasCosida = /cosida|caballete|grapad|grafa/.test(normalizedBrief)
 
-  const plastificadoPerThousand = hasPlastificadoMate ? findPerThousandPrice(document, finalSizeName) : 0
+  const plastificadoReference = `${openSize.widthCm}x${openSize.heightCm}`
+  const plastificadoPerThousand = hasPlastificadoMate || hasGenericPlastificado ? findPerThousandPrice(document, plastificadoReference) : 0
   const plastificadoCost = plastificadoPerThousand > 0 ? Math.max(1, Math.ceil(quantity / 1000)) * plastificadoPerThousand : 0
   const uvCost = hasUv ? findCatalogFinishValue(catalogFinishes, /uv/) : 0
   const holmetUnitCost = hasHolmet ? findTerminadoUnitCost(document, 'holmet', quantity) : 0
@@ -573,6 +624,11 @@ export function estimateEditorialKnowledgeCost(args: {
     `Montaje tentativo: ${machineSize.key} usando la base de conocimiento editorial.`,
     `Internas interpretadas como ${innerTintas} tintas${innerTwoSided ? ' por ambas caras' : ' por una cara'}; carátula como ${coverTintas} tintas${coverTwoSided ? ' por ambas caras' : ' por una cara'}.`,
   ]
+
+  const innerSheetsMatch = normalizedBrief.match(/(\d+)\s+hojas?\s+internas?/)
+  if (innerSheetsMatch) {
+    notes.push(`Se tomó "${innerSheetsMatch[1]} hojas internas" como ${innerPages} páginas internas para poder estimar; equivale a ${innerPages / 2} hojas impresas tiro y retiro.`)
+  }
 
   if (hasUv && uvCost <= 0) {
     notes.push('El barniz UV quedó como referencia técnica, pero no encontró una tarifa específica en la base JSON; el total puede quedar corto frente al cierre final.')
@@ -659,13 +715,6 @@ function computeKnowledgeSimpleLayout(args: {
     costoTransporte: 0,
     margenPct: 0,
   })
-}
-
-function findFinishRateBySize(document: LitografiaAiKnowledgeDocument, sizeName: string, matcher: RegExp) {
-  const normalizedSize = normalizeText(sizeName)
-  return document.costos.plastificado.find((entry) => {
-    return normalizeText(entry.nombre).includes(normalizedSize) && matcher.test(normalizeText(entry.nombre))
-  }) || null
 }
 
 export function estimateKnowledgeOnlyCost(args: {

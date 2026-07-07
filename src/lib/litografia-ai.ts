@@ -243,11 +243,22 @@ function parseDimensiones(brief: string, quoteType: string) {
   return { anchoCm: null, altoCm: null }
 }
 
-function parsePaginas(brief: string) {
+function parsePaginas(brief: string, quoteType: string) {
   const match = brief.match(/(\d{1,4})\s+pag(?:inas|s)?/i)
-  if (!match) return null
-  const pages = Number(match[1])
-  return Number.isFinite(pages) && pages > 0 ? pages : null
+  if (match) {
+    const pages = Number(match[1])
+    return Number.isFinite(pages) && pages > 0 ? pages : null
+  }
+
+  if (isEditorialQuoteType(quoteType)) {
+    const innerSheetsMatch = brief.match(/(\d{1,4})\s+hojas?\s+internas?/i)
+    if (innerSheetsMatch) {
+      const pages = Number(innerSheetsMatch[1]) * 2
+      return Number.isFinite(pages) && pages > 0 ? pages : null
+    }
+  }
+
+  return null
 }
 
 function parseTintas(brief: string): 1 | 2 | 4 | null {
@@ -471,7 +482,7 @@ export function analyzeLitografiaBriefWithRules(brief: string): LitografiaAiResu
     cantidad: parseCantidad(lowerBrief),
     anchoCm,
     altoCm,
-    paginas: parsePaginas(lowerBrief),
+    paginas: parsePaginas(lowerBrief, quoteType),
     tintas: parseTintas(lowerBrief),
     material: parseKeyword(lowerBrief, MATERIAL_PATTERNS),
     acabado: parseKeyword(lowerBrief, FINISH_PATTERNS),
