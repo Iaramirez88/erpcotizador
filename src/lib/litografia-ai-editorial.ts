@@ -132,9 +132,11 @@ export function findKnowledgeBackedPaperCandidate(args: {
   heightCm: number
   quantity: number
   sobranteMinimo?: number
+  preferWideSheet?: boolean
 }) {
   const { document, material, widthCm, heightCm, quantity } = args
   const sobranteMinimo = Math.max(0, Math.trunc(Number(args.sobranteMinimo || 0)))
+  const preferWideSheet = args.preferWideSheet === true
   const request = parseMaterialRequest(material)
   if (!request.family) return null
 
@@ -174,12 +176,16 @@ export function findKnowledgeBackedPaperCandidate(args: {
         exactGram,
         diff,
         paperCost: compute.papel,
+        sheetPriority: preferWideSheet
+          ? (Math.max(paper.widthCm, paper.heightCm) >= 100 ? 0 : 1)
+          : (Math.max(paper.widthCm, paper.heightCm) >= 100 ? 1 : 0),
       }
     })
-    .filter((entry): entry is { paper: PaperOption; paperGramaje: number | null; exactGram: boolean; diff: number; paperCost: number } => Boolean(entry))
+    .filter((entry): entry is { paper: PaperOption; paperGramaje: number | null; exactGram: boolean; diff: number; paperCost: number; sheetPriority: number } => Boolean(entry))
     .sort((left, right) => {
       if (left.exactGram !== right.exactGram) return left.exactGram ? -1 : 1
       if (left.diff !== right.diff) return left.diff - right.diff
+      if (left.sheetPriority !== right.sheetPriority) return left.sheetPriority - right.sheetPriority
       return left.paperCost - right.paperCost
     })
 
@@ -361,44 +367,6 @@ function findCompaginadoUnitCost(document: LitografiaAiKnowledgeDocument, qty: n
 function findPerThousandPrice(document: LitografiaAiKnowledgeDocument, sizeName: string) {
   const normalized = normalizeText(sizeName)
   return document.costos.plastificado.find((entry) => normalizeText(entry.nombre).includes(normalized) && entry.valor > 0)?.valor ?? 0
-}
-
-function findPerThousandPriceByFit(document: LitografiaAiKnowledgeDocument, widthCm: number, heightCm: number) {
-  const shortSide = Math.min(widthCm, heightCm)
-  const longSide = Math.max(widthCm, heightCm)
-
-  const candidates = document.costos.plastificado
-    .map((entry) => {
-      if (!entry.valor || entry.valor <= 0) return null
-      const dims = parseDimensionsFromText(entry.medidas_cm)
-      if (!dims) return null
-
-      const entryShort = Math.min(dims.widthCm, dims.heightCm)
-      const entryLong = Math.max(dims.widthCm, dims.heightCm)
-      if (shortSide > entryShort + 0.8 || longSide > entryLong + 0.8) return null
-
-      return {
-        nombre: entry.nombre,
-        valor: entry.valor,
-        area: dims.widthCm * dims.heightCm,
-      }
-    })
-    .filter((entry): entry is { nombre: string; valor: number; area: number } => Boolean(entry))
-    .sort((left, right) => left.area - right.area || left.valor - right.valor)
-
-  return candidates[0] ?? null
-}
-
-function resolvePerThousandPrice(document: LitografiaAiKnowledgeDocument, args: { sizeName: string; widthCm: number; heightCm: number }) {
-  const direct = findPerThousandPrice(document, args.sizeName)
-  if (direct > 0) {
-    return {
-      nombre: args.sizeName,
-      valor: direct,
-    }
-  }
-
-  return findPerThousandPriceByFit(document, args.widthCm, args.heightCm)
 }
 
 function findTerminadoPerThousandCost(document: LitografiaAiKnowledgeDocument, nameNeedle: string) {
@@ -660,6 +628,39 @@ function inferSidesMultiplier(brief: string, tintas: 1 | 2 | 4) {
   }
 }
 
+function computeKnowledgeSimpleLayout(args: {
+  quantity: number
+  widthCm: number
+  heightCm: number
+  paper: KnowledgeBackedPaperCandidate
+  machineSize: MachineSizeOption
+}) {
+  const { quantity, widthCm, heightCm, paper, machineSize } = args
+  return computeLitografia({
+    cantidad: quantity,
+    colores: 1,
+    desperdicioPct: 0,
+    sobranteMinimo: 0,
+    sobranteMinimoUnidad: 'hoja_maquina',
+    costoPlanchaPorColor: 0,
+    costoTintaPorColor: 0,
+    costoPapelUnidad: 0,
+    papelModo: 'pliego',
+    papelTipo: normalizeText(paper.nombre).includes('bond') ? 'bond' : normalizeText(paper.nombre).includes('propal') ? 'propalcote' : 'otro',
+    papelPliegoWidthCm: paper.pliegoWidthCm,
+    papelPliegoHeightCm: paper.pliegoHeightCm,
+    papelFormatoWidthCm: widthCm,
+    papelFormatoHeightCm: heightCm,
+    costoPliego: paper.costoPliego,
+    maquinaPliegoWidthCm: machineSize.widthCm,
+    maquinaPliegoHeightCm: machineSize.heightCm,
+    costoCorte: 0,
+    costoAcabados: 0,
+    costoTransporte: 0,
+    margenPct: 0,
+  })
+}
+
 function findFinishRateBySize(document: LitografiaAiKnowledgeDocument, sizeName: string, matcher: RegExp) {
   const normalizedSize = normalizeText(sizeName)
   return document.costos.plastificado.find((entry) => {
@@ -705,6 +706,7 @@ export function estimateKnowledgeOnlyCost(args: {
 
   const sizeLabel = findFinalSizeName(document, widthCm, heightCm) ?? `${widthCm} x ${heightCm} cm`
   const machineSize = inferMachineSize(widthCm, heightCm, tintas)
+  const preferWideSheet = machineSize?.key !== 'octavo' && !/(90x60|60x90)/.test(normalizeText(`${brief} ${extracted.material || ''}`))
   const paper = findKnowledgeBackedPaperCandidate({
     document,
     material: extracted.material,
@@ -712,6 +714,7 @@ export function estimateKnowledgeOnlyCost(args: {
     heightCm,
     quantity,
     sobranteMinimo: 100,
+    preferWideSheet,
   })
 
   if (!machineSize || !paper) {
@@ -758,7 +761,17 @@ export function estimateKnowledgeOnlyCost(args: {
     }
   }
 
-  const printThousands = Math.max(1, Math.ceil((quantity * (colorSpec.twoSided ? 2 : 1)) / 1000))
+  const layout = computeKnowledgeSimpleLayout({
+    quantity,
+    widthCm,
+    heightCm,
+    paper,
+    machineSize,
+  })
+  const piecesPerPliego = Math.max(1, layout.piezasPorPliego || 1)
+  const piecesPerMachineSheet = Math.max(1, layout.piezasPorHojaMaquina || piecesPerPliego)
+  const machineSheets = Math.ceil(quantity / piecesPerMachineSheet)
+  const printThousands = Math.max(1, Math.ceil((machineSheets * (colorSpec.twoSided ? 2 : 1)) / 1000))
   const plancha = (planchaRate.valor || 0) * colorSpec.platesMultiplier
   const impresion = (impresionRate.valor || 0) * printThousands
   const paperCost = computeLitografia({
@@ -794,6 +807,7 @@ export function estimateKnowledgeOnlyCost(args: {
   const notes: string[] = [
     `La referencia se armó únicamente con la base JSON en tamaño ${sizeLabel}.`,
     `Montaje tentativo: ${machineSize.key}.`,
+    `Papel calculado con ${piecesPerPliego} piezas por pliego y 100 tamaños adicionales del montaje de impresión; impresión con ${piecesPerMachineSheet} piezas por hoja de máquina.`,
     paper.source === 'knowledge-nearest' && paper.assumedFrom
       ? `El papel exacto ${paper.assumedFrom} no existe en la base JSON; se tomó la referencia más cercana: ${paper.nombre}.`
       : `Se tomó ${paper.nombre} sobre pliego ${paper.pliegoWidthCm} x ${paper.pliegoHeightCm} cm.`,
@@ -801,15 +815,15 @@ export function estimateKnowledgeOnlyCost(args: {
 
   const normalizedBrief = normalizeText(brief)
   const plastificadoRate = /(plastificad|laminad)\s+mate/.test(normalizedBrief)
-    ? resolvePerThousandPrice(document, { sizeName: sizeLabel, widthCm, heightCm })
+    ? findPerThousandPrice(document, sizeLabel)
     : /(plastificad|laminad)\s+(brillante|brillo)/.test(normalizedBrief)
-      ? resolvePerThousandPrice(document, { sizeName: sizeLabel, widthCm, heightCm })
-      : null
-  if ((plastificadoRate?.valor || 0) > 0) {
+      ? findPerThousandPrice(document, sizeLabel)
+      : 0
+  if (plastificadoRate > 0) {
     const plastQty = quantity <= 500 ? 0.5 : Math.max(1, Math.ceil(quantity / 1000))
-    const plastCost = plastificadoRate!.valor * plastQty
+    const plastCost = plastificadoRate * plastQty
     acabados += plastCost
-    lines.push({ label: plastificadoRate?.nombre || 'Plastificado / laminado', amount: plastCost })
+    lines.push({ label: 'Plastificado / laminado', amount: plastCost })
   } else if (/(plastificad|laminad)/.test(normalizedBrief)) {
     notes.push('El laminado/plastificado pedido no tiene una tarifa específica compatible en la base JSON y quedó fuera del total.')
   }
