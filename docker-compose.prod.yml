@@ -63,6 +63,8 @@ services:
     build:
       context: .
       target: web
+      args:
+        BUILD_MAX_OLD_SPACE_SIZE: ${BUILD_MAX_OLD_SPACE_SIZE:-1536}
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL}
@@ -104,6 +106,7 @@ services:
       migrate:
         condition: service_completed_successfully
     volumes:
+      - runtime_data:/app/.runtime-data
       - scans_data:/app/public/scans
       - uploads_data:/app/public/uploads
       - soportes_data:/app/public/soportes
@@ -150,12 +153,14 @@ services:
         condition: service_completed_successfully
     command: ["npm", "run", "worker:ocr"]
     volumes:
+      - runtime_data:/app/.runtime-data
       - scans_data:/app/public/scans
     restart: unless-stopped
 
 volumes:
   db_data:
   redis_data:
+  runtime_data:
   scans_data:
   uploads_data:
   soportes_data:

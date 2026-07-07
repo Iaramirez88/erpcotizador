@@ -134,7 +134,12 @@ Incluye:
 Persistencia (volúmenes docker):
 - DB: `db_data`
 - Redis: `redis_data`
+- Runtime IA y configuraciones JSON por empresa: `runtime_data`
 - Archivos runtime: `scans_data`, `uploads_data`, `soportes_data`
+
+Importante:
+- El JSON maestro de Litografía IA y la auditoría/historial IA no viven en Postgres; se guardan en `.runtime-data` dentro de la app.
+- Si esa carpeta no está montada a un volumen persistente, cada recreación del contenedor puede devolver la interfaz a “Base por defecto”, aunque la base de datos siga intacta.
 
 ## 5) Backups y operación
 
@@ -148,8 +153,14 @@ Si el Postgres queda dentro del mismo servidor, planifica backups:
 - Considera ventanas de mantenimiento (habrá rebuild/restart).
 
 Para VPS pequeños, usa esta secuencia para reducir picos y hacer el proceso más predecible:
-- `docker compose -f docker-compose.prod.yml build app ocr`
+- `BUILDKIT_PROGRESS=plain docker compose -f docker-compose.prod.yml build app ocr`
 - `docker compose -f docker-compose.prod.yml up -d --no-build`
+
+Si el build parece quedarse congelado en `Creating an optimized production build ...` pero luego avanza apenas tocas el teclado, normalmente no es un error del código sino de la vista interactiva de BuildKit. En ese caso:
+- usa `BUILDKIT_PROGRESS=plain docker compose -f docker-compose.prod.yml build app`
+- o `docker compose --progress plain -f docker-compose.prod.yml build app`
+
+Eso fuerza salida lineal continua y evita la pantalla "pausada" del renderer TTY. Si aun con progreso plano el build tarda demasiado o termina por OOM, sube `BUILD_MAX_OLD_SPACE_SIZE` en `.env` y confirma que el VPS tenga swap activa.
 
 ### Observabilidad mínima
 - Alertas de disco (40GB se llena fácil con scans si no usas S3)
@@ -164,3 +175,4 @@ Para VPS pequeños, usa esta secuencia para reducir picos y hacer el proceso má
 
 
 #ERPPonyo2026*
+sudo docker builder prune -a -f
