@@ -124,13 +124,20 @@ function buildStrictPendingReply(args: {
   const priorityQuestions = getPriorityQuestions(args.analysis)
   const isEditorial = args.analysis.quoteType === 'REVISTA' || args.analysis.quoteType === 'LIBRO' || args.analysis.quoteType === 'CARTILLA'
   const exactBlockedByEditorialFlow = isEditorial && args.costBreakdown.status !== 'AVAILABLE'
+  const mentionsOpenSize = /\babiert[ao]s?\b|\bdesplegad[ao]s?\b/.test(args.analysis.normalizedBrief)
   const title = exactBlockedByEditorialFlow
     ? 'Faltan datos mínimos para precio editorial exacto'
     : 'Faltan datos mínimos para precio exacto'
 
   const opening = exactBlockedByEditorialFlow
-    ? 'Con lo actual todavía no puedo cerrar una referencia editorial suficiente desde la base JSON porque faltan portada, internas o acabados base.'
+    ? 'Con lo actual todavía no puedo cerrar una referencia editorial suficiente desde la base JSON porque en revistas, libros y cartillas primero debo separar tamaño final cerrado, internas y carátula.'
     : 'Con lo actual todavía no puedo cerrar una referencia suficiente solo con la base JSON.'
+
+  const editorialRule = exactBlockedByEditorialFlow
+    ? mentionsOpenSize
+      ? 'Regla editorial: si el brief trae tamaño abierto de impresión, primero necesito confirmar el tamaño final cerrado del producto. Ejemplo: carta abierta normalmente se interpreta como media carta final.'
+      : 'Regla editorial: portada/carátula e internas se costean por separado porque no necesariamente comparten papel, tintas, planchas ni acabados.'
+    : null
 
   const approximation = args.costBreakdown.totalSuggested != null
     ? `Como aproximación operativa, el motor interno proyecta ${formatCopCurrency(args.costBreakdown.totalSuggested)} y un unitario cercano a ${formatCopCurrency(args.costBreakdown.unitPriceWithIva)}.`
@@ -144,14 +151,14 @@ function buildStrictPendingReply(args: {
     ? ['Para cerrarlo rápido, empezaría por estos datos prioritarios:', ...priorityQuestions.map((item, index) => `${index + 1}. ${item}`)].join('\n')
     : 'Si completas esos datos, puedo intentar una referencia operativa usando solo la base JSON.'
 
-  const message = [opening, erpContext, approximation, '', questionsBlock].filter((line): line is string => Boolean(line)).join('\n')
+  const message = [opening, editorialRule, erpContext, approximation, '', questionsBlock].filter((line): line is string => Boolean(line)).join('\n')
 
   return {
     title,
     message,
     assumptions: [
       exactBlockedByEditorialFlow
-        ? 'La ruta IA todavía no compone el costo editorial completo cuando faltan piezas base dentro del JSON.'
+        ? 'La ruta IA editorial necesita tamaño final cerrado y definición separada de portada e internas antes de cerrar el costo.'
         : 'La referencia desde JSON requiere cerrar los campos mínimos del trabajo.',
     ],
     copyText: message,

@@ -58,9 +58,9 @@ type ExtractedData = LitografiaAiResult['extracted']
 const TINTAS_QUESTION = '¿La impresión va a 1, 2 o 4 tintas?'
 
 const PRODUCT_PATTERNS: Array<{ type: string; expressions: RegExp[] }> = [
-  { type: 'REVISTA', expressions: [/\brevista\b/i] },
-  { type: 'CARTILLA', expressions: [/\bcartilla\b/i] },
-  { type: 'LIBRO', expressions: [/\blibro\b/i] },
+  { type: 'REVISTA', expressions: [/\brevista(s)?\b/i] },
+  { type: 'CARTILLA', expressions: [/\bcartilla(s)?\b/i] },
+  { type: 'LIBRO', expressions: [/\blibro(s)?\b/i] },
   { type: 'VOLANTE', expressions: [/\bvolante(s)?\b/i, /\bflyer(s)?\b/i] },
   { type: 'PLEGABLE', expressions: [/\bplegable(s)?\b/i, /\bdiptico(s)?\b/i, /\btriptico(s)?\b/i] },
   { type: 'TARJETA', expressions: [/\btarjeta(s)?\b/i] },
@@ -90,8 +90,11 @@ const MATERIAL_PATTERNS = [
 const FINISH_PATTERNS = [
   'plastificado mate',
   'plastificado brillante',
+  'plastificado',
+  'plastificada',
   'laminado mate',
   'laminado brillante',
+  'laminado',
   'parcial uv',
   'uv parcial',
   'troquelado',
@@ -154,6 +157,35 @@ function parseProductType(brief: string) {
   return 'OTRO'
 }
 
+function isEditorialQuoteType(quoteType: string) {
+  return quoteType === 'REVISTA' || quoteType === 'LIBRO' || quoteType === 'CARTILLA'
+}
+
+function hasEditorialOpenCue(brief: string) {
+  return /\babiert[ao]s?\b|\bdesplegad[ao]s?\b/.test(brief)
+}
+
+function hasEditorialCoverSegment(brief: string) {
+  return /caratula|caratulas|portada|contraportada/.test(brief)
+}
+
+function hasEditorialInnerSegment(brief: string) {
+  return /hojas?\s+internas?|paginas?\s+internas?|interiores?/.test(brief)
+}
+
+function hasEditorialSheetCount(brief: string) {
+  return /(\d{1,4})\s+hojas?\s+internas?/.test(brief)
+}
+
+function inferClosedSizeFromOpen(anchoCm: number, altoCm: number) {
+  const shortSide = Math.min(anchoCm, altoCm)
+  const longSide = Math.max(anchoCm, altoCm)
+  const foldedSide = longSide / 2
+  return foldedSide <= shortSide
+    ? { anchoCm: foldedSide, altoCm: shortSide }
+    : { anchoCm: shortSide, altoCm: foldedSide }
+}
+
 function parseCantidad(brief: string) {
   const match = brief.match(/(?:^|\s)(\d{1,3}(?:[.,]\d{3})+|\d{3,6})(?:\s+unidades|\s+unds?|\s+ejemplares|\s+piezas|\s+volantes|\s+tarjetas|\s+revistas|\s+libros|\s*$)/i)
   if (!match) return null
@@ -164,9 +196,16 @@ function parseCantidad(brief: string) {
 function parseDimensiones(brief: string, quoteType: string) {
   const directMatch = brief.match(/(\d{1,3}(?:[.,]\d{1,2})?)\s*(?:x|por)\s*(\d{1,3}(?:[.,]\d{1,2})?)\s*cm/i)
   if (directMatch) {
-    return {
+    const directSize = {
       anchoCm: Number(directMatch[1].replace(',', '.')),
       altoCm: Number(directMatch[2].replace(',', '.')),
+    }
+    if (isEditorialQuoteType(quoteType) && hasEditorialOpenCue(brief)) {
+      return inferClosedSizeFromOpen(directSize.anchoCm, directSize.altoCm)
+    }
+    return {
+      anchoCm: directSize.anchoCm,
+      altoCm: directSize.altoCm,
     }
   }
 
@@ -194,7 +233,11 @@ function parseDimensiones(brief: string, quoteType: string) {
   }
 
   for (const [label, size] of Object.entries(aliases)) {
-    if (brief.includes(label)) return size
+    if (!brief.includes(label)) continue
+    if (isEditorialQuoteType(quoteType) && hasEditorialOpenCue(brief)) {
+      return inferClosedSizeFromOpen(size.anchoCm, size.altoCm)
+    }
+    return size
   }
 
   return { anchoCm: null, altoCm: null }
@@ -236,19 +279,37 @@ function parseObservaciones(brief: string) {
   if (/tiro y retiro|doble cara|por ambas caras/i.test(brief)) notes.push('Impresión por ambas caras')
   if (/diseno|arte final|diagramacion/i.test(brief)) notes.push('Requiere apoyo de diseño o arte final')
   if (/empaque|embalaje/i.test(brief)) notes.push('Validar requerimiento de empaque')
+  if (hasEditorialOpenCue(brief)) notes.push('El brief menciona tamaño abierto; confirmar tamaño final cerrado del producto editorial')
+  if (hasEditorialSheetCount(brief)) notes.push('El brief menciona hojas internas; confirmar si el dato está expresado en hojas o en páginas interiores')
   return notes
 }
 
-function buildQuestions(extracted: ExtractedData, quoteType: string) {
+function buildQuestions(extracted: ExtractedData, quoteType: string, brief: string) {
   const questions: string[] = []
+  const isEditorial = isEditorialQuoteType(quoteType)
 
   if (!extracted.cantidad) questions.push('¿Cuál es la cantidad exacta de piezas o ejemplares?')
-  if (!extracted.anchoCm || !extracted.altoCm) questions.push('¿Cuál es el tamaño final del impreso en centímetros?')
+  if (!extracted.anchoCm || !extracted.altoCm) {
+    questions.push(isEditorial
+      ? '¿Cuál es el tamaño final cerrado del producto? Si lo tienes abierto, indícame también que va doblado para convertirlo bien.'
+      : '¿Cuál es el tamaño final del impreso en centímetros?')
+  }
   if (!extracted.material) questions.push('¿Qué papel o sustrato se debe usar? Si conoces el gramaje exacto, también me ayuda para afinar el valor.')
   if (!extracted.tintas) questions.push(TINTAS_QUESTION)
   if (!extracted.acabado && quoteType !== 'VOLANTE') questions.push('¿Lleva algún acabado como laminado, barniz UV, troquel o plegado?')
-  if ((quoteType === 'REVISTA' || quoteType === 'LIBRO' || quoteType === 'CARTILLA') && !extracted.paginas) {
-    questions.push('¿Cuántas páginas interiores y cuántas páginas de portada/contraportada tiene?')
+  if (isEditorial && hasEditorialOpenCue(brief)) {
+    questions.push('Cuando dices tamaño abierto, ¿cuál debe ser el tamaño final cerrado? Ejemplo: carta abierta normalmente cierra en media carta.')
+  }
+  if (isEditorial && !extracted.paginas) {
+    questions.push(hasEditorialSheetCount(brief)
+      ? '¿Esas hojas internas están expresadas como hojas o como páginas? Para costear editorial necesito la paginación interior exacta.'
+      : '¿Cuántas páginas interiores tiene el producto?')
+  }
+  if (isEditorial && !hasEditorialCoverSegment(brief)) {
+    questions.push('¿La portada/carátula va por separado de las internas? Si sí, dime papel, tintas y acabado de la carátula.')
+  }
+  if (isEditorial && !hasEditorialInnerSegment(brief)) {
+    questions.push('¿Qué papel y tintas llevan exactamente las internas?')
   }
 
   return questions
@@ -314,14 +375,18 @@ function stripJsonFences(content: string) {
   return content.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim()
 }
 
-function buildMissingFields(extracted: ExtractedData, quoteType: string) {
+function buildMissingFields(extracted: ExtractedData, quoteType: string, brief: string) {
+  const isEditorial = isEditorialQuoteType(quoteType)
   return [
     !extracted.producto ? 'producto' : null,
     !extracted.cantidad ? 'cantidad' : null,
-    !extracted.anchoCm || !extracted.altoCm ? 'tamaño final' : null,
+    !extracted.anchoCm || !extracted.altoCm ? (isEditorial ? 'tamaño final cerrado' : 'tamaño final') : null,
+    isEditorial && hasEditorialOpenCue(brief) ? 'confirmación de tamaño final cerrado' : null,
     !extracted.material ? 'papel o sustrato base' : null,
     !extracted.tintas ? 'tintas' : null,
-    (quoteType === 'REVISTA' || quoteType === 'LIBRO' || quoteType === 'CARTILLA') && !extracted.paginas ? 'paginación' : null,
+    isEditorial && !extracted.paginas ? 'paginación interior exacta' : null,
+    isEditorial && !hasEditorialCoverSegment(brief) ? 'detalle de portada o carátula' : null,
+    isEditorial && !hasEditorialInnerSegment(brief) ? 'detalle de internas' : null,
   ].filter((value): value is string => Boolean(value))
 }
 
@@ -340,8 +405,9 @@ function mergeExtractedData(primary: ExtractedData, fallback: ExtractedData): Ex
   }
 }
 
-function buildNextStep(extracted: ExtractedData, quoteType: string, missingFields: string[]) {
+function buildNextStep(extracted: ExtractedData, quoteType: string, missingFields: string[], brief: string) {
   const suggestions: string[] = []
+  const isEditorial = isEditorialQuoteType(quoteType)
 
   if (extracted.material) {
     const normalizedMaterial = normalizeText(extracted.material)
@@ -354,12 +420,18 @@ function buildNextStep(extracted: ExtractedData, quoteType: string, missingField
     suggestions.push('Si el trabajo lleva domicilio, indícame ciudad o zona para sumar transporte; si el cliente recoge, así lo dejamos sin flete.')
   }
 
+  if (isEditorial && hasEditorialOpenCue(brief)) {
+    suggestions.push('En revistas, libros y cartillas necesito validar el tamaño final cerrado antes de despiece; el tamaño abierto solo sirve como referencia operativa.')
+  }
+
   if (missingFields.length) {
-    const base = `Completa ${missingFields.join(', ')} con el cliente y luego pasa al cotizador litográfico tradicional para cerrar precio exacto.`
+    const base = isEditorial
+      ? `Completa ${missingFields.join(', ')} con el cliente y luego pasa al flujo editorial para cerrar portada, internas y precio exacto.`
+      : `Completa ${missingFields.join(', ')} con el cliente y luego pasa al cotizador litográfico tradicional para cerrar precio exacto.`
     return suggestions.length ? `${base} ${suggestions.join(' ')}` : base
   }
 
-  const readyFor = quoteType === 'REVISTA' || quoteType === 'LIBRO' || quoteType === 'CARTILLA'
+  const readyFor = isEditorial
     ? 'para cargarlo en el flujo editorial y cerrar la cotización exacta'
     : 'para cargarlo en el cotizador litográfico y cerrar la cotización exacta'
   return suggestions.length
@@ -374,7 +446,7 @@ function finalizeAnalysis(args: {
   extracted: ExtractedData
   engine: LitografiaAiResult['engine']
 }) {
-  const missingFields = buildMissingFields(args.extracted, args.quoteType)
+  const missingFields = buildMissingFields(args.extracted, args.quoteType, args.normalizedBrief)
   return {
     normalizedBrief: args.normalizedBrief,
     summary: args.summary,
@@ -382,8 +454,8 @@ function finalizeAnalysis(args: {
     quoteType: args.quoteType,
     extracted: args.extracted,
     missingFields,
-    questions: buildQuestions(args.extracted, args.quoteType),
-    nextStep: buildNextStep(args.extracted, args.quoteType, missingFields),
+    questions: buildQuestions(args.extracted, args.quoteType, args.normalizedBrief),
+    nextStep: buildNextStep(args.extracted, args.quoteType, missingFields, args.normalizedBrief),
     engine: args.engine,
   } satisfies LitografiaAiResult
 }
