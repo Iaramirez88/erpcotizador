@@ -29,6 +29,7 @@ const MODULES: ModuleKey[] = [
   'ORDENES',
   'ESCANEOS',
   'REPORTES',
+  'CONTABILIDAD',
   'NOTIFICACIONES',
   'CONFIG',
 ]
@@ -208,8 +209,13 @@ export default async function PermisosPage({ searchParams }: PageProps) {
   const globalAccess = await prisma.userGlobalAccess.findMany({
     where: { empresaId },
     orderBy: { createdAt: 'asc' },
-    select: { id: true, level: true, user: { select: { email: true, name: true } } },
+    select: { id: true, level: true, user: { select: { id: true, email: true, name: true } } },
   })
+
+  const globalAccessByUserId: Partial<Record<string, AccessLevel>> = {}
+  for (const access of globalAccess) {
+    globalAccessByUserId[access.user.id] = access.level
+  }
 
   return (
     <div className="space-y-6">
@@ -290,6 +296,7 @@ export default async function PermisosPage({ searchParams }: PageProps) {
                     activeSedeId={activeSedeId}
                     activeSedeNombre={activeSede.nombre}
                     initialSedeRole={m.role}
+                    initialGlobalAccess={globalAccessByUserId[m.user.id] ?? 'NONE'}
                     modules={MODULES}
                     initialAccess={accessByUserId[m.user.id] ?? {}}
                   />

@@ -67,19 +67,6 @@ export async function PATCH(request: Request) {
     select: { role: true },
   })
 
-  // Consistencia: si el rol cambia, alinear los permisos explícitos por módulo
-  // para que los módulos habilitados (≠ NONE) reflejen el nivel base del rol.
-  // Los módulos deshabilitados (NONE) se mantienen como override.
-  const base = sedeRoleToBaseAccess(updated.role)
-  await prisma.userModuleAccess.updateMany({
-    where: {
-      sedeId,
-      userId: targetUser.id,
-      level: { not: 'NONE' },
-    },
-    data: { level: base },
-  })
-
   await prisma.notification.create({
     data: {
       userId: targetUser.id,

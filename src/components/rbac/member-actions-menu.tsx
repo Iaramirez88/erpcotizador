@@ -36,6 +36,7 @@ type Props = {
   sedes: SedeRef[]
   user: UserRef
   userDefaultSedeId: string | null
+  initialGlobalAccess: AccessLevel
 
   activeSedeId: string
   activeSedeNombre: string
@@ -48,6 +49,7 @@ export function MemberActionsMenu({
   sedes,
   user,
   userDefaultSedeId,
+  initialGlobalAccess,
   activeSedeId,
   activeSedeNombre,
   initialSedeRole,
@@ -119,6 +121,7 @@ export function MemberActionsMenu({
             initialSedeRole={initialSedeRole}
             modules={modules}
             initial={initialAccess}
+            initialGlobalAccess={initialGlobalAccess}
             trigger={
               <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                 {t('rbac.userPermissions.button')}

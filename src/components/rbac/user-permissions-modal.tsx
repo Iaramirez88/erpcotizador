@@ -11,8 +11,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Switch } from '@/components/ui/switch'
 import { useI18n } from '@/components/providers/i18n-provider'
+import { DASHBOARD_NAV_CATALOG, DASHBOARD_SECTION_ORDER, type DashboardSectionTitle } from '@/lib/product-architecture'
 
 type UserRef = {
   id: string
@@ -27,18 +27,24 @@ type Props = {
   initialSedeRole: 'ADMIN' | 'MANAGER' | 'MEMBER' | 'READER'
   modules: ModuleKey[]
   initial: Partial<Record<ModuleKey, AccessLevel>>
+  initialGlobalAccess: AccessLevel
   trigger?: ReactNode
 }
 
 type Section = {
   key: string
   title: string
-  modules: ModuleKey[]
+  entries: ModuleEntry[]
 }
 
-function isEnabled(level: AccessLevel | undefined): boolean {
-  return (level ?? 'NONE') !== 'NONE'
+type ModuleEntry = {
+  moduleKey: ModuleKey
+  submodules: string[]
 }
+
+type AccessChoice = AccessLevel | 'INHERIT'
+
+const ACCESS_OPTIONS: AccessLevel[] = ['NONE', 'READ', 'WRITE', 'ADMIN']
 
 function baseAccessForSedeRole(role: Props['initialSedeRole']): AccessLevel {
   switch (role) {
@@ -54,68 +60,131 @@ function baseAccessForSedeRole(role: Props['initialSedeRole']): AccessLevel {
   }
 }
 
-export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole, modules, initial, trigger }: Props) {
+function hasExplicitLevel(levels: Partial<Record<ModuleKey, AccessLevel>>, moduleKey: ModuleKey) {
+  return Object.prototype.hasOwnProperty.call(levels, moduleKey)
+}
+
+export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole, modules, initial, initialGlobalAccess, trigger }: Props) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [levels, setLevels] = useState<Partial<Record<ModuleKey, AccessLevel>>>(initial)
   const [saving, setSaving] = useState<Partial<Record<ModuleKey, boolean>>>({})
   const [sedeRole, setSedeRole] = useState<Props['initialSedeRole']>(initialSedeRole)
   const [savingRole, setSavingRole] = useState(false)
+  const [globalLevel, setGlobalLevel] = useState<AccessLevel>(initialGlobalAccess)
+  const [savingGlobal, setSavingGlobal] = useState(false)
 
   const baseLevel = useMemo(() => baseAccessForSedeRole(sedeRole), [sedeRole])
 
   const effectiveLevel = (moduleKey: ModuleKey): AccessLevel => {
-    // Override explícito por módulo (incluye NONE para deshabilitar)
     const explicit = levels[moduleKey]
-    return explicit ?? baseLevel
+    return hasExplicitLevel(levels, moduleKey) ? (explicit ?? 'NONE') : baseLevel
+  }
+
+  const selectedLevel = (moduleKey: ModuleKey): AccessChoice => {
+    return hasExplicitLevel(levels, moduleKey) ? (levels[moduleKey] ?? 'NONE') : 'INHERIT'
   }
 
   const roleOptions: Props['initialSedeRole'][] = ['ADMIN', 'MANAGER', 'MEMBER', 'READER']
 
   const sections: Section[] = useMemo(
-    () => [
-      {
-        key: 'comercial',
-        title: t('rbac.userPermissions.section.commercial'),
-        modules: ['COTIZADOR', 'COTIZACIONES', 'CLIENTES'],
-      },
-      {
-        key: 'produccion',
-        title: t('rbac.userPermissions.section.production'),
-        modules: ['ORDENES', 'REMISIONES', 'INVENTARIO', 'MATERIALES'],
-      },
-      {
-        key: 'compras',
-        title: t('rbac.userPermissions.section.purchases'),
-        modules: ['COMPRAS', 'PROVEEDORES'],
-      },
-      {
-        key: 'operacion',
-        title: t('rbac.userPermissions.section.operations'),
-        modules: ['DASHBOARD', 'POS', 'ESCANEOS', 'REPORTES', 'NOTIFICACIONES', 'CONFIG'],
-      },
-    ],
-    [t]
+    () => {
+      const allowedModules = new Set<ModuleKey>(modules)
+      const sectionsMap = new Map<DashboardSectionTitle, Map<ModuleKey, ModuleEntry>>()
+
+      for (const item of DASHBOARD_NAV_CATALOG) {
+        if (!item.moduleKey) continue
+        const moduleKey = item.moduleKey as ModuleKey
+        if (!allowedModules.has(moduleKey)) continue
+
+        const sectionKey = item.section
+        const label = item.labelKey ? t(item.labelKey) : item.label
+        const sectionEntries = sectionsMap.get(sectionKey) ?? new Map<ModuleKey, ModuleEntry>()
+        const existingEntry = sectionEntries.get(moduleKey)
+
+        if (existingEntry) {
+          if (!existingEntry.submodules.includes(label)) existingEntry.submodules.push(label)
+        } else {
+          sectionEntries.set(moduleKey, {
+            moduleKey,
+            submodules: [label],
+          })
+        }
+
+        sectionsMap.set(sectionKey, sectionEntries)
+      }
+
+      const knownModules = new Set<ModuleKey>()
+      const nextSections: Section[] = []
+
+      for (const sectionTitle of DASHBOARD_SECTION_ORDER) {
+        const entriesMap = sectionsMap.get(sectionTitle)
+        if (!entriesMap?.size) continue
+        const entries = [...entriesMap.values()]
+        for (const entry of entries) knownModules.add(entry.moduleKey)
+        nextSections.push({
+          key: sectionTitle,
+          title: sectionTitle,
+          entries,
+        })
+      }
+
+      const extraEntries = modules
+        .filter((moduleKey) => !knownModules.has(moduleKey))
+        .map((moduleKey) => ({ moduleKey, submodules: [] }))
+
+      if (extraEntries.length) {
+        nextSections.push({
+          key: 'Otros',
+          title: t('rbac.userPermissions.section.other'),
+          entries: extraEntries,
+        })
+      }
+
+      return nextSections
+    },
+    [modules, t]
   )
 
-  const used = useMemo(() => new Set(sections.flatMap((s) => s.modules)), [sections])
-  const extraModules = useMemo(() => modules.filter((m) => !used.has(m)), [modules, used])
-
-  async function toggle(moduleKey: ModuleKey, enabled: boolean) {
+  async function updateModuleLevel(moduleKey: ModuleKey, value: AccessChoice) {
     setSaving((prev) => ({ ...prev, [moduleKey]: true }))
     try {
       const res = await fetch('/api/admin/permisos/module-access', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sedeId, userId: user.id, module: moduleKey, enabled }),
+        body: JSON.stringify({ sedeId, userId: user.id, module: moduleKey, level: value }),
       })
-      const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { level?: AccessLevel } } | null
+      const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { level?: AccessLevel | null } } | null
       if (res.ok && json?.success) {
-        // El backend devuelve el nivel aplicado según rol (READ/WRITE/ADMIN) o NONE.
-        setLevels((prev) => ({ ...prev, [moduleKey]: json.data?.level ?? (enabled ? baseLevel : 'NONE') }))
+        setLevels((prev) => {
+          if (value === 'INHERIT' || json.data?.level == null) {
+            const next = { ...prev }
+            delete next[moduleKey]
+            return next
+          }
+
+          return { ...prev, [moduleKey]: json.data.level }
+        })
       }
     } finally {
       setSaving((prev) => ({ ...prev, [moduleKey]: false }))
+    }
+  }
+
+  async function updateGlobalLevel(nextLevel: AccessLevel) {
+    setSavingGlobal(true)
+    try {
+      const res = await fetch('/api/admin/permisos/global-access', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, level: nextLevel }),
+      })
+      const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { level?: AccessLevel } } | null
+      if (res.ok && json?.success) {
+        setGlobalLevel(json.data?.level ?? nextLevel)
+      }
+    } finally {
+      setSavingGlobal(false)
     }
   }
 
@@ -130,19 +199,6 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
       const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { role?: Props['initialSedeRole'] } } | null
       if (res.ok && json?.success) {
         setSedeRole(json.data?.role ?? nextRole)
-
-        // Mantener consistencia UI: si había overrides "habilitados" (≠ NONE),
-        // al cambiar el rol los alineamos al nuevo acceso base.
-        const nextBase = baseAccessForSedeRole(json.data?.role ?? nextRole)
-        setLevels((prev) => {
-          const next: Partial<Record<ModuleKey, AccessLevel>> = { ...prev }
-          for (const key of Object.keys(next) as ModuleKey[]) {
-            if (next[key] && next[key] !== 'NONE') {
-              next[key] = nextBase
-            }
-          }
-          return next
-        })
       }
     } finally {
       setSavingRole(false)
@@ -194,55 +250,70 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
             </div>
           </div>
 
+          <div className="space-y-2">
+            <div className="font-semibold text-sm">{t('rbac.globalAccess.title')}</div>
+            <div className="rounded border px-3 py-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div className="text-sm text-muted-foreground">{t('rbac.userPermissions.current')}: {t(`rbac.access.${globalLevel}`)}</div>
+              <select
+                className="px-3 py-2 border rounded-md"
+                value={globalLevel}
+                onChange={(e) => {
+                  const next = e.target.value as AccessLevel
+                  setGlobalLevel(next)
+                  void updateGlobalLevel(next)
+                }}
+                disabled={savingGlobal}
+              >
+                {ACCESS_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {t(`rbac.access.${option}`)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="text-xs text-muted-foreground">{t('rbac.userPermissions.generalHint')}</div>
+          </div>
+
           {sections.map((section) => (
             <div key={section.key} className="space-y-2">
               <div className="font-semibold text-sm">{section.title}</div>
               <div className="rounded border">
-                {section.modules.map((moduleKey) => (
+                {section.entries.map((entry) => (
                   <div
-                    key={moduleKey}
-                    className="flex items-center justify-between gap-3 border-b px-3 py-1.5 last:border-b-0"
+                    key={`${section.key}-${entry.moduleKey}`}
+                    className="flex flex-col gap-3 border-b px-3 py-2 last:border-b-0 md:flex-row md:items-center md:justify-between"
                   >
                     <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">{t(`rbac.module.${moduleKey}`)}</div>
-                      <div className="text-xs text-muted-foreground">{t('rbac.userPermissions.current')}: {t(`rbac.access.${effectiveLevel(moduleKey)}`)}</div>
+                      <div className="text-sm font-medium truncate">{t(`rbac.module.${entry.moduleKey}`)}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {hasExplicitLevel(levels, entry.moduleKey)
+                          ? `${t('rbac.userPermissions.current')}: ${t(`rbac.access.${effectiveLevel(entry.moduleKey)}`)}`
+                          : `${t('rbac.userPermissions.inherited')}: ${t(`rbac.access.${baseLevel}`)}`}
+                      </div>
+                      {entry.submodules.length ? (
+                        <div className="text-xs text-muted-foreground">
+                          {t('rbac.userPermissions.includes')}: {entry.submodules.join(', ')}
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Switch
-                        checked={isEnabled(effectiveLevel(moduleKey))}
-                        onCheckedChange={(v) => void toggle(moduleKey, Boolean(v))}
-                        disabled={Boolean(saving[moduleKey])}
-                      />
-                    </div>
+                    <select
+                      className="w-full rounded-md border px-3 py-2 md:w-52"
+                      value={selectedLevel(entry.moduleKey)}
+                      onChange={(e) => void updateModuleLevel(entry.moduleKey, e.target.value as AccessChoice)}
+                      disabled={Boolean(saving[entry.moduleKey])}
+                    >
+                      <option value="INHERIT">{t('rbac.userPermissions.inherit')}</option>
+                      {ACCESS_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {t(`rbac.access.${option}`)}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 ))}
               </div>
             </div>
           ))}
-
-          {extraModules.length ? (
-            <div className="space-y-2">
-              <div className="font-semibold text-sm">{t('rbac.userPermissions.section.other')}</div>
-              <div className="rounded border">
-                {extraModules.map((moduleKey) => (
-                  <div
-                    key={moduleKey}
-                    className="flex items-center justify-between gap-3 px-3 py-2 border-b last:border-b-0"
-                  >
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">{t(`rbac.module.${moduleKey}`)}</div>
-                      <div className="text-xs text-muted-foreground">{t('rbac.userPermissions.current')}: {t(`rbac.access.${effectiveLevel(moduleKey)}`)}</div>
-                    </div>
-                    <Switch
-                      checked={isEnabled(effectiveLevel(moduleKey))}
-                      onCheckedChange={(v) => void toggle(moduleKey, Boolean(v))}
-                      disabled={Boolean(saving[moduleKey])}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
         </div>
       </DialogContent>
     </Dialog>

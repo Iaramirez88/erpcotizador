@@ -25,6 +25,8 @@ const MODULES: ModuleKey[] = [
   'CONFIG',
 ]
 
+const ACCESS_LEVELS: AccessLevel[] = ['NONE', 'READ', 'WRITE', 'ADMIN']
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
@@ -41,13 +43,17 @@ export async function PATCH(request: Request) {
   const sedeId = typeof body.sedeId === 'string' ? body.sedeId.trim() : ''
   const targetUserId = typeof body.userId === 'string' ? body.userId.trim() : ''
   const moduleKey = typeof body.module === 'string' ? (body.module.trim() as ModuleKey) : null
+  const requestedLevel = typeof body.level === 'string' ? body.level.trim() : null
   const enabled = typeof body.enabled === 'boolean' ? body.enabled : null
 
-  if (!sedeId || !targetUserId || !moduleKey || enabled === null) {
+  if (!sedeId || !targetUserId || !moduleKey || (requestedLevel === null && enabled === null)) {
     return NextResponse.json({ success: false, error: 'Parámetros inválidos' }, { status: 400 })
   }
   if (!MODULES.includes(moduleKey)) {
     return NextResponse.json({ success: false, error: 'Módulo inválido' }, { status: 400 })
+  }
+  if (requestedLevel !== null && requestedLevel !== 'INHERIT' && !ACCESS_LEVELS.includes(requestedLevel as AccessLevel)) {
+    return NextResponse.json({ success: false, error: 'Nivel inválido' }, { status: 400 })
   }
 
   const empresaId = await requireEmpresaIdForUser(session.user.id)
@@ -88,7 +94,34 @@ export async function PATCH(request: Request) {
   }
 
   const base = sedeRoleToBaseAccess(targetMembership.role)
-  const level: AccessLevel = enabled ? base : 'NONE'
+  const shouldInherit = requestedLevel === 'INHERIT'
+
+  if (shouldInherit) {
+    await prisma.userModuleAccess.deleteMany({
+      where: { sedeId, userId: targetUser.id, module: moduleKey },
+    })
+
+    await prisma.notification.create({
+      data: {
+        userId: targetUser.id,
+        type: 'INFO',
+        title: 'Permisos actualizados',
+        body: `El módulo ${moduleKey} volvió a heredar el permiso general en la sede ${sede.nombre}.`,
+        sedeId,
+        empresaId,
+        actionUrl: '/dashboard/configuracion/permisos',
+        actionLabel: 'Ver permisos',
+      },
+    })
+
+    return NextResponse.json({ success: true, data: { level: null, effectiveLevel: base } })
+  }
+
+  const level: AccessLevel = requestedLevel !== null
+    ? (requestedLevel as AccessLevel)
+    : enabled
+      ? base
+      : 'NONE'
 
   const updated = await prisma.userModuleAccess.upsert({
     where: { sedeId_userId_module: { sedeId, userId: targetUser.id, module: moduleKey } },
@@ -102,7 +135,7 @@ export async function PATCH(request: Request) {
       userId: targetUser.id,
       type: 'INFO',
       title: 'Permisos actualizados',
-      body: `Se ${enabled ? 'habilitó' : 'deshabilitó'} el módulo ${moduleKey} en la sede ${sede.nombre}.`,
+      body: `El módulo ${moduleKey} quedó con permiso ${level} en la sede ${sede.nombre}.`,
       sedeId: sedeId,
       empresaId,
       actionUrl: '/dashboard/configuracion/permisos',
