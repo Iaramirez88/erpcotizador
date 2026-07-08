@@ -9,6 +9,7 @@ import { getServerLanguage } from '@/lib/i18n/server'
 import { translate } from '@/lib/i18n/messages'
 import { MemberActionsMenu } from '@/components/rbac/member-actions-menu'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { DASHBOARD_PERMISSION_RULES, deriveExplicitCapabilityLevel } from '@/lib/dashboard-access'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -217,6 +218,47 @@ export default async function PermisosPage({ searchParams }: PageProps) {
     globalAccessByUserId[access.user.id] = access.level
   }
 
+  const capabilityGrants = activeSedeId
+    ? await prisma.userCapabilityGrant.findMany({
+        where: {
+          empresaId,
+          scopeType: 'SEDE',
+          scopeValue: activeSedeId,
+          userId: { in: members.map((member) => member.user.id) },
+          source: 'DIRECT',
+        },
+        select: {
+          userId: true,
+          domain: true,
+          subdomain: true,
+          action: true,
+          allowed: true,
+        },
+      })
+    : []
+
+  const capabilityAccessByUserId: Record<string, Record<string, AccessLevel>> = {}
+  for (const member of members) {
+    capabilityAccessByUserId[member.user.id] = {}
+  }
+  for (const rule of DASHBOARD_PERMISSION_RULES) {
+    const capability = rule.capabilities[0]
+    if (!capability) continue
+    for (const member of members) {
+      const rows = capabilityGrants.filter(
+        (grant) => grant.userId === member.user.id && grant.domain === capability.domain && grant.subdomain === capability.subdomain
+      )
+      const level = deriveExplicitCapabilityLevel({
+        domain: capability.domain,
+        subdomain: capability.subdomain,
+        grants: rows,
+      })
+      if (level) {
+        capabilityAccessByUserId[member.user.id][rule.key] = level
+      }
+    }
+  }
+
   return (
     <div className="space-y-6">
       <ErpPageHero
@@ -299,6 +341,7 @@ export default async function PermisosPage({ searchParams }: PageProps) {
                     initialGlobalAccess={globalAccessByUserId[m.user.id] ?? 'NONE'}
                     modules={MODULES}
                     initialAccess={accessByUserId[m.user.id] ?? {}}
+                    initialCapabilityAccess={capabilityAccessByUserId[m.user.id] ?? {}}
                   />
                 ) : null}
               </div>

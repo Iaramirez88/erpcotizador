@@ -43,6 +43,7 @@ type Props = {
   initialSedeRole: 'ADMIN' | 'MANAGER' | 'MEMBER' | 'READER'
   modules: ModuleKey[]
   initialAccess: Partial<Record<ModuleKey, AccessLevel>>
+  initialCapabilityAccess: Record<string, AccessLevel>
 }
 
 export function MemberActionsMenu({
@@ -55,6 +56,7 @@ export function MemberActionsMenu({
   initialSedeRole,
   modules,
   initialAccess,
+  initialCapabilityAccess,
 }: Props) {
   const { t } = useI18n()
   const router = useRouter()
@@ -122,6 +124,7 @@ export function MemberActionsMenu({
             modules={modules}
             initial={initialAccess}
             initialGlobalAccess={initialGlobalAccess}
+            initialCapabilities={initialCapabilityAccess}
             trigger={
               <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                 {t('rbac.userPermissions.button')}

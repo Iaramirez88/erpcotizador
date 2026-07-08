@@ -30,6 +30,8 @@ export type ApiCapabilityAccessArgs = {
   subdomain: string
   action: RbacV2CapabilityAction
   scope?: RbacV2Scope
+  sedeId?: string
+  allowLegacyFallback?: boolean
 }
 
 export type ApiCapabilityAccessOk = ApiAccessOk & {
@@ -39,7 +41,7 @@ export type ApiCapabilityAccessOk = ApiAccessOk & {
   resolvedBy: 'rbac-v2-grant' | 'legacy-module-fallback'
 }
 
-async function resolveApiAccessContext(): Promise<ApiAccessOk | ApiAccessFail> {
+async function resolveApiAccessContext(sedeIdOverride?: string): Promise<ApiAccessOk | ApiAccessFail> {
   const session = await auth()
   if (!session?.user) {
     return { ok: false, response: NextResponse.json({ error: 'No autorizado' }, { status: 401 }) }
@@ -53,7 +55,23 @@ async function resolveApiAccessContext(): Promise<ApiAccessOk | ApiAccessFail> {
     }
   }
 
-  const sede = await getActiveSedeForUser(userId)
+  const sede = sedeIdOverride
+    ? await prisma.sede.findUnique({ where: { id: sedeIdOverride }, select: { id: true, empresaId: true } })
+    : await getActiveSedeForUser(userId)
+
+  if (!sede) {
+    return { ok: false, response: NextResponse.json({ error: 'Sede no encontrada' }, { status: 404 }) }
+  }
+
+  if (sedeIdOverride) {
+    const membership = await prisma.sedeMembership.findUnique({
+      where: { sedeId_userId: { sedeId: sede.id, userId } },
+      select: { sedeId: true },
+    })
+    if (!membership) {
+      return { ok: false, response: NextResponse.json({ error: 'Prohibido' }, { status: 403 }) }
+    }
+  }
 
   return {
     ok: true,
@@ -256,11 +274,26 @@ export async function requireApiAccess(
 export async function canAccessCapability(
   args: ApiCapabilityAccessArgs
 ): Promise<ApiCapabilityAccessOk | ApiAccessFail> {
-  const accessContext = await resolveApiAccessContext()
+  const accessContext = await resolveApiAccessContext(args.sedeId)
   if (!accessContext.ok) return accessContext
 
   const accessFromV2 = await resolveCapabilityAccessFromV2(accessContext, args)
   if (accessFromV2) return accessFromV2
+
+  if (args.allowLegacyFallback === false) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: 'Prohibido',
+          capability: args,
+          checkedModules: [],
+          resolvedBy: 'strict-rbac-v2',
+        },
+        { status: 403 }
+      ),
+    }
+  }
 
   const legacyModulesChecked = getLegacyModulesForCapability({
     domain: args.domain,

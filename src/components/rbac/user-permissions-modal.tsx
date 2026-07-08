@@ -12,7 +12,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { useI18n } from '@/components/providers/i18n-provider'
-import { DASHBOARD_NAV_CATALOG, DASHBOARD_SECTION_ORDER, type DashboardSectionTitle } from '@/lib/product-architecture'
+import { buildDashboardPermissionEntries } from '@/lib/dashboard-access'
 
 type UserRef = {
   id: string
@@ -28,6 +28,7 @@ type Props = {
   modules: ModuleKey[]
   initial: Partial<Record<ModuleKey, AccessLevel>>
   initialGlobalAccess: AccessLevel
+  initialCapabilities: Record<string, AccessLevel>
   trigger?: ReactNode
 }
 
@@ -40,6 +41,13 @@ type Section = {
 type ModuleEntry = {
   moduleKey: ModuleKey
   submodules: string[]
+  capabilityEntries: CapabilityEntry[]
+}
+
+type CapabilityEntry = {
+  permissionKey: string
+  label: string
+  includeLabels: string[]
 }
 
 type AccessChoice = AccessLevel | 'INHERIT'
@@ -64,7 +72,7 @@ function hasExplicitLevel(levels: Partial<Record<ModuleKey, AccessLevel>>, modul
   return Object.prototype.hasOwnProperty.call(levels, moduleKey)
 }
 
-export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole, modules, initial, initialGlobalAccess, trigger }: Props) {
+export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole, modules, initial, initialGlobalAccess, initialCapabilities, trigger }: Props) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [levels, setLevels] = useState<Partial<Record<ModuleKey, AccessLevel>>>(initial)
@@ -73,6 +81,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
   const [savingRole, setSavingRole] = useState(false)
   const [globalLevel, setGlobalLevel] = useState<AccessLevel>(initialGlobalAccess)
   const [savingGlobal, setSavingGlobal] = useState(false)
+  const [capabilityLevels, setCapabilityLevels] = useState<Record<string, AccessLevel>>(initialCapabilities)
 
   const baseLevel = useMemo(() => baseAccessForSedeRole(sedeRole), [sedeRole])
 
@@ -90,58 +99,49 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
   const sections: Section[] = useMemo(
     () => {
       const allowedModules = new Set<ModuleKey>(modules)
-      const sectionsMap = new Map<DashboardSectionTitle, Map<ModuleKey, ModuleEntry>>()
+      const grouped = new Map<string, Map<ModuleKey, ModuleEntry>>()
 
-      for (const item of DASHBOARD_NAV_CATALOG) {
-        if (!item.moduleKey) continue
-        const moduleKey = item.moduleKey as ModuleKey
-        if (!allowedModules.has(moduleKey)) continue
-
-        const sectionKey = item.section
-        const label = item.labelKey ? t(item.labelKey) : item.label
-        const sectionEntries = sectionsMap.get(sectionKey) ?? new Map<ModuleKey, ModuleEntry>()
-        const existingEntry = sectionEntries.get(moduleKey)
-
-        if (existingEntry) {
-          if (!existingEntry.submodules.includes(label)) existingEntry.submodules.push(label)
+      for (const item of buildDashboardPermissionEntries({ t })) {
+        if (!allowedModules.has(item.moduleKey)) continue
+        const byModule = grouped.get(item.section) ?? new Map<ModuleKey, ModuleEntry>()
+        const current = byModule.get(item.moduleKey)
+        if (current) {
+          current.submodules.push(...item.includeLabels.filter((label) => !current.submodules.includes(label)))
+          current.capabilityEntries.push({
+            permissionKey: item.key,
+            label: item.label,
+            includeLabels: item.includeLabels,
+          })
         } else {
-          sectionEntries.set(moduleKey, {
-            moduleKey,
-            submodules: [label],
+          byModule.set(item.moduleKey, {
+            moduleKey: item.moduleKey,
+            submodules: [...item.includeLabels],
+            capabilityEntries: [{
+              permissionKey: item.key,
+              label: item.label,
+              includeLabels: item.includeLabels,
+            }],
           })
         }
-
-        sectionsMap.set(sectionKey, sectionEntries)
+        grouped.set(item.section, byModule)
       }
 
-      const knownModules = new Set<ModuleKey>()
-      const nextSections: Section[] = []
+      const orderedSections = Array.from(grouped.entries()).map(([key, value]) => ({
+        key,
+        title: key,
+        entries: [...value.values()],
+      }))
 
-      for (const sectionTitle of DASHBOARD_SECTION_ORDER) {
-        const entriesMap = sectionsMap.get(sectionTitle)
-        if (!entriesMap?.size) continue
-        const entries = [...entriesMap.values()]
-        for (const entry of entries) knownModules.add(entry.moduleKey)
-        nextSections.push({
-          key: sectionTitle,
-          title: sectionTitle,
-          entries,
-        })
-      }
+      const knownModules = new Set(orderedSections.flatMap((section) => section.entries.map((entry) => entry.moduleKey)))
+      const extraEntries = modules.filter((moduleKey) => !knownModules.has(moduleKey)).map((moduleKey) => ({
+        moduleKey,
+        submodules: [],
+        capabilityEntries: [],
+      }))
 
-      const extraEntries = modules
-        .filter((moduleKey) => !knownModules.has(moduleKey))
-        .map((moduleKey) => ({ moduleKey, submodules: [] }))
-
-      if (extraEntries.length) {
-        nextSections.push({
-          key: 'Otros',
-          title: t('rbac.userPermissions.section.other'),
-          entries: extraEntries,
-        })
-      }
-
-      return nextSections
+      return extraEntries.length
+        ? [...orderedSections, { key: 'Otros', title: t('rbac.userPermissions.section.other'), entries: extraEntries }]
+        : orderedSections
     },
     [modules, t]
   )
@@ -185,6 +185,35 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
       }
     } finally {
       setSavingGlobal(false)
+    }
+  }
+
+  async function updateCapabilityLevel(permissionKey: string, nextLevel: AccessChoice) {
+    setSaving((prev) => ({ ...prev, [permissionKey]: true as unknown as boolean }))
+    try {
+      const [domain, subdomain] = permissionKey.split('.') as [string, string, string?]
+      const res = await fetch('/api/admin/permisos/capability-access', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sedeId, userId: user.id, domain, subdomain, level: nextLevel }),
+      })
+      const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { level?: AccessLevel | null } } | null
+      if (res.ok && json?.success) {
+        setCapabilityLevels((prev) => {
+          if (nextLevel === 'INHERIT' || json.data?.level == null) {
+            const next = { ...prev }
+            delete next[permissionKey]
+            return next
+          }
+          return { ...prev, [permissionKey]: json.data.level }
+        })
+      }
+    } finally {
+      setSaving((prev) => {
+        const next = { ...prev }
+        delete next[permissionKey as unknown as ModuleKey]
+        return next
+      })
     }
   }
 
@@ -281,34 +310,67 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
                 {section.entries.map((entry) => (
                   <div
                     key={`${section.key}-${entry.moduleKey}`}
-                    className="flex flex-col gap-3 border-b px-3 py-2 last:border-b-0 md:flex-row md:items-center md:justify-between"
+                    className="border-b px-3 py-2 last:border-b-0"
                   >
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium truncate">{t(`rbac.module.${entry.moduleKey}`)}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {hasExplicitLevel(levels, entry.moduleKey)
-                          ? `${t('rbac.userPermissions.current')}: ${t(`rbac.access.${effectiveLevel(entry.moduleKey)}`)}`
-                          : `${t('rbac.userPermissions.inherited')}: ${t(`rbac.access.${baseLevel}`)}`}
-                      </div>
-                      {entry.submodules.length ? (
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{t(`rbac.module.${entry.moduleKey}`)}</div>
                         <div className="text-xs text-muted-foreground">
-                          {t('rbac.userPermissions.includes')}: {entry.submodules.join(', ')}
+                          {hasExplicitLevel(levels, entry.moduleKey)
+                            ? `${t('rbac.userPermissions.current')}: ${t(`rbac.access.${effectiveLevel(entry.moduleKey)}`)}`
+                            : `${t('rbac.userPermissions.inherited')}: ${t(`rbac.access.${baseLevel}`)}`}
                         </div>
-                      ) : null}
+                        {entry.submodules.length ? (
+                          <div className="text-xs text-muted-foreground">
+                            {t('rbac.userPermissions.includes')}: {entry.submodules.join(', ')}
+                          </div>
+                        ) : null}
+                      </div>
+                      <select
+                        className="w-full rounded-md border px-3 py-2 md:w-52"
+                        value={selectedLevel(entry.moduleKey)}
+                        onChange={(e) => void updateModuleLevel(entry.moduleKey, e.target.value as AccessChoice)}
+                        disabled={Boolean(saving[entry.moduleKey])}
+                      >
+                        <option value="INHERIT">{t('rbac.userPermissions.inherit')}</option>
+                        {ACCESS_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {t(`rbac.access.${option}`)}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                    <select
-                      className="w-full rounded-md border px-3 py-2 md:w-52"
-                      value={selectedLevel(entry.moduleKey)}
-                      onChange={(e) => void updateModuleLevel(entry.moduleKey, e.target.value as AccessChoice)}
-                      disabled={Boolean(saving[entry.moduleKey])}
-                    >
-                      <option value="INHERIT">{t('rbac.userPermissions.inherit')}</option>
-                      {ACCESS_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {t(`rbac.access.${option}`)}
-                        </option>
-                      ))}
-                    </select>
+
+                    {entry.capabilityEntries.length ? (
+                      <div className="mt-3 space-y-2 rounded-lg border border-slate-200/80 bg-slate-50/60 p-2.5">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{t('rbac.userPermissions.section.submodules')}</div>
+                        {entry.capabilityEntries.map((capability) => {
+                          const value = capabilityLevels[capability.permissionKey] ?? 'INHERIT'
+                          const currentLevel = capabilityLevels[capability.permissionKey] ?? effectiveLevel(entry.moduleKey)
+                          return (
+                            <div key={capability.permissionKey} className="flex flex-col gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 md:flex-row md:items-center md:justify-between">
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium">{capability.label}</div>
+                                <div className="text-xs text-muted-foreground">{t('rbac.userPermissions.current')}: {t(`rbac.access.${currentLevel}`)}</div>
+                                <div className="text-xs text-muted-foreground">{t('rbac.userPermissions.includes')}: {capability.includeLabels.join(', ')}</div>
+                              </div>
+                              <select
+                                className="w-full rounded-md border px-3 py-2 md:w-52"
+                                value={value}
+                                onChange={(e) => void updateCapabilityLevel(capability.permissionKey, e.target.value as AccessChoice)}
+                              >
+                                <option value="INHERIT">{t('rbac.userPermissions.inherit')}</option>
+                                {ACCESS_OPTIONS.map((option) => (
+                                  <option key={option} value={option}>
+                                    {t(`rbac.access.${option}`)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>

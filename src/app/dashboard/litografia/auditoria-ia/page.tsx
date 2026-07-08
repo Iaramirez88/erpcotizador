@@ -1,14 +1,14 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { Download, ImageIcon, MessageSquareText } from 'lucide-react'
 import { auth } from '@/lib/auth'
-import { queryAiWorkspaceHistory, type AiWorkspaceHistoryEntry, type AiWorkspaceHistoryKind } from '@/lib/ai-workspace-history'
+import { queryAiWorkspaceHistory, queryAiWorkspaceHistoryPage, type AiWorkspaceHistoryEntry, type AiWorkspaceHistoryKind } from '@/lib/ai-workspace-history'
 import { prisma } from '@/lib/prisma'
 import { resolveUserIdFromSession } from '@/lib/session-user'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { LitografiaAiAuditList } from '@/components/litografia/litografia-ai-audit-list'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -20,27 +20,6 @@ type PageProps = {
 
 function getSingleParam(value: string | string[] | undefined) {
   return typeof value === 'string' ? value.trim() : ''
-}
-
-function formatDateTime(value: string) {
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return value
-  return new Intl.DateTimeFormat('es-CO', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(parsed)
-}
-
-function formatKindLabel(kind: AiWorkspaceHistoryKind) {
-  return kind === 'IMAGE_GENERATION' ? 'Imagen IA' : kind === 'IMAGE_VECTORIZATION' ? 'Vectorización IA' : 'Cotización IA'
-}
-
-function kindBadgeClass(kind: AiWorkspaceHistoryKind) {
-  return kind === 'IMAGE_GENERATION'
-    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-    : kind === 'IMAGE_VECTORIZATION'
-      ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700'
-    : 'border-sky-200 bg-sky-50 text-sky-700'
 }
 
 function buildActorMap(entries: AiWorkspaceHistoryEntry[]) {
@@ -91,6 +70,8 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
   const to = getSingleParam(searchParams?.hasta)
   const promptQuery = getSingleParam(searchParams?.q)
   const kindParam = getSingleParam(searchParams?.tipo)
+  const pageParam = Number.parseInt(getSingleParam(searchParams?.page), 10)
+  const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1
   const selectedKinds = kindParam === 'imagenes'
     ? ['IMAGE_GENERATION'] satisfies AiWorkspaceHistoryKind[]
     : kindParam === 'vectorizaciones'
@@ -99,7 +80,7 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
       ? ['LITOGRAFIA_QUOTE'] satisfies AiWorkspaceHistoryKind[]
       : ['LITOGRAFIA_QUOTE', 'IMAGE_GENERATION', 'IMAGE_VECTORIZATION'] satisfies AiWorkspaceHistoryKind[]
 
-  const [allEntries, filteredEntries] = await Promise.all([
+  const [allEntries, filteredEntriesSummary, filteredEntriesPage] = await Promise.all([
     queryAiWorkspaceHistory({
       empresaId: user.empresaId,
       limit: 120,
@@ -115,14 +96,25 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
       from: from || null,
       to: to || null,
     }),
+    queryAiWorkspaceHistoryPage({
+      empresaId: user.empresaId,
+      kinds: selectedKinds,
+      actorUserId: actorUserId || null,
+      actorQuery: actorQuery || null,
+      promptQuery: promptQuery || null,
+      from: from || null,
+      to: to || null,
+      page,
+      pageSize: 10,
+    }),
   ])
 
   const actors = buildActorMap(allEntries)
-  const totalEntries = filteredEntries.length
-  const totalQuotes = filteredEntries.filter((entry) => entry.kind === 'LITOGRAFIA_QUOTE').length
-  const totalImages = filteredEntries.filter((entry) => entry.kind === 'IMAGE_GENERATION').length
-  const totalVectorizations = filteredEntries.filter((entry) => entry.kind === 'IMAGE_VECTORIZATION').length
-  const uniqueUsers = new Set(filteredEntries.map((entry) => entry.actorUserId).filter(Boolean)).size
+  const totalEntries = filteredEntriesSummary.length
+  const totalQuotes = filteredEntriesSummary.filter((entry) => entry.kind === 'LITOGRAFIA_QUOTE').length
+  const totalImages = filteredEntriesSummary.filter((entry) => entry.kind === 'IMAGE_GENERATION').length
+  const totalVectorizations = filteredEntriesSummary.filter((entry) => entry.kind === 'IMAGE_VECTORIZATION').length
+  const uniqueUsers = new Set(filteredEntriesSummary.map((entry) => entry.actorUserId).filter(Boolean)).size
 
   return (
     <div className="space-y-6 pb-6">
@@ -235,7 +227,7 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <CardTitle className="text-2xl text-slate-950">Trazabilidad de solicitudes</CardTitle>
-              <CardDescription>Se muestran hasta 120 eventos recientes de la empresa con los filtros actuales.</CardDescription>
+              <CardDescription>Se muestran 10 eventos por página con los filtros actuales. El detalle completo se abre en un modal.</CardDescription>
             </div>
             {actors.length ? (
               <div className="flex flex-wrap gap-2">
@@ -253,90 +245,55 @@ export default async function LitografiaAiAuditPage({ searchParams }: PageProps)
           </div>
         </CardHeader>
         <CardContent className="p-6">
-          {filteredEntries.length ? (
-            <div className="space-y-4">
-              {filteredEntries.map((entry) => {
-                const metadataModel = typeof entry.metadata?.model === 'string' ? entry.metadata.model : null
-                const metadataSize = typeof entry.metadata?.size === 'string' ? entry.metadata.size : null
-                const metadataQuality = typeof entry.metadata?.quality === 'string' ? entry.metadata.quality : null
-                const actorLabel = entry.actorLabel || entry.actorUserId || 'Usuario sin identificar'
+          {filteredEntriesPage.items.length ? (
+            <div className="space-y-6">
+              <LitografiaAiAuditList entries={filteredEntriesPage.items} />
 
-                return (
-                  <article key={entry.id} className="rounded-3xl border border-slate-200 bg-white/90 p-5 shadow-sm">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${kindBadgeClass(entry.kind)}`}>
-                            {formatKindLabel(entry.kind)}
-                          </span>
-                          <span className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">{formatDateTime(entry.createdAt)}</span>
-                        </div>
-                        <div>
-                          <h3 className="text-lg font-semibold text-slate-950">{actorLabel}</h3>
-                          <p className="text-sm text-slate-500">{entry.actorUserId || 'Sin id de usuario'}{metadataModel ? ` · ${metadataModel}` : ''}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 text-sm text-slate-500">
-                        {entry.kind === 'IMAGE_GENERATION' ? <ImageIcon className="h-4 w-4" /> : entry.kind === 'IMAGE_VECTORIZATION' ? <Download className="h-4 w-4" /> : <MessageSquareText className="h-4 w-4" />}
-                        <span>{entry.asset ? 'Con archivo guardado' : 'Sin archivo adjunto'}</span>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
-                      <div className="space-y-4">
-                        <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Prompt</div>
-                          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{entry.prompt}</p>
-                        </div>
-
-                        {entry.summary ? (
-                          <div>
-                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Resumen</div>
-                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{entry.summary}</p>
-                          </div>
-                        ) : null}
-
-                        {entry.responseText ? (
-                          <div>
-                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Respuesta</div>
-                            <p className="mt-2 whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700">{entry.responseText}</p>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-                        <div>
-                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Archivo</div>
-                          {entry.asset ? (
-                            <div className="mt-2 space-y-2 text-sm text-slate-700">
-                              <div className="font-medium text-slate-900">{entry.asset.name}</div>
-                              <div>{entry.asset.path}</div>
-                              {entry.asset.url ? (
-                                <Link href={entry.asset.url} className="inline-flex text-sm font-medium text-sky-700 hover:text-sky-900">
-                                  Abrir archivo
-                                </Link>
-                              ) : null}
-                            </div>
-                          ) : (
-                            <p className="mt-2 text-sm text-slate-500">Este evento no dejó archivo asociado.</p>
-                          )}
-                        </div>
-
-                        {(metadataSize || metadataQuality) ? (
-                          <div>
-                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Parámetros</div>
-                            <div className="mt-2 space-y-1 text-sm text-slate-700">
-                              {metadataSize ? <div>Tamaño: {metadataSize}</div> : null}
-                              {metadataQuality ? <div>Calidad: {metadataQuality}</div> : null}
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </article>
-                )
-              })}
+              <div className="flex flex-col gap-4 border-t border-slate-100 pt-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="text-sm text-slate-500">
+                  Página {filteredEntriesPage.page} de {filteredEntriesPage.totalPages} · {filteredEntriesPage.total} eventos
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    asChild
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl border-slate-200 bg-white/90"
+                    disabled={!filteredEntriesPage.hasPrevious}
+                  >
+                    <Link href={buildSearchHref({ usuario: actorQuery, usuarioId: actorUserId, tipo: kindParam, desde: from, hasta: to, q: promptQuery, page: String(Math.max(1, filteredEntriesPage.page - 1)) })}>
+                      Anterior
+                    </Link>
+                  </Button>
+                  {Array.from({ length: filteredEntriesPage.totalPages }, (_, index) => index + 1)
+                    .filter((pageNumber) => Math.abs(pageNumber - filteredEntriesPage.page) <= 2 || pageNumber === 1 || pageNumber === filteredEntriesPage.totalPages)
+                    .filter((pageNumber, index, array) => index === 0 || pageNumber !== array[index - 1])
+                    .map((pageNumber) => (
+                      <Button
+                        key={pageNumber}
+                        asChild
+                        type="button"
+                        variant={pageNumber === filteredEntriesPage.page ? 'default' : 'outline'}
+                        className={pageNumber === filteredEntriesPage.page ? 'rounded-xl' : 'rounded-xl border-slate-200 bg-white/90'}
+                      >
+                        <Link href={buildSearchHref({ usuario: actorQuery, usuarioId: actorUserId, tipo: kindParam, desde: from, hasta: to, q: promptQuery, page: String(pageNumber) })}>
+                          {pageNumber}
+                        </Link>
+                      </Button>
+                    ))}
+                  <Button
+                    asChild
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl border-slate-200 bg-white/90"
+                    disabled={!filteredEntriesPage.hasNext}
+                  >
+                    <Link href={buildSearchHref({ usuario: actorQuery, usuarioId: actorUserId, tipo: kindParam, desde: from, hasta: to, q: promptQuery, page: String(Math.min(filteredEntriesPage.totalPages, filteredEntriesPage.page + 1)) })}>
+                      Siguiente
+                    </Link>
+                  </Button>
+                </div>
+              </div>
             </div>
           ) : (
             <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50/70 px-6 py-12 text-center">

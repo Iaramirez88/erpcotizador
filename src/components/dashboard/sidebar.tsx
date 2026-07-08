@@ -24,6 +24,7 @@ interface SidebarProps {
     email?: string | null
     role?: string
     allowedModules?: string[] | null
+    allowedNavHrefs?: string[] | null
   }
 }
 
@@ -691,7 +692,7 @@ export default function Sidebar({ user }: SidebarProps) {
   const [navOrder, setNavOrder] = useState<string[]>([])
   const [sidebarTooltipPrefs, setSidebarTooltipPrefs] = useState<SidebarTooltipPrefs>(DEFAULT_SIDEBAR_TOOLTIP_PREFS)
   const [recommendedNavOrder, setRecommendedNavOrder] = useState<string[]>([])
-  const [allowedNavHrefs, setAllowedNavHrefs] = useState<string[]>([])
+  const [allowedNavHrefs, setAllowedNavHrefs] = useState<string[]>(() => user.allowedNavHrefs ?? [])
   const [enabledModules, setEnabledModules] = useState<Set<string> | null>(null)
   const [empresa, setEmpresa] = useState<EmpresaBranding | null>(null)
   const [planTier, setPlanTier] = useState<string | null>(null)
@@ -865,6 +866,7 @@ export default function Sidebar({ user }: SidebarProps) {
   const visibleNavigation = useMemo(() => {
     const base = !navPrefs ? moduleNavigation : moduleNavigation.filter((it) => navPrefs[it.href] !== false)
     const withRbacGate = base.filter((it) => {
+      if (allowedNavHrefSet?.has(it.href)) return true
       if (it.href === '/dashboard/configuracion/servicios-web') {
         return canAccessWebsiteServices
       }
@@ -915,6 +917,7 @@ export default function Sidebar({ user }: SidebarProps) {
         return !isOnboardingScopedDashboardHref(it.href)
       })
       .filter((it) => {
+        if (allowedNavHrefSet?.has(it.href)) return true
         if (it.href === '/dashboard/configuracion/servicios-web') {
           return canAccessWebsiteServices
         }

@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
-import { AccessLevel, ModuleKey } from '@prisma/client'
+import { AccessLevel } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import {
   assertCrmSedeAccess,
+  assertCrmCapabilitySedeAccess,
   normalizeString,
   parseOptionalDate,
   parseOptionalFloat,
@@ -22,6 +23,7 @@ export async function GET(request: Request) {
       subdomain: 'OPPORTUNITIES',
       action: 'READ',
       scope: 'SEDE',
+      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 
@@ -34,7 +36,7 @@ export async function GET(request: Request) {
     const stage = parseOpportunityStage(searchParams.get('stage'))
 
     if (sedeId) {
-      const denied = await assertCrmSedeAccess({ sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.READ })
+      const denied = await assertCrmCapabilitySedeAccess({ sedeId, empresaId: access.empresaId, domain: 'CAPTACION', subdomain: 'OPPORTUNITIES', action: 'READ' })
       if (denied) return denied
     }
 
@@ -122,6 +124,7 @@ export async function POST(request: Request) {
       subdomain: 'OPPORTUNITIES',
       action: 'CREATE',
       scope: 'SEDE',
+      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 
@@ -181,7 +184,7 @@ export async function POST(request: Request) {
 
     const finalSedeId = explicitSedeId || lead?.sedeId || cliente?.sedeId || ''
     if (finalSedeId) {
-      const denied = await assertCrmSedeAccess({ sedeId: finalSedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
+      const denied = await assertCrmCapabilitySedeAccess({ sedeId: finalSedeId, empresaId: access.empresaId, domain: 'CAPTACION', subdomain: 'OPPORTUNITIES', action: 'CREATE' })
       if (denied) return denied
     }
 

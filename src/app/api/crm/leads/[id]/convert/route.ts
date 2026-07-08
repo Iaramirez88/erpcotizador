@@ -1,14 +1,35 @@
 import { NextResponse } from 'next/server'
-import { AccessLevel, ModuleKey } from '@prisma/client'
+import { AccessLevel } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
-import { requireSedeAccess } from '@/lib/rbac'
 import { normalizeString } from '@/lib/crm'
 
 export const runtime = 'nodejs'
 
 interface RouteContext {
   params: Promise<{ id: string }>
+}
+
+async function assertLeadCapabilityAccess(args: {
+  sedeId: string
+  empresaId: string
+  action: 'UPDATE'
+}) {
+  const sede = await prisma.sede.findUnique({ where: { id: args.sedeId }, select: { id: true, empresaId: true } })
+  if (!sede || sede.empresaId !== args.empresaId) {
+    return { response: NextResponse.json({ error: 'sedeId inválido' }, { status: 400 }) }
+  }
+
+  const access = await requireCapabilityAccess({
+    domain: 'CAPTACION',
+    subdomain: 'LEADS',
+    action: args.action,
+    scope: 'SEDE',
+    sedeId: sede.id,
+    allowLegacyFallback: false,
+  })
+
+  return access.ok ? null : { response: access.response }
 }
 
 export async function POST(request: Request, context: RouteContext) {
@@ -18,6 +39,7 @@ export async function POST(request: Request, context: RouteContext) {
       subdomain: 'LEADS',
       action: 'UPDATE',
       scope: 'SEDE',
+      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 
@@ -36,14 +58,8 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     if (lead.sedeId) {
-      try {
-        await requireSedeAccess({ userId: access.userId, sedeId: lead.sedeId, module: ModuleKey.CRM, minLevel: AccessLevel.WRITE })
-      } catch (error) {
-        if (error instanceof Error && error.message === 'FORBIDDEN') {
-          return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
-        }
-        throw error
-      }
+      const denied = await assertLeadCapabilityAccess({ sedeId: lead.sedeId, empresaId: access.empresaId, action: 'UPDATE' })
+      if (denied) return denied.response
     }
 
     if (lead.convertedClienteId && lead.convertedCliente) {

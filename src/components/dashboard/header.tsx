@@ -33,6 +33,7 @@ interface HeaderProps {
     role?: string
     image?: string | null
     allowedModules?: string[] | null
+    allowedNavHrefs?: string[] | null
     canManageBilling?: boolean
     canAccessWebsiteServices?: boolean
   }
@@ -61,6 +62,7 @@ export default function Header({ user }: HeaderProps) {
   const [navSettingsOpen, setNavSettingsOpen] = useState(false)
   const [canManageBilling] = useState(Boolean(user.canManageBilling))
   const [canAccessWebsiteServices] = useState(Boolean(user.canAccessWebsiteServices))
+  const [allowedNavHrefs] = useState<string[]>(() => user.allowedNavHrefs ?? [])
   const toggleMobileNav = useUiStore((s) => s.toggleMobileNav)
   const { hasCurrentTour, startCurrentTour, resetCurrentTour } = useTour()
 
@@ -68,6 +70,7 @@ export default function Header({ user }: HeaderProps) {
     if (!user.allowedModules) return null
     return new Set(user.allowedModules)
   }, [user.allowedModules])
+  const allowedNavHrefSet = useMemo(() => (allowedNavHrefs.length ? new Set(allowedNavHrefs) : null), [allowedNavHrefs])
 
   const initials = useMemo(() => {
     const name = (user.name ?? '').trim()
@@ -135,6 +138,7 @@ export default function Header({ user }: HeaderProps) {
   const navItems = useMemo(() => {
     const base = buildDashboardNavDefinitions(t)
     const withRbacGate = base.filter((it) => {
+      if (allowedNavHrefSet?.has(it.href)) return true
       if (it.href === '/dashboard/configuracion/servicios-web') {
         return canAccessWebsiteServices
       }
@@ -149,7 +153,7 @@ export default function Header({ user }: HeaderProps) {
       if (!isSuperAdminRoute) return true
       return user.role === 'ADMIN'
     }).map((it) => ({ ...it, section: sectionForDashboardHref(it.href) }))
-  }, [canAccessWebsiteServices, canManageBilling, t, allowedModules, user.role])
+  }, [allowedNavHrefSet, canAccessWebsiteServices, canManageBilling, t, allowedModules, user.role])
 
   async function saveNav(next: Record<string, boolean>, nextOrder: string[], nextTooltipPrefs: SidebarTooltipPrefs) {
     setNavPrefs(next)

@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server'
-import { AccessLevel, CrmLeadSource, CrmLeadStatus, ModuleKey } from '@prisma/client'
+import { CrmLeadSource, CrmLeadStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 import { syncCrmLeadFollowUpTaskById } from '@/lib/crm-follow-up'
-import { requireSedeAccess } from '@/lib/rbac'
 
 export const runtime = 'nodejs'
 
@@ -79,21 +78,26 @@ async function findConflictingLead(args: {
   })
 }
 
-async function assertSedeAccess(args: { sedeId: string; empresaId: string; userId: string; minLevel: AccessLevel }) {
+async function assertLeadCapabilityAccess(args: {
+  sedeId: string
+  empresaId: string
+  action: 'READ' | 'CREATE'
+}) {
   const sede = await prisma.sede.findUnique({ where: { id: args.sedeId }, select: { id: true, empresaId: true } })
   if (!sede || sede.empresaId !== args.empresaId) {
     return NextResponse.json({ error: 'sedeId inválido' }, { status: 400 })
   }
 
-  try {
-    await requireSedeAccess({ userId: args.userId, sedeId: sede.id, module: ModuleKey.CRM, minLevel: args.minLevel })
-    return null
-  } catch (error) {
-    if (error instanceof Error && error.message === 'FORBIDDEN') {
-      return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
-    }
-    throw error
-  }
+  const access = await requireCapabilityAccess({
+    domain: 'CAPTACION',
+    subdomain: 'LEADS',
+    action: args.action,
+    scope: 'SEDE',
+    sedeId: sede.id,
+    allowLegacyFallback: false,
+  })
+
+  return access.ok ? null : access.response
 }
 
 export async function GET(request: Request) {
@@ -103,6 +107,7 @@ export async function GET(request: Request) {
       subdomain: 'LEADS',
       action: 'READ',
       scope: 'SEDE',
+      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 
@@ -113,7 +118,7 @@ export async function GET(request: Request) {
     const status = parseLeadStatus(searchParams.get('status'))
 
     if (sedeId) {
-      const denied = await assertSedeAccess({ sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.READ })
+      const denied = await assertLeadCapabilityAccess({ sedeId, empresaId: access.empresaId, action: 'READ' })
       if (denied) return denied
     }
 
@@ -182,6 +187,7 @@ export async function POST(request: Request) {
       subdomain: 'LEADS',
       action: 'CREATE',
       scope: 'SEDE',
+      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 
@@ -211,7 +217,7 @@ export async function POST(request: Request) {
     }
 
     if (sedeId) {
-      const denied = await assertSedeAccess({ sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
+      const denied = await assertLeadCapabilityAccess({ sedeId, empresaId: access.empresaId, action: 'CREATE' })
       if (denied) return denied
     }
 

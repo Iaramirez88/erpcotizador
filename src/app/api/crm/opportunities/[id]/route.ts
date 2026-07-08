@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
-import { AccessLevel, ModuleKey } from '@prisma/client'
+import { AccessLevel } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import {
   assertCrmSedeAccess,
+  assertCrmCapabilitySedeAccess,
   normalizeString,
   parseOptionalDate,
   parseOptionalFloat,
@@ -57,6 +58,7 @@ export async function GET(_: Request, context: RouteContext) {
       subdomain: 'OPPORTUNITIES',
       action: 'READ',
       scope: 'SEDE',
+      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 
@@ -65,7 +67,7 @@ export async function GET(_: Request, context: RouteContext) {
     if (!row) return NextResponse.json({ error: 'Oportunidad no encontrada' }, { status: 404 })
 
     if (row.sedeId) {
-      const denied = await assertCrmSedeAccess({ sedeId: row.sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.READ })
+      const denied = await assertCrmCapabilitySedeAccess({ sedeId: row.sedeId, empresaId: access.empresaId, domain: 'CAPTACION', subdomain: 'OPPORTUNITIES', action: 'READ' })
       if (denied) return denied
     }
 
@@ -105,6 +107,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       subdomain: 'OPPORTUNITIES',
       action: 'UPDATE',
       scope: 'SEDE',
+      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 
@@ -113,7 +116,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (!current) return NextResponse.json({ error: 'Oportunidad no encontrada' }, { status: 404 })
 
     if (current.sedeId) {
-      const denied = await assertCrmSedeAccess({ sedeId: current.sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
+      const denied = await assertCrmCapabilitySedeAccess({ sedeId: current.sedeId, empresaId: access.empresaId, domain: 'CAPTACION', subdomain: 'OPPORTUNITIES', action: 'UPDATE' })
       if (denied) return denied
     }
 
@@ -160,7 +163,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     if (Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeId') && explicitSedeId) {
-      const denied = await assertCrmSedeAccess({ sedeId: explicitSedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
+      const denied = await assertCrmCapabilitySedeAccess({ sedeId: explicitSedeId, empresaId: access.empresaId, domain: 'CAPTACION', subdomain: 'OPPORTUNITIES', action: 'UPDATE' })
       if (denied) return denied
     }
 

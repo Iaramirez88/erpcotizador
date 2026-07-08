@@ -19,6 +19,7 @@ import { isSuperAdminEmail } from '@/lib/super-admin'
 import { getCrmStorageUsageSummary } from '@/lib/crm-files'
 import { resolveDashboardConfig } from '@/lib/company-onboarding'
 import { redirect } from 'next/navigation'
+import { buildAllowedDashboardHrefsForUser, getAllowedModulesFromDashboardHrefs } from '@/lib/dashboard-access'
 
 function formatBytes(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0 B'
@@ -51,6 +52,7 @@ export default async function DashboardPage() {
   let activeSedeName: string | null = null
   let storageUsage: Awaited<ReturnType<typeof getCrmStorageUsageSummary>> | null = null
   let dashboardConfig: ReturnType<typeof resolveDashboardConfig> = null
+  let permissionAllowedHrefs: string[] = []
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -62,6 +64,12 @@ export default async function DashboardPage() {
     activeSedeName = sede.nombre
     const access = await getEffectiveAccessMap({ userId, sedeId: sede.id, modules: NAV_MODULES })
     allowedModules = NAV_MODULES.filter((moduleKey) => (access[moduleKey] ?? 'NONE') !== 'NONE') as ModuleKey[]
+    permissionAllowedHrefs = await buildAllowedDashboardHrefsForUser({
+      userId,
+      empresaId: sede.empresaId,
+      sedeId: sede.id,
+    })
+    allowedModules = Array.from(new Set([...allowedModules, ...getAllowedModulesFromDashboardHrefs(permissionAllowedHrefs)])) as ModuleKey[]
   } catch {
     allowedModules = null
   }
@@ -209,7 +217,9 @@ export default async function DashboardPage() {
             enabledPlanModules={enabledPlanModules}
             canManageBilling={canManageBilling}
             prioritizedHrefs={dashboardConfig?.prioritizedHrefs ?? []}
-            visibleHrefs={dashboardConfig?.allowedHrefs ?? []}
+            visibleHrefs={dashboardConfig?.allowedHrefs?.length
+              ? dashboardConfig.allowedHrefs.filter((href) => permissionAllowedHrefs.includes(href))
+              : permissionAllowedHrefs}
           />
         </CardContent>
       </Card>

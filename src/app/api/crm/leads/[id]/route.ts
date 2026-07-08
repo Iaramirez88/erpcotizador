@@ -1,10 +1,31 @@
 import { NextResponse } from 'next/server'
-import { AccessLevel, CrmLeadSource, CrmLeadStatus, ModuleKey } from '@prisma/client'
+import { AccessLevel, CrmLeadSource, CrmLeadStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess, requireCapabilityAccess } from '@/lib/api-rbac'
 import { getBridgeKindFromSettings, getCrmOriginMeta } from '@/lib/crm-origin'
 import { syncCrmLeadFollowUpTaskById } from '@/lib/crm-follow-up'
-import { requireSedeAccess } from '@/lib/rbac'
+
+async function assertLeadCapabilityAccess(args: {
+  sedeId: string
+  empresaId: string
+  action: 'READ' | 'UPDATE'
+}) {
+  const sede = await prisma.sede.findUnique({ where: { id: args.sedeId }, select: { id: true, empresaId: true } })
+  if (!sede || sede.empresaId !== args.empresaId) {
+    return { response: NextResponse.json({ error: 'sedeId inválido' }, { status: 400 }) }
+  }
+
+  const access = await requireCapabilityAccess({
+    domain: 'CAPTACION',
+    subdomain: 'LEADS',
+    action: args.action,
+    scope: 'SEDE',
+    sedeId: sede.id,
+    allowLegacyFallback: false,
+  })
+
+  return access.ok ? null : { response: access.response }
+}
 
 export const runtime = 'nodejs'
 
@@ -82,8 +103,7 @@ async function findConflictingLead(args: {
 async function ensureLeadAccess(args: {
   leadId: string
   empresaId: string
-  userId: string
-  minLevel: AccessLevel
+  action: 'READ' | 'UPDATE'
 }) {
   const lead = await prisma.crmLead.findUnique({
     where: { id: args.leadId },
@@ -110,14 +130,8 @@ async function ensureLeadAccess(args: {
   }
 
   if (lead.sedeId) {
-    try {
-      await requireSedeAccess({ userId: args.userId, sedeId: lead.sedeId, module: ModuleKey.CRM, minLevel: args.minLevel })
-    } catch (error) {
-      if (error instanceof Error && error.message === 'FORBIDDEN') {
-        return { response: NextResponse.json({ error: 'Prohibido' }, { status: 403 }) }
-      }
-      throw error
-    }
+    const denied = await assertLeadCapabilityAccess({ sedeId: lead.sedeId, empresaId: args.empresaId, action: args.action })
+    if (denied) return denied
   }
 
   return { lead }
@@ -134,11 +148,12 @@ export async function GET(_: Request, context: RouteContext) {
       subdomain: 'LEADS',
       action: 'READ',
       scope: 'SEDE',
+      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 
     const { id } = await context.params
-    const result = await ensureLeadAccess({ leadId: id, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.READ })
+    const result = await ensureLeadAccess({ leadId: id, empresaId: access.empresaId, action: 'READ' })
     if ('response' in result) return result.response
 
     const latestConversation = result.lead.conversations[0]
@@ -162,11 +177,12 @@ export async function PATCH(request: Request, context: RouteContext) {
       subdomain: 'LEADS',
       action: 'UPDATE',
       scope: 'SEDE',
+      allowLegacyFallback: false,
     })
     if (!access.ok) return access.response
 
     const { id } = await context.params
-    const result = await ensureLeadAccess({ leadId: id, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
+    const result = await ensureLeadAccess({ leadId: id, empresaId: access.empresaId, action: 'UPDATE' })
     if ('response' in result) return result.response
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
@@ -188,18 +204,8 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     if (Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeId') && nextSedeId) {
-      const sede = await prisma.sede.findUnique({ where: { id: nextSedeId }, select: { id: true, empresaId: true } })
-      if (!sede || sede.empresaId !== access.empresaId) {
-        return NextResponse.json({ error: 'sedeId inválido' }, { status: 400 })
-      }
-      try {
-        await requireSedeAccess({ userId: access.userId, sedeId: sede.id, module: ModuleKey.CRM, minLevel: AccessLevel.WRITE })
-      } catch (error) {
-        if (error instanceof Error && error.message === 'FORBIDDEN') {
-          return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
-        }
-        throw error
-      }
+      const denied = await assertLeadCapabilityAccess({ sedeId: nextSedeId, empresaId: access.empresaId, action: 'UPDATE' })
+      if (denied) return denied.response
     }
 
     if (Object.prototype.hasOwnProperty.call(body ?? {}, 'ownerUserId') && nextOwnerUserId) {

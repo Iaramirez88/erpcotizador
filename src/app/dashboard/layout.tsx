@@ -21,6 +21,7 @@ import { isSuperAdminEmail } from "@/lib/super-admin"
 import { isPlanOwnerForEmpresa } from "@/lib/plan-owner"
 import { getWebsiteServicesAccessForUser } from "@/lib/website-services"
 import DashboardDeferredWidgets from "@/components/dashboard/dashboard-deferred-widgets"
+import { buildAllowedDashboardHrefsForUser, getAllowedModulesFromDashboardHrefs } from '@/lib/dashboard-access'
 
 export default async function DashboardLayout({
   children,
@@ -36,6 +37,7 @@ export default async function DashboardLayout({
 
   const userId = await resolveUserIdFromSession(session)
   let allowedModules: string[] | null = null
+  let allowedNavHrefs: string[] | null = null
   let canManageBilling = false
   let canAccessWebsiteServices = false
   try {
@@ -50,6 +52,12 @@ export default async function DashboardLayout({
       ])
       const access = await getEffectiveAccessMap({ userId, sedeId: sede.id, modules: NAV_MODULES })
       allowedModules = NAV_MODULES.filter((m) => (access[m] ?? 'NONE') !== 'NONE')
+      allowedNavHrefs = await buildAllowedDashboardHrefsForUser({
+        userId,
+        empresaId: sede.empresaId,
+        sedeId: sede.id,
+      })
+      allowedModules = Array.from(new Set([...allowedModules, ...getAllowedModulesFromDashboardHrefs(allowedNavHrefs)]))
       canAccessWebsiteServices = websiteServicesAccess.canAccess
 
       const isSystemSuperAdmin = isSuperAdminEmail(layoutUser?.email)
@@ -70,6 +78,7 @@ export default async function DashboardLayout({
     role: session.user.role,
     image: session.user.image ?? null,
     allowedModules,
+    allowedNavHrefs,
     canManageBilling,
     canAccessWebsiteServices,
   }

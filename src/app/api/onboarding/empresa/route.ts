@@ -10,6 +10,8 @@ import {
 } from '@/lib/company-onboarding'
 import { ALL_MODULE_KEYS, saveEmpresaModuleOverride } from '@/lib/plan-modules'
 import { ensureBusinessTypeSeedsForEmpresa } from '@/lib/business-type-seeds'
+import { getActiveSedeForUser } from '@/lib/rbac'
+import { buildAllowedDashboardHrefsForUser } from '@/lib/dashboard-access'
 
 export const runtime = 'nodejs'
 
@@ -64,6 +66,13 @@ export async function GET() {
       onboardingData: context.empresa.onboardingData,
       businessType: context.empresa.businessType,
     })
+    const sede = await getActiveSedeForUser(context.userId)
+    const permissionAllowedHrefs = await buildAllowedDashboardHrefsForUser({
+      userId: context.userId,
+      empresaId: context.empresa.id,
+      sedeId: sede.id,
+      baseAllowedHrefs: dashboard?.allowedHrefs ?? null,
+    })
     const locked = Boolean(context.empresa.onboardingCompletedAt)
 
     return NextResponse.json({
@@ -76,7 +85,14 @@ export async function GET() {
       businessTypeLabel: getBusinessTypeLabel(context.empresa.businessType as Parameters<typeof getBusinessTypeLabel>[0]),
       completedAt: context.empresa.onboardingCompletedAt,
       data,
-      dashboard,
+      dashboard: dashboard
+        ? {
+            ...dashboard,
+            allowedHrefs: dashboard.allowedHrefs.length
+              ? dashboard.allowedHrefs.filter((href) => permissionAllowedHrefs.includes(href))
+              : permissionAllowedHrefs,
+          }
+        : { allowedHrefs: permissionAllowedHrefs },
     })
   } catch (error) {
     console.error('GET /api/onboarding/empresa error:', error)

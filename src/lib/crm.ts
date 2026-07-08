@@ -18,7 +18,9 @@ import {
   ModuleKey,
 } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { requireSedeAccess } from '@/lib/rbac'
+import type { RbacV2CapabilityAction, RbacV2Domain, RbacV2Scope } from '@/lib/rbac-v2-catalog'
 
 export const CRM_LEAD_STATUSES: CrmLeadStatus[] = ['NEW', 'CONTACTED', 'QUALIFIED', 'LOST', 'CONVERTED']
 export const CRM_LEAD_SOURCES: CrmLeadSource[] = ['WEB', 'REFERIDO', 'WHATSAPP', 'LLAMADA', 'IMPORT', 'OTRO']
@@ -338,4 +340,29 @@ export async function assertCrmSedeAccess(args: {
     }
     throw error
   }
+}
+
+export async function assertCrmCapabilitySedeAccess(args: {
+  sedeId: string
+  empresaId: string
+  domain: RbacV2Domain
+  subdomain: string
+  action: RbacV2CapabilityAction
+  scope?: RbacV2Scope
+}) {
+  const sede = await prisma.sede.findUnique({ where: { id: args.sedeId }, select: { id: true, empresaId: true } })
+  if (!sede || sede.empresaId !== args.empresaId) {
+    return NextResponse.json({ error: 'sedeId inválido' }, { status: 400 })
+  }
+
+  const access = await requireCapabilityAccess({
+    domain: args.domain,
+    subdomain: args.subdomain,
+    action: args.action,
+    scope: args.scope ?? 'SEDE',
+    sedeId: sede.id,
+    allowLegacyFallback: false,
+  })
+
+  return access.ok ? null : access.response
 }
