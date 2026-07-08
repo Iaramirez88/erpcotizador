@@ -12,7 +12,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { useI18n } from '@/components/providers/i18n-provider'
-import { buildDashboardPermissionEntries } from '@/lib/dashboard-access'
+import { buildDashboardPermissionEntries } from '@/lib/dashboard-permission-catalog'
 
 type UserRef = {
   id: string
