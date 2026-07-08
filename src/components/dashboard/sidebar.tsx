@@ -1012,8 +1012,8 @@ export default function Sidebar({ user }: SidebarProps) {
   const navText = isDark ? "text-slate-200" : "text-slate-700"
   const navHover = isDark ? "hover:bg-white/8" : "hover:bg-slate-100"
   const navActive = isDark
-    ? "bg-white/14 text-white shadow-[0_12px_18px_-18px_rgba(148,163,184,0.45)]"
-    : "bg-white text-slate-950 ring-1 ring-slate-200/80 shadow-[0_10px_18px_-18px_rgba(15,23,42,0.22)]"
+    ? "bg-[#608194] text-white shadow-[0_12px_18px_-18px_rgba(96,129,148,0.55)]"
+    : "bg-[#608194] text-white ring-1 ring-[#608194] shadow-[0_10px_18px_-18px_rgba(96,129,148,0.5)]"
   const sectionHeaderOpen = isDark
     ? "bg-white/8 text-slate-100"
     : "bg-slate-100 text-slate-900"
