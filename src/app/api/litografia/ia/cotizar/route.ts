@@ -21,6 +21,7 @@ const conversationMessageSchema = z.object({
 const requestSchema = z.object({
   brief: z.string().trim().min(3, 'Escribe un mensaje más claro para continuar la conversación.'),
   conversation: z.array(conversationMessageSchema).max(24).optional(),
+  mode: z.enum(['IA', 'JSON_BASE']).optional(),
 }).superRefine((value, ctx) => {
   if ((!value.conversation || !value.conversation.length) && value.brief.trim().length < 20) {
     ctx.addIssue({
@@ -63,6 +64,40 @@ type ExternalBenchmarkResult = {
   suggestedTotalMax: number | null
   reasoning: string[]
   references: Array<{ label: string; url: string }>
+}
+
+function buildJsonBaseConfiguredSuggestion(): ConfiguredPriceSuggestion {
+  return {
+    status: 'NO_MATCH',
+    confidence: 'BAJA',
+    title: 'Modo base JSON sin tarifa ERP',
+    total: null,
+    unitPrice: null,
+    currency: 'COP',
+    reasoning: ['En JSON_BASE no se consultan tarifas configuradas ni coincidencias del ERP.'],
+    matchedRateId: null,
+    matchedSize: null,
+    matchedPaper: null,
+    matchedFinish: null,
+  }
+}
+
+function buildJsonBaseExternalBenchmark(): ExternalBenchmarkResult {
+  return {
+    status: 'NOT_CONFIGURED',
+    provider: null,
+    summary: 'En JSON_BASE no se consulta benchmark externo.',
+    suggestedTotalMin: null,
+    suggestedTotalMax: null,
+    reasoning: ['Este modo usa exclusivamente reglas internas y la base JSON del entrenador.'],
+    references: [],
+  }
+}
+
+function buildJsonBaseFinishCandidates(analysis: Awaited<ReturnType<typeof analyzeLitografiaBrief>>) {
+  return analysis.extracted.acabado
+    ? [{ nombre: analysis.extracted.acabado, grupo: null }]
+    : []
 }
 
 type CostBreakdownLine = {
@@ -1299,11 +1334,17 @@ export async function POST(request: NextRequest) {
     const empresaId = await getEmpresaIdFromSedeId(access.sedeId)
     if (!empresaId) return NextResponse.json({ ok: false, error: 'Empresa no encontrada' }, { status: 404 })
 
-    const [catalog, pricingContext] = await Promise.all([
-      loadCatalogContext(empresaId),
-      loadPricingContext(empresaId),
-    ])
     const effectiveBrief = buildConversationBrief(parsedBody.data.brief, parsedBody.data.conversation ?? [])
+    const quoteMode = parsedBody.data.mode === 'JSON_BASE' ? 'JSON_BASE' : 'IA'
+    const [catalog, pricingContext] = quoteMode === 'JSON_BASE'
+      ? await Promise.all([
+          Promise.resolve<LitografiaCatalogContext>({ sizes: [], papers: [], finishes: [], products: [], rates: [] }),
+          Promise.resolve({ profiles: [], transportOptions: [] as TransportOption[] }),
+        ])
+      : await Promise.all([
+          loadCatalogContext(empresaId),
+          loadPricingContext(empresaId),
+        ])
     const knowledgeStore = await readLitografiaAiKnowledge(empresaId)
     const rulesAnalysis = analyzeLitografiaBriefWithRules(effectiveBrief)
     const knowledgeContext = buildLitografiaKnowledgePromptContext({
@@ -1321,15 +1362,23 @@ export async function POST(request: NextRequest) {
         ? 'La interpretación también recibió apoyo de la base de conocimiento cargada o editada para esta empresa.'
         : 'La interpretación también recibió apoyo de la base de conocimiento base del JSON litográfico.',
     }
-    const data = await analyzeLitografiaBrief(effectiveBrief, catalog, knowledgeContext)
+    const data = quoteMode === 'JSON_BASE'
+      ? rulesAnalysis
+      : await analyzeLitografiaBrief(effectiveBrief, catalog, knowledgeContext)
     const connection = getLitografiaAiConnectionStatus()
-    const configuredSuggestion = matchConfiguredPrice({ analysis: data, catalog })
-    const finishCandidates = getFinishCandidatesForHandoff({
-      brief: parsedBody.data.brief,
-      analysis: data,
-      catalog,
-    })
-    const matchedTransport = findTransportOption(pricingContext.transportOptions, data.extracted.entrega)
+    const configuredSuggestion = quoteMode === 'JSON_BASE'
+      ? buildJsonBaseConfiguredSuggestion()
+      : matchConfiguredPrice({ analysis: data, catalog })
+    const finishCandidates = quoteMode === 'JSON_BASE'
+      ? buildJsonBaseFinishCandidates(data)
+      : getFinishCandidatesForHandoff({
+          brief: parsedBody.data.brief,
+          analysis: data,
+          catalog,
+        })
+    const matchedTransport = quoteMode === 'JSON_BASE'
+      ? null
+      : findTransportOption(pricingContext.transportOptions, data.extracted.entrega)
     const costBreakdown = buildCostBreakdown({
       brief: effectiveBrief,
       analysis: data,
@@ -1338,11 +1387,13 @@ export async function POST(request: NextRequest) {
       transportOptions: pricingContext.transportOptions,
       knowledgeDocument: knowledgeStore.document,
     })
-    const externalBenchmark = await fetchExternalBenchmark({
-      brief: effectiveBrief,
-      analysis: data,
-      configuredSuggestion,
-    })
+    const externalBenchmark = quoteMode === 'JSON_BASE'
+      ? buildJsonBaseExternalBenchmark()
+      : await fetchExternalBenchmark({
+          brief: effectiveBrief,
+          analysis: data,
+          configuredSuggestion,
+        })
     const assistantReply = await buildAssistantQuoteReply({
       latestBrief: parsedBody.data.brief,
       brief: effectiveBrief,
@@ -1377,6 +1428,7 @@ export async function POST(request: NextRequest) {
           finishHints: handoff.finishHints,
           totalSuggested: costBreakdown.totalSuggested,
           conversationTurns: (parsedBody.data.conversation?.length ?? 0) + 1,
+          mode: quoteMode,
           knowledgeSource,
         },
         asset: null,

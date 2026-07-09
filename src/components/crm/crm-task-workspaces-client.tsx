@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { ChevronDown, MoreVertical, Plus } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -302,10 +302,14 @@ const TASK_PRIORITY_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-priority-colu
 const TASK_CREATED_AT_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-created-at-column-visible'
 
 export function CrmTaskWorkspacesClient() {
+  const pathname = usePathname()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const attachmentInputRef = useRef<HTMLInputElement | null>(null)
   const customFieldFileInputRef = useRef<HTMLInputElement | null>(null)
   const handledNotificationTaskRef = useRef<string>('')
+  const detailDialogOpenedFromNotificationRef = useRef(false)
+  const notificationCleanupTimerRef = useRef<number | null>(null)
   const { toast } = useToast()
 
   const [loading, setLoading] = useState(true)
@@ -425,6 +429,9 @@ export function CrmTaskWorkspacesClient() {
         projectId: row.project?.id || '',
       })
       setCustomFieldDraft({ label: '', type: 'TEXT', textValue: '', file: null })
+      if (requestedTaskId === taskId) {
+        detailDialogOpenedFromNotificationRef.current = true
+      }
       setDetailDialogOpen(true)
     }
   }
@@ -471,6 +478,11 @@ export function CrmTaskWorkspacesClient() {
   }, [clampedTaskColumnWidth, showCreatedAtColumn, showPriorityColumn, visibleExtraTaskColumns, workspacePanelCollapsed])
 
   useEffect(() => {
+    if (!requestedTaskId) {
+      handledNotificationTaskRef.current = ''
+      detailDialogOpenedFromNotificationRef.current = false
+      return
+    }
     if (!requestedTaskId) return
     const requestKey = `${requestedWorkspaceId}:${requestedTaskId}`
     if (handledNotificationTaskRef.current === requestKey) return
@@ -489,12 +501,42 @@ export function CrmTaskWorkspacesClient() {
     }
 
     handledNotificationTaskRef.current = requestKey
-    void loadTaskDetail(requestedTaskId).finally(() => {
-      if (typeof window !== 'undefined') {
-        window.history.replaceState(window.history.state, '', window.location.pathname)
-      }
-    })
+    void loadTaskDetail(requestedTaskId)
   }, [loading, requestedTaskId, requestedWorkspaceId, selectedWorkspaceId, workspaces])
+
+  useEffect(() => {
+    if (detailDialogOpen) return
+    if (!requestedTaskId) return
+    if (!detailDialogOpenedFromNotificationRef.current) return
+    if (typeof window === 'undefined') return
+
+    detailDialogOpenedFromNotificationRef.current = false
+    handledNotificationTaskRef.current = ''
+    setSelectedTask(null)
+    setNoteDraft('')
+
+    const params = new URLSearchParams(window.location.search)
+    params.delete('taskId')
+    const resolvedPathname = pathname || window.location.pathname
+    const nextUrl = params.toString() ? `${resolvedPathname}?${params.toString()}` : resolvedPathname
+
+    if (notificationCleanupTimerRef.current) {
+      window.clearTimeout(notificationCleanupTimerRef.current)
+    }
+
+    notificationCleanupTimerRef.current = window.setTimeout(() => {
+      router.replace(nextUrl, { scroll: false })
+      notificationCleanupTimerRef.current = null
+    }, 120)
+  }, [detailDialogOpen, pathname, requestedTaskId, router])
+
+  useEffect(() => {
+    return () => {
+      if (notificationCleanupTimerRef.current && typeof window !== 'undefined') {
+        window.clearTimeout(notificationCleanupTimerRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!selectedWorkspace) return

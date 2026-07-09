@@ -124,6 +124,8 @@ type LitografiaAiAnalyzeResponse = {
   handoff?: LitografiaAiHandoff | null
 }
 
+type LitografiaAssistantMode = "IA" | "JSON_BASE"
+
 type QuoteHistoryEntry = {
   id: string
   prompt: string
@@ -416,6 +418,7 @@ export function LitografiaAiAssistant(props: {
   onApplyToClassic?: (draft: LitografiaAiHandoff) => void
   initialBrief?: string
   openToken?: string | number
+  mode?: LitografiaAssistantMode
 }) {
   const conversationViewportRef = useRef<HTMLDivElement | null>(null)
   const responseSectionRef = useRef<HTMLDivElement | null>(null)
@@ -438,6 +441,7 @@ export function LitografiaAiAssistant(props: {
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [showResponsePanel, setShowResponsePanel] = useState(false)
+  const assistantMode = props.mode === "JSON_BASE" ? "JSON_BASE" : "IA"
 
   const currencyFormatter = new Intl.NumberFormat("es-CO", {
     style: "currency",
@@ -519,7 +523,7 @@ export function LitografiaAiAssistant(props: {
       const res = await fetch("/api/litografia/ia/cotizar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief: args.userMessage, conversation: nextConversation }),
+        body: JSON.stringify({ brief: args.userMessage, conversation: nextConversation, mode: assistantMode }),
       })
 
       const json = (await res.json().catch(() => null)) as LitografiaAiAnalyzeResponse | null
@@ -695,6 +699,17 @@ export function LitografiaAiAssistant(props: {
   const knowledgeUpdatedAt = formatDateTime(knowledgeSource?.updatedAt ?? null)
   const briefRequirements = evaluateBriefRequirements(brief)
   const readyRequirements = briefRequirements.filter((item) => item.met).length
+  const modeTitle = assistantMode === "JSON_BASE" ? "Cotizar base JSON" : "Cotice con IA"
+  const modeDescription = assistantMode === "JSON_BASE"
+    ? "Describe el trabajo con la misma interfaz, pero esta prueba fuerza reglas internas y base JSON sin pasar por la interpretación IA del flujo actual."
+    : "Describe el trabajo como lo pediría el cliente. La lectura se resume para pasar rápido a la cotización final."
+  const loadingDescription = assistantMode === "JSON_BASE"
+    ? "Leyendo formato, material, tintas, acabados y costos desde reglas internas más la base JSON para compararlo contra el flujo IA."
+    : "Interpretando formato, material, tintas, acabados y costos base para llevarte a la respuesta final."
+  const historyTitle = assistantMode === "JSON_BASE" ? "Historial de cotizaciones base JSON" : "Historial de cotizaciones IA"
+  const historyEmpty = assistantMode === "JSON_BASE"
+    ? "Todavía no hay cotizaciones registradas en este flujo comparativo."
+    : "Todavía no hay cotizaciones IA guardadas para esta empresa."
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -704,7 +719,7 @@ export function LitografiaAiAssistant(props: {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-center gap-2 text-slate-700">
               <Sparkles className="h-5 w-5" />
-              <CardTitle className="text-xl">Cotice con IA</CardTitle>
+              <CardTitle className="text-xl">{modeTitle}</CardTitle>
             </div>
             <Button asChild type="button" variant="outline" size="sm">
               <Link href="/dashboard/imagenes-ia/generador">
@@ -714,7 +729,7 @@ export function LitografiaAiAssistant(props: {
             </Button>
           </div>
           <CardDescription>
-            Describe el trabajo como lo pediría el cliente. La lectura se resume para pasar rápido a la cotización final.
+            {modeDescription}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -771,7 +786,7 @@ export function LitografiaAiAssistant(props: {
                 </div>
                 <div className="space-y-1">
                   <p className="text-lg font-semibold text-slate-900">Consultando...</p>
-                  <p className="text-sm text-slate-600">Interpretando formato, material, tintas, acabados y costos base para llevarte a la respuesta final.</p>
+                  <p className="text-sm text-slate-600">{loadingDescription}</p>
                 </div>
               </CardContent>
             </Card>
@@ -1008,7 +1023,7 @@ export function LitografiaAiAssistant(props: {
         <CardHeader>
           <div className="flex items-center gap-2 text-slate-800">
             <History className="h-5 w-5" />
-            <CardTitle className="text-lg">Historial de cotizaciones IA</CardTitle>
+            <CardTitle className="text-lg">{historyTitle}</CardTitle>
           </div>
           <CardDescription>Consulta lo que ya han cotizado los usuarios sin traer el historial completo de una sola vez.</CardDescription>
         </CardHeader>
@@ -1021,7 +1036,7 @@ export function LitografiaAiAssistant(props: {
           {historyError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{historyError}</p> : null}
 
           {!historyError && !historyLoading && !historyEntries.length ? (
-            <p className="text-sm text-muted-foreground">Todavía no hay cotizaciones IA guardadas para esta empresa.</p>
+            <p className="text-sm text-muted-foreground">{historyEmpty}</p>
           ) : null}
 
           <div className="space-y-3">

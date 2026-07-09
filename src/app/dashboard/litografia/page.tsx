@@ -16,12 +16,12 @@ import type { LitografiaAiHandoff } from "@/lib/litografia-ai-handoff"
 
 export default function LitografiaPage() {
   const searchParams = useSearchParams()
-  const [activeTab, setActiveTab] = useState<"clasico" | "ia">("clasico")
+  const [activeTab, setActiveTab] = useState<"clasico" | "ia" | "json">("clasico")
   const [aiHandoffDraft, setAiHandoffDraft] = useState<LitografiaAiHandoff | null>(null)
 
   useEffect(() => {
     const requestedTab = searchParams?.get("tab")
-    if (requestedTab === "ia" || requestedTab === "clasico") {
+    if (requestedTab === "ia" || requestedTab === "clasico" || requestedTab === "json") {
       setActiveTab(requestedTab)
     }
   }, [searchParams])
@@ -43,13 +43,16 @@ export default function LitografiaPage() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "clasico" | "ia")} className="space-y-4">
-        <TabsList className="grid h-auto grid-cols-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "clasico" | "ia" | "json")} className="space-y-4">
+        <TabsList className="grid h-auto grid-cols-3 rounded-2xl border border-slate-200 bg-slate-50 p-1">
           <TabsTrigger value="clasico" className="rounded-xl px-4 py-2 data-[state=active]:bg-white">
             Cotizador clásico
           </TabsTrigger>
           <TabsTrigger value="ia" className="rounded-xl px-4 py-2 data-[state=active]:bg-white">
             Cotice con IA
+          </TabsTrigger>
+          <TabsTrigger value="json" className="rounded-xl px-4 py-2 data-[state=active]:bg-white">
+            Cotizar base JSON
           </TabsTrigger>
         </TabsList>
 
@@ -59,6 +62,17 @@ export default function LitografiaPage() {
 
         <TabsContent value="ia" className="space-y-4">
           <LitografiaAiAssistant
+            mode="IA"
+            onApplyToClassic={(draft) => {
+              setAiHandoffDraft(draft)
+              setActiveTab("clasico")
+            }}
+          />
+        </TabsContent>
+
+        <TabsContent value="json" className="space-y-4">
+          <LitografiaAiAssistant
+            mode="JSON_BASE"
             onApplyToClassic={(draft) => {
               setAiHandoffDraft(draft)
               setActiveTab("clasico")
