@@ -12,7 +12,9 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { useI18n } from '@/components/providers/i18n-provider'
+import { useToast } from '@/hooks/use-toast'
 import { buildDashboardPermissionEntries } from '@/lib/dashboard-permission-catalog'
+import { cn } from '@/lib/utils'
 
 type UserRef = {
   id: string
@@ -36,6 +38,11 @@ type Section = {
   key: string
   title: string
   entries: ModuleEntry[]
+  tone: {
+    container: string
+    title: string
+    panel: string
+  }
 }
 
 type ModuleEntry = {
@@ -53,6 +60,55 @@ type CapabilityEntry = {
 type AccessChoice = AccessLevel | 'INHERIT'
 
 const ACCESS_OPTIONS: AccessLevel[] = ['NONE', 'READ', 'WRITE', 'ADMIN']
+
+const SECTION_TONES = [
+  {
+    container: 'rounded-2xl border border-sky-200 bg-sky-50/70 p-3',
+    title: 'text-sky-900',
+    panel: 'border-sky-200/90 bg-white/95',
+  },
+  {
+    container: 'rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3',
+    title: 'text-emerald-900',
+    panel: 'border-emerald-200/90 bg-white/95',
+  },
+  {
+    container: 'rounded-2xl border border-amber-200 bg-amber-50/70 p-3',
+    title: 'text-amber-900',
+    panel: 'border-amber-200/90 bg-white/95',
+  },
+  {
+    container: 'rounded-2xl border border-fuchsia-200 bg-fuchsia-50/70 p-3',
+    title: 'text-fuchsia-900',
+    panel: 'border-fuchsia-200/90 bg-white/95',
+  },
+  {
+    container: 'rounded-2xl border border-slate-200 bg-slate-50/80 p-3',
+    title: 'text-slate-900',
+    panel: 'border-slate-200/90 bg-white/95',
+  },
+] as const
+
+function getAccessTone(level: AccessChoice | AccessLevel, fallbackLevel?: AccessLevel) {
+  const resolved = level === 'INHERIT' ? (fallbackLevel ?? 'READ') : level
+
+  switch (resolved) {
+    case 'ADMIN':
+      return 'border-lime-300 bg-lime-100 text-lime-950 hover:bg-lime-100 focus-visible:ring-lime-300'
+    case 'WRITE':
+      return 'border-teal-300 bg-teal-100 text-teal-950 hover:bg-teal-100 focus-visible:ring-teal-300'
+    case 'READ':
+      return 'border-amber-300 bg-amber-100 text-amber-950 hover:bg-amber-100 focus-visible:ring-amber-300'
+    case 'NONE':
+      return 'border-rose-300 bg-rose-100 text-rose-950 hover:bg-rose-100 focus-visible:ring-rose-300'
+    default:
+      return 'border-slate-300 bg-white text-slate-900 focus-visible:ring-slate-300'
+  }
+}
+
+function getRoleTone(role: Props['initialSedeRole']) {
+  return getAccessTone(baseAccessForSedeRole(role))
+}
 
 function baseAccessForSedeRole(role: Props['initialSedeRole']): AccessLevel {
   switch (role) {
@@ -74,6 +130,7 @@ function hasExplicitLevel(levels: Partial<Record<ModuleKey, AccessLevel>>, modul
 
 export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole, modules, initial, initialGlobalAccess, initialCapabilities, trigger }: Props) {
   const { t } = useI18n()
+  const { toast } = useToast()
   const [open, setOpen] = useState(false)
   const [levels, setLevels] = useState<Partial<Record<ModuleKey, AccessLevel>>>(initial)
   const [saving, setSaving] = useState<Partial<Record<ModuleKey, boolean>>>({})
@@ -126,10 +183,11 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
         grouped.set(item.section, byModule)
       }
 
-      const orderedSections = Array.from(grouped.entries()).map(([key, value]) => ({
+      const orderedSections = Array.from(grouped.entries()).map(([key, value], index) => ({
         key,
         title: key,
         entries: [...value.values()],
+        tone: SECTION_TONES[index % SECTION_TONES.length],
       }))
 
       const knownModules = new Set(orderedSections.flatMap((section) => section.entries.map((entry) => entry.moduleKey)))
@@ -140,7 +198,15 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
       }))
 
       return extraEntries.length
-        ? [...orderedSections, { key: 'Otros', title: t('rbac.userPermissions.section.other'), entries: extraEntries }]
+        ? [
+            ...orderedSections,
+            {
+              key: 'Otros',
+              title: t('rbac.userPermissions.section.other'),
+              entries: extraEntries,
+              tone: SECTION_TONES[orderedSections.length % SECTION_TONES.length],
+            },
+          ]
         : orderedSections
     },
     [modules, t]
@@ -165,7 +231,12 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
 
           return { ...prev, [moduleKey]: json.data.level }
         })
+        toast({ title: 'Permiso actualizado correctamente' })
+      } else {
+        toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' })
       }
+    } catch {
+      toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' })
     } finally {
       setSaving((prev) => ({ ...prev, [moduleKey]: false }))
     }
@@ -182,7 +253,12 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
       const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { level?: AccessLevel } } | null
       if (res.ok && json?.success) {
         setGlobalLevel(json.data?.level ?? nextLevel)
+        toast({ title: 'Permiso actualizado correctamente' })
+      } else {
+        toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' })
       }
+    } catch {
+      toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' })
     } finally {
       setSavingGlobal(false)
     }
@@ -207,7 +283,12 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
           }
           return { ...prev, [permissionKey]: json.data.level }
         })
+        toast({ title: 'Permiso actualizado correctamente' })
+      } else {
+        toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' })
       }
+    } catch {
+      toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' })
     } finally {
       setSaving((prev) => {
         const next = { ...prev }
@@ -228,7 +309,12 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
       const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { role?: Props['initialSedeRole'] } } | null
       if (res.ok && json?.success) {
         setSedeRole(json.data?.role ?? nextRole)
+        toast({ title: 'Permiso actualizado correctamente' })
+      } else {
+        toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' })
       }
+    } catch {
+      toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' })
     } finally {
       setSavingRole(false)
     }
@@ -247,7 +333,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="w-[96vw] max-w-6xl">
         <DialogHeader>
           <DialogTitle>{t('rbac.userPermissions.title')}</DialogTitle>
           <DialogDescription>
@@ -261,7 +347,10 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
             <div className="rounded border px-3 py-2 flex items-center justify-between gap-3">
               <div className="text-sm text-muted-foreground">{t('rbac.userPermissions.current')}: {t(`rbac.sedeRole.${sedeRole}`)}</div>
               <select
-                className="px-3 py-2 border rounded-md"
+                className={cn(
+                  'rounded-md border px-3 py-2 transition-colors',
+                  getRoleTone(sedeRole)
+                )}
                 value={sedeRole}
                 onChange={(e) => {
                   const next = e.target.value as Props['initialSedeRole']
@@ -284,7 +373,10 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
             <div className="rounded border px-3 py-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div className="text-sm text-muted-foreground">{t('rbac.userPermissions.current')}: {t(`rbac.access.${globalLevel}`)}</div>
               <select
-                className="px-3 py-2 border rounded-md"
+                className={cn(
+                  'rounded-md border px-3 py-2 transition-colors',
+                  getAccessTone(globalLevel)
+                )}
                 value={globalLevel}
                 onChange={(e) => {
                   const next = e.target.value as AccessLevel
@@ -304,30 +396,23 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
           </div>
 
           {sections.map((section) => (
-            <div key={section.key} className="space-y-2">
-              <div className="font-semibold text-sm">{section.title}</div>
-              <div className="rounded border">
+            <section key={section.key} className={cn('space-y-3', section.tone.container)}>
+              <div className={cn('font-semibold text-sm uppercase tracking-[0.12em]', section.tone.title)}>{section.title}</div>
+              <div className={cn('rounded-xl border shadow-sm', section.tone.panel)}>
                 {section.entries.map((entry) => (
                   <div
                     key={`${section.key}-${entry.moduleKey}`}
-                    className="border-b px-3 py-2 last:border-b-0"
+                    className="border-b border-inherit px-4 py-3 last:border-b-0"
                   >
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                       <div className="min-w-0">
                         <div className="text-sm font-medium truncate">{t(`rbac.module.${entry.moduleKey}`)}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {hasExplicitLevel(levels, entry.moduleKey)
-                            ? `${t('rbac.userPermissions.current')}: ${t(`rbac.access.${effectiveLevel(entry.moduleKey)}`)}`
-                            : `${t('rbac.userPermissions.inherited')}: ${t(`rbac.access.${baseLevel}`)}`}
-                        </div>
-                        {entry.submodules.length ? (
-                          <div className="text-xs text-muted-foreground">
-                            {t('rbac.userPermissions.includes')}: {entry.submodules.join(', ')}
-                          </div>
-                        ) : null}
                       </div>
                       <select
-                        className="w-full rounded-md border px-3 py-2 md:w-52"
+                        className={cn(
+                          'w-full rounded-md border px-3 py-2 transition-colors md:w-60',
+                          getAccessTone(selectedLevel(entry.moduleKey), effectiveLevel(entry.moduleKey))
+                        )}
                         value={selectedLevel(entry.moduleKey)}
                         onChange={(e) => void updateModuleLevel(entry.moduleKey, e.target.value as AccessChoice)}
                         disabled={Boolean(saving[entry.moduleKey])}
@@ -342,20 +427,21 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
                     </div>
 
                     {entry.capabilityEntries.length ? (
-                      <div className="mt-3 space-y-2 rounded-lg border border-slate-200/80 bg-slate-50/60 p-2.5">
+                      <div className="mt-3 space-y-2 rounded-xl border border-slate-200/80 bg-slate-50/60 p-3">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{t('rbac.userPermissions.section.submodules')}</div>
                         {entry.capabilityEntries.map((capability) => {
                           const value = capabilityLevels[capability.permissionKey] ?? 'INHERIT'
                           const currentLevel = capabilityLevels[capability.permissionKey] ?? effectiveLevel(entry.moduleKey)
                           return (
-                            <div key={capability.permissionKey} className="flex flex-col gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 md:flex-row md:items-center md:justify-between">
+                            <div key={capability.permissionKey} className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 md:flex-row md:items-center md:justify-between">
                               <div className="min-w-0">
                                 <div className="text-sm font-medium">{capability.label}</div>
-                                <div className="text-xs text-muted-foreground">{t('rbac.userPermissions.current')}: {t(`rbac.access.${currentLevel}`)}</div>
-                                <div className="text-xs text-muted-foreground">{t('rbac.userPermissions.includes')}: {capability.includeLabels.join(', ')}</div>
                               </div>
                               <select
-                                className="w-full rounded-md border px-3 py-2 md:w-52"
+                                className={cn(
+                                  'w-full rounded-md border px-3 py-2 transition-colors md:w-60',
+                                  getAccessTone(value, currentLevel)
+                                )}
                                 value={value}
                                 onChange={(e) => void updateCapabilityLevel(capability.permissionKey, e.target.value as AccessChoice)}
                               >
@@ -374,7 +460,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialSedeRole
                   </div>
                 ))}
               </div>
-            </div>
+            </section>
           ))}
         </div>
       </DialogContent>

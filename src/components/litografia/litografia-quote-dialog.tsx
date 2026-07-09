@@ -21,8 +21,15 @@ import { Textarea } from "@/components/ui/textarea"
 import { LitografiaCutGuide } from "@/components/litografia/litografia-cut-guide"
 import { LitografiaImpositionPreview } from "@/components/litografia/litografia-imposition-preview"
 import { LitografiaPaperRequestDialog } from "@/components/litografia/litografia-paper-request-dialog"
+import { LitografiaProductVisual } from "@/components/litografia/litografia-product-visual"
 import type { LitografiaAiHandoff } from "@/lib/litografia-ai-handoff"
 import { computeLitografia, type LitografiaResult } from "@/lib/litografia"
+import {
+  LITOGRAFIA_VISUAL_CATEGORIES,
+  mapDropdownItemsToLitografiaVisualCategories,
+  type LitografiaVisualCategory,
+  type LitografiaVisualProduct,
+} from "@/lib/litografia-visual-products"
 import { cn, formatCurrency } from "@/lib/utils"
 
 type PapelTipo = "bond" | "propalcote" | "periodico" | "otro"
@@ -36,6 +43,7 @@ const CUSTOM_DROPDOWN_KEYS = {
   transporte: "litografia_transporte",
   tirajeTiers: "litografia_tiraje_tiers",
   editorialProducto: "litografia_editorial_producto",
+  visualCatalog: "litografia_visual_catalog",
 } as const
 
 const INPUT_COMPACT = "h-7 px-2 text-xs"
@@ -57,6 +65,14 @@ const PRINT_INK_OPTIONS: Array<{ value: PrintInkKey; label: string }> = [
   { value: "4+S", label: "4 + Plata" },
   { value: "4+UV", label: "4 + Barniz UV" },
 ]
+
+const VISUAL_CATEGORY_ICON_MAP: Record<LitografiaVisualCategory['icon'], typeof FileText> = {
+  document: FileText,
+  layers: Layers3,
+  package: Package2,
+  book: BookOpen,
+  sparkles: Sparkles,
+}
 
 function inkLabel(value: PrintInkKey) {
   const v = String(value || "").trim()
@@ -411,6 +427,18 @@ function formatCm(value: number | null | undefined) {
 
 function nearlyEqualCm(a: number, b: number, tolerance = 0.35) {
   return Math.abs(a - b) <= tolerance
+}
+
+function findSizeOptionByDimensions(
+  widthCm: number,
+  heightCm: number,
+  sizeOptions: Array<{ key: string; nombre: string; widthCm: number; heightCm: number }>,
+) {
+  return sizeOptions.find((option) => {
+    const sameOrientation = nearlyEqualCm(option.widthCm, widthCm, 0.6) && nearlyEqualCm(option.heightCm, heightCm, 0.6)
+    const swappedOrientation = nearlyEqualCm(option.widthCm, heightCm, 0.6) && nearlyEqualCm(option.heightCm, widthCm, 0.6)
+    return sameOrientation || swappedOrientation
+  }) || null
 }
 
 function deriveFoldedSize(widthCm: number, heightCm: number, foldParts: number) {
@@ -898,6 +926,9 @@ export function LitografiaQuoteDialog(props: {
 
   const [selectedEditorialProductoKey, setSelectedEditorialProductoKey] = useState<string>("")
   const [quoteMode, setQuoteMode] = useState<QuoteMode>("normal")
+  const [selectedVisualCategoryId, setSelectedVisualCategoryId] = useState<string>(LITOGRAFIA_VISUAL_CATEGORIES[0]?.id ?? "")
+  const [selectedVisualProductId, setSelectedVisualProductId] = useState<string>("")
+  const [visualCatalogCategories, setVisualCatalogCategories] = useState<LitografiaVisualCategory[]>([])
   const [editorialOptions, setEditorialOptions] = useState<
     Array<{
       value: string
@@ -950,6 +981,37 @@ export function LitografiaQuoteDialog(props: {
   const primaryPlanchaProfileId = planchaIdsNormalized[0] ?? ""
   const primaryTintaProfileId = tintaIdsNormalized[0] ?? ""
   const primaryPaperId = String(paperRows[0]?.paperId ?? "").trim()
+
+  const availableVisualCategories = useMemo(
+    () => (visualCatalogCategories.length ? visualCatalogCategories : LITOGRAFIA_VISUAL_CATEGORIES),
+    [visualCatalogCategories],
+  )
+  const selectedVisualCategory = useMemo(
+    () => availableVisualCategories.find((category) => category.id === selectedVisualCategoryId) || availableVisualCategories[0] || null,
+    [availableVisualCategories, selectedVisualCategoryId],
+  )
+  const selectedVisualProducts = selectedVisualCategory?.products ?? []
+  const selectedVisualProduct = useMemo(
+    () => selectedVisualProducts.find((product) => product.id === selectedVisualProductId) || null,
+    [selectedVisualProductId, selectedVisualProducts],
+  )
+
+  useEffect(() => {
+    const firstCategory = availableVisualCategories[0] || null
+    if (!firstCategory) return
+
+    const categoryStillExists = availableVisualCategories.some((category) => category.id === selectedVisualCategoryId)
+    if (!categoryStillExists) {
+      setSelectedVisualCategoryId(firstCategory.id)
+      setSelectedVisualProductId(firstCategory.products[0]?.id ?? "")
+      return
+    }
+
+    const productStillExists = selectedVisualProducts.some((product) => product.id === selectedVisualProductId)
+    if (!productStillExists) {
+      setSelectedVisualProductId(selectedVisualProducts[0]?.id ?? "")
+    }
+  }, [availableVisualCategories, selectedVisualCategoryId, selectedVisualProductId, selectedVisualProducts])
 
   const updateEditorialPart = useCallback(
     (partKey: "cover" | "inner", updater: (prev: EditorialPartState) => EditorialPartState) => {
@@ -1837,6 +1899,53 @@ export function LitografiaQuoteDialog(props: {
     return filtered.length ? filtered : activeProfiles
   }, [activeProfiles])
   const activePapers = useMemo(() => papers.filter((p) => p.activo), [papers])
+
+  const applyVisualProductPreset = useCallback(
+    (product: LitografiaVisualProduct) => {
+      setQuoteMode("normal")
+      setSelectedVisualCategoryId(
+        availableVisualCategories.find((category) => category.products.some((entry) => entry.id === product.id))?.id || selectedVisualCategoryId,
+      )
+      setSelectedVisualProductId(product.id)
+      setTitulo(product.title)
+      setDescripcion((prev) => (prev.trim() ? prev : product.description))
+      setPrintInkFront(product.frontInk)
+      setPrintInkBack(product.backInk)
+      setSobranteMinimo(String(product.suggestedExtraQty ?? 100))
+
+      const matchedSize = findSizeOptionByDimensions(product.finalWidthCm, product.finalHeightCm, sizeOptions)
+      if (matchedSize) {
+        setFormatoKey(matchedSize.key)
+        setCustomFormatoWidthCm("")
+        setCustomFormatoHeightCm("")
+      } else {
+        setFormatoKey(CUSTOM_PRINT_SIZE_KEY)
+        setCustomFormatoWidthCm(String(product.finalWidthCm))
+        setCustomFormatoHeightCm(String(product.finalHeightCm))
+      }
+
+      const paperQuery = `${product.paperTypeHint || ""} ${product.paperWeightHint ? `${product.paperWeightHint}g` : ""}`.trim()
+      const matchedPaper = paperQuery ? findBestAiDraftPaperMatch(paperQuery, activePapers) : null
+      if (matchedPaper) {
+        setPaperRows((prev) => {
+          const next = [...prev]
+          next[0] = {
+            paperId: matchedPaper.id,
+            qty: next[0]?.qty || "1",
+            formatoKey: next[0]?.formatoKey || "",
+          }
+          return next.length ? next : [{ paperId: matchedPaper.id, qty: "1", formatoKey: "" }]
+        })
+        setSelectedPaperTipo(String(matchedPaper.tipo || "").trim())
+        setSelectedPaperGramaje(matchedPaper.gramaje != null ? String(matchedPaper.gramaje) : "")
+      } else {
+        setSelectedPaperTipo(product.paperTypeHint || "")
+        setSelectedPaperGramaje(product.paperWeightHint != null ? String(product.paperWeightHint) : "")
+      }
+    },
+    [activePapers, availableVisualCategories, selectedVisualCategoryId, sizeOptions],
+  )
+
   const getGrupo = (f: FinishOption) => (f.grupo ?? "ACABADO")
 
   const activeFinishes = useMemo(
@@ -2342,6 +2451,14 @@ export function LitografiaQuoteDialog(props: {
 
         setTransporteOptions(mapped.sort((a, b) => a.label.localeCompare(b.label)))
 
+        const visualCatalog = dropdowns.find((d) => String(d.key || "") === CUSTOM_DROPDOWN_KEYS.visualCatalog) || null
+        const visualCatalogItems = visualCatalog && Array.isArray(visualCatalog.items) ? visualCatalog.items : []
+        setVisualCatalogCategories(
+          mapDropdownItemsToLitografiaVisualCategories(
+            visualCatalogItems as Array<{ value?: unknown; label?: unknown; meta?: unknown; activo?: unknown; sortOrder?: unknown }>,
+          ),
+        )
+
         const editorial = dropdowns.find((d) => String(d.key || "") === CUSTOM_DROPDOWN_KEYS.editorialProducto) || null
         const editorialItems = editorial && Array.isArray(editorial.items) ? editorial.items : []
         const mappedEditorial = editorialItems
@@ -2369,6 +2486,7 @@ export function LitografiaQuoteDialog(props: {
       } catch {
         setTransporteOptions([])
         setEditorialOptions([])
+        setVisualCatalogCategories([])
       } finally {
         setTransporteOptionsLoading(false)
         setEditorialOptionsLoading(false)
@@ -5442,6 +5560,192 @@ export function LitografiaQuoteDialog(props: {
 
                       {!editorialMode ? (
                       <div className="sm:col-span-2">
+                        <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-sky-50/60 p-4 shadow-sm">
+                          <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">Flujo visual</p>
+                              <p className="mt-1 text-sm font-semibold text-slate-950">Selecciona categoria, variedad y luego ajusta la especificacion</p>
+                              <p className="mt-1 text-xs text-slate-600">Por ahora usamos iconos y presets sugeridos. Mas adelante este bloque puede cambiarse por imagenes reales del producto.</p>
+                            </div>
+                            {selectedVisualProduct ? (
+                              <div className="rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-medium text-sky-800 shadow-sm">
+                                Sugerencia activa: {selectedVisualProduct.title}
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="mt-4 rounded-xl border border-slate-200 bg-white/80 p-4">
+                            <div className="flex items-center justify-between gap-2">
+                              <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">Paso 1</p>
+                                <p className="mt-1 text-sm font-semibold text-slate-950">Elige una categoria</p>
+                              </div>
+                              <span className="text-[11px] text-slate-500">{LITOGRAFIA_VISUAL_CATEGORIES.length} grupos</span>
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                              {LITOGRAFIA_VISUAL_CATEGORIES.map((category) => {
+                                const Icon = VISUAL_CATEGORY_ICON_MAP[category.icon]
+                                const selected = selectedVisualCategory?.id === category.id
+                                return (
+                                  <button
+                                    key={category.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedVisualCategoryId(category.id)
+                                      setSelectedVisualProductId("")
+                                    }}
+                                    className={cn(
+                                      "rounded-2xl border p-4 text-left transition-all",
+                                      selected
+                                        ? `${category.accentClassName} shadow-[0_14px_30px_-20px_rgba(14,165,233,0.5)]`
+                                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
+                                    )}
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className={cn(
+                                        "flex h-10 w-10 items-center justify-center rounded-xl border",
+                                        selected ? "border-white/70 bg-white text-current" : "border-slate-200 bg-slate-50 text-slate-700",
+                                      )}>
+                                        <Icon className="h-4 w-4" />
+                                      </div>
+                                      <span className={cn(
+                                        "rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
+                                        selected ? "bg-white/80 text-current" : "bg-slate-100 text-slate-600",
+                                      )}>
+                                        {category.products.length} opciones
+                                      </span>
+                                    </div>
+                                    <p className="mt-4 text-sm font-semibold">{category.label}</p>
+                                    <p className="mt-1 text-xs leading-5 opacity-80">{category.description}</p>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+
+                          {selectedVisualCategory ? (
+                            <div className="mt-4 rounded-xl border border-slate-200 bg-white/80 p-4">
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">Paso 2</p>
+                                  <p className="mt-1 text-sm font-semibold text-slate-950">Elige la variedad de {selectedVisualCategory.label.toLowerCase()}</p>
+                                </div>
+                                <span className="text-[11px] text-slate-500">Click para aplicar el preset</span>
+                              </div>
+
+                              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                {selectedVisualProducts.map((product) => {
+                                  const selected = selectedVisualProduct?.id === product.id
+                                  return (
+                                    <button
+                                      key={product.id}
+                                      type="button"
+                                      onClick={() => applyVisualProductPreset(product)}
+                                      className={cn(
+                                        "rounded-2xl border p-4 text-left transition-all",
+                                        selected
+                                          ? "border-sky-400 bg-sky-50 shadow-[0_14px_30px_-20px_rgba(14,165,233,0.55)]"
+                                          : "border-slate-200 bg-white hover:border-sky-200 hover:bg-slate-50",
+                                      )}
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="text-sm font-semibold text-slate-950">{product.title}</span>
+                                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                                          {product.shortTitle}
+                                        </span>
+                                      </div>
+                                      <LitografiaProductVisual product={product} selected={selected} className="mt-3" />
+                                      <p className="mt-3 text-xs leading-5 text-slate-600">{product.description}</p>
+                                      <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-700">
+                                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+                                          Final {formatCm(product.finalWidthCm)}×{formatCm(product.finalHeightCm)} cm
+                                        </span>
+                                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+                                          {inkLabel(product.frontInk)} / {inkLabel(product.backInk)}
+                                        </span>
+                                      </div>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {selectedVisualProduct ? (
+                            <div className="mt-4 rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-4">
+                              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                <div>
+                                  <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">
+                                    <Sparkles className="h-3.5 w-3.5" />
+                                    Paso 3
+                                  </div>
+                                  <h3 className="mt-3 text-base font-semibold text-slate-950">Configuracion sugerida para {selectedVisualProduct.title}</h3>
+                                  <p className="mt-1 text-sm text-slate-600">El preset ya deja listo el tamaño final, la impresion sugerida y una recomendacion inicial de papel. Desde aqui continuas con las especificaciones finas del trabajo.</p>
+                                </div>
+                                <Button type="button" variant="outline" size="sm" onClick={() => applyVisualProductPreset(selectedVisualProduct)}>
+                                  Reaplicar preset
+                                </Button>
+                              </div>
+
+                              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                                <div className="rounded-lg border border-sky-100 bg-white p-3 shadow-sm">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">Tamano final</p>
+                                  <p className="mt-2 text-sm font-semibold text-slate-950">{formatCm(selectedVisualProduct.finalWidthCm)} × {formatCm(selectedVisualProduct.finalHeightCm)} cm</p>
+                                  <p className="mt-1 text-xs text-slate-600">Dimension visible para el cliente.</p>
+                                </div>
+                                <div className="rounded-lg border border-sky-100 bg-white p-3 shadow-sm">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">Impresion sugerida</p>
+                                  <p className="mt-2 text-sm font-semibold text-slate-950">{inkLabel(selectedVisualProduct.frontInk)} / {inkLabel(selectedVisualProduct.backInk)}</p>
+                                  <p className="mt-1 text-xs text-slate-600">Puedes cambiarlo luego segun arte y tiraje.</p>
+                                </div>
+                                <div className="rounded-lg border border-sky-100 bg-white p-3 shadow-sm">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">Papel sugerido</p>
+                                  <p className="mt-2 text-sm font-semibold text-slate-950">{selectedVisualProduct.paperTypeHint || 'Por definir'}{selectedVisualProduct.paperWeightHint ? ` ${selectedVisualProduct.paperWeightHint}g` : ''}</p>
+                                  <p className="mt-1 text-xs text-slate-600">Se intenta autoseleccionar si existe en configuracion.</p>
+                                </div>
+                                <div className="rounded-lg border border-sky-100 bg-white p-3 shadow-sm">
+                                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-700">Sobrante recomendado</p>
+                                  <p className="mt-2 text-sm font-semibold text-slate-950">{selectedVisualProduct.suggestedExtraQty ?? 100} unidades</p>
+                                  <p className="mt-1 text-xs text-slate-600">Base inicial para desperdicio minimo.</p>
+                                </div>
+                              </div>
+
+                              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+                                <LitografiaProductVisual product={selectedVisualProduct} selected mode="hero" />
+                                <div className="rounded-xl border border-white/80 bg-white/85 p-4 shadow-sm">
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sky-700">Lectura rapida</p>
+                                  <div className="mt-3 space-y-2 text-sm text-slate-700">
+                                    <p><span className="font-semibold text-slate-950">Producto:</span> {selectedVisualProduct.title}</p>
+                                    <p><span className="font-semibold text-slate-950">Cliente recibe:</span> {formatCm(selectedVisualProduct.finalWidthCm)} × {formatCm(selectedVisualProduct.finalHeightCm)} cm</p>
+                                    <p><span className="font-semibold text-slate-950">Impresion sugerida:</span> {inkLabel(selectedVisualProduct.frontInk)} frente y {inkLabel(selectedVisualProduct.backInk)} reverso</p>
+                                    <p><span className="font-semibold text-slate-950">Papel base:</span> {selectedVisualProduct.paperTypeHint || 'Por definir'}{selectedVisualProduct.paperWeightHint ? ` ${selectedVisualProduct.paperWeightHint}g` : ''}</p>
+                                    <p><span className="font-semibold text-slate-950">Preparacion:</span> {selectedVisualProduct.finishHints?.join(', ') || 'Sin acabado sugerido'}</p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {selectedVisualProduct.operationalWidthCm && selectedVisualProduct.operationalHeightCm ? (
+                                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs text-amber-900">
+                                  Produccion sugerida abierta: {formatCm(selectedVisualProduct.operationalWidthCm)} × {formatCm(selectedVisualProduct.operationalHeightCm)} cm. Usa esta referencia si el producto requiere doblez o troquel antes de cerrar la cotizacion.
+                                </div>
+                              ) : null}
+                              {selectedVisualProduct.finishHints?.length ? (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {selectedVisualProduct.finishHints.map((hint) => (
+                                    <span key={hint} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-700">
+                                      {hint}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
+                              {selectedVisualProduct.extraNote ? (
+                                <p className="mt-3 text-xs text-slate-600">{selectedVisualProduct.extraNote}</p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <div>
                             <Label className={requiredLabelClass(validation.missingPlancha)}>Área útil de impresión</Label>

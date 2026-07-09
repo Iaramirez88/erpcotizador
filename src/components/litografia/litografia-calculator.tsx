@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { SearchableNativeSelect } from "@/components/ui/searchable-native-select"
 import { computeLitografia } from "@/lib/litografia"
 import type { LitografiaAiHandoff } from "@/lib/litografia-ai-handoff"
+import { buildLitografiaVisualCatalogTemplateItems } from "@/lib/litografia-visual-products"
 import { formatCurrency } from "@/lib/utils"
 
 type PapelTipo = "bond" | "propalcote" | "periodico" | "otro"
@@ -20,6 +21,7 @@ const CUSTOM_DROPDOWN_KEYS = {
   transporte: "litografia_transporte",
   tirajeTiers: "litografia_tiraje_tiers",
   editorialProducto: "litografia_editorial_producto",
+  visualCatalog: "litografia_visual_catalog",
 } as const
 
 // Plantillas para bootstrap (se copian a BD por empresa y luego son editables)
@@ -54,6 +56,8 @@ const EDITORIAL_PRODUCTO_TEMPLATE_ITEMS = [
     meta: { kind: "LIBRO", totalPaginas: 100, paginasPortadaContraportada: 0, cartasPorPlancha: 2, paginasPorPliego: 4 },
   },
 ]
+
+const VISUAL_CATALOG_TEMPLATE_ITEMS = buildLitografiaVisualCatalogTemplateItems()
 
 const INPUT_COMPACT = "h-7 px-2 text-xs"
 const SELECT_COMPACT = "mt-2 h-8 w-full rounded-md border bg-background px-2 text-xs"
@@ -302,9 +306,29 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
       string,
       {
         label: string
+        value?: string
+        metaJson?: string
         costo?: string
         min?: string
         max?: string
+        categoryId?: string
+        categoryLabel?: string
+        categoryDescription?: string
+        categoryIcon?: string
+        shortTitle?: string
+        description?: string
+        imageUrl?: string
+        finalWidthCm?: string
+        finalHeightCm?: string
+        operationalWidthCm?: string
+        operationalHeightCm?: string
+        frontInk?: string
+        backInk?: string
+        paperTypeHint?: string
+        paperWeightHint?: string
+        finishHints?: string
+        extraNote?: string
+        suggestedExtraQty?: string
         totalPaginas?: string
         paginasPortadaContraportada?: string
         cartasPorPlancha?: string
@@ -317,9 +341,29 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
       string,
       {
         label?: string
+        value?: string
+        metaJson?: string
         costo?: string
         min?: string
         max?: string
+        categoryId?: string
+        categoryLabel?: string
+        categoryDescription?: string
+        categoryIcon?: string
+        shortTitle?: string
+        description?: string
+        imageUrl?: string
+        finalWidthCm?: string
+        finalHeightCm?: string
+        operationalWidthCm?: string
+        operationalHeightCm?: string
+        frontInk?: string
+        backInk?: string
+        paperTypeHint?: string
+        paperWeightHint?: string
+        finishHints?: string
+        extraNote?: string
+        suggestedExtraQty?: string
         totalPaginas?: string
         paginasPortadaContraportada?: string
         cartasPorPlancha?: string
@@ -564,6 +608,20 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
     return Number.isFinite(num) ? num : null
   }
 
+  function metaString(meta: unknown, key: string) {
+    if (!meta || typeof meta !== 'object') return ""
+    const raw = (meta as Record<string, unknown>)[key]
+    return typeof raw === 'string' ? raw.trim() : ""
+  }
+
+  function metaStringList(meta: unknown, key: string) {
+    if (!meta || typeof meta !== 'object') return ""
+    const raw = (meta as Record<string, unknown>)[key]
+    if (Array.isArray(raw)) return raw.map((entry) => String(entry || "").trim()).filter(Boolean).join(", ")
+    if (typeof raw === 'string') return raw.trim()
+    return ""
+  }
+
   const transporteDropdown = useMemo(() => {
     return customDropdowns.find((d) => d.key === CUSTOM_DROPDOWN_KEYS.transporte) || null
   }, [customDropdowns])
@@ -736,6 +794,14 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
     return ""
   }
 
+  function formatMetaJson(meta: unknown) {
+    try {
+      return JSON.stringify(meta && typeof meta === 'object' ? meta : {}, null, 2)
+    } catch {
+      return "{}"
+    }
+  }
+
   const createCustomDropdown = async (payload: { nombre: string; key?: string; descripcion?: string | null; seedItems?: unknown[] }) => {
     setCustomDropdownsError(null)
     try {
@@ -824,13 +890,15 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
     }
   }
 
-  const createTemplateIfMissing = async (kind: 'transporte' | 'tirajeTiers' | 'editorialProducto') => {
+  const createTemplateIfMissing = async (kind: 'transporte' | 'tirajeTiers' | 'editorialProducto' | 'visualCatalog') => {
     const key =
       kind === 'transporte'
         ? CUSTOM_DROPDOWN_KEYS.transporte
         : kind === 'tirajeTiers'
           ? CUSTOM_DROPDOWN_KEYS.tirajeTiers
-          : CUSTOM_DROPDOWN_KEYS.editorialProducto
+          : kind === 'editorialProducto'
+            ? CUSTOM_DROPDOWN_KEYS.editorialProducto
+            : CUSTOM_DROPDOWN_KEYS.visualCatalog
     const exists = customDropdowns.some((d) => d.key === key)
     if (exists) return
 
@@ -839,13 +907,17 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
         ? TRANSPORTE_TEMPLATE_ITEMS
         : kind === 'tirajeTiers'
           ? TIRAJE_TIER_TEMPLATE_ITEMS
-          : EDITORIAL_PRODUCTO_TEMPLATE_ITEMS
+          : kind === 'editorialProducto'
+            ? EDITORIAL_PRODUCTO_TEMPLATE_ITEMS
+            : VISUAL_CATALOG_TEMPLATE_ITEMS
     const nombre =
       kind === 'transporte'
         ? 'Litografía: Transporte'
         : kind === 'tirajeTiers'
           ? 'Litografía: Rangos sugeridos (tiraje)'
-          : 'Litografía: Editorial (libros/cartillas/revistas)'
+          : kind === 'editorialProducto'
+            ? 'Litografía: Editorial (libros/cartillas/revistas)'
+            : 'Litografía: Catálogo visual'
     await createCustomDropdown({ nombre, key, descripcion: null, seedItems })
   }
 
@@ -2057,6 +2129,9 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
                   <Button type="button" variant="outline" onClick={() => void createTemplateIfMissing('editorialProducto')} disabled={!meLoaded || !canConfigWrite}>
                     Crear plantilla Editorial
                   </Button>
+                  <Button type="button" variant="outline" onClick={() => void createTemplateIfMissing('visualCatalog')} disabled={!meLoaded || !canConfigWrite}>
+                    Crear plantilla Catálogo visual
+                  </Button>
                 </div>
 
                 <div>
@@ -2088,9 +2163,17 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
 
                     const isTirajeTiers = d.key === CUSTOM_DROPDOWN_KEYS.tirajeTiers
                     const isEditorial = d.key === CUSTOM_DROPDOWN_KEYS.editorialProducto
+                    const isVisualCatalog = d.key === CUSTOM_DROPDOWN_KEYS.visualCatalog
                     const newIt =
                       newItemDraft[d.id] ||
-                      (isTirajeTiers
+                      (isVisualCatalog
+                        ? {
+                            label: "",
+                            value: "",
+                            metaJson:
+                              '{\n  "categoryId": "cartas-menus",\n  "categoryLabel": "Cartas y menus",\n  "categoryDescription": "",\n  "categoryIcon": "document",\n  "shortTitle": "",\n  "description": "",\n  "imageUrl": "",\n  "finalWidthCm": 21.59,\n  "finalHeightCm": 27.94,\n  "operationalWidthCm": 21.59,\n  "operationalHeightCm": 27.94,\n  "frontInk": "4",\n  "backInk": "4",\n  "paperTypeHint": "propalcote",\n  "paperWeightHint": 300,\n  "finishHints": [],\n  "extraNote": "",\n  "suggestedExtraQty": 100\n}',
+                          }
+                        : isTirajeTiers
                         ? { label: "", min: "", max: "" }
                         : isEditorial
                           ? {
@@ -2181,7 +2264,85 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
                             </div>
                           </div>
 
-                          {isTirajeTiers ? (
+                          {isVisualCatalog ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-start">
+                              <div>
+                                <Label>Nombre</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  value={newIt.label}
+                                  onChange={(e) =>
+                                    setNewItemDraft((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || newIt), label: e.target.value },
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label>Identificador</Label>
+                                <Input
+                                  className={INPUT_COMPACT}
+                                  value={newIt.value ?? ""}
+                                  onChange={(e) =>
+                                    setNewItemDraft((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || newIt), value: e.target.value },
+                                    }))
+                                  }
+                                  placeholder="menu-simple"
+                                />
+                              </div>
+                              <div className="md:col-span-2">
+                                <Label>Metadata JSON</Label>
+                                <Textarea
+                                  className="min-h-56 text-xs font-mono"
+                                  value={newIt.metaJson ?? "{}"}
+                                  onChange={(e) =>
+                                    setNewItemDraft((prev) => ({
+                                      ...prev,
+                                      [d.id]: { ...(prev[d.id] || newIt), metaJson: e.target.value },
+                                    }))
+                                  }
+                                />
+                                <p className="mt-1 text-xs text-muted-foreground">Aquí puedes definir imagen, categoría, tamaños, papel sugerido y acabados por defecto.</p>
+                              </div>
+                              <div className="md:col-span-2">
+                                <Button
+                                  type="button"
+                                  onClick={() => {
+                                    const label = newIt.label.trim()
+                                    const value = String(newIt.value ?? "").trim()
+                                    if (!label || !value) return
+                                    try {
+                                      const meta = JSON.parse(String(newIt.metaJson ?? "{}")) as unknown
+                                      void createCustomItem(d.id, {
+                                        label,
+                                        value,
+                                        activo: true,
+                                        meta,
+                                      }).then(() => {
+                                        setNewItemDraft((prev) => ({
+                                          ...prev,
+                                          [d.id]: {
+                                            label: "",
+                                            value: "",
+                                            metaJson:
+                                              '{\n  "categoryId": "cartas-menus",\n  "categoryLabel": "Cartas y menus",\n  "categoryDescription": "",\n  "categoryIcon": "document",\n  "shortTitle": "",\n  "description": "",\n  "imageUrl": "",\n  "finalWidthCm": 21.59,\n  "finalHeightCm": 27.94,\n  "operationalWidthCm": 21.59,\n  "operationalHeightCm": 27.94,\n  "frontInk": "4",\n  "backInk": "4",\n  "paperTypeHint": "propalcote",\n  "paperWeightHint": 300,\n  "finishHints": [],\n  "extraNote": "",\n  "suggestedExtraQty": 100\n}',
+                                          },
+                                        }))
+                                      })
+                                    } catch {
+                                      setCustomDropdownsError('Metadata JSON inválida')
+                                    }
+                                  }}
+                                  disabled={!meLoaded || !canConfigWrite || !newIt.label.trim() || !String(newIt.value ?? '').trim()}
+                                >
+                                  Agregar opción
+                                </Button>
+                              </div>
+                            </div>
+                          ) : isTirajeTiers ? (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                               <div>
                                 <Label>Nombre</Label>
@@ -2449,6 +2610,8 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
                             {visibleItems.map((it) => {
                               const edit = itemEdits[it.id] || {}
                               const draftLabel = edit.label ?? it.label
+                              const draftValue = edit.value ?? it.value
+                              const draftMetaJson = edit.metaJson ?? formatMetaJson(it.meta)
                               const draftCosto = edit.costo ?? getCostoFromMeta(it.meta)
                               const draftMin = edit.min ?? getNumberFieldFromMeta(it.meta, 'min')
                               const draftMax = edit.max ?? getNumberFieldFromMeta(it.meta, 'max')
@@ -2458,6 +2621,8 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
                               const draftPaginasPorPliego = edit.paginasPorPliego ?? String(metaNumber(it.meta, 'paginasPorPliego') ?? '')
 
                               const isLabelDirty = edit.label !== undefined && draftLabel.trim() !== it.label
+                              const isValueDirty = edit.value !== undefined && draftValue.trim() !== it.value
+                              const isMetaJsonDirty = edit.metaJson !== undefined && draftMetaJson.trim() !== formatMetaJson(it.meta).trim()
 
                               const parsedCosto = Number.parseFloat(String(draftCosto ?? '').trim())
                               const parsedMin = Number.parseInt(String(draftMin ?? '').trim(), 10)
@@ -2504,7 +2669,9 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
                                 parsedPaginasPorPliego > 0 &&
                                 String(parsedPaginasPorPliego) !== String(metaNumber(it.meta, 'paginasPorPliego') ?? '')
 
-                              const canItemSave = isTirajeTiers
+                              const canItemSave = isVisualCatalog
+                                ? (isLabelDirty || isValueDirty || isMetaJsonDirty) && draftLabel.trim() && draftValue.trim() && draftMetaJson.trim()
+                                : isTirajeTiers
                                 ? (isLabelDirty || isMinDirty || isMaxDirty) &&
                                   draftLabel.trim() &&
                                   Number.isFinite(parsedMin) &&
@@ -2530,7 +2697,11 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="min-w-0">
                                       <p className="text-sm font-medium truncate">{it.label}</p>
-                                      {isTirajeTiers ? (
+                                      {isVisualCatalog ? (
+                                        <p className="text-xs text-muted-foreground truncate">
+                                          {metaString(it.meta, 'categoryLabel') || 'Sin categoría'} • {metaString(it.meta, 'shortTitle') || it.value} • {metaString(it.meta, 'paperTypeHint') || 'Sin papel'}
+                                        </p>
+                                      ) : isTirajeTiers ? (
                                         <p className="text-xs text-muted-foreground truncate">
                                           Rango: {getNumberFieldFromMeta(it.meta, 'min') || "?"} - {getNumberFieldFromMeta(it.meta, 'max') || "?"}
                                         </p>
@@ -2563,7 +2734,62 @@ export function LitografiaCalculator(props: { aiHandoffDraft?: LitografiaAiHando
                                     </div>
                                   </div>
 
-                                  {isTirajeTiers ? (
+                                  {isVisualCatalog ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-start">
+                                      <div>
+                                        <Label>Nombre</Label>
+                                        <Input
+                                          className={INPUT_COMPACT}
+                                          value={draftLabel}
+                                          onChange={(e) => setItemEdits((prev) => ({ ...prev, [it.id]: { ...prev[it.id], label: e.target.value } }))}
+                                        />
+                                      </div>
+                                      <div>
+                                        <Label>Identificador</Label>
+                                        <Input
+                                          className={INPUT_COMPACT}
+                                          value={draftValue}
+                                          onChange={(e) => setItemEdits((prev) => ({ ...prev, [it.id]: { ...prev[it.id], value: e.target.value } }))}
+                                        />
+                                      </div>
+                                      <div className="md:col-span-2">
+                                        <Label>Metadata JSON</Label>
+                                        <Textarea
+                                          className="min-h-56 text-xs font-mono"
+                                          value={draftMetaJson}
+                                          onChange={(e) => setItemEdits((prev) => ({ ...prev, [it.id]: { ...prev[it.id], metaJson: e.target.value } }))}
+                                        />
+                                      </div>
+                                      <div className="md:col-span-2 flex items-center gap-2">
+                                        <Button
+                                          type="button"
+                                          onClick={() => {
+                                            try {
+                                              const patch: { label?: string; value?: string; meta?: unknown } = {}
+                                              if (isLabelDirty) patch.label = draftLabel.trim()
+                                              if (isValueDirty) patch.value = draftValue.trim()
+                                              if (isMetaJsonDirty) patch.meta = JSON.parse(draftMetaJson)
+                                              void patchCustomItem(it.id, patch).then(() => {
+                                                setItemEdits((prev) => {
+                                                  const next = { ...prev }
+                                                  delete next[it.id]
+                                                  return next
+                                                })
+                                              })
+                                            } catch {
+                                              setCustomDropdownsError('Metadata JSON inválida')
+                                            }
+                                          }}
+                                          disabled={!meLoaded || !canConfigWrite || !canItemSave}
+                                        >
+                                          Guardar opción
+                                        </Button>
+                                        {(isLabelDirty || isValueDirty || isMetaJsonDirty) && !canItemSave ? (
+                                          <p className="text-xs text-muted-foreground">Revisa nombre, identificador o metadata JSON.</p>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  ) : isTirajeTiers ? (
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
                                       <div>
                                         <Label>Nombre</Label>
