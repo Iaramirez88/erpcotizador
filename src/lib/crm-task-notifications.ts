@@ -45,6 +45,7 @@ export function buildTaskNotificationUrl(taskId: string, workspaceId?: string | 
   const params = new URLSearchParams({ taskId })
   if (workspaceId) {
     params.set('workspaceId', workspaceId)
+    return `/dashboard/espacios-trabajo?${params.toString()}`
   }
   return `/dashboard/crm/tareas?${params.toString()}`
 }

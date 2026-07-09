@@ -301,27 +301,29 @@ export default function Header({ user }: HeaderProps) {
 
           {/* User Menu */}
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <div className="relative h-8 w-8 overflow-hidden rounded-full border border-border bg-card shadow-sm">
-              {user.image ? (
-                <Image src={user.image} alt={user.name ?? 'Usuario'} fill className="object-cover" sizes="32px" unoptimized />
-              ) : (
-                <div className="grid h-full w-full place-items-center bg-muted text-[11px] font-semibold text-foreground">
-                  {initials}
-                </div>
-              )}
-            </div>
-            <div className="text-right hidden sm:block">
-              <p className="text-[12px] font-medium leading-4 text-slate-900">{user.name}</p>
-              <p className="text-[10px] capitalize leading-4 text-slate-500">
-                {user.role?.toLowerCase()}
-                {planName ? ` · Plan: ${planName}` : ''}
-              </p>
-              {trialBadgeVisible && trialDaysLeft !== null ? (
-                <p className="text-[10px] leading-3.5 text-red-600">
-                  {trialDaysLeft <= 1 ? 'Tu prueba termina manana' : `Prueba: ${trialDaysLeft} dia(s) restantes`}
+            <Link href="/dashboard/perfil" aria-label={t('header.profile')} className="group flex items-center gap-1.5 rounded-full p-0.5 transition hover:bg-accent/60 sm:gap-2">
+              <div className="relative h-8 w-8 overflow-hidden rounded-full border border-border bg-card shadow-sm ring-0 transition group-hover:ring-2 group-hover:ring-sky-200">
+                {user.image ? (
+                  <Image src={user.image} alt={user.name ?? 'Usuario'} fill className="object-cover" sizes="32px" unoptimized />
+                ) : (
+                  <div className="grid h-full w-full place-items-center bg-muted text-[11px] font-semibold text-foreground">
+                    {initials}
+                  </div>
+                )}
+              </div>
+              <div className="hidden text-right sm:block">
+                <p className="text-[12px] font-medium leading-4 text-slate-900 group-hover:text-sky-700">{user.name}</p>
+                <p className="text-[10px] capitalize leading-4 text-slate-500">
+                  {user.role?.toLowerCase()}
+                  {planName ? ` · Plan: ${planName}` : ''}
                 </p>
-              ) : null}
-            </div>
+                {trialBadgeVisible && trialDaysLeft !== null ? (
+                  <p className="text-[10px] leading-3.5 text-red-600">
+                    {trialDaysLeft <= 1 ? 'Tu prueba termina manana' : `Prueba: ${trialDaysLeft} dia(s) restantes`}
+                  </p>
+                ) : null}
+              </div>
+            </Link>
             
             <Button
               variant="outline"

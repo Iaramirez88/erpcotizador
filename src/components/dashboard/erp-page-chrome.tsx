@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { ReactNode } from "react"
+import { ChevronDown } from 'lucide-react'
 import { InfoHint } from '@/components/ui/info-hint'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { cn } from "@/lib/utils"
@@ -68,33 +69,45 @@ export function ErpPageHero({
           </div>
 
           {hasStats ? (
-            <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
-              {stats.map((stat) => {
-                const statCard = (
-                  <div
-                    className={cn(
-                      "rounded-[10px] border px-2.5 py-2 shadow-sm backdrop-blur",
-                      toneClassName[stat.tone ?? "neutral"],
-                    )}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{stat.label}</p>
-                      {stat.hint ? (
-                        <InfoHint
-                          content={stat.hint}
-                          label={`Ver detalle de ${stat.label}`}
-                          className="h-4 w-4 border-slate-300 bg-white/70"
-                          iconClassName="h-3 w-3"
-                        />
-                      ) : null}
+            <details className="group rounded-[14px] border border-slate-200/80 bg-white/70 p-2.5 shadow-sm backdrop-blur open:bg-white/85">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-[10px] px-1 py-0.5 text-left marker:content-none">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Resumen</p>
+                  <p className="mt-0.5 text-xs text-slate-600">Métricas y detalles del encabezado</p>
+                </div>
+                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 shadow-sm transition group-open:bg-slate-900 group-open:text-white">
+                  Más
+                  <ChevronDown className="h-3.5 w-3.5 transition group-open:rotate-180" />
+                </span>
+              </summary>
+              <div className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+                {stats.map((stat) => {
+                  const statCard = (
+                    <div
+                      className={cn(
+                        "rounded-[10px] border px-2.5 py-2 shadow-sm backdrop-blur",
+                        toneClassName[stat.tone ?? "neutral"],
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{stat.label}</p>
+                        {stat.hint ? (
+                          <InfoHint
+                            content={stat.hint}
+                            label={`Ver detalle de ${stat.label}`}
+                            className="h-4 w-4 border-slate-300 bg-white/70"
+                            iconClassName="h-3 w-3"
+                          />
+                        ) : null}
+                      </div>
+                      <div className="mt-1 text-base font-semibold leading-none">{stat.value}</div>
                     </div>
-                    <div className="mt-1 text-base font-semibold leading-none">{stat.value}</div>
-                  </div>
-                )
+                  )
 
-                return <div key={stat.label}>{statCard}</div>
-              })}
-            </div>
+                  return <div key={stat.label}>{statCard}</div>
+                })}
+              </div>
+            </details>
           ) : null}
         </div>
       </section>
@@ -106,19 +119,19 @@ export function ErpBreadcrumbs({ items, className }: { items: ErpBreadcrumbItem[
   if (!items.length) return null
 
   return (
-    <nav aria-label="Breadcrumb" className={cn('flex flex-wrap items-center gap-1.5 text-xs text-slate-500', className)}>
+    <nav aria-label="Breadcrumb" className={cn('flex flex-wrap items-center gap-1 text-[10px] text-slate-400', className)}>
       {items.map((item, index) => {
         const isLast = index === items.length - 1
         return (
-          <div key={`${String(item.label)}-${index}`} className="inline-flex items-center gap-2">
+          <div key={`${String(item.label)}-${index}`} className="inline-flex items-center gap-1.5">
             {item.href && !isLast ? (
-              <Link href={item.href} className="rounded-full px-2 py-0.5 transition-colors hover:bg-white/80 hover:text-slate-900">
+              <Link href={item.href} className="rounded-full px-1.5 py-0.5 transition-colors hover:bg-white/70 hover:text-slate-700">
                 {item.label}
               </Link>
             ) : (
-              <span className={cn('rounded-full px-2 py-0.5', isLast ? 'bg-white/80 font-semibold text-slate-900' : '')}>{item.label}</span>
+              <span className={cn('rounded-full px-1.5 py-0.5', isLast ? 'bg-white/65 font-medium text-slate-700' : '')}>{item.label}</span>
             )}
-            {!isLast ? <span className="text-slate-300">/</span> : null}
+            {!isLast ? <span className="text-slate-300/90">/</span> : null}
           </div>
         )
       })}
