@@ -1016,7 +1016,7 @@ export function CrmTaskWorkspacesClient() {
       <div className="flex items-center justify-between gap-2 overflow-hidden">
         <span className="truncate text-xs text-slate-500">{notesCount ? `${notesCount} nota(s)` : 'Sin notas'}</span>
         <Button variant="outline" size="sm" className="h-8 rounded-xl px-2.5" onClick={() => openQuickTaskPanel(task.id, 'note')} disabled={!canEditTasks}>
-          Nota
+          Nota rápida
         </Button>
       </div>
     )
@@ -1032,10 +1032,9 @@ export function CrmTaskWorkspacesClient() {
   }
 
   return (
-    <div className="space-y-4.5 pb-4">
+    <div className="space-y-6">
       <ErpPageHero
         breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Espacios de trabajo' }]}
-        eyebrow="Operación colaborativa"
         title="Espacios de trabajo y seguimiento interno"
         description="Administra espacios transversales del ERP, organiza tareas colaborativas, adjunta evidencia y centraliza seguimiento con estados más claros y visuales más fuertes."
         actions={<Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85" onClick={() => setWorkspaceDialogOpen(true)}>Nuevo espacio</Button>}
@@ -1109,52 +1108,66 @@ export function CrmTaskWorkspacesClient() {
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <p className="text-sm font-semibold text-slate-900">Proyectos</p>
-                            <p className="text-xs text-slate-500">Selecciona un proyecto para habilitar el botón de crear tarea.</p>
+                            <p className="text-xs text-slate-500">Cada proyecto ocupa todo el ancho y desde su botón + puedes crear tareas o gestionarlo.</p>
                           </div>
                           <Button type="button" size="icon" className="h-10 w-10 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => void openProjectDialog(workspace.id)} disabled={!canManageCurrentWorkspace}>
                             <Plus className="h-4 w-4" />
                           </Button>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Button type="button" variant={!selectedProjectId ? 'default' : 'outline'} className={!selectedProjectId ? 'rounded-2xl bg-slate-950 text-white hover:bg-slate-800' : 'rounded-2xl'} onClick={() => setSelectedProjectId('')}>
+                        <div className="grid gap-3">
+                          <Button type="button" variant={!selectedProjectId ? 'default' : 'outline'} className={!selectedProjectId ? 'justify-start rounded-2xl bg-slate-950 text-white hover:bg-slate-800' : 'justify-start rounded-2xl'} onClick={() => setSelectedProjectId('')}>
                             Todos
                           </Button>
                           {workspace.projects.map((project) => (
-                            <div key={project.id} className={selectedProjectId === project.id ? 'flex items-center gap-2 rounded-2xl border border-sky-300 bg-sky-700 px-3 py-2 text-white' : 'flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-slate-700'}>
-                              <button type="button" className="text-left" onClick={() => setSelectedProjectId(project.id)}>
-                                <span className="block text-sm font-semibold">{project.name}</span>
-                                <span className={selectedProjectId === project.id ? 'block text-[11px] text-sky-100' : 'block text-[11px] text-slate-500'}>{project._count?.tasks ?? 0} tarea(s)</span>
-                              </button>
-                              {canManageCurrentWorkspace ? (
+                            <div key={project.id} className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                              <div className={selectedProjectId === project.id ? 'flex items-center justify-between gap-3 border-b border-sky-200 bg-sky-600 px-4 py-3 text-white' : 'flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100 px-4 py-3 text-slate-900'}>
+                                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setSelectedProjectId(project.id)}>
+                                  <span className="block truncate text-sm font-semibold">{project.name}</span>
+                                </button>
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <Button type="button" variant="ghost" size="icon" className={selectedProjectId === project.id ? 'h-7 w-7 rounded-full text-white hover:bg-white/15 hover:text-white' : 'h-7 w-7 rounded-full text-slate-500 hover:text-slate-700'}>
-                                      <MoreVertical className="h-3.5 w-3.5" />
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className={selectedProjectId === project.id ? 'h-8 w-8 rounded-full text-white hover:bg-white/15 hover:text-white' : 'h-8 w-8 rounded-full text-slate-600 hover:bg-white hover:text-slate-900'}
+                                      aria-label={`Crear o gestionar ${project.name}`}
+                                    >
+                                      <Plus className="h-4 w-4" />
                                     </Button>
                                   </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end" className="w-44 rounded-2xl p-1.5">
-                                    <DropdownMenuItem onSelect={() => openProjectDialog(workspace.id, project)}>
+                                  <DropdownMenuContent align="end" className="w-48 rounded-2xl p-1.5">
+                                    <DropdownMenuItem onSelect={() => openTaskCreationDialog(project.id)} disabled={!workspace.permissions?.canEditTasks}>
+                                      Crear tarea
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onSelect={() => openProjectDialog(workspace.id, project)} disabled={!canManageCurrentWorkspace}>
                                       Renombrar
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem onSelect={() => void handleDeleteProject(project)} className="text-rose-600 focus:text-rose-700">
+                                    <DropdownMenuItem onSelect={() => void handleDeleteProject(project)} disabled={!canManageCurrentWorkspace} className="text-rose-600 focus:text-rose-700">
                                       Eliminar
                                     </DropdownMenuItem>
                                   </DropdownMenuContent>
                                 </DropdownMenu>
-                              ) : null}
+                              </div>
+                              <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-slate-600">
+                                <div className="min-w-0">
+                                  <p className="truncate text-slate-700">{project.description || 'Sin descripción operativa por ahora.'}</p>
+                                  <p className="mt-1 text-xs text-slate-500">{project._count?.tasks ?? 0} tarea(s)</p>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant={selectedProjectId === project.id ? 'default' : 'outline'}
+                                  className={selectedProjectId === project.id ? 'rounded-xl bg-slate-950 text-white hover:bg-slate-800' : 'rounded-xl'}
+                                  onClick={() => setSelectedProjectId(project.id)}
+                                >
+                                  {selectedProjectId === project.id ? 'Activo' : 'Seleccionar'}
+                                </Button>
+                              </div>
                             </div>
                           ))}
                         </div>
                         {!workspace.projects.length ? <p className="text-xs text-slate-500">Este espacio aún no tiene proyectos. Crea uno para empezar a registrar tareas.</p> : null}
-                        <div className="flex items-center justify-between rounded-2xl border border-dashed border-slate-300 bg-white/70 px-3 py-2.5">
-                          <div>
-                            <p className="text-sm font-medium text-slate-900">Crear tarea</p>
-                            <p className="text-xs text-slate-500">Disponible solo cuando elijas un proyecto del espacio.</p>
-                          </div>
-                          <Button type="button" size="icon" className="h-10 w-10 rounded-xl bg-slate-950 text-white hover:bg-slate-800 disabled:bg-slate-300" onClick={() => openTaskCreationDialog()} disabled={!selectedProjectId || !workspace.permissions?.canEditTasks}>
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        {selectedProjectId ? <p className="text-xs text-slate-500">La creación de tareas ahora se hace desde el botón + del proyecto seleccionado.</p> : null}
                       </div>
                     ) : null}
                   </div>

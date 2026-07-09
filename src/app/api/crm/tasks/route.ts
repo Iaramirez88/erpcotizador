@@ -15,6 +15,7 @@ import {
   appendTaskHistory,
   canUserAccessWorkspace,
   crmTaskInclude,
+  ensureWorkspaceEditors,
   getAccessibleTaskWorkspace,
   normalizeTaskAttachments,
   normalizeTaskColorHex,
@@ -325,6 +326,13 @@ export async function POST(request: Request) {
             userId,
           })),
         })
+
+        if (workspaceId) {
+          await ensureWorkspaceEditors(tx, {
+            workspaceId,
+            userIds: normalizedAssigneeIds,
+          })
+        }
       }
 
       await appendTaskHistory(tx, {

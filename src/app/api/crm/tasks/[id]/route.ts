@@ -13,6 +13,7 @@ import {
   appendTaskHistory,
   canUserAccessWorkspace,
   crmTaskInclude,
+  ensureWorkspaceEditors,
   getAccessibleTaskWorkspace,
   normalizeTaskAttachments,
   normalizeTaskColorHex,
@@ -237,6 +238,13 @@ export async function PATCH(request: Request, context: RouteContext) {
               userId,
             })),
           })
+
+          if (updated.workspaceId) {
+            await ensureWorkspaceEditors(tx, {
+              workspaceId: updated.workspaceId,
+              userIds: normalizedAssigneeIds,
+            })
+          }
         }
       }
 
@@ -339,6 +347,8 @@ export async function PATCH(request: Request, context: RouteContext) {
 
       await Promise.all(historyWrites)
 
+      const taskWatchers = Array.from(new Set([current.createdById, ...normalizedAssigneeIds].filter(Boolean)))
+
       if (newlyAssignedUserIds.length) {
         await notifyTaskUsers({
           client: tx,
@@ -353,13 +363,29 @@ export async function PATCH(request: Request, context: RouteContext) {
         })
       }
 
+      const hasMeaningfulUpdate = historyWrites.length > 0
+      if (hasMeaningfulUpdate) {
+        await notifyTaskUsers({
+          client: tx,
+          empresaId: access.empresaId,
+          sedeId: updated.sedeId,
+          actorUserId: access.userId,
+          recipientUserIds: taskWatchers,
+          title: 'Tarea actualizada',
+          body: `Se hicieron cambios en la tarea ${updated.title}.`,
+          taskId: updated.id,
+          workspaceId: updated.workspaceId,
+          type: 'INFO',
+        })
+      }
+
       if (status && status !== current.status) {
         await notifyTaskUsers({
           client: tx,
           empresaId: access.empresaId,
           sedeId: updated.sedeId,
           actorUserId: access.userId,
-          recipientUserIds: normalizedAssigneeIds,
+          recipientUserIds: taskWatchers,
           title: 'Estado de tarea actualizado',
           body: `La tarea ${updated.title} cambió a ${updated.status}.`,
           taskId: updated.id,

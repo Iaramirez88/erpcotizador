@@ -31,7 +31,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     const current = await prisma.crmTask.findUnique({
       where: { id },
-      include: { workspace: true, assignments: { select: { userId: true } } },
+      include: { workspace: true, assignments: { select: { userId: true } }, createdBy: { select: { id: true } } },
     })
 
     if (!current || current.empresaId !== access.empresaId) {
@@ -61,7 +61,7 @@ export async function POST(request: Request, context: RouteContext) {
       empresaId: access.empresaId,
       sedeId: current.sedeId,
       actorUserId: access.userId,
-      recipientUserIds: current.assignments.map((assignment) => assignment.userId),
+      recipientUserIds: [current.createdBy?.id || '', ...current.assignments.map((assignment) => assignment.userId)],
       title: 'Nueva nota en tarea',
       body: `Agregaron una nota en ${current.title}.`,
       taskId: current.id,

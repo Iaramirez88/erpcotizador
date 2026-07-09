@@ -249,6 +249,51 @@ export function mapWorkspaceForUser(workspace: CrmTaskWorkspaceWithAccess, userI
   }
 }
 
+export async function ensureWorkspaceEditors(
+  client: DbClient,
+  args: {
+    workspaceId: string
+    userIds: string[]
+  },
+) {
+  const userIds = Array.from(new Set(args.userIds.map((userId) => userId.trim()).filter(Boolean)))
+  if (!userIds.length) return
+
+  const existingMembers = await client.crmTaskWorkspaceMember.findMany({
+    where: {
+      workspaceId: args.workspaceId,
+      userId: { in: userIds },
+    },
+    select: { userId: true, role: true },
+  })
+
+  const existingByUserId = new Map(existingMembers.map((member) => [member.userId, member.role]))
+  const missingUserIds = userIds.filter((userId) => !existingByUserId.has(userId))
+  const viewerUserIds = userIds.filter((userId) => existingByUserId.get(userId) === 'VIEWER')
+
+  if (missingUserIds.length) {
+    await client.crmTaskWorkspaceMember.createMany({
+      data: missingUserIds.map((userId) => ({
+        workspaceId: args.workspaceId,
+        userId,
+        role: 'EDITOR',
+      })),
+      skipDuplicates: true,
+    })
+  }
+
+  if (viewerUserIds.length) {
+    await client.crmTaskWorkspaceMember.updateMany({
+      where: {
+        workspaceId: args.workspaceId,
+        userId: { in: viewerUserIds },
+        role: 'VIEWER',
+      },
+      data: { role: 'EDITOR' },
+    })
+  }
+}
+
 export async function appendTaskHistory(
   client: DbClient,
   args: {
