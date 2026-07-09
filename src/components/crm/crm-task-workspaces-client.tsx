@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { ChevronDown, MoreVertical, Plus } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -302,8 +302,6 @@ const TASK_PRIORITY_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-priority-colu
 const TASK_CREATED_AT_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-created-at-column-visible'
 
 export function CrmTaskWorkspacesClient() {
-  const router = useRouter()
-  const pathname = usePathname()
   const searchParams = useSearchParams()
   const attachmentInputRef = useRef<HTMLInputElement | null>(null)
   const customFieldFileInputRef = useRef<HTMLInputElement | null>(null)
@@ -492,11 +490,11 @@ export function CrmTaskWorkspacesClient() {
 
     handledNotificationTaskRef.current = requestKey
     void loadTaskDetail(requestedTaskId).finally(() => {
-      if (pathname) {
-        router.replace(pathname, { scroll: false })
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(window.history.state, '', window.location.pathname)
       }
     })
-  }, [loading, pathname, requestedTaskId, requestedWorkspaceId, router, selectedWorkspaceId, workspaces])
+  }, [loading, requestedTaskId, requestedWorkspaceId, selectedWorkspaceId, workspaces])
 
   useEffect(() => {
     if (!selectedWorkspace) return

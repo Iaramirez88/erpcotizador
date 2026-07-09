@@ -111,18 +111,12 @@ html {
 }
 
 .erp-shell {
-  background:
-    radial-gradient(circle at top left, rgba(14, 116, 144, 0.1), transparent 26%),
-    radial-gradient(circle at 85% 0%, rgba(22, 163, 74, 0.08), transparent 24%),
-    linear-gradient(180deg, #f5f4ee 0%, #f8fbff 24%, #f2f7f3 100%);
+  background: #ffffff;
   overflow-x: hidden;
 }
 
 :root[data-theme='dark'] .erp-shell {
-  background:
-    radial-gradient(circle at top left, rgba(59, 130, 246, 0.14), transparent 26%),
-    radial-gradient(circle at 85% 0%, rgba(16, 185, 129, 0.12), transparent 24%),
-    linear-gradient(180deg, #08101d 0%, #0b1220 35%, #10192b 100%);
+  background: var(--background);
 }
 
 .erp-shell__content {
