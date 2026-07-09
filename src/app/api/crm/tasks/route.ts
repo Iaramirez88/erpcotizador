@@ -24,6 +24,7 @@ import {
 } from '@/lib/crm-task-workspaces'
 import { dispatchCrmTaskCalendarBridges } from '@/lib/crm-calendar-bridges'
 import { notifyTaskUsers } from '@/lib/crm-task-notifications'
+import { requireWorkspaceTaskCapability } from '@/lib/task-workspace-api-access'
 
 export const runtime = 'nodejs'
 
@@ -76,9 +77,7 @@ function getChangedTaskFields(args: {
 
 export async function GET(request: Request) {
   try {
-    const access = await requireCapabilityAccess({
-      domain: 'CAPTACION',
-      subdomain: 'COMMERCIAL_TASKS',
+    const access = await requireWorkspaceTaskCapability({
       action: 'READ',
       scope: 'SEDE',
     })
@@ -184,9 +183,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const access = await requireCapabilityAccess({
-      domain: 'CAPTACION',
-      subdomain: 'COMMERCIAL_TASKS',
+    const access = await requireWorkspaceTaskCapability({
       action: 'CREATE',
       scope: 'SEDE',
     })

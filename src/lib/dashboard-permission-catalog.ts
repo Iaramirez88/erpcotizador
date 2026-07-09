@@ -151,7 +151,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
   },
   {
     key: 'OPERACIONES.TASK_WORKSPACES',
-    moduleKey: ModuleKey.CRM,
+    moduleKey: ModuleKey.ORDENES,
     section: 'Operaciones',
     label: 'Espacios de trabajo',
     hrefs: ['/dashboard/espacios-trabajo'],
@@ -159,7 +159,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
   },
   {
     key: 'OPERACIONES.INTERNAL_CHAT',
-    moduleKey: ModuleKey.CRM,
+    moduleKey: ModuleKey.ORDENES,
     section: 'Operaciones',
     label: 'Chat global',
     hrefs: ['/dashboard/chat'],

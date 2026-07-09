@@ -21,6 +21,7 @@ import {
   normalizeUserIdList,
 } from '@/lib/crm-task-workspaces'
 import { notifyTaskUsers } from '@/lib/crm-task-notifications'
+import { requireWorkspaceTaskCapability } from '@/lib/task-workspace-api-access'
 
 export const runtime = 'nodejs'
 
@@ -30,9 +31,7 @@ interface RouteContext {
 
 export async function GET(_: Request, context: RouteContext) {
   try {
-    const access = await requireCapabilityAccess({
-      domain: 'CAPTACION',
-      subdomain: 'COMMERCIAL_TASKS',
+    const access = await requireWorkspaceTaskCapability({
       action: 'READ',
       scope: 'SEDE',
     })
@@ -74,9 +73,7 @@ export async function GET(_: Request, context: RouteContext) {
 
 export async function PATCH(request: Request, context: RouteContext) {
   try {
-    const access = await requireCapabilityAccess({
-      domain: 'CAPTACION',
-      subdomain: 'COMMERCIAL_TASKS',
+    const access = await requireWorkspaceTaskCapability({
       action: 'UPDATE',
       scope: 'SEDE',
     })

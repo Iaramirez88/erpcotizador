@@ -4,6 +4,7 @@ import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { normalizeString } from '@/lib/crm'
 import { appendTaskHistory, canUserAccessWorkspace, getAccessibleTaskWorkspace, crmTaskInclude } from '@/lib/crm-task-workspaces'
 import { notifyTaskUsers } from '@/lib/crm-task-notifications'
+import { requireWorkspaceTaskCapability } from '@/lib/task-workspace-api-access'
 
 export const runtime = 'nodejs'
 
@@ -13,9 +14,7 @@ type RouteContext = {
 
 export async function POST(request: Request, context: RouteContext) {
   try {
-    const access = await requireCapabilityAccess({
-      domain: 'CAPTACION',
-      subdomain: 'COMMERCIAL_TASKS',
+    const access = await requireWorkspaceTaskCapability({
       action: 'UPDATE',
       scope: 'SEDE',
     })

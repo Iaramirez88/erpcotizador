@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { AccessLevel, ModuleKey, SedeRole } from '@prisma/client'
+import { AccessLevel, SedeRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 
@@ -29,9 +29,9 @@ function sedeRoleToBaseAccess(role: SedeRole): AccessLevel {
 export async function GET() {
   try {
     const access = await requireCapabilityAccess({
-      domain: 'CAPTACION',
-      subdomain: 'INBOX',
-      action: 'ASSIGN',
+      domain: 'OPERACIONES',
+      subdomain: 'TASK_WORKSPACES',
+      action: 'READ',
       scope: 'SEDE',
     })
     if (!access.ok) return access.response
@@ -51,10 +51,6 @@ export async function GET() {
           sedeMemberships: {
             where: { sedeId: access.sedeId },
             select: { sedeId: true, role: true },
-          },
-          moduleAccess: {
-            where: { sedeId: access.sedeId, module: ModuleKey.CRM },
-            select: { sedeId: true, level: true },
           },
         },
         take: 200,
@@ -77,9 +73,7 @@ export async function GET() {
     const eligibleRows = rows.filter((row) => {
       const globalBase = row.globalAccess?.level ?? 'NONE'
       const membership = row.sedeMemberships[0]
-      const base = membership ? sedeRoleToBaseAccess(membership.role) : globalBase
-      const explicit = row.moduleAccess[0]?.level
-      const effective = explicit ?? base
+      const effective = membership ? sedeRoleToBaseAccess(membership.role) : globalBase
       return ACCESS_LEVEL_ORDER[effective] >= ACCESS_LEVEL_ORDER.WRITE
     })
 

@@ -7,6 +7,7 @@ import { requireApiAccess } from '@/lib/api-rbac'
 import { assertCrmSedeAccess } from '@/lib/crm'
 import { canUserAccessWorkspace, getAccessibleTaskWorkspace } from '@/lib/crm-task-workspaces'
 import { getCrmFileItemByPath, getCrmFilesRootAbsolutePath } from '@/lib/crm-files'
+import { requireWorkspaceTaskCapability } from '@/lib/task-workspace-api-access'
 
 export const runtime = 'nodejs'
 
@@ -74,7 +75,7 @@ function isSafePathSegment(seg: string): boolean {
 
 async function resolveProtectedUploadPath(parts: string[]) {
   if (parts[0] === 'crm-tasks' && parts[1] && parts.length >= 3) {
-    const access = await requireApiAccess(ModuleKey.CRM, 'READ')
+    const access = await requireWorkspaceTaskCapability({ action: 'READ', scope: 'SEDE' })
     if (!access.ok) return access.response
 
     const task = await prisma.crmTask.findUnique({

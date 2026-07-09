@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { assertCrmSedeAccess, normalizeString } from '@/lib/crm'
 import { canUserAccessWorkspace, getAccessibleTaskWorkspace } from '@/lib/crm-task-workspaces'
+import { requireWorkspaceTaskCapability } from '@/lib/task-workspace-api-access'
 
 export const runtime = 'nodejs'
 
@@ -76,9 +77,7 @@ function extractExternalAttachmentId(urlValue: string, provider: ExternalAttachm
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
-    const access = await requireCapabilityAccess({
-      domain: 'CAPTACION',
-      subdomain: 'COMMERCIAL_TASKS',
+    const access = await requireWorkspaceTaskCapability({
       action: 'UPDATE',
       scope: 'SEDE',
     })
