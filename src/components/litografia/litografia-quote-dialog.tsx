@@ -860,9 +860,11 @@ export function LitografiaQuoteDialog(props: {
   edit?: { itemId: string; meta: LitografiaMeta } | null
   onUpdateItem?: (payload: AddLitografiaItemPayload & { itemId: string }) => void
   aiDraft?: LitografiaAiHandoff | null
+  autoSubmitAiDraft?: boolean
 }) {
   const { t, language } = useI18n()
   const appliedAiDraftIdRef = useRef<string | null>(null)
+  const autoSubmittedAiDraftIdRef = useRef<string | null>(null)
   const [appliedAiDraftId, setAppliedAiDraftId] = useState<string | null>(null)
 
   const [meLoaded, setMeLoaded] = useState(false)
@@ -3923,6 +3925,27 @@ export function LitografiaQuoteDialog(props: {
       return
     }
   }
+
+  useEffect(() => {
+    if (props.open) return
+    autoSubmittedAiDraftIdRef.current = null
+  }, [props.open])
+
+  useEffect(() => {
+    const draftId = props.aiDraft?.id ?? null
+    if (!draftId) {
+      autoSubmittedAiDraftIdRef.current = null
+      return
+    }
+    if (!props.open) return
+    if (!props.autoSubmitAiDraft) return
+    if (appliedAiDraftId !== draftId) return
+    if (autoSubmittedAiDraftIdRef.current === draftId) return
+    if (!canAdd) return
+
+    autoSubmittedAiDraftIdRef.current = draftId
+    handleAddToCotizacion()
+  }, [props.aiDraft, props.autoSubmitAiDraft, props.open, appliedAiDraftId, canAdd])
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>

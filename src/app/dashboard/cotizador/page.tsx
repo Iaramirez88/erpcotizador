@@ -200,6 +200,7 @@ export default function CotizadorPage() {
   const [customProductOpen, setCustomProductOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [litografiaAiDraft, setLitografiaAiDraft] = useState<LitografiaAiHandoff | null>(null)
+  const [litografiaAiAutoSubmit, setLitografiaAiAutoSubmit] = useState(false)
   const [litografiaAiOpenToken, setLitografiaAiOpenToken] = useState(0)
 
   // Datos de la cotización
@@ -846,6 +847,8 @@ export default function CotizadorPage() {
 
     setItems((prev) => [...prev, nuevoItem])
     setShowItemForm(false)
+    setLitografiaAiDraft(null)
+    setLitografiaAiAutoSubmit(false)
   }
 
   const actualizarItemLitografia = (payload: {
@@ -879,8 +882,17 @@ export default function CotizadorPage() {
         }
       })
     )
-    setLitografiaEdit(null)
-    setLitografiaOpen(false)
+    setLitografiaAiDraft(null)
+    setLitografiaAiAutoSubmit(false)
+  }
+
+  const handleLitografiaOpenChange = (open: boolean) => {
+    setLitografiaOpen(open)
+    if (!open) {
+      setLitografiaEdit(null)
+      setLitografiaAiAutoSubmit(false)
+      setLitografiaAiDraft(null)
+    }
   }
 
   const agregarItemMetraje = (draft: MetrajeItemDraft) => {
@@ -1204,11 +1216,12 @@ export default function CotizadorPage() {
     <div className="space-y-6">
       <LitografiaQuoteDialog
         open={litografiaOpen}
-        onOpenChange={setLitografiaOpen}
+        onOpenChange={handleLitografiaOpenChange}
         onAddItem={agregarItemLitografia}
         edit={litografiaEdit}
         onUpdateItem={actualizarItemLitografia}
         aiDraft={litografiaAiDraft}
+        autoSubmitAiDraft={litografiaAiAutoSubmit}
       />
 
       <MetrajeQuoteDialog
@@ -1240,6 +1253,7 @@ export default function CotizadorPage() {
             openToken={litografiaAiOpenToken}
             onApplyToClassic={(draft) => {
               setLitografiaAiDraft(draft)
+              setLitografiaAiAutoSubmit(true)
               setLitografiaAiOpen(false)
               setShowItemForm(false)
               setLitografiaEdit(null)
