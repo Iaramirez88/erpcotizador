@@ -825,6 +825,31 @@ function buildFinishHints(finishes: Array<{ nombre: string; grupo?: string | nul
   }
 }
 
+function buildQuotedItemDescription(args: {
+  analysis: Awaited<ReturnType<typeof analyzeLitografiaBrief>>
+  costBreakdown: CostBreakdown
+}) {
+  const { analysis, costBreakdown } = args
+  const parts: string[] = []
+
+  const productLabel = String(analysis.extracted.producto || analysis.quoteType || 'Ítem de litografía').trim()
+  parts.push(productLabel)
+
+  if (costBreakdown.sizeLabel) parts.push(costBreakdown.sizeLabel)
+
+  if (analysis.extracted.paginas && analysis.extracted.paginas > 0) {
+    parts.push(`${analysis.extracted.paginas} páginas`)
+  }
+
+  if (analysis.extracted.tintas) {
+    parts.push(analysis.extracted.tintas === 4 ? 'Policromía' : `${analysis.extracted.tintas} tinta${analysis.extracted.tintas > 1 ? 's' : ''}`)
+  }
+
+  if (costBreakdown.paperName) parts.push(`Papel: ${costBreakdown.paperName}`)
+
+  return parts.filter(Boolean).join(' • ')
+}
+
 function buildLitografiaAiHandoff(args: {
   analysis: Awaited<ReturnType<typeof analyzeLitografiaBrief>>
   costBreakdown: CostBreakdown
@@ -833,6 +858,11 @@ function buildLitografiaAiHandoff(args: {
   assistantReply: AssistantQuoteReply | null
 }): LitografiaAiHandoff {
   const { analysis, costBreakdown, transport, finishes, assistantReply } = args
+  const quantity = Math.max(1, Math.trunc(Number(analysis.extracted.cantidad) || 0))
+  const subtotalWithIva = Number(costBreakdown.totalSuggested)
+  const unitPriceWithIva = Number(costBreakdown.unitPriceWithIva)
+  const hasQuotedItem = Number.isFinite(subtotalWithIva) && subtotalWithIva > 0
+
   return {
     id: `${Date.now()}`,
     brief: analysis.normalizedBrief,
@@ -854,6 +884,23 @@ function buildLitografiaAiHandoff(args: {
     },
     assistantReply: assistantReply?.message ?? null,
     entrega: analysis.extracted.entrega,
+    quotedItem: hasQuotedItem
+      ? {
+          description: buildQuotedItemDescription({ analysis, costBreakdown }),
+          quantity,
+          unit: 'unidad',
+          subtotalWithIva,
+          subtotalBeforeIva: costBreakdown.subtotalBeforeIva,
+          unitPriceWithIva: Number.isFinite(unitPriceWithIva) && unitPriceWithIva > 0
+            ? unitPriceWithIva
+            : (quantity > 0 ? subtotalWithIva / quantity : subtotalWithIva),
+          ivaPct: costBreakdown.ivaPct,
+          machineName: costBreakdown.machineName,
+          paperName: costBreakdown.paperName,
+          sizeLabel: costBreakdown.sizeLabel,
+          summary: costBreakdown.summary,
+        }
+      : undefined,
   }
 }
 

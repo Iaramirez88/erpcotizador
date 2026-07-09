@@ -25,4 +25,17 @@ export type LitografiaAiHandoff = {
   }
   assistantReply: string | null
   entrega: string | null
+  quotedItem?: {
+    description: string
+    quantity: number
+    unit: string
+    subtotalWithIva: number
+    subtotalBeforeIva: number | null
+    unitPriceWithIva: number | null
+    ivaPct: number
+    machineName: string | null
+    paperName: string | null
+    sizeLabel: string | null
+    summary: string | null
+  }
 }

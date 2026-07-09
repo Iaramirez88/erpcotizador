@@ -108,7 +108,7 @@ function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {}
 }
 
-function getLitografiaItemIncludedIvaPct(raw: unknown): number | null {
+function getLitografiaMetaRecord(raw: unknown): Record<string, unknown> | null {
   if (typeof raw !== "string") return null
   const idx = raw.indexOf("LITOGRAFIA_META:")
   if (idx < 0) return null
@@ -117,14 +117,17 @@ function getLitografiaItemIncludedIvaPct(raw: unknown): number | null {
 
   try {
     const parsed = JSON.parse(json) as unknown
-    if (!parsed || typeof parsed !== "object") return null
-    const rec = parsed as Record<string, unknown>
-    if (rec.itemSubtotalIncludesIva !== true) return null
-    const ivaPct = typeof rec.itemIvaPct === "number" ? rec.itemIvaPct : Number(rec.itemIvaPct)
-    return Number.isFinite(ivaPct) && ivaPct > 0 ? ivaPct : null
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null
   } catch {
     return null
   }
+}
+
+function getLitografiaItemIncludedIvaPct(raw: unknown): number | null {
+  const rec = getLitografiaMetaRecord(raw)
+  if (!rec || rec.itemSubtotalIncludesIva !== true) return null
+  const ivaPct = typeof rec.itemIvaPct === "number" ? rec.itemIvaPct : Number(rec.itemIvaPct)
+  return Number.isFinite(ivaPct) && ivaPct > 0 ? ivaPct : null
 }
 
 export default function CotizadorPage() {
@@ -200,7 +203,6 @@ export default function CotizadorPage() {
   const [customProductOpen, setCustomProductOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [litografiaAiDraft, setLitografiaAiDraft] = useState<LitografiaAiHandoff | null>(null)
-  const [litografiaAiAutoSubmit, setLitografiaAiAutoSubmit] = useState(false)
   const [litografiaAiOpenToken, setLitografiaAiOpenToken] = useState(0)
 
   // Datos de la cotización
@@ -848,7 +850,66 @@ export default function CotizadorPage() {
     setItems((prev) => [...prev, nuevoItem])
     setShowItemForm(false)
     setLitografiaAiDraft(null)
-    setLitografiaAiAutoSubmit(false)
+  }
+
+  const agregarItemLitografiaCotizadoDesdeIa = (draft: LitografiaAiHandoff) => {
+    const quotedItem = draft.quotedItem
+    if (!quotedItem) return false
+
+    const subtotalWithIva = Number(quotedItem.subtotalWithIva)
+    if (!Number.isFinite(subtotalWithIva) || subtotalWithIva <= 0) return false
+
+    const quantity = Math.max(1, Math.trunc(Number(quotedItem.quantity) || Number(draft.cantidad) || 1))
+    const precioUnitario = Number.isFinite(Number(quotedItem.unitPriceWithIva)) && Number(quotedItem.unitPriceWithIva) > 0
+      ? Number(quotedItem.unitPriceWithIva)
+      : subtotalWithIva / quantity
+
+    const metaStr = `LITOGRAFIA_META:${JSON.stringify({
+      version: 3,
+      itemSubtotalIncludesIva: true,
+      itemIvaPct: quotedItem.ivaPct,
+      subtotalSinIva: quotedItem.subtotalBeforeIva,
+      subtotalConIva: subtotalWithIva,
+      cantidad: String(quantity),
+      cantidadItems: String(quantity),
+      selectedMachineName: quotedItem.machineName,
+    })}`
+
+    const observaciones = [
+      `Litografía IA directa • unidad=${quotedItem.unit}${quotedItem.machineName ? ` • máquina=${quotedItem.machineName}` : ""}`,
+      quotedItem.summary || draft.assistantReply,
+      metaStr,
+    ]
+      .filter(Boolean)
+      .join("\n")
+
+    const nuevoItem: ItemCotizacion = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      descripcion: quotedItem.description || draft.producto || "Ítem de litografía",
+      materialId: null,
+      material: null,
+      cantidad: quantity,
+      unidad: quotedItem.unit || "unidad",
+      ancho: draft.anchoCm,
+      alto: draft.altoCm,
+      m2: null,
+      desperdicioPct: 0,
+      precioUnitario,
+      subtotal: subtotalWithIva,
+      laminado: false,
+      troquelado: false,
+      instalacion: false,
+      costoLaminado: 0,
+      costoTroquelado: 0,
+      costoInstalacion: 0,
+      observaciones,
+      terminados: [],
+    }
+
+    setItems((prev) => [...prev, nuevoItem])
+    setShowItemForm(false)
+    setLitografiaAiDraft(null)
+    return true
   }
 
   const actualizarItemLitografia = (payload: {
@@ -883,14 +944,12 @@ export default function CotizadorPage() {
       })
     )
     setLitografiaAiDraft(null)
-    setLitografiaAiAutoSubmit(false)
   }
 
   const handleLitografiaOpenChange = (open: boolean) => {
     setLitografiaOpen(open)
     if (!open) {
       setLitografiaEdit(null)
-      setLitografiaAiAutoSubmit(false)
       setLitografiaAiDraft(null)
     }
   }
@@ -952,20 +1011,11 @@ export default function CotizadorPage() {
   }
 
   const parseLitografiaMeta = (raw: string): LitografiaMeta | null => {
-    const idx = raw.indexOf("LITOGRAFIA_META:")
-    if (idx < 0) return null
-    const json = raw.slice(idx + "LITOGRAFIA_META:".length).trim()
-    if (!json) return null
-    try {
-      const parsed = JSON.parse(json) as unknown
-      if (!parsed || typeof parsed !== "object") return null
-      const rec = parsed as Record<string, unknown>
-      const version = Number(rec.version)
-      if (![1, 2].includes(version)) return null
-      return parsed as LitografiaMeta
-    } catch {
-      return null
-    }
+    const rec = getLitografiaMetaRecord(raw)
+    if (!rec) return null
+    const version = Number(rec.version)
+    if (![1, 2].includes(version)) return null
+    return rec as unknown as LitografiaMeta
   }
 
   const editarItem = (item: ItemCotizacion) => {
@@ -1221,7 +1271,6 @@ export default function CotizadorPage() {
         edit={litografiaEdit}
         onUpdateItem={actualizarItemLitografia}
         aiDraft={litografiaAiDraft}
-        autoSubmitAiDraft={litografiaAiAutoSubmit}
       />
 
       <MetrajeQuoteDialog
@@ -1252,11 +1301,13 @@ export default function CotizadorPage() {
             initialBrief={[descripcion, observaciones].map((item) => item.trim()).filter(Boolean).join("\n\n")}
             openToken={litografiaAiOpenToken}
             onApplyToClassic={(draft) => {
-              setLitografiaAiDraft(draft)
-              setLitografiaAiAutoSubmit(true)
               setLitografiaAiOpen(false)
               setShowItemForm(false)
               setLitografiaEdit(null)
+              if (agregarItemLitografiaCotizadoDesdeIa(draft)) {
+                return
+              }
+              setLitografiaAiDraft(draft)
               setLitografiaOpen(true)
             }}
           />
@@ -1855,10 +1906,17 @@ export default function CotizadorPage() {
               ) : (
                 <div className="space-y-2">
                   {items.map((item) => {
+                    const litografiaMetaRecord = getLitografiaMetaRecord(item.observaciones)
                     const meta = typeof item.observaciones === "string" ? parseLitografiaMeta(item.observaciones) : null
+                    const isDirectAiItem = Number(litografiaMetaRecord?.version) === 3
                     const tirajeRaw = meta
                       ? String((meta.cantidadItems ?? meta.cantidad ?? "0"))
-                      : "0"
+                      : String(litografiaMetaRecord?.cantidadItems ?? litografiaMetaRecord?.cantidad ?? "0")
+                    const machineName = meta?.selectedMachineName || String(litografiaMetaRecord?.selectedMachineName || "").trim()
+                    const editDisabledReason = isDirectAiItem ? "Este item viene cerrado desde la IA. Para cambiarlo, vuelve a cotizarlo desde el asistente." : null
+                    const canEditItem = !isDirectAiItem
+                      ? true
+                      : false
                     const tiraje = Math.max(0, Math.trunc(parseFloat(tirajeRaw) || 0))
                     const detailParts: string[] = []
                     if (item.material?.nombre) detailParts.push(item.material.nombre)
@@ -1869,7 +1927,7 @@ export default function CotizadorPage() {
                       detailParts.push(`${item.m2.toFixed(2)} ml${anchoLabel}`)
                     }
                     if (tiraje > 0) detailParts.push(`Tiraje: ${tiraje}`)
-                    if (meta?.selectedMachineName) detailParts.push(`Máquina: ${meta.selectedMachineName}`)
+                    if (machineName) detailParts.push(`Máquina: ${machineName}`)
                     detailParts.push(`${t('quoteBuilder.fields.quantityLabel')}: ${item.cantidad}`)
                     const details = detailParts.join(" • ")
 
@@ -1912,7 +1970,7 @@ export default function CotizadorPage() {
                             <p className="font-bold text-blue-600">
                               {formatCurrency(item.subtotal)}
                             </p>
-                            <Button variant="ghost" size="sm" onClick={() => editarItem(item)}>
+                            <Button variant="ghost" size="sm" onClick={() => editarItem(item)} disabled={!canEditItem} title={editDisabledReason || undefined}>
                               {t('common.edit')}
                             </Button>
                             <Button
