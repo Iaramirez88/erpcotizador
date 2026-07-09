@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { ChevronDown, MoreVertical, Plus } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -302,9 +302,12 @@ const TASK_PRIORITY_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-priority-colu
 const TASK_CREATED_AT_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-created-at-column-visible'
 
 export function CrmTaskWorkspacesClient() {
+  const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const attachmentInputRef = useRef<HTMLInputElement | null>(null)
   const customFieldFileInputRef = useRef<HTMLInputElement | null>(null)
+  const handledNotificationTaskRef = useRef<string>('')
   const { toast } = useToast()
 
   const [loading, setLoading] = useState(true)
@@ -377,7 +380,12 @@ export function CrmTaskWorkspacesClient() {
       setWorkspaces(nextWorkspaces)
       setUsers(Array.isArray(userRes.data) ? userRes.data : [])
       setSedes(Array.isArray(sedeRes.data) ? sedeRes.data : [])
-      setSelectedWorkspaceId((current) => current && nextWorkspaces.some((workspace) => workspace.id === current) ? current : nextWorkspaces[0]?.id || '')
+      setSelectedWorkspaceId((current) => {
+        if (requestedWorkspaceId && nextWorkspaces.some((workspace) => workspace.id === requestedWorkspaceId)) {
+          return requestedWorkspaceId
+        }
+        return current && nextWorkspaces.some((workspace) => workspace.id === current) ? current : nextWorkspaces[0]?.id || ''
+      })
     } finally {
       setLoading(false)
     }
@@ -466,11 +474,29 @@ export function CrmTaskWorkspacesClient() {
 
   useEffect(() => {
     if (!requestedTaskId) return
-    if (requestedWorkspaceId && requestedWorkspaceId !== selectedWorkspaceId) {
-      setSelectedWorkspaceId(requestedWorkspaceId)
+    const requestKey = `${requestedWorkspaceId}:${requestedTaskId}`
+    if (handledNotificationTaskRef.current === requestKey) return
+    if (loading) return
+    if (!workspaces.length) return
+
+    if (requestedWorkspaceId) {
+      const workspaceExists = workspaces.some((workspace) => workspace.id === requestedWorkspaceId)
+      if (!workspaceExists) return
+      if (requestedWorkspaceId !== selectedWorkspaceId) {
+        setSelectedWorkspaceId(requestedWorkspaceId)
+        return
+      }
+    } else if (!selectedWorkspaceId) {
+      return
     }
-    void loadTaskDetail(requestedTaskId)
-  }, [requestedTaskId, requestedWorkspaceId, selectedWorkspaceId])
+
+    handledNotificationTaskRef.current = requestKey
+    void loadTaskDetail(requestedTaskId).finally(() => {
+      if (pathname) {
+        router.replace(pathname, { scroll: false })
+      }
+    })
+  }, [loading, pathname, requestedTaskId, requestedWorkspaceId, router, selectedWorkspaceId, workspaces])
 
   useEffect(() => {
     if (!selectedWorkspace) return
