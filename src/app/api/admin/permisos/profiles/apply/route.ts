@@ -153,6 +153,22 @@ export async function POST(request: Request) {
       if (capabilityGrantRows.length) {
         await tx.userCapabilityGrant.createMany({ data: capabilityGrantRows })
       }
+
+      await tx.permissionProfileAssignment.upsert({
+        where: { sedeId_userId: { sedeId: profile.sedeId, userId: user.id } },
+        update: {
+          profileId: profile.id,
+          empresaId,
+          appliedByUserId: session.user.id,
+        },
+        create: {
+          profileId: profile.id,
+          empresaId,
+          sedeId: profile.sedeId,
+          userId: user.id,
+          appliedByUserId: session.user.id,
+        },
+      })
     }
   })
 

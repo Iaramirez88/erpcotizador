@@ -110,6 +110,8 @@ model User {
   capabilityGrants UserCapabilityGrant[] @relation("UserCapabilityGrantSubject")
   capabilityGrantsAuthored UserCapabilityGrant[] @relation("UserCapabilityGrantGrantedBy")
   permissionProfilesCreated PermissionProfile[] @relation("PermissionProfileCreatedBy")
+  permissionProfileAssignments PermissionProfileAssignment[] @relation("PermissionProfileAssignmentUser")
+  permissionProfileAssignmentsApplied PermissionProfileAssignment[] @relation("PermissionProfileAssignmentAppliedBy")
 
   // Notificaciones
   notifications Notification[]
@@ -703,6 +705,7 @@ model Empresa {
   capabilityEntitlements CapabilityEntitlement[]
   capabilityGrants UserCapabilityGrant[]
   permissionProfiles PermissionProfile[]
+  permissionProfileAssignments PermissionProfileAssignment[]
 
   inventoryMovements InventoryMovement[]
 
@@ -1655,6 +1658,7 @@ model Sede {
   teams         Team[]
   moduleAccess  UserModuleAccess[]
   permissionProfiles PermissionProfile[]
+  permissionProfileAssignments PermissionProfileAssignment[]
   notifications Notification[]
   payrollEmployees PayrollEmployee[]
   payrollContracts PayrollContract[]
@@ -2000,6 +2004,7 @@ model PermissionProfile {
   empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   sede      Sede    @relation(fields: [sedeId], references: [id], onDelete: Cascade)
   createdByUser User? @relation("PermissionProfileCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  assignments PermissionProfileAssignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2007,6 +2012,29 @@ model PermissionProfile {
   @@unique([empresaId, sedeId, name])
   @@index([empresaId, sedeId, createdAt])
   @@map("permission_profiles")
+}
+
+model PermissionProfileAssignment {
+  id             String @id @default(cuid())
+  profileId      String
+  empresaId      String
+  sedeId         String
+  userId         String
+  appliedByUserId String?
+
+  profile       PermissionProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  empresa       Empresa           @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  sede          Sede              @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+  user          User              @relation("PermissionProfileAssignmentUser", fields: [userId], references: [id], onDelete: Cascade)
+  appliedByUser User?             @relation("PermissionProfileAssignmentAppliedBy", fields: [appliedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sedeId, userId])
+  @@index([profileId, sedeId])
+  @@index([empresaId, sedeId])
+  @@map("permission_profile_assignments")
 }
 
 model WebsiteService {

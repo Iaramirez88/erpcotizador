@@ -440,6 +440,19 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
     }
   }
 
+  const permissionProfileAssignments = activeSedeId
+    ? await prisma.permissionProfileAssignment.findMany({
+        where: { empresaId, sedeId: activeSedeId, userId: { in: users.map((user) => user.id) } },
+        select: {
+          userId: true,
+          profile: { select: { id: true, name: true } },
+        },
+      })
+    : []
+  const permissionProfileByUserId = Object.fromEntries(
+    permissionProfileAssignments.map((assignment) => [assignment.userId, assignment.profile])
+  ) as Record<string, { id: string; name: string }>
+
   const usersWithSedeAccess = users.filter((user) => Boolean(membershipByUserId[user.id])).length
   const usersWithoutSedeAccess = users.length - usersWithSedeAccess
   const usersWithGlobalAccess = users.filter((user) => (globalAccessByUserId[user.id] ?? 'NONE') !== 'NONE').length
@@ -702,6 +715,11 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
                               <span className={`inline-flex rounded-full border px-2.5 py-1 ${globalAccessPillClass(globalAccessByUserId[u.id] ?? 'NONE')}`}>
                                 General: {t(`rbac.access.${globalAccessByUserId[u.id] ?? 'NONE'}`)}
                               </span>
+                              {permissionProfileByUserId[u.id] ? (
+                                <span className="inline-flex rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2.5 py-1 text-fuchsia-800">
+                                  Regla: {permissionProfileByUserId[u.id].name}
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                         ) : (
