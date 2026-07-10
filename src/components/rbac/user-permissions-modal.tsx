@@ -34,6 +34,8 @@ type Props = {
   initial: Partial<Record<ModuleKey, AccessLevel>>
   initialGlobalAccess: AccessLevel
   initialCapabilities: Record<string, AccessLevel>
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
   trigger?: ReactNode
 }
 
@@ -131,10 +133,10 @@ function hasExplicitLevel(levels: Partial<Record<ModuleKey, AccessLevel>>, modul
   return Object.prototype.hasOwnProperty.call(levels, moduleKey)
 }
 
-export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeAccess, initialSedeRole, modules, initial, initialGlobalAccess, initialCapabilities, trigger }: Props) {
+export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeAccess, initialSedeRole, modules, initial, initialGlobalAccess, initialCapabilities, open: controlledOpen, onOpenChange: controlledOnOpenChange, trigger }: Props) {
   const { t } = useI18n()
   const { toast } = useToast()
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
   const [levels, setLevels] = useState<Partial<Record<ModuleKey, AccessLevel>>>(initial)
   const [saving, setSaving] = useState<Partial<Record<ModuleKey, boolean>>>({})
   const [hasSedeAccess, setHasSedeAccess] = useState(initialHasSedeAccess)
@@ -221,6 +223,15 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
     (total, section) => total + section.entries.reduce((entryTotal, entry) => entryTotal + entry.capabilityEntries.length, 0),
     0
   )
+  const open = controlledOpen ?? internalOpen
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (controlledOnOpenChange) {
+      controlledOnOpenChange(nextOpen)
+      return
+    }
+    setInternalOpen(nextOpen)
+  }
 
   async function updateModuleLevel(moduleKey: ModuleKey, value: AccessChoice) {
     setSaving((prev) => ({ ...prev, [moduleKey]: true }))
@@ -334,7 +345,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
   const displayName = user.name ?? user.email
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         {trigger ? (
           trigger

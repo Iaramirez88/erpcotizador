@@ -21,6 +21,7 @@ import { isSuperAdminEmail } from "@/lib/super-admin"
 import { isPlanOwnerForEmpresa } from "@/lib/plan-owner"
 import { getWebsiteServicesAccessForUser } from "@/lib/website-services"
 import DashboardDeferredWidgets from "@/components/dashboard/dashboard-deferred-widgets"
+import DashboardPermissionBoundary from '@/components/dashboard/dashboard-permission-boundary'
 import { buildAllowedDashboardHrefsForUser, getAllowedModulesFromDashboardHrefs } from '@/lib/dashboard-access'
 
 export default async function DashboardLayout({
@@ -102,7 +103,9 @@ export default async function DashboardLayout({
           <main className="erp-shell relative flex-1 overflow-y-auto bg-white p-1 pb-14 sm:p-2 sm:pb-14 lg:p-2.5 lg:pb-14">
             <div className="erp-shell__content mx-auto flex w-full max-w-[1600px] flex-col gap-2.5">
               <RouteLoadingIndicator />
-              {children}
+              <DashboardPermissionBoundary allowedHrefs={allowedNavHrefs}>
+                {children}
+              </DashboardPermissionBoundary>
             </div>
           </main>
         </div>

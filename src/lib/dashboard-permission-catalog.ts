@@ -22,12 +22,28 @@ type BuildPermissionEntriesArgs = {
 
 export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
   {
-    key: 'CORE.DASHBOARD',
+    key: 'CORE.HOME',
     moduleKey: ModuleKey.DASHBOARD,
     section: 'Inicio',
     label: 'Dashboard',
-    hrefs: ['/dashboard', '/dashboard/mapa-producto', '/dashboard/plantillas'],
+    hrefs: ['/dashboard'],
     capabilities: [{ domain: 'CORE', subdomain: 'DASHBOARD' }],
+  },
+  {
+    key: 'CORE.PRODUCT_MAP',
+    moduleKey: ModuleKey.DASHBOARD,
+    section: 'Inicio',
+    label: 'Mapa de producto',
+    hrefs: ['/dashboard/mapa-producto'],
+    capabilities: [{ domain: 'CORE', subdomain: 'PRODUCT_MAP' }],
+  },
+  {
+    key: 'CORE.TEMPLATES',
+    moduleKey: ModuleKey.DASHBOARD,
+    section: 'Inicio',
+    label: 'Plantillas',
+    hrefs: ['/dashboard/plantillas'],
+    capabilities: [{ domain: 'CORE', subdomain: 'TEMPLATES' }],
   },
   {
     key: 'CORE.NOTIFICATIONS',

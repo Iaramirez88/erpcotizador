@@ -63,6 +63,8 @@ export function MemberActionsMenu({
   const { t } = useI18n()
   const router = useRouter()
 
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [permissionsOpen, setPermissionsOpen] = useState(false)
   const [defaultSedeOpen, setDefaultSedeOpen] = useState(false)
   const [savingDefaultSede, setSavingDefaultSede] = useState(false)
   const [defaultSedeError, setDefaultSedeError] = useState<string | null>(null)
@@ -97,7 +99,7 @@ export function MemberActionsMenu({
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <Button type="button" variant="ghost" size="icon" aria-label={t('rbac.common.options')}>
             <MoreHorizontal className="h-4 w-4" />
@@ -110,6 +112,7 @@ export function MemberActionsMenu({
           <DropdownMenuItem
             onSelect={(e) => {
               e.preventDefault()
+              setMenuOpen(false)
               setSelectedDefaultSedeId(userDefaultSedeId ?? '')
               setDefaultSedeError(null)
               setDefaultSedeOpen(true)
@@ -128,8 +131,19 @@ export function MemberActionsMenu({
             initial={initialAccess}
             initialGlobalAccess={initialGlobalAccess}
             initialCapabilities={initialCapabilityAccess}
+            open={permissionsOpen}
+            onOpenChange={(nextOpen) => {
+              setPermissionsOpen(nextOpen)
+              if (nextOpen) setMenuOpen(false)
+            }}
             trigger={
-              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault()
+                  setMenuOpen(false)
+                  setPermissionsOpen(true)
+                }}
+              >
                 {t('rbac.userPermissions.button')}
               </DropdownMenuItem>
             }

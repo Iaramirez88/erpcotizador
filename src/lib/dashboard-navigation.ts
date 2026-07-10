@@ -20,6 +20,15 @@ function getLongestPrefixDashboardItem(pathname: string) {
     .find((item) => item.href !== '/dashboard' && pathname.startsWith(item.href)) ?? null
 }
 
+function getDashboardNavItemForPath(pathname: string) {
+  if (pathname === '/dashboard') return getDashboardNavCatalogItem('/dashboard')
+
+  const exactMatch = getDashboardNavCatalogItem(pathname)
+  if (exactMatch) return exactMatch
+
+  return getLongestPrefixDashboardItem(pathname)
+}
+
 export function isOnboardingScopedDashboardHref(href: string): boolean {
   return getDashboardNavCatalogItem(href)?.onboardingScoped === true
 }
@@ -41,6 +50,10 @@ export function moduleForDashboardPath(pathname: string): string | null {
   if (exactMatch) return exactMatch.moduleKey
 
   return getLongestPrefixDashboardItem(pathname)?.moduleKey ?? null
+}
+
+export function labelForDashboardPath(pathname: string): string {
+  return getDashboardNavItemForPath(pathname)?.label ?? 'esta sección'
 }
 
 export function buildDashboardNavDefinitions(t: (key: string) => string): DashboardNavDefinition[] {

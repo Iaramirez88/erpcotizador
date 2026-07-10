@@ -48,6 +48,8 @@ export type LegacyModuleMapping = {
 
 export const RBAC_V2_CAPABILITY_CATALOG: RbacV2CapabilityDefinition[] = [
   { domain: 'CORE', subdomain: 'DASHBOARD', actions: ['READ'], recommendedScopes: ['EMPRESA', 'SEDE'] },
+  { domain: 'CORE', subdomain: 'PRODUCT_MAP', actions: ['READ'], recommendedScopes: ['EMPRESA', 'SEDE'] },
+  { domain: 'CORE', subdomain: 'TEMPLATES', actions: ['READ'], recommendedScopes: ['EMPRESA', 'SEDE'] },
   { domain: 'CORE', subdomain: 'COMPANY', actions: ['READ', 'UPDATE', 'CONFIGURE'], recommendedScopes: ['EMPRESA'] },
   { domain: 'CORE', subdomain: 'USERS', actions: ['READ', 'CREATE', 'UPDATE', 'CONFIGURE'], recommendedScopes: ['EMPRESA', 'SEDE'] },
   { domain: 'CORE', subdomain: 'ROLES', actions: ['READ', 'CREATE', 'UPDATE', 'CONFIGURE'], recommendedScopes: ['EMPRESA', 'SEDE'] },
@@ -100,7 +102,7 @@ export const RBAC_V2_CAPABILITY_CATALOG: RbacV2CapabilityDefinition[] = [
 ]
 
 export const LEGACY_MODULE_TO_RBAC_V2: LegacyModuleMapping[] = [
-  { moduleKey: 'DASHBOARD', targets: [{ domain: 'CORE', subdomains: ['DASHBOARD'] }] },
+  { moduleKey: 'DASHBOARD', targets: [{ domain: 'CORE', subdomains: ['DASHBOARD', 'PRODUCT_MAP', 'TEMPLATES'] }] },
   { moduleKey: 'CONFIG', targets: [{ domain: 'CORE', subdomains: ['COMPANY', 'USERS', 'ROLES', 'PLANS', 'WEB_SERVICES'] }] },
   { moduleKey: 'CRM', targets: [{ domain: 'CAPTACION', subdomains: ['INBOX', 'CHANNELS', 'LEADS', 'OPPORTUNITIES', 'CONTACTS', 'ACTIVITIES', 'AGENDA', 'COMMERCIAL_TASKS'] }, { domain: 'OPERACIONES', subdomains: ['PROJECTS', 'FILES', 'TASK_WORKSPACES', 'INTERNAL_CHAT'] }, { domain: 'IA', subdomains: ['COMMERCIAL_AI'] }] },
   { moduleKey: 'COTIZADOR', targets: [{ domain: 'VENTAS', subdomains: ['QUOTER'] }, { domain: 'OPERACIONES', subdomains: ['WORK_ORDERS'] }, { domain: 'IA', subdomains: ['OPERATIONAL_AI', 'CREATIVE_AI'] }, { domain: 'VERTICALES', subdomains: ['DOTACIONES'] }] },
