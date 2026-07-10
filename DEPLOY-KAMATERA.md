@@ -176,3 +176,4 @@ Eso fuerza salida lineal continua y evita la pantalla "pausada" del renderer TTY
 
 #ERPPonyo2026*
 sudo docker builder prune -a -f
+docker compose -f docker-compose.prod.yml build --no-cache app

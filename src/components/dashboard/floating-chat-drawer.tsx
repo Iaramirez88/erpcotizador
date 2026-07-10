@@ -106,6 +106,8 @@ type Props = {
   canAccessCrmChat: boolean
 }
 
+type ChatTab = 'updates' | 'crm' | 'team' | 'support'
+
 type UploadProgressState = {
   name: string
   progress: number
@@ -222,7 +224,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   const previousConversationKeyRef = useRef<string | null>(null)
   const previousThreadKeyRef = useRef<string | null>(null)
   const [open, setOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<'updates' | 'crm' | 'team' | 'support'>('updates')
+  const [activeTab, setActiveTab] = useState<ChatTab>('updates')
   const [teamView, setTeamView] = useState<'direct' | 'groups'>('direct')
   const [teamMobilePanel, setTeamMobilePanel] = useState<'options' | 'chat'>('options')
   const [loading, setLoading] = useState(true)
@@ -254,6 +256,12 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   const [showCrmScrollToBottom, setShowCrmScrollToBottom] = useState(false)
   const [showTeamScrollToBottom, setShowTeamScrollToBottom] = useState(false)
   const [supportCopyStatus, setSupportCopyStatus] = useState<string | null>(null)
+  const availableTabs = useMemo<ChatTab[]>(() => {
+    const nextTabs: ChatTab[] = ['updates', 'support']
+    if (canAccessCrmChat) nextTabs.push('crm')
+    if (canAccessTeamChat) nextTabs.push('team')
+    return nextTabs
+  }, [canAccessCrmChat, canAccessTeamChat])
 
   function clearScrollTimers(timersRef: React.MutableRefObject<number[]>) {
     timersRef.current.forEach((timerId) => window.clearTimeout(timerId))
@@ -356,6 +364,15 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   }, [])
 
   useEffect(() => {
+    if (availableTabs.includes(activeTab)) return
+    if (shouldDefaultToSupport(currentUserRole) && availableTabs.includes('support')) {
+      setActiveTab('support')
+      return
+    }
+    setActiveTab(availableTabs[0] ?? 'updates')
+  }, [activeTab, availableTabs, currentUserRole])
+
+  useEffect(() => {
     if (hasHydratedTabPersistenceRef.current) {
       hasStoredTabPreferenceRef.current = true
     } else {
@@ -374,9 +391,9 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
     try {
       const [meResult, usersResult, conversationsResult, threadsResult] = await Promise.allSettled([
         requestJson<{ id: string; role?: string | null }>('/api/me'),
-        requestJson<TeamUser[]>('/api/crm/assignees'),
-        requestJson<ConversationListItem[]>('/api/crm/conversations'),
-        requestJson<InternalThreadSummary[]>('/api/crm/internal-chat/threads'),
+        canAccessTeamChat ? requestJson<TeamUser[]>('/api/crm/assignees') : Promise.resolve({ success: true, data: [] as TeamUser[] }),
+        canAccessCrmChat ? requestJson<ConversationListItem[]>('/api/crm/conversations') : Promise.resolve({ success: true, data: [] as ConversationListItem[] }),
+        canAccessTeamChat ? requestJson<InternalThreadSummary[]>('/api/crm/internal-chat/threads') : Promise.resolve({ success: true, data: [] as InternalThreadSummary[] }),
       ])
 
       const meRes = meResult.status === 'fulfilled' ? meResult.value : null
@@ -392,8 +409,8 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
       const nextThreads = Array.isArray(threadsRes?.data) ? threadsRes.data : []
       setCrmConversations(nextConversations)
       setTeamThreads(nextThreads)
-      setSelectedConversationId((current) => current && nextVisibleConversations.some((item) => item.id === current) ? current : nextVisibleConversations[0]?.id ?? null)
-      setSelectedThreadId((current) => current && nextThreads.some((item) => item.id === current) ? current : nextThreads[0]?.id ?? null)
+      setSelectedConversationId((current) => canAccessCrmChat && current && nextVisibleConversations.some((item) => item.id === current) ? current : canAccessCrmChat ? nextVisibleConversations[0]?.id ?? null : null)
+      setSelectedThreadId((current) => canAccessTeamChat && current && nextThreads.some((item) => item.id === current) ? current : canAccessTeamChat ? nextThreads[0]?.id ?? null : null)
     } finally {
       setLoading(false)
     }

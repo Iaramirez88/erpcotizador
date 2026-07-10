@@ -20,6 +20,7 @@ import type {
 } from '@prisma/client'
 
 type AccountRow = { id: string; code: string; name: string }
+type CostCenterRow = { id: string; code: string; name: string }
 
 type RuleLineRow = {
   id: string
@@ -47,6 +48,7 @@ type RuleLineInput = {
   amountKey: AccountingAmountKey
   multiplier: number
   accountCode: string
+  costCenterId?: string | null
   memo?: string
 }
 
@@ -86,6 +88,7 @@ const AMOUNT_KEYS: { value: AccountingAmountKey; label: string }[] = [
 
 export default function ReglasContablesPage() {
   const [accounts, setAccounts] = useState<AccountRow[]>([])
+  const [costCenters, setCostCenters] = useState<CostCenterRow[]>([])
   const [rules, setRules] = useState<RuleRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -98,11 +101,13 @@ export default function ReglasContablesPage() {
   const [lineAmountKey, setLineAmountKey] = useState<AccountingAmountKey>('TOTAL')
   const [lineMultiplier, setLineMultiplier] = useState('1')
   const [lineAccountCode, setLineAccountCode] = useState('')
+  const [lineCostCenterId, setLineCostCenterId] = useState('')
   const [lineMemo, setLineMemo] = useState('')
   const [lines, setLines] = useState<RuleLineInput[]>([])
   const [submitting, setSubmitting] = useState(false)
 
   const accountCodeSet = useMemo(() => new Set(accounts.map((a) => a.code)), [accounts])
+  const costCenterById = useMemo(() => new Map(costCenters.map((center) => [center.id, center])), [costCenters])
 
   async function loadAll() {
     setLoading(true)
@@ -110,14 +115,19 @@ export default function ReglasContablesPage() {
     try {
       const [aRes, rRes] = await Promise.all([
         fetch('/api/contabilidad/cuentas', { cache: 'no-store' }),
+        fetch('/api/contabilidad/centros-de-costo', { cache: 'no-store' }),
         fetch('/api/contabilidad/reglas', { cache: 'no-store' }),
       ])
+      const cRes = rRes
       const aJson = (await aRes.json()) as { ok: boolean; data?: AccountRow[]; error?: string }
+      const cJson = (await cRes.json()) as { ok: boolean; data?: CostCenterRow[]; error?: string }
       const rJson = (await rRes.json()) as { ok: boolean; data?: RuleRow[]; error?: string }
       if (!aRes.ok || !aJson.ok) throw new Error(aJson.error || 'Error cargando cuentas')
+      if (!cRes.ok || !cJson.ok) throw new Error(cJson.error || 'Error cargando centros de costo')
       if (!rRes.ok || !rJson.ok) throw new Error(rJson.error || 'Error cargando reglas')
 
       setAccounts(aJson.data || [])
+      setCostCenters(cJson.data || [])
       setRules(rJson.data || [])
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error cargando datos')
@@ -143,10 +153,12 @@ export default function ReglasContablesPage() {
         amountKey: lineAmountKey,
         multiplier,
         accountCode: lineAccountCode.trim(),
+        costCenterId: lineCostCenterId || null,
         memo: lineMemo.trim() || undefined,
       },
     ])
 
+    setLineCostCenterId('')
     setLineMemo('')
   }
 
@@ -194,6 +206,7 @@ export default function ReglasContablesPage() {
         stats={[
           { label: 'Reglas', value: rules.length, hint: 'Automatizaciones activas', tone: 'neutral' },
           { label: 'Cuentas', value: accounts.length, hint: 'Base disponible', tone: 'sky' },
+          { label: 'Centros', value: costCenters.length, hint: 'Centros de costo disponibles', tone: 'teal' },
           { label: 'Líneas', value: lines.length, hint: 'Borrador actual', tone: 'amber' },
         ]}
       />
@@ -239,7 +252,7 @@ export default function ReglasContablesPage() {
           <div className="rounded-md border p-3 space-y-2" data-tour="contabilidad-reglas-lines">
           <div className="text-sm font-medium">Líneas</div>
 
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
             <div className="space-y-1">
               <Label>Lado</Label>
               <Select value={lineSide} onValueChange={(v) => setLineSide(v as AccountingPostingSide)}>
@@ -291,6 +304,23 @@ export default function ReglasContablesPage() {
             </div>
 
             <div className="space-y-1">
+              <Label>Centro de costo</Label>
+              <Select value={lineCostCenterId || '__none__'} onValueChange={(value) => setLineCostCenterId(value === '__none__' ? '' : value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin centro" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sin centro</SelectItem>
+                  {costCenters.map((center) => (
+                    <SelectItem key={center.id} value={center.id}>
+                      {center.code} - {center.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
               <Label htmlFor="memo">Memo (opcional)</Label>
               <Input id="memo" value={lineMemo} onChange={(e) => setLineMemo(e.target.value)} />
             </div>
@@ -317,7 +347,14 @@ export default function ReglasContablesPage() {
                     <div className="font-medium">
                       {l.side} · {l.amountKey} · x{l.multiplier}
                     </div>
-                    <div className="text-muted-foreground">Cuenta: {l.accountCode}{l.memo ? ` · ${l.memo}` : ''}</div>
+                    <div className="text-muted-foreground">
+                      Cuenta: {l.accountCode}
+                      {l.costCenterId ? (() => {
+                        const center = costCenterById.get(l.costCenterId)
+                        return ` · Centro: ${center ? `${center.code} - ${center.name}` : l.costCenterId}`
+                      })() : ''}
+                      {l.memo ? ` · ${l.memo}` : ''}
+                    </div>
                   </div>
                   <Button variant="outline" onClick={() => removeLine(idx)}>
                     Quitar
@@ -357,6 +394,10 @@ export default function ReglasContablesPage() {
                     {r.lines.map((l) => (
                       <div key={l.id} className="text-sm">
                         {l.order}. {l.side} {l.amountKey} x{l.multiplier}
+                        {l.costCenterId ? (() => {
+                          const center = costCenterById.get(l.costCenterId)
+                          return ` · Centro: ${center ? `${center.code} - ${center.name}` : l.costCenterId}`
+                        })() : ''}
                       </div>
                     ))}
                   </div>

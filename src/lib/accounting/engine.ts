@@ -18,6 +18,17 @@ export type GenerateEntryArgs = {
   description: string
   amounts: AccountingAmounts
   currency?: string
+  referenceExtra?: Record<string, unknown> | null
+}
+
+type ConditionContext = {
+  eventType: AccountingEventType
+  referenceType: string
+  referenceId: string
+  description: string
+  currency: string
+  amounts: AccountingAmounts
+  referenceExtra: Record<string, unknown>
 }
 
 function roundCOP(value: number): number {
@@ -31,6 +42,73 @@ function sumMoney(values: number[]): number {
 
 function getAmount(amounts: AccountingAmounts, key: AccountingAmountKey): number {
   return roundCOP(amounts[key] ?? 0)
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function readValueByPath(source: unknown, path: string) {
+  const segments = path.split('.').map((segment) => segment.trim()).filter(Boolean)
+  let current: unknown = source
+  for (const segment of segments) {
+    if (!isPlainObject(current)) return undefined
+    current = current[segment]
+  }
+  return current
+}
+
+function valuesEqual(left: unknown, right: unknown) {
+  if (typeof left === 'number' || typeof right === 'number') {
+    const leftNumber = Number(left)
+    const rightNumber = Number(right)
+    return Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber === rightNumber
+  }
+  return String(left ?? '') === String(right ?? '')
+}
+
+function matchesScalarCondition(actual: unknown, expected: unknown): boolean {
+  if (Array.isArray(expected)) {
+    return expected.some((item) => valuesEqual(actual, item))
+  }
+
+  if (isPlainObject(expected)) {
+    if ('equals' in expected && !valuesEqual(actual, expected.equals)) return false
+    if ('notEquals' in expected && valuesEqual(actual, expected.notEquals)) return false
+    if ('in' in expected) {
+      const options = Array.isArray(expected.in) ? expected.in : [expected.in]
+      if (!options.some((item) => valuesEqual(actual, item))) return false
+    }
+    if ('startsWith' in expected && !String(actual ?? '').startsWith(String(expected.startsWith ?? ''))) return false
+    if ('includes' in expected && !String(actual ?? '').includes(String(expected.includes ?? ''))) return false
+    if ('exists' in expected) {
+      const exists = actual !== undefined && actual !== null && actual !== ''
+      if (Boolean(expected.exists) !== exists) return false
+    }
+
+    const actualNumber = Number(actual)
+    if ('gt' in expected && !(Number.isFinite(actualNumber) && actualNumber > Number(expected.gt))) return false
+    if ('gte' in expected && !(Number.isFinite(actualNumber) && actualNumber >= Number(expected.gte))) return false
+    if ('lt' in expected && !(Number.isFinite(actualNumber) && actualNumber < Number(expected.lt))) return false
+    if ('lte' in expected && !(Number.isFinite(actualNumber) && actualNumber <= Number(expected.lte))) return false
+    return true
+  }
+
+  return valuesEqual(actual, expected)
+}
+
+function matchesRuleConditions(conditions: unknown, context: ConditionContext): boolean {
+  if (!isPlainObject(conditions) || Object.keys(conditions).length === 0) return true
+
+  for (const [key, expected] of Object.entries(conditions)) {
+    if (key === 'sampleTag') continue
+    const actual = readValueByPath(context, key)
+    if (!matchesScalarCondition(actual, expected)) {
+      return false
+    }
+  }
+
+  return true
 }
 
 export class AccountingError extends Error {
@@ -51,7 +129,7 @@ export class AccountingError extends Error {
 export async function generateJournalEntryFromRule(args: GenerateEntryArgs) {
   const currency = args.currency ?? 'COP'
 
-  const rule = await prisma.accountingRule.findFirst({
+  const rules = await prisma.accountingRule.findMany({
     where: {
       empresaId: args.empresaId,
       eventType: args.eventType,
@@ -65,6 +143,18 @@ export async function generateJournalEntryFromRule(args: GenerateEntryArgs) {
       },
     },
   })
+
+  const context: ConditionContext = {
+    eventType: args.eventType,
+    referenceType: args.referenceType,
+    referenceId: args.referenceId,
+    description: args.description,
+    currency,
+    amounts: args.amounts,
+    referenceExtra: isPlainObject(args.referenceExtra) ? args.referenceExtra : {},
+  }
+
+  const rule = rules.find((candidate) => matchesRuleConditions(candidate.conditions, context)) ?? null
 
   if (!rule) {
     throw new AccountingError('RULE_NOT_FOUND', 'No existe una regla contable activa para este evento')

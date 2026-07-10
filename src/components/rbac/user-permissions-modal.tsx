@@ -60,6 +60,8 @@ type CapabilityEntry = {
   permissionKey: string
   label: string
   includeLabels: string[]
+  domain: string
+  subdomain: string
 }
 
 type AccessChoice = AccessLevel | 'INHERIT'
@@ -147,7 +149,6 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
   const [capabilityLevels, setCapabilityLevels] = useState<Record<string, AccessLevel>>(initialCapabilities)
 
   const baseLevel = useMemo(() => baseAccessForSedeRole(sedeRole), [sedeRole])
-
   const effectiveLevel = (moduleKey: ModuleKey): AccessLevel => {
     const explicit = levels[moduleKey]
     return hasExplicitLevel(levels, moduleKey) ? (explicit ?? 'NONE') : baseLevel
@@ -170,20 +171,30 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
         const current = byModule.get(item.moduleKey)
         if (current) {
           current.submodules.push(...item.includeLabels.filter((label) => !current.submodules.includes(label)))
-          current.capabilityEntries.push({
-            permissionKey: item.key,
-            label: item.label,
-            includeLabels: item.includeLabels,
-          })
-        } else {
-          byModule.set(item.moduleKey, {
-            moduleKey: item.moduleKey,
-            submodules: [...item.includeLabels],
-            capabilityEntries: [{
+          const primaryCapability = item.capabilities[0]
+          if (primaryCapability) {
+            current.capabilityEntries.push({
               permissionKey: item.key,
               label: item.label,
               includeLabels: item.includeLabels,
-            }],
+              domain: primaryCapability.domain,
+              subdomain: primaryCapability.subdomain,
+            })
+          }
+        } else {
+          const primaryCapability = item.capabilities[0]
+          byModule.set(item.moduleKey, {
+            moduleKey: item.moduleKey,
+            submodules: [...item.includeLabels],
+            capabilityEntries: primaryCapability
+              ? [{
+                  permissionKey: item.key,
+                  label: item.label,
+                  includeLabels: item.includeLabels,
+                  domain: primaryCapability.domain,
+                  subdomain: primaryCapability.subdomain,
+                }]
+              : [],
           })
         }
         grouped.set(item.section, byModule)
@@ -217,6 +228,30 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
     },
     [modules, t]
   )
+
+  const capabilityAliasesByKey = useMemo(() => {
+    const aliases = new Map<string, string[]>()
+    const byCapability = new Map<string, string[]>()
+
+    for (const section of sections) {
+      for (const entry of section.entries) {
+        for (const capability of entry.capabilityEntries) {
+          const capabilityId = `${capability.domain}.${capability.subdomain}`
+          const current = byCapability.get(capabilityId) ?? []
+          current.push(capability.permissionKey)
+          byCapability.set(capabilityId, current)
+        }
+      }
+    }
+
+    for (const permissionKeys of byCapability.values()) {
+      for (const permissionKey of permissionKeys) {
+        aliases.set(permissionKey, permissionKeys)
+      }
+    }
+
+    return aliases
+  }, [sections])
 
   const moduleSectionCount = sections.reduce((total, section) => total + section.entries.length, 0)
   const capabilityCount = sections.reduce(
@@ -285,10 +320,9 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
     }
   }
 
-  async function updateCapabilityLevel(permissionKey: string, nextLevel: AccessChoice) {
+  async function updateCapabilityLevel(permissionKey: string, domain: string, subdomain: string, nextLevel: AccessChoice) {
     setSaving((prev) => ({ ...prev, [permissionKey]: true as unknown as boolean }))
     try {
-      const [domain, subdomain] = permissionKey.split('.') as [string, string, string?]
       const res = await fetch('/api/admin/permisos/capability-access', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -297,12 +331,20 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
       const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { level?: AccessLevel | null } } | null
       if (res.ok && json?.success) {
         setCapabilityLevels((prev) => {
+          const aliasKeys = capabilityAliasesByKey.get(permissionKey) ?? [permissionKey]
           if (nextLevel === 'INHERIT' || json.data?.level == null) {
             const next = { ...prev }
-            delete next[permissionKey]
+            for (const aliasKey of aliasKeys) {
+              delete next[aliasKey]
+            }
             return next
           }
-          return { ...prev, [permissionKey]: json.data.level }
+
+          const next = { ...prev }
+          for (const aliasKey of aliasKeys) {
+            next[aliasKey] = json.data.level
+          }
+          return next
         })
         toast({ title: 'Permiso actualizado correctamente' })
       } else {
@@ -526,7 +568,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
                                     getAccessTone(value, currentLevel)
                                   )}
                                   value={value}
-                                  onChange={(e) => void updateCapabilityLevel(capability.permissionKey, e.target.value as AccessChoice)}
+                                  onChange={(e) => void updateCapabilityLevel(capability.permissionKey, capability.domain, capability.subdomain, e.target.value as AccessChoice)}
                                   disabled={!hasSedeAccess}
                                 >
                                   <option value="INHERIT">{t('rbac.userPermissions.inherit')}</option>
