@@ -1,13 +1,14 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Image as ImageIcon, Paperclip, Plus, Smile, Trash2, Users, X } from 'lucide-react'
+import { ChevronDown, Image as ImageIcon, MoreVertical, Paperclip, Plus, Smile, Trash2, Users, X } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { uploadFileWithProgress } from '@/lib/upload-file-with-progress'
 
@@ -143,7 +144,6 @@ export function CrmTeamChatClient() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
   const [selectedThread, setSelectedThread] = useState<ThreadDetail | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
   const [messageDraft, setMessageDraft] = useState('')
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([])
   const [attachmentUpload, setAttachmentUpload] = useState<UploadProgressState | null>(null)
@@ -296,41 +296,20 @@ export function CrmTeamChatClient() {
   }, [selectedThreadId])
 
   const visibleUsers = useMemo(() => {
-    const term = search.trim().toLowerCase()
     return teamUsers
       .filter((user) => user.id !== currentUserId)
-      .filter((user) => {
-        if (!term) return true
-        const name = user.name?.toLowerCase() ?? ''
-        const email = user.email?.toLowerCase() ?? ''
-        return name.includes(term) || email.includes(term)
-      })
-      .slice(0, 12)
-  }, [currentUserId, search, teamUsers])
+  }, [currentUserId, teamUsers])
 
   const directThreads = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    return threads.filter((thread) => {
-      if (thread.type !== 'DIRECT') return false
-      if (!term) return true
-      const name = thread.counterpart?.name?.toLowerCase() ?? ''
-      const email = thread.counterpart?.email?.toLowerCase() ?? ''
-      const preview = thread.lastMessage?.bodyText?.toLowerCase() ?? ''
-      return name.includes(term) || email.includes(term) || preview.includes(term)
-    })
-  }, [search, threads])
+    return threads.filter((thread) => thread.type === 'DIRECT')
+  }, [threads])
 
   const createdGroups = useMemo(() => {
-    const term = search.trim().toLowerCase()
     return threads.filter((thread) => {
       if (thread.type !== 'GROUP') return false
       if (thread.createdById !== currentUserId) return false
-      if (!term) return true
-      const title = thread.title?.toLowerCase() ?? ''
-      const preview = thread.lastMessage?.bodyText?.toLowerCase() ?? ''
-      return title.includes(term) || preview.includes(term)
     })
-  }, [currentUserId, search, threads])
+  }, [currentUserId, threads])
 
   const groupCandidateUsers = useMemo(() => {
     const term = groupSearch.trim().toLowerCase()
@@ -505,51 +484,54 @@ export function CrmTeamChatClient() {
   return (
     <>
     <div className="space-y-4">
-      <Card className="rounded-[26px] border-slate-200 bg-white/90 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.35)]">
-        <CardContent className="grid gap-3 p-4 md:grid-cols-[1.2fr_0.8fr] md:p-5">
-          <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
-            <Label className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Buscar persona o chat</Label>
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nombre, correo o texto del mensaje..." className="h-11 rounded-xl border-slate-200 bg-white" />
-          </div>
-          <div className="grid gap-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-3">
-            <Button variant="outline" className="h-11 w-full rounded-xl border-slate-200 bg-white" onClick={() => void loadBase()}>
-              Refrescar equipo
-            </Button>
-            <Button className="h-11 w-full rounded-xl" onClick={() => setGroupDialogOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Crear grupo
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
       <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
         <div className="space-y-4">
           <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
-            <CardHeader className="border-b border-slate-100 pb-5">
-              <CardTitle className="text-xl">Compañeros</CardTitle>
+            <CardHeader className="border-b border-slate-100 pb-4">
+              <CardTitle className="text-lg">Compañeros</CardTitle>
               <CardDescription>Abre chats directos con usuarios de tu empresa.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3 p-4 md:p-5">
-              {visibleUsers.length === 0 ? <p className="text-sm text-muted-foreground">No hay compañeros para mostrar con ese filtro.</p> : null}
+            <CardContent className="p-4 md:p-5">
+              {visibleUsers.length === 0 ? <p className="text-sm text-muted-foreground">No hay compañeros para mostrar.</p> : null}
+              <div className="max-h-[236px] space-y-2.5 overflow-y-auto pr-1">
               {visibleUsers.map((user) => (
-                <div key={user.id} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
-                  <div>
-                    <p className="font-medium text-slate-950">{user.name || user.email || user.id}</p>
-                    <p className="text-sm text-slate-500">{user.email || 'Sin correo visible'}{user.role ? ` · ${user.role}` : ''}</p>
+                <div key={user.id} className="flex min-h-[70px] items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-2.5">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium leading-5 text-slate-950">{user.name || user.email || user.id}</p>
+                    <p className="truncate text-xs leading-4 text-slate-500">{user.email || 'Sin correo visible'}{user.role ? ` · ${user.role}` : ''}</p>
                   </div>
-                  <Button className="rounded-xl" onClick={() => void handleStartConversation(user.id)} disabled={creatingThread}>
+                  <Button size="sm" className="h-8 rounded-xl px-3 text-[11px]" onClick={() => void handleStartConversation(user.id)} disabled={creatingThread}>
                     {creatingThread ? 'Abriendo...' : 'Abrir chat'}
                   </Button>
                 </div>
               ))}
+              </div>
             </CardContent>
           </Card>
 
           <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
-            <CardHeader className="border-b border-slate-100 pb-5">
-              <CardTitle className="text-xl">Hilos internos</CardTitle>
-              <CardDescription>Alterna entre directos y grupos creados por ti.</CardDescription>
+            <CardHeader className="border-b border-slate-100 pb-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-lg">Hilos internos</CardTitle>
+                  <CardDescription>Alterna entre directos y grupos creados por ti.</CardDescription>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl border-slate-200 bg-white">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48 rounded-2xl p-1.5">
+                    <DropdownMenuItem onSelect={() => void loadBase()}>
+                      Refrescar equipo
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setGroupDialogOpen(true)}>
+                      Crear grupo
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3 p-4 md:p-5">
               <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
@@ -563,6 +545,7 @@ export function CrmTeamChatClient() {
               {loading ? <p className="text-sm text-muted-foreground">Cargando chats...</p> : null}
               {!loading && view === 'direct' && directThreads.length === 0 ? <p className="text-sm text-muted-foreground">No hay chats directos todavía.</p> : null}
               {!loading && view === 'groups' && createdGroups.length === 0 ? <p className="text-sm text-muted-foreground">No has creado grupos internos todavía.</p> : null}
+              <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
               {(view === 'direct' ? directThreads : createdGroups).map((thread) => {
                 const isActive = thread.id === selectedThreadId
                 return view === 'direct' ? (
@@ -602,6 +585,7 @@ export function CrmTeamChatClient() {
                   </div>
                 )
               })}
+              </div>
             </CardContent>
           </Card>
         </div>
