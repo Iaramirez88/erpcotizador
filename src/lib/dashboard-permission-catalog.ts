@@ -14,6 +14,7 @@ export type DashboardPermissionRule = {
   label: string
   hrefs: string[]
   capabilities: CapabilityRef[]
+  directGrantOnly?: boolean
 }
 
 type BuildPermissionEntriesArgs = {
@@ -66,7 +67,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
     moduleKey: ModuleKey.CRM,
     section: 'Captación',
     label: 'Prospectos y clientes',
-    hrefs: ['/dashboard/crm/conversations', '/dashboard/chat'],
+    hrefs: ['/dashboard/crm/conversations'],
     capabilities: [{ domain: 'CAPTACION', subdomain: 'INBOX' }],
   },
   {
@@ -177,9 +178,18 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
     key: 'OPERACIONES.INTERNAL_CHAT',
     moduleKey: ModuleKey.ORDENES,
     section: 'Operaciones',
-    label: 'Chat de empresa',
+    label: 'Chat global',
     hrefs: ['/dashboard/chat'],
     capabilities: [{ domain: 'OPERACIONES', subdomain: 'INTERNAL_CHAT' }],
+  },
+  {
+    key: 'OPERACIONES.GLOBAL_CHAT_CRM',
+    moduleKey: ModuleKey.ORDENES,
+    section: 'Operaciones',
+    label: 'CRM del chat global',
+    hrefs: ['/dashboard/chat'],
+    capabilities: [{ domain: 'CAPTACION', subdomain: 'INBOX' }],
+    directGrantOnly: true,
   },
   {
     key: 'OPERACIONES.DOCUMENT_CAPTURE',

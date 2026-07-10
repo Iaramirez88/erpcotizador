@@ -142,6 +142,7 @@ type QuoteHistoryResponse = {
   ok?: boolean
   error?: string
   history?: QuoteHistoryEntry[]
+  scope?: "company" | "personal"
   total?: number
   page?: number
   pageSize?: number
@@ -452,6 +453,7 @@ export function LitografiaAiAssistant(props: {
   const [historyPage, setHistoryPage] = useState(1)
   const [historyTotalPages, setHistoryTotalPages] = useState(1)
   const [historyTotal, setHistoryTotal] = useState(0)
+  const [historyScope, setHistoryScope] = useState<"company" | "personal">("personal")
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -510,12 +512,14 @@ export function LitografiaAiAssistant(props: {
         }
         setHistoryEntries(json.history)
         setHistoryTotal(json.total ?? json.history.length)
+        setHistoryScope(json.scope === "company" ? "company" : "personal")
         setHistoryPage(json.page ?? historyPage)
         setHistoryTotalPages(Math.max(1, json.totalPages ?? 1))
       } catch (historyLoadError) {
         if (controller.signal.aborted) return
         setHistoryEntries([])
         setHistoryTotal(0)
+        setHistoryScope("personal")
         setHistoryTotalPages(1)
         setHistoryError(historyLoadError instanceof Error ? historyLoadError.message : "No fue posible cargar el historial del cotizador IA.")
       } finally {
@@ -1064,7 +1068,11 @@ export function LitografiaAiAssistant(props: {
             <History className="h-5 w-5" />
             <CardTitle className="text-lg">{historyTitle}</CardTitle>
           </div>
-          <CardDescription>Consulta lo que ya han cotizado los usuarios sin traer el historial completo de una sola vez.</CardDescription>
+          <CardDescription>
+            {historyScope === "company"
+              ? "Consulta el historial general de cotizaciones del equipo sin traer todo de una sola vez."
+              : "Consulta únicamente tu historial personal de cotizaciones sin traer todo de una sola vez."}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between gap-3 text-sm text-slate-500">

@@ -1,10 +1,11 @@
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import { Plus, ShieldCheck, UserRoundCheck, UserRoundX } from 'lucide-react'
+import { Bell, Plus, ShieldCheck, UserRoundCheck, UserRoundX } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
 import { ensureDefaultSedeForEmpresa, requireEmpresaIdForUser } from '@/lib/rbac'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MemberActionsMenu } from '@/components/rbac/member-actions-menu'
 import { UserPermissionsModal } from '@/components/rbac/user-permissions-modal'
 import { InviteUserCard } from '@/components/users/invite-user-card'
@@ -470,143 +471,166 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
         ]}
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Administración por sede</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="grid gap-4 lg:w-full lg:max-w-3xl lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
-              <form method="get" className="grid gap-2">
-                <input type="hidden" name="q" value={searchQuery} />
-                <label className="text-sm font-medium">Sede activa para administrar acceso</label>
-                <select name="sedeId" defaultValue={activeSedeId ?? ''} className="border rounded px-3 py-2">
-                  {sedes.map((sede) => (
-                    <option key={sede.id} value={sede.id}>
-                      {sede.nombre}{sede.codigo ? ` (${sede.codigo})` : ''}
-                    </option>
-                  ))}
-                </select>
-                <Button type="submit" variant="secondary">Cambiar sede de trabajo</Button>
-              </form>
+      <Tabs defaultValue="sede" className="space-y-4">
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
+          <TabsTrigger value="sede" className="rounded-xl px-4 py-2.5">Administración por sede</TabsTrigger>
+          <TabsTrigger value="invite" className="rounded-xl px-4 py-2.5">Invitar por correo</TabsTrigger>
+          <TabsTrigger value="requests" className="rounded-xl px-4 py-2.5">
+            <span className="flex items-center gap-2">
+              Solicitudes de acceso
+              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${accessRequests.length ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'}`}>
+                <Bell className="h-3.5 w-3.5" />
+                {accessRequests.length}
+              </span>
+            </span>
+          </TabsTrigger>
+          <TabsTrigger value="users" className="rounded-xl px-4 py-2.5">Listado de usuarios</TabsTrigger>
+        </TabsList>
 
-              <form method="get" className="grid gap-2">
-                <input type="hidden" name="sedeId" value={activeSedeId ?? ''} />
-                <label className="text-sm font-medium">Buscar usuario</label>
-                <input
-                  name="q"
-                  defaultValue={searchQuery}
-                  placeholder="Busca por nombre o correo"
-                  className="border rounded px-3 py-2"
-                />
-                <div className="flex items-center gap-2">
-                  <Button type="submit">Buscar</Button>
-                  {searchQuery ? (
-                    <Button asChild type="button" variant="outline">
-                      <a href={activeSedeId ? `/dashboard/configuracion/usuarios?sedeId=${encodeURIComponent(activeSedeId)}` : '/dashboard/configuracion/usuarios'}>
-                        Limpiar
-                      </a>
-                    </Button>
-                  ) : null}
-                </div>
-              </form>
-            </div>
+        <TabsContent value="sede">
+          <Card>
+            <CardHeader>
+              <CardTitle>Administración por sede</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div className="grid gap-3 xl:w-full xl:max-w-4xl xl:grid-cols-[minmax(0,16rem)_minmax(0,20rem)]">
+                  <form method="get" className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <input type="hidden" name="q" value={searchQuery} />
+                    <label className="text-sm font-medium">Sede activa para administrar acceso</label>
+                    <select name="sedeId" defaultValue={activeSedeId ?? ''} className="border rounded px-3 py-2 bg-white">
+                      {sedes.map((sede) => (
+                        <option key={sede.id} value={sede.id}>
+                          {sede.nombre}{sede.codigo ? ` (${sede.codigo})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <Button type="submit" variant="secondary" className="w-full">Cambiar sede de trabajo</Button>
+                  </form>
 
-            <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[34rem]">
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
-                <div className="flex items-center gap-2 text-emerald-900">
-                  <UserRoundCheck className="h-4 w-4" />
-                  <span className="text-xs font-semibold uppercase tracking-[0.12em]">Con acceso</span>
+                  <form method="get" className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                    <input type="hidden" name="sedeId" value={activeSedeId ?? ''} />
+                    <label className="text-sm font-medium">Buscar usuario</label>
+                    <input
+                      name="q"
+                      defaultValue={searchQuery}
+                      placeholder="Busca por nombre o correo"
+                      className="border rounded px-3 py-2 bg-white"
+                    />
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button type="submit">Buscar</Button>
+                      {searchQuery ? (
+                        <Button asChild type="button" variant="outline">
+                          <a href={activeSedeId ? `/dashboard/configuracion/usuarios?sedeId=${encodeURIComponent(activeSedeId)}` : '/dashboard/configuracion/usuarios'}>
+                            Limpiar
+                          </a>
+                        </Button>
+                      ) : null}
+                    </div>
+                  </form>
                 </div>
-                <div className="mt-2 text-2xl font-semibold text-emerald-950">{usersWithSedeAccess}</div>
-                <div className="text-xs text-emerald-800">Usuarios ya vinculados a {activeSede?.nombre ?? 'la sede activa'}.</div>
+
+                <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[34rem]">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                    <div className="flex items-center gap-2 text-emerald-900">
+                      <UserRoundCheck className="h-4 w-4" />
+                      <span className="text-xs font-semibold uppercase tracking-[0.12em]">Con acceso</span>
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold text-emerald-950">{usersWithSedeAccess}</div>
+                    <div className="text-xs text-emerald-800">Usuarios ya vinculados a {activeSede?.nombre ?? 'la sede activa'}.</div>
+                  </div>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
+                    <div className="flex items-center gap-2 text-amber-900">
+                      <UserRoundX className="h-4 w-4" />
+                      <span className="text-xs font-semibold uppercase tracking-[0.12em]">Sin acceso</span>
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold text-amber-950">{usersWithoutSedeAccess}</div>
+                    <div className="text-xs text-amber-800">Aún no pertenecen a esta sede.</div>
+                  </div>
+                  <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-3">
+                    <div className="flex items-center gap-2 text-sky-900">
+                      <ShieldCheck className="h-4 w-4" />
+                      <span className="text-xs font-semibold uppercase tracking-[0.12em]">Global</span>
+                    </div>
+                    <div className="mt-2 text-2xl font-semibold text-sky-950">{usersWithGlobalAccess}</div>
+                    <div className="text-xs text-sky-800">Con permiso general a nivel empresa.</div>
+                  </div>
+                </div>
               </div>
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3">
-                <div className="flex items-center gap-2 text-amber-900">
-                  <UserRoundX className="h-4 w-4" />
-                  <span className="text-xs font-semibold uppercase tracking-[0.12em]">Sin acceso</span>
+
+              <p className="text-sm text-muted-foreground">
+                La lista prioriza primero a quienes todavía no tienen acceso en la sede activa. Usa el buscador para encontrar un usuario por nombre o correo y luego asignar o ajustar su acceso sin cambiar de pantalla.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="invite">
+          <InviteUserCard />
+        </TabsContent>
+
+        <TabsContent value="requests">
+          <Card>
+            <CardHeader>
+              <CardTitle>Solicitudes de acceso</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {accessRequests.length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="py-2 text-left">Usuario</th>
+                        <th className="py-2 text-left">Email</th>
+                        <th className="py-2 text-left">Código</th>
+                        <th className="py-2 text-left">Creada</th>
+                        <th className="py-2 text-right">Acción</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {accessRequests.map((r) => (
+                        <tr key={r.id} className="border-b">
+                          <td className="py-2">{r.requesterUser.name ?? '—'}</td>
+                          <td className="py-2 break-all">{r.requesterUser.email}</td>
+                          <td className="py-2 font-mono">{r.workspaceCode ?? '—'}</td>
+                          <td className="py-2">{fmtDate(r.createdAt, locale, naText)}</td>
+                          <td className="py-2">
+                            <div className="flex items-center justify-end gap-2 flex-wrap">
+                              <form action={approveAccessRequest}>
+                                <input type="hidden" name="requestId" value={r.id} />
+                                <Button type="submit" size="sm">Aprobar</Button>
+                              </form>
+                              <form action={rejectAccessRequest}>
+                                <input type="hidden" name="requestId" value={r.id} />
+                                <Button type="submit" size="sm" variant="outline">Rechazar</Button>
+                              </form>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <div className="mt-2 text-2xl font-semibold text-amber-950">{usersWithoutSedeAccess}</div>
-                <div className="text-xs text-amber-800">Aún no pertenecen a esta sede.</div>
-              </div>
-              <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-3">
-                <div className="flex items-center gap-2 text-sky-900">
-                  <ShieldCheck className="h-4 w-4" />
-                  <span className="text-xs font-semibold uppercase tracking-[0.12em]">Global</span>
+              ) : (
+                <div className="text-sm text-muted-foreground">No hay solicitudes pendientes.</div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="users">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('rbac.users.listTitle', { count: users.length })}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {searchQuery ? (
+                <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                  Mostrando {users.length} resultado{users.length === 1 ? '' : 's'} para "{searchQuery}".
                 </div>
-                <div className="mt-2 text-2xl font-semibold text-sky-950">{usersWithGlobalAccess}</div>
-                <div className="text-xs text-sky-800">Con permiso general a nivel empresa.</div>
-              </div>
-            </div>
-          </div>
-
-          <p className="text-sm text-muted-foreground">
-            La lista prioriza primero a quienes todavía no tienen acceso en la sede activa. Usa el buscador para encontrar un usuario por nombre o correo y luego asignar o ajustar su acceso sin cambiar de pantalla.
-          </p>
-        </CardContent>
-      </Card>
-
-      <InviteUserCard />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Solicitudes de acceso</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {accessRequests.length ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="py-2 text-left">Usuario</th>
-                    <th className="py-2 text-left">Email</th>
-                    <th className="py-2 text-left">Código</th>
-                    <th className="py-2 text-left">Creada</th>
-                    <th className="py-2 text-right">Acción</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {accessRequests.map((r) => (
-                    <tr key={r.id} className="border-b">
-                      <td className="py-2">{r.requesterUser.name ?? '—'}</td>
-                      <td className="py-2 break-all">{r.requesterUser.email}</td>
-                      <td className="py-2 font-mono">{r.workspaceCode ?? '—'}</td>
-                      <td className="py-2">{fmtDate(r.createdAt, locale, naText)}</td>
-                      <td className="py-2">
-                        <div className="flex items-center justify-end gap-2 flex-wrap">
-                          <form action={approveAccessRequest}>
-                            <input type="hidden" name="requestId" value={r.id} />
-                            <Button type="submit" size="sm">Aprobar</Button>
-                          </form>
-                          <form action={rejectAccessRequest}>
-                            <input type="hidden" name="requestId" value={r.id} />
-                            <Button type="submit" size="sm" variant="outline">Rechazar</Button>
-                          </form>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground">No hay solicitudes pendientes.</div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('rbac.users.listTitle', { count: users.length })}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {searchQuery ? (
-            <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-              Mostrando {users.length} resultado{users.length === 1 ? '' : 's'} para "{searchQuery}".
-            </div>
-          ) : null}
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+              ) : null}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
               <thead>
                 <tr className="border-b">
                   <th className="py-2 text-left">{t('rbac.users.table.user')}</th>
@@ -714,10 +738,12 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
                   </tr>
                 ) : null}
               </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

@@ -26,6 +26,6 @@ export async function resolveDashboardChatAccessForUser(userId: string): Promise
 
   return {
     canAccessTeamChat: permissionKeys.includes('OPERACIONES.INTERNAL_CHAT'),
-    canAccessCrmChat: permissionKeys.includes('CAPTACION.INBOX'),
+    canAccessCrmChat: permissionKeys.includes('OPERACIONES.GLOBAL_CHAT_CRM'),
   }
 }

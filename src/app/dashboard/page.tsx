@@ -49,6 +49,7 @@ export default async function DashboardPage() {
   let allowedModules: ModuleKey[] | null = null
   let enabledPlanModules: ModuleKey[] | null = null
   let canManageBilling = session.user.role === 'ADMIN'
+  let canViewCompanyStorage = session.user.role === 'ADMIN'
   let activeSedeName: string | null = null
   let storageUsage: Awaited<ReturnType<typeof getCrmStorageUsageSummary>> | null = null
   let dashboardConfig: ReturnType<typeof resolveDashboardConfig> = null
@@ -62,7 +63,14 @@ export default async function DashboardPage() {
   try {
     const sede = await getActiveSedeForUser(userId)
     activeSedeName = sede.nombre
-    const access = await getEffectiveAccessMap({ userId, sedeId: sede.id, modules: NAV_MODULES })
+    const [access, membership] = await Promise.all([
+      getEffectiveAccessMap({ userId, sedeId: sede.id, modules: NAV_MODULES }),
+      prisma.sedeMembership.findUnique({
+        where: { sedeId_userId: { sedeId: sede.id, userId } },
+        select: { role: true },
+      }),
+    ])
+    canViewCompanyStorage = canViewCompanyStorage || membership?.role === 'ADMIN'
     allowedModules = NAV_MODULES.filter((moduleKey) => (access[moduleKey] ?? 'NONE') !== 'NONE') as ModuleKey[]
     permissionAllowedHrefs = await buildAllowedDashboardHrefsForUser({
       userId,
@@ -107,7 +115,9 @@ export default async function DashboardPage() {
         })
       }
 
-      storageUsage = await getCrmStorageUsageSummary({ empresaId: user.empresaId })
+      if (canViewCompanyStorage) {
+        storageUsage = await getCrmStorageUsageSummary({ empresaId: user.empresaId })
+      }
       canManageBilling = isSuperAdminEmail(user?.email) || await isPlanOwnerForEmpresa({ empresaId: user.empresaId, userId })
     }
   } catch {

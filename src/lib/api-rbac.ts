@@ -478,5 +478,5 @@ export async function canAccessCompanyWideAiHistory(args: {
     select: { role: true },
   })
 
-  return membership?.role === 'ADMIN' || membership?.role === 'MANAGER'
+  return membership?.role === 'ADMIN'
 }

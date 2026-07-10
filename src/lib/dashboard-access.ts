@@ -28,7 +28,7 @@ type DashboardAccessContext = {
   legacyAccess: Partial<Record<ModuleKey, AccessLevel>>
   disabledDomains: Set<string>
   disabledCapabilities: Set<string>
-  grantsByCapability: Map<string, Array<{ allowed: boolean; scopeType: string; scopeValue: string | null }>>
+  grantsByCapability: Map<string, Array<{ allowed: boolean; scopeType: string; scopeValue: string | null; source: string }>>
 }
 
 const ACCESS_ORDER: Record<AccessLevel, number> = {
@@ -102,7 +102,7 @@ async function buildDashboardAccessContext(args: {
     prisma.capabilityEntitlement.findMany({ where: { empresaId: args.empresaId }, select: { domain: true, subdomain: true, action: true, enabled: true } }),
     prisma.userCapabilityGrant.findMany({
       where: { empresaId: args.empresaId, userId: args.userId },
-      select: { domain: true, subdomain: true, action: true, allowed: true, scopeType: true, scopeValue: true },
+      select: { domain: true, subdomain: true, action: true, allowed: true, scopeType: true, scopeValue: true, source: true },
     }),
   ])
 
@@ -112,11 +112,11 @@ async function buildDashboardAccessContext(args: {
       .filter((row) => !row.enabled)
       .map((row) => `${row.domain}.${row.subdomain}.${row.action}`)
   )
-  const grantsByCapability = new Map<string, Array<{ allowed: boolean; scopeType: string; scopeValue: string | null }>>()
+  const grantsByCapability = new Map<string, Array<{ allowed: boolean; scopeType: string; scopeValue: string | null; source: string }>>()
   for (const grant of grants) {
     const key = `${grant.domain}.${grant.subdomain}.${grant.action}`
     const current = grantsByCapability.get(key) ?? []
-    current.push({ allowed: grant.allowed, scopeType: grant.scopeType, scopeValue: grant.scopeValue })
+    current.push({ allowed: grant.allowed, scopeType: grant.scopeType, scopeValue: grant.scopeValue, source: grant.source })
     grantsByCapability.set(key, current)
   }
 
@@ -175,13 +175,14 @@ function canAccessCapabilityFromContext(args: {
   capability: CapabilityRef
   action: RbacV2CapabilityAction
   scope?: RbacV2Scope
+  directGrantOnly?: boolean
 }) {
   if (args.context.isSuperAdmin) return true
   if (args.context.disabledDomains.has(args.capability.domain)) return false
   const capabilityId = `${args.capability.domain}.${args.capability.subdomain}.${args.action}`
   if (args.context.disabledCapabilities.has(capabilityId)) return false
 
-  const grants = args.context.grantsByCapability.get(capabilityId) ?? []
+  const grants = (args.context.grantsByCapability.get(capabilityId) ?? []).filter((grant) => !args.directGrantOnly || grant.source === 'DIRECT')
   const applicable = grants.filter((grant) =>
     grantMatchesScope({
       requestedScope: args.scope,
@@ -194,6 +195,7 @@ function canAccessCapabilityFromContext(args: {
 
   if (applicable.some((grant) => !grant.allowed)) return false
   if (applicable.some((grant) => grant.allowed)) return true
+  if (args.directGrantOnly) return false
 
   const neededLevel = capabilityActionToAccessLevel(args.action)
   return getLegacyModulesForCapability(args.capability).some((moduleKey) => {
@@ -216,6 +218,7 @@ function canAccessDashboardRuleFromContext(args: {
       context: args.context,
       capability,
       action,
+      directGrantOnly: args.rule.directGrantOnly,
     }))
   })
 }

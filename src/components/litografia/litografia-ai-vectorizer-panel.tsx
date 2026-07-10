@@ -62,11 +62,12 @@ type VectorHistoryEntry = {
 type VectorHistoryResponse = {
   ok?: boolean
   history?: VectorHistoryEntry[]
+  scope?: "company" | "personal"
   error?: string
 }
 
 type GeneratedVectorResult = {
-  historyId: string
+  historyId?: string | null
   pendingId: string
   previewDataUrl: string
   responseText: string
@@ -194,6 +195,7 @@ export function LitografiaAiVectorizerPanel() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [history, setHistory] = useState<VectorHistoryEntry[]>([])
+  const [historyScope, setHistoryScope] = useState<"company" | "personal">("personal")
   const [selectedHistory, setSelectedHistory] = useState<VectorHistoryEntry | null>(null)
   const [generatedVector, setGeneratedVector] = useState<GeneratedVectorResult | null>(null)
   const [savedVector, setSavedVector] = useState<SavedVectorResult | null>(null)
@@ -217,9 +219,11 @@ export function LitografiaAiVectorizerPanel() {
         throw new Error(json?.error || "No se pudo cargar el historial de vectorización.")
       }
       setHistory(json.history)
+      setHistoryScope(json.scope === "company" ? "company" : "personal")
       setSelectedHistory((current) => json.history?.find((entry) => entry.id === current?.id) ?? json.history?.[0] ?? null)
     } catch (historyError) {
       setHistory([])
+      setHistoryScope("personal")
       setError(historyError instanceof Error ? historyError.message : "No se pudo cargar el historial de vectorización.")
     } finally {
       setHistoryLoading(false)
@@ -311,11 +315,13 @@ export function LitografiaAiVectorizerPanel() {
 
   const downloadVectorByHistoryId = async ({
     historyId,
+    pendingId,
     format,
     fileName,
     downloadKey,
   }: {
-    historyId: string
+    historyId?: string
+    pendingId?: string
     format: VectorFormat
     fileName: string
     downloadKey: string
@@ -327,7 +333,7 @@ export function LitografiaAiVectorizerPanel() {
       const response = await fetch("/api/litografia/ia/vectorizar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "download", historyId, format, options: { ...outputOptions, fileFormat: format } }),
+        body: JSON.stringify({ action: "download", historyId, pendingId, format, options: { ...outputOptions, fileFormat: format } }),
       })
 
       if (!response.ok) {
@@ -365,7 +371,7 @@ export function LitografiaAiVectorizerPanel() {
     }
 
     await downloadVectorByHistoryId({
-      historyId: generatedVector.historyId,
+      pendingId: generatedVector.pendingId,
       format: outputOptions.fileFormat,
       fileName: sourceFile.name || "vector",
       downloadKey: `generated:${outputOptions.fileFormat}`,
@@ -783,8 +789,8 @@ export function LitografiaAiVectorizerPanel() {
 
       <Card className="border-slate-200 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-lg">Últimas vectorizaciones</CardTitle>
-          <CardDescription>Consulta rápida del historial guardado. Desde cada registro puedes descargar otros formatos desde la plataforma.</CardDescription>
+          <CardTitle className="text-lg">{historyScope === "company" ? "Últimas vectorizaciones del equipo" : "Tus últimas vectorizaciones"}</CardTitle>
+          <CardDescription>{historyScope === "company" ? "Consulta rápida del historial guardado del equipo. Desde cada registro puedes descargar otros formatos desde la plataforma." : "Consulta rápida de tu historial guardado. Desde cada registro puedes descargar otros formatos desde la plataforma."}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {historyLoading ? <p className="text-sm text-muted-foreground">Cargando historial...</p> : null}
@@ -825,7 +831,7 @@ export function LitografiaAiVectorizerPanel() {
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
         <DialogContent className="max-h-[90vh] max-w-5xl overflow-hidden">
           <DialogHeader>
-            <DialogTitle>Historial de vectorización</DialogTitle>
+            <DialogTitle>{historyScope === "company" ? "Historial general de vectorización" : "Tu historial de vectorización"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 overflow-hidden lg:grid-cols-[0.95fr_1.05fr]">
             <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">

@@ -45,6 +45,7 @@ type GeneratedImageResult = {
 type HistoryResponse = {
   ok?: boolean
   history?: AiHistoryEntry[]
+  scope?: "company" | "personal"
   error?: string
 }
 
@@ -123,6 +124,7 @@ export function LitografiaAiImagesModule() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [history, setHistory] = useState<AiHistoryEntry[]>([])
+  const [historyScope, setHistoryScope] = useState<"company" | "personal">("personal")
   const [selectedHistory, setSelectedHistory] = useState<AiHistoryEntry | null>(null)
   const [generatedImage, setGeneratedImage] = useState<GeneratedImageResult | null>(null)
   const [savedImage, setSavedImage] = useState<SavedImageResult | null>(null)
@@ -149,8 +151,10 @@ export function LitografiaAiImagesModule() {
         throw new Error(json?.error || "No se pudo cargar el historial IA.")
       }
       setHistory(json.history)
+      setHistoryScope(json.scope === "company" ? "company" : "personal")
     } catch (historyError) {
       setHistory([])
+      setHistoryScope("personal")
       setError(historyError instanceof Error ? historyError.message : "No se pudo cargar el historial IA.")
     } finally {
       setHistoryLoading(false)
@@ -377,8 +381,8 @@ export function LitografiaAiImagesModule() {
 
       <Card className="border-slate-200 shadow-sm">
         <CardHeader>
-          <CardTitle className="text-lg">Últimas consultas</CardTitle>
-          <CardDescription>Vista rápida de la actividad reciente. El botón superior abre el historial completo item por item.</CardDescription>
+          <CardTitle className="text-lg">{historyScope === "company" ? "Últimas consultas del equipo" : "Tus últimas consultas"}</CardTitle>
+          <CardDescription>{historyScope === "company" ? "Vista rápida de la actividad reciente del equipo. El botón superior abre el historial completo item por item." : "Vista rápida de tu actividad reciente. El botón superior abre tu historial completo item por item."}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {historyLoading ? <p className="text-sm text-muted-foreground">Cargando historial...</p> : null}
@@ -407,7 +411,7 @@ export function LitografiaAiImagesModule() {
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
         <DialogContent className="max-h-[90vh] max-w-5xl overflow-hidden">
           <DialogHeader>
-            <DialogTitle>Historial de consultas IA</DialogTitle>
+            <DialogTitle>{historyScope === "company" ? "Historial general de consultas IA" : "Tu historial de consultas IA"}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 overflow-hidden lg:grid-cols-[0.95fr_1.05fr]">
             <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">

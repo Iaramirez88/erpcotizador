@@ -69,7 +69,7 @@ export default async function DashboardLayout({
       ])
       allowedNavHrefs = nextAllowedNavHrefs
       canAccessTeamChat = permissionKeys.includes('OPERACIONES.INTERNAL_CHAT')
-      canAccessCrmChat = permissionKeys.includes('CAPTACION.INBOX')
+      canAccessCrmChat = permissionKeys.includes('OPERACIONES.GLOBAL_CHAT_CRM')
       allowedModules = Array.from(new Set([...allowedModules, ...getAllowedModulesFromDashboardHrefs(allowedNavHrefs)]))
       canAccessWebsiteServices = websiteServicesAccess.canAccess
 

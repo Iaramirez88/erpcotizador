@@ -52,9 +52,13 @@ const saveSchema = z.object({
 
 const downloadSchema = z.object({
   action: z.literal('download'),
-  historyId: z.string().trim().min(1, 'No se encontró el historial solicitado.'),
+  historyId: z.string().trim().min(1).optional(),
+  pendingId: z.string().trim().min(1).optional(),
   format: z.enum(VECTOR_OUTPUT_FORMATS),
   options: vectorizerOutputOptionsSchema.optional(),
+}).refine((data) => Boolean(data.historyId || data.pendingId), {
+  message: 'No se encontró el vector solicitado.',
+  path: ['historyId'],
 })
 
 const AI_VECTORS_FOLDER = 'IA/vectorizer-ai'
@@ -214,7 +218,7 @@ export async function GET() {
       actorUserId: canViewCompanyWide ? null : access.userId,
     })
 
-    return NextResponse.json({ ok: true, history: mapVectorHistory(history) })
+    return NextResponse.json({ ok: true, scope: canViewCompanyWide ? 'company' : 'personal', history: mapVectorHistory(history) })
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'No se pudo consultar el historial de vectorización.' }, { status: 400 })
   }
@@ -283,34 +287,9 @@ export async function POST(request: NextRequest) {
         base64: vectorBytes.toString('base64'),
       })
       const responseText = `Vector generado con Vectorizer.AI desde ${pending.sourceFileName}. Revísalo y apruébalo para guardarlo en ${AI_VECTORS_FOLDER}.`
-      const historyEntry = await appendAiWorkspaceHistory({
-        empresaId,
-        entry: {
-          kind: 'IMAGE_VECTORIZATION',
-          prompt: `Vectorizar ${pending.sourceFileName}`,
-          actorUserId: access.userId,
-          actorLabel: access.session.user.name || access.session.user.email || 'Usuario interno',
-          summary: `Vector SVG generado desde ${pending.sourceFileName}`,
-          responseText,
-          metadata: {
-            provider: pending.provider,
-            outputFormat: pending.outputFormat,
-            sourceFileName: pending.sourceFileName,
-            sourceMimeType: pending.sourceMimeType,
-            sourceSizeBytes: pending.sourceSizeBytes,
-            imageToken: pending.imageToken,
-            pendingId: pending.id,
-            status: 'PREVIEW_READY',
-            availableDownloads: VECTOR_OUTPUT_FORMATS,
-          },
-          asset: null,
-        },
-      })
-
       return NextResponse.json({
         ok: true,
         vectorization: {
-          historyId: historyEntry.id,
           pendingId: pending.id,
           previewDataUrl: `data:image/svg+xml;base64,${pending.base64}`,
           responseText,
@@ -421,11 +400,24 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ ok: false, error: 'Vectorizer.AI no está configurado. Define LITOGRAFIA_VECTORIZER_API_ID y LITOGRAFIA_VECTORIZER_API_SECRET.' }, { status: 400 })
       }
 
-      const history = await listAiWorkspaceHistory({ empresaId, limit: 120, kinds: ['IMAGE_VECTORIZATION'] })
-      const entry = history.find((item) => item.id === parsed.data.historyId)
-      const imageToken = typeof entry?.metadata?.imageToken === 'string' ? entry.metadata.imageToken.trim() : ''
-      if (!entry || !imageToken) {
-        return NextResponse.json({ ok: false, error: 'Este vector no tiene token activo para descargar nuevos formatos.' }, { status: 404 })
+      let imageToken = ''
+      let baseName = 'vector'
+
+      if (parsed.data.pendingId) {
+        const pending = await readPendingLitografiaAiVectorization({ empresaId, pendingId: parsed.data.pendingId })
+        imageToken = typeof pending?.imageToken === 'string' ? pending.imageToken.trim() : ''
+        baseName = slugifyFileName(pending?.sourceFileName || 'vector')
+        if (!pending || !imageToken) {
+          return NextResponse.json({ ok: false, error: 'Este vector pendiente ya no tiene un token activo para descargar nuevos formatos.' }, { status: 404 })
+        }
+      } else {
+        const history = await listAiWorkspaceHistory({ empresaId, limit: 120, kinds: ['IMAGE_VECTORIZATION'] })
+        const entry = history.find((item) => item.id === parsed.data.historyId)
+        imageToken = typeof entry?.metadata?.imageToken === 'string' ? entry.metadata.imageToken.trim() : ''
+        baseName = slugifyFileName(typeof entry?.metadata?.sourceFileName === 'string' ? entry.metadata.sourceFileName : entry?.asset?.name || 'vector')
+        if (!entry || !imageToken) {
+          return NextResponse.json({ ok: false, error: 'Este vector no tiene token activo para descargar nuevos formatos.' }, { status: 404 })
+        }
       }
 
       const upstream = new FormData()
@@ -445,7 +437,6 @@ export async function POST(request: NextRequest) {
       }
 
       const bytes = Buffer.from(await downloadResponse.arrayBuffer())
-      const baseName = slugifyFileName(typeof entry.metadata?.sourceFileName === 'string' ? entry.metadata.sourceFileName : entry.asset?.name || 'vector')
 
       return new NextResponse(bytes, {
         status: 200,

@@ -1530,6 +1530,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       history: historyPage.items.map(mapQuoteHistoryEntry),
+      scope: canViewCompanyWide ? 'company' : 'personal',
       total: historyPage.total,
       page: historyPage.page,
       pageSize: historyPage.pageSize,

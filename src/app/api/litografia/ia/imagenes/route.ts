@@ -64,7 +64,7 @@ export async function GET() {
       actorUserId: canViewCompanyWide ? null : access.userId,
     })
 
-    return NextResponse.json({ ok: true, history })
+    return NextResponse.json({ ok: true, scope: canViewCompanyWide ? 'company' : 'personal', history })
   } catch (error) {
     return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'No se pudo consultar el historial IA.' }, { status: 400 })
   }

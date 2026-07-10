@@ -29,7 +29,7 @@ export default async function GlobalChatPage() {
   return (
     <CrmGlobalChatClient
       canAccessTeamChat={permissionKeys.includes('OPERACIONES.INTERNAL_CHAT')}
-      canAccessCrmChat={permissionKeys.includes('CAPTACION.INBOX')}
+      canAccessCrmChat={permissionKeys.includes('OPERACIONES.GLOBAL_CHAT_CRM')}
     />
   )
 }
