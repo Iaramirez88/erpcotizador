@@ -202,6 +202,44 @@ function canAccessCapabilityFromContext(args: {
   })
 }
 
+function canAccessDashboardRuleFromContext(args: {
+  context: DashboardAccessContext
+  rule: (typeof DASHBOARD_PERMISSION_RULES)[number]
+}) {
+  return args.rule.capabilities.some((capability) => {
+    const definition = getCapabilityDefinition(capability.domain, capability.subdomain)
+    const actions: RbacV2CapabilityAction[] = definition?.actions.includes('READ')
+      ? ['READ']
+      : (definition?.actions.filter((action) => capabilityActionToAccessLevel(action) === 'READ') ?? ['READ'])
+
+    return actions.some((action) => canAccessCapabilityFromContext({
+      context: args.context,
+      capability,
+      action,
+    }))
+  })
+}
+
+export async function buildAllowedDashboardPermissionKeysForUser(args: {
+  userId: string
+  empresaId: string
+  sedeId: string
+  baseAllowedHrefs?: string[] | null
+}) {
+  const context = await buildDashboardAccessContext(args)
+  const baseSet = args.baseAllowedHrefs?.length ? new Set(args.baseAllowedHrefs) : null
+  const keys = new Set<string>()
+
+  for (const rule of DASHBOARD_PERMISSION_RULES) {
+    if (baseSet && !rule.hrefs.some((href) => href === '/dashboard' || baseSet.has(href))) continue
+    if (canAccessDashboardRuleFromContext({ context, rule })) {
+      keys.add(rule.key)
+    }
+  }
+
+  return [...keys]
+}
+
 export async function buildAllowedDashboardHrefsForUser(args: {
   userId: string
   empresaId: string
@@ -215,8 +253,8 @@ export async function buildAllowedDashboardHrefsForUser(args: {
   for (const item of DASHBOARD_NAV_CATALOG) {
     if (baseSet && item.href !== '/dashboard' && !baseSet.has(item.href)) continue
 
-    const rule = DASHBOARD_PERMISSION_RULES.find((entry) => entry.hrefs.includes(item.href))
-    if (!rule) {
+    const rules = DASHBOARD_PERMISSION_RULES.filter((entry) => entry.hrefs.includes(item.href))
+    if (!rules.length) {
       const moduleKey = moduleForDashboardHref(item.href)
       if (!moduleKey) {
         hrefs.add(item.href)
@@ -227,17 +265,7 @@ export async function buildAllowedDashboardHrefsForUser(args: {
       continue
     }
 
-    const canRead = rule.capabilities.some((capability) => {
-      const definition = getCapabilityDefinition(capability.domain, capability.subdomain)
-      const actions: RbacV2CapabilityAction[] = definition?.actions.includes('READ')
-        ? ['READ']
-        : (definition?.actions.filter((action) => capabilityActionToAccessLevel(action) === 'READ') ?? ['READ'])
-      return actions.some((action) => canAccessCapabilityFromContext({
-        context,
-        capability,
-        action,
-      }))
-    })
+    const canRead = rules.some((rule) => canAccessDashboardRuleFromContext({ context, rule }))
 
     if (canRead) hrefs.add(item.href)
   }

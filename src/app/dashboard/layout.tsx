@@ -22,7 +22,7 @@ import { isPlanOwnerForEmpresa } from "@/lib/plan-owner"
 import { getWebsiteServicesAccessForUser } from "@/lib/website-services"
 import DashboardDeferredWidgets from "@/components/dashboard/dashboard-deferred-widgets"
 import DashboardPermissionBoundary from '@/components/dashboard/dashboard-permission-boundary'
-import { buildAllowedDashboardHrefsForUser, getAllowedModulesFromDashboardHrefs } from '@/lib/dashboard-access'
+import { buildAllowedDashboardHrefsForUser, buildAllowedDashboardPermissionKeysForUser, getAllowedModulesFromDashboardHrefs } from '@/lib/dashboard-access'
 
 export default async function DashboardLayout({
   children,
@@ -41,6 +41,8 @@ export default async function DashboardLayout({
   let allowedNavHrefs: string[] | null = null
   let canManageBilling = false
   let canAccessWebsiteServices = false
+  let canAccessTeamChat = false
+  let canAccessCrmChat = false
   try {
     if (userId) {
       const [sede, layoutUser, websiteServicesAccess] = await Promise.all([
@@ -53,11 +55,21 @@ export default async function DashboardLayout({
       ])
       const access = await getEffectiveAccessMap({ userId, sedeId: sede.id, modules: NAV_MODULES })
       allowedModules = NAV_MODULES.filter((m) => (access[m] ?? 'NONE') !== 'NONE')
-      allowedNavHrefs = await buildAllowedDashboardHrefsForUser({
-        userId,
-        empresaId: sede.empresaId,
-        sedeId: sede.id,
-      })
+      const [nextAllowedNavHrefs, permissionKeys] = await Promise.all([
+        buildAllowedDashboardHrefsForUser({
+          userId,
+          empresaId: sede.empresaId,
+          sedeId: sede.id,
+        }),
+        buildAllowedDashboardPermissionKeysForUser({
+          userId,
+          empresaId: sede.empresaId,
+          sedeId: sede.id,
+        }),
+      ])
+      allowedNavHrefs = nextAllowedNavHrefs
+      canAccessTeamChat = permissionKeys.includes('OPERACIONES.INTERNAL_CHAT')
+      canAccessCrmChat = permissionKeys.includes('CAPTACION.INBOX')
       allowedModules = Array.from(new Set([...allowedModules, ...getAllowedModulesFromDashboardHrefs(allowedNavHrefs)]))
       canAccessWebsiteServices = websiteServicesAccess.canAccess
 
@@ -110,7 +122,7 @@ export default async function DashboardLayout({
           </main>
         </div>
       </div>
-      <DashboardDeferredWidgets userId={userId} />
+      <DashboardDeferredWidgets userId={userId} canAccessTeamChat={canAccessTeamChat} canAccessCrmChat={canAccessCrmChat} />
     </TourProvider>
   )
 }

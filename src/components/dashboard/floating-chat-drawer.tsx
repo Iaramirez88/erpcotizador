@@ -101,6 +101,11 @@ type InboxAlert = {
 
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
 
+type Props = {
+  canAccessTeamChat: boolean
+  canAccessCrmChat: boolean
+}
+
 type UploadProgressState = {
   name: string
   progress: number
@@ -198,7 +203,7 @@ function renderAttachments(attachments: ChatAttachment[] | undefined, onImageLoa
   )
 }
 
-export default function FloatingChatDrawer() {
+export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat }: Props) {
   const storageTabKey = 'sg_floating_chat_last_tab'
   const hasStoredTabPreferenceRef = useRef(false)
   const hasHydratedTabPersistenceRef = useRef(false)
@@ -567,7 +572,7 @@ export default function FloatingChatDrawer() {
   }, [currentUserId, groupSearch, teamUsers])
 
   const unreadAlerts = useMemo<InboxAlert[]>(() => {
-    const crmAlerts = visibleCrmConversations
+    const crmAlerts = !canAccessCrmChat ? [] : visibleCrmConversations
       .filter((item) => item.unreadCount > 0)
       .map((item) => ({
         id: item.id,
@@ -579,7 +584,7 @@ export default function FloatingChatDrawer() {
         unreadCount: item.unreadCount,
       }))
 
-    const teamAlerts = teamThreads
+    const teamAlerts = !canAccessTeamChat ? [] : teamThreads
       .filter((item) => item.unreadCount > 0)
       .map((item) => ({
         id: item.id,
@@ -592,7 +597,7 @@ export default function FloatingChatDrawer() {
       }))
 
     return [...crmAlerts, ...teamAlerts].sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
-  }, [teamThreads, visibleCrmConversations])
+  }, [canAccessCrmChat, canAccessTeamChat, teamThreads, visibleCrmConversations])
 
   const unreadTotal = useMemo(() => unreadAlerts.reduce((sum, item) => sum + item.unreadCount, 0), [unreadAlerts])
 
@@ -624,12 +629,14 @@ export default function FloatingChatDrawer() {
   async function handleOpenAlert(alert: InboxAlert) {
     setOpen(true)
     if (alert.kind === 'crm') {
+      if (!canAccessCrmChat) return
       setActiveTab('crm')
       setSelectedConversationId(alert.id)
       await loadConversationDetail(alert.id)
       return
     }
 
+    if (!canAccessTeamChat) return
     setActiveTab('team')
     setTeamView('direct')
     setSelectedThreadId(alert.id)
@@ -732,6 +739,7 @@ export default function FloatingChatDrawer() {
   }
 
   async function handleStartTeamChat(userId: string) {
+    if (!canAccessTeamChat) return
     setStartingThread(true)
     try {
       const json = await requestJson<InternalThreadSummary>('/api/crm/internal-chat/threads', {
@@ -880,12 +888,12 @@ export default function FloatingChatDrawer() {
                     <DropdownMenuItem onSelect={() => setActiveTab('support')}>
                       {SUPPORT_TAB_LABEL}
                     </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setActiveTab('crm')}>
+                    {canAccessCrmChat ? <DropdownMenuItem onSelect={() => setActiveTab('crm')}>
                       CRM
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setActiveTab('team')}>
+                    </DropdownMenuItem> : null}
+                    {canAccessTeamChat ? <DropdownMenuItem onSelect={() => setActiveTab('team')}>
                       Equipo
-                    </DropdownMenuItem>
+                    </DropdownMenuItem> : null}
                   </DropdownMenuContent>
                 </DropdownMenu>
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => setOpen(false)}>
@@ -902,12 +910,12 @@ export default function FloatingChatDrawer() {
                   <button type="button" onClick={() => setActiveTab('support')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                     {SUPPORT_TAB_LABEL}
                   </button>
-                  <button type="button" onClick={() => setActiveTab('crm')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                  {canAccessCrmChat ? <button type="button" onClick={() => setActiveTab('crm')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                     CRM
-                  </button>
-                  <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                  </button> : null}
+                  {canAccessTeamChat ? <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                     Equipo
-                  </button>
+                  </button> : null}
                 </div>
               </div>
             ) : null}
@@ -942,7 +950,7 @@ export default function FloatingChatDrawer() {
               </div>
             ) : null}
 
-            {activeTab === 'crm' ? (
+            {activeTab === 'crm' && canAccessCrmChat ? (
               <div className="grid h-full min-h-0 overflow-hidden grid-rows-[minmax(220px,0.88fr)_minmax(0,1.12fr)] md:grid-cols-[minmax(300px,0.92fr)_minmax(340px,1.08fr)] md:grid-rows-1">
                 <div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-b border-slate-100 md:border-b-0 md:border-r">
                   <div className="border-b border-slate-100 px-4 py-2.5">
@@ -955,12 +963,12 @@ export default function FloatingChatDrawer() {
                         <button type="button" onClick={() => setActiveTab('support')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                           {SUPPORT_TAB_LABEL}
                         </button>
-                        <button type="button" onClick={() => setActiveTab('crm')} className={cn('rounded-xl px-3 py-1.5 text-[10px] font-medium', activeTab === 'crm' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                        {canAccessCrmChat ? <button type="button" onClick={() => setActiveTab('crm')} className={cn('rounded-xl px-3 py-1.5 text-[10px] font-medium', activeTab === 'crm' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
                           CRM
-                        </button>
-                        <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                        </button> : null}
+                        {canAccessTeamChat ? <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                           Equipo
-                        </button>
+                        </button> : null}
                       </div>
                     </div>
                     <div className="mt-3 text-[13px] text-slate-600">Bandeja CRM</div>
@@ -1051,7 +1059,7 @@ export default function FloatingChatDrawer() {
               </div>
             ) : null}
 
-            {activeTab === 'team' ? (
+            {activeTab === 'team' && canAccessTeamChat ? (
               <div className="grid h-full min-h-0 overflow-hidden grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[minmax(360px,0.48fr)_minmax(0,0.52fr)] md:grid-rows-1">
                 <div className="border-b border-slate-100 px-4 py-2 md:hidden">
                   <div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 p-1">
@@ -1083,12 +1091,12 @@ export default function FloatingChatDrawer() {
                         <button type="button" onClick={() => setActiveTab('support')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                           {SUPPORT_TAB_LABEL}
                         </button>
-                        <button type="button" onClick={() => setActiveTab('crm')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                        {canAccessCrmChat ? <button type="button" onClick={() => setActiveTab('crm')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                           CRM
-                        </button>
-                        <button type="button" onClick={() => setActiveTab('team')} className={cn('rounded-xl px-3 py-1.5 text-[10px] font-medium', activeTab === 'team' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
+                        </button> : null}
+                        {canAccessTeamChat ? <button type="button" onClick={() => setActiveTab('team')} className={cn('rounded-xl px-3 py-1.5 text-[10px] font-medium', activeTab === 'team' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
                           Equipo
-                        </button>
+                        </button> : null}
                       </div>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
@@ -1342,12 +1350,12 @@ export default function FloatingChatDrawer() {
                   <button type="button" onClick={() => setActiveTab('support')} className={cn('rounded-xl px-3 py-1.5 text-[10px] font-medium', activeTab === 'support' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-600')}>
                     {SUPPORT_TAB_LABEL}
                   </button>
-                  <button type="button" onClick={() => setActiveTab('crm')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                  {canAccessCrmChat ? <button type="button" onClick={() => setActiveTab('crm')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                     CRM
-                  </button>
-                  <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
+                  </button> : null}
+                  {canAccessTeamChat ? <button type="button" onClick={() => setActiveTab('team')} className="rounded-xl px-3 py-1.5 text-[10px] font-medium text-slate-600">
                     Equipo
-                  </button>
+                  </button> : null}
                 </div>
 
                 <div className="mt-4 rounded-[22px] border border-sky-200 bg-sky-50 px-4 py-3 md:mt-0">

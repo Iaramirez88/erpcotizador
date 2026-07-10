@@ -317,6 +317,8 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResp
 type CrmDashboardClientProps = {
   initialTab?: 'leads' | 'opportunities' | 'tasks'
   mode?: 'overview' | 'opportunities'
+  canAccessTeamChat?: boolean
+  canAccessCrmChat?: boolean
 }
 
 export function CrmDashboardClient(props?: CrmDashboardClientProps) {
@@ -326,6 +328,7 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
   const naText = '—'
   const opportunityOrderStorageKey = 'crm-opportunity-stage-order'
   const isFocusedOpportunities = props?.mode === 'opportunities'
+  const canAccessAnyChat = Boolean(props?.canAccessTeamChat || props?.canAccessCrmChat)
 
   const [activeTab, setActiveTab] = useState<'leads' | 'opportunities' | 'tasks'>(isFocusedOpportunities ? 'opportunities' : props?.initialTab ?? 'leads')
   const [opportunityView, setOpportunityView] = useState<'list' | 'pipeline'>(isFocusedOpportunities ? 'pipeline' : 'list')
@@ -1439,9 +1442,9 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                   <Button asChild variant="outline" className="h-8 rounded-lg border-slate-200 bg-white/85 px-3 text-xs">
                     <Link href="/dashboard/crm">Volver al panel comercial</Link>
                   </Button>
-                  <Button asChild variant="outline" className="h-8 rounded-lg border-slate-200 bg-white/85 px-3 text-xs">
+                  {props?.canAccessCrmChat ? <Button asChild variant="outline" className="h-8 rounded-lg border-slate-200 bg-white/85 px-3 text-xs">
                     <Link href="/dashboard/crm/conversations">Inbox omnicanal</Link>
-                  </Button>
+                  </Button> : null}
                   <Button className="h-8 rounded-lg bg-slate-950 px-3 text-xs text-white hover:bg-slate-800" onClick={() => openCreateOpportunityDialog()}>
                     Nuevo deal
                   </Button>
@@ -1536,9 +1539,9 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
                     <Button asChild variant="outline" className="h-9 rounded-xl border-emerald-200 bg-emerald-50/80 px-4 text-emerald-800 hover:bg-emerald-100">
                       <Link href="/dashboard/crm/chatbot">Panel chatbot</Link>
                     </Button>
-                    <Button asChild variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/80 px-4">
+                    {props?.canAccessCrmChat ? <Button asChild variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/80 px-4">
                       <Link href="/dashboard/crm/conversations">Bandeja omnicanal</Link>
-                    </Button>
+                    </Button> : null}
                     <Button asChild variant="outline" className="h-9 rounded-xl border-slate-200 bg-white/80 px-4">
                       <Link href="/dashboard/crm/integraciones">Integraciones</Link>
                     </Button>
@@ -1672,18 +1675,18 @@ export function CrmDashboardClient(props?: CrmDashboardClientProps) {
             <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
               <Link href="/dashboard/crm/agenda">Agenda CRM</Link>
             </Button>
-            <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
+            {canAccessAnyChat ? <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
               <Link href="/dashboard/chat">Chat global</Link>
-            </Button>
+            </Button> : null}
             <Button asChild variant="outline" className="rounded-xl border-emerald-200 bg-emerald-50/80 text-emerald-800 hover:bg-emerald-100">
               <Link href="/dashboard/crm/chatbot">Mensajes chatbot</Link>
             </Button>
             <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
               <Link href="/dashboard/crm/integraciones">Canales e integraciones</Link>
             </Button>
-            <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
+            {props?.canAccessCrmChat ? <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
               <Link href="/dashboard/crm/conversations">Inbox omnicanal</Link>
-            </Button>
+            </Button> : null}
             <Button variant="outline" className="rounded-xl border-slate-200 bg-white" onClick={openCreateLeadDialog}>Nuevo prospecto</Button>
             <Button className="rounded-xl bg-slate-950 text-white hover:bg-slate-800" onClick={openCreateTaskDialog}>Nuevo seguimiento</Button>
           </div>

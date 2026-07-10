@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { ErpPageHero } from "@/components/dashboard/erp-page-chrome"
+import { useCurrentUserAccess } from '@/hooks/use-current-user-access'
 import { cn, formatUnidadMedidaLabel } from "@/lib/utils"
 import { useI18n } from "@/components/providers/i18n-provider"
 import { ArrowDown, ArrowUp, Download, Loader2 } from 'lucide-react'
@@ -109,6 +110,8 @@ export default function InventarioPage() {
   const router = useRouter()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = t('common.na')
+  const { hasWriteAccess } = useCurrentUserAccess()
+  const canManageInventory = hasWriteAccess('INVENTARIO')
 
   const [materials, setMaterials] = useState<Material[]>([])
   const [movements, setMovements] = useState<Movement[]>([])
@@ -609,16 +612,16 @@ export default function InventarioPage() {
         description={t('inventory.subtitle')}
         actions={
           <>
-            <Button variant="outline" onClick={exportExcel} disabled={isLoading}>
+            {canManageInventory ? <Button variant="outline" onClick={exportExcel} disabled={isLoading}>
               <Download className="mr-2 h-4 w-4" />
               {t('inventory.actions.exportExcel')}
-            </Button>
-            <Button variant="outline" onClick={() => openLowStockOrder(lowStockMaterials)} disabled={isLoading || lowStockMaterials.length === 0}>
+            </Button> : null}
+            {canManageInventory ? <Button variant="outline" onClick={() => openLowStockOrder(lowStockMaterials)} disabled={isLoading || lowStockMaterials.length === 0}>
               {t('inventory.actions.lowStockOrder')}
-            </Button>
-            <Button onClick={openModal} disabled={isLoading} data-tour="inventario-movimiento">
+            </Button> : null}
+            {canManageInventory ? <Button onClick={openModal} disabled={isLoading} data-tour="inventario-movimiento">
               {t('inventory.actions.registerMovement')}
-            </Button>
+            </Button> : null}
           </>
         }
         stats={[
@@ -775,7 +778,7 @@ export default function InventarioPage() {
                         <td className="py-2 pr-4 text-gray-700">{formatUnidadMedidaLabel(m.unidadMedida)}</td>
                         <td className="py-2 pr-4 text-gray-700">{m.proveedor || naText}</td>
                         <td className="py-2 pr-4 text-right">
-                          {low ? (
+                          {low && canManageInventory ? (
                             <Button variant="outline" onClick={() => openLowStockOrder([m])}>
                               {t('inventory.actions.lowStockOrder')}
                             </Button>
@@ -865,7 +868,7 @@ export default function InventarioPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      {canManageInventory ? <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-lg max-h-[88vh] overflow-hidden">
           <DialogHeader>
             <DialogTitle>{t('inventory.dialog.title')}</DialogTitle>
@@ -1151,7 +1154,7 @@ export default function InventarioPage() {
             </DialogFooter>
           </form>
         </DialogContent>
-      </Dialog>
+      </Dialog> : null}
     </div>
   )
 }

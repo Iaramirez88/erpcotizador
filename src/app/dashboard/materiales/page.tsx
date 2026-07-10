@@ -33,6 +33,7 @@ import {
   type ProductTypeOption,
 } from "@/components/materiales/product-config-dialog"
 import { CatalogModuleTabs } from "@/components/inventory/catalog-module-tabs"
+import { useCurrentUserAccess } from '@/hooks/use-current-user-access'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { formatCurrency, formatUnidadMedidaLabel } from "@/lib/utils"
 
@@ -203,7 +204,6 @@ export default function ProductosPage() {
   const [isUploadingImage, setIsUploadingImage] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
-  const [isAdmin, setIsAdmin] = useState(false)
   const [customRequestsOpen, setCustomRequestsOpen] = useState(false)
   const [myCustomRequestsOpen, setMyCustomRequestsOpen] = useState(false)
   const [productConfigOpen, setProductConfigOpen] = useState(false)
@@ -238,6 +238,9 @@ export default function ProductosPage() {
   const [proveedorError, setProveedorError] = useState("")
   const externalIdInputRef = useRef<HTMLInputElement | null>(null)
   const nombreInputRef = useRef<HTMLInputElement | null>(null)
+  const { data: currentUserAccess, hasWriteAccess } = useCurrentUserAccess()
+  const canManageProducts = hasWriteAccess('MATERIALES')
+  const isAdmin = Boolean(currentUserAccess?.canManageCustomProductRequests)
   
   const [formData, setFormData] = useState({
     externalId: "",
@@ -435,25 +438,6 @@ export default function ProductosPage() {
     }
 
     void loadBodegas()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-
-    const loadMe = async () => {
-      try {
-        const res = await fetch('/api/me', { cache: 'no-store' })
-        const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { canManageCustomProductRequests?: boolean; role?: string } } | null
-        if (!cancelled) setIsAdmin(Boolean(json?.data?.canManageCustomProductRequests))
-      } catch {
-        if (!cancelled) setIsAdmin(false)
-      }
-    }
-
-    void loadMe()
     return () => {
       cancelled = true
     }
@@ -1117,7 +1101,7 @@ export default function ProductosPage() {
               Solicitudes de personalizados
             </Button>
           ) : null}
-          <span data-tour="materiales-import">
+          {canManageProducts ? <span data-tour="materiales-import">
             <ImportDialog
               module="materiales"
               title="Importar productos"
@@ -1125,19 +1109,19 @@ export default function ProductosPage() {
                 await fetchMateriales()
               }}
             />
-          </span>
-          <Button variant="outline" onClick={() => setIsExportOpen(true)}>
+          </span> : null}
+          {canManageProducts ? <Button variant="outline" onClick={() => setIsExportOpen(true)}>
             Exportar Excel
-          </Button>
-          <Button variant="outline" type="button" onClick={() => setProductConfigOpen(true)}>
+          </Button> : null}
+          {canManageProducts ? <Button variant="outline" type="button" onClick={() => setProductConfigOpen(true)}>
             Configurar catálogos
-          </Button>
-          <Button onClick={() => { resetForm(); setIsModalOpen(true) }} data-tour="materiales-new">
+          </Button> : null}
+          {canManageProducts ? <Button onClick={() => { resetForm(); setIsModalOpen(true) }} data-tour="materiales-new">
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
             Nuevo Producto
-          </Button>
+          </Button> : null}
         </div>
       </div>
 
@@ -1472,9 +1456,9 @@ export default function ProductosPage() {
           ) : materiales.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-muted-foreground">No hay productos registrados</p>
-              <Button onClick={() => { resetForm(); setIsModalOpen(true) }} className="mt-4">
+              {canManageProducts ? <Button onClick={() => { resetForm(); setIsModalOpen(true) }} className="mt-4">
                 Crear primer producto
-              </Button>
+              </Button> : null}
             </div>
           ) : (
             <div>
@@ -1531,7 +1515,7 @@ export default function ProductosPage() {
                     </div>
                   ) : null}
 
-                  <Button
+                  {canManageProducts ? <Button
                     variant="outline"
                     size="sm"
                     onClick={toggleSelectPage}
@@ -1540,16 +1524,16 @@ export default function ProductosPage() {
                     {selectionScope === 'page' && selectedIds.size === materiales.length
                       ? 'Quitar selección (página)'
                       : 'Seleccionar página'}
-                  </Button>
-                  <Button
+                  </Button> : null}
+                  {canManageProducts ? <Button
                     variant="outline"
                     size="sm"
                     onClick={toggleSelectAllDb}
                     className="h-8 px-3"
                   >
                     {selectionScope === 'all' ? 'Quitar selección (BD)' : 'Seleccionar todos (BD)'}
-                  </Button>
-                  <Button
+                  </Button> : null}
+                  {canManageProducts ? <Button
                     variant="outline"
                     size="sm"
                     onClick={() => void handleBulkDelete()}
@@ -1557,7 +1541,7 @@ export default function ProductosPage() {
                     className="h-8 px-3 text-red-600"
                   >
                     Eliminar seleccionados{selectedCount ? ` (${selectedCount})` : ''}
-                  </Button>
+                  </Button> : null}
                 </div>
               </div>
 
@@ -1585,14 +1569,14 @@ export default function ProductosPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <input
+                            {canManageProducts ? <input
                               type="checkbox"
                               checked={isChecked}
                               disabled={isDisabled}
                               onChange={() => toggleSelectId(material.id)}
                               className="h-4 w-4 rounded border border-input"
                               aria-label={`Seleccionar ${material.nombre}`}
-                            />
+                            /> : null}
                             <img
                               src={material.imagenUrl || "/placeholder-product.svg"}
                               alt={material.nombre}
@@ -1625,7 +1609,7 @@ export default function ProductosPage() {
                         <div className="text-xs text-muted-foreground">Bodega: {wh ? `${wh.nombre}${wh.isDefault ? ' (Principal)' : ''}` : '—'}</div>
                       </div>
 
-                      <div className="mt-4 flex justify-end gap-2">
+                      {canManageProducts ? <div className="mt-4 flex justify-end gap-2">
                         <Button
                           variant="outline"
                           size="sm"
@@ -1650,7 +1634,7 @@ export default function ProductosPage() {
                         >
                           Eliminar
                         </Button>
-                      </div>
+                      </div> : null}
                     </CardContent>
                   </Card>
                 )
@@ -1679,14 +1663,14 @@ export default function ProductosPage() {
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <input
+                          {canManageProducts ? <input
                             type="checkbox"
                             checked={isChecked}
                             disabled={isDisabled}
                             onChange={() => toggleSelectId(material.id)}
                             className="h-4 w-4 rounded border border-input"
                             aria-label={`Seleccionar ${material.nombre}`}
-                          />
+                          /> : null}
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={material.imagenUrl || "/placeholder-product.svg"}
@@ -1725,7 +1709,7 @@ export default function ProductosPage() {
                           </div>
                         </div>
 
-                        <div className="md:hidden">
+                        {canManageProducts ? <div className="md:hidden">
                           <MobileActionsMenu label={material.nombre}>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onSelect={(e) => {
@@ -1747,9 +1731,9 @@ export default function ProductosPage() {
                               Eliminar
                             </DropdownMenuItem>
                           </MobileActionsMenu>
-                        </div>
+                        </div> : null}
 
-                        <div className="hidden gap-2 md:flex md:justify-end">
+                        {canManageProducts ? <div className="hidden gap-2 md:flex md:justify-end">
                           <Button
                             variant="outline"
                             size="sm"
@@ -1774,7 +1758,7 @@ export default function ProductosPage() {
                           >
                             Eliminar
                           </Button>
-                        </div>
+                        </div> : null}
                       </div>
                     </div>
                   </div>

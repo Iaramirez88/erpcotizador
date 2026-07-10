@@ -33,6 +33,11 @@ type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'LOST' | 'CONVERTED'
 type OpportunityStage = 'NEW' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON' | 'LOST'
 type TaskPriority = 'LOW' | 'NORMAL' | 'HIGH'
 
+type Props = {
+  leadId: string
+  canAccessAnyChat?: boolean
+}
+
 type StageSetting = {
   key: OpportunityStage
   label: string
@@ -183,7 +188,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<JsonResp
   return (await res.json().catch(() => ({}))) as JsonResponse<T>
 }
 
-export function CrmLeadDetailClient(props: { leadId: string }) {
+export function CrmLeadDetailClient(props: Props) {
   const { leadId } = props
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
@@ -410,9 +415,9 @@ export function CrmLeadDetailClient(props: { leadId: string }) {
           <Button asChild variant="outline">
             <Link href={`/dashboard/crm/agenda?leadId=${lead.id}`}>Agendar prospecto</Link>
           </Button>
-          <Button asChild variant="outline">
+          {props.canAccessAnyChat ? <Button asChild variant="outline">
             <Link href="/dashboard/chat">Chat global</Link>
-          </Button>
+          </Button> : null}
           <Button variant="outline" onClick={openCreateContactDialog}>Nuevo contacto</Button>
           <Button variant="outline" onClick={() => setActivityDialogOpen(true)}>Agregar nota</Button>
           <Button onClick={() => setTaskDialogOpen(true)}>Nueva tarea</Button>

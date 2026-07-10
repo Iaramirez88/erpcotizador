@@ -49,6 +49,10 @@ type TaskFormState = {
   assignedToUserId: string
 }
 
+type Props = {
+  canAccessAnyChat?: boolean
+}
+
 function formatDate(value: string | null | undefined, fallback: string) {
   if (!value) return fallback
   try {
@@ -190,7 +194,7 @@ function AgendaTaskForm({
   )
 }
 
-export function CrmAgendaClient() {
+export function CrmAgendaClient({ canAccessAnyChat }: Props) {
   const searchParams = useSearchParams()
   const today = useMemo(() => new Date(), [])
   const [loading, setLoading] = useState(true)
@@ -374,9 +378,9 @@ export function CrmAgendaClient() {
             <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
               <Link href="/dashboard/crm">Volver al CRM</Link>
             </Button>
-            <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
+            {canAccessAnyChat ? <Button asChild variant="outline" className="rounded-2xl border-slate-200 bg-white/85">
               <Link href="/dashboard/chat">Ir al chat global</Link>
-            </Button>
+            </Button> : null}
           </>
         }
         stats={[

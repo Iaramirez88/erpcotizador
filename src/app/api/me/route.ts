@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getActiveSedeForUser, getEffectiveAccess } from '@/lib/rbac'
+import { getActiveSedeForUser, getEffectiveAccessMap, NAV_MODULES } from '@/lib/rbac'
 import { AccessLevel, ModuleKey } from '@prisma/client'
 import { resolveUserIdFromSession } from '@/lib/session-user'
 import { isPlanOwnerForEmpresa } from '@/lib/plan-owner'
@@ -46,21 +46,21 @@ export async function GET() {
   let configAccess: AccessLevel = 'NONE'
   let ordersAccess: AccessLevel = 'NONE'
   let materialsAccess: AccessLevel = 'NONE'
+  let accessMap: Partial<Record<ModuleKey, AccessLevel>> = {}
   let canManageCustomProductRequests = false
   try {
     const sede = await getActiveSedeForUser(userId)
-    const [nextConfigAccess, nextOrdersAccess, nextMaterialsAccess, membership] = await Promise.all([
-      getEffectiveAccess({ userId, sedeId: sede.id, module: ModuleKey.CONFIG }),
-      getEffectiveAccess({ userId, sedeId: sede.id, module: ModuleKey.ORDENES }),
-      getEffectiveAccess({ userId, sedeId: sede.id, module: ModuleKey.MATERIALES }),
+    const [nextAccessMap, membership] = await Promise.all([
+      getEffectiveAccessMap({ userId, sedeId: sede.id, modules: NAV_MODULES }),
       prisma.sedeMembership.findUnique({
         where: { sedeId_userId: { sedeId: sede.id, userId } },
         select: { role: true },
       }),
     ])
-    configAccess = nextConfigAccess
-    ordersAccess = nextOrdersAccess
-    materialsAccess = nextMaterialsAccess
+    accessMap = nextAccessMap
+    configAccess = nextAccessMap.CONFIG ?? 'NONE'
+    ordersAccess = nextAccessMap.ORDENES ?? 'NONE'
+    materialsAccess = nextAccessMap.MATERIALES ?? 'NONE'
     canManageCustomProductRequests = membership?.role === 'ADMIN' || membership?.role === 'MANAGER'
   } catch {
     // si algo falla (sede no resuelta, etc), dejamos NONE
@@ -80,7 +80,7 @@ export async function GET() {
     data: user
       ? {
           ...user,
-          access: { config: configAccess, orders: ordersAccess, materials: materialsAccess },
+          access: accessMap,
           canConfigWrite,
           canDeleteOrders,
           canManageCustomProductRequests,

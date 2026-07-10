@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { useCurrentUserAccess } from '@/hooks/use-current-user-access'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { buildPurchaseOrderPrefillHref } from '@/lib/purchase-order-prefill'
@@ -35,6 +36,8 @@ export default function ProveedoresPage() {
   const router = useRouter()
   const naText = t('common.na')
   const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('proveedores.history', 'list')
+  const { hasWriteAccess } = useCurrentUserAccess()
+  const canManageSuppliers = hasWriteAccess('PROVEEDORES')
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -150,19 +153,19 @@ export default function ProveedoresPage() {
         description={t('suppliers.subtitle')}
         actions={
           <>
-            <Button onClick={() => setCreateOpen(true)}>
+            {canManageSuppliers ? <Button onClick={() => setCreateOpen(true)}>
               Nuevo proveedor
-            </Button>
-            <ImportDialog
+            </Button> : null}
+            {canManageSuppliers ? <ImportDialog
               module="proveedores"
               title={t('suppliers.actions.import')}
               onSuccess={async () => {
                 await load()
               }}
-            />
-            <Button variant="outline" onClick={exportExcel}>
+            /> : null}
+            {canManageSuppliers ? <Button variant="outline" onClick={exportExcel}>
               {t('suppliers.actions.exportExcel')}
-            </Button>
+            </Button> : null}
           </>
         }
         stats={[

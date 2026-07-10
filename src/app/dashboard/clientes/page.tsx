@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DataViewToggle } from "@/components/dashboard/data-view-toggle"
 import { ErpPageHero } from "@/components/dashboard/erp-page-chrome"
+import { useCurrentUserAccess } from '@/hooks/use-current-user-access'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { useI18n } from "@/components/providers/i18n-provider"
 import {
@@ -90,6 +91,8 @@ export default function ClientesPage() {
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = t('common.na')
   const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('clientes.history', 'list')
+  const { hasWriteAccess } = useCurrentUserAccess()
+  const canManageClientes = hasWriteAccess('CLIENTES')
 
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -342,7 +345,7 @@ export default function ClientesPage() {
         description={t('customers.subtitle')}
         actions={
           <>
-            <span data-tour="clientes-import">
+            {canManageClientes ? <span data-tour="clientes-import">
               <ImportDialog
                 module="clientes"
                 title={t('customers.actions.import')}
@@ -350,20 +353,20 @@ export default function ClientesPage() {
                   await fetchClientes()
                 }}
               />
-            </span>
-            <Button variant="outline" onClick={() => setIsExportOpen(true)}>
+            </span> : null}
+            {canManageClientes ? <Button variant="outline" onClick={() => setIsExportOpen(true)}>
               {t('customers.actions.exportExcel')}
-            </Button>
+            </Button> : null}
             <Button type="button" variant="outline" onClick={() => setFiltersOpen((current) => !current)}>
               <SlidersHorizontal className="mr-2 h-4 w-4" />
               {filtersOpen ? 'Ocultar filtros' : 'Mostrar filtros'}
             </Button>
-            <Button onClick={openNewClienteModal} data-tour="clientes-new">
+            {canManageClientes ? <Button onClick={openNewClienteModal} data-tour="clientes-new">
               <svg className="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
               {t('customers.actions.new')}
-            </Button>
+            </Button> : null}
           </>
         }
         stats={[
@@ -558,9 +561,9 @@ export default function ClientesPage() {
             ) : clientes.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-muted-foreground">{t('customers.empty')}</p>
-                <Button onClick={openNewClienteModal} className="mt-4">
+                {canManageClientes ? <Button onClick={openNewClienteModal} className="mt-4">
                   {t('customers.actions.createFirst')}
-                </Button>
+                </Button> : null}
               </div>
             ) : (
               <>
@@ -575,7 +578,7 @@ export default function ClientesPage() {
                           <p className="mt-1 text-sm text-muted-foreground">{cliente.email || t('customers.noEmail')}</p>
                           <p className="mt-1 text-xs text-muted-foreground">{cliente.tipoDocumento} · {cliente.documento}</p>
                         </div>
-                        <MobileActionsMenu label={cliente.nombre}>
+                        {canManageClientes ? <MobileActionsMenu label={cliente.nombre}>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onSelect={(e) => {
                             e.preventDefault();
@@ -589,7 +592,7 @@ export default function ClientesPage() {
                           }}>
                             {t('common.delete')}
                           </DropdownMenuItem>
-                        </MobileActionsMenu>
+                        </MobileActionsMenu> : null}
                       </div>
 
                       <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -706,7 +709,7 @@ export default function ClientesPage() {
                         <td className="py-4 text-sm text-right">{fmtMoney(cliente.invoiceCost, locale)}</td>
                         <td className="py-4 text-sm">{fmtDate(cliente.ultimaActividadAt, locale, naText)}</td>
                         <td className="py-4">
-                          <div className="flex justify-end gap-2">
+                          {canManageClientes ? <div className="flex justify-end gap-2">
                             <Button variant="outline" size="sm" onClick={() => handleEdit(cliente)}>
                               {t('common.edit')}
                             </Button>
@@ -718,7 +721,7 @@ export default function ClientesPage() {
                             >
                               {t('common.delete')}
                             </Button>
-                          </div>
+                          </div> : <div className="text-right text-sm text-muted-foreground">{naText}</div>}
                         </td>
                       </tr>
                     ))}

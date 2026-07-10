@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
+import { useCurrentUserAccess } from '@/hooks/use-current-user-access'
 import { useDataViewMode } from '@/hooks/use-data-view-mode'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { parsePurchaseOrderPrefillParam, type PurchaseWorkbenchMode } from '@/lib/purchase-order-prefill'
@@ -129,6 +130,8 @@ export default function ComprasPage() {
   const naText = t('common.na')
   const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('compras.history', 'list')
   const appliedPrefillRef = useRef<string | null>(null)
+  const { hasWriteAccess } = useCurrentUserAccess()
+  const canManagePurchases = hasWriteAccess('COMPRAS')
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -524,19 +527,19 @@ export default function ComprasPage() {
         description={t('purchases.subtitle')}
         actions={
           <>
-            <ImportDialog module="compras" title={t('purchases.actions.import')} />
-            <Button onClick={() => openForm('purchase')}>
+            {canManagePurchases ? <ImportDialog module="compras" title={t('purchases.actions.import')} /> : null}
+            {canManagePurchases ? <Button onClick={() => openForm('purchase')}>
               Nueva compra
-            </Button>
-            <Button variant="outline" onClick={() => openForm('order')}>
+            </Button> : null}
+            {canManagePurchases ? <Button variant="outline" onClick={() => openForm('order')}>
               Nueva orden
-            </Button>
-            <Button variant="outline" asChild>
+            </Button> : null}
+            {canManagePurchases ? <Button variant="outline" asChild>
               <Link href="/dashboard/compras/plantilla">{t('purchases.actions.template')}</Link>
-            </Button>
-            <Button variant="outline" onClick={exportExcel}>
+            </Button> : null}
+            {canManagePurchases ? <Button variant="outline" onClick={exportExcel}>
               {t('purchases.actions.exportExcel')}
-            </Button>
+            </Button> : null}
           </>
         }
         stats={[
@@ -556,7 +559,7 @@ export default function ComprasPage() {
           <TabsTrigger value="order" className="rounded-xl">{t('purchases.modes.order')}</TabsTrigger>
         </TabsList>
 
-        <Dialog
+        {canManagePurchases ? <Dialog
           open={formOpen}
           onOpenChange={(open) => {
             setFormOpen(open)
@@ -847,7 +850,7 @@ export default function ComprasPage() {
           </Card>
         </TabsContent>
           </DialogContent>
-        </Dialog>
+        </Dialog> : null}
 
         <Card>
           <CardHeader>
@@ -899,10 +902,10 @@ export default function ComprasPage() {
                       </div>
 
                       <div className="mt-4 flex flex-wrap justify-end gap-2">
-                        {c.estado !== 'BORRADOR' ? <Button variant="outline" size="sm" onClick={() => openPagos(c)}>{t('purchases.actions.payments')}</Button> : null}
+                        {canManagePurchases && c.estado !== 'BORRADOR' ? <Button variant="outline" size="sm" onClick={() => openPagos(c)}>{t('purchases.actions.payments')}</Button> : null}
                         <Button variant="outline" size="sm" onClick={() => openCompraPdf(c)}>{t('purchases.actions.print')}</Button>
                         <Button variant="outline" size="sm" onClick={() => void downloadCompraPdf(c)}>{t('purchases.actions.downloadPdf')}</Button>
-                        <Button variant="outline" size="sm" onClick={() => loadCompraIntoForm(c, getCompraMode(c))}>{t('purchases.actions.edit')}</Button>
+                        {canManagePurchases ? <Button variant="outline" size="sm" onClick={() => loadCompraIntoForm(c, getCompraMode(c))}>{t('purchases.actions.edit')}</Button> : null}
                       </div>
                     </CardContent>
                   </Card>
@@ -936,11 +939,11 @@ export default function ComprasPage() {
                       <td className="py-2 whitespace-nowrap">{formatCOP(n(c.saldo, n(c.total, 0) - n(c.pagado, 0)), locale)}</td>
                       <td className="py-2">{c.autorizado ? t('common.yes') : t('common.no')}</td>
                       <td className="py-2 text-right space-x-2">
-                        {c.estado !== 'BORRADOR' ? <Button variant="outline" onClick={() => openPagos(c)}>{t('purchases.actions.payments')}</Button> : null}
+                        {canManagePurchases && c.estado !== 'BORRADOR' ? <Button variant="outline" onClick={() => openPagos(c)}>{t('purchases.actions.payments')}</Button> : null}
                         <Button variant="outline" onClick={() => openCompraPdf(c)}>{t('purchases.actions.print')}</Button>
                         <Button variant="outline" onClick={() => void downloadCompraPdf(c)}>{t('purchases.actions.downloadPdf')}</Button>
-                        <Button variant="outline" onClick={() => loadCompraIntoForm(c, getCompraMode(c))}>{t('purchases.actions.edit')}</Button>
-                        {c.estado === 'BORRADOR' ? <Button variant="outline" onClick={() => loadCompraIntoForm(c, 'purchase')}>{t('purchases.actions.registerPurchase')}</Button> : null}
+                        {canManagePurchases ? <Button variant="outline" onClick={() => loadCompraIntoForm(c, getCompraMode(c))}>{t('purchases.actions.edit')}</Button> : null}
+                        {canManagePurchases && c.estado === 'BORRADOR' ? <Button variant="outline" onClick={() => loadCompraIntoForm(c, 'purchase')}>{t('purchases.actions.registerPurchase')}</Button> : null}
                         <Dialog>
                           <DialogTrigger asChild>
                             <Button variant="outline">{t('purchases.actions.view')}</Button>
@@ -1040,12 +1043,12 @@ export default function ComprasPage() {
                           </DialogContent>
                         </Dialog>
 
-                        <Button variant={c.autorizado ? 'outline' : 'default'} onClick={() => toggleAutorizar(c)}>
+                        {canManagePurchases ? <Button variant={c.autorizado ? 'outline' : 'default'} onClick={() => toggleAutorizar(c)}>
                           {c.autorizado ? t('purchases.actions.removeAuthorization') : t('purchases.actions.authorize')}
-                        </Button>
-                        <Button variant="outline" onClick={() => deleteCompra(c)}>
+                        </Button> : null}
+                        {canManagePurchases ? <Button variant="outline" onClick={() => deleteCompra(c)}>
                           {t('common.delete')}
-                        </Button>
+                        </Button> : null}
                       </td>
                     </tr>
                   ))}
@@ -1072,7 +1075,7 @@ export default function ComprasPage() {
         </Card>
       </Tabs>
 
-      <Dialog open={pagoOpen} onOpenChange={setPagoOpen}>
+      {canManagePurchases ? <Dialog open={pagoOpen} onOpenChange={setPagoOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{t('purchases.payments.title')}</DialogTitle>
@@ -1247,7 +1250,7 @@ export default function ComprasPage() {
             </table>
           </div>
         </DialogContent>
-      </Dialog>
+      </Dialog> : null}
     </div>
   )
 }
