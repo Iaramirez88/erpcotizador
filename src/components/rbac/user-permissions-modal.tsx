@@ -1,9 +1,11 @@
 'use client'
 
 import { useMemo, useState, type ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
 import { Plus } from 'lucide-react'
 import { ModuleKey, type AccessLevel } from '@prisma/client'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
@@ -34,6 +36,7 @@ type Props = {
   initial: Partial<Record<ModuleKey, AccessLevel>>
   initialGlobalAccess: AccessLevel
   initialCapabilities: Record<string, AccessLevel>
+  canManagePermissionProfiles?: boolean
   open?: boolean
   onOpenChange?: (open: boolean) => void
   trigger?: ReactNode
@@ -135,7 +138,8 @@ function hasExplicitLevel(levels: Partial<Record<ModuleKey, AccessLevel>>, modul
   return Object.prototype.hasOwnProperty.call(levels, moduleKey)
 }
 
-export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeAccess, initialSedeRole, modules, initial, initialGlobalAccess, initialCapabilities, open: controlledOpen, onOpenChange: controlledOnOpenChange, trigger }: Props) {
+export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeAccess, initialSedeRole, modules, initial, initialGlobalAccess, initialCapabilities, canManagePermissionProfiles = false, open: controlledOpen, onOpenChange: controlledOnOpenChange, trigger }: Props) {
+  const router = useRouter()
   const { t } = useI18n()
   const { toast } = useToast()
   const [internalOpen, setInternalOpen] = useState(false)
@@ -147,6 +151,10 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
   const [globalLevel, setGlobalLevel] = useState<AccessLevel>(initialGlobalAccess)
   const [savingGlobal, setSavingGlobal] = useState(false)
   const [capabilityLevels, setCapabilityLevels] = useState<Record<string, AccessLevel>>(initialCapabilities)
+  const [showSaveProfileForm, setShowSaveProfileForm] = useState(false)
+  const [profileName, setProfileName] = useState('')
+  const [profileDescription, setProfileDescription] = useState('')
+  const [savingProfile, setSavingProfile] = useState(false)
 
   const baseLevel = useMemo(() => baseAccessForSedeRole(sedeRole), [sedeRole])
   const effectiveLevel = (moduleKey: ModuleKey): AccessLevel => {
@@ -384,6 +392,61 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
     }
   }
 
+  async function saveAsPermissionProfile() {
+    const trimmedName = profileName.trim()
+    if (!trimmedName) {
+      toast({ title: 'Debes escribir un nombre para la regla.', variant: 'destructive' })
+      return
+    }
+
+    const moduleLevels = Object.fromEntries(modules.map((moduleKey) => [moduleKey, effectiveLevel(moduleKey)]))
+    const capabilityMap = new Map<string, { domain: string; subdomain: string; level: AccessLevel; label: string }>()
+    for (const section of sections) {
+      for (const entry of section.entries) {
+        for (const capability of entry.capabilityEntries) {
+          const capabilityId = `${capability.domain}.${capability.subdomain}`
+          capabilityMap.set(capabilityId, {
+            domain: capability.domain,
+            subdomain: capability.subdomain,
+            label: capability.label,
+            level: capabilityLevels[capability.permissionKey] ?? effectiveLevel(entry.moduleKey),
+          })
+        }
+      }
+    }
+
+    setSavingProfile(true)
+    try {
+      const res = await fetch('/api/admin/permisos/profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sedeId,
+          name: trimmedName,
+          description: profileDescription.trim() || null,
+          sedeRole,
+          globalAccessLevel: globalLevel,
+          moduleLevels,
+          capabilityLevels: Object.fromEntries(capabilityMap.entries()),
+        }),
+      })
+
+      const json = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null
+      if (!res.ok || !json?.success) {
+        toast({ title: json?.error || 'No fue posible guardar la regla.', variant: 'destructive' })
+        return
+      }
+
+      toast({ title: 'Regla de permisos guardada correctamente.' })
+      setShowSaveProfileForm(false)
+      setProfileName('')
+      setProfileDescription('')
+      router.refresh()
+    } finally {
+      setSavingProfile(false)
+    }
+  }
+
   const displayName = user.name ?? user.email
 
   return (
@@ -590,6 +653,36 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
             ))}
           </TabsContent>
         </Tabs>
+
+        {canManagePermissionProfiles ? (
+          <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-slate-950">Guardar como regla de permisos</div>
+                <div className="text-xs text-slate-600">Úsala después para aplicar este mismo esquema a muchos usuarios de la sede.</div>
+              </div>
+              <Button type="button" variant="outline" onClick={() => setShowSaveProfileForm((current) => !current)}>
+                {showSaveProfileForm ? 'Ocultar' : 'Guardar como regla'}
+              </Button>
+            </div>
+
+            {showSaveProfileForm ? (
+              <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+                <div className="grid gap-2">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Nombre</label>
+                  <Input value={profileName} onChange={(event) => setProfileName(event.target.value)} placeholder="Ejemplo: Diseñador" />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Descripción</label>
+                  <Input value={profileDescription} onChange={(event) => setProfileDescription(event.target.value)} placeholder="Permisos estándar para diseño y producción visual" />
+                </div>
+                <Button type="button" onClick={() => void saveAsPermissionProfile()} disabled={savingProfile || !profileName.trim()}>
+                  {savingProfile ? 'Guardando...' : 'Guardar regla'}
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   )

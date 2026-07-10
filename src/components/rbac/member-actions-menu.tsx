@@ -45,6 +45,7 @@ type Props = {
   modules: ModuleKey[]
   initialAccess: Partial<Record<ModuleKey, AccessLevel>>
   initialCapabilityAccess: Record<string, AccessLevel>
+  canManagePermissionProfiles?: boolean
 }
 
 export function MemberActionsMenu({
@@ -59,6 +60,7 @@ export function MemberActionsMenu({
   modules,
   initialAccess,
   initialCapabilityAccess,
+  canManagePermissionProfiles = false,
 }: Props) {
   const { t } = useI18n()
   const router = useRouter()
@@ -131,6 +133,7 @@ export function MemberActionsMenu({
             initial={initialAccess}
             initialGlobalAccess={initialGlobalAccess}
             initialCapabilities={initialCapabilityAccess}
+            canManagePermissionProfiles={canManagePermissionProfiles}
             open={permissionsOpen}
             onOpenChange={(nextOpen) => {
               setPermissionsOpen(nextOpen)

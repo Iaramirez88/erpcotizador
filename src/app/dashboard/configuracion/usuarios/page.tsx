@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { MemberActionsMenu } from '@/components/rbac/member-actions-menu'
+import { PermissionProfilesManager } from '@/components/rbac/permission-profiles-manager'
 import { UserPermissionsModal } from '@/components/rbac/user-permissions-modal'
 import { InviteUserCard } from '@/components/users/invite-user-card'
 import { getServerLanguage } from '@/lib/i18n/server'
@@ -131,6 +132,13 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
   const normalizedSearchQuery = normalizeSearchValue(searchQuery)
   const activeSedeId = sedes.some((sede) => sede.id === requestedSedeId) ? requestedSedeId : sedes[0]?.id ?? null
   const activeSede = activeSedeId ? sedes.find((sede) => sede.id === activeSedeId) ?? null : null
+  const activeSedeMembership = activeSedeId
+    ? await prisma.sedeMembership.findUnique({
+        where: { sedeId_userId: { sedeId: activeSedeId, userId: session.user.id } },
+        select: { role: true },
+      })
+    : null
+  const canManagePermissionProfiles = session.user.role === 'ADMIN' || activeSedeMembership?.role === 'ADMIN'
 
   async function approveAccessRequest(formData: FormData) {
     'use server'
@@ -435,6 +443,23 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
   const usersWithSedeAccess = users.filter((user) => Boolean(membershipByUserId[user.id])).length
   const usersWithoutSedeAccess = users.length - usersWithSedeAccess
   const usersWithGlobalAccess = users.filter((user) => (globalAccessByUserId[user.id] ?? 'NONE') !== 'NONE').length
+  const permissionProfiles = activeSedeId
+    ? await prisma.permissionProfile.findMany({
+        where: { empresaId, sedeId: activeSedeId },
+        orderBy: [{ createdAt: 'desc' }],
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          sedeRole: true,
+          globalAccessLevel: true,
+          moduleLevels: true,
+          capabilityLevels: true,
+          createdAt: true,
+          createdByUser: { select: { name: true, email: true } },
+        },
+      })
+    : []
   const sortedUsers = [...users].sort((left, right) => {
     const leftHasAccess = Boolean(membershipByUserId[left.id])
     const rightHasAccess = Boolean(membershipByUserId[right.id])
@@ -485,6 +510,7 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
             </span>
           </TabsTrigger>
           <TabsTrigger value="users" className="rounded-xl px-4 py-2.5">Listado de usuarios</TabsTrigger>
+          {canManagePermissionProfiles ? <TabsTrigger value="profiles" className="rounded-xl px-4 py-2.5">Reglas de permisos</TabsTrigger> : null}
         </TabsList>
 
         <TabsContent value="sede">
@@ -703,6 +729,7 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
                             initial={moduleAccessByUserId[u.id] ?? {}}
                             initialGlobalAccess={globalAccessByUserId[u.id] ?? 'NONE'}
                             initialCapabilities={capabilityAccessByUserId[u.id] ?? {}}
+                            canManagePermissionProfiles={canManagePermissionProfiles}
                             trigger={
                               <Button type="button" size="sm" variant={membershipByUserId[u.id] ? 'outline' : 'default'}>
                                 <Plus className="mr-2 h-4 w-4" />
@@ -722,6 +749,7 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
                             modules={MODULES}
                             initialAccess={moduleAccessByUserId[u.id] ?? {}}
                             initialCapabilityAccess={capabilityAccessByUserId[u.id] ?? {}}
+                            canManagePermissionProfiles={canManagePermissionProfiles}
                           />
                         </div>
                       ) : (
@@ -743,6 +771,30 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {canManagePermissionProfiles ? (
+          <TabsContent value="profiles">
+            <PermissionProfilesManager
+              profiles={permissionProfiles.map((profile) => ({
+                id: profile.id,
+                name: profile.name,
+                description: profile.description,
+                sedeRole: profile.sedeRole,
+                globalAccessLevel: profile.globalAccessLevel,
+                moduleCount: typeof profile.moduleLevels === 'object' && profile.moduleLevels ? Object.keys(profile.moduleLevels as Record<string, unknown>).length : 0,
+                capabilityCount: typeof profile.capabilityLevels === 'object' && profile.capabilityLevels ? Object.keys(profile.capabilityLevels as Record<string, unknown>).length : 0,
+                createdAt: profile.createdAt.toISOString(),
+                createdByLabel: profile.createdByUser?.name || profile.createdByUser?.email || null,
+              }))}
+              users={sortedUsers.map((user) => ({
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                hasSedeAccess: Boolean(membershipByUserId[user.id]),
+              }))}
+            />
+          </TabsContent>
+        ) : null}
       </Tabs>
     </div>
   )

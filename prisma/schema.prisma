@@ -109,6 +109,7 @@ model User {
   globalAccess    UserGlobalAccess?
   capabilityGrants UserCapabilityGrant[] @relation("UserCapabilityGrantSubject")
   capabilityGrantsAuthored UserCapabilityGrant[] @relation("UserCapabilityGrantGrantedBy")
+  permissionProfilesCreated PermissionProfile[] @relation("PermissionProfileCreatedBy")
 
   // Notificaciones
   notifications Notification[]
@@ -701,6 +702,7 @@ model Empresa {
   domainEntitlements DomainEntitlement[]
   capabilityEntitlements CapabilityEntitlement[]
   capabilityGrants UserCapabilityGrant[]
+  permissionProfiles PermissionProfile[]
 
   inventoryMovements InventoryMovement[]
 
@@ -1652,6 +1654,7 @@ model Sede {
   defaultUsers  User[] @relation("UserSedeDefault")
   teams         Team[]
   moduleAccess  UserModuleAccess[]
+  permissionProfiles PermissionProfile[]
   notifications Notification[]
   payrollEmployees PayrollEmployee[]
   payrollContracts PayrollContract[]
@@ -1979,6 +1982,31 @@ model UserCapabilityGrant {
   @@index([empresaId, domain, subdomain, action])
   @@index([scopeType, scopeValue])
   @@map("user_capability_grants")
+}
+
+model PermissionProfile {
+  id                String      @id @default(cuid())
+  empresaId         String
+  sedeId            String
+  createdByUserId   String?
+  name              String
+  description       String?     @db.Text
+  sedeRole          SedeRole    @default(READER)
+  globalAccessLevel AccessLevel @default(NONE)
+  moduleLevels      Json        @default("{}")
+  capabilityLevels  Json        @default("{}")
+  metadata          Json        @default("{}")
+
+  empresa   Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  sede      Sede    @relation(fields: [sedeId], references: [id], onDelete: Cascade)
+  createdByUser User? @relation("PermissionProfileCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([empresaId, sedeId, name])
+  @@index([empresaId, sedeId, createdAt])
+  @@map("permission_profiles")
 }
 
 model WebsiteService {
