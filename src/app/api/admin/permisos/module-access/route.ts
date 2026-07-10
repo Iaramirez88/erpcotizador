@@ -109,8 +109,8 @@ export async function PATCH(request: Request) {
         body: `El módulo ${moduleKey} volvió a heredar el permiso general en la sede ${sede.nombre}.`,
         sedeId,
         empresaId,
-        actionUrl: '/dashboard/configuracion/permisos',
-        actionLabel: 'Ver permisos',
+        actionUrl: '/dashboard/configuracion/usuarios',
+        actionLabel: 'Ver usuarios',
       },
     })
 
@@ -138,8 +138,8 @@ export async function PATCH(request: Request) {
       body: `El módulo ${moduleKey} quedó con permiso ${level} en la sede ${sede.nombre}.`,
       sedeId: sedeId,
       empresaId,
-      actionUrl: '/dashboard/configuracion/permisos',
-      actionLabel: 'Ver permisos',
+      actionUrl: '/dashboard/configuracion/usuarios',
+      actionLabel: 'Ver usuarios',
     },
   })
 

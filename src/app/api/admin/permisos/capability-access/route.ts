@@ -105,8 +105,8 @@ export async function PATCH(request: Request) {
       body: `Se actualizó el submódulo ${subdomain} a ${level} en la sede ${sede.nombre}.`,
       sedeId,
       empresaId,
-      actionUrl: '/dashboard/configuracion/permisos',
-      actionLabel: 'Ver permisos',
+      actionUrl: '/dashboard/configuracion/usuarios',
+      actionLabel: 'Ver usuarios',
     },
   })
 

@@ -149,7 +149,7 @@ export default function SedesConfigPage() {
       <ErpPageHero
         eyebrow="Configuracion"
         title={<span data-tour="sedes-title">Sedes</span>}
-        description="Crea sucursales, organiza la operacion por ubicacion y luego asignalas desde permisos."
+        description="Crea sucursales, organiza la operacion por ubicacion y luego asigna usuarios, roles y permisos desde Usuarios."
         actions={
           <>
             <Button onClick={() => void load()} variant="secondary" disabled={isLoading}>

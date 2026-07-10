@@ -186,7 +186,7 @@ export default async function AyudaPage({
               <div className="text-xs text-muted-foreground">Consulta indicadores y exportaciones comunes.</div>
             </div>
             <div>
-              <Link className="text-sky-600 hover:underline" href="/dashboard/configuracion/permisos">Roles y permisos</Link>
+              <Link className="text-sky-600 hover:underline" href="/dashboard/configuracion/usuarios">Usuarios, roles y permisos</Link>
               <div className="text-xs text-muted-foreground">Administra el acceso por sede y por módulo.</div>
             </div>
           </CardContent>

@@ -1,5 +1,5 @@
 export type ProductLayer =
-  | 'Núcleo'
+  | 'Inicio'
   | 'Captación'
   | 'Ventas'
   | 'Operaciones'
@@ -11,7 +11,7 @@ export type ProductLayer =
   | 'Plataforma'
 
 export type DashboardSectionTitle =
-  | 'Núcleo'
+  | 'Inicio'
   | 'Captación'
   | 'Ventas'
   | 'Operaciones'
@@ -35,7 +35,7 @@ export type DashboardNavCatalogItem = {
 }
 
 export const DASHBOARD_SECTION_ORDER: DashboardSectionTitle[] = [
-  'Núcleo',
+  'Inicio',
   'Captación',
   'Ventas',
   'Operaciones',
@@ -49,11 +49,11 @@ export const DASHBOARD_SECTION_ORDER: DashboardSectionTitle[] = [
 ]
 
 export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
-  { href: '/dashboard', label: 'Dashboard', labelKey: 'nav.dashboard', section: 'Núcleo', layer: 'Núcleo', domain: 'Inicio', moduleKey: 'DASHBOARD' },
-  { href: '/dashboard/mapa-producto', label: 'Mapa de producto', section: 'Núcleo', layer: 'Núcleo', domain: 'Arquitectura de producto', moduleKey: 'DASHBOARD' },
-  { href: '/dashboard/plantillas', label: 'Plantillas', labelKey: 'nav.templates', section: 'Núcleo', layer: 'Núcleo', domain: 'Plantillas', moduleKey: 'DASHBOARD' },
-  { href: '/dashboard/notificaciones', label: 'Notificaciones', section: 'Núcleo', layer: 'Núcleo', domain: 'Mensajería transversal', moduleKey: 'NOTIFICACIONES' },
-  { href: '/dashboard/notificaciones/crear', label: 'Crear notificación', section: 'Núcleo', layer: 'Núcleo', domain: 'Mensajería transversal', moduleKey: 'NOTIFICACIONES' },
+  { href: '/dashboard', label: 'Dashboard', labelKey: 'nav.dashboard', section: 'Inicio', layer: 'Inicio', domain: 'Inicio', moduleKey: 'DASHBOARD' },
+  { href: '/dashboard/mapa-producto', label: 'Mapa de producto', section: 'Inicio', layer: 'Inicio', domain: 'Arquitectura de producto', moduleKey: 'DASHBOARD' },
+  { href: '/dashboard/plantillas', label: 'Plantillas', labelKey: 'nav.templates', section: 'Inicio', layer: 'Inicio', domain: 'Plantillas', moduleKey: 'DASHBOARD' },
+  { href: '/dashboard/notificaciones', label: 'Notificaciones', section: 'Inicio', layer: 'Inicio', domain: 'Mensajería transversal', moduleKey: 'NOTIFICACIONES' },
+  { href: '/dashboard/notificaciones/crear', label: 'Crear notificación', section: 'Inicio', layer: 'Inicio', domain: 'Mensajería transversal', moduleKey: 'NOTIFICACIONES' },
 
   { href: '/dashboard/crm', label: 'Frente comercial', section: 'Captación', layer: 'Captación', domain: 'CRM', moduleKey: 'CRM' },
   { href: '/dashboard/crm/conversations', label: 'Inbox omnicanal', section: 'Captación', layer: 'Captación', domain: 'Inbox omnicanal', moduleKey: 'CRM' },
@@ -107,7 +107,6 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/configuracion/empresa', label: 'Empresa', labelKey: 'nav.company', section: 'Plataforma', layer: 'Plataforma', domain: 'Empresa', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/sedes', label: 'Sedes', labelKey: 'nav.branches', section: 'Plataforma', layer: 'Plataforma', domain: 'Sedes', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/usuarios', label: 'Usuarios', labelKey: 'nav.users', section: 'Plataforma', layer: 'Plataforma', domain: 'Usuarios', moduleKey: 'CONFIG' },
-  { href: '/dashboard/configuracion/permisos', label: 'Permisos', labelKey: 'nav.permissions', section: 'Plataforma', layer: 'Plataforma', domain: 'Roles y permisos', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/servicios-web', label: 'Servicios web', section: 'Plataforma', layer: 'Plataforma', domain: 'Servicios web', moduleKey: null },
   { href: '/dashboard/configuracion/plan', label: 'Plan', labelKey: 'nav.plan', section: 'Plataforma', layer: 'Plataforma', domain: 'Plan y suscripción', moduleKey: 'CONFIG' },
   { href: '/dashboard/configuracion/super-admin/empresas', label: 'Super Admin Empresas', section: 'Plataforma', layer: 'Plataforma', domain: 'Tenant management', moduleKey: 'CONFIG' },

@@ -61,9 +61,10 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: false, error: 'Usuario no encontrado' }, { status: 404 })
   }
 
-  const updated = await prisma.sedeMembership.update({
+  const updated = await prisma.sedeMembership.upsert({
     where: { sedeId_userId: { sedeId, userId: targetUser.id } },
-    data: { role },
+    create: { sedeId, userId: targetUser.id, role },
+    update: { role },
     select: { role: true },
   })
 
@@ -75,8 +76,8 @@ export async function PATCH(request: Request) {
       body: `Tu rol en la sede ${sede.nombre} fue actualizado a ${role}.`,
       sedeId,
       empresaId,
-      actionUrl: '/dashboard/configuracion/permisos',
-      actionLabel: 'Ver permisos',
+      actionUrl: '/dashboard/configuracion/usuarios',
+      actionLabel: 'Ver usuarios',
     },
   })
 

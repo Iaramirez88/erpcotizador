@@ -37,6 +37,7 @@ type Props = {
   user: UserRef
   userDefaultSedeId: string | null
   initialGlobalAccess: AccessLevel
+  initialHasSedeAccess: boolean
 
   activeSedeId: string
   activeSedeNombre: string
@@ -51,6 +52,7 @@ export function MemberActionsMenu({
   user,
   userDefaultSedeId,
   initialGlobalAccess,
+  initialHasSedeAccess,
   activeSedeId,
   activeSedeNombre,
   initialSedeRole,
@@ -120,6 +122,7 @@ export function MemberActionsMenu({
             sedeId={activeSedeId}
             sedeNombre={activeSedeNombre}
             user={user}
+            initialHasSedeAccess={initialHasSedeAccess}
             initialSedeRole={initialSedeRole}
             modules={modules}
             initial={initialAccess}

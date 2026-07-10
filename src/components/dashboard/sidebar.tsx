@@ -82,8 +82,7 @@ const NAV_ITEM_DESCRIPTIONS: Record<string, string> = {
   "/dashboard/proveedores": "Base de proveedores, contactos y condiciones de compra.",
   "/dashboard/configuracion/desperdicios": "Controla mermas y desperdicios operativos.",
   "/dashboard/configuracion/sedes": "Administra sucursales, ubicaciones y operacion por sede.",
-  "/dashboard/configuracion/usuarios": "Crea usuarios y asigna acceso al sistema.",
-  "/dashboard/configuracion/permisos": "Define que puede ver o hacer cada rol.",
+  "/dashboard/configuracion/usuarios": "Crea usuarios y administra roles, permisos y acceso al sistema.",
   "/dashboard/configuracion/empresa": "Configura datos, imagen y parametros de la empresa.",
   "/dashboard/configuracion/servicios-web": "Administra servicios web y modulos conectados.",
   "/dashboard/configuracion/plan": "Consulta tu plan, limites y opciones de actualizacion.",
@@ -540,15 +539,6 @@ function buildModuleNavigation(t: (key: string) => string): NavItem[] {
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    ),
-  },
-  {
-    name: t('nav.permissions'),
-    href: "/dashboard/configuracion/permisos",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11V7a4 4 0 118 0v4m-8 0h8m-8 0H6a2 2 0 00-2 2v6a2 2 0 002 2h12a2 2 0 002-2v-6a2 2 0 00-2-2" />
       </svg>
     ),
   },

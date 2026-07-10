@@ -24,7 +24,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
   {
     key: 'CORE.DASHBOARD',
     moduleKey: ModuleKey.DASHBOARD,
-    section: 'Núcleo',
+    section: 'Inicio',
     label: 'Dashboard',
     hrefs: ['/dashboard', '/dashboard/mapa-producto', '/dashboard/plantillas'],
     capabilities: [{ domain: 'CORE', subdomain: 'DASHBOARD' }],
@@ -32,7 +32,7 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
   {
     key: 'CORE.NOTIFICATIONS',
     moduleKey: ModuleKey.NOTIFICACIONES,
-    section: 'Núcleo',
+    section: 'Inicio',
     label: 'Notificaciones',
     hrefs: ['/dashboard/notificaciones', '/dashboard/notificaciones/crear'],
     capabilities: [{ domain: 'CORE', subdomain: 'DASHBOARD' }],
@@ -308,14 +308,6 @@ export const DASHBOARD_PERMISSION_RULES: DashboardPermissionRule[] = [
     label: 'Usuarios',
     hrefs: ['/dashboard/configuracion/usuarios'],
     capabilities: [{ domain: 'CORE', subdomain: 'USERS' }],
-  },
-  {
-    key: 'CORE.ROLES',
-    moduleKey: ModuleKey.CONFIG,
-    section: 'Plataforma',
-    label: 'Permisos',
-    hrefs: ['/dashboard/configuracion/permisos'],
-    capabilities: [{ domain: 'CORE', subdomain: 'ROLES' }],
   },
   {
     key: 'CORE.WEB_SERVICES',

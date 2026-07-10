@@ -26,11 +26,11 @@ type Dependency = {
 const domains: Domain[] = [
   {
     id: 'nucleo',
-    title: 'Nucleo',
+    title: 'Inicio',
     description: 'Base administrativa, control de acceso, configuracion y gobierno del producto.',
     href: '/dashboard',
     tone: 'sky',
-    items: ['Dashboard', 'Perfil', 'Notificaciones', 'Usuarios', 'Permisos', 'Sedes', 'Plan', 'Servicios web'],
+    items: ['Dashboard', 'Perfil', 'Notificaciones', 'Usuarios', 'Sedes', 'Plan', 'Servicios web'],
   },
   {
     id: 'comercial',
@@ -103,7 +103,7 @@ const dependencies: Dependency[] = [
 
 const observations = {
   exists: [
-    'Existe un nucleo administrativo claro con empresa, usuarios, permisos, sedes y plan.',
+    'Existe una capa de inicio administrativa clara con empresa, usuarios, sedes y plan.',
     'Existe un frente comercial fuerte, pero historicamente repartido entre CRM, cotizador, documentos y POS.',
     'Existe una capa operativa real con ordenes, tareas, espacios de trabajo, litografia y escaneos.',
     'Existe una base financiera importante con contabilidad y nomina separadas por submodulos.',

@@ -194,7 +194,6 @@ const COMMON_ALLOWED_HREFS = [
   '/dashboard/reportes',
   '/dashboard/configuracion/empresa',
   '/dashboard/configuracion/usuarios',
-  '/dashboard/configuracion/permisos',
   '/dashboard/configuracion/sedes',
   '/dashboard/configuracion/plan',
 ] as const

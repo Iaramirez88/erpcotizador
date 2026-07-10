@@ -83,8 +83,8 @@ export async function PATCH(request: Request) {
         ? 'Tu permiso general fue desactivado.'
         : `Tu permiso general fue actualizado a ${level}.`,
       empresaId,
-      actionUrl: '/dashboard/configuracion/permisos',
-      actionLabel: 'Ver permisos',
+      actionUrl: '/dashboard/configuracion/usuarios',
+      actionLabel: 'Ver usuarios',
     },
   })
 
