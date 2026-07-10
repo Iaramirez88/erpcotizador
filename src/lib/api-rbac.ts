@@ -41,6 +41,109 @@ export type ApiCapabilityAccessOk = ApiAccessOk & {
   resolvedBy: 'rbac-v2-grant' | 'legacy-module-fallback'
 }
 
+const MODULE_LABELS: Record<ModuleKey, string> = {
+  DASHBOARD: 'Dashboard',
+  COTIZADOR: 'Cotizador',
+  COTIZACIONES: 'Cotizaciones',
+  CLIENTES: 'Clientes',
+  CRM: 'CRM',
+  MATERIALES: 'Materiales',
+  INVENTARIO: 'Inventario',
+  REMISIONES: 'Remisiones',
+  POS: 'POS',
+  PROVEEDORES: 'Proveedores',
+  COMPRAS: 'Compras',
+  ORDENES: 'Órdenes',
+  ESCANEOS: 'Escaneos',
+  REPORTES: 'Reportes',
+  CONTABILIDAD: 'Contabilidad',
+  NOTIFICACIONES: 'Notificaciones',
+  CONFIG: 'Configuración',
+}
+
+const CAPABILITY_ACTION_LABELS: Record<RbacV2CapabilityAction, string> = {
+  READ: 'ver',
+  CREATE: 'crear',
+  UPDATE: 'editar',
+  DELETE: 'eliminar',
+  EXPORT: 'exportar',
+  ASSIGN: 'asignar',
+  EXECUTE: 'ejecutar',
+  APPROVE: 'aprobar',
+  CLOSE: 'cerrar',
+  AUDIT: 'auditar',
+  CONFIGURE: 'configurar',
+}
+
+function formatModuleLabel(moduleKey: ModuleKey) {
+  return MODULE_LABELS[moduleKey] ?? moduleKey
+}
+
+function formatAccessIntent(minLevel: AccessLevel) {
+  switch (minLevel) {
+    case 'READ':
+      return 'usar'
+    case 'WRITE':
+      return 'editar'
+    case 'ADMIN':
+      return 'administrar'
+    default:
+      return 'usar'
+  }
+}
+
+function formatCapabilityLabel(args: Pick<ApiCapabilityAccessArgs, 'domain' | 'subdomain'>) {
+  const subdomain = args.subdomain
+    .toLowerCase()
+    .split('_')
+    .filter(Boolean)
+    .join(' ')
+
+  return `${subdomain || 'funcionalidad'} de ${args.domain.toLowerCase()}`
+}
+
+function formatModuleList(moduleKeys: ModuleKey[]) {
+  const labels = Array.from(new Set(moduleKeys.map((moduleKey) => formatModuleLabel(moduleKey))))
+
+  if (!labels.length) return null
+  if (labels.length === 1) return `al módulo ${labels[0]}`
+  if (labels.length === 2) return `a alguno de estos módulos: ${labels[0]} o ${labels[1]}`
+  return `a alguno de estos módulos: ${labels.slice(0, -1).join(', ')} o ${labels[labels.length - 1]}`
+}
+
+export function buildModuleAccessDeniedMessage(moduleKey: ModuleKey, minLevel: AccessLevel) {
+  const moduleLabel = formatModuleLabel(moduleKey)
+  const accessIntent = formatAccessIntent(minLevel)
+  return `No tienes acceso para ${accessIntent} el módulo ${moduleLabel}. Pídele a tu administrador que te habilite acceso a este módulo para continuar.`
+}
+
+function buildCapabilityAccessDeniedMessage(args: ApiCapabilityAccessArgs, moduleKeys: ModuleKey[] = []) {
+  const capabilityLabel = formatCapabilityLabel(args)
+  const actionLabel = CAPABILITY_ACTION_LABELS[args.action] ?? 'usar'
+  const moduleHint = formatModuleList(moduleKeys)
+
+  if (moduleHint) {
+    return `No tienes permiso para ${actionLabel} la ${capabilityLabel}. Pídele a tu administrador que te habilite acceso ${moduleHint} para continuar.`
+  }
+
+  return `No tienes permiso para ${actionLabel} la ${capabilityLabel}. Pídele a tu administrador que te habilite este permiso para continuar.`
+}
+
+function buildPlanCapabilityDeniedMessage(args: ApiCapabilityAccessArgs, moduleKeys: ModuleKey[] = []) {
+  const capabilityLabel = formatCapabilityLabel(args)
+  const moduleHint = formatModuleList(moduleKeys)
+
+  if (moduleHint) {
+    return `La ${capabilityLabel} no está habilitada en el plan actual. Pídele a tu administrador que active acceso ${moduleHint} o ajuste el plan para continuar.`
+  }
+
+  return `La ${capabilityLabel} no está habilitada en el plan actual. Pídele a tu administrador que active este permiso o ajuste el plan para continuar.`
+}
+
+function buildSedeMembershipDeniedMessage() {
+  return 'No tienes acceso a esta sede. Pídele a tu administrador que te habilite la sede o el módulo correspondiente para continuar.'
+}
+
 async function resolveApiAccessContext(sedeIdOverride?: string): Promise<ApiAccessOk | ApiAccessFail> {
   const session = await auth()
   if (!session?.user) {
@@ -69,7 +172,10 @@ async function resolveApiAccessContext(sedeIdOverride?: string): Promise<ApiAcce
       select: { sedeId: true },
     })
     if (!membership) {
-      return { ok: false, response: NextResponse.json({ error: 'Prohibido' }, { status: 403 }) }
+      return {
+        ok: false,
+        response: NextResponse.json({ error: buildSedeMembershipDeniedMessage() }, { status: 403 }),
+      }
     }
   }
 
@@ -155,6 +261,10 @@ async function resolveCapabilityAccessFromV2(
   accessContext: ApiAccessOk,
   args: ApiCapabilityAccessArgs
 ): Promise<ApiCapabilityAccessOk | ApiAccessFail | null> {
+  const legacyModulesChecked = getLegacyModulesForCapability({
+    domain: args.domain,
+    subdomain: args.subdomain,
+  })
   const [domainEntitlement, capabilityEntitlement, grants] = await Promise.all([
     prisma.domainEntitlement.findUnique({
       where: { empresaId_domain: { empresaId: accessContext.empresaId, domain: args.domain } },
@@ -191,7 +301,11 @@ async function resolveCapabilityAccessFromV2(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: 'Capacidad deshabilitada por plan', domain: args.domain },
+        {
+          error: buildPlanCapabilityDeniedMessage(args, legacyModulesChecked),
+          domain: args.domain,
+          checkedModules: legacyModulesChecked,
+        },
         { status: 403 }
       ),
     }
@@ -202,8 +316,9 @@ async function resolveCapabilityAccessFromV2(
       ok: false,
       response: NextResponse.json(
         {
-          error: 'Capacidad deshabilitada por plan',
+          error: buildPlanCapabilityDeniedMessage(args, legacyModulesChecked),
           capability: `${args.domain}.${args.subdomain}.${args.action}`,
+          checkedModules: legacyModulesChecked,
         },
         { status: 403 }
       ),
@@ -225,8 +340,9 @@ async function resolveCapabilityAccessFromV2(
       ok: false,
       response: NextResponse.json(
         {
-          error: 'Prohibido',
+          error: buildCapabilityAccessDeniedMessage(args, legacyModulesChecked),
           capability: `${args.domain}.${args.subdomain}.${args.action}`,
+          checkedModules: legacyModulesChecked,
           resolvedBy: 'rbac-v2-grant',
         },
         { status: 403 }
@@ -263,7 +379,17 @@ export async function requireApiAccess(
     })
   } catch (error) {
     if (error instanceof Error && error.message === 'FORBIDDEN') {
-      return { ok: false, response: NextResponse.json({ error: 'Prohibido' }, { status: 403 }) }
+      return {
+        ok: false,
+        response: NextResponse.json(
+          {
+            error: buildModuleAccessDeniedMessage(moduleKey, minLevel),
+            module: moduleKey,
+            requiredLevel: minLevel,
+          },
+          { status: 403 }
+        ),
+      }
     }
     throw error
   }
@@ -285,7 +411,7 @@ export async function canAccessCapability(
       ok: false,
       response: NextResponse.json(
         {
-          error: 'Prohibido',
+          error: buildCapabilityAccessDeniedMessage(args),
           capability: args,
           checkedModules: [],
           resolvedBy: 'strict-rbac-v2',
@@ -325,7 +451,7 @@ export async function canAccessCapability(
     ok: false,
     response: NextResponse.json(
       {
-        error: 'Prohibido',
+        error: buildCapabilityAccessDeniedMessage(args, legacyModulesChecked),
         capability: args,
         checkedModules: legacyModulesChecked,
       },

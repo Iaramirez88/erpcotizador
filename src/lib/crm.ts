@@ -18,7 +18,7 @@ import {
   ModuleKey,
 } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireCapabilityAccess } from '@/lib/api-rbac'
+import { buildModuleAccessDeniedMessage, requireCapabilityAccess } from '@/lib/api-rbac'
 import { requireSedeAccess } from '@/lib/rbac'
 import type { RbacV2CapabilityAction, RbacV2Domain, RbacV2Scope } from '@/lib/rbac-v2-catalog'
 
@@ -336,7 +336,14 @@ export async function assertCrmSedeAccess(args: {
     return null
   } catch (error) {
     if (error instanceof Error && error.message === 'FORBIDDEN') {
-      return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
+      return NextResponse.json(
+        {
+          error: buildModuleAccessDeniedMessage(ModuleKey.CRM, args.minLevel),
+          module: ModuleKey.CRM,
+          requiredLevel: args.minLevel,
+        },
+        { status: 403 }
+      )
     }
     throw error
   }
