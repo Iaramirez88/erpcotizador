@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -54,6 +55,7 @@ interface Cliente {
   nombre: string
   empresa?: string | null
   email?: string | null
+  documento?: string | null
 }
 
 interface Material {
@@ -209,6 +211,21 @@ export default function CotizadorPage() {
   const [clienteId, setClienteId] = useState("")
   const [clienteSearch, setClienteSearch] = useState("")
   const [clienteDropdownOpen, setClienteDropdownOpen] = useState(false)
+  const [createClienteInlineOpen, setCreateClienteInlineOpen] = useState(false)
+  const [createClienteInlineSubmitting, setCreateClienteInlineSubmitting] = useState(false)
+  const [createClienteInlineError, setCreateClienteInlineError] = useState<string | null>(null)
+  const [createClienteInlineForm, setCreateClienteInlineForm] = useState({
+    nombre: '',
+    segmento: '',
+    tipoDocumento: 'CC',
+    documento: '',
+    email: '',
+    telefono: '',
+    celular: '',
+    direccion: '',
+    ciudad: '',
+    departamento: '',
+  })
   const [descripcion, setDescripcion] = useState("")
   const [validezDias, setValidezDias] = useState("15")
   const [tiempoEntrega, setTiempoEntrega] = useState("")
@@ -485,6 +502,72 @@ export default function CotizadorPage() {
       }
     } catch (error) {
       console.error('Error al cargar materiales:', error)
+    }
+  }
+
+  const submitInlineCliente = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setCreateClienteInlineSubmitting(true)
+    setCreateClienteInlineError(null)
+
+    try {
+      const payload = {
+        ...createClienteInlineForm,
+        nombre: createClienteInlineForm.nombre.trim(),
+        segmento: createClienteInlineForm.segmento.trim() || undefined,
+        documento: createClienteInlineForm.documento.trim(),
+        email: createClienteInlineForm.email.trim() || undefined,
+        telefono: createClienteInlineForm.telefono.trim() || undefined,
+        celular: createClienteInlineForm.celular.trim() || undefined,
+        direccion: createClienteInlineForm.direccion.trim() || undefined,
+        ciudad: createClienteInlineForm.ciudad.trim() || undefined,
+        departamento: createClienteInlineForm.departamento.trim() || undefined,
+      }
+
+      if (!payload.nombre || !payload.tipoDocumento || !payload.documento) {
+        setCreateClienteInlineError('Nombre, tipo de documento y documento son requeridos.')
+        return
+      }
+
+      const res = await fetch('/api/clientes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      const json = (await res.json().catch(() => ({}))) as { success?: boolean; data?: Cliente; error?: string }
+      if (!res.ok || !json.success || !json.data?.id) {
+        setCreateClienteInlineError(json.error || 'No se pudo crear el cliente.')
+        return
+      }
+
+      const created = json.data
+      const label = `${created.nombre}${created.empresa ? ` - ${created.empresa}` : ''}`
+
+      setClientes((prev) => {
+        const next = prev.filter((item) => item.id !== created.id)
+        return [created, ...next]
+      })
+      setClienteId(created.id)
+      setClienteSearch(label)
+      setClienteDropdownOpen(false)
+      setCreateClienteInlineOpen(false)
+      setCreateClienteInlineForm({
+        nombre: '',
+        segmento: '',
+        tipoDocumento: 'CC',
+        documento: '',
+        email: '',
+        telefono: '',
+        celular: '',
+        direccion: '',
+        ciudad: '',
+        departamento: '',
+      })
+    } catch (error) {
+      setCreateClienteInlineError(error instanceof Error ? error.message : 'Error inesperado al crear el cliente.')
+    } finally {
+      setCreateClienteInlineSubmitting(false)
     }
   }
 
@@ -1292,6 +1375,149 @@ export default function CotizadorPage() {
         defaultNombre={materialSearch}
       />
 
+      <Dialog open={createClienteInlineOpen} onOpenChange={setCreateClienteInlineOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t('customers.dialog.newTitle')}</DialogTitle>
+            <DialogDescription>{t('customers.dialog.newDescription')}</DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={(e) => void submitInlineCliente(e)} className="space-y-4">
+            {createClienteInlineError ? <div className="text-sm text-red-600">{createClienteInlineError}</div> : null}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <Label htmlFor="inline-cliente-nombre">{t('customers.form.name')} *</Label>
+                <Input
+                  id="inline-cliente-nombre"
+                  value={createClienteInlineForm.nombre}
+                  onChange={(e) => setCreateClienteInlineForm((p) => ({ ...p, nombre: e.target.value }))}
+                  required
+                  placeholder={t('customers.form.namePlaceholder')}
+                />
+              </div>
+
+              <div className="col-span-2">
+                <Label htmlFor="inline-cliente-segmento">{t('customers.form.segment')}</Label>
+                <select
+                  id="inline-cliente-segmento"
+                  value={createClienteInlineForm.segmento}
+                  onChange={(e) => setCreateClienteInlineForm((p) => ({ ...p, segmento: e.target.value }))}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                >
+                  <option value="">{t('customers.form.segmentAuto')}</option>
+                  <option value="POTENCIAL">{t('customers.segment.POTENCIAL')}</option>
+                  <option value="OCASIONAL">{t('customers.segment.OCASIONAL')}</option>
+                  <option value="FRECUENTE">{t('customers.segment.FRECUENTE')}</option>
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">{t('customers.form.segmentHelp')}</p>
+              </div>
+
+              <div>
+                <Label htmlFor="inline-cliente-tipo-doc">{t('customers.form.documentType')} *</Label>
+                <select
+                  id="inline-cliente-tipo-doc"
+                  value={createClienteInlineForm.tipoDocumento}
+                  onChange={(e) => setCreateClienteInlineForm((p) => ({ ...p, tipoDocumento: e.target.value }))}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                >
+                  <option value="NIT">NIT</option>
+                  <option value="CC">{t('customers.form.documentType.CC')}</option>
+                  <option value="CE">{t('customers.form.documentType.CE')}</option>
+                  <option value="PASAPORTE">{t('customers.form.documentType.PASAPORTE')}</option>
+                </select>
+              </div>
+
+              <div>
+                <Label htmlFor="inline-cliente-documento">{t('customers.form.documentNumber')} *</Label>
+                <Input
+                  id="inline-cliente-documento"
+                  value={createClienteInlineForm.documento}
+                  onChange={(e) => setCreateClienteInlineForm((p) => ({ ...p, documento: e.target.value }))}
+                  required
+                  placeholder="123456789"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="inline-cliente-email">{t('customers.form.email')}</Label>
+                <Input
+                  id="inline-cliente-email"
+                  type="email"
+                  value={createClienteInlineForm.email}
+                  onChange={(e) => setCreateClienteInlineForm((p) => ({ ...p, email: e.target.value }))}
+                  placeholder={t('customers.form.emailPlaceholder')}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="inline-cliente-telefono">{t('customers.form.phone')}</Label>
+                <Input
+                  id="inline-cliente-telefono"
+                  value={createClienteInlineForm.telefono}
+                  onChange={(e) => setCreateClienteInlineForm((p) => ({ ...p, telefono: e.target.value }))}
+                  placeholder={t('customers.form.phonePlaceholder')}
+                />
+              </div>
+
+              <div className="col-span-2">
+                <Label htmlFor="inline-cliente-celular">{t('customers.form.mobile')}</Label>
+                <Input
+                  id="inline-cliente-celular"
+                  value={createClienteInlineForm.celular}
+                  onChange={(e) => setCreateClienteInlineForm((p) => ({ ...p, celular: e.target.value }))}
+                  placeholder={t('customers.form.mobilePlaceholder')}
+                />
+              </div>
+
+              <div className="col-span-2">
+                <Label htmlFor="inline-cliente-direccion">{t('customers.form.address')}</Label>
+                <Input
+                  id="inline-cliente-direccion"
+                  value={createClienteInlineForm.direccion}
+                  onChange={(e) => setCreateClienteInlineForm((p) => ({ ...p, direccion: e.target.value }))}
+                  placeholder={t('customers.form.addressPlaceholder')}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="inline-cliente-ciudad">{t('customers.form.city')}</Label>
+                <Input
+                  id="inline-cliente-ciudad"
+                  value={createClienteInlineForm.ciudad}
+                  onChange={(e) => setCreateClienteInlineForm((p) => ({ ...p, ciudad: e.target.value }))}
+                  placeholder={t('customers.form.cityPlaceholder')}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="inline-cliente-departamento">{t('customers.form.state')}</Label>
+                <Input
+                  id="inline-cliente-departamento"
+                  value={createClienteInlineForm.departamento}
+                  onChange={(e) => setCreateClienteInlineForm((p) => ({ ...p, departamento: e.target.value }))}
+                  placeholder={t('customers.form.statePlaceholder')}
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateClienteInlineOpen(false)}
+                disabled={createClienteInlineSubmitting}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={createClienteInlineSubmitting}>
+                {createClienteInlineSubmitting ? 'Creando...' : 'Crear cliente'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={litografiaAiOpen} onOpenChange={setLitografiaAiOpen}>
         <DialogContent className="flex max-h-[90vh] max-w-6xl flex-col overflow-hidden">
           <DialogHeader>
@@ -1621,8 +1847,9 @@ export default function CotizadorPage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2" data-tour="cotizador-cliente">
-                  <Label htmlFor="cliente">{t('quoteBuilder.fields.client')} *</Label>
-                  <div className="relative">
+                  <Label htmlFor="cliente" className="mb-2 block">{t('quoteBuilder.fields.client')} *</Label>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                    <div className="relative min-w-0 flex-1">
                     <Input
                       id="cliente"
                       value={clienteSearch}
@@ -1661,9 +1888,9 @@ export default function CotizadorPage() {
                                 }}
                               >
                                 <div className="truncate">{label}</div>
-                                {'documento' in cliente ? (
+                                {cliente.documento ? (
                                   <div className="text-xs text-muted-foreground truncate">
-                                    {(cliente as unknown as { documento?: string }).documento || ''}
+                                    {cliente.documento}
                                   </div>
                                 ) : null}
                               </button>
@@ -1672,6 +1899,23 @@ export default function CotizadorPage() {
                         )}
                       </div>
                     ) : null}
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="sm:mt-0 sm:shrink-0"
+                      onClick={() => {
+                        setCreateClienteInlineError(null)
+                        setCreateClienteInlineForm((prev) => ({
+                          ...prev,
+                          nombre: clienteSearch.trim() && !clienteId ? clienteSearch.trim() : prev.nombre,
+                        }))
+                        setCreateClienteInlineOpen(true)
+                      }}
+                    >
+                      Crear cliente
+                    </Button>
                   </div>
                 </div>
 

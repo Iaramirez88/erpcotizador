@@ -470,6 +470,7 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
           capabilityLevels: true,
           createdAt: true,
           createdByUser: { select: { name: true, email: true } },
+          _count: { select: { assignments: true } },
         },
       })
     : []
@@ -803,6 +804,9 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
                 capabilityCount: typeof profile.capabilityLevels === 'object' && profile.capabilityLevels ? Object.keys(profile.capabilityLevels as Record<string, unknown>).length : 0,
                 createdAt: profile.createdAt.toISOString(),
                 createdByLabel: profile.createdByUser?.name || profile.createdByUser?.email || null,
+                assignmentCount: profile._count.assignments,
+                moduleLevels: typeof profile.moduleLevels === 'object' && profile.moduleLevels ? profile.moduleLevels as Record<string, AccessLevel> : {},
+                capabilityLevels: typeof profile.capabilityLevels === 'object' && profile.capabilityLevels ? profile.capabilityLevels as Record<string, { domain: string; subdomain: string; level: AccessLevel; label: string | null }> : {},
               }))}
               users={sortedUsers.map((user) => ({
                 id: user.id,

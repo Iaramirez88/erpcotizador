@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
-import { AccessLevel, ModuleKey, SedeRole } from '@prisma/client'
+import { AccessLevel, ModuleKey, RbacGrantSource, RbacScopeType, SedeRole } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireEmpresaIdForUser } from '@/lib/rbac'
+import { capabilityActionToAccessLevel, getCapabilityDefinition } from '@/lib/dashboard-access'
+import type { RbacV2Domain } from '@/lib/rbac-v2-catalog'
 
 export const runtime = 'nodejs'
 
@@ -38,6 +40,110 @@ function normalizeCapabilityLevels(value: unknown) {
     next[key] = { domain, subdomain, level: rawLevel as AccessLevel, label }
   }
   return next
+}
+
+function normalizeCapabilityLevelRows(value: unknown) {
+  return Object.values(normalizeCapabilityLevels(value))
+    .map((item) => ({
+      domain: item.domain as RbacV2Domain,
+      subdomain: item.subdomain,
+      level: item.level,
+    }))
+}
+
+async function applyProfileToUsers(args: {
+  tx: Omit<typeof prisma, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>
+  empresaId: string
+  sedeId: string
+  profileId: string
+  sedeRole: SedeRole
+  globalAccessLevel: AccessLevel
+  moduleLevels: Record<string, AccessLevel>
+  capabilityLevels: Record<string, { domain: string; subdomain: string; level: AccessLevel; label: string | null }>
+  userIds: string[]
+  grantedByUserId: string
+  note: string
+}) {
+  const normalizedModuleLevels = Object.entries(normalizeModuleLevels(args.moduleLevels)).map(([module, level]) => ({ module: module as ModuleKey, level }))
+  const normalizedCapabilityLevels = normalizeCapabilityLevelRows(args.capabilityLevels)
+
+  for (const userId of args.userIds) {
+    await args.tx.sedeMembership.upsert({
+      where: { sedeId_userId: { sedeId: args.sedeId, userId } },
+      update: { role: SEDE_ROLES.includes(args.sedeRole) ? args.sedeRole : 'READER' },
+      create: { sedeId: args.sedeId, userId, role: SEDE_ROLES.includes(args.sedeRole) ? args.sedeRole : 'READER' },
+    })
+
+    await args.tx.userGlobalAccess.upsert({
+      where: { userId },
+      update: { empresaId: args.empresaId, level: args.globalAccessLevel },
+      create: { userId, empresaId: args.empresaId, level: args.globalAccessLevel },
+    })
+
+    await args.tx.userModuleAccess.deleteMany({ where: { sedeId: args.sedeId, userId } })
+    if (normalizedModuleLevels.length) {
+      await args.tx.userModuleAccess.createMany({
+        data: normalizedModuleLevels.map((item) => ({
+          sedeId: args.sedeId,
+          userId,
+          module: item.module,
+          level: item.level,
+        })),
+      })
+    }
+
+    await args.tx.userCapabilityGrant.deleteMany({
+      where: {
+        empresaId: args.empresaId,
+        userId,
+        scopeType: RbacScopeType.SEDE,
+        scopeValue: args.sedeId,
+        source: RbacGrantSource.DIRECT,
+      },
+    })
+
+    const capabilityGrantRows = normalizedCapabilityLevels.flatMap((item) => {
+      const definition = getCapabilityDefinition(item.domain, item.subdomain)
+      if (!definition) return []
+      return definition.actions.map((action) => ({
+        userId,
+        empresaId: args.empresaId,
+        domain: item.domain,
+        subdomain: item.subdomain,
+        action,
+        scopeType: RbacScopeType.SEDE,
+        scopeValue: args.sedeId,
+        allowed: capabilityActionToAccessLevel(action) === 'READ'
+          ? item.level !== 'NONE'
+          : capabilityActionToAccessLevel(action) === 'WRITE'
+            ? item.level === 'WRITE' || item.level === 'ADMIN'
+            : item.level === 'ADMIN',
+        source: RbacGrantSource.DIRECT,
+        grantedByUserId: args.grantedByUserId,
+        notes: args.note,
+      }))
+    })
+
+    if (capabilityGrantRows.length) {
+      await args.tx.userCapabilityGrant.createMany({ data: capabilityGrantRows })
+    }
+
+    await args.tx.permissionProfileAssignment.upsert({
+      where: { sedeId_userId: { sedeId: args.sedeId, userId } },
+      update: {
+        profileId: args.profileId,
+        empresaId: args.empresaId,
+        appliedByUserId: args.grantedByUserId,
+      },
+      create: {
+        profileId: args.profileId,
+        empresaId: args.empresaId,
+        sedeId: args.sedeId,
+        userId,
+        appliedByUserId: args.grantedByUserId,
+      },
+    })
+  }
 }
 
 export async function POST(request: Request) {
@@ -97,5 +203,93 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, data: created })
   } catch {
     return NextResponse.json({ success: false, error: 'No fue posible guardar la regla de permisos.' }, { status: 400 })
+  }
+}
+
+export async function PATCH(request: Request) {
+  const session = await auth()
+  if (!session?.user?.id) return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
+
+  const body = await request.json().catch(() => null)
+  if (!isPlainObject(body)) {
+    return NextResponse.json({ success: false, error: 'Body inválido' }, { status: 400 })
+  }
+
+  const profileId = typeof body.profileId === 'string' ? body.profileId.trim() : ''
+  const name = typeof body.name === 'string' ? body.name.trim() : ''
+  const description = typeof body.description === 'string' ? body.description.trim() : ''
+  const sedeRole = typeof body.sedeRole === 'string' ? body.sedeRole.trim() as SedeRole : null
+  const globalAccessLevel = typeof body.globalAccessLevel === 'string' ? body.globalAccessLevel.trim() as AccessLevel : null
+
+  if (!profileId || !name || !sedeRole || !globalAccessLevel || !SEDE_ROLES.includes(sedeRole) || !ACCESS_LEVELS.includes(globalAccessLevel)) {
+    return NextResponse.json({ success: false, error: 'Parámetros inválidos' }, { status: 400 })
+  }
+
+  const empresaId = await requireEmpresaIdForUser(session.user.id)
+  const existingProfile = await prisma.permissionProfile.findUnique({
+    where: { id: profileId },
+    select: { id: true, empresaId: true, sedeId: true },
+  })
+
+  if (!existingProfile || existingProfile.empresaId !== empresaId) {
+    return NextResponse.json({ success: false, error: 'La regla de permisos no existe en esta empresa.' }, { status: 404 })
+  }
+
+  const requesterMembership = await prisma.sedeMembership.findUnique({
+    where: { sedeId_userId: { sedeId: existingProfile.sedeId, userId: session.user.id } },
+    select: { role: true },
+  })
+
+  const isAllowed = session.user.role === 'ADMIN' || requesterMembership?.role === 'ADMIN'
+  if (!isAllowed) {
+    return NextResponse.json({ success: false, error: 'Solo los administradores pueden editar reglas de permisos.' }, { status: 403 })
+  }
+
+  const moduleLevels = normalizeModuleLevels(body.moduleLevels)
+  const capabilityLevels = normalizeCapabilityLevels(body.capabilityLevels)
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const updated = await tx.permissionProfile.update({
+        where: { id: profileId },
+        data: {
+          name,
+          description: description || null,
+          sedeRole,
+          globalAccessLevel,
+          moduleLevels,
+          capabilityLevels,
+        },
+        select: { id: true, sedeId: true },
+      })
+
+      const assignments = await tx.permissionProfileAssignment.findMany({
+        where: { profileId: updated.id, empresaId },
+        select: { userId: true },
+      })
+
+      const userIds = assignments.map((item) => item.userId)
+      if (userIds.length) {
+        await applyProfileToUsers({
+          tx,
+          empresaId,
+          sedeId: updated.sedeId,
+          profileId: updated.id,
+          sedeRole,
+          globalAccessLevel,
+          moduleLevels,
+          capabilityLevels,
+          userIds,
+          grantedByUserId: session.user.id,
+          note: `Regla de permisos actualizada desde perfil ${updated.id}.`,
+        })
+      }
+
+      return { id: updated.id, reappliedUsers: userIds.length }
+    })
+
+    return NextResponse.json({ success: true, data: result })
+  } catch {
+    return NextResponse.json({ success: false, error: 'No fue posible actualizar la regla de permisos.' }, { status: 400 })
   }
 }
