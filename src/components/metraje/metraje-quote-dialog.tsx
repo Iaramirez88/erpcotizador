@@ -185,7 +185,14 @@ function buildM2RatePoints(args: {
 function computePiecewiseLinearTotal(area: number, points: M2RatePoint[]): number {
   if (!Number.isFinite(area) || area <= 0) return 0
   if (points.length === 0) return 0
-  if (points.length === 1) return points[0].priceTotal
+
+  if (points.length === 1) {
+    const basePoint = points[0]
+    if (area <= basePoint.areaM2) return basePoint.priceTotal
+
+    const unitPrice = basePoint.areaM2 > 0 ? basePoint.priceTotal / basePoint.areaM2 : 0
+    return unitPrice > 0 ? unitPrice * area : basePoint.priceTotal
+  }
 
   const first = points[0]
   if (area <= first.areaM2) return first.priceTotal
