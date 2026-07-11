@@ -91,8 +91,9 @@ export default function ClientesPage() {
   const locale = language === 'en' ? 'en-US' : 'es-CO'
   const naText = t('common.na')
   const { mode: dataViewMode, setMode: setDataViewMode } = useDataViewMode('clientes.history', 'list')
-  const { hasWriteAccess } = useCurrentUserAccess()
+  const { hasWriteAccess, hasAdminAccess } = useCurrentUserAccess()
   const canManageClientes = hasWriteAccess('CLIENTES')
+  const canFilterBySede = hasAdminAccess('CLIENTES')
 
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -137,7 +138,7 @@ export default function ClientesPage() {
       if (segmentoFiltro) params.set('segmento', segmentoFiltro)
       if (tipoDocumentoFiltro) params.set('tipoDocumento', tipoDocumentoFiltro)
       if (ciudadFiltro) params.set('ciudad', ciudadFiltro)
-      if (sedeFiltro) params.set('sedeId', sedeFiltro)
+      if (canFilterBySede && sedeFiltro) params.set('sedeId', sedeFiltro)
 
       if (createdAtMode === 'day' && createdAtValue) params.set('createdAtDay', createdAtValue)
       if (createdAtMode === 'month' && createdAtValue) params.set('createdAtMonth', createdAtValue)
@@ -167,9 +168,15 @@ export default function ClientesPage() {
   useEffect(() => {
     fetchClientes()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, segmentoFiltro, tipoDocumentoFiltro, ciudadFiltro, sedeFiltro, createdAtMode, createdAtValue, actividadDesde, actividadHasta, facturadoMin, facturadoMax])
+  }, [search, segmentoFiltro, tipoDocumentoFiltro, ciudadFiltro, sedeFiltro, createdAtMode, createdAtValue, actividadDesde, actividadHasta, facturadoMin, facturadoMax, canFilterBySede])
 
   useEffect(() => {
+    if (!canFilterBySede) {
+      setSedes([])
+      if (sedeFiltro) setSedeFiltro("")
+      return
+    }
+
     const fetchSedes = async () => {
       try {
         const response = await fetch('/api/sedes')
@@ -181,7 +188,7 @@ export default function ClientesPage() {
     }
 
     fetchSedes()
-  }, [])
+  }, [canFilterBySede, sedeFiltro])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -371,7 +378,7 @@ export default function ClientesPage() {
         }
         stats={[
           { label: 'Clientes', value: clientes.length, hint: 'Registros visibles', tone: 'neutral' },
-          { label: 'Sedes', value: sedes.length, hint: 'Sucursales consultables', tone: 'sky' },
+          { label: 'Sedes', value: canFilterBySede ? sedes.length : 1, hint: canFilterBySede ? 'Sucursales consultables' : 'Vista limitada a tu sede', tone: 'sky' },
           {
             label: 'Segmento activo',
             value: segmentoFiltro ? segmentoLabel(segmentoFiltro) : t('customers.filters.segment.all'),
@@ -391,21 +398,23 @@ export default function ClientesPage() {
 
           <div className="flex-1 overflow-y-auto pr-1">
             <div className="space-y-4">
-              <div className="space-y-1">
-                <Label>{t('customers.filters.site')}</Label>
-                <select
-                  value={sedeFiltro}
-                  onChange={(e) => setSedeFiltro(e.target.value)}
-                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-                >
-                  <option value="">{t('customers.filters.allSites')}</option>
-                  {sedes.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nombre}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {canFilterBySede ? (
+                <div className="space-y-1">
+                  <Label>{t('customers.filters.site')}</Label>
+                  <select
+                    value={sedeFiltro}
+                    onChange={(e) => setSedeFiltro(e.target.value)}
+                    className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  >
+                    <option value="">{t('customers.filters.allSites')}</option>
+                    {sedes.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
 
               <div className="space-y-1">
                 <Label>{t('customers.filters.segment')}</Label>
@@ -749,21 +758,23 @@ export default function ClientesPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-1">
-              <Label>{t('customers.filters.site')}</Label>
-              <select
-                value={sedeFiltro}
-                onChange={(e) => setSedeFiltro(e.target.value)}
-                className="h-10 w-full rounded-md border bg-background px-3 text-sm"
-              >
-                <option value="">{t('customers.filters.allSites')}</option>
-                {sedes.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {canFilterBySede ? (
+              <div className="space-y-1">
+                <Label>{t('customers.filters.site')}</Label>
+                <select
+                  value={sedeFiltro}
+                  onChange={(e) => setSedeFiltro(e.target.value)}
+                  className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value="">{t('customers.filters.allSites')}</option>
+                  {sedes.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
 
             <div className="space-y-1">
               <Label>{t('customers.filters.segment')}</Label>

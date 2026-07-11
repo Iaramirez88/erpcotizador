@@ -99,12 +99,13 @@ export async function GET(request: Request) {
     if (!access.ok) return access.response
 
     const empresaId = access.empresaId
+    const isAdmin = access.session.user.role === 'ADMIN'
 
     // Obtener parámetros de búsqueda (opcional)
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
     const segmento = searchParams.get('segmento')
-    const sedeId = searchParams.get('sedeId')
+    const requestedSedeId = searchParams.get('sedeId')
     const tipoDocumento = searchParams.get('tipoDocumento')
     const ciudad = searchParams.get('ciudad')
     const createdAtRange = parseCreatedAtRange(searchParams)
@@ -112,8 +113,10 @@ export async function GET(request: Request) {
     const invoiceTotalMin = parseNumberParam(searchParams, 'invoiceTotalMin')
     const invoiceTotalMax = parseNumberParam(searchParams, 'invoiceTotalMax')
 
-    if (sedeId) {
-      const sede = await prisma.sede.findUnique({ where: { id: sedeId }, select: { id: true, empresaId: true } })
+    const sedeId = isAdmin ? requestedSedeId : access.sedeId
+
+    if (requestedSedeId && isAdmin) {
+      const sede = await prisma.sede.findUnique({ where: { id: requestedSedeId }, select: { id: true, empresaId: true } })
       if (!sede || sede.empresaId !== empresaId) {
         return NextResponse.json({ error: 'sedeId inválido' }, { status: 400 })
       }

@@ -137,6 +137,7 @@ export function CrmTeamChatClient() {
   const [sending, setSending] = useState(false)
   const [view, setView] = useState<'direct' | 'groups'>('direct')
   const [groupDialogOpen, setGroupDialogOpen] = useState(false)
+  const [companionSearch, setCompanionSearch] = useState('')
   const [groupSearch, setGroupSearch] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [teamUsers, setTeamUsers] = useState<TeamUser[]>([])
@@ -296,9 +297,14 @@ export function CrmTeamChatClient() {
   }, [selectedThreadId])
 
   const visibleUsers = useMemo(() => {
+    const term = companionSearch.trim().toLowerCase()
     return teamUsers
       .filter((user) => user.id !== currentUserId)
-  }, [currentUserId, teamUsers])
+      .filter((user) => {
+        if (!term) return true
+        return (user.name || '').toLowerCase().includes(term) || (user.email || '').toLowerCase().includes(term)
+      })
+  }, [companionSearch, currentUserId, teamUsers])
 
   const directThreads = useMemo(() => {
     return threads.filter((thread) => thread.type === 'DIRECT')
@@ -490,6 +496,13 @@ export function CrmTeamChatClient() {
             <CardHeader className="border-b border-slate-100 pb-4">
               <CardTitle className="text-lg">Compañeros</CardTitle>
               <CardDescription>Abre chats directos con usuarios de tu empresa.</CardDescription>
+              <div className="pt-3">
+                <Input
+                  value={companionSearch}
+                  onChange={(event) => setCompanionSearch(event.target.value)}
+                  placeholder="Buscar usuario por nombre o correo..."
+                />
+              </div>
             </CardHeader>
             <CardContent className="p-4 md:p-5">
               {visibleUsers.length === 0 ? <p className="text-sm text-muted-foreground">No hay compañeros para mostrar.</p> : null}
