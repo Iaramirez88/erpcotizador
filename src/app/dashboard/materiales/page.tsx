@@ -1074,6 +1074,106 @@ export default function ProductosPage() {
     return 'Sin precio'
   }
 
+  const getMaterialSpecs = useCallback((material: Material) => {
+    const specs: string[] = []
+
+    if (material.unidadMedida === 'm2') {
+      if (material.ancho) specs.push(`Ancho ${material.ancho}cm`)
+      if (material.largo) specs.push(`Alto ${material.largo}cm`)
+    } else {
+      if (material.ancho) specs.push(`Ancho ${material.ancho}cm`)
+      if (material.largo) specs.push(`Largo ${material.largo}${material.unidadMedida === 'ml' ? 'ml' : 'cm'}`)
+    }
+
+    if (material.color) specs.push(`Color ${material.color}`)
+    return specs.join(" • ")
+  }, [])
+
+  const renderPaginationBar = (position: 'top' | 'bottom') => (
+    <div className={`flex flex-wrap items-center justify-between gap-2 px-4 py-3 ${position === 'top' ? 'border-b' : 'border-t'}`}>
+      <div className="text-sm text-muted-foreground">
+        Mostrando <span className="font-medium text-foreground">{materiales.length}</span> de{' '}
+        <span className="font-medium text-foreground">{totalRows}</span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
+        <div className="text-sm text-muted-foreground">Mostrar</div>
+        <select
+          value={String(pageSize)}
+          onChange={(e) => {
+            const v = e.target.value
+            const next = v === 'all' ? 'all' : (Number(v) as PageSizeOption)
+            setPageSize(next)
+            setPage(1)
+          }}
+          className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+          aria-label={`Productos por página (${position})`}
+        >
+          {PAGE_SIZE_OPTIONS.map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+          <option value="all">Todos</option>
+        </select>
+
+        {pageSize !== 'all' ? (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="h-8 px-3"
+            >
+              Anterior
+            </Button>
+            <div className="text-sm text-muted-foreground whitespace-nowrap">
+              Página <span className="font-medium text-foreground">{page}</span> /{' '}
+              <span className="font-medium text-foreground">{pageCount}</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              disabled={page >= pageCount}
+              className="h-8 px-3"
+            >
+              Siguiente
+            </Button>
+          </div>
+        ) : null}
+
+        {canManageProducts ? <Button
+          variant="outline"
+          size="sm"
+          onClick={toggleSelectPage}
+          className="h-8 px-3"
+        >
+          {selectionScope === 'page' && selectedIds.size === materiales.length
+            ? 'Quitar selección (página)'
+            : 'Seleccionar página'}
+        </Button> : null}
+        {canManageProducts ? <Button
+          variant="outline"
+          size="sm"
+          onClick={toggleSelectAllDb}
+          className="h-8 px-3"
+        >
+          {selectionScope === 'all' ? 'Quitar selección (BD)' : 'Seleccionar todos (BD)'}
+        </Button> : null}
+        {canManageProducts ? <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void handleBulkDelete()}
+          disabled={selectionScope === 'none' || (selectionScope === 'page' && selectedIds.size === 0)}
+          className="h-8 px-3 text-red-600"
+        >
+          Eliminar seleccionados{selectedCount ? ` (${selectedCount})` : ''}
+        </Button> : null}
+      </div>
+    </div>
+  )
+
   return (
     <div className="space-y-6">
       <CustomProductRequestsAdminDialog open={customRequestsOpen} onOpenChange={setCustomRequestsOpen} />
@@ -1462,88 +1562,7 @@ export default function ProductosPage() {
             </div>
           ) : (
             <div>
-              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b">
-                <div className="text-sm text-muted-foreground">
-                  Mostrando <span className="font-medium text-foreground">{materiales.length}</span> de{' '}
-                  <span className="font-medium text-foreground">{totalRows}</span>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <DataViewToggle mode={dataViewMode} onChange={setDataViewMode} />
-                  <div className="text-sm text-muted-foreground">Mostrar</div>
-                  <select
-                    value={String(pageSize)}
-                    onChange={(e) => {
-                      const v = e.target.value
-                      const next = v === 'all' ? 'all' : (Number(v) as PageSizeOption)
-                      setPageSize(next)
-                      setPage(1)
-                    }}
-                    className="flex h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-                    aria-label="Productos por página"
-                  >
-                    {PAGE_SIZE_OPTIONS.map((option) => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                    <option value="all">Todos</option>
-                  </select>
-
-                  {pageSize !== 'all' ? (
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPage((p) => Math.max(1, p - 1))}
-                        disabled={page <= 1}
-                        className="h-8 px-3"
-                      >
-                        Anterior
-                      </Button>
-                      <div className="text-sm text-muted-foreground whitespace-nowrap">
-                        Página <span className="font-medium text-foreground">{page}</span> /{' '}
-                        <span className="font-medium text-foreground">{pageCount}</span>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                        disabled={page >= pageCount}
-                        className="h-8 px-3"
-                      >
-                        Siguiente
-                      </Button>
-                    </div>
-                  ) : null}
-
-                  {canManageProducts ? <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={toggleSelectPage}
-                    className="h-8 px-3"
-                  >
-                    {selectionScope === 'page' && selectedIds.size === materiales.length
-                      ? 'Quitar selección (página)'
-                      : 'Seleccionar página'}
-                  </Button> : null}
-                  {canManageProducts ? <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={toggleSelectAllDb}
-                    className="h-8 px-3"
-                  >
-                    {selectionScope === 'all' ? 'Quitar selección (BD)' : 'Seleccionar todos (BD)'}
-                  </Button> : null}
-                  {canManageProducts ? <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void handleBulkDelete()}
-                    disabled={selectionScope === 'none' || (selectionScope === 'page' && selectedIds.size === 0)}
-                    className="h-8 px-3 text-red-600"
-                  >
-                    Eliminar seleccionados{selectedCount ? ` (${selectedCount})` : ''}
-                  </Button> : null}
-                </div>
-              </div>
+              {renderPaginationBar('top')}
 
               {dataViewMode === 'grid' ? (
               <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
@@ -1552,10 +1571,7 @@ export default function ProductosPage() {
                 const tipoComercial = String(material.tipoNombre ?? '').trim()
                 const externalIdTrim = String(material.externalId ?? '').trim()
                 const materialNombreView = externalIdTrim ? `(${externalIdTrim}) ${material.nombre}` : material.nombre
-                const specs = [
-                  material.ancho ? `Ancho ${material.ancho}cm` : null,
-                  material.color ? `Color ${material.color}` : null,
-                ].filter(Boolean).join(" • ")
+                const specs = getMaterialSpecs(material)
 
                 const wh = material.stocks?.[0]?.warehouse ?? null
                 const stockForView = bodegaFiltro ? (material.stocks?.[0]?.quantity ?? 0) : material.stockActual
@@ -1647,10 +1663,7 @@ export default function ProductosPage() {
                 const tipoComercial = String(material.tipoNombre ?? '').trim()
                 const externalIdTrim = String(material.externalId ?? '').trim()
                 const materialNombreView = externalIdTrim ? `(${externalIdTrim}) ${material.nombre}` : material.nombre
-                const specs = [
-                  material.ancho ? `Ancho ${material.ancho}cm` : null,
-                  material.color ? `Color ${material.color}` : null,
-                ].filter(Boolean).join(" • ")
+                const specs = getMaterialSpecs(material)
 
                 const wh = material.stocks?.[0]?.warehouse ?? null
                 const stockForView = bodegaFiltro ? (material.stocks?.[0]?.quantity ?? 0) : material.stockActual
@@ -1766,6 +1779,7 @@ export default function ProductosPage() {
               })}
               </div>
               )}
+              {renderPaginationBar('bottom')}
             </div>
           )}
         </CardContent>
@@ -1984,20 +1998,41 @@ export default function ProductosPage() {
 
               {/* Especificaciones */}
               {tipoProducto === 'METRAJE' ? (
-                <div>
-                  <Label htmlFor="ancho">Ancho (cm)</Label>
-                  <Input
-                    id="ancho"
-                    type="number"
-                    step="0.01"
-                    value={formData.ancho}
-                    onChange={(e) => setFormData({ ...formData, ancho: e.target.value })}
-                    placeholder="137"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Recomendado para productos que se cotizan por metraje.
-                  </p>
-                </div>
+                <>
+                  <div>
+                    <Label htmlFor="ancho">Ancho base {unidadCobro === 'm2' ? '(cm)' : '(cm opcional)'}</Label>
+                    <Input
+                      id="ancho"
+                      type="number"
+                      step="0.01"
+                      value={formData.ancho}
+                      onChange={(e) => setFormData({ ...formData, ancho: e.target.value })}
+                      placeholder="137"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {unidadCobro === 'm2'
+                        ? 'Úsalo junto con el alto base para que el cotizador respete la tarifa mínima o exacta del tamaño cargado.'
+                        : 'Opcional para materiales cobrados por metro lineal.'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="largo">{unidadCobro === 'm2' ? 'Alto base (cm)' : 'Largo base (ml)'}</Label>
+                    <Input
+                      id="largo"
+                      type="number"
+                      step="0.01"
+                      value={formData.largo}
+                      onChange={(e) => setFormData({ ...formData, largo: e.target.value })}
+                      placeholder={unidadCobro === 'm2' ? '250' : '1'}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {unidadCobro === 'm2'
+                        ? 'Este campo se usa como alto en el cotizador por metraje.'
+                        : 'Si lo defines, el cotizador por metro lineal lo toma como largo sugerido por unidad.'}
+                    </p>
+                  </div>
+                </>
               ) : null}
 
               <div>

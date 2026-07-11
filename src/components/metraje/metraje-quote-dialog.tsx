@@ -298,7 +298,7 @@ export function MetrajeQuoteDialog(props: {
         altoCm: altoCmN,
       })
 
-      if (points.length >= 2) {
+      if (points.length > 0) {
         const total = computePiecewiseLinearTotal(medidaPorUnidad, points)
         // Regla del usuario: si es menor, mantener la mínima.
         const minTotal = points[0].priceTotal
