@@ -36,6 +36,13 @@ export interface CotizacionPdfItem {
   instalacion: boolean
   costoInstalacion?: number
   imagenUrl?: string | null
+  additionalFieldTitle?: string | null
+  additionalFieldDescription?: string | null
+  referenceImage?: {
+    name?: string | null
+    url: string
+    scalePct?: number | null
+  } | null
   material: CotizacionPdfMaterial | null
 }
 
@@ -462,6 +469,31 @@ function createStyles(t: CotizacionTemplateSettings, StyleSheet: ReactPdfCompone
       borderRadius: 3,
       marginRight: 6,
     },
+    itemExtraBox: {
+      marginTop: 6,
+      padding: 6,
+      borderWidth: 1,
+      borderColor: t.colors.tableBorder,
+      backgroundColor: t.colors.sectionBackground,
+    },
+    itemExtraTitle: {
+      fontSize: Math.max(t.typography.baseFontSize - 2, 8),
+      fontWeight: 'bold',
+      color: t.colors.mutedText,
+      marginBottom: 3,
+    },
+    itemExtraHeading: {
+      fontWeight: 'bold',
+      marginBottom: 2,
+    },
+    itemReferenceImage: {
+      marginTop: 6,
+      maxHeight: 160,
+      objectFit: 'contain',
+      borderRadius: 3,
+      borderWidth: 1,
+      borderColor: t.colors.tableBorder,
+    },
     watermarkText: {
       position: 'absolute',
       top: pageDimsPt.height * 0.45,
@@ -560,6 +592,38 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
     ? cotizacion.paymentMethods.map((x) => String(x || '').trim()).filter(Boolean).join(', ')
     : ''
   const boldUrlTexto = (cotizacion.boldCheckoutUrl ?? '').trim()
+
+  const renderItemExtras = (item: CotizacionPdfItem) => {
+    const additionalTitle = (item.additionalFieldTitle ?? '').trim()
+    const additionalDescription = (item.additionalFieldDescription ?? '').trim()
+    const referenceImageUrl = (item.referenceImage?.url ?? '').trim()
+    const referenceScale = Number(item.referenceImage?.scalePct ?? 100)
+    const normalizedScale = referenceScale === 25 || referenceScale === 50 || referenceScale === 75 || referenceScale === 100
+      ? referenceScale
+      : 100
+
+    if (!additionalTitle && !additionalDescription && !referenceImageUrl) return null
+
+    return (
+      <View style={styles.itemExtraBox}>
+        {(additionalTitle || additionalDescription) ? (
+          <>
+            <Text style={styles.itemExtraTitle}>Campo adicional</Text>
+            {additionalTitle ? <Text style={styles.itemExtraHeading}>{additionalTitle}</Text> : null}
+            {additionalDescription ? <Text>{additionalDescription}</Text> : null}
+          </>
+        ) : null}
+        {referenceImageUrl ? (
+          <>
+            <Text style={[styles.itemExtraTitle, additionalTitle || additionalDescription ? { marginTop: 6 } : null]}>
+              Imagen de referencia ({normalizedScale}%)
+            </Text>
+            <Image style={[styles.itemReferenceImage, { width: `${normalizedScale}%` }]} src={referenceImageUrl} />
+          </>
+        ) : null}
+      </View>
+    )
+  }
 
   const vendedorTelefonoTexto = (
     String(cotizacion.vendedor?.telefono ?? '').trim() || String(t.blocks?.vendedor?.telefonoOverride ?? '').trim()
@@ -869,6 +933,7 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
                             .join(', ')}
                         </Text>
                       ) : null}
+                      {renderItemExtras(item)}
                     </View>
                     <Text style={styles.col2}>{(item.ancho ?? 0).toFixed(2)}</Text>
                     <Text style={styles.col3}>{(item.alto ?? 0).toFixed(2)}</Text>
@@ -924,6 +989,7 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
                             .join(', ')}
                         </Text>
                       ) : null}
+                      {renderItemExtras(item)}
                     </View>
                     <Text style={styles.colU2}>{item.cantidad}</Text>
                     <Text style={styles.colU3}>{formatCurrency(item.precioUnitario, locale, currency)}</Text>

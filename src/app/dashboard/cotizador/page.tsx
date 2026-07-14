@@ -5,7 +5,7 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import dynamic from "next/dynamic"
@@ -36,6 +36,14 @@ import { buildWhatsAppWebUrl } from "@/lib/whatsapp-link"
 import { MobilePdfFallback, useIsMobileViewport } from '@/components/pdf/mobile-pdf-fallback'
 import { LitografiaAiAssistant } from "@/components/litografia/litografia-ai-assistant"
 import type { LitografiaAiHandoff } from "@/lib/litografia-ai-handoff"
+import { CrmFileLibraryPicker } from '@/components/crm/crm-file-library-picker'
+import type { CrmFileItem } from '@/components/crm/crm-files-types'
+import {
+  buildQuoteItemObservaciones,
+  parseQuoteItemObservaciones,
+  type QuoteItemExtraMeta,
+  type QuoteReferenceImageScalePct,
+} from '@/lib/quote-item-metadata'
 
 function PdfPreviewLoading() {
   const { t } = useI18n()
@@ -96,6 +104,13 @@ interface ItemCotizacion {
   costoTroquelado: number
   costoInstalacion: number
   observaciones: string
+  additionalFieldTitle: string
+  additionalFieldDescription: string
+  referenceImage: {
+    name: string
+    url: string
+    scalePct: QuoteReferenceImageScalePct
+  } | null
   terminados: Array<{
     terminadoId: string
     unidadAplicacion: string
@@ -104,6 +119,13 @@ interface ItemCotizacion {
     costoTotal: number
     nombre?: string
   }>
+}
+
+type ItemExtrasEditorState = {
+  itemId: string
+  additionalFieldTitle: string
+  additionalFieldDescription: string
+  referenceImage: ItemCotizacion['referenceImage']
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -132,10 +154,107 @@ function getLitografiaItemIncludedIvaPct(raw: unknown): number | null {
   return Number.isFinite(ivaPct) && ivaPct > 0 ? ivaPct : null
 }
 
+function getReferenceImageScaleLabel(scalePct: QuoteReferenceImageScalePct) {
+  return `${scalePct}%`
+}
+
+function mapLibraryFileToReferenceImage(item: CrmFileItem): ItemCotizacion['referenceImage'] {
+  if (!item.url) {
+    throw new Error('Solo puedes seleccionar archivos existentes del Administrador de archivos.')
+  }
+
+  return {
+    name: item.name,
+    url: item.url,
+    scalePct: 100,
+  }
+}
+
+function normalizePreviewCotizacion(raw: unknown): CotizacionPdfData & { id: string; estado?: string } {
+  const record = asRecord(raw)
+  const cliente = asRecord(record.cliente)
+  const vendedor = asRecord(record.vendedor)
+  const items = Array.isArray(record.items) ? record.items : []
+
+  return {
+    id: String(record.id || ''),
+    numero: String(record.numero || ''),
+    createdAt: typeof record.createdAt === 'string' || record.createdAt instanceof Date ? record.createdAt : new Date().toISOString(),
+    validezDias: Number(record.validezDias ?? 15) || 15,
+    estado: typeof record.estado === 'string' ? record.estado : undefined,
+    observaciones: typeof record.observaciones === 'string' ? record.observaciones : null,
+    garantia: typeof record.garantia === 'string' ? record.garantia : null,
+    paymentMethods: Array.isArray(record.paymentMethods) ? record.paymentMethods.map((item) => String(item || '').trim()).filter(Boolean) : [],
+    boldCheckoutUrl: typeof record.boldCheckoutUrl === 'string' ? record.boldCheckoutUrl : null,
+    cliente: {
+      nombre: String(cliente.nombre || '-'),
+      email: typeof cliente.email === 'string' ? cliente.email : null,
+      telefono: typeof cliente.telefono === 'string' ? cliente.telefono : null,
+      empresa: typeof cliente.empresa === 'string' ? cliente.empresa : null,
+    },
+    vendedor: {
+      name: typeof vendedor.name === 'string' ? vendedor.name : null,
+      email: typeof vendedor.email === 'string' ? vendedor.email : null,
+      role: typeof vendedor.role === 'string' ? vendedor.role : null,
+      telefono: typeof vendedor.telefono === 'string' ? vendedor.telefono : null,
+      cargo: typeof vendedor.cargo === 'string' ? vendedor.cargo : null,
+      sedeNombre: typeof asRecord(vendedor.sedeDefault).nombre === 'string' ? String(asRecord(vendedor.sedeDefault).nombre) : null,
+    },
+    items: items.map((itemRaw) => {
+      const item = asRecord(itemRaw)
+      const material = asRecord(item.material)
+      const parsedObservaciones = parseQuoteItemObservaciones(item.observaciones)
+      const unidadRaw = String(item.unidad || 'unidad')
+      const unidad = unidadRaw.toLowerCase()
+      const ancho = item.ancho != null ? Number(item.ancho) / 100 : null
+      const alto = item.alto != null ? Number(item.alto) / 100 : null
+      return {
+        descripcion: String(item.descripcion || ''),
+        unidad: unidadRaw,
+        cantidad: Number(item.cantidad ?? 0) || 0,
+        ancho,
+        alto,
+        metrosCuadrados: unidad === 'ml'
+          ? (ancho ?? 0)
+          : unidad === 'm2'
+            ? (item.area != null ? Number(item.area) || 0 : (ancho ?? 0) * (alto ?? 0))
+            : 0,
+        precioUnitario: Number(item.precioUnitario ?? 0) || 0,
+        subtotal: Number(item.subtotal ?? 0) || 0,
+        laminado: Boolean(item.laminado),
+        troquelado: Boolean(item.troquelado),
+        instalacion: Boolean(item.instalacion),
+        costoInstalacion: Number(item.costoInstalacion ?? 0) || 0,
+        imagenUrl: typeof material.imagenUrl === 'string' ? material.imagenUrl : null,
+        additionalFieldTitle: parsedObservaciones.extraMeta?.additionalFieldTitle || null,
+        additionalFieldDescription: parsedObservaciones.extraMeta?.additionalFieldDescription || null,
+        referenceImage: parsedObservaciones.extraMeta?.referenceImage?.url
+          ? {
+              name: parsedObservaciones.extraMeta.referenceImage.name || 'Referencia',
+              url: parsedObservaciones.extraMeta.referenceImage.url,
+              scalePct: parsedObservaciones.extraMeta.referenceImage.scalePct,
+            }
+          : null,
+        material: item.material
+          ? {
+              nombre: String(material.nombre || ''),
+              tipo: String(material.tipo || ''),
+              imagenUrl: typeof material.imagenUrl === 'string' ? material.imagenUrl : null,
+            }
+          : null,
+      }
+    }),
+    subtotal: Number(record.subtotal ?? 0) || 0,
+    iva: Number(record.iva ?? 0) || 0,
+    total: Number(record.total ?? 0) || 0,
+  }
+}
+
 export default function CotizadorPage() {
   const { t, language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-MX'
   const isMobileViewport = useIsMobileViewport()
+  const referenceImageInputRef = useRef<HTMLInputElement | null>(null)
 
   // La facturación electrónica aún no está habilitada: se muestran opciones, pero quedan deshabilitadas.
   const electronicBillingEnabled = false
@@ -234,6 +353,9 @@ export default function CotizadorPage() {
   // Items
   const [items, setItems] = useState<ItemCotizacion[]>([])
   const [editingManualItemId, setEditingManualItemId] = useState<string | null>(null)
+  const [itemExtrasEditor, setItemExtrasEditor] = useState<ItemExtrasEditorState | null>(null)
+  const [uploadingReferenceImage, setUploadingReferenceImage] = useState(false)
+  const [referenceLibraryPickerOpen, setReferenceLibraryPickerOpen] = useState(false)
   const [litografiaEdit, setLitografiaEdit] = useState<{ itemId: string; meta: LitografiaMeta } | null>(null)
   const [metrajeEdit, setMetrajeEdit] = useState<{ itemId: string; item: Partial<MetrajeItemDraft> } | null>(null)
   
@@ -411,6 +533,7 @@ export default function CotizadorPage() {
               const precioUnitarioRaw = it.precioUnitario
               const subtotalRaw = it.subtotal
               const observacionesRaw = it.observaciones
+              const parsedItemObservaciones = parseQuoteItemObservaciones(observacionesRaw)
 
               const terminadosRaw = it.terminados
               const terminadosArr = Array.isArray(terminadosRaw) ? terminadosRaw : []
@@ -451,8 +574,16 @@ export default function CotizadorPage() {
                 costoLaminado: 0,
                 costoTroquelado: 0,
                 costoInstalacion: it.costoInstalacion != null ? Number(it.costoInstalacion) : 0,
-                observaciones:
-                  typeof observacionesRaw === "string" ? String(observacionesRaw) : "",
+                observaciones: parsedItemObservaciones.plainText,
+                additionalFieldTitle: parsedItemObservaciones.extraMeta?.additionalFieldTitle || '',
+                additionalFieldDescription: parsedItemObservaciones.extraMeta?.additionalFieldDescription || '',
+                referenceImage: parsedItemObservaciones.extraMeta?.referenceImage?.url
+                  ? {
+                      name: parsedItemObservaciones.extraMeta.referenceImage.name || 'Referencia',
+                      url: parsedItemObservaciones.extraMeta.referenceImage.url,
+                      scalePct: parsedItemObservaciones.extraMeta.referenceImage.scalePct,
+                    }
+                  : null,
                 terminados,
               }
             })
@@ -578,7 +709,7 @@ export default function CotizadorPage() {
       if (!res.ok) throw new Error(t('quotes.errors.loadQuote'))
       const data = await res.json()
       if (!data?.success || !data?.data) throw new Error(data?.error ?? t('quotes.errors.loadQuote'))
-      setPreviewCotizacion(data.data as CotizacionPdfData & { id: string; estado?: string })
+      setPreviewCotizacion(normalizePreviewCotizacion(data.data))
 
       const auditRes = await fetch(`/api/cotizaciones/${id}/audit`, { cache: 'no-store' })
       if (auditRes.ok) {
@@ -878,11 +1009,21 @@ export default function CotizadorPage() {
       costoTroquelado: 0,
       costoInstalacion: 0,
       observaciones: itemForm.observaciones,
+      additionalFieldTitle: '',
+      additionalFieldDescription: '',
+      referenceImage: null,
       terminados: [],
     }
 
     if (editingManualItemId) {
-      setItems((prev) => prev.map((it) => (it.id === editingManualItemId ? nuevoItem : it)))
+      setItems((prev) => prev.map((it) => (it.id === editingManualItemId
+        ? {
+            ...nuevoItem,
+            additionalFieldTitle: it.additionalFieldTitle,
+            additionalFieldDescription: it.additionalFieldDescription,
+            referenceImage: it.referenceImage,
+          }
+        : it)))
       setEditingManualItemId(null)
     } else {
       setItems((prev) => [...prev, nuevoItem])
@@ -927,6 +1068,9 @@ export default function CotizadorPage() {
       ]
         .filter(Boolean)
         .join("\n"),
+      additionalFieldTitle: '',
+      additionalFieldDescription: '',
+      referenceImage: null,
       terminados: [],
     }
 
@@ -986,6 +1130,9 @@ export default function CotizadorPage() {
       costoTroquelado: 0,
       costoInstalacion: 0,
       observaciones,
+      additionalFieldTitle: '',
+      additionalFieldDescription: '',
+      referenceImage: null,
       terminados: [],
     }
 
@@ -1057,6 +1204,9 @@ export default function CotizadorPage() {
       costoTroquelado: 0,
       costoInstalacion: 0,
       observaciones: draft.observaciones,
+      additionalFieldTitle: '',
+      additionalFieldDescription: '',
+      referenceImage: null,
       terminados: (draft.terminados || []) as any,
     }
 
@@ -1087,6 +1237,69 @@ export default function CotizadorPage() {
     )
     setMetrajeEdit(null)
     setMetrajeOpen(false)
+  }
+
+  const openItemExtrasEditor = (item: ItemCotizacion) => {
+    setItemExtrasEditor({
+      itemId: item.id,
+      additionalFieldTitle: item.additionalFieldTitle || '',
+      additionalFieldDescription: item.additionalFieldDescription || '',
+      referenceImage: item.referenceImage,
+    })
+  }
+
+  const saveItemExtrasEditor = () => {
+    if (!itemExtrasEditor) return
+    setItems((prev) =>
+      prev.map((item) =>
+        item.id === itemExtrasEditor.itemId
+          ? {
+              ...item,
+              additionalFieldTitle: itemExtrasEditor.additionalFieldTitle.trim(),
+              additionalFieldDescription: itemExtrasEditor.additionalFieldDescription.trim(),
+              referenceImage: itemExtrasEditor.referenceImage,
+            }
+          : item
+      )
+    )
+    setItemExtrasEditor(null)
+  }
+
+  const updateItemReferenceScale = (scalePct: QuoteReferenceImageScalePct) => {
+    setItemExtrasEditor((current) =>
+      current && current.referenceImage
+        ? {
+            ...current,
+            referenceImage: { ...current.referenceImage, scalePct },
+          }
+        : current
+    )
+  }
+
+  const uploadReferenceImageFile = async (file: File) => {
+    setUploadingReferenceImage(true)
+    try {
+      const formData = new FormData()
+      formData.append('path', 'Cotizaciones/Referencias')
+      formData.append('file', file)
+
+      const response = await fetch('/api/crm/files', { method: 'POST', body: formData })
+      const json = (await response.json().catch(() => ({}))) as { success?: boolean; data?: CrmFileItem[]; error?: string }
+      if (!response.ok || !json.success || !Array.isArray(json.data) || !json.data[0]) {
+        throw new Error(json.error || 'No se pudo subir la imagen de referencia.')
+      }
+
+      const referenceImage = mapLibraryFileToReferenceImage(json.data[0])
+      setItemExtrasEditor((current) => (current ? { ...current, referenceImage } : current))
+    } finally {
+      setUploadingReferenceImage(false)
+      if (referenceImageInputRef.current) referenceImageInputRef.current.value = ''
+    }
+  }
+
+  const handleReferenceLibraryPick = async (item: CrmFileItem) => {
+    const referenceImage = mapLibraryFileToReferenceImage(item)
+    setItemExtrasEditor((current) => (current ? { ...current, referenceImage } : current))
   }
 
   const eliminarItem = (id: string) => {
@@ -1247,7 +1460,21 @@ export default function CotizadorPage() {
             costoLaminado: item.costoLaminado,
             costoTroquelado: item.costoTroquelado,
             costoInstalacion: item.costoInstalacion,
-            observaciones: item.observaciones,
+            observaciones: buildQuoteItemObservaciones({
+              plainText: parseQuoteItemObservaciones(item.observaciones).plainText,
+              extraMeta: {
+                version: 1,
+                additionalFieldTitle: item.additionalFieldTitle.trim() || undefined,
+                additionalFieldDescription: item.additionalFieldDescription.trim() || undefined,
+                referenceImage: item.referenceImage?.url
+                  ? {
+                      name: item.referenceImage.name,
+                      url: item.referenceImage.url,
+                      scalePct: item.referenceImage.scalePct,
+                    }
+                  : undefined,
+              } satisfies QuoteItemExtraMeta,
+            }),
             terminados: item.terminados,
           })),
           subtotal,
@@ -1336,6 +1563,7 @@ export default function CotizadorPage() {
     setItems([])
     setShowItemForm(false)
     setEditingManualItemId(null)
+    setItemExtrasEditor(null)
     setLitografiaEdit(null)
     setMetrajeEdit(null)
     resetItemForm()
@@ -1373,6 +1601,126 @@ export default function CotizadorPage() {
         open={customProductOpen}
         onOpenChange={setCustomProductOpen}
         defaultNombre={materialSearch}
+      />
+
+      <input
+        ref={referenceImageInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) {
+            void uploadReferenceImageFile(file)
+          }
+        }}
+      />
+
+      <Dialog open={!!itemExtrasEditor} onOpenChange={(open) => {
+        if (!open) setItemExtrasEditor(null)
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Campo adicional e imagen de referencia</DialogTitle>
+            <DialogDescription>
+              El contenido configurado aquí se mostrará debajo del ítem seleccionado dentro de la cotización PDF.
+            </DialogDescription>
+          </DialogHeader>
+
+          {itemExtrasEditor ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="item-extra-title">Título del campo adicional</Label>
+                <Input
+                  id="item-extra-title"
+                  value={itemExtrasEditor.additionalFieldTitle}
+                  onChange={(event) => setItemExtrasEditor((current) => current ? { ...current, additionalFieldTitle: event.target.value } : current)}
+                  placeholder="Ej. Especificación especial"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="item-extra-description">Descripción del campo adicional</Label>
+                <Textarea
+                  id="item-extra-description"
+                  rows={4}
+                  value={itemExtrasEditor.additionalFieldDescription}
+                  onChange={(event) => setItemExtrasEditor((current) => current ? { ...current, additionalFieldDescription: event.target.value } : current)}
+                  placeholder="Agrega el detalle que quieres mostrar dentro de este bloque."
+                />
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-slate-200 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-medium text-slate-900">Imagen de referencia</p>
+                    <p className="text-sm text-slate-500">Se imprimirá debajo de este ítem en la cotización.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" onClick={() => referenceImageInputRef.current?.click()} disabled={uploadingReferenceImage}>
+                      {uploadingReferenceImage ? 'Subiendo...' : 'Cargar desde computador'}
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => setReferenceLibraryPickerOpen(true)}>
+                      Cargar desde Administrador de archivos
+                    </Button>
+                    {itemExtrasEditor.referenceImage ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="text-red-600"
+                        onClick={() => setItemExtrasEditor((current) => current ? { ...current, referenceImage: null } : current)}
+                      >
+                        Quitar imagen
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+
+                {itemExtrasEditor.referenceImage ? (
+                  <div className="space-y-3">
+                    <img src={itemExtrasEditor.referenceImage.url} alt={itemExtrasEditor.referenceImage.name} className="max-h-56 rounded-lg border border-slate-200 object-contain" />
+                    <div className="space-y-2">
+                      <Label>Tamaño en la cotización</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {[100, 75, 50, 25].map((scale) => (
+                          <Button
+                            key={scale}
+                            type="button"
+                            variant={itemExtrasEditor.referenceImage?.scalePct === scale ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => updateItemReferenceScale(scale as QuoteReferenceImageScalePct)}
+                          >
+                            {scale}%
+                          </Button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-slate-500">Posición: debajo del ítem seleccionado.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">Todavía no hay una imagen asociada a este ítem.</p>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setItemExtrasEditor(null)}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={saveItemExtrasEditor}>
+              Guardar extras del ítem
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <CrmFileLibraryPicker
+        open={referenceLibraryPickerOpen}
+        onOpenChange={setReferenceLibraryPickerOpen}
+        onPick={handleReferenceLibraryPick}
+        allowFolders={false}
+        title="Cargar imagen de referencia desde Administrador de archivos"
       />
 
       <Dialog open={createClienteInlineOpen} onOpenChange={setCreateClienteInlineOpen}>
@@ -2206,6 +2554,22 @@ export default function CotizadorPage() {
                               ) : null}
                             </div>
                           ) : null}
+                          {item.additionalFieldTitle || item.additionalFieldDescription ? (
+                            <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Campo adicional</p>
+                              {item.additionalFieldTitle ? <p className="mt-1 text-sm font-medium text-slate-900">{item.additionalFieldTitle}</p> : null}
+                              {item.additionalFieldDescription ? <p className="mt-1 text-sm text-slate-600">{item.additionalFieldDescription}</p> : null}
+                            </div>
+                          ) : null}
+                          {item.referenceImage ? (
+                            <div className="mt-3 rounded-md border border-slate-200 bg-white p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Imagen de referencia</p>
+                                <span className="text-xs text-slate-500">Debajo de este ítem · {getReferenceImageScaleLabel(item.referenceImage.scalePct)}</span>
+                              </div>
+                              <img src={item.referenceImage.url} alt={item.referenceImage.name} className="mt-2 max-h-40 rounded border border-slate-200 object-contain" />
+                            </div>
+                          ) : null}
                           </div>
                           <div className="space-y-1 text-left sm:text-right">
                             <p className="text-sm text-muted-foreground">
@@ -2216,6 +2580,9 @@ export default function CotizadorPage() {
                             </p>
                             <Button variant="ghost" size="sm" onClick={() => editarItem(item)} disabled={!canEditItem} title={editDisabledReason || undefined}>
                               {t('common.edit')}
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => openItemExtrasEditor(item)}>
+                              Campo adicional / imagen
                             </Button>
                             <Button
                               variant="ghost"

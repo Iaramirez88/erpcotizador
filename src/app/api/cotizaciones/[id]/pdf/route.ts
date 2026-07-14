@@ -8,6 +8,7 @@ import { ModuleKey } from '@prisma/client';
 import { createElement } from 'react';
 import { getReactPdfRenderer, pdfToBuffer } from '@/lib/react-pdf-node';
 import { requireEmpresaIdForUser } from '@/lib/rbac';
+import { parseQuoteItemObservaciones } from '@/lib/quote-item-metadata';
 export const runtime = 'nodejs';
 
 type CotizacionPayload = Prisma.CotizacionGetPayload<{
@@ -192,6 +193,7 @@ export async function GET(
           sedeNombre: sanitizeText(cotizacion.vendedor?.sedeDefault?.nombre, '') || null,
         },
         items: cotizacion.items.map((item) => {
+          const parsedObservaciones = parseQuoteItemObservaciones(item.observaciones)
           const unidadRaw = sanitizeText(item.unidad, 'unidad').trim()
           const unidad = unidadRaw.toLowerCase()
           const anchoM = typeof item.ancho === 'number' ? item.ancho / 100 : null
@@ -222,6 +224,15 @@ export async function GET(
             instalacion: item.instalacion,
             costoInstalacion: safeNumber(item.costoInstalacion, 0),
             imagenUrl: materialImage,
+            additionalFieldTitle: parsedObservaciones.extraMeta?.additionalFieldTitle || null,
+            additionalFieldDescription: parsedObservaciones.extraMeta?.additionalFieldDescription || null,
+            referenceImage: parsedObservaciones.extraMeta?.referenceImage?.url
+              ? {
+                  name: sanitizeText(parsedObservaciones.extraMeta.referenceImage.name, 'Referencia') || 'Referencia',
+                  url: parsedObservaciones.extraMeta.referenceImage.url,
+                  scalePct: parsedObservaciones.extraMeta.referenceImage.scalePct,
+                }
+              : null,
             material: item.material
               ? {
                   nombre: sanitizeText(item.material.nombre, ''),

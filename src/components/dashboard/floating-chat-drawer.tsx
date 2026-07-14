@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { CrmFileLibraryPicker } from '@/components/crm/crm-file-library-picker'
+import type { CrmFileItem } from '@/components/crm/crm-files-types'
 import { cn } from '@/lib/utils'
 import { uploadFileWithProgress } from '@/lib/upload-file-with-progress'
 
@@ -252,6 +254,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   const [teamMessageDraft, setTeamMessageDraft] = useState('')
   const [pendingTeamAttachments, setPendingTeamAttachments] = useState<ChatAttachment[]>([])
   const [teamAttachmentUpload, setTeamAttachmentUpload] = useState<UploadProgressState | null>(null)
+  const [teamLibraryPickerOpen, setTeamLibraryPickerOpen] = useState(false)
   const [groupForm, setGroupForm] = useState({ title: '', participantUserIds: [] as string[] })
   const [showCrmScrollToBottom, setShowCrmScrollToBottom] = useState(false)
   const [showTeamScrollToBottom, setShowTeamScrollToBottom] = useState(false)
@@ -813,6 +816,26 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
     }
   }
 
+  async function handleTeamLibraryAttachment(item: CrmFileItem) {
+    if (!selectedThreadId) {
+      alert('Selecciona primero un chat o grupo para adjuntar archivos.')
+      return
+    }
+
+    const attachment = mapLibraryItemToAttachment(item)
+    const sent = await sendTeamMessage({
+      bodyText: teamMessageDraft,
+      attachments: [attachment],
+      suppressEmptyAlert: true,
+    })
+
+    if (!sent) {
+      setPendingTeamAttachments((current) =>
+        current.some((existing) => existing.url === attachment.url) ? current : [...current, attachment]
+      )
+    }
+  }
+
   async function handleCreateGroup() {
     if (!groupForm.title.trim()) {
       alert('Define un nombre para el grupo.')
@@ -888,6 +911,13 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">Chat global</p>
+            <CrmFileLibraryPicker
+              open={teamLibraryPickerOpen}
+              onOpenChange={setTeamLibraryPickerOpen}
+              onPick={handleTeamLibraryAttachment}
+              allowFolders={false}
+              title="Cargar desde Administrador de archivos"
+            />
                 <h3 className="mt-0.5 text-[14px] font-semibold text-slate-950 sm:text-[15px]">Mensajes y novedades</h3>
                 <p className="mt-0.5 text-xs text-slate-600">Trabaja con el chat sin bloquear el resto del dashboard.</p>
               </div>
@@ -1345,6 +1375,13 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                               <Paperclip className="mr-2 h-4 w-4" />
                               Documento
                             </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={(event) => {
+                              event.preventDefault()
+                              setTeamLibraryPickerOpen(true)
+                            }}>
+                              <Paperclip className="mr-2 h-4 w-4" />
+                              Cargar desde Administrador de archivos
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                         <Textarea ref={teamTextareaRef} value={teamMessageDraft} onChange={(event) => setTeamMessageDraft(event.target.value)} onKeyDown={handleTeamMessageKeyDown} rows={1} placeholder={selectedThread?.type === 'GROUP' ? 'Escribe un mensaje para el grupo...' : 'Escribe un mensaje para tu compañero...'} disabled={!selectedThreadId} className="min-h-[44px] max-h-[140px] flex-1 overflow-hidden rounded-2xl bg-white px-3 py-2.5 text-sm leading-5" />
@@ -1496,4 +1533,18 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
       </Dialog>
     </div>
   )
+}
+
+function mapLibraryItemToAttachment(item: CrmFileItem): ChatAttachment {
+  if (!item.url) {
+    throw new Error('Solo puedes vincular archivos existentes de la biblioteca, no carpetas.')
+  }
+
+  return {
+    name: item.name,
+    url: item.url,
+    type: item.type === 'image' ? 'image' : 'document',
+    mimeType: item.mimeType,
+    sizeBytes: item.sizeBytes,
+  }
 }

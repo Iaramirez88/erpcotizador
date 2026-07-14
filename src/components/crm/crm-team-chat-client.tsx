@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { CrmFileLibraryPicker } from '@/components/crm/crm-file-library-picker'
+import type { CrmFileItem } from '@/components/crm/crm-files-types'
 import { cn } from '@/lib/utils'
 import { uploadFileWithProgress } from '@/lib/upload-file-with-progress'
 
@@ -148,6 +150,7 @@ export function CrmTeamChatClient() {
   const [messageDraft, setMessageDraft] = useState('')
   const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([])
   const [attachmentUpload, setAttachmentUpload] = useState<UploadProgressState | null>(null)
+  const [libraryPickerOpen, setLibraryPickerOpen] = useState(false)
   const [groupForm, setGroupForm] = useState({ title: '', participantUserIds: [] as string[] })
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
 
@@ -427,6 +430,26 @@ export function CrmTeamChatClient() {
     }
   }
 
+  async function handleLibraryAttachment(item: CrmFileItem) {
+    if (!selectedThreadId) {
+      alert('Selecciona un chat o grupo antes de adjuntar archivos.')
+      return
+    }
+
+    const attachment = mapLibraryItemToAttachment(item)
+    const sent = await sendMessage({
+      bodyText: messageDraft,
+      attachments: [attachment],
+      suppressEmptyAlert: true,
+    })
+
+    if (!sent) {
+      setPendingAttachments((current) =>
+        current.some((existing) => existing.url === attachment.url) ? current : [...current, attachment]
+      )
+    }
+  }
+
   async function handleCreateGroup() {
     if (!groupForm.title.trim()) {
       alert('Escribe un nombre para el grupo.')
@@ -527,6 +550,13 @@ export function CrmTeamChatClient() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <CardTitle className="text-lg">Hilos internos</CardTitle>
+              <CrmFileLibraryPicker
+                open={libraryPickerOpen}
+                onOpenChange={setLibraryPickerOpen}
+                onPick={handleLibraryAttachment}
+                allowFolders={false}
+                title="Cargar desde Administrador de archivos"
+              />
                   <CardDescription>Alterna entre directos y grupos creados por ti.</CardDescription>
                 </div>
                 <DropdownMenu>
@@ -695,6 +725,9 @@ export function CrmTeamChatClient() {
                       <Button type="button" variant="outline" size="icon" className="rounded-xl" onClick={() => fileInputRef.current?.click()} disabled={!selectedThreadId || uploadingAttachment}>
                         <Paperclip className="h-4 w-4" />
                       </Button>
+                      <Button type="button" variant="outline" className="rounded-xl" onClick={() => setLibraryPickerOpen(true)} disabled={!selectedThreadId || uploadingAttachment}>
+                        Cargar desde Administrador de archivos
+                      </Button>
                     </div>
                   </div>
                   {showEmojiPicker ? (
@@ -802,4 +835,18 @@ export function CrmTeamChatClient() {
     </Dialog>
     </>
   )
+}
+
+function mapLibraryItemToAttachment(item: CrmFileItem): ChatAttachment {
+  if (!item.url) {
+    throw new Error('Solo puedes vincular archivos existentes de la biblioteca, no carpetas.')
+  }
+
+  return {
+    name: item.name,
+    url: item.url,
+    type: item.type === 'image' ? 'image' : 'document',
+    mimeType: item.mimeType,
+    sizeBytes: item.sizeBytes,
+  }
 }

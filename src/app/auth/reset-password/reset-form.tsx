@@ -3,11 +3,13 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useI18n } from "@/components/providers/i18n-provider"
+import { validatePassword } from "@/lib/password-policy"
 
 export default function ResetForm({ token }: { token: string }) {
   const { t } = useI18n()
@@ -18,6 +20,16 @@ export default function ResetForm({ token }: { token: string }) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [message, setMessage] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+
+  const passwordChecks = {
+    length: password.length >= 8,
+    uppercase: /[A-Z]/.test(password),
+    lowercase: /[a-z]/.test(password),
+    number: /[0-9]/.test(password),
+    noSpaces: /^[\x21-\x7E]+$/.test(password),
+  }
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,6 +46,13 @@ export default function ResetForm({ token }: { token: string }) {
     if (password !== confirmPassword) {
       setIsLoading(false)
       setError(t('auth.reset.errors.passwordMismatch'))
+      return
+    }
+
+    const passwordPolicyError = validatePassword(password)
+    if (passwordPolicyError) {
+      setIsLoading(false)
+      setError(passwordPolicyError)
       return
     }
 
@@ -90,30 +109,61 @@ export default function ResetForm({ token }: { token: string }) {
 
             <div className="space-y-2">
               <Label htmlFor="password" className="sr-only">{t('auth.fields.password')}</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder={t('auth.reset.placeholders.newPassword')}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={isLoading || !token}
-                autoComplete="new-password"
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder={t('auth.reset.placeholders.newPassword')}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={isLoading || !token}
+                  autoComplete="new-password"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((current) => !current)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
+                  aria-label={showPassword ? t('auth.password.hide') : t('auth.password.show')}
+                  disabled={isLoading || !token}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                <div>• Mínimo 8 caracteres: {passwordChecks.length ? "OK" : "—"}</div>
+                <div>• 1 mayúscula: {passwordChecks.uppercase ? "OK" : "—"}</div>
+                <div>• 1 minúscula: {passwordChecks.lowercase ? "OK" : "—"}</div>
+                <div>• 1 número: {passwordChecks.number ? "OK" : "—"}</div>
+                <div>• Sin espacios: {passwordChecks.noSpaces ? "OK" : "—"}</div>
+              </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="confirmPassword" className="sr-only">{t('auth.fields.confirmPassword')}</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                placeholder={t('auth.reset.placeholders.confirmPassword')}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                disabled={isLoading || !token}
-                autoComplete="new-password"
-              />
+              <div className="relative">
+                <Input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  placeholder={t('auth.reset.placeholders.confirmPassword')}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  disabled={isLoading || !token}
+                  autoComplete="new-password"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((current) => !current)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-900"
+                  aria-label={showConfirmPassword ? t('auth.password.hide') : t('auth.password.show')}
+                  disabled={isLoading || !token}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
           </CardContent>
 

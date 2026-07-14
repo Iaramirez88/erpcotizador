@@ -6,6 +6,7 @@ import { verifyCotizacionShareToken } from '@/lib/share-token'
 import { createElement } from 'react'
 import { getReactPdfRenderer, pdfToBuffer } from '@/lib/react-pdf-node'
 import { requireEmpresaIdForUser } from '@/lib/rbac'
+import { parseQuoteItemObservaciones } from '@/lib/quote-item-metadata'
 
 export const runtime = 'nodejs'
 
@@ -180,39 +181,53 @@ export async function GET(request: NextRequest) {
         cargo: sanitizeText(cotizacion.vendedor?.cargo, '') || null,
         sedeNombre: sanitizeText(cotizacion.vendedor?.sedeDefault?.nombre, '') || null,
       },
-      items: cotizacion.items.map((item) => ({
-        descripcion: sanitizeText(item.descripcion, 'Ítem'),
-        unidad: sanitizeText(item.unidad, 'unidad'),
-        cantidad: safeNumber(item.cantidad, 0),
-        ancho: typeof item.ancho === 'number' ? item.ancho / 100 : null,
-        alto: typeof item.alto === 'number' ? item.alto / 100 : null,
-        metrosCuadrados: (() => {
-          const unidad = String(item.unidad || '').trim().toLowerCase()
-          const anchoM = typeof item.ancho === 'number' ? item.ancho / 100 : null
-          const altoM = typeof item.alto === 'number' ? item.alto / 100 : null
-          return unidad === 'ml'
-            ? (anchoM ?? 0)
-            : unidad === 'm2'
-              ? (typeof item.area === 'number' ? item.area : (anchoM ?? 0) * (altoM ?? 0))
-              : 0
-        })(),
-        precioUnitario: safeNumber(item.precioUnitario, 0),
-        subtotal: safeNumber(item.subtotal, 0),
-        laminado: item.laminado,
-        troquelado: item.troquelado,
-        instalacion: item.instalacion,
-        costoInstalacion: safeNumber(item.costoInstalacion, 0),
-        imagenUrl: item.material
+      items: cotizacion.items.map((item) => {
+        const parsedObservaciones = parseQuoteItemObservaciones(item.observaciones)
+        const materialImage = item.material
           ? normalizePublicUrl((item.material as { imagenUrl?: unknown }).imagenUrl, origin)
-          : null,
-        material: item.material
-          ? {
-              nombre: sanitizeText(item.material.nombre, ''),
-              tipo: sanitizeText(item.material.tipo, ''),
-              imagenUrl: normalizePublicUrl((item.material as { imagenUrl?: unknown }).imagenUrl, origin),
-            }
-          : null,
-      })),
+          : null
+
+        return {
+          descripcion: sanitizeText(item.descripcion, 'Ítem'),
+          unidad: sanitizeText(item.unidad, 'unidad'),
+          cantidad: safeNumber(item.cantidad, 0),
+          ancho: typeof item.ancho === 'number' ? item.ancho / 100 : null,
+          alto: typeof item.alto === 'number' ? item.alto / 100 : null,
+          metrosCuadrados: (() => {
+            const unidad = String(item.unidad || '').trim().toLowerCase()
+            const anchoM = typeof item.ancho === 'number' ? item.ancho / 100 : null
+            const altoM = typeof item.alto === 'number' ? item.alto / 100 : null
+            return unidad === 'ml'
+              ? (anchoM ?? 0)
+              : unidad === 'm2'
+                ? (typeof item.area === 'number' ? item.area : (anchoM ?? 0) * (altoM ?? 0))
+                : 0
+          })(),
+          precioUnitario: safeNumber(item.precioUnitario, 0),
+          subtotal: safeNumber(item.subtotal, 0),
+          laminado: item.laminado,
+          troquelado: item.troquelado,
+          instalacion: item.instalacion,
+          costoInstalacion: safeNumber(item.costoInstalacion, 0),
+          imagenUrl: materialImage,
+          additionalFieldTitle: parsedObservaciones.extraMeta?.additionalFieldTitle || null,
+          additionalFieldDescription: parsedObservaciones.extraMeta?.additionalFieldDescription || null,
+          referenceImage: parsedObservaciones.extraMeta?.referenceImage?.url
+            ? {
+                name: sanitizeText(parsedObservaciones.extraMeta.referenceImage.name, 'Referencia') || 'Referencia',
+                url: parsedObservaciones.extraMeta.referenceImage.url,
+                scalePct: parsedObservaciones.extraMeta.referenceImage.scalePct,
+              }
+            : null,
+          material: item.material
+            ? {
+                nombre: sanitizeText(item.material.nombre, ''),
+                tipo: sanitizeText(item.material.tipo, ''),
+                imagenUrl: materialImage,
+              }
+            : null,
+        }
+      }),
       subtotal: safeNumber(cotizacion.subtotal, 0),
       iva: safeNumber(cotizacion.iva, 0),
       total: safeNumber(cotizacion.total, 0),
