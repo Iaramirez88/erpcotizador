@@ -106,6 +106,7 @@ interface ItemCotizacion {
   observaciones: string
   additionalFieldTitle: string
   additionalFieldDescription: string
+  additionalValue: number
   referenceImage: {
     name: string
     url: string
@@ -125,6 +126,7 @@ type ItemExtrasEditorState = {
   itemId: string
   additionalFieldTitle: string
   additionalFieldDescription: string
+  additionalValueInput: string
   referenceImage: ItemCotizacion['referenceImage']
 }
 
@@ -168,6 +170,39 @@ function mapLibraryFileToReferenceImage(item: CrmFileItem): ItemCotizacion['refe
     url: item.url,
     scalePct: 100,
   }
+}
+
+function parseAdditionalValueInput(value: string): number {
+  const raw = value.trim()
+  if (!raw) return 0
+
+  const normalized = raw.replace(/\s+/g, '').replace(/[^0-9,.-]/g, '')
+  if (!normalized) return 0
+
+  const lastComma = normalized.lastIndexOf(',')
+  const lastDot = normalized.lastIndexOf('.')
+  const decimalIndex = Math.max(lastComma, lastDot)
+  const hasDecimalPart = decimalIndex >= 0 && normalized.length - decimalIndex - 1 > 0 && normalized.length - decimalIndex - 1 <= 2
+
+  if (hasDecimalPart) {
+    const integerPart = normalized.slice(0, decimalIndex).replace(/[.,]/g, '')
+    const decimalPart = normalized.slice(decimalIndex + 1).replace(/[.,]/g, '')
+    const parsed = Number(`${integerPart || '0'}.${decimalPart}`)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+  }
+
+  const parsed = Number(normalized.replace(/[.,]/g, ''))
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+}
+
+function getItemAdditionalValue(item: Pick<ItemCotizacion, 'additionalValue'>) {
+  const value = Number(item.additionalValue)
+  return Number.isFinite(value) && value > 0 ? value : 0
+}
+
+function getItemDisplaySubtotal(item: Pick<ItemCotizacion, 'subtotal' | 'additionalValue'>) {
+  const subtotal = Number.isFinite(item.subtotal) ? item.subtotal : 0
+  return subtotal + getItemAdditionalValue(item as Pick<ItemCotizacion, 'additionalValue'>)
 }
 
 function normalizePreviewCotizacion(raw: unknown): CotizacionPdfData & { id: string; estado?: string } {
@@ -228,6 +263,7 @@ function normalizePreviewCotizacion(raw: unknown): CotizacionPdfData & { id: str
         imagenUrl: typeof material.imagenUrl === 'string' ? material.imagenUrl : null,
         additionalFieldTitle: parsedObservaciones.extraMeta?.additionalFieldTitle || null,
         additionalFieldDescription: parsedObservaciones.extraMeta?.additionalFieldDescription || null,
+        additionalValue: Number(parsedObservaciones.extraMeta?.additionalValue ?? 0) || 0,
         referenceImage: parsedObservaciones.extraMeta?.referenceImage?.url
           ? {
               name: parsedObservaciones.extraMeta.referenceImage.name || 'Referencia',
@@ -578,6 +614,7 @@ export default function CotizadorPage() {
                 observaciones: parsedItemObservaciones.plainText,
                 additionalFieldTitle: parsedItemObservaciones.extraMeta?.additionalFieldTitle || '',
                 additionalFieldDescription: parsedItemObservaciones.extraMeta?.additionalFieldDescription || '',
+                additionalValue: Number(parsedItemObservaciones.extraMeta?.additionalValue ?? 0) || 0,
                 referenceImage: parsedItemObservaciones.extraMeta?.referenceImage?.url
                   ? {
                       name: parsedItemObservaciones.extraMeta.referenceImage.name || 'Referencia',
@@ -1012,6 +1049,7 @@ export default function CotizadorPage() {
       observaciones: itemForm.observaciones,
       additionalFieldTitle: '',
       additionalFieldDescription: '',
+      additionalValue: 0,
       referenceImage: null,
       terminados: [],
     }
@@ -1071,6 +1109,7 @@ export default function CotizadorPage() {
         .join("\n"),
       additionalFieldTitle: '',
       additionalFieldDescription: '',
+      additionalValue: 0,
       referenceImage: null,
       terminados: [],
     }
@@ -1133,6 +1172,7 @@ export default function CotizadorPage() {
       observaciones,
       additionalFieldTitle: '',
       additionalFieldDescription: '',
+      additionalValue: 0,
       referenceImage: null,
       terminados: [],
     }
@@ -1207,6 +1247,7 @@ export default function CotizadorPage() {
       observaciones: draft.observaciones,
       additionalFieldTitle: '',
       additionalFieldDescription: '',
+      additionalValue: 0,
       referenceImage: null,
       terminados: (draft.terminados || []) as any,
     }
@@ -1245,6 +1286,7 @@ export default function CotizadorPage() {
       itemId: item.id,
       additionalFieldTitle: item.additionalFieldTitle || '',
       additionalFieldDescription: item.additionalFieldDescription || '',
+      additionalValueInput: getItemAdditionalValue(item) > 0 ? new Intl.NumberFormat(locale).format(getItemAdditionalValue(item)) : '',
       referenceImage: item.referenceImage,
     })
   }
@@ -1265,6 +1307,7 @@ export default function CotizadorPage() {
 
   const saveItemExtrasEditor = () => {
     if (!itemExtrasEditor) return
+    const additionalValue = parseAdditionalValueInput(itemExtrasEditor.additionalValueInput)
     setItems((prev) =>
       prev.map((item) =>
         item.id === itemExtrasEditor.itemId
@@ -1272,6 +1315,7 @@ export default function CotizadorPage() {
               ...item,
               additionalFieldTitle: itemExtrasEditor.additionalFieldTitle.trim(),
               additionalFieldDescription: itemExtrasEditor.additionalFieldDescription.trim(),
+              additionalValue,
               referenceImage: itemExtrasEditor.referenceImage,
             }
           : item
@@ -1403,17 +1447,18 @@ export default function CotizadorPage() {
 
     for (const item of items) {
       const subtotalItem = Number.isFinite(item.subtotal) ? item.subtotal : 0
+      const subtotalWithAdditionalValue = subtotalItem + getItemAdditionalValue(item)
       const itemIvaPct = getLitografiaItemIncludedIvaPct(item.observaciones)
 
-      if (itemIvaPct && subtotalItem > 0) {
+      if (itemIvaPct && subtotalWithAdditionalValue > 0) {
         const denom = 1 + itemIvaPct / 100
-        const base = denom > 0 ? subtotalItem / denom : subtotalItem
+        const base = denom > 0 ? subtotalWithAdditionalValue / denom : subtotalWithAdditionalValue
         subtotalLitografiaSinIva += base
-        ivaLitografia += subtotalItem - base
+        ivaLitografia += subtotalWithAdditionalValue - base
         continue
       }
 
-      subtotalGeneral += subtotalItem
+      subtotalGeneral += subtotalWithAdditionalValue
     }
 
     let ivaCalc = 0
@@ -1481,6 +1526,7 @@ export default function CotizadorPage() {
                 version: 1,
                 additionalFieldTitle: item.additionalFieldTitle.trim() || undefined,
                 additionalFieldDescription: item.additionalFieldDescription.trim() || undefined,
+                additionalValue: getItemAdditionalValue(item) || undefined,
                 referenceImage: item.referenceImage?.url
                   ? {
                       name: item.referenceImage.name,
@@ -1636,9 +1682,9 @@ export default function CotizadorPage() {
       }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Campo adicional e imagen de referencia</DialogTitle>
+            <DialogTitle>Campo adicional, valor extra e imagen de referencia</DialogTitle>
             <DialogDescription>
-              El contenido configurado aquí se mostrará debajo del ítem seleccionado dentro de la cotización PDF.
+              Aquí puedes agregar texto, un valor adicional que se sumará al ítem y una imagen de referencia para la cotización PDF.
             </DialogDescription>
           </DialogHeader>
 
@@ -1663,6 +1709,25 @@ export default function CotizadorPage() {
                   onChange={(event) => setItemExtrasEditor((current) => current ? { ...current, additionalFieldDescription: event.target.value } : current)}
                   placeholder="Agrega el detalle que quieres mostrar dentro de este bloque."
                 />
+              </div>
+
+              <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                <Label htmlFor="item-extra-value" className="text-slate-900">Valor adicional del ítem</Label>
+                <Input
+                  id="item-extra-value"
+                  inputMode="decimal"
+                  value={itemExtrasEditor.additionalValueInput}
+                  onChange={(event) => setItemExtrasEditor((current) => current ? { ...current, additionalValueInput: event.target.value } : current)}
+                  placeholder="Ej. 10.000"
+                />
+                <p className="text-sm text-slate-600">
+                  Usa este campo cuando el costo no exista en la lista de precios. Se sumará al valor final de este ítem y a la cotización total.
+                </p>
+                {parseAdditionalValueInput(itemExtrasEditor.additionalValueInput) > 0 ? (
+                  <p className="text-sm font-medium text-emerald-900">
+                    Se sumarán {formatCurrency(parseAdditionalValueInput(itemExtrasEditor.additionalValueInput))} a este ítem.
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-3 rounded-lg border border-slate-200 p-4">
@@ -2615,11 +2680,14 @@ export default function CotizadorPage() {
                               ) : null}
                             </div>
                           ) : null}
-                          {item.additionalFieldTitle || item.additionalFieldDescription ? (
+                          {item.additionalFieldTitle || item.additionalFieldDescription || getItemAdditionalValue(item) > 0 ? (
                             <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
                               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Campo adicional</p>
                               {item.additionalFieldTitle ? <p className="mt-1 text-sm font-medium text-slate-900">{item.additionalFieldTitle}</p> : null}
                               {item.additionalFieldDescription ? <p className="mt-1 text-sm text-slate-600">{item.additionalFieldDescription}</p> : null}
+                              {getItemAdditionalValue(item) > 0 ? (
+                                <p className="mt-2 text-sm font-semibold text-emerald-700">Valor adicional: {formatCurrency(getItemAdditionalValue(item))}</p>
+                              ) : null}
                             </div>
                           ) : null}
                           {item.referenceImage ? (
@@ -2636,8 +2704,11 @@ export default function CotizadorPage() {
                             <p className="text-sm text-muted-foreground">
                               {formatCurrency(item.precioUnitario)} {t('quoteBuilder.items.each')}
                             </p>
+                            {getItemAdditionalValue(item) > 0 ? (
+                              <p className="text-xs text-emerald-700">Extra sumado: {formatCurrency(getItemAdditionalValue(item))}</p>
+                            ) : null}
                             <p className="font-bold text-blue-600">
-                              {formatCurrency(item.subtotal)}
+                              {formatCurrency(getItemDisplaySubtotal(item))}
                             </p>
                             <Button variant="ghost" size="sm" onClick={() => editarItem(item)} disabled={!canEditItem} title={editDisabledReason || undefined}>
                               {t('common.edit')}

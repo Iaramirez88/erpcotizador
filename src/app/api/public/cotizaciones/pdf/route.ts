@@ -212,6 +212,7 @@ export async function GET(request: NextRequest) {
           imagenUrl: materialImage,
           additionalFieldTitle: parsedObservaciones.extraMeta?.additionalFieldTitle || null,
           additionalFieldDescription: parsedObservaciones.extraMeta?.additionalFieldDescription || null,
+          additionalValue: safeNumber(parsedObservaciones.extraMeta?.additionalValue, 0),
           referenceImage: parsedObservaciones.extraMeta?.referenceImage?.url
             ? {
                 name: sanitizeText(parsedObservaciones.extraMeta.referenceImage.name, 'Referencia') || 'Referencia',

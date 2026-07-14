@@ -6,6 +6,7 @@ import { Plus } from 'lucide-react'
 import { ModuleKey, type AccessLevel } from '@prisma/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -14,7 +15,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { useToast } from '@/hooks/use-toast'
 import { buildDashboardPermissionEntries } from '@/lib/dashboard-permission-catalog'
@@ -266,7 +266,28 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
     (total, section) => total + section.entries.reduce((entryTotal, entry) => entryTotal + entry.capabilityEntries.length, 0),
     0
   )
+  const capabilityEditorEntries = useMemo(
+    () => sections.flatMap((section) => section.entries.flatMap((entry) => entry.capabilityEntries.map((capability) => ({
+      ...capability,
+      sectionTitle: section.title,
+      moduleKey: entry.moduleKey,
+    })))),
+    [sections]
+  )
   const open = controlledOpen ?? internalOpen
+
+  function getRoleLabel(role: Props['initialSedeRole']) {
+    return t(`rbac.sedeRole.${role}`)
+  }
+
+  function getAccessLabel(level: AccessChoice | AccessLevel) {
+    if (level === 'INHERIT') return 'Heredar del rol de sede'
+    return t(`rbac.access.${level}`)
+  }
+
+  function getModuleLabel(moduleKey: ModuleKey) {
+    return t(`rbac.module.${moduleKey}`)
+  }
 
   function handleOpenChange(nextOpen: boolean) {
     if (controlledOnOpenChange) {
@@ -468,191 +489,136 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="summary" className="space-y-3">
-          <TabsList className="grid w-full grid-cols-2 rounded-xl bg-slate-100/90 p-1">
-            <TabsTrigger value="summary" className="rounded-lg">Resumen</TabsTrigger>
-            <TabsTrigger value="access" className="rounded-lg">Accesos</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="summary" className="max-h-[70vh] space-y-3 overflow-auto pr-1">
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Estado en sede</div>
-                <div className="mt-2 text-base font-semibold text-slate-900">
-                  {hasSedeAccess ? t(`rbac.sedeRole.${sedeRole}`) : 'Sin acceso en esta sede'}
-                </div>
-                <div className="mt-1 text-xs text-slate-600">
-                  {hasSedeAccess ? `Acceso activo en ${sedeNombre}.` : `Todavía no pertenece a ${sedeNombre}.`}
-                </div>
+        <div className="max-h-[78vh] space-y-5 overflow-y-auto pr-1">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Estado en sede</div>
+              <div className="mt-2 text-base font-semibold text-slate-900">
+                {hasSedeAccess ? getRoleLabel(sedeRole) : 'Sin acceso en esta sede'}
               </div>
-              <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-sky-700">Permiso general</div>
-                <div className="mt-2 text-base font-semibold text-sky-950">{t(`rbac.access.${globalLevel}`)}</div>
-                <div className="mt-1 text-xs text-sky-800">Aplica como base a nivel empresa.</div>
-              </div>
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">Cobertura</div>
-                <div className="mt-2 text-base font-semibold text-emerald-950">{moduleSectionCount} módulos · {capabilityCount} submódulos</div>
-                <div className="mt-1 text-xs text-emerald-800">Puedes afinarlos desde la pestaña de accesos.</div>
+              <div className="mt-1 text-xs text-slate-600">
+                {hasSedeAccess ? `Acceso activo en ${sedeNombre}.` : `Todavía no pertenece a ${sedeNombre}.`}
               </div>
             </div>
-
-            <div className="space-y-2">
-              <div className="font-semibold text-sm">{t('rbac.userPermissions.section.role')}</div>
-              <div className="rounded border px-3 py-2 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div className="space-y-1">
-                  {hasSedeAccess ? (
-                    <div className="text-sm text-muted-foreground">{t('rbac.userPermissions.current')}: {t(`rbac.sedeRole.${sedeRole}`)}</div>
-                  ) : (
-                    <>
-                      <div className="text-sm font-medium text-amber-700">Sin acceso todavía en esta sede</div>
-                      <div className="text-xs text-muted-foreground">Asigna un rol aquí para agregar a este usuario a {sedeNombre} y luego habilitar módulos específicos.</div>
-                    </>
-                  )}
-                </div>
-                <select
-                  className={cn(
-                    'rounded-md border px-3 py-2 transition-colors',
-                    getRoleTone(sedeRole)
-                  )}
-                  value={sedeRole}
-                  onChange={(e) => {
-                    const next = e.target.value as Props['initialSedeRole']
-                    setSedeRole(next)
-                    void updateRole(next)
-                  }}
-                  disabled={savingRole}
-                >
-                  {roleOptions.map((r) => (
-                    <option key={r} value={r}>
-                      {t(`rbac.sedeRole.${r}`)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-sky-700">Permiso general</div>
+              <div className="mt-2 text-base font-semibold text-sky-950">{getAccessLabel(globalLevel)}</div>
+              <div className="mt-1 text-xs text-sky-800">Aplica como base a nivel empresa.</div>
             </div>
-
-            <div className="space-y-2">
-              <div className="font-semibold text-sm">{t('rbac.globalAccess.title')}</div>
-              <div className="rounded border px-3 py-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                <div className="text-sm text-muted-foreground">{t('rbac.userPermissions.current')}: {t(`rbac.access.${globalLevel}`)}</div>
-                <select
-                  className={cn(
-                    'rounded-md border px-3 py-2 transition-colors',
-                    getAccessTone(globalLevel)
-                  )}
-                  value={globalLevel}
-                  onChange={(e) => {
-                    const next = e.target.value as AccessLevel
-                    setGlobalLevel(next)
-                    void updateGlobalLevel(next)
-                  }}
-                  disabled={savingGlobal}
-                >
-                  {ACCESS_OPTIONS.map((option) => (
-                    <option key={option} value={option}>
-                      {t(`rbac.access.${option}`)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="text-xs text-muted-foreground">{t('rbac.userPermissions.generalHint')}</div>
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">Cobertura</div>
+              <div className="mt-2 text-base font-semibold text-emerald-950">{moduleSectionCount} módulos · {capabilityCount} submódulos</div>
+              <div className="mt-1 text-xs text-emerald-800">La estructura y el detalle siguen el mismo criterio de las reglas de permisos.</div>
             </div>
+          </div>
 
-            {!hasSedeAccess ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                Primero asigna un rol en esta sede. Después podrás ajustar módulos y submódulos individuales.
-              </div>
-            ) : (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                El rol define la base. En la pestaña de accesos puedes subir, bajar o heredar permisos por módulo según la operación real del usuario.
-              </div>
-            )}
-          </TabsContent>
+          {!hasSedeAccess ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              <div className="font-semibold">Acceso pendiente en la sede</div>
+              <div className="mt-1">Asigna un rol en esta sede para activar el resto de permisos y dejar este usuario con el mismo esquema editable que una regla.</div>
+            </div>
+          ) : null}
 
-          <TabsContent value="access" className="max-h-[70vh] space-y-3 overflow-auto pr-1">
-            {!hasSedeAccess ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                Esta matriz se activa apenas asignes un rol en la sede.
-              </div>
-            ) : null}
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <Label>Rol sede</Label>
+              <select
+                value={sedeRole}
+                onChange={(e) => {
+                  const next = e.target.value as Props['initialSedeRole']
+                  setSedeRole(next)
+                  void updateRole(next)
+                }}
+                disabled={savingRole}
+                className={cn('mt-2 h-10 w-full rounded-md border px-3 text-sm', getRoleTone(sedeRole))}
+              >
+                {roleOptions.map((r) => (
+                  <option key={r} value={r}>
+                    {getRoleLabel(r)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label>Permiso general</Label>
+              <select
+                value={globalLevel}
+                onChange={(e) => {
+                  const next = e.target.value as AccessLevel
+                  setGlobalLevel(next)
+                  void updateGlobalLevel(next)
+                }}
+                disabled={savingGlobal}
+                className={cn('mt-2 h-10 w-full rounded-md border px-3 text-sm', getAccessTone(globalLevel))}
+              >
+                {ACCESS_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {getAccessLabel(option)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-            {sections.map((section) => (
-              <section key={section.key} className={cn('space-y-3', section.tone.container)}>
-                <div className="flex items-center justify-between gap-3">
-                  <div className={cn('font-semibold text-sm uppercase tracking-[0.12em]', section.tone.title)}>{section.title}</div>
-                  <div className="text-xs text-slate-500">{section.entries.length} módulo{section.entries.length === 1 ? '' : 's'}</div>
+          <div className="space-y-3">
+            <div>
+              <div className="text-sm font-semibold text-slate-950">Permisos por módulo</div>
+              <div className="text-xs text-slate-500">Mismo esquema visual de las reglas, con la diferencia de que aquí puedes heredar del rol base de la sede.</div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {modules.map((moduleKey) => (
+                <div key={moduleKey} className="rounded-xl border border-slate-200 p-3">
+                  <Label>{getModuleLabel(moduleKey)}</Label>
+                  <select
+                    value={selectedLevel(moduleKey)}
+                    onChange={(e) => void updateModuleLevel(moduleKey, e.target.value as AccessChoice)}
+                    disabled={!hasSedeAccess || Boolean(saving[moduleKey])}
+                    className={cn('mt-2 h-10 w-full rounded-md border px-3 text-sm', getAccessTone(selectedLevel(moduleKey), effectiveLevel(moduleKey)))}
+                  >
+                    <option value="INHERIT">{getAccessLabel('INHERIT')}</option>
+                    {ACCESS_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {getAccessLabel(option)}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <div className={cn('rounded-xl border shadow-sm', section.tone.panel)}>
-                  {section.entries.map((entry) => (
-                    <div
-                      key={`${section.key}-${entry.moduleKey}`}
-                      className="border-b border-inherit px-4 py-3 last:border-b-0"
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <div className="text-sm font-semibold text-slate-950">Permisos por submódulo</div>
+              <div className="text-xs text-slate-500">Los cambios aquí tienen prioridad sobre el nivel base del módulo, igual que en las reglas de permisos.</div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {capabilityEditorEntries.map((capability) => {
+                const value = capabilityLevels[capability.permissionKey] ?? 'INHERIT'
+                const currentLevel = capabilityLevels[capability.permissionKey] ?? effectiveLevel(capability.moduleKey)
+                return (
+                  <div key={capability.permissionKey} className="rounded-xl border border-slate-200 p-3">
+                    <div className="text-sm font-medium text-slate-950">{capability.label}</div>
+                    <div className="text-xs text-slate-500">{capability.sectionTitle} · {getModuleLabel(capability.moduleKey)}</div>
+                    <select
+                      value={value}
+                      onChange={(e) => void updateCapabilityLevel(capability.permissionKey, capability.domain, capability.subdomain, e.target.value as AccessChoice)}
+                      disabled={!hasSedeAccess}
+                      className={cn('mt-2 h-10 w-full rounded-md border px-3 text-sm', getAccessTone(value, currentLevel))}
                     >
-                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium truncate">{t(`rbac.module.${entry.moduleKey}`)}</div>
-                          {entry.capabilityEntries.length ? (
-                            <div className="mt-1 text-xs text-slate-500">{entry.capabilityEntries.length} submódulo{entry.capabilityEntries.length === 1 ? '' : 's'} configurable{entry.capabilityEntries.length === 1 ? '' : 's'}</div>
-                          ) : null}
-                        </div>
-                        <select
-                          className={cn(
-                            'w-full rounded-md border px-3 py-2 transition-colors md:w-60',
-                            getAccessTone(selectedLevel(entry.moduleKey), effectiveLevel(entry.moduleKey))
-                          )}
-                          value={selectedLevel(entry.moduleKey)}
-                          onChange={(e) => void updateModuleLevel(entry.moduleKey, e.target.value as AccessChoice)}
-                          disabled={!hasSedeAccess || Boolean(saving[entry.moduleKey])}
-                        >
-                          <option value="INHERIT">{t('rbac.userPermissions.inherit')}</option>
-                          {ACCESS_OPTIONS.map((option) => (
-                            <option key={option} value={option}>
-                              {t(`rbac.access.${option}`)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {entry.capabilityEntries.length ? (
-                        <div className="mt-3 space-y-2 rounded-xl border border-slate-200/80 bg-slate-50/60 p-3">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{t('rbac.userPermissions.section.submodules')}</div>
-                          {entry.capabilityEntries.map((capability) => {
-                            const value = capabilityLevels[capability.permissionKey] ?? 'INHERIT'
-                            const currentLevel = capabilityLevels[capability.permissionKey] ?? effectiveLevel(entry.moduleKey)
-                            return (
-                              <div key={capability.permissionKey} className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 md:flex-row md:items-center md:justify-between">
-                                <div className="min-w-0">
-                                  <div className="text-sm font-medium">{capability.label}</div>
-                                </div>
-                                <select
-                                  className={cn(
-                                    'w-full rounded-md border px-3 py-2 transition-colors md:w-60',
-                                    getAccessTone(value, currentLevel)
-                                  )}
-                                  value={value}
-                                  onChange={(e) => void updateCapabilityLevel(capability.permissionKey, capability.domain, capability.subdomain, e.target.value as AccessChoice)}
-                                  disabled={!hasSedeAccess}
-                                >
-                                  <option value="INHERIT">{t('rbac.userPermissions.inherit')}</option>
-                                  {ACCESS_OPTIONS.map((option) => (
-                                    <option key={option} value={option}>
-                                      {t(`rbac.access.${option}`)}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </TabsContent>
-        </Tabs>
+                      <option value="INHERIT">{getAccessLabel('INHERIT')}</option>
+                      {ACCESS_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {getAccessLabel(option)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
 
         {canManagePermissionProfiles ? (
           <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">

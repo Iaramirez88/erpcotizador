@@ -8,8 +8,11 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useI18n } from '@/components/providers/i18n-provider'
 import { useToast } from '@/hooks/use-toast'
-import { DASHBOARD_PERMISSION_RULES } from '@/lib/dashboard-permission-catalog'
+import { buildDashboardPermissionEntries } from '@/lib/dashboard-permission-catalog'
+import { cn } from '@/lib/utils'
 
 const ACCESS_LEVELS: AccessLevel[] = ['NONE', 'READ', 'WRITE', 'ADMIN']
 const SEDE_ROLES: SedeRole[] = ['ADMIN', 'MANAGER', 'MEMBER', 'READER']
@@ -38,6 +41,96 @@ type CapabilityProfileItem = {
   subdomain: string
   level: AccessLevel
   label: string | null
+}
+
+type ModuleEntry = {
+  moduleKey: ModuleKey
+  submodules: string[]
+  capabilityEntries: CapabilityEntry[]
+}
+
+type CapabilityEntry = {
+  permissionKey: string
+  label: string
+  includeLabels: string[]
+  domain: string
+  subdomain: string
+}
+
+type Section = {
+  key: string
+  title: string
+  entries: ModuleEntry[]
+  tone: {
+    container: string
+    title: string
+    panel: string
+  }
+}
+
+type AccessChoice = AccessLevel | 'INHERIT'
+
+const SECTION_TONES = [
+  {
+    container: 'rounded-2xl border border-sky-200 bg-sky-50/70 p-3',
+    title: 'text-sky-900',
+    panel: 'border-sky-200/90 bg-white/95',
+  },
+  {
+    container: 'rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3',
+    title: 'text-emerald-900',
+    panel: 'border-emerald-200/90 bg-white/95',
+  },
+  {
+    container: 'rounded-2xl border border-amber-200 bg-amber-50/70 p-3',
+    title: 'text-amber-900',
+    panel: 'border-amber-200/90 bg-white/95',
+  },
+  {
+    container: 'rounded-2xl border border-fuchsia-200 bg-fuchsia-50/70 p-3',
+    title: 'text-fuchsia-900',
+    panel: 'border-fuchsia-200/90 bg-white/95',
+  },
+  {
+    container: 'rounded-2xl border border-slate-200 bg-slate-50/80 p-3',
+    title: 'text-slate-900',
+    panel: 'border-slate-200/90 bg-white/95',
+  },
+] as const
+
+function getAccessTone(level: AccessChoice | AccessLevel, fallbackLevel?: AccessLevel) {
+  const resolved = level === 'INHERIT' ? (fallbackLevel ?? 'READ') : level
+
+  switch (resolved) {
+    case 'ADMIN':
+      return 'border-lime-300 bg-lime-100 text-lime-950 hover:bg-lime-100 focus-visible:ring-lime-300'
+    case 'WRITE':
+      return 'border-teal-300 bg-teal-100 text-teal-950 hover:bg-teal-100 focus-visible:ring-teal-300'
+    case 'READ':
+      return 'border-amber-300 bg-amber-100 text-amber-950 hover:bg-amber-100 focus-visible:ring-amber-300'
+    case 'NONE':
+      return 'border-rose-300 bg-rose-100 text-rose-950 hover:bg-rose-100 focus-visible:ring-rose-300'
+    default:
+      return 'border-slate-300 bg-white text-slate-900 focus-visible:ring-slate-300'
+  }
+}
+
+function baseAccessForSedeRole(role: SedeRole): AccessLevel {
+  switch (role) {
+    case 'ADMIN':
+      return 'ADMIN'
+    case 'MANAGER':
+      return 'WRITE'
+    case 'MEMBER':
+      return 'WRITE'
+    case 'READER':
+    default:
+      return 'READ'
+  }
+}
+
+function getRoleTone(role: SedeRole) {
+  return getAccessTone(baseAccessForSedeRole(role))
 }
 
 type PermissionProfileSummary = {
@@ -69,6 +162,7 @@ type Props = {
 
 export function PermissionProfilesManager({ profiles, users }: Props) {
   const router = useRouter()
+  const { t } = useI18n()
   const { toast } = useToast()
   const [selectedProfile, setSelectedProfile] = useState<PermissionProfileSummary | null>(null)
   const [editingProfile, setEditingProfile] = useState<PermissionProfileSummary | null>(null)
@@ -102,6 +196,108 @@ export function PermissionProfilesManager({ profiles, users }: Props) {
       return (user.name || '').toLowerCase().includes(term) || user.email.toLowerCase().includes(term)
     })
   }, [search, users])
+
+  const getAccessLabel = (level: AccessChoice | AccessLevel) => {
+    if (level === 'INHERIT') return 'Heredar del módulo'
+    return t(`rbac.access.${level}`)
+  }
+
+  const getRoleLabel = (role: SedeRole) => t(`rbac.sedeRole.${role}`)
+  const getModuleLabel = (moduleKey: ModuleKey) => t(`rbac.module.${moduleKey}`)
+
+  const sections: Section[] = useMemo(() => {
+    const allowedModules = new Set<ModuleKey>(MODULE_OPTIONS)
+    const grouped = new Map<string, Map<ModuleKey, ModuleEntry>>()
+
+    for (const item of buildDashboardPermissionEntries({ t })) {
+      if (!allowedModules.has(item.moduleKey)) continue
+      const byModule = grouped.get(item.section) ?? new Map<ModuleKey, ModuleEntry>()
+      const current = byModule.get(item.moduleKey)
+
+      if (current) {
+        current.submodules.push(...item.includeLabels.filter((label) => !current.submodules.includes(label)))
+        const primaryCapability = item.capabilities[0]
+        if (primaryCapability) {
+          current.capabilityEntries.push({
+            permissionKey: item.key,
+            label: item.label,
+            includeLabels: item.includeLabels,
+            domain: primaryCapability.domain,
+            subdomain: primaryCapability.subdomain,
+          })
+        }
+      } else {
+        const primaryCapability = item.capabilities[0]
+        byModule.set(item.moduleKey, {
+          moduleKey: item.moduleKey,
+          submodules: [...item.includeLabels],
+          capabilityEntries: primaryCapability
+            ? [{
+                permissionKey: item.key,
+                label: item.label,
+                includeLabels: item.includeLabels,
+                domain: primaryCapability.domain,
+                subdomain: primaryCapability.subdomain,
+              }]
+            : [],
+        })
+      }
+
+      grouped.set(item.section, byModule)
+    }
+
+    const orderedSections = Array.from(grouped.entries()).map(([key, value], index) => ({
+      key,
+      title: key,
+      entries: [...value.values()],
+      tone: SECTION_TONES[index % SECTION_TONES.length],
+    }))
+
+    const knownModules = new Set(orderedSections.flatMap((section) => section.entries.map((entry) => entry.moduleKey)))
+    const extraEntries = MODULE_OPTIONS.filter((moduleKey) => !knownModules.has(moduleKey)).map((moduleKey) => ({
+      moduleKey,
+      submodules: [],
+      capabilityEntries: [],
+    }))
+
+    return extraEntries.length
+      ? [
+          ...orderedSections,
+          {
+            key: 'Otros',
+            title: t('rbac.userPermissions.section.other'),
+            entries: extraEntries,
+            tone: SECTION_TONES[orderedSections.length % SECTION_TONES.length],
+          },
+        ]
+      : orderedSections
+  }, [t])
+
+  const moduleSectionCount = sections.reduce((total, section) => total + section.entries.length, 0)
+  const capabilityCount = sections.reduce(
+    (total, section) => total + section.entries.reduce((entryTotal, entry) => entryTotal + entry.capabilityEntries.length, 0),
+    0
+  )
+
+  const capabilityEditorEntries = useMemo(
+    () => sections.flatMap((section) => section.entries.flatMap((entry) => entry.capabilityEntries.map((capability) => ({
+      ...capability,
+      sectionTitle: section.title,
+      moduleKey: entry.moduleKey,
+    })))),
+    [sections]
+  )
+
+  const effectiveModuleLevel = (moduleKey: ModuleKey): AccessLevel => {
+    const explicit = editForm.moduleLevels[moduleKey]
+    return explicit ?? baseAccessForSedeRole(editForm.sedeRole)
+  }
+
+  const selectedModuleLevel = (moduleKey: ModuleKey): AccessChoice => {
+    return Object.prototype.hasOwnProperty.call(editForm.moduleLevels, moduleKey)
+      ? (editForm.moduleLevels[moduleKey] ?? 'NONE')
+      : 'INHERIT'
+  }
 
   function toggleUser(userId: string) {
     setSelectedUserIds((current) => current.includes(userId) ? current.filter((item) => item !== userId) : [...current, userId])
@@ -344,92 +540,160 @@ export function PermissionProfilesManager({ profiles, users }: Props) {
                 <Label>Descripción</Label>
                 <Input value={editForm.description} onChange={(event) => setEditForm((prev) => ({ ...prev, description: event.target.value }))} />
               </div>
-              <div>
-                <Label>Rol sede</Label>
-                <select
-                  value={editForm.sedeRole}
-                  onChange={(event) => setEditForm((prev) => ({ ...prev, sedeRole: event.target.value as SedeRole }))}
-                  className="w-full h-10 rounded-md border px-3 text-sm"
-                >
-                  {SEDE_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
-                </select>
-              </div>
-              <div>
-                <Label>Permiso general</Label>
-                <select
-                  value={editForm.globalAccessLevel}
-                  onChange={(event) => setEditForm((prev) => ({ ...prev, globalAccessLevel: event.target.value as AccessLevel }))}
-                  className="w-full h-10 rounded-md border px-3 text-sm"
-                >
-                  {ACCESS_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
-                </select>
-              </div>
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <div className="text-sm font-semibold text-slate-950">Permisos por módulo</div>
-                <div className="text-xs text-slate-500">Ajusta el nivel base de cada módulo dentro de la regla.</div>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {MODULE_OPTIONS.map((moduleKey) => (
-                  <div key={moduleKey} className="rounded-xl border border-slate-200 p-3">
-                    <Label>{moduleKey}</Label>
+            <Tabs defaultValue="summary" className="space-y-4">
+              <TabsList className="grid w-full grid-cols-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
+                <TabsTrigger value="summary" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Resumen</TabsTrigger>
+                <TabsTrigger value="access" className="rounded-xl px-4 py-2.5 data-[state=active]:bg-white">Accesos</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="summary" className="space-y-5">
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Rol base en sede</div>
+                    <div className="mt-2 text-base font-semibold text-slate-900">{getRoleLabel(editForm.sedeRole)}</div>
+                    <div className="mt-1 text-xs text-slate-600">Define el nivel base desde el que puede heredar la regla.</div>
+                  </div>
+                  <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-sky-700">Permiso general</div>
+                    <div className="mt-2 text-base font-semibold text-sky-950">{getAccessLabel(editForm.globalAccessLevel)}</div>
+                    <div className="mt-1 text-xs text-sky-800">Aplica como base a nivel empresa para esta regla.</div>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">Cobertura</div>
+                    <div className="mt-2 text-base font-semibold text-emerald-950">{moduleSectionCount} módulos · {capabilityCount} submódulos</div>
+                    <div className="mt-1 text-xs text-emerald-800">La matriz sigue el mismo diseño del modal de usuario.</div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <Label>Rol sede</Label>
                     <select
-                      value={editForm.moduleLevels[moduleKey] ?? 'NONE'}
-                      onChange={(event) => setEditForm((prev) => ({
-                        ...prev,
-                        moduleLevels: { ...prev.moduleLevels, [moduleKey]: event.target.value as AccessLevel },
-                      }))}
-                      className="mt-2 w-full h-10 rounded-md border px-3 text-sm"
+                      value={editForm.sedeRole}
+                      onChange={(event) => setEditForm((prev) => ({ ...prev, sedeRole: event.target.value as SedeRole }))}
+                      className={cn('mt-2 h-10 w-full rounded-md border px-3 text-sm', getRoleTone(editForm.sedeRole))}
                     >
-                      {ACCESS_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
+                      {SEDE_ROLES.map((role) => <option key={role} value={role}>{getRoleLabel(role)}</option>)}
                     </select>
                   </div>
-                ))}
-              </div>
-            </div>
+                  <div>
+                    <Label>Permiso general</Label>
+                    <select
+                      value={editForm.globalAccessLevel}
+                      onChange={(event) => setEditForm((prev) => ({ ...prev, globalAccessLevel: event.target.value as AccessLevel }))}
+                      className={cn('mt-2 h-10 w-full rounded-md border px-3 text-sm', getAccessTone(editForm.globalAccessLevel))}
+                    >
+                      {ACCESS_LEVELS.map((level) => <option key={level} value={level}>{getAccessLabel(level)}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </TabsContent>
 
-            <div className="space-y-3">
-              <div>
-                <div className="text-sm font-semibold text-slate-950">Permisos por submódulo</div>
-                <div className="text-xs text-slate-500">Los cambios aquí tienen prioridad sobre el nivel base del módulo.</div>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                {DASHBOARD_PERMISSION_RULES.map((rule) => {
-                  const current = editForm.capabilityLevels[rule.key] ?? {
-                    domain: rule.capabilities[0]?.domain ?? '',
-                    subdomain: rule.capabilities[0]?.subdomain ?? '',
-                    label: rule.label,
-                    level: 'NONE' as AccessLevel,
-                  }
-                  return (
-                    <div key={rule.key} className="rounded-xl border border-slate-200 p-3">
-                      <div className="text-sm font-medium text-slate-950">{rule.label}</div>
-                      <div className="text-xs text-slate-500">{rule.section} · {rule.moduleKey}</div>
-                      <select
-                        value={current.level}
-                        onChange={(event) => setEditForm((prev) => ({
-                          ...prev,
-                          capabilityLevels: {
-                            ...prev.capabilityLevels,
-                            [rule.key]: {
-                              domain: current.domain,
-                              subdomain: current.subdomain,
-                              label: current.label,
-                              level: event.target.value as AccessLevel,
-                            },
-                          },
-                        }))}
-                        className="mt-2 w-full h-10 rounded-md border px-3 text-sm"
-                      >
-                        {ACCESS_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}
-                      </select>
+              <TabsContent value="access" className="space-y-4">
+                {sections.map((section) => (
+                  <div key={section.key} className={section.tone.container}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className={cn('text-lg font-semibold uppercase tracking-[0.14em]', section.tone.title)}>{section.title}</div>
+                        <div className="mt-1 text-sm text-slate-600">{section.entries.length} módulos en esta sección</div>
+                      </div>
                     </div>
-                  )
-                })}
-              </div>
-            </div>
+
+                    <div className="mt-3 space-y-3">
+                      {section.entries.map((entry) => {
+                        const moduleLevel = selectedModuleLevel(entry.moduleKey)
+                        const effectiveLevel = effectiveModuleLevel(entry.moduleKey)
+
+                        return (
+                          <div key={entry.moduleKey} className={cn('rounded-2xl border p-4 shadow-sm', section.tone.panel)}>
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div>
+                                <div className="text-lg font-semibold text-slate-950">{getModuleLabel(entry.moduleKey)}</div>
+                                <div className="mt-1 text-sm text-slate-500">{entry.capabilityEntries.length} submódulos configurables</div>
+                              </div>
+                              <div className="w-full lg:w-[256px]">
+                                <select
+                                  value={moduleLevel}
+                                  onChange={(event) => setEditForm((prev) => {
+                                    const nextModuleLevels = { ...prev.moduleLevels }
+                                    if (event.target.value === 'INHERIT') {
+                                      delete nextModuleLevels[entry.moduleKey]
+                                    } else {
+                                      nextModuleLevels[entry.moduleKey] = event.target.value as AccessLevel
+                                    }
+                                    return {
+                                      ...prev,
+                                      moduleLevels: nextModuleLevels,
+                                    }
+                                  })}
+                                  className={cn('h-10 w-full rounded-md border px-3 text-sm', getAccessTone(moduleLevel, effectiveLevel))}
+                                >
+                                  <option value="INHERIT">Heredar del rol de sede</option>
+                                  {ACCESS_LEVELS.map((level) => <option key={level} value={level}>{getAccessLabel(level)}</option>)}
+                                </select>
+                              </div>
+                            </div>
+
+                            {entry.capabilityEntries.length ? (
+                              <div className="mt-4 rounded-2xl border border-slate-200/90 bg-slate-50/80 p-3">
+                                <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Submódulos</div>
+                                <div className="space-y-2">
+                                  {entry.capabilityEntries.map((capability) => {
+                                    const explicit = editForm.capabilityLevels[capability.permissionKey]
+                                    const selectedValue: AccessChoice = explicit?.level ?? 'INHERIT'
+                                    const fallbackLevel = effectiveModuleLevel(entry.moduleKey)
+                                    return (
+                                      <div key={capability.permissionKey} className="grid gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 md:grid-cols-[minmax(0,1fr)_260px] md:items-center">
+                                        <div>
+                                          <div className="text-base font-medium text-slate-950">{capability.label}</div>
+                                          <div className="text-xs text-slate-500">{section.title} · {getModuleLabel(entry.moduleKey)}</div>
+                                        </div>
+                                        <select
+                                          value={selectedValue}
+                                          onChange={(event) => setEditForm((prev) => {
+                                            const nextCapabilityLevels = { ...prev.capabilityLevels }
+                                            if (event.target.value === 'INHERIT') {
+                                              delete nextCapabilityLevels[capability.permissionKey]
+                                            } else {
+                                              nextCapabilityLevels[capability.permissionKey] = {
+                                                domain: capability.domain,
+                                                subdomain: capability.subdomain,
+                                                label: capability.label,
+                                                level: event.target.value as AccessLevel,
+                                              }
+                                            }
+                                            return {
+                                              ...prev,
+                                              capabilityLevels: nextCapabilityLevels,
+                                            }
+                                          })}
+                                          className={cn('h-10 w-full rounded-md border px-3 text-sm', getAccessTone(selectedValue, fallbackLevel))}
+                                        >
+                                          <option value="INHERIT">{getAccessLabel('INHERIT')}</option>
+                                          {ACCESS_LEVELS.map((level) => <option key={level} value={level}>{getAccessLabel(level)}</option>)}
+                                        </select>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+
+                {capabilityEditorEntries.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    Esta regla no tiene submódulos configurables en la matriz actual.
+                  </div>
+                ) : null}
+              </TabsContent>
+            </Tabs>
           </div>
 
           <DialogFooter>

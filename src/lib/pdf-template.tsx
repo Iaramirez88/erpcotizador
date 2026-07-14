@@ -38,6 +38,7 @@ export interface CotizacionPdfItem {
   imagenUrl?: string | null
   additionalFieldTitle?: string | null
   additionalFieldDescription?: string | null
+  additionalValue?: number | null
   referenceImage?: {
     name?: string | null
     url: string
@@ -596,6 +597,8 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
   const renderItemExtras = (item: CotizacionPdfItem) => {
     const additionalTitle = (item.additionalFieldTitle ?? '').trim()
     const additionalDescription = (item.additionalFieldDescription ?? '').trim()
+    const additionalValue = Number(item.additionalValue ?? 0)
+    const normalizedAdditionalValue = Number.isFinite(additionalValue) && additionalValue > 0 ? additionalValue : 0
     const referenceImageUrl = (item.referenceImage?.url ?? '').trim()
     const referenceScale = Number(item.referenceImage?.scalePct ?? 100)
     const normalizedScale = referenceScale === 25 || referenceScale === 50 || referenceScale === 75 || referenceScale === 100
@@ -604,7 +607,7 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
     const referenceHeight = Math.max(150, Math.round(220 * (normalizedScale / 100)))
     const keepTogetherHeight = referenceHeight + (additionalTitle || additionalDescription ? 82 : 42)
 
-    if (!additionalTitle && !additionalDescription && !referenceImageUrl) return null
+    if (!additionalTitle && !additionalDescription && !normalizedAdditionalValue && !referenceImageUrl) return null
 
     return (
       <View style={styles.itemExtraBox} wrap={false} minPresenceAhead={keepTogetherHeight}>
@@ -615,9 +618,17 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
             {additionalDescription ? <Text>{additionalDescription}</Text> : null}
           </>
         ) : null}
-        {referenceImageUrl ? (
+        {normalizedAdditionalValue ? (
           <>
             <Text style={[styles.itemExtraTitle, additionalTitle || additionalDescription ? { marginTop: 6 } : null]}>
+              Valor adicional
+            </Text>
+            <Text>{formatCurrency(normalizedAdditionalValue, locale, currency)}</Text>
+          </>
+        ) : null}
+        {referenceImageUrl ? (
+          <>
+            <Text style={[styles.itemExtraTitle, additionalTitle || additionalDescription || normalizedAdditionalValue ? { marginTop: 6 } : null]}>
               Imagen de referencia ({normalizedScale}%)
             </Text>
             <View wrap={false} style={{ width: `${normalizedScale}%`, minWidth: 120 }}>
@@ -947,7 +958,7 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
                         : `${medida.toFixed(2)} m² × ${item.cantidad}`}
                     </Text>
                     <Text style={styles.col5}>{formatCurrency(item.precioUnitario, locale, currency)}</Text>
-                    <Text style={styles.col6}>{formatCurrency(item.subtotal, locale, currency)}</Text>
+                    <Text style={styles.col6}>{formatCurrency(item.subtotal + Math.max(0, Number(item.additionalValue ?? 0) || 0), locale, currency)}</Text>
                   </View>
                 )
               })}
@@ -997,7 +1008,7 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
                     </View>
                     <Text style={styles.colU2}>{item.cantidad}</Text>
                     <Text style={styles.colU3}>{formatCurrency(item.precioUnitario, locale, currency)}</Text>
-                    <Text style={styles.colU4}>{formatCurrency(item.subtotal, locale, currency)}</Text>
+                    <Text style={styles.colU4}>{formatCurrency(item.subtotal + Math.max(0, Number(item.additionalValue ?? 0) || 0), locale, currency)}</Text>
                   </View>
                 )
               })}

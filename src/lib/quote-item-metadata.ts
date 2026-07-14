@@ -6,6 +6,7 @@ export type QuoteItemExtraMeta = {
   version: 1
   additionalFieldTitle?: string
   additionalFieldDescription?: string
+  additionalValue?: number
   referenceImage?: {
     name?: string
     url: string
@@ -52,6 +53,10 @@ function parseMeta(raw: string): QuoteItemExtraMeta | null {
         typeof record.additionalFieldDescription === 'string'
           ? record.additionalFieldDescription.trim() || undefined
           : undefined,
+      additionalValue: (() => {
+        const rawValue = typeof record.additionalValue === 'number' ? record.additionalValue : Number(record.additionalValue)
+        return Number.isFinite(rawValue) && rawValue > 0 ? rawValue : undefined
+      })(),
       referenceImage: url
         ? {
             name: typeof referenceRaw?.name === 'string' ? referenceRaw.name.trim() || undefined : undefined,
@@ -92,6 +97,7 @@ export function buildQuoteItemObservaciones(args: {
     const hasMeaningfulValue = Boolean(
       extraMeta.additionalFieldTitle?.trim()
       || extraMeta.additionalFieldDescription?.trim()
+      || (typeof extraMeta.additionalValue === 'number' && Number.isFinite(extraMeta.additionalValue) && extraMeta.additionalValue > 0)
       || extraMeta.referenceImage?.url?.trim()
     )
 
@@ -100,6 +106,10 @@ export function buildQuoteItemObservaciones(args: {
         version: 1,
         additionalFieldTitle: extraMeta.additionalFieldTitle?.trim() || undefined,
         additionalFieldDescription: extraMeta.additionalFieldDescription?.trim() || undefined,
+        additionalValue:
+          typeof extraMeta.additionalValue === 'number' && Number.isFinite(extraMeta.additionalValue) && extraMeta.additionalValue > 0
+            ? extraMeta.additionalValue
+            : undefined,
         referenceImage: extraMeta.referenceImage?.url
           ? {
               name: extraMeta.referenceImage.name?.trim() || undefined,
