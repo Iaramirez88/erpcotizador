@@ -38,6 +38,7 @@ export interface CotizacionPdfItem {
   imagenUrl?: string | null
   additionalFieldTitle?: string | null
   additionalFieldDescription?: string | null
+  additionalQuantity?: number | null
   additionalValue?: number | null
   referenceImage?: {
     name?: string | null
@@ -595,40 +596,21 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
   const boldUrlTexto = (cotizacion.boldCheckoutUrl ?? '').trim()
 
   const renderItemExtras = (item: CotizacionPdfItem) => {
-    const additionalTitle = (item.additionalFieldTitle ?? '').trim()
-    const additionalDescription = (item.additionalFieldDescription ?? '').trim()
-    const additionalValue = Number(item.additionalValue ?? 0)
-    const normalizedAdditionalValue = Number.isFinite(additionalValue) && additionalValue > 0 ? additionalValue : 0
     const referenceImageUrl = (item.referenceImage?.url ?? '').trim()
     const referenceScale = Number(item.referenceImage?.scalePct ?? 100)
     const normalizedScale = referenceScale === 25 || referenceScale === 50 || referenceScale === 75 || referenceScale === 100
       ? referenceScale
       : 100
     const referenceHeight = Math.max(150, Math.round(220 * (normalizedScale / 100)))
-    const keepTogetherHeight = referenceHeight + (additionalTitle || additionalDescription ? 82 : 42)
+    const keepTogetherHeight = referenceHeight + 42
 
-    if (!additionalTitle && !additionalDescription && !normalizedAdditionalValue && !referenceImageUrl) return null
+    if (!referenceImageUrl) return null
 
     return (
       <View style={styles.itemExtraBox} wrap={false} minPresenceAhead={keepTogetherHeight}>
-        {(additionalTitle || additionalDescription) ? (
-          <>
-            <Text style={styles.itemExtraTitle}>Campo adicional</Text>
-            {additionalTitle ? <Text style={styles.itemExtraHeading}>{additionalTitle}</Text> : null}
-            {additionalDescription ? <Text>{additionalDescription}</Text> : null}
-          </>
-        ) : null}
-        {normalizedAdditionalValue ? (
-          <>
-            <Text style={[styles.itemExtraTitle, additionalTitle || additionalDescription ? { marginTop: 6 } : null]}>
-              Valor adicional
-            </Text>
-            <Text>{formatCurrency(normalizedAdditionalValue, locale, currency)}</Text>
-          </>
-        ) : null}
         {referenceImageUrl ? (
           <>
-            <Text style={[styles.itemExtraTitle, additionalTitle || additionalDescription || normalizedAdditionalValue ? { marginTop: 6 } : null]}>
+            <Text style={styles.itemExtraTitle}>
               Imagen de referencia ({normalizedScale}%)
             </Text>
             <View wrap={false} style={{ width: `${normalizedScale}%`, minWidth: 120 }}>
@@ -638,6 +620,28 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
         ) : null}
       </View>
     )
+  }
+
+  const getAdditionalLineData = (item: CotizacionPdfItem) => {
+    const title = (item.additionalFieldTitle ?? '').trim()
+    const description = (item.additionalFieldDescription ?? '').trim()
+    const unitValue = Number(item.additionalValue ?? 0)
+    const normalizedUnitValue = Number.isFinite(unitValue) && unitValue > 0 ? unitValue : 0
+    const quantityValue = Number(item.additionalQuantity ?? 0)
+    const quantity = Number.isFinite(quantityValue) && quantityValue > 0
+      ? quantityValue
+      : (title || description || normalizedUnitValue ? 1 : 0)
+    const subtotal = quantity * normalizedUnitValue
+    const hasLine = Boolean(title || description || normalizedUnitValue)
+
+    return {
+      hasLine,
+      title: title || 'Campo adicional',
+      description,
+      quantity,
+      unitValue: normalizedUnitValue,
+      subtotal,
+    }
   }
 
   const vendedorTelefonoTexto = (
@@ -923,42 +927,59 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
                 const showMaterialName = item.material?.nombre && item.material.nombre !== title
                 const medida = Number(item.metrosCuadrados ?? 0)
                 const imageSrc = item.imagenUrl || item.material?.imagenUrl || null
+                const additionalLine = getAdditionalLineData(item)
 
                 return (
-                  <View key={index} style={index % 2 === 0 ? styles.tableRow : styles.tableRowAlt}>
-                    <View style={styles.col1}>
-                      <View style={styles.itemTitleRow}>
-                        {imageSrc ? <Image style={styles.itemImage} src={imageSrc} /> : null}
-                        <Text>{title}</Text>
+                  <View key={index}>
+                    <View style={index % 2 === 0 ? styles.tableRow : styles.tableRowAlt}>
+                      <View style={styles.col1}>
+                        <View style={styles.itemTitleRow}>
+                          {imageSrc ? <Image style={styles.itemImage} src={imageSrc} /> : null}
+                          <Text>{title}</Text>
+                        </View>
+                        {showMaterialName ? <Text style={styles.smallMuted}>{item.material?.nombre}</Text> : null}
+                        {item.laminado || item.troquelado || item.instalacion ? (
+                          <Text style={styles.smallMuted}>
+                            {[
+                              item.laminado && 'Laminado',
+                              item.troquelado && 'Troquelado',
+                              item.instalacion &&
+                                `Instalación${
+                                  (item.costoInstalacion ?? 0) > 0
+                                    ? ` (${formatCurrency(item.costoInstalacion ?? 0, locale, currency)})`
+                                    : ''
+                                }`,
+                            ]
+                              .filter(Boolean)
+                              .join(', ')}
+                          </Text>
+                        ) : null}
+                        {renderItemExtras(item)}
                       </View>
-                      {showMaterialName ? <Text style={styles.smallMuted}>{item.material?.nombre}</Text> : null}
-                      {item.laminado || item.troquelado || item.instalacion ? (
-                        <Text style={styles.smallMuted}>
-                          {[
-                            item.laminado && 'Laminado',
-                            item.troquelado && 'Troquelado',
-                            item.instalacion &&
-                              `Instalación${
-                                (item.costoInstalacion ?? 0) > 0
-                                  ? ` (${formatCurrency(item.costoInstalacion ?? 0, locale, currency)})`
-                                  : ''
-                              }`,
-                          ]
-                            .filter(Boolean)
-                            .join(', ')}
-                        </Text>
-                      ) : null}
-                      {renderItemExtras(item)}
+                      <Text style={styles.col2}>{(item.ancho ?? 0).toFixed(2)}</Text>
+                      <Text style={styles.col3}>{(item.alto ?? 0).toFixed(2)}</Text>
+                      <Text style={styles.col4}>
+                        {unitKey === 'ml'
+                          ? `${medida.toFixed(2)} m × ${item.cantidad}`
+                          : `${medida.toFixed(2)} m² × ${item.cantidad}`}
+                      </Text>
+                      <Text style={styles.col5}>{formatCurrency(item.precioUnitario, locale, currency)}</Text>
+                      <Text style={styles.col6}>{formatCurrency(item.subtotal, locale, currency)}</Text>
                     </View>
-                    <Text style={styles.col2}>{(item.ancho ?? 0).toFixed(2)}</Text>
-                    <Text style={styles.col3}>{(item.alto ?? 0).toFixed(2)}</Text>
-                    <Text style={styles.col4}>
-                      {unitKey === 'ml'
-                        ? `${medida.toFixed(2)} m × ${item.cantidad}`
-                        : `${medida.toFixed(2)} m² × ${item.cantidad}`}
-                    </Text>
-                    <Text style={styles.col5}>{formatCurrency(item.precioUnitario, locale, currency)}</Text>
-                    <Text style={styles.col6}>{formatCurrency(item.subtotal + Math.max(0, Number(item.additionalValue ?? 0) || 0), locale, currency)}</Text>
+                    {additionalLine.hasLine ? (
+                      <View style={index % 2 === 0 ? styles.tableRowAlt : styles.tableRow}>
+                        <View style={styles.col1}>
+                          <Text style={styles.itemExtraTitle}>Campo adicional</Text>
+                          <Text style={styles.itemExtraHeading}>{additionalLine.title}</Text>
+                          {additionalLine.description ? <Text style={styles.smallMuted}>{additionalLine.description}</Text> : null}
+                        </View>
+                        <Text style={styles.col2}>-</Text>
+                        <Text style={styles.col3}>-</Text>
+                        <Text style={styles.col4}>{additionalLine.quantity} und</Text>
+                        <Text style={styles.col5}>{formatCurrency(additionalLine.unitValue, locale, currency)}</Text>
+                        <Text style={styles.col6}>{formatCurrency(additionalLine.subtotal, locale, currency)}</Text>
+                      </View>
+                    ) : null}
                   </View>
                 )
               })}
@@ -979,36 +1000,51 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
                 const title = (item.descripcion ?? '').trim() || item.material?.nombre || 'Ítem'
                 const showMaterialName = item.material?.nombre && item.material.nombre !== title
                 const imageSrc = item.imagenUrl || item.material?.imagenUrl || null
+                const additionalLine = getAdditionalLineData(item)
 
                 return (
-                  <View key={index} style={index % 2 === 0 ? styles.tableRow : styles.tableRowAlt}>
-                    <View style={styles.colU1}>
-                      <View style={styles.itemTitleRow}>
-                        {imageSrc ? <Image style={styles.itemImage} src={imageSrc} /> : null}
-                        <Text>{title}</Text>
+                  <View key={index}>
+                    <View style={index % 2 === 0 ? styles.tableRow : styles.tableRowAlt}>
+                      <View style={styles.colU1}>
+                        <View style={styles.itemTitleRow}>
+                          {imageSrc ? <Image style={styles.itemImage} src={imageSrc} /> : null}
+                          <Text>{title}</Text>
+                        </View>
+                        {showMaterialName ? <Text style={styles.smallMuted}>{item.material?.nombre}</Text> : null}
+                        {item.laminado || item.troquelado || item.instalacion ? (
+                          <Text style={styles.smallMuted}>
+                            {[
+                              item.laminado && 'Laminado',
+                              item.troquelado && 'Troquelado',
+                              item.instalacion &&
+                                `Instalación${
+                                  (item.costoInstalacion ?? 0) > 0
+                                    ? ` (${formatCurrency(item.costoInstalacion ?? 0, locale, currency)})`
+                                    : ''
+                                }`,
+                            ]
+                              .filter(Boolean)
+                              .join(', ')}
+                          </Text>
+                        ) : null}
+                        {renderItemExtras(item)}
                       </View>
-                      {showMaterialName ? <Text style={styles.smallMuted}>{item.material?.nombre}</Text> : null}
-                      {item.laminado || item.troquelado || item.instalacion ? (
-                        <Text style={styles.smallMuted}>
-                          {[
-                            item.laminado && 'Laminado',
-                            item.troquelado && 'Troquelado',
-                            item.instalacion &&
-                              `Instalación${
-                                (item.costoInstalacion ?? 0) > 0
-                                  ? ` (${formatCurrency(item.costoInstalacion ?? 0, locale, currency)})`
-                                  : ''
-                              }`,
-                          ]
-                            .filter(Boolean)
-                            .join(', ')}
-                        </Text>
-                      ) : null}
-                      {renderItemExtras(item)}
+                      <Text style={styles.colU2}>{item.cantidad}</Text>
+                      <Text style={styles.colU3}>{formatCurrency(item.precioUnitario, locale, currency)}</Text>
+                      <Text style={styles.colU4}>{formatCurrency(item.subtotal, locale, currency)}</Text>
                     </View>
-                    <Text style={styles.colU2}>{item.cantidad}</Text>
-                    <Text style={styles.colU3}>{formatCurrency(item.precioUnitario, locale, currency)}</Text>
-                    <Text style={styles.colU4}>{formatCurrency(item.subtotal + Math.max(0, Number(item.additionalValue ?? 0) || 0), locale, currency)}</Text>
+                    {additionalLine.hasLine ? (
+                      <View style={index % 2 === 0 ? styles.tableRowAlt : styles.tableRow}>
+                        <View style={styles.colU1}>
+                          <Text style={styles.itemExtraTitle}>Campo adicional</Text>
+                          <Text style={styles.itemExtraHeading}>{additionalLine.title}</Text>
+                          {additionalLine.description ? <Text style={styles.smallMuted}>{additionalLine.description}</Text> : null}
+                        </View>
+                        <Text style={styles.colU2}>{additionalLine.quantity}</Text>
+                        <Text style={styles.colU3}>{formatCurrency(additionalLine.unitValue, locale, currency)}</Text>
+                        <Text style={styles.colU4}>{formatCurrency(additionalLine.subtotal, locale, currency)}</Text>
+                      </View>
+                    ) : null}
                   </View>
                 )
               })}

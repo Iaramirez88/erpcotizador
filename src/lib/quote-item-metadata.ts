@@ -6,6 +6,7 @@ export type QuoteItemExtraMeta = {
   version: 1
   additionalFieldTitle?: string
   additionalFieldDescription?: string
+  additionalQuantity?: number
   additionalValue?: number
   referenceImage?: {
     name?: string
@@ -53,6 +54,16 @@ function parseMeta(raw: string): QuoteItemExtraMeta | null {
         typeof record.additionalFieldDescription === 'string'
           ? record.additionalFieldDescription.trim() || undefined
           : undefined,
+      additionalQuantity: (() => {
+        const rawQuantity = typeof record.additionalQuantity === 'number' ? record.additionalQuantity : Number(record.additionalQuantity)
+        if (Number.isFinite(rawQuantity) && rawQuantity > 0) return rawQuantity
+        const hasAdditionalLine = Boolean(
+          (typeof record.additionalFieldTitle === 'string' && record.additionalFieldTitle.trim())
+          || (typeof record.additionalFieldDescription === 'string' && record.additionalFieldDescription.trim())
+          || (typeof record.additionalValue === 'number' ? record.additionalValue : Number(record.additionalValue)) > 0
+        )
+        return hasAdditionalLine ? 1 : undefined
+      })(),
       additionalValue: (() => {
         const rawValue = typeof record.additionalValue === 'number' ? record.additionalValue : Number(record.additionalValue)
         return Number.isFinite(rawValue) && rawValue > 0 ? rawValue : undefined
@@ -97,6 +108,7 @@ export function buildQuoteItemObservaciones(args: {
     const hasMeaningfulValue = Boolean(
       extraMeta.additionalFieldTitle?.trim()
       || extraMeta.additionalFieldDescription?.trim()
+      || (typeof extraMeta.additionalQuantity === 'number' && Number.isFinite(extraMeta.additionalQuantity) && extraMeta.additionalQuantity > 0)
       || (typeof extraMeta.additionalValue === 'number' && Number.isFinite(extraMeta.additionalValue) && extraMeta.additionalValue > 0)
       || extraMeta.referenceImage?.url?.trim()
     )
@@ -106,6 +118,10 @@ export function buildQuoteItemObservaciones(args: {
         version: 1,
         additionalFieldTitle: extraMeta.additionalFieldTitle?.trim() || undefined,
         additionalFieldDescription: extraMeta.additionalFieldDescription?.trim() || undefined,
+        additionalQuantity:
+          typeof extraMeta.additionalQuantity === 'number' && Number.isFinite(extraMeta.additionalQuantity) && extraMeta.additionalQuantity > 0
+            ? extraMeta.additionalQuantity
+            : undefined,
         additionalValue:
           typeof extraMeta.additionalValue === 'number' && Number.isFinite(extraMeta.additionalValue) && extraMeta.additionalValue > 0
             ? extraMeta.additionalValue

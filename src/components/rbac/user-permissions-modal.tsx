@@ -266,14 +266,6 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
     (total, section) => total + section.entries.reduce((entryTotal, entry) => entryTotal + entry.capabilityEntries.length, 0),
     0
   )
-  const capabilityEditorEntries = useMemo(
-    () => sections.flatMap((section) => section.entries.flatMap((entry) => entry.capabilityEntries.map((capability) => ({
-      ...capability,
-      sectionTitle: section.title,
-      moduleKey: entry.moduleKey,
-    })))),
-    [sections]
-  )
   const open = controlledOpen ?? internalOpen
 
   function getRoleLabel(role: Props['initialSedeRole']) {
@@ -560,63 +552,83 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div>
-              <div className="text-sm font-semibold text-slate-950">Permisos por módulo</div>
-              <div className="text-xs text-slate-500">Mismo esquema visual de las reglas, con la diferencia de que aquí puedes heredar del rol base de la sede.</div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {modules.map((moduleKey) => (
-                <div key={moduleKey} className="rounded-xl border border-slate-200 p-3">
-                  <Label>{getModuleLabel(moduleKey)}</Label>
-                  <select
-                    value={selectedLevel(moduleKey)}
-                    onChange={(e) => void updateModuleLevel(moduleKey, e.target.value as AccessChoice)}
-                    disabled={!hasSedeAccess || Boolean(saving[moduleKey])}
-                    className={cn('mt-2 h-10 w-full rounded-md border px-3 text-sm', getAccessTone(selectedLevel(moduleKey), effectiveLevel(moduleKey)))}
-                  >
-                    <option value="INHERIT">{getAccessLabel('INHERIT')}</option>
-                    {ACCESS_OPTIONS.map((option) => (
-                      <option key={option} value={option}>
-                        {getAccessLabel(option)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div>
-              <div className="text-sm font-semibold text-slate-950">Permisos por submódulo</div>
-              <div className="text-xs text-slate-500">Los cambios aquí tienen prioridad sobre el nivel base del módulo, igual que en las reglas de permisos.</div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {capabilityEditorEntries.map((capability) => {
-                const value = capabilityLevels[capability.permissionKey] ?? 'INHERIT'
-                const currentLevel = capabilityLevels[capability.permissionKey] ?? effectiveLevel(capability.moduleKey)
-                return (
-                  <div key={capability.permissionKey} className="rounded-xl border border-slate-200 p-3">
-                    <div className="text-sm font-medium text-slate-950">{capability.label}</div>
-                    <div className="text-xs text-slate-500">{capability.sectionTitle} · {getModuleLabel(capability.moduleKey)}</div>
-                    <select
-                      value={value}
-                      onChange={(e) => void updateCapabilityLevel(capability.permissionKey, capability.domain, capability.subdomain, e.target.value as AccessChoice)}
-                      disabled={!hasSedeAccess}
-                      className={cn('mt-2 h-10 w-full rounded-md border px-3 text-sm', getAccessTone(value, currentLevel))}
-                    >
-                      <option value="INHERIT">{getAccessLabel('INHERIT')}</option>
-                      {ACCESS_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {getAccessLabel(option)}
-                        </option>
-                      ))}
-                    </select>
+          <div className="space-y-4">
+            {sections.map((section) => (
+              <div key={section.key} className={section.tone.container}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className={cn('text-lg font-semibold uppercase tracking-[0.14em]', section.tone.title)}>{section.title}</div>
+                    <div className="mt-1 text-sm text-slate-600">{section.entries.length} módulos en esta sección</div>
                   </div>
-                )
-              })}
-            </div>
+                </div>
+
+                <div className="mt-3 space-y-3">
+                  {section.entries.map((entry) => {
+                    const moduleLevel = selectedLevel(entry.moduleKey)
+                    const inheritedLevel = effectiveLevel(entry.moduleKey)
+
+                    return (
+                      <div key={entry.moduleKey} className={cn('rounded-2xl border p-4 shadow-sm', section.tone.panel)}>
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div>
+                            <div className="text-lg font-semibold text-slate-950">{getModuleLabel(entry.moduleKey)}</div>
+                            <div className="mt-1 text-sm text-slate-500">{entry.capabilityEntries.length} submódulos configurables</div>
+                          </div>
+                          <div className="w-full lg:w-[256px]">
+                            <select
+                              value={moduleLevel}
+                              onChange={(e) => void updateModuleLevel(entry.moduleKey, e.target.value as AccessChoice)}
+                              disabled={!hasSedeAccess || Boolean(saving[entry.moduleKey])}
+                              className={cn('h-10 w-full rounded-md border px-3 text-sm', getAccessTone(moduleLevel, inheritedLevel))}
+                            >
+                              <option value="INHERIT">Heredar del rol de sede</option>
+                              {ACCESS_OPTIONS.map((option) => (
+                                <option key={option} value={option}>
+                                  {getAccessLabel(option)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {entry.capabilityEntries.length ? (
+                          <div className="mt-4 rounded-2xl border border-slate-200/90 bg-slate-50/80 p-3">
+                            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Submódulos</div>
+                            <div className="space-y-2">
+                              {entry.capabilityEntries.map((capability) => {
+                                const value = capabilityLevels[capability.permissionKey] ?? 'INHERIT'
+                                const currentLevel = capabilityLevels[capability.permissionKey] ?? effectiveLevel(entry.moduleKey)
+                                return (
+                                  <div key={capability.permissionKey} className="grid gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 md:grid-cols-[minmax(0,1fr)_260px] md:items-center">
+                                    <div>
+                                      <div className="text-base font-medium text-slate-950">{capability.label}</div>
+                                      <div className="text-xs text-slate-500">{section.title} · {getModuleLabel(entry.moduleKey)}</div>
+                                    </div>
+                                    <select
+                                      value={value}
+                                      onChange={(e) => void updateCapabilityLevel(capability.permissionKey, capability.domain, capability.subdomain, e.target.value as AccessChoice)}
+                                      disabled={!hasSedeAccess}
+                                      className={cn('h-10 w-full rounded-md border px-3 text-sm', getAccessTone(value, currentLevel))}
+                                    >
+                                      <option value="INHERIT">{getAccessLabel('INHERIT')}</option>
+                                      {ACCESS_OPTIONS.map((option) => (
+                                        <option key={option} value={option}>
+                                          {getAccessLabel(option)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 

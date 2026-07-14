@@ -106,6 +106,7 @@ interface ItemCotizacion {
   observaciones: string
   additionalFieldTitle: string
   additionalFieldDescription: string
+  additionalQuantity: number
   additionalValue: number
   referenceImage: {
     name: string
@@ -126,6 +127,7 @@ type ItemExtrasEditorState = {
   itemId: string
   additionalFieldTitle: string
   additionalFieldDescription: string
+  additionalQuantityInput: string
   additionalValueInput: string
   referenceImage: ItemCotizacion['referenceImage']
 }
@@ -195,14 +197,42 @@ function parseAdditionalValueInput(value: string): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
 }
 
+function parseAdditionalQuantityInput(value: string): number {
+  const raw = value.trim().replace(/\s+/g, '').replace(',', '.')
+  if (!raw) return 1
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1
+}
+
+function hasItemAdditionalLine(item: Pick<ItemCotizacion, 'additionalFieldTitle' | 'additionalFieldDescription' | 'additionalValue' | 'additionalQuantity'>) {
+  return Boolean(
+    item.additionalFieldTitle?.trim()
+    || item.additionalFieldDescription?.trim()
+    || getItemAdditionalValue(item as Pick<ItemCotizacion, 'additionalValue'>) > 0
+  )
+}
+
+function getItemAdditionalQuantity(item: Pick<ItemCotizacion, 'additionalFieldTitle' | 'additionalFieldDescription' | 'additionalQuantity' | 'additionalValue'>) {
+  const quantity = Number(item.additionalQuantity)
+  if (Number.isFinite(quantity) && quantity > 0) return quantity
+  return hasItemAdditionalLine(item) ? 1 : 0
+}
+
+function getItemAdditionalSubtotal(item: Pick<ItemCotizacion, 'additionalFieldTitle' | 'additionalFieldDescription' | 'additionalQuantity' | 'additionalValue'>) {
+  const value = getItemAdditionalValue(item as Pick<ItemCotizacion, 'additionalValue'>)
+  const quantity = getItemAdditionalQuantity(item)
+  if (!value || !quantity) return 0
+  return value * quantity
+}
+
 function getItemAdditionalValue(item: Pick<ItemCotizacion, 'additionalValue'>) {
   const value = Number(item.additionalValue)
   return Number.isFinite(value) && value > 0 ? value : 0
 }
 
-function getItemDisplaySubtotal(item: Pick<ItemCotizacion, 'subtotal' | 'additionalValue'>) {
+function getItemDisplaySubtotal(item: Pick<ItemCotizacion, 'subtotal' | 'additionalFieldTitle' | 'additionalFieldDescription' | 'additionalQuantity' | 'additionalValue'>) {
   const subtotal = Number.isFinite(item.subtotal) ? item.subtotal : 0
-  return subtotal + getItemAdditionalValue(item as Pick<ItemCotizacion, 'additionalValue'>)
+  return subtotal + getItemAdditionalSubtotal(item as Pick<ItemCotizacion, 'additionalFieldTitle' | 'additionalFieldDescription' | 'additionalQuantity' | 'additionalValue'>)
 }
 
 function normalizePreviewCotizacion(raw: unknown): CotizacionPdfData & { id: string; estado?: string } {
@@ -263,6 +293,7 @@ function normalizePreviewCotizacion(raw: unknown): CotizacionPdfData & { id: str
         imagenUrl: typeof material.imagenUrl === 'string' ? material.imagenUrl : null,
         additionalFieldTitle: parsedObservaciones.extraMeta?.additionalFieldTitle || null,
         additionalFieldDescription: parsedObservaciones.extraMeta?.additionalFieldDescription || null,
+        additionalQuantity: Number(parsedObservaciones.extraMeta?.additionalQuantity ?? 0) || 0,
         additionalValue: Number(parsedObservaciones.extraMeta?.additionalValue ?? 0) || 0,
         referenceImage: parsedObservaciones.extraMeta?.referenceImage?.url
           ? {
@@ -614,6 +645,7 @@ export default function CotizadorPage() {
                 observaciones: parsedItemObservaciones.plainText,
                 additionalFieldTitle: parsedItemObservaciones.extraMeta?.additionalFieldTitle || '',
                 additionalFieldDescription: parsedItemObservaciones.extraMeta?.additionalFieldDescription || '',
+                additionalQuantity: Number(parsedItemObservaciones.extraMeta?.additionalQuantity ?? 0) || 0,
                 additionalValue: Number(parsedItemObservaciones.extraMeta?.additionalValue ?? 0) || 0,
                 referenceImage: parsedItemObservaciones.extraMeta?.referenceImage?.url
                   ? {
@@ -1049,6 +1081,7 @@ export default function CotizadorPage() {
       observaciones: itemForm.observaciones,
       additionalFieldTitle: '',
       additionalFieldDescription: '',
+      additionalQuantity: 1,
       additionalValue: 0,
       referenceImage: null,
       terminados: [],
@@ -1109,6 +1142,7 @@ export default function CotizadorPage() {
         .join("\n"),
       additionalFieldTitle: '',
       additionalFieldDescription: '',
+      additionalQuantity: 1,
       additionalValue: 0,
       referenceImage: null,
       terminados: [],
@@ -1172,6 +1206,7 @@ export default function CotizadorPage() {
       observaciones,
       additionalFieldTitle: '',
       additionalFieldDescription: '',
+      additionalQuantity: 1,
       additionalValue: 0,
       referenceImage: null,
       terminados: [],
@@ -1247,6 +1282,7 @@ export default function CotizadorPage() {
       observaciones: draft.observaciones,
       additionalFieldTitle: '',
       additionalFieldDescription: '',
+      additionalQuantity: 1,
       additionalValue: 0,
       referenceImage: null,
       terminados: (draft.terminados || []) as any,
@@ -1286,6 +1322,7 @@ export default function CotizadorPage() {
       itemId: item.id,
       additionalFieldTitle: item.additionalFieldTitle || '',
       additionalFieldDescription: item.additionalFieldDescription || '',
+      additionalQuantityInput: String(getItemAdditionalQuantity(item) || 1),
       additionalValueInput: getItemAdditionalValue(item) > 0 ? new Intl.NumberFormat(locale).format(getItemAdditionalValue(item)) : '',
       referenceImage: item.referenceImage,
     })
@@ -1307,6 +1344,7 @@ export default function CotizadorPage() {
 
   const saveItemExtrasEditor = () => {
     if (!itemExtrasEditor) return
+    const additionalQuantity = parseAdditionalQuantityInput(itemExtrasEditor.additionalQuantityInput)
     const additionalValue = parseAdditionalValueInput(itemExtrasEditor.additionalValueInput)
     setItems((prev) =>
       prev.map((item) =>
@@ -1315,6 +1353,7 @@ export default function CotizadorPage() {
               ...item,
               additionalFieldTitle: itemExtrasEditor.additionalFieldTitle.trim(),
               additionalFieldDescription: itemExtrasEditor.additionalFieldDescription.trim(),
+              additionalQuantity,
               additionalValue,
               referenceImage: itemExtrasEditor.referenceImage,
             }
@@ -1447,7 +1486,7 @@ export default function CotizadorPage() {
 
     for (const item of items) {
       const subtotalItem = Number.isFinite(item.subtotal) ? item.subtotal : 0
-      const subtotalWithAdditionalValue = subtotalItem + getItemAdditionalValue(item)
+      const subtotalWithAdditionalValue = subtotalItem + getItemAdditionalSubtotal(item)
       const itemIvaPct = getLitografiaItemIncludedIvaPct(item.observaciones)
 
       if (itemIvaPct && subtotalWithAdditionalValue > 0) {
@@ -1526,6 +1565,7 @@ export default function CotizadorPage() {
                 version: 1,
                 additionalFieldTitle: item.additionalFieldTitle.trim() || undefined,
                 additionalFieldDescription: item.additionalFieldDescription.trim() || undefined,
+                additionalQuantity: getItemAdditionalQuantity(item) || undefined,
                 additionalValue: getItemAdditionalValue(item) || undefined,
                 referenceImage: item.referenceImage?.url
                   ? {
@@ -1684,7 +1724,7 @@ export default function CotizadorPage() {
           <DialogHeader>
             <DialogTitle>Campo adicional, valor extra e imagen de referencia</DialogTitle>
             <DialogDescription>
-              Aquí puedes agregar texto, un valor adicional que se sumará al ítem y una imagen de referencia para la cotización PDF.
+              Aquí puedes agregar un renglón extra con descripción, cantidad, valor unitario y una imagen de referencia para la cotización PDF.
             </DialogDescription>
           </DialogHeader>
 
@@ -1711,23 +1751,48 @@ export default function CotizadorPage() {
                 />
               </div>
 
-              <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-                <Label htmlFor="item-extra-value" className="text-slate-900">Valor adicional del ítem</Label>
-                <Input
-                  id="item-extra-value"
-                  inputMode="decimal"
-                  value={itemExtrasEditor.additionalValueInput}
-                  onChange={(event) => setItemExtrasEditor((current) => current ? { ...current, additionalValueInput: event.target.value } : current)}
-                  placeholder="Ej. 10.000"
-                />
+              <div className="space-y-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="item-extra-quantity" className="text-slate-900">Cantidad</Label>
+                    <Input
+                      id="item-extra-quantity"
+                      inputMode="decimal"
+                      value={itemExtrasEditor.additionalQuantityInput}
+                      onChange={(event) => setItemExtrasEditor((current) => current ? { ...current, additionalQuantityInput: event.target.value } : current)}
+                      placeholder="1"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="item-extra-value" className="text-slate-900">Valor unitario adicional</Label>
+                    <Input
+                      id="item-extra-value"
+                      inputMode="decimal"
+                      value={itemExtrasEditor.additionalValueInput}
+                      onChange={(event) => setItemExtrasEditor((current) => current ? { ...current, additionalValueInput: event.target.value } : current)}
+                      placeholder="Ej. 10.000"
+                    />
+                  </div>
+                </div>
                 <p className="text-sm text-slate-600">
-                  Usa este campo cuando el costo no exista en la lista de precios. Se sumará al valor final de este ítem y a la cotización total.
+                  Usa este renglón cuando el costo no exista en la lista de precios. Por defecto se maneja como 1 unidad y el subtotal se calcula automáticamente.
                 </p>
-                {parseAdditionalValueInput(itemExtrasEditor.additionalValueInput) > 0 ? (
-                  <p className="text-sm font-medium text-emerald-900">
-                    Se sumarán {formatCurrency(parseAdditionalValueInput(itemExtrasEditor.additionalValueInput))} a este ítem.
-                  </p>
-                ) : null}
+                <div className="grid gap-2 rounded-lg border border-emerald-200 bg-white/80 p-3 text-sm text-slate-700 sm:grid-cols-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cantidad</p>
+                    <p className="mt-1 font-medium text-slate-900">{parseAdditionalQuantityInput(itemExtrasEditor.additionalQuantityInput)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Valor unitario</p>
+                    <p className="mt-1 font-medium text-slate-900">{formatCurrency(parseAdditionalValueInput(itemExtrasEditor.additionalValueInput))}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Subtotal</p>
+                    <p className="mt-1 font-semibold text-emerald-900">
+                      {formatCurrency(parseAdditionalQuantityInput(itemExtrasEditor.additionalQuantityInput) * parseAdditionalValueInput(itemExtrasEditor.additionalValueInput))}
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-3 rounded-lg border border-slate-200 p-4">
@@ -2680,14 +2745,27 @@ export default function CotizadorPage() {
                               ) : null}
                             </div>
                           ) : null}
-                          {item.additionalFieldTitle || item.additionalFieldDescription || getItemAdditionalValue(item) > 0 ? (
+                          {hasItemAdditionalLine(item) ? (
                             <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Campo adicional</p>
-                              {item.additionalFieldTitle ? <p className="mt-1 text-sm font-medium text-slate-900">{item.additionalFieldTitle}</p> : null}
-                              {item.additionalFieldDescription ? <p className="mt-1 text-sm text-slate-600">{item.additionalFieldDescription}</p> : null}
-                              {getItemAdditionalValue(item) > 0 ? (
-                                <p className="mt-2 text-sm font-semibold text-emerald-700">Valor adicional: {formatCurrency(getItemAdditionalValue(item))}</p>
-                              ) : null}
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ítem extra</p>
+                              <div className="mt-2 grid gap-2 rounded-md border border-slate-200 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_90px_140px_140px] sm:items-start">
+                                <div>
+                                  <p className="text-sm font-medium text-slate-900">{item.additionalFieldTitle || 'Campo adicional'}</p>
+                                  {item.additionalFieldDescription ? <p className="mt-1 text-sm text-slate-600">{item.additionalFieldDescription}</p> : null}
+                                </div>
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cant</p>
+                                  <p className="mt-1 text-sm text-slate-900">{getItemAdditionalQuantity(item)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Valor unit.</p>
+                                  <p className="mt-1 text-sm text-slate-900">{formatCurrency(getItemAdditionalValue(item))}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Subtotal</p>
+                                  <p className="mt-1 text-sm font-semibold text-emerald-700">{formatCurrency(getItemAdditionalSubtotal(item))}</p>
+                                </div>
+                              </div>
                             </div>
                           ) : null}
                           {item.referenceImage ? (
@@ -2704,8 +2782,8 @@ export default function CotizadorPage() {
                             <p className="text-sm text-muted-foreground">
                               {formatCurrency(item.precioUnitario)} {t('quoteBuilder.items.each')}
                             </p>
-                            {getItemAdditionalValue(item) > 0 ? (
-                              <p className="text-xs text-emerald-700">Extra sumado: {formatCurrency(getItemAdditionalValue(item))}</p>
+                            {getItemAdditionalSubtotal(item) > 0 ? (
+                              <p className="text-xs text-emerald-700">Extra sumado: {formatCurrency(getItemAdditionalSubtotal(item))}</p>
                             ) : null}
                             <p className="font-bold text-blue-600">
                               {formatCurrency(getItemDisplaySubtotal(item))}
