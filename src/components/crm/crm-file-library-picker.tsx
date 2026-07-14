@@ -7,6 +7,16 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input'
 import type { CrmFileItem, CrmFilesSnapshot, JsonResponse } from '@/components/crm/crm-files-types'
 
+function findFolderNodeByPath(node: CrmFilesSnapshot['tree'] | null | undefined, targetPath: string): CrmFilesSnapshot['tree'] | null {
+  if (!node) return null
+  if (node.path === targetPath) return node
+  for (const child of node.children) {
+    const match = findFolderNodeByPath(child, targetPath)
+    if (match) return match
+  }
+  return null
+}
+
 function getItemIcon(type: CrmFileItem['type']) {
   if (type === 'folder') return Folder
   if (type === 'image') return ImageIcon
@@ -54,13 +64,33 @@ export function CrmFileLibraryPicker({ open, onOpenChange, onPick, title = 'Sele
 
   const visibleItems = useMemo(() => {
     const term = search.trim().toLowerCase()
-    const items = snapshot?.items || []
-    return items.filter((item) => {
-      if (!allowFolders && item.type === 'folder') return false
+    const folderNode = findFolderNodeByPath(snapshot?.tree, snapshot?.currentPath || '')
+    const folderItems = (folderNode?.children || []).map<CrmFileItem>((child) => ({
+      id: `folder:${child.path || '/'}`,
+      name: child.name,
+      path: child.path,
+      directoryPath: snapshot?.currentPath || '',
+      type: 'folder',
+      sizeBytes: 0,
+      updatedAt: '',
+      url: null,
+      extension: null,
+      mimeType: null,
+      createdAt: '',
+      createdById: null,
+      sharedWithUserIds: [],
+      linkedEntities: { tasks: [], leads: [], opportunities: [] },
+      auditTrail: [],
+    }))
+    const itemMap = new Map<string, CrmFileItem>()
+    for (const item of [...folderItems, ...(snapshot?.items || [])]) {
+      itemMap.set(item.path, item)
+    }
+    return [...itemMap.values()].filter((item) => {
       if (!term) return true
       return item.name.toLowerCase().includes(term) || item.directoryPath.toLowerCase().includes(term)
     })
-  }, [allowFolders, search, snapshot?.items])
+  }, [search, snapshot?.currentPath, snapshot?.items, snapshot?.tree])
 
   async function handlePick(item: CrmFileItem) {
     setSubmitting(true)
@@ -76,7 +106,7 @@ export function CrmFileLibraryPicker({ open, onOpenChange, onPick, title = 'Sele
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="z-[120] max-w-3xl" overlayClassName="z-[119] bg-black/70">
+      <DialogContent className="z-[160] max-w-3xl" overlayClassName="z-[159] bg-black/70">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>

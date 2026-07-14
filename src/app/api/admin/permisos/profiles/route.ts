@@ -146,6 +146,54 @@ async function applyProfileToUsers(args: {
   }
 }
 
+async function clearProfileFromUsers(args: {
+  tx: Omit<typeof prisma, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>
+  empresaId: string
+  sedeId: string
+  userIds: string[]
+}) {
+  if (!args.userIds.length) return
+
+  await args.tx.permissionProfileAssignment.deleteMany({
+    where: {
+      empresaId: args.empresaId,
+      sedeId: args.sedeId,
+      userId: { in: args.userIds },
+    },
+  })
+
+  await args.tx.userCapabilityGrant.deleteMany({
+    where: {
+      empresaId: args.empresaId,
+      userId: { in: args.userIds },
+      scopeType: RbacScopeType.SEDE,
+      scopeValue: args.sedeId,
+      source: RbacGrantSource.DIRECT,
+    },
+  })
+
+  await args.tx.userModuleAccess.deleteMany({
+    where: {
+      sedeId: args.sedeId,
+      userId: { in: args.userIds },
+    },
+  })
+
+  await args.tx.userGlobalAccess.deleteMany({
+    where: {
+      empresaId: args.empresaId,
+      userId: { in: args.userIds },
+    },
+  })
+
+  await args.tx.sedeMembership.deleteMany({
+    where: {
+      sedeId: args.sedeId,
+      userId: { in: args.userIds },
+    },
+  })
+}
+
 export async function POST(request: Request) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
@@ -291,5 +339,69 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: true, data: result })
   } catch {
     return NextResponse.json({ success: false, error: 'No fue posible actualizar la regla de permisos.' }, { status: 400 })
+  }
+}
+
+export async function DELETE(request: Request) {
+  const session = await auth()
+  if (!session?.user?.id) return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
+
+  const body = await request.json().catch(() => null)
+  if (!isPlainObject(body)) {
+    return NextResponse.json({ success: false, error: 'Body inválido' }, { status: 400 })
+  }
+
+  const profileId = typeof body.profileId === 'string' ? body.profileId.trim() : ''
+  if (!profileId) {
+    return NextResponse.json({ success: false, error: 'Debes indicar la regla a eliminar.' }, { status: 400 })
+  }
+
+  const empresaId = await requireEmpresaIdForUser(session.user.id)
+  const existingProfile = await prisma.permissionProfile.findUnique({
+    where: { id: profileId },
+    select: { id: true, empresaId: true, sedeId: true, name: true },
+  })
+
+  if (!existingProfile || existingProfile.empresaId !== empresaId) {
+    return NextResponse.json({ success: false, error: 'La regla de permisos no existe en esta empresa.' }, { status: 404 })
+  }
+
+  const requesterMembership = await prisma.sedeMembership.findUnique({
+    where: { sedeId_userId: { sedeId: existingProfile.sedeId, userId: session.user.id } },
+    select: { role: true },
+  })
+
+  const isAllowed = session.user.role === 'ADMIN' || requesterMembership?.role === 'ADMIN'
+  if (!isAllowed) {
+    return NextResponse.json({ success: false, error: 'Solo los administradores pueden eliminar reglas de permisos.' }, { status: 403 })
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const assignments = await tx.permissionProfileAssignment.findMany({
+        where: { profileId, empresaId, sedeId: existingProfile.sedeId },
+        select: { userId: true },
+      })
+
+      const userIds = assignments.map((item) => item.userId)
+      await clearProfileFromUsers({
+        tx,
+        empresaId,
+        sedeId: existingProfile.sedeId,
+        userIds,
+      })
+
+      await tx.permissionProfile.delete({ where: { id: profileId } })
+
+      return {
+        deletedProfileId: profileId,
+        deletedProfileName: existingProfile.name,
+        affectedUsers: userIds.length,
+      }
+    })
+
+    return NextResponse.json({ success: true, data: result })
+  } catch {
+    return NextResponse.json({ success: false, error: 'No fue posible eliminar la regla de permisos.' }, { status: 400 })
   }
 }

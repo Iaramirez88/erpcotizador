@@ -1375,8 +1375,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                               <Paperclip className="mr-2 h-4 w-4" />
                               Documento
                             </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={(event) => {
-                              event.preventDefault()
+                            <DropdownMenuItem onSelect={() => {
                               setTeamLibraryPickerOpen(true)
                             }}>
                               <Paperclip className="mr-2 h-4 w-4" />

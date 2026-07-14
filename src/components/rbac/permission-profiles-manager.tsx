@@ -76,6 +76,8 @@ export function PermissionProfilesManager({ profiles, users }: Props) {
   const [search, setSearch] = useState('')
   const [applying, setApplying] = useState(false)
   const [savingEdit, setSavingEdit] = useState(false)
+  const [deletingProfile, setDeletingProfile] = useState<PermissionProfileSummary | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
   const [editForm, setEditForm] = useState<{
     name: string
@@ -185,6 +187,30 @@ export function PermissionProfilesManager({ profiles, users }: Props) {
     }
   }
 
+  async function deleteProfile() {
+    if (!deletingProfile) return
+
+    setDeleting(true)
+    try {
+      const res = await fetch('/api/admin/permisos/profiles', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId: deletingProfile.id }),
+      })
+      const json = (await res.json().catch(() => null)) as { success?: boolean; error?: string; data?: { affectedUsers?: number } } | null
+      if (!res.ok || !json?.success) {
+        toast({ title: json?.error || 'No fue posible eliminar la regla.', variant: 'destructive' })
+        return
+      }
+
+      toast({ title: `Regla eliminada. Se limpiaron permisos en ${json.data?.affectedUsers ?? 0} usuario(s).` })
+      setDeletingProfile(null)
+      router.refresh()
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <>
       <Card>
@@ -213,6 +239,9 @@ export function PermissionProfilesManager({ profiles, users }: Props) {
                     </Button>
                     <Button size="sm" className="rounded-xl" onClick={() => setSelectedProfile(profile)}>
                       Aplicar a usuarios
+                    </Button>
+                    <Button size="sm" variant="outline" className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => setDeletingProfile(profile)}>
+                      Eliminar regla
                     </Button>
                   </div>
                 </div>
@@ -407,6 +436,34 @@ export function PermissionProfilesManager({ profiles, users }: Props) {
             <Button variant="outline" onClick={() => setEditingProfile(null)} disabled={savingEdit}>Cancelar</Button>
             <Button onClick={() => void saveProfileEdits()} disabled={savingEdit}>
               {savingEdit ? 'Guardando...' : 'Guardar cambios'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(deletingProfile)} onOpenChange={(open) => {
+        if (!open && !deleting) {
+          setDeletingProfile(null)
+        }
+      }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Eliminar regla de permisos</DialogTitle>
+            <DialogDescription>
+              {deletingProfile ? `Se eliminará la regla ${deletingProfile.name} y se quitarán sus permisos a los ${deletingProfile.assignmentCount} usuario(s) vinculados.` : 'Confirma la eliminación.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {deletingProfile ? (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-950">
+              Esta acción también removerá el acceso de sede, permisos generales, módulos y submódulos que fueron aplicados por esta regla a los usuarios afectados.
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletingProfile(null)} disabled={deleting}>Cancelar</Button>
+            <Button className="bg-rose-600 text-white hover:bg-rose-700" onClick={() => void deleteProfile()} disabled={deleting}>
+              {deleting ? 'Eliminando...' : 'Eliminar regla'}
             </Button>
           </DialogFooter>
         </DialogContent>
