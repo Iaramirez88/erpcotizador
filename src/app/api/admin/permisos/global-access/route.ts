@@ -3,6 +3,7 @@ import { AccessLevel } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireEmpresaIdForUser } from '@/lib/rbac'
+import { detachPermissionProfileAssignment, publishPermissionUpdateNotification } from '@/lib/rbac-permission-sync'
 
 export const runtime = 'nodejs'
 
@@ -22,6 +23,7 @@ export async function PATCH(request: Request) {
   }
 
   const targetUserId = typeof body.userId === 'string' ? body.userId.trim() : ''
+  const sedeId = typeof body.sedeId === 'string' ? body.sedeId.trim() : ''
   const level = typeof body.level === 'string' ? (body.level.trim() as AccessLevel) : null
 
   if (!targetUserId || !level || !ACCESS_LEVELS.includes(level)) {
@@ -64,28 +66,35 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: false, error: 'El usuario no pertenece a esta empresa' }, { status: 400 })
   }
 
-  if (level === 'NONE') {
-    await prisma.userGlobalAccess.deleteMany({ where: { userId: targetUser.id, empresaId } })
-  } else {
-    await prisma.userGlobalAccess.upsert({
+  await prisma.$transaction(async (tx) => {
+    if (sedeId) {
+      const sede = await tx.sede.findUnique({ where: { id: sedeId }, select: { id: true, empresaId: true } })
+      if (sede?.empresaId === empresaId) {
+        await detachPermissionProfileAssignment({ client: tx, empresaId, sedeId, userId: targetUser.id })
+      }
+    }
+
+    if (level === 'NONE') {
+      await tx.userGlobalAccess.deleteMany({ where: { userId: targetUser.id, empresaId } })
+      return
+    }
+
+    await tx.userGlobalAccess.upsert({
       where: { userId: targetUser.id },
       create: { userId: targetUser.id, empresaId, level },
       update: { empresaId, level },
     })
-  }
+  })
 
-  await prisma.notification.create({
-    data: {
-      userId: targetUser.id,
-      type: 'INFO',
-      title: 'Permisos actualizados',
-      body: level === 'NONE'
-        ? 'Tu permiso general fue desactivado.'
-        : `Tu permiso general fue actualizado a ${level}.`,
-      empresaId,
-      actionUrl: '/dashboard/configuracion/usuarios',
-      actionLabel: 'Ver usuarios',
-    },
+  await publishPermissionUpdateNotification({
+    client: prisma,
+    userId: targetUser.id,
+    empresaId,
+    sedeId: sedeId || null,
+    title: 'Permisos actualizados',
+    body: level === 'NONE'
+      ? 'Tu permiso general fue desactivado.'
+      : `Tu permiso general fue actualizado a ${level}.`,
   })
 
   return NextResponse.json({ success: true, data: { level } })

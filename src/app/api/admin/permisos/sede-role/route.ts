@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireEmpresaIdForUser, sedeRoleToBaseAccess } from '@/lib/rbac'
+import { detachPermissionProfileAssignment, publishPermissionUpdateNotification } from '@/lib/rbac-permission-sync'
 import { SedeRole } from '@prisma/client'
 
 export const runtime = 'nodejs'
@@ -61,24 +62,23 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: false, error: 'Usuario no encontrado' }, { status: 404 })
   }
 
-  const updated = await prisma.sedeMembership.upsert({
-    where: { sedeId_userId: { sedeId, userId: targetUser.id } },
-    create: { sedeId, userId: targetUser.id, role },
-    update: { role },
-    select: { role: true },
+  const updated = await prisma.$transaction(async (tx) => {
+    await detachPermissionProfileAssignment({ client: tx, empresaId, sedeId, userId: targetUser.id })
+    return tx.sedeMembership.upsert({
+      where: { sedeId_userId: { sedeId, userId: targetUser.id } },
+      create: { sedeId, userId: targetUser.id, role },
+      update: { role },
+      select: { role: true },
+    })
   })
 
-  await prisma.notification.create({
-    data: {
-      userId: targetUser.id,
-      type: 'INFO',
-      title: 'Rol actualizado',
-      body: `Tu rol en la sede ${sede.nombre} fue actualizado a ${role}.`,
-      sedeId,
-      empresaId,
-      actionUrl: '/dashboard/configuracion/usuarios',
-      actionLabel: 'Ver usuarios',
-    },
+  await publishPermissionUpdateNotification({
+    client: prisma,
+    userId: targetUser.id,
+    empresaId,
+    sedeId,
+    title: 'Rol actualizado',
+    body: `Tu rol en la sede ${sede.nombre} fue actualizado a ${role}.`,
   })
 
   return NextResponse.json({ success: true, data: { role: updated.role } })

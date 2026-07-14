@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
+import { useRouter } from 'next/navigation'
 import { dispatchNotificationReceivedEvent } from '@/lib/notification-browser-events';
 import type { RealtimeNotificationPayload } from '@/lib/notification-realtime';
+import { isPermissionSyncActionUrl } from '@/lib/rbac-permission-sync'
 import { ToastAction } from "@/components/ui/toast";
 import { toast } from "@/hooks/use-toast";
 
@@ -12,6 +14,8 @@ function mapVariant(type: RealtimeNotificationPayload["type"]) {
 }
 
 export function NotificationToastBridge() {
+  const router = useRouter()
+
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.EventSource === 'undefined') return
 
@@ -19,6 +23,13 @@ export function NotificationToastBridge() {
 
     const handleNotification = (event: MessageEvent<string>) => {
       const payload = JSON.parse(event.data) as RealtimeNotificationPayload
+
+      if (isPermissionSyncActionUrl(payload.actionUrl)) {
+        router.refresh()
+        window.location.reload()
+        return
+      }
+
       dispatchNotificationReceivedEvent(payload)
       toast({
         title: payload.title,
@@ -38,7 +49,7 @@ export function NotificationToastBridge() {
       stream.removeEventListener('notification', handleNotification as EventListener)
       stream.close()
     }
-  }, [])
+  }, [router])
 
   return null
 }

@@ -308,6 +308,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
 
           return { ...prev, [moduleKey]: json.data.level }
         })
+        router.refresh()
         toast({ title: 'Permiso actualizado correctamente' })
       } else {
         toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' })
@@ -325,11 +326,12 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
       const res = await fetch('/api/admin/permisos/global-access', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, level: nextLevel }),
+        body: JSON.stringify({ sedeId, userId: user.id, level: nextLevel }),
       })
       const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { level?: AccessLevel } } | null
       if (res.ok && json?.success) {
         setGlobalLevel(json.data?.level ?? nextLevel)
+        router.refresh()
         toast({ title: 'Permiso actualizado correctamente' })
       } else {
         toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' })
@@ -367,6 +369,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
           }
           return next
         })
+        router.refresh()
         toast({ title: 'Permiso actualizado correctamente' })
       } else {
         toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' })
@@ -394,6 +397,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
       if (res.ok && json?.success) {
         setSedeRole(json.data?.role ?? nextRole)
         setHasSedeAccess(true)
+        router.refresh()
         toast({ title: 'Permiso actualizado correctamente' })
       } else {
         toast({ title: 'No se pudo actualizar el permiso', variant: 'destructive' })

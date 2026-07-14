@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireEmpresaIdForUser } from '@/lib/rbac'
 import { capabilityActionToAccessLevel, getCapabilityDefinition } from '@/lib/dashboard-access'
+import { publishPermissionUpdateNotification } from '@/lib/rbac-permission-sync'
 import type { RbacV2Domain } from '@/lib/rbac-v2-catalog'
 
 export const runtime = 'nodejs'
@@ -333,8 +334,21 @@ export async function PATCH(request: Request) {
         })
       }
 
-      return { id: updated.id, reappliedUsers: userIds.length }
+      return { id: updated.id, reappliedUsers: userIds.length, userIds }
     })
+
+    await Promise.all(
+      result.userIds.map((userId) =>
+        publishPermissionUpdateNotification({
+          client: prisma,
+          userId,
+          empresaId,
+          sedeId: existingProfile.sedeId,
+          title: 'Permisos actualizados',
+          body: `La regla de permisos ${name} fue actualizada y tus accesos se sincronizaron automáticamente.`,
+        })
+      )
+    )
 
     return NextResponse.json({ success: true, data: result })
   } catch {
@@ -397,8 +411,22 @@ export async function DELETE(request: Request) {
         deletedProfileId: profileId,
         deletedProfileName: existingProfile.name,
         affectedUsers: userIds.length,
+        userIds,
       }
     })
+
+    await Promise.all(
+      result.userIds.map((userId) =>
+        publishPermissionUpdateNotification({
+          client: prisma,
+          userId,
+          empresaId,
+          sedeId: existingProfile.sedeId,
+          title: 'Permisos actualizados',
+          body: `La regla de permisos ${existingProfile.name} fue eliminada y tus accesos se limpiaron en esta sede.`,
+        })
+      )
+    )
 
     return NextResponse.json({ success: true, data: result })
   } catch {

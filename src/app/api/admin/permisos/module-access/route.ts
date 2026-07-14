@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireEmpresaIdForUser, sedeRoleToBaseAccess } from '@/lib/rbac'
+import { detachPermissionProfileAssignment, publishPermissionUpdateNotification } from '@/lib/rbac-permission-sync'
 import { AccessLevel, ModuleKey } from '@prisma/client'
 
 export const runtime = 'nodejs'
@@ -97,21 +98,20 @@ export async function PATCH(request: Request) {
   const shouldInherit = requestedLevel === 'INHERIT'
 
   if (shouldInherit) {
-    await prisma.userModuleAccess.deleteMany({
-      where: { sedeId, userId: targetUser.id, module: moduleKey },
+    await prisma.$transaction(async (tx) => {
+      await detachPermissionProfileAssignment({ client: tx, empresaId, sedeId, userId: targetUser.id })
+      await tx.userModuleAccess.deleteMany({
+        where: { sedeId, userId: targetUser.id, module: moduleKey },
+      })
     })
 
-    await prisma.notification.create({
-      data: {
-        userId: targetUser.id,
-        type: 'INFO',
-        title: 'Permisos actualizados',
-        body: `El módulo ${moduleKey} volvió a heredar el permiso general en la sede ${sede.nombre}.`,
-        sedeId,
-        empresaId,
-        actionUrl: '/dashboard/configuracion/usuarios',
-        actionLabel: 'Ver usuarios',
-      },
+    await publishPermissionUpdateNotification({
+      client: prisma,
+      userId: targetUser.id,
+      empresaId,
+      sedeId,
+      title: 'Permisos actualizados',
+      body: `El módulo ${moduleKey} volvió a heredar el permiso general en la sede ${sede.nombre}.`,
     })
 
     return NextResponse.json({ success: true, data: { level: null, effectiveLevel: base } })
@@ -123,24 +123,23 @@ export async function PATCH(request: Request) {
       ? base
       : 'NONE'
 
-  const updated = await prisma.userModuleAccess.upsert({
-    where: { sedeId_userId_module: { sedeId, userId: targetUser.id, module: moduleKey } },
-    create: { sedeId, userId: targetUser.id, module: moduleKey, level },
-    update: { level },
-    select: { id: true, level: true },
+  const updated = await prisma.$transaction(async (tx) => {
+    await detachPermissionProfileAssignment({ client: tx, empresaId, sedeId, userId: targetUser.id })
+    return tx.userModuleAccess.upsert({
+      where: { sedeId_userId_module: { sedeId, userId: targetUser.id, module: moduleKey } },
+      create: { sedeId, userId: targetUser.id, module: moduleKey, level },
+      update: { level },
+      select: { id: true, level: true },
+    })
   })
 
-  await prisma.notification.create({
-    data: {
-      userId: targetUser.id,
-      type: 'INFO',
-      title: 'Permisos actualizados',
-      body: `El módulo ${moduleKey} quedó con permiso ${level} en la sede ${sede.nombre}.`,
-      sedeId: sedeId,
-      empresaId,
-      actionUrl: '/dashboard/configuracion/usuarios',
-      actionLabel: 'Ver usuarios',
-    },
+  await publishPermissionUpdateNotification({
+    client: prisma,
+    userId: targetUser.id,
+    empresaId,
+    sedeId,
+    title: 'Permisos actualizados',
+    body: `El módulo ${moduleKey} quedó con permiso ${level} en la sede ${sede.nombre}.`,
   })
 
   return NextResponse.json({ success: true, data: { level: updated.level } })

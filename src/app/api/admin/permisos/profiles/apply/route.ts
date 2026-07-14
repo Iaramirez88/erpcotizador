@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireEmpresaIdForUser } from '@/lib/rbac'
 import { capabilityActionToAccessLevel, getCapabilityDefinition } from '@/lib/dashboard-access'
+import { publishPermissionUpdateNotification } from '@/lib/rbac-permission-sync'
 import type { RbacV2Domain } from '@/lib/rbac-v2-catalog'
 
 export const runtime = 'nodejs'
@@ -171,6 +172,19 @@ export async function POST(request: Request) {
       })
     }
   })
+
+  await Promise.all(
+    targetUsers.map((user) =>
+      publishPermissionUpdateNotification({
+        client: prisma,
+        userId: user.id,
+        empresaId,
+        sedeId: profile.sedeId,
+        title: 'Permisos actualizados',
+        body: 'Se aplicó una regla de permisos a tu acceso actual. La página se recargará para sincronizar tus accesos.',
+      })
+    )
+  )
 
   return NextResponse.json({ success: true, data: { appliedUsers: targetUsers.length } })
 }

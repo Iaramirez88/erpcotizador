@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { requireEmpresaIdForUser } from '@/lib/rbac'
 import { capabilityActionToAccessLevel, getCapabilityDefinition } from '@/lib/dashboard-access'
+import { detachPermissionProfileAssignment, publishPermissionUpdateNotification } from '@/lib/rbac-permission-sync'
 import type { RbacV2Domain } from '@/lib/rbac-v2-catalog'
 
 export const runtime = 'nodejs'
@@ -61,53 +62,62 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: false, error: 'El usuario no pertenece a esta sede' }, { status: 400 })
   }
 
-  await prisma.userCapabilityGrant.deleteMany({
-    where: {
-      empresaId,
-      userId: targetUserId,
-      domain,
-      subdomain,
-      scopeType: RbacScopeType.SEDE,
-      scopeValue: sedeId,
-      source: RbacGrantSource.DIRECT,
-    },
+  await prisma.$transaction(async (tx) => {
+    await detachPermissionProfileAssignment({ client: tx, empresaId, sedeId, userId: targetUserId })
+    await tx.userCapabilityGrant.deleteMany({
+      where: {
+        empresaId,
+        userId: targetUserId,
+        domain,
+        subdomain,
+        scopeType: RbacScopeType.SEDE,
+        scopeValue: sedeId,
+        source: RbacGrantSource.DIRECT,
+      },
+    })
+
+    if (level !== 'INHERIT') {
+      await tx.userCapabilityGrant.createMany({
+        data: definition.actions.map((action) => ({
+          userId: targetUserId,
+          empresaId,
+          domain,
+          subdomain,
+          action,
+          scopeType: RbacScopeType.SEDE,
+          scopeValue: sedeId,
+          allowed: capabilityActionToAccessLevel(action) === 'READ'
+            ? level !== 'NONE'
+            : capabilityActionToAccessLevel(action) === 'WRITE'
+              ? level === 'WRITE' || level === 'ADMIN'
+              : level === 'ADMIN',
+          source: RbacGrantSource.DIRECT,
+          grantedByUserId: session.user.id,
+          notes: `Permiso ${level} asignado desde gestión de usuarios para ${domain}.${subdomain}.`,
+        })),
+      })
+    }
   })
 
   if (level === 'INHERIT') {
+    await publishPermissionUpdateNotification({
+      client: prisma,
+      userId: targetUserId,
+      empresaId,
+      sedeId,
+      title: 'Permisos actualizados',
+      body: `El submódulo ${subdomain} volvió a heredar el permiso de la sede ${sede.nombre}.`,
+    })
     return NextResponse.json({ success: true, data: { level: null } })
   }
 
-  await prisma.userCapabilityGrant.createMany({
-    data: definition.actions.map((action) => ({
-      userId: targetUserId,
-      empresaId,
-      domain,
-      subdomain,
-      action,
-      scopeType: RbacScopeType.SEDE,
-      scopeValue: sedeId,
-      allowed: capabilityActionToAccessLevel(action) === 'READ'
-        ? level !== 'NONE'
-        : capabilityActionToAccessLevel(action) === 'WRITE'
-          ? level === 'WRITE' || level === 'ADMIN'
-          : level === 'ADMIN',
-      source: RbacGrantSource.DIRECT,
-      grantedByUserId: session.user.id,
-      notes: `Permiso ${level} asignado desde gestión de usuarios para ${domain}.${subdomain}.`,
-    })),
-  })
-
-  await prisma.notification.create({
-    data: {
-      userId: targetUserId,
-      type: 'INFO',
-      title: 'Permisos actualizados',
-      body: `Se actualizó el submódulo ${subdomain} a ${level} en la sede ${sede.nombre}.`,
-      sedeId,
-      empresaId,
-      actionUrl: '/dashboard/configuracion/usuarios',
-      actionLabel: 'Ver usuarios',
-    },
+  await publishPermissionUpdateNotification({
+    client: prisma,
+    userId: targetUserId,
+    empresaId,
+    sedeId,
+    title: 'Permisos actualizados',
+    body: `Se actualizó el submódulo ${subdomain} a ${level} en la sede ${sede.nombre}.`,
   })
 
   return NextResponse.json({ success: true, data: { level } })
