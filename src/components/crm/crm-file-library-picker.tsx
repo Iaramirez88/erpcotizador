@@ -76,7 +76,7 @@ export function CrmFileLibraryPicker({ open, onOpenChange, onPick, title = 'Sele
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="z-[120] max-w-3xl" overlayClassName="z-[119] bg-black/70">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>

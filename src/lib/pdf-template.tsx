@@ -488,11 +488,11 @@ function createStyles(t: CotizacionTemplateSettings, StyleSheet: ReactPdfCompone
     },
     itemReferenceImage: {
       marginTop: 6,
-      maxHeight: 160,
       objectFit: 'contain',
       borderRadius: 3,
       borderWidth: 1,
       borderColor: t.colors.tableBorder,
+      backgroundColor: '#ffffff',
     },
     watermarkText: {
       position: 'absolute',
@@ -601,11 +601,13 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
     const normalizedScale = referenceScale === 25 || referenceScale === 50 || referenceScale === 75 || referenceScale === 100
       ? referenceScale
       : 100
+    const referenceHeight = Math.max(150, Math.round(220 * (normalizedScale / 100)))
+    const keepTogetherHeight = referenceHeight + (additionalTitle || additionalDescription ? 82 : 42)
 
     if (!additionalTitle && !additionalDescription && !referenceImageUrl) return null
 
     return (
-      <View style={styles.itemExtraBox}>
+      <View style={styles.itemExtraBox} wrap={false} minPresenceAhead={keepTogetherHeight}>
         {(additionalTitle || additionalDescription) ? (
           <>
             <Text style={styles.itemExtraTitle}>Campo adicional</Text>
@@ -618,7 +620,9 @@ export default function CotizacionPDF({ pdf, cotizacion, template }: CotizacionP
             <Text style={[styles.itemExtraTitle, additionalTitle || additionalDescription ? { marginTop: 6 } : null]}>
               Imagen de referencia ({normalizedScale}%)
             </Text>
-            <Image style={[styles.itemReferenceImage, { width: `${normalizedScale}%` }]} src={referenceImageUrl} />
+            <View wrap={false} style={{ width: `${normalizedScale}%`, minWidth: 120 }}>
+              <Image style={[styles.itemReferenceImage, { width: '100%', height: referenceHeight, minHeight: 150 }]} src={referenceImageUrl} />
+            </View>
           </>
         ) : null}
       </View>

@@ -2,13 +2,14 @@
 
 import Image from 'next/image'
 import { type ReactElement, useDeferredValue, useEffect, useRef, useState } from 'react'
-import { Check, ChevronRight, Copy, Download, Eye, FileText, Folder, FolderInput, FolderPlus, ImageIcon, Link2, Music2, Pencil, Plus, Search, Share2, Trash2, Upload, Video } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Copy, Download, Eye, FileText, Folder, FolderInput, FolderPlus, ImageIcon, MoreHorizontal, Music2, Pencil, Plus, Search, Share2, Trash2, Upload, Video } from 'lucide-react'
 import { DataViewToggle } from '@/components/dashboard/data-view-toggle'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { CardInfoHeader } from '@/components/ui/card-info-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { InfoHint } from '@/components/ui/info-hint'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -49,6 +50,17 @@ function getItemVisual(type: CrmFileItem['type']) {
   }
 }
 
+function buildExpandedFolderDefaults(currentPath: string, tree: CrmFolderNode): string[] {
+  const expanded = new Set<string>([tree.path])
+  const segments = currentPath.split('/').filter(Boolean)
+  let cursor = ''
+  for (const segment of segments) {
+    cursor = cursor ? `${cursor}/${segment}` : segment
+    expanded.add(cursor)
+  }
+  return [...expanded]
+}
+
 export function CrmFilesManagerClient() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [snapshot, setSnapshot] = useState<CrmFilesSnapshot | null>(null)
@@ -70,6 +82,7 @@ export function CrmFilesManagerClient() {
   const [shareUserIds, setShareUserIds] = useState<string[]>([])
   const [teamUsers, setTeamUsers] = useState<CrmFilesTeamUser[]>([])
   const [pendingPreviewPath, setPendingPreviewPath] = useState<string | null>(null)
+  const [expandedFolders, setExpandedFolders] = useState<string[]>([''])
 
   const deferredSearch = useDeferredValue(search.trim().toLowerCase())
 
@@ -84,6 +97,7 @@ export function CrmFilesManagerClient() {
         return
       }
       setSnapshot(json.data)
+      setExpandedFolders(buildExpandedFolderDefaults(json.data.currentPath, json.data.tree))
       setFeedback(null)
     } finally {
       setLoading(false)
@@ -336,22 +350,96 @@ export function CrmFilesManagerClient() {
     setShareUserIds((current) => current.includes(userId) ? current.filter((item) => item !== userId) : [...current, userId])
   }
 
+  function toggleFolderExpanded(path: string) {
+    setExpandedFolders((current) => current.includes(path) ? current.filter((item) => item !== path) : [...current, path])
+  }
+
+  function renderItemActions(item: CrmFileItem) {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 rounded-xl"
+            disabled={busy}
+            aria-label={`Acciones para ${item.name}`}
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-52 rounded-2xl p-1.5">
+          <DropdownMenuItem onClick={() => openPreview(item)}>
+            <Eye className="mr-2 h-4 w-4" />
+            Ver
+          </DropdownMenuItem>
+          {item.url ? (
+            <DropdownMenuItem onClick={() => void handleCopyDeepLink(item)}>
+              <Copy className="mr-2 h-4 w-4" />
+              Copiar enlace
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem onClick={() => openShareDialog(item)}>
+            <Share2 className="mr-2 h-4 w-4" />
+            Compartir
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => openRenameDialog(item)}>
+            <Pencil className="mr-2 h-4 w-4" />
+            Renombrar
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => openMoveDialog(item)}>
+            <FolderInput className="mr-2 h-4 w-4" />
+            Mover
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void handleDelete(item)} className="text-rose-700 focus:text-rose-700">
+            <Trash2 className="mr-2 h-4 w-4" />
+            Eliminar
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
+
   function renderTree(node: CrmFolderNode, depth = 0): ReactElement {
     const isRoot = depth === 0
     const isActive = snapshot?.currentPath === node.path
+    const hasChildren = node.children.length > 0
+    const isExpanded = expandedFolders.includes(node.path)
 
     return (
       <div key={node.path || 'root'} className="space-y-1">
-        <button
-          type="button"
-          onClick={() => void loadSnapshot(node.path)}
-          className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition-colors ${isActive ? 'bg-sky-100 text-sky-900' : 'text-slate-700 hover:bg-slate-100'}`}
-          style={{ paddingLeft: `${12 + depth * 16}px` }}
+        <div
+          className={`flex items-center gap-1 rounded-xl pr-2 transition-colors ${isActive ? 'bg-sky-100 text-sky-900' : 'text-slate-700 hover:bg-slate-100'}`}
+          style={{ paddingLeft: `${8 + depth * 16}px` }}
         >
-          <Folder className="h-4 w-4 shrink-0" />
-          <span className="truncate">{isRoot ? 'Raíz CRM' : node.name}</span>
-        </button>
-        {node.children.length ? (
+          <button
+            type="button"
+            onClick={() => hasChildren ? toggleFolderExpanded(node.path) : void 0}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg ${hasChildren ? 'hover:bg-white/80' : 'opacity-40'}`}
+            aria-label={hasChildren ? `${isExpanded ? 'Contraer' : 'Expandir'} ${isRoot ? 'Raíz CRM' : node.name}` : undefined}
+            disabled={!hasChildren}
+          >
+            {hasChildren ? (
+              isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />
+            ) : (
+              <span className="h-4 w-4" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (hasChildren && !isExpanded) {
+                toggleFolderExpanded(node.path)
+              }
+              void loadSnapshot(node.path)
+            }}
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-2 text-left text-sm"
+          >
+            <Folder className="h-4 w-4 shrink-0" />
+            <span className="truncate">{isRoot ? 'Raíz CRM' : node.name}</span>
+          </button>
+        </div>
+        {hasChildren && isExpanded ? (
           <div className="space-y-1">
             {node.children.map((child) => renderTree(child, depth + 1))}
           </div>
@@ -496,75 +584,8 @@ export function CrmFilesManagerClient() {
                               </div>
                               <div className="flex items-center justify-between">
                                 <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">{item.type}</span>
-                                <div className="flex items-center gap-1">
-                                  <Button
-                                    variant="outline"
-                                    className="h-8 rounded-lg px-2"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      openPreview(item)
-                                    }}
-                                    disabled={busy}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                  {item.type !== 'folder' ? (
-                                    <Button
-                                      variant="outline"
-                                      className="h-8 rounded-lg px-2"
-                                      onClick={(event) => {
-                                        event.stopPropagation()
-                                        void handleCopyDeepLink(item)
-                                      }}
-                                      disabled={busy}
-                                    >
-                                      <Link2 className="h-4 w-4" />
-                                    </Button>
-                                  ) : null}
-                                  <Button
-                                    variant="outline"
-                                    className="h-8 rounded-lg px-2"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      openShareDialog(item)
-                                    }}
-                                    disabled={busy}
-                                  >
-                                    <Share2 className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    className="h-8 rounded-lg px-2"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      openRenameDialog(item)
-                                    }}
-                                    disabled={busy}
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    className="h-8 rounded-lg px-2"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      openMoveDialog(item)
-                                    }}
-                                    disabled={busy}
-                                  >
-                                    <FolderInput className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    className="h-8 rounded-lg px-2"
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      void handleDelete(item)
-                                    }}
-                                    disabled={busy}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
+                                <div onClick={(event) => event.stopPropagation()}>
+                                  {renderItemActions(item)}
                                 </div>
                               </div>
                             </div>
@@ -581,35 +602,15 @@ export function CrmFilesManagerClient() {
                       const visual = getItemVisual(item.type)
                       const Icon = visual.icon
                       return (
-                        <div key={item.path} className="grid grid-cols-[minmax(0,1.4fr)_0.9fr_0.9fr_220px] items-center gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
+                        <div key={item.path} className="grid grid-cols-[minmax(0,1.5fr)_0.7fr_0.8fr_auto] items-center gap-4 border-b border-slate-100 px-4 py-3 last:border-b-0">
                           <button type="button" className="flex min-w-0 items-center gap-3 text-left" onClick={() => item.type === 'folder' ? void loadSnapshot(item.path) : openPreview(item)}>
                             <span className={`flex h-10 w-10 items-center justify-center rounded-2xl border ${visual.tone}`}><Icon className="h-5 w-5" /></span>
                             <span className="truncate font-medium text-slate-950">{item.name}</span>
                           </button>
                           <span className="text-sm text-slate-500">{item.type === 'folder' ? 'Carpeta' : formatBytes(item.sizeBytes)}</span>
                           <span className="text-sm text-slate-500">{formatDate(item.updatedAt)}</span>
-                          <div className="flex justify-end gap-2">
-                            <Button variant="outline" className="h-9 rounded-xl px-3" onClick={() => openPreview(item)} disabled={busy}>
-                              <Eye className="mr-2 h-4 w-4" />
-                              Ver
-                            </Button>
-                            {item.type !== 'folder' ? <Button variant="outline" className="h-9 rounded-xl px-3" onClick={() => void handleCopyDeepLink(item)} disabled={busy}><Copy className="mr-2 h-4 w-4" />Copiar enlace</Button> : null}
-                            <Button variant="outline" className="h-9 rounded-xl px-3" onClick={() => openShareDialog(item)} disabled={busy}>
-                              <Share2 className="mr-2 h-4 w-4" />
-                              Compartir
-                            </Button>
-                            <Button variant="outline" className="h-9 rounded-xl px-3" onClick={() => openRenameDialog(item)} disabled={busy}>
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Renombrar
-                            </Button>
-                            <Button variant="outline" className="h-9 rounded-xl px-3" onClick={() => openMoveDialog(item)} disabled={busy}>
-                              <FolderInput className="mr-2 h-4 w-4" />
-                              Mover
-                            </Button>
-                            <Button variant="outline" className="h-9 rounded-xl px-3" onClick={() => void handleDelete(item)} disabled={busy}>
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Eliminar
-                            </Button>
+                          <div className="flex justify-end">
+                            {renderItemActions(item)}
                           </div>
                         </div>
                       )

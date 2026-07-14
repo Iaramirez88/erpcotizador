@@ -354,6 +354,7 @@ export default function CotizadorPage() {
   const [items, setItems] = useState<ItemCotizacion[]>([])
   const [editingManualItemId, setEditingManualItemId] = useState<string | null>(null)
   const [itemExtrasEditor, setItemExtrasEditor] = useState<ItemExtrasEditorState | null>(null)
+  const [itemExtrasPickerOpen, setItemExtrasPickerOpen] = useState(false)
   const [uploadingReferenceImage, setUploadingReferenceImage] = useState(false)
   const [referenceLibraryPickerOpen, setReferenceLibraryPickerOpen] = useState(false)
   const [litografiaEdit, setLitografiaEdit] = useState<{ itemId: string; meta: LitografiaMeta } | null>(null)
@@ -1248,6 +1249,20 @@ export default function CotizadorPage() {
     })
   }
 
+  const openItemExtrasPicker = () => {
+    if (!items.length) {
+      alert('Primero agrega al menos un ítem a la cotización.')
+      return
+    }
+
+    if (items.length === 1) {
+      openItemExtrasEditor(items[0])
+      return
+    }
+
+    setItemExtrasPickerOpen(true)
+  }
+
   const saveItemExtrasEditor = () => {
     if (!itemExtrasEditor) return
     setItems((prev) =>
@@ -1710,6 +1725,42 @@ export default function CotizadorPage() {
             </Button>
             <Button type="button" onClick={saveItemExtrasEditor}>
               Guardar extras del ítem
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={itemExtrasPickerOpen} onOpenChange={setItemExtrasPickerOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Selecciona el ítem para agregar contenido extra</DialogTitle>
+            <DialogDescription>
+              El campo adicional y la imagen de referencia se ubican debajo del ítem que elijas.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[55vh] space-y-2 overflow-y-auto">
+            {items.map((item, index) => (
+              <button
+                key={item.id}
+                type="button"
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-left hover:bg-slate-50"
+                onClick={() => {
+                  setItemExtrasPickerOpen(false)
+                  openItemExtrasEditor(item)
+                }}
+              >
+                <div className="font-medium text-slate-900">Ítem {index + 1}: {item.descripcion}</div>
+                <div className="mt-1 text-sm text-slate-500">
+                  {item.material?.nombre || 'Sin material'} · Cantidad: {item.cantidad}
+                </div>
+              </button>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setItemExtrasPickerOpen(false)}>
+              Cancelar
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2307,6 +2358,16 @@ export default function CotizadorPage() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle>{t('quoteBuilder.sections.items')}</CardTitle>
                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    type="button"
+                    onClick={() => openItemExtrasPicker()}
+                    disabled={items.length === 0}
+                    title={items.length === 0 ? 'Agrega un ítem primero para configurar su contenido extra.' : undefined}
+                  >
+                    Ítem extra
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"

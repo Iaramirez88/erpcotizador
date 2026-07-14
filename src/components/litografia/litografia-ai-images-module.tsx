@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { Download, ExternalLink, History, ImagePlus, LoaderCircle, RefreshCw, Save } from "lucide-react"
+import { ChevronDown, Download, ExternalLink, History, ImagePlus, LoaderCircle, RefreshCw, Save } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -110,6 +110,8 @@ const SAMPLE_PROMPTS: Array<{ title: string; prompt: string }> = [
   },
 ]
 
+const HISTORY_PAGE_SIZE = 5
+
 function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "Sin fecha"
@@ -133,6 +135,7 @@ export function LitografiaAiImagesModule() {
   const [generationModalOpen, setGenerationModalOpen] = useState(false)
   const [approvalLoading, setApprovalLoading] = useState(false)
   const [generationResponse, setGenerationResponse] = useState<string | null>(null)
+  const [historyPage, setHistoryPage] = useState(1)
 
   const historyCountLabel = useMemo(() => {
     if (historyLoading) return "Cargando historial..."
@@ -141,6 +144,11 @@ export function LitografiaAiImagesModule() {
   }, [history, historyLoading])
 
   const selectedSizeLabel = IMAGE_SIZE_OPTIONS.find((option) => option.value === imageSize)?.label ?? imageSize
+  const totalHistoryPages = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE))
+  const paginatedHistory = useMemo(() => {
+    const start = (historyPage - 1) * HISTORY_PAGE_SIZE
+    return history.slice(start, start + HISTORY_PAGE_SIZE)
+  }, [history, historyPage])
 
   const loadHistory = async () => {
     setHistoryLoading(true)
@@ -152,6 +160,7 @@ export function LitografiaAiImagesModule() {
       }
       setHistory(json.history)
       setHistoryScope(json.scope === "company" ? "company" : "personal")
+      setHistoryPage(1)
     } catch (historyError) {
       setHistory([])
       setHistoryScope("personal")
@@ -164,6 +173,18 @@ export function LitografiaAiImagesModule() {
   useEffect(() => {
     void loadHistory()
   }, [])
+
+  useEffect(() => {
+    if (historyPage > totalHistoryPages) {
+      setHistoryPage(totalHistoryPages)
+    }
+  }, [historyPage, totalHistoryPages])
+
+  useEffect(() => {
+    if (!historyOpen) return
+    if (selectedHistory && paginatedHistory.some((entry) => entry.id === selectedHistory.id)) return
+    setSelectedHistory(paginatedHistory[0] ?? null)
+  }, [historyOpen, paginatedHistory, selectedHistory])
 
   const handleGenerateImage = async () => {
     setGenerationModalOpen(true)
@@ -283,7 +304,7 @@ export function LitografiaAiImagesModule() {
             </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-start">
             <div className="space-y-2">
               <Label>Calidad de imagen</Label>
               <Select value={imageQuality} onValueChange={(value) => setImageQuality(value as ImageQuality)}>
@@ -317,6 +338,13 @@ export function LitografiaAiImagesModule() {
               </Select>
               <p className="text-xs text-slate-500">{IMAGE_SIZE_OPTIONS.find((option) => option.value === imageSize)?.hint}</p>
             </div>
+
+            <div className="space-y-2 md:pt-7">
+              <Button type="button" onClick={handleGenerateImage} disabled={loading || prompt.trim().length < 12} className="w-full md:w-auto">
+                {loading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <ImagePlus className="mr-2 h-4 w-4" />}
+                Generar imagen
+              </Button>
+            </div>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
@@ -324,10 +352,13 @@ export function LitografiaAiImagesModule() {
               <p className="font-medium">Prompts de muestra para piezas litográficas</p>
               <div className="mt-3 space-y-3">
                 {SAMPLE_PROMPTS.map((sample) => (
-                  <div key={sample.title} className="rounded-lg border border-emerald-200 bg-white/70 p-3">
-                    <p className="font-medium text-emerald-950">{sample.title}</p>
-                    <p className="mt-1 text-xs leading-5 text-emerald-900">{sample.prompt}</p>
-                  </div>
+                  <details key={sample.title} className="group rounded-lg border border-emerald-200 bg-white/70 p-3">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-medium text-emerald-950">
+                      <span>{sample.title}</span>
+                      <ChevronDown className="h-4 w-4 text-emerald-700 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <p className="mt-3 text-xs leading-5 text-emerald-900">{sample.prompt}</p>
+                  </details>
                 ))}
               </div>
             </div>
@@ -343,10 +374,6 @@ export function LitografiaAiImagesModule() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" onClick={handleGenerateImage} disabled={loading || prompt.trim().length < 12}>
-              {loading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <ImagePlus className="mr-2 h-4 w-4" />}
-              Generar imagen
-            </Button>
             <p className="text-sm text-muted-foreground">{historyCountLabel}</p>
           </div>
 
@@ -415,7 +442,7 @@ export function LitografiaAiImagesModule() {
           </DialogHeader>
           <div className="grid gap-4 overflow-hidden lg:grid-cols-[0.95fr_1.05fr]">
             <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
-              {history.map((entry) => (
+              {paginatedHistory.map((entry) => (
                 <button
                   key={entry.id}
                   type="button"
@@ -430,6 +457,19 @@ export function LitografiaAiImagesModule() {
                   {entry.actorLabel ? <p className="mt-2 text-xs text-slate-500">Usuario: {entry.actorLabel}</p> : null}
                 </button>
               ))}
+              {history.length > HISTORY_PAGE_SIZE ? (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <span className="text-slate-500">Página {historyPage} de {totalHistoryPages}</span>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setHistoryPage((current) => Math.max(1, current - 1))} disabled={historyPage === 1}>
+                      Anterior
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setHistoryPage((current) => Math.min(totalHistoryPages, current + 1))} disabled={historyPage === totalHistoryPages}>
+                      Siguiente
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="max-h-[70vh] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-4">

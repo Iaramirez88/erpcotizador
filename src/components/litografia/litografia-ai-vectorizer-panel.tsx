@@ -165,6 +165,8 @@ const DEFAULT_OUTPUT_OPTIONS: VectorizerOutputOptions = {
   strokesStrokeWidth: 1,
 }
 
+const HISTORY_PAGE_SIZE = 5
+
 function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "Sin fecha"
@@ -203,12 +205,18 @@ export function LitografiaAiVectorizerPanel() {
   const [generationModalOpen, setGenerationModalOpen] = useState(false)
   const [generationResponse, setGenerationResponse] = useState<string | null>(null)
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null)
+  const [historyPage, setHistoryPage] = useState(1)
 
   const historyCountLabel = useMemo(() => {
     if (historyLoading) return "Cargando historial..."
     if (!history.length) return "Sin vectorizaciones registradas"
     return `${history.length} vectores recientes`
   }, [history, historyLoading])
+  const totalHistoryPages = Math.max(1, Math.ceil(history.length / HISTORY_PAGE_SIZE))
+  const paginatedHistory = useMemo(() => {
+    const start = (historyPage - 1) * HISTORY_PAGE_SIZE
+    return history.slice(start, start + HISTORY_PAGE_SIZE)
+  }, [history, historyPage])
 
   const loadHistory = async () => {
     setHistoryLoading(true)
@@ -220,6 +228,7 @@ export function LitografiaAiVectorizerPanel() {
       }
       setHistory(json.history)
       setHistoryScope(json.scope === "company" ? "company" : "personal")
+      setHistoryPage(1)
       setSelectedHistory((current) => json.history?.find((entry) => entry.id === current?.id) ?? json.history?.[0] ?? null)
     } catch (historyError) {
       setHistory([])
@@ -233,6 +242,18 @@ export function LitografiaAiVectorizerPanel() {
   useEffect(() => {
     void loadHistory()
   }, [])
+
+  useEffect(() => {
+    if (historyPage > totalHistoryPages) {
+      setHistoryPage(totalHistoryPages)
+    }
+  }, [historyPage, totalHistoryPages])
+
+  useEffect(() => {
+    if (!historyOpen) return
+    if (selectedHistory && paginatedHistory.some((entry) => entry.id === selectedHistory.id)) return
+    setSelectedHistory(paginatedHistory[0] ?? null)
+  }, [historyOpen, paginatedHistory, selectedHistory])
 
   useEffect(() => {
     if (!sourceFile) {
@@ -835,7 +856,7 @@ export function LitografiaAiVectorizerPanel() {
           </DialogHeader>
           <div className="grid gap-4 overflow-hidden lg:grid-cols-[0.95fr_1.05fr]">
             <div className="max-h-[70vh] space-y-3 overflow-y-auto pr-1">
-              {history.map((entry) => (
+              {paginatedHistory.map((entry) => (
                 <button
                   key={entry.id}
                   type="button"
@@ -861,6 +882,19 @@ export function LitografiaAiVectorizerPanel() {
                   </div>
                 </button>
               ))}
+              {history.length > HISTORY_PAGE_SIZE ? (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <span className="text-slate-500">Página {historyPage} de {totalHistoryPages}</span>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => setHistoryPage((current) => Math.max(1, current - 1))} disabled={historyPage === 1}>
+                      Anterior
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setHistoryPage((current) => Math.min(totalHistoryPages, current + 1))} disabled={historyPage === totalHistoryPages}>
+                      Siguiente
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="max-h-[70vh] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-4">
