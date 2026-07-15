@@ -17,6 +17,29 @@ export type DashboardPermissionRule = {
   directGrantOnly?: boolean
 }
 
+export type PermissionSectionCapabilityEntry = {
+  permissionKey: string
+  label: string
+  includeLabels: string[]
+  domain: RbacV2Domain
+  subdomain: string
+}
+
+export type PermissionSectionEntry = {
+  key: string
+  moduleKey: ModuleKey
+  label: string
+  submodules: string[]
+  capabilityEntries: PermissionSectionCapabilityEntry[]
+}
+
+export type PermissionSectionGroup<TTone> = {
+  key: string
+  title: string
+  entries: PermissionSectionEntry[]
+  tone: TTone
+}
+
 type BuildPermissionEntriesArgs = {
   t?: ((key: string) => string) | null
 }
@@ -362,4 +385,97 @@ export function buildDashboardPermissionEntries(args: BuildPermissionEntriesArgs
     ...rule,
     includeLabels: rule.hrefs.map((href) => labelByHref.get(href) ?? href),
   }))
+}
+
+export function buildPermissionSections<TTone>(args: {
+  modules: ModuleKey[]
+  t?: ((key: string) => string) | null
+  sectionTones: readonly TTone[]
+  otherSectionTitle: string
+}) {
+  const allowedModules = new Set<ModuleKey>(args.modules)
+  const items = buildDashboardPermissionEntries({ t: args.t }).filter((item) => allowedModules.has(item.moduleKey))
+  const sectionsByModule = new Map<ModuleKey, Set<string>>()
+
+  for (const item of items) {
+    const current = sectionsByModule.get(item.moduleKey) ?? new Set<string>()
+    current.add(item.section)
+    sectionsByModule.set(item.moduleKey, current)
+  }
+
+  const sharedModules = new Set(
+    [...sectionsByModule.entries()]
+      .filter(([, sections]) => sections.size > 1)
+      .map(([moduleKey]) => moduleKey)
+  )
+
+  const grouped = new Map<string, Map<string, PermissionSectionEntry>>()
+
+  for (const item of items) {
+    const splitSharedModule = sharedModules.has(item.moduleKey)
+    const entryKey = splitSharedModule ? item.key : item.moduleKey
+    const entryLabel = splitSharedModule ? item.label : args.t?.(`rbac.module.${item.moduleKey}`) ?? item.label
+    const byEntry = grouped.get(item.section) ?? new Map<string, PermissionSectionEntry>()
+    const current = byEntry.get(entryKey)
+    const primaryCapability = item.capabilities[0]
+
+    if (current) {
+      current.submodules.push(...item.includeLabels.filter((label) => !current.submodules.includes(label)))
+      if (primaryCapability) {
+        current.capabilityEntries.push({
+          permissionKey: item.key,
+          label: item.label,
+          includeLabels: item.includeLabels,
+          domain: primaryCapability.domain,
+          subdomain: primaryCapability.subdomain,
+        })
+      }
+    } else {
+      byEntry.set(entryKey, {
+        key: entryKey,
+        moduleKey: item.moduleKey,
+        label: entryLabel,
+        submodules: [...item.includeLabels],
+        capabilityEntries: primaryCapability
+          ? [{
+              permissionKey: item.key,
+              label: item.label,
+              includeLabels: item.includeLabels,
+              domain: primaryCapability.domain,
+              subdomain: primaryCapability.subdomain,
+            }]
+          : [],
+      })
+    }
+
+    grouped.set(item.section, byEntry)
+  }
+
+  const orderedSections = Array.from(grouped.entries()).map(([key, value], index) => ({
+    key,
+    title: key,
+    entries: [...value.values()],
+    tone: args.sectionTones[index % args.sectionTones.length],
+  }))
+
+  const knownModules = new Set(orderedSections.flatMap((section) => section.entries.map((entry) => entry.moduleKey)))
+  const extraEntries = args.modules.filter((moduleKey) => !knownModules.has(moduleKey)).map((moduleKey) => ({
+    key: moduleKey,
+    moduleKey,
+    label: args.t?.(`rbac.module.${moduleKey}`) ?? moduleKey,
+    submodules: [],
+    capabilityEntries: [],
+  }))
+
+  return extraEntries.length
+    ? [
+        ...orderedSections,
+        {
+          key: 'Otros',
+          title: args.otherSectionTitle,
+          entries: extraEntries,
+          tone: args.sectionTones[orderedSections.length % args.sectionTones.length],
+        },
+      ]
+    : orderedSections
 }

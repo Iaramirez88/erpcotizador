@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { useToast } from '@/hooks/use-toast'
-import { buildDashboardPermissionEntries } from '@/lib/dashboard-permission-catalog'
+import { buildPermissionSections } from '@/lib/dashboard-permission-catalog'
 import { cn } from '@/lib/utils'
 
 const ACCESS_LEVELS: AccessLevel[] = ['NONE', 'READ', 'WRITE', 'ADMIN']
@@ -44,7 +44,9 @@ type CapabilityProfileItem = {
 }
 
 type ModuleEntry = {
+  key: string
   moduleKey: ModuleKey
+  label: string
   submodules: string[]
   capabilityEntries: CapabilityEntry[]
 }
@@ -203,75 +205,13 @@ export function PermissionProfilesManager({ profiles, users }: Props) {
   }
 
   const getRoleLabel = (role: SedeRole) => t(`rbac.sedeRole.${role}`)
-  const getModuleLabel = (moduleKey: ModuleKey) => t(`rbac.module.${moduleKey}`)
 
-  const sections: Section[] = useMemo(() => {
-    const allowedModules = new Set<ModuleKey>(MODULE_OPTIONS)
-    const grouped = new Map<string, Map<ModuleKey, ModuleEntry>>()
-
-    for (const item of buildDashboardPermissionEntries({ t })) {
-      if (!allowedModules.has(item.moduleKey)) continue
-      const byModule = grouped.get(item.section) ?? new Map<ModuleKey, ModuleEntry>()
-      const current = byModule.get(item.moduleKey)
-
-      if (current) {
-        current.submodules.push(...item.includeLabels.filter((label) => !current.submodules.includes(label)))
-        const primaryCapability = item.capabilities[0]
-        if (primaryCapability) {
-          current.capabilityEntries.push({
-            permissionKey: item.key,
-            label: item.label,
-            includeLabels: item.includeLabels,
-            domain: primaryCapability.domain,
-            subdomain: primaryCapability.subdomain,
-          })
-        }
-      } else {
-        const primaryCapability = item.capabilities[0]
-        byModule.set(item.moduleKey, {
-          moduleKey: item.moduleKey,
-          submodules: [...item.includeLabels],
-          capabilityEntries: primaryCapability
-            ? [{
-                permissionKey: item.key,
-                label: item.label,
-                includeLabels: item.includeLabels,
-                domain: primaryCapability.domain,
-                subdomain: primaryCapability.subdomain,
-              }]
-            : [],
-        })
-      }
-
-      grouped.set(item.section, byModule)
-    }
-
-    const orderedSections = Array.from(grouped.entries()).map(([key, value], index) => ({
-      key,
-      title: key,
-      entries: [...value.values()],
-      tone: SECTION_TONES[index % SECTION_TONES.length],
-    }))
-
-    const knownModules = new Set(orderedSections.flatMap((section) => section.entries.map((entry) => entry.moduleKey)))
-    const extraEntries = MODULE_OPTIONS.filter((moduleKey) => !knownModules.has(moduleKey)).map((moduleKey) => ({
-      moduleKey,
-      submodules: [],
-      capabilityEntries: [],
-    }))
-
-    return extraEntries.length
-      ? [
-          ...orderedSections,
-          {
-            key: 'Otros',
-            title: t('rbac.userPermissions.section.other'),
-            entries: extraEntries,
-            tone: SECTION_TONES[orderedSections.length % SECTION_TONES.length],
-          },
-        ]
-      : orderedSections
-  }, [t])
+  const sections: Section[] = useMemo(() => buildPermissionSections({
+    modules: MODULE_OPTIONS,
+    t,
+    sectionTones: SECTION_TONES,
+    otherSectionTitle: t('rbac.userPermissions.section.other'),
+  }), [t])
 
   const moduleSectionCount = sections.reduce((total, section) => total + section.entries.length, 0)
   const capabilityCount = sections.reduce(
@@ -610,7 +550,7 @@ export function PermissionProfilesManager({ profiles, users }: Props) {
                           <div key={entry.moduleKey} className={cn('rounded-2xl border p-4 shadow-sm', section.tone.panel)}>
                             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                               <div>
-                                <div className="text-lg font-semibold text-slate-950">{getModuleLabel(entry.moduleKey)}</div>
+                                <div className="text-lg font-semibold text-slate-950">{entry.label}</div>
                                 <div className="mt-1 text-sm text-slate-500">{entry.capabilityEntries.length} submódulos configurables</div>
                               </div>
                               <div className="w-full lg:w-[256px]">
@@ -648,7 +588,7 @@ export function PermissionProfilesManager({ profiles, users }: Props) {
                                       <div key={capability.permissionKey} className="grid gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 md:grid-cols-[minmax(0,1fr)_260px] md:items-center">
                                         <div>
                                           <div className="text-base font-medium text-slate-950">{capability.label}</div>
-                                          <div className="text-xs text-slate-500">{section.title} · {getModuleLabel(entry.moduleKey)}</div>
+                                          <div className="text-xs text-slate-500">{section.title} · {entry.label}</div>
                                         </div>
                                         <select
                                           value={selectedValue}

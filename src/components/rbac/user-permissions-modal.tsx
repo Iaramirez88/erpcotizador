@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus } from 'lucide-react'
 import { ModuleKey, type AccessLevel } from '@prisma/client'
@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/dialog'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { useToast } from '@/hooks/use-toast'
-import { buildDashboardPermissionEntries } from '@/lib/dashboard-permission-catalog'
+import { buildPermissionSections } from '@/lib/dashboard-permission-catalog'
 import { cn } from '@/lib/utils'
 
 type UserRef = {
@@ -54,7 +54,9 @@ type Section = {
 }
 
 type ModuleEntry = {
+  key: string
   moduleKey: ModuleKey
+  label: string
   submodules: string[]
   capabilityEntries: CapabilityEntry[]
 }
@@ -169,73 +171,22 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
   const roleOptions: Props['initialSedeRole'][] = ['ADMIN', 'MANAGER', 'MEMBER', 'READER']
 
   const sections: Section[] = useMemo(
-    () => {
-      const allowedModules = new Set<ModuleKey>(modules)
-      const grouped = new Map<string, Map<ModuleKey, ModuleEntry>>()
-
-      for (const item of buildDashboardPermissionEntries({ t })) {
-        if (!allowedModules.has(item.moduleKey)) continue
-        const byModule = grouped.get(item.section) ?? new Map<ModuleKey, ModuleEntry>()
-        const current = byModule.get(item.moduleKey)
-        if (current) {
-          current.submodules.push(...item.includeLabels.filter((label) => !current.submodules.includes(label)))
-          const primaryCapability = item.capabilities[0]
-          if (primaryCapability) {
-            current.capabilityEntries.push({
-              permissionKey: item.key,
-              label: item.label,
-              includeLabels: item.includeLabels,
-              domain: primaryCapability.domain,
-              subdomain: primaryCapability.subdomain,
-            })
-          }
-        } else {
-          const primaryCapability = item.capabilities[0]
-          byModule.set(item.moduleKey, {
-            moduleKey: item.moduleKey,
-            submodules: [...item.includeLabels],
-            capabilityEntries: primaryCapability
-              ? [{
-                  permissionKey: item.key,
-                  label: item.label,
-                  includeLabels: item.includeLabels,
-                  domain: primaryCapability.domain,
-                  subdomain: primaryCapability.subdomain,
-                }]
-              : [],
-          })
-        }
-        grouped.set(item.section, byModule)
-      }
-
-      const orderedSections = Array.from(grouped.entries()).map(([key, value], index) => ({
-        key,
-        title: key,
-        entries: [...value.values()],
-        tone: SECTION_TONES[index % SECTION_TONES.length],
-      }))
-
-      const knownModules = new Set(orderedSections.flatMap((section) => section.entries.map((entry) => entry.moduleKey)))
-      const extraEntries = modules.filter((moduleKey) => !knownModules.has(moduleKey)).map((moduleKey) => ({
-        moduleKey,
-        submodules: [],
-        capabilityEntries: [],
-      }))
-
-      return extraEntries.length
-        ? [
-            ...orderedSections,
-            {
-              key: 'Otros',
-              title: t('rbac.userPermissions.section.other'),
-              entries: extraEntries,
-              tone: SECTION_TONES[orderedSections.length % SECTION_TONES.length],
-            },
-          ]
-        : orderedSections
-    },
+    () => buildPermissionSections({
+      modules,
+      t,
+      sectionTones: SECTION_TONES,
+      otherSectionTitle: t('rbac.userPermissions.section.other'),
+    }),
     [modules, t]
   )
+
+  useEffect(() => {
+    setLevels(initial)
+    setHasSedeAccess(initialHasSedeAccess)
+    setSedeRole(initialSedeRole)
+    setGlobalLevel(initialGlobalAccess)
+    setCapabilityLevels(initialCapabilities)
+  }, [initial, initialCapabilities, initialGlobalAccess, initialHasSedeAccess, initialSedeRole, controlledOpen])
 
   const capabilityAliasesByKey = useMemo(() => {
     const aliases = new Map<string, string[]>()
@@ -275,10 +226,6 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
   function getAccessLabel(level: AccessChoice | AccessLevel) {
     if (level === 'INHERIT') return 'Heredar del rol de sede'
     return t(`rbac.access.${level}`)
-  }
-
-  function getModuleLabel(moduleKey: ModuleKey) {
-    return t(`rbac.module.${moduleKey}`)
   }
 
   function handleOpenChange(nextOpen: boolean) {
@@ -575,7 +522,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
                       <div key={entry.moduleKey} className={cn('rounded-2xl border p-4 shadow-sm', section.tone.panel)}>
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                           <div>
-                            <div className="text-lg font-semibold text-slate-950">{getModuleLabel(entry.moduleKey)}</div>
+                            <div className="text-lg font-semibold text-slate-950">{entry.label}</div>
                             <div className="mt-1 text-sm text-slate-500">{entry.capabilityEntries.length} submódulos configurables</div>
                           </div>
                           <div className="w-full lg:w-[256px]">
@@ -606,7 +553,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
                                   <div key={capability.permissionKey} className="grid gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 md:grid-cols-[minmax(0,1fr)_260px] md:items-center">
                                     <div>
                                       <div className="text-base font-medium text-slate-950">{capability.label}</div>
-                                      <div className="text-xs text-slate-500">{section.title} · {getModuleLabel(entry.moduleKey)}</div>
+                                      <div className="text-xs text-slate-500">{section.title} · {entry.label}</div>
                                     </div>
                                     <select
                                       value={value}
