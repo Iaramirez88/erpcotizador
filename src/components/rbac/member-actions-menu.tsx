@@ -6,6 +6,7 @@ import { MoreHorizontal } from 'lucide-react'
 import { ModuleKey, type AccessLevel } from '@prisma/client'
 import { useI18n } from '@/components/providers/i18n-provider'
 import { Button } from '@/components/ui/button'
+import { useToast } from '@/hooks/use-toast'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,12 +65,16 @@ export function MemberActionsMenu({
 }: Props) {
   const { t } = useI18n()
   const router = useRouter()
+  const { toast } = useToast()
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [permissionsOpen, setPermissionsOpen] = useState(false)
   const [defaultSedeOpen, setDefaultSedeOpen] = useState(false)
   const [savingDefaultSede, setSavingDefaultSede] = useState(false)
   const [defaultSedeError, setDefaultSedeError] = useState<string | null>(null)
+  const [resetPermissionsOpen, setResetPermissionsOpen] = useState(false)
+  const [resettingPermissions, setResettingPermissions] = useState(false)
+  const [resetPermissionsError, setResetPermissionsError] = useState<string | null>(null)
 
   const options = useMemo(() => sedes, [sedes])
   const [selectedDefaultSedeId, setSelectedDefaultSedeId] = useState<string>(userDefaultSedeId ?? '')
@@ -94,6 +99,31 @@ export function MemberActionsMenu({
       setDefaultSedeError(e instanceof Error ? e.message : t('common.unexpectedError'))
     } finally {
       setSavingDefaultSede(false)
+    }
+  }
+
+  async function resetPermissions() {
+    setResettingPermissions(true)
+    setResetPermissionsError(null)
+    try {
+      const res = await fetch('/api/admin/permisos/reset-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, sedeId: activeSedeId }),
+      })
+      const json = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null
+      if (!res.ok || !json?.success) {
+        setResetPermissionsError(json?.error || t('common.unexpectedError'))
+        return
+      }
+
+      setResetPermissionsOpen(false)
+      toast({ title: 'Permisos reiniciados. Ya puedes configurarlos de nuevo.' })
+      router.refresh()
+    } catch (error) {
+      setResetPermissionsError(error instanceof Error ? error.message : t('common.unexpectedError'))
+    } finally {
+      setResettingPermissions(false)
     }
   }
 
@@ -151,6 +181,18 @@ export function MemberActionsMenu({
               </DropdownMenuItem>
             }
           />
+
+          <DropdownMenuItem
+            className="text-rose-700 focus:text-rose-800"
+            onSelect={(e) => {
+              e.preventDefault()
+              setMenuOpen(false)
+              setResetPermissionsError(null)
+              setResetPermissionsOpen(true)
+            }}
+          >
+            Resetear permisos
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -186,6 +228,32 @@ export function MemberActionsMenu({
             </Button>
             <Button type="button" onClick={() => void saveDefaultSede()} disabled={savingDefaultSede}>
               {savingDefaultSede ? t('common.saving') : t('common.save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={resetPermissionsOpen} onOpenChange={setResetPermissionsOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Resetear permisos del usuario</DialogTitle>
+            <DialogDescription>
+              Esto limpiará reglas, módulos, submódulos y permiso general de {displayName} en {activeSedeNombre}. El usuario quedará con rol base de lectura para configurarlo otra vez desde cero.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            Usa esta acción solo cuando un usuario quede desincronizado o con permisos corruptos.
+          </div>
+
+          {resetPermissionsError ? <div className="text-sm text-red-600">{resetPermissionsError}</div> : null}
+
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={() => setResetPermissionsOpen(false)} disabled={resettingPermissions}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="button" variant="destructive" onClick={() => void resetPermissions()} disabled={resettingPermissions}>
+              {resettingPermissions ? 'Reseteando...' : 'Resetear permisos'}
             </Button>
           </DialogFooter>
         </DialogContent>

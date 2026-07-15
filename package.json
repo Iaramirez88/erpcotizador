@@ -12,6 +12,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "seed:rbac-v2": "tsx scripts/seed-rbac-v2-bootstrap.ts",
+    "rbac:reset": "tsx scripts/reset-rbac-permissions.ts",
     "seed:accounting-sample": "tsx scripts/seed-accounting-sample.ts",
     "seed:flyers": "tsx scripts/seed-litografia-flyer-rates.ts",
     "seed:acabados": "tsx scripts/seed-litografia-finish-options.ts",
