@@ -355,9 +355,34 @@ export default function SuperAdminUsersClient() {
 
   async function viewAsUser(userId: string) {
     setPreviewingUserId(userId)
+    const previewWindow = typeof window !== 'undefined'
+      ? window.open('', '_blank', 'noopener,noreferrer')
+      : null
+
     try {
-      window.open(`/dashboard/configuracion/super-admin/usuarios/preview/${userId}`, '_blank', 'noopener,noreferrer')
+      const res = await fetch(`/api/super-admin/users/${userId}/enter-workspace`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        error?: string
+        accessUrl?: string
+      }
+
+      if (!res.ok || !json.ok || !json.accessUrl) {
+        if (previewWindow) previewWindow.close()
+        alert(json.error || t('superAdmin.users.errors.viewAsUserFailed'))
+        return
+      }
+
+      if (previewWindow) {
+        previewWindow.location.href = json.accessUrl
+      } else {
+        window.open(json.accessUrl, '_blank', 'noopener,noreferrer')
+      }
     } catch {
+      if (previewWindow) previewWindow.close()
       alert(t('superAdmin.users.errors.viewAsUserFailed'))
     } finally {
       setPreviewingUserId(null)
