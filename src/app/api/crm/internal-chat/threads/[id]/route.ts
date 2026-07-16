@@ -30,6 +30,20 @@ function mapAttachments(value: unknown) {
     .filter(Boolean)
 }
 
+function resolveMessageStatus(args: {
+  currentUserId: string
+  sentByUserId: string | null
+  occurredAt: Date
+  participants: Array<{ userId: string; lastReadAt: Date | null }>
+}) {
+  const isOwn = args.sentByUserId === args.currentUserId
+  if (!isOwn) return null
+
+  const otherParticipants = args.participants.filter((participant) => participant.userId !== args.currentUserId)
+  const isReadByAll = otherParticipants.length > 0 && otherParticipants.every((participant) => participant.lastReadAt && participant.lastReadAt >= args.occurredAt)
+  return isReadByAll ? 'READ' : 'SENT'
+}
+
 function isInternalChatSchemaMissing(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2021' || error.code === 'P2022')
 }
@@ -109,6 +123,16 @@ export async function GET(_: Request, context: RouteContext) {
           sentByUserId: message.sentByUserId,
           sentByUser: message.sentByUser,
           attachments: mapAttachments((message as { attachmentsJson?: unknown }).attachmentsJson),
+          status: resolveMessageStatus({
+            currentUserId: access.userId,
+            sentByUserId: message.sentByUserId ?? null,
+            occurredAt: message.occurredAt,
+            participants: thread.participants.map((participant) => ({
+              userId: participant.userId,
+              lastReadAt: participant.lastReadAt,
+            })),
+          }),
+          canDelete: message.sentByUserId === access.userId && (Date.now() - message.occurredAt.getTime()) <= 30_000,
         })),
       },
     })

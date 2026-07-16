@@ -30,6 +30,10 @@ type ReportPrefs = {
     documentosPorTipo?: boolean
     comprasPorProveedor?: boolean
   }
+  chat?: {
+    mutedCrmConversationIds?: string[]
+    mutedTeamThreadIds?: string[]
+  }
 }
 
 type TutorialPrefs = {
@@ -47,6 +51,25 @@ type StoredReportPrefs = ReportPrefs & {
   dataView?: DataViewPrefs
   theme?: UiTheme
   sidebarTooltips?: SidebarTooltipPrefs
+}
+
+function normalizeStringList(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return Array.from(new Set(value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)))
+}
+
+function normalizeChatPrefs(value: unknown): Required<NonNullable<ReportPrefs['chat']>> {
+  if (!isPlainObject(value)) {
+    return {
+      mutedCrmConversationIds: [],
+      mutedTeamThreadIds: [],
+    }
+  }
+
+  return {
+    mutedCrmConversationIds: normalizeStringList(value.mutedCrmConversationIds),
+    mutedTeamThreadIds: normalizeStringList(value.mutedTeamThreadIds),
+  }
 }
 
 function normalizeSidebarTooltipPrefs(value: unknown): Required<SidebarTooltipPrefs> {
@@ -83,6 +106,7 @@ function defaultPrefs() {
   const report: ReportPrefs = {
     sections: { kpis: true, ventas: true, topClientes: true, documentos: true, compras: true },
     charts: { ventasMensuales: true, documentosPorTipo: true, comprasPorProveedor: true },
+    chat: { mutedCrmConversationIds: [], mutedTeamThreadIds: [] },
   }
   const tutorial: TutorialPrefs = { seen: {} }
   const dataView: DataViewPrefs = {}
@@ -155,7 +179,10 @@ export async function GET() {
     data: {
       nav: storedNav.visibility,
       navOrder: storedNav.order,
-      report: storedReport ?? defaults.report,
+      report: {
+        ...(storedReport ?? defaults.report),
+        chat: normalizeChatPrefs(storedReport?.chat),
+      },
       tutorial: (pref?.tutorial as unknown) ?? defaults.tutorial,
       dataView: storedReport?.dataView ?? defaults.dataView,
       language: (pref?.language as UiLanguage | null) ?? defaults.language,
@@ -208,6 +235,7 @@ export async function PUT(req: NextRequest) {
     dataView: dataView ?? currentReport.dataView ?? defaults.dataView,
     theme: theme ?? currentReport.theme ?? defaults.theme,
     sidebarTooltips: sidebarTooltips ?? normalizeSidebarTooltipPrefs(currentReport.sidebarTooltips),
+    chat: normalizeChatPrefs(report?.chat ?? currentReport.chat),
   }
   const nextNav = {
     visibility: nav ?? currentNav.visibility ?? defaults.nav,
@@ -240,7 +268,7 @@ export async function PUT(req: NextRequest) {
     data: {
       nav: updatedNav.visibility,
       navOrder: updatedNav.order,
-      report: updatedReport,
+      report: updatedReport ? { ...updatedReport, chat: normalizeChatPrefs(updatedReport.chat) } : updatedReport,
       tutorial: updated.tutorial,
       dataView: updatedReport?.dataView ?? defaults.dataView,
       language: updated.language as UiLanguage,

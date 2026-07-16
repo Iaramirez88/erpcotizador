@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Image as ImageIcon, MoreVertical, Paperclip, Plus, Smile, Trash2, Users, X } from 'lucide-react'
+import { BellOff, Check, CheckCheck, ChevronDown, Image as ImageIcon, Info, LogOut, MoreVertical, Paperclip, Plus, Search, Smile, Trash2, Users, X } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +11,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { CrmFileLibraryPicker } from '@/components/crm/crm-file-library-picker'
 import type { CrmFileItem } from '@/components/crm/crm-files-types'
+import { useChatMutePreferences } from '@/hooks/use-chat-mute-preferences'
+import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { uploadFileWithProgress } from '@/lib/upload-file-with-progress'
 
@@ -36,6 +38,8 @@ type ThreadMessage = {
   sentByUserId?: string | null
   sentByUser?: { id: string; name?: string | null; email?: string | null } | null
   attachments?: ChatAttachment[]
+  status?: 'PENDING' | 'SENT' | 'READ' | null
+  canDelete?: boolean
 }
 
 type ThreadSummary = {
@@ -58,6 +62,7 @@ type ThreadDetail = {
   participants: Array<{
     id: string
     userId: string
+    lastReadAt?: string | null
     user: TeamUser
   }>
   messages: ThreadMessage[]
@@ -70,8 +75,19 @@ type UploadProgressState = {
   progress: number
 }
 
-const EMOJI_CHOICES = ['😀', '😂', '😉', '😍', '🤝', '👏', '🔥', '✅', '🙏', '📌', '📎', '🚀']
+type MessageContextMenuState = {
+  messageId: string
+  x: number
+  y: number
+}
 
+type OptimisticThreadMessage = ThreadMessage & {
+  threadId: string
+  status: 'PENDING'
+  canDelete: false
+}
+
+const EMOJI_CHOICES = ['😀', '😂', '😉', '😍', '🤝', '👏', '🔥', '✅', '🙏', '📌', '📎', '🚀']
 function formatDate(value: string | null | undefined, fallback: string) {
   if (!value) return fallback
   try {
@@ -130,6 +146,8 @@ export function CrmTeamChatClient() {
   const shouldStickToBottomRef = useRef(true)
   const distanceFromBottomRef = useRef(0)
   const previousThreadKeyRef = useRef<string | null>(null)
+  const unreadSnapshotRef = useRef<Record<string, number>>({})
+  const unreadHydratedRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [creatingThread, setCreatingThread] = useState(false)
@@ -153,6 +171,14 @@ export function CrmTeamChatClient() {
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false)
   const [groupForm, setGroupForm] = useState({ title: '', participantUserIds: [] as string[] })
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
+  const { mutedTeamThreadIds: mutedThreadIds, setMutedTeamThreadIds: setMutedThreadIds } = useChatMutePreferences()
+  const [threadSearchOpen, setThreadSearchOpen] = useState(false)
+  const [threadSearch, setThreadSearch] = useState('')
+  const [sharedFilesOpen, setSharedFilesOpen] = useState(false)
+  const [threadInfoOpen, setThreadInfoOpen] = useState(false)
+  const [messageContextMenu, setMessageContextMenu] = useState<MessageContextMenuState | null>(null)
+  const [optimisticMessages, setOptimisticMessages] = useState<OptimisticThreadMessage[]>([])
+  const [leavingGroup, setLeavingGroup] = useState(false)
 
   function clearScrollTimers() {
     scrollTimersRef.current.forEach((timerId) => window.clearTimeout(timerId))
@@ -254,6 +280,21 @@ export function CrmTeamChatClient() {
   }, [])
 
   useEffect(() => {
+    if (!messageContextMenu) return
+    function closeMenu() {
+      setMessageContextMenu(null)
+    }
+    window.addEventListener('click', closeMenu)
+    window.addEventListener('contextmenu', closeMenu)
+    window.addEventListener('keydown', closeMenu)
+    return () => {
+      window.removeEventListener('click', closeMenu)
+      window.removeEventListener('contextmenu', closeMenu)
+      window.removeEventListener('keydown', closeMenu)
+    }
+  }, [messageContextMenu])
+
+  useEffect(() => {
     void loadBase()
   }, [])
 
@@ -262,6 +303,8 @@ export function CrmTeamChatClient() {
       setSelectedThread(null)
       setPendingAttachments([])
       setAttachmentUpload(null)
+      setThreadSearch('')
+      setThreadSearchOpen(false)
       return
     }
     void loadDetail(selectedThreadId)
@@ -320,6 +363,61 @@ export function CrmTeamChatClient() {
     })
   }, [currentUserId, threads])
 
+  const activeDirectUserId = useMemo(() => {
+    if (!selectedThread || selectedThread.type !== 'DIRECT' || !currentUserId) return null
+    return selectedThread.participants.find((participant) => participant.userId !== currentUserId)?.userId ?? null
+  }, [currentUserId, selectedThread])
+
+  const selectedThreadMessages = useMemo(() => {
+    if (!selectedThread) return [] as ThreadMessage[]
+    const optimistic = optimisticMessages.filter((message) => message.threadId === selectedThread.id)
+    return [...selectedThread.messages, ...optimistic].sort((left, right) => new Date(left.occurredAt).getTime() - new Date(right.occurredAt).getTime())
+  }, [optimisticMessages, selectedThread])
+
+  const visibleThreadMessages = useMemo(() => {
+    const term = threadSearch.trim().toLowerCase()
+    if (!term) return selectedThreadMessages
+    return selectedThreadMessages.filter((message) => {
+      const body = message.bodyText?.toLowerCase() ?? ''
+      const attachments = (message.attachments ?? []).map((attachment) => `${attachment.name} ${attachment.mimeType ?? ''}`.toLowerCase()).join(' ')
+      const sender = `${message.sentByUser?.name ?? ''} ${message.sentByUser?.email ?? ''}`.toLowerCase()
+      return body.includes(term) || attachments.includes(term) || sender.includes(term)
+    })
+  }, [selectedThreadMessages, threadSearch])
+
+  const selectedThreadSharedFiles = useMemo(() => {
+    if (!selectedThread) return [] as Array<ChatAttachment & { messageId: string; occurredAt: string; senderLabel: string }>
+    return selectedThread.messages
+      .flatMap((message) => (message.attachments ?? []).map((attachment) => ({
+        ...attachment,
+        messageId: message.id,
+        occurredAt: message.occurredAt,
+        senderLabel: message.sentByUser?.name || message.sentByUser?.email || 'Usuario',
+      })))
+      .sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime())
+  }, [selectedThread])
+
+  useEffect(() => {
+    const snapshot = Object.fromEntries(threads.map((thread) => [thread.id, thread.unreadCount]))
+    if (!unreadHydratedRef.current) {
+      unreadHydratedRef.current = true
+      unreadSnapshotRef.current = snapshot
+      return
+    }
+    threads.forEach((thread) => {
+      const previous = unreadSnapshotRef.current[thread.id] ?? 0
+      const hasNewUnread = thread.unreadCount > previous
+      const isMuted = mutedThreadIds.includes(thread.id)
+      const isOpenThread = selectedThreadId === thread.id
+      if (!hasNewUnread || isMuted || isOpenThread) return
+      toast({
+        title: `Nuevo mensaje de ${thread.counterpart?.name || thread.counterpart?.email || thread.title || 'Compañero'}`,
+        description: thread.lastMessage?.bodyText || (thread.lastMessage?.attachments?.length ? 'Adjunto nuevo' : 'Mensaje nuevo'),
+      })
+    })
+    unreadSnapshotRef.current = snapshot
+  }, [mutedThreadIds, selectedThreadId, threads])
+
   const groupCandidateUsers = useMemo(() => {
     const term = groupSearch.trim().toLowerCase()
     return teamUsers
@@ -367,6 +465,19 @@ export function CrmTeamChatClient() {
     }
 
     setSending(true)
+    const optimisticMessageId = `optimistic-${Date.now()}`
+    const optimisticMessage: OptimisticThreadMessage = {
+      id: optimisticMessageId,
+      threadId: selectedThreadId,
+      bodyText: bodyText || null,
+      occurredAt: new Date().toISOString(),
+      sentByUserId: currentUserId,
+      sentByUser: selectedThread?.participants.find((participant) => participant.userId === currentUserId)?.user ?? null,
+      attachments,
+      status: 'PENDING',
+      canDelete: false,
+    }
+    setOptimisticMessages((current) => [...current, optimisticMessage])
     try {
       const json = await requestJson(`/api/crm/internal-chat/threads/${selectedThreadId}/messages`, {
         method: 'POST',
@@ -375,15 +486,21 @@ export function CrmTeamChatClient() {
       })
 
       if (!json.success) {
+        setOptimisticMessages((current) => current.filter((message) => message.id !== optimisticMessageId))
         alert(json.error || 'No se pudo enviar el mensaje.')
         return false
       }
 
       setMessageDraft('')
       setPendingAttachments([])
+      setOptimisticMessages((current) => current.filter((message) => message.id !== optimisticMessageId))
       await Promise.all([loadBase(), loadDetail(selectedThreadId)])
       jumpToBottom()
       return true
+    } catch {
+      setOptimisticMessages((current) => current.filter((message) => message.id !== optimisticMessageId))
+      alert('No se pudo enviar el mensaje.')
+      return false
     } finally {
       setSending(false)
     }
@@ -510,6 +627,54 @@ export function CrmTeamChatClient() {
     }
   }
 
+  function toggleMuteSelectedThread() {
+    if (!selectedThreadId) return
+    setMutedThreadIds((current) => current.includes(selectedThreadId)
+      ? current.filter((item) => item !== selectedThreadId)
+      : [...current, selectedThreadId])
+  }
+
+  async function handleDeleteMessage(messageId: string) {
+    if (!selectedThreadId) return
+    setMessageContextMenu(null)
+    const json = await requestJson(`/api/crm/internal-chat/threads/${selectedThreadId}/messages/${messageId}`, {
+      method: 'DELETE',
+    })
+    if (!json.success) {
+      alert(json.error || 'No se pudo borrar el mensaje.')
+      await loadDetail(selectedThreadId)
+      return
+    }
+    await Promise.all([loadBase(), loadDetail(selectedThreadId)])
+  }
+
+  async function handleLeaveSelectedGroup() {
+    if (!selectedThreadId || selectedThread?.type !== 'GROUP') return
+    const confirmed = window.confirm('Vas a salir de este grupo. Podrás volver solo si te agregan de nuevo.')
+    if (!confirmed) return
+
+    setLeavingGroup(true)
+    try {
+      const json = await requestJson(`/api/crm/internal-chat/threads/${selectedThreadId}/leave`, {
+        method: 'POST',
+      })
+      if (!json.success) {
+        alert(json.error || 'No se pudo salir del grupo.')
+        return
+      }
+
+      setSelectedThreadId(null)
+      setSelectedThread(null)
+      setPendingAttachments([])
+      setMessageDraft('')
+      setThreadSearch('')
+      setThreadSearchOpen(false)
+      await loadBase()
+    } finally {
+      setLeavingGroup(false)
+    }
+  }
+
   return (
     <>
     <div className="space-y-4">
@@ -531,13 +696,13 @@ export function CrmTeamChatClient() {
               {visibleUsers.length === 0 ? <p className="text-sm text-muted-foreground">No hay compañeros para mostrar.</p> : null}
               <div className="max-h-[236px] space-y-2.5 overflow-y-auto pr-1">
               {visibleUsers.map((user) => (
-                <div key={user.id} className="flex min-h-[70px] items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-2.5">
+                <div key={user.id} className={cn('flex min-h-[70px] items-center justify-between gap-2 rounded-2xl border p-2.5 transition-colors', activeDirectUserId === user.id ? 'border-sky-300 bg-sky-50/80 shadow-sm' : 'border-slate-200 bg-slate-50/70')}>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium leading-5 text-slate-950">{user.name || user.email || user.id}</p>
                     <p className="truncate text-xs leading-4 text-slate-500">{user.email || 'Sin correo visible'}{user.role ? ` · ${user.role}` : ''}</p>
                   </div>
-                  <Button size="sm" className="h-8 rounded-xl px-3 text-[11px]" onClick={() => void handleStartConversation(user.id)} disabled={creatingThread}>
-                    {creatingThread ? 'Abriendo...' : 'Abrir chat'}
+                  <Button size="sm" variant={activeDirectUserId === user.id ? 'default' : 'outline'} className="h-8 rounded-xl px-3 text-[11px]" onClick={() => void handleStartConversation(user.id)} disabled={creatingThread}>
+                    {creatingThread ? 'Abriendo...' : activeDirectUserId === user.id ? 'Activo' : 'Abrir chat'}
                   </Button>
                 </div>
               ))}
@@ -601,7 +766,7 @@ export function CrmTeamChatClient() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <p className="font-semibold text-slate-950">{thread.counterpart?.name || thread.counterpart?.email || 'Chat interno'}</p>
-                        <p className="line-clamp-2 text-sm text-slate-600">{thread.lastMessage?.bodyText || (thread.lastMessage?.attachments?.length ? 'Adjunto compartido.' : 'Sin mensajes todavía.')}</p>
+                        <p className="line-clamp-2 text-sm text-slate-600">{renderHighlightedText(thread.lastMessage?.bodyText || (thread.lastMessage?.attachments?.length ? 'Adjunto compartido.' : 'Sin mensajes todavía.'), companionSearch)}</p>
                       </div>
                       {thread.unreadCount > 0 ? <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">Nuevo</span> : null}
                     </div>
@@ -613,7 +778,7 @@ export function CrmTeamChatClient() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-1">
                           <p className="font-semibold text-slate-950">{thread.title || 'Grupo interno'}</p>
-                          <p className="line-clamp-2 text-sm text-slate-600">{thread.lastMessage?.bodyText || (thread.lastMessage?.attachments?.length ? 'Adjunto compartido.' : 'Sin mensajes todavía.')}</p>
+                          <p className="line-clamp-2 text-sm text-slate-600">{renderHighlightedText(thread.lastMessage?.bodyText || (thread.lastMessage?.attachments?.length ? 'Adjunto compartido.' : 'Sin mensajes todavía.'), companionSearch)}</p>
                         </div>
                         {thread.unreadCount > 0 ? <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">Nuevo</span> : null}
                       </div>
@@ -644,14 +809,50 @@ export function CrmTeamChatClient() {
             {selectedThread ? (
               <>
                 <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
                       <p className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">{selectedThread.type === 'GROUP' ? 'Grupo interno' : 'Participantes'}</p>
                       <p className="mt-1 text-base font-semibold text-slate-950">{threadTitle(selectedThread)}</p>
                     </div>
-                    {selectedThread.type === 'GROUP' && selectedThread.createdById === currentUserId ? (
-                      <span className="rounded-full bg-white px-3 py-1.5 text-sm text-slate-700 shadow-sm">Administrador del grupo</span>
-                    ) : null}
+                    <div className="flex items-center gap-2">
+                      {selectedThread.type === 'GROUP' && selectedThread.createdById === currentUserId ? (
+                        <span className="rounded-full bg-white px-3 py-1.5 text-sm text-slate-700 shadow-sm">Administrador del grupo</span>
+                      ) : null}
+                      <Button type="button" variant="ghost" size="icon" className="h-9 w-9 rounded-xl" onClick={() => setThreadSearchOpen((current) => !current)} aria-label="Buscar en el chat">
+                        <Search className="h-4 w-4" />
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button type="button" variant="ghost" size="icon" className="h-9 w-9 rounded-xl" aria-label="Más opciones del chat">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-60 rounded-2xl p-2">
+                          <DropdownMenuItem onSelect={() => setSharedFilesOpen(true)}>
+                            <Paperclip className="mr-2 h-4 w-4" />
+                            Archivos compartidos
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => setThreadInfoOpen(true)}>
+                            <Info className="mr-2 h-4 w-4" />
+                            Información del contacto
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => setThreadSearchOpen(true)}>
+                            <Search className="mr-2 h-4 w-4" />
+                            Buscar en el chat
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={toggleMuteSelectedThread}>
+                            <BellOff className="mr-2 h-4 w-4" />
+                            {selectedThreadId && mutedThreadIds.includes(selectedThreadId) ? 'Activar notificaciones' : 'Silenciar notificaciones'}
+                          </DropdownMenuItem>
+                          {selectedThread.type === 'GROUP' ? (
+                            <DropdownMenuItem onSelect={() => void handleLeaveSelectedGroup()} className="text-rose-700 focus:text-rose-800">
+                              <LogOut className="mr-2 h-4 w-4" />
+                              {leavingGroup ? 'Saliendo...' : 'Salir del grupo'}
+                            </DropdownMenuItem>
+                          ) : null}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {selectedThread.participants.map((participant) => (
@@ -660,6 +861,17 @@ export function CrmTeamChatClient() {
                       </span>
                     ))}
                   </div>
+
+                  {threadSearchOpen ? (
+                    <div className="rounded-[18px] border border-slate-200 bg-white px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <Search className="h-4 w-4 text-slate-400" />
+                        <Input value={threadSearch} onChange={(event) => setThreadSearch(event.target.value)} placeholder="Buscar mensajes, archivos o remitente..." className="h-8 border-0 px-0 shadow-none focus-visible:ring-0" />
+                        <button type="button" onClick={() => { setThreadSearch(''); setThreadSearchOpen(false) }} className="text-xs font-medium text-slate-500 hover:text-slate-900">Cerrar</button>
+                      </div>
+                      {threadSearch.trim() ? <p className="mt-1 text-[11px] text-slate-500">{visibleThreadMessages.length} resultado(s) en esta conversación</p> : null}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div
@@ -667,25 +879,48 @@ export function CrmTeamChatClient() {
                   onScroll={handleViewportScroll}
                   className="max-h-[520px] space-y-3 overflow-y-auto pr-1"
                 >
-                  {selectedThread.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes en este chat.</p> : null}
-                  {selectedThread.messages.map((message) => {
+                  {visibleThreadMessages.length === 0 ? <p className="text-sm text-muted-foreground">{threadSearch.trim() ? 'No hay coincidencias para esta búsqueda.' : 'No hay mensajes en este chat.'}</p> : null}
+                  {visibleThreadMessages.map((message) => {
                     const isOwn = Boolean(currentUserId && message.sentByUserId === currentUserId)
                     return (
-                      <div key={message.id} className={isOwn ? 'ml-auto max-w-[88%] rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700' : 'mr-auto max-w-[88%] rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}>
+                      <div
+                        key={message.id}
+                        onContextMenu={(event) => {
+                          if (!canDeleteInternalMessage(message, currentUserId)) return
+                          event.preventDefault()
+                          setMessageContextMenu({ messageId: message.id, x: event.clientX, y: event.clientY })
+                        }}
+                        className={isOwn ? 'ml-auto max-w-[88%] rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700' : 'mr-auto max-w-[88%] rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}
+                      >
                         <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-slate-500">
                           <span>{message.sentByUser?.name || message.sentByUser?.email || 'Usuario'}</span>
                           <span>{formatDate(message.occurredAt, 'Sin fecha')}</span>
                         </div>
-                        {message.bodyText ? <p className="mt-2 whitespace-pre-wrap leading-6">{message.bodyText}</p> : null}
+                        {message.bodyText ? <p className="mt-2 whitespace-pre-wrap leading-6">{renderHighlightedText(message.bodyText, threadSearch)}</p> : null}
                         {renderAttachments(message.attachments, () => {
                           if (shouldStickToBottomRef.current) {
                             scheduleScrollToBottom('auto')
                           }
                         })}
+                        {isOwn ? (
+                          <div className="mt-2 flex items-center justify-end gap-1 text-[11px] text-slate-500">
+                            {renderMessageStatusIcon(message.status)}
+                            <span>{message.status === 'READ' ? 'Visto' : message.status === 'SENT' ? 'Entregado' : 'Enviando'}</span>
+                          </div>
+                        ) : null}
                       </div>
                     )
                   })}
                   <div ref={messagesEndRef} aria-hidden="true" className="h-px w-full" />
+                  {messageContextMenu ? (
+                    <div className="fixed z-[130] w-52 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_24px_48px_-24px_rgba(15,23,42,0.45)]" style={{ left: `${messageContextMenu.x}px`, top: `${messageContextMenu.y}px` }}>
+                      <button type="button" onClick={() => void handleDeleteMessage(messageContextMenu.messageId)} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-700 transition hover:bg-rose-50">
+                        <Trash2 className="h-4 w-4" />
+                        Borrar mensaje
+                      </button>
+                      <p className="px-3 pb-1 pt-0.5 text-[11px] text-slate-500">Disponible solo durante 30 segundos desde el envío.</p>
+                    </div>
+                  ) : null}
                 </div>
                 {selectedThread && showScrollToBottom ? (
                   <div className="flex justify-end">
@@ -842,6 +1077,54 @@ export function CrmTeamChatClient() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <Dialog open={sharedFilesOpen} onOpenChange={setSharedFilesOpen}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Archivos compartidos</DialogTitle>
+          <DialogDescription>Historial de adjuntos enviados en esta conversación.</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[65vh] space-y-3 overflow-y-auto pr-1">
+          {selectedThreadSharedFiles.length === 0 ? <p className="text-sm text-slate-500">Aún no hay archivos compartidos en este chat.</p> : null}
+          {selectedThreadSharedFiles.map((attachment) => (
+            <a key={`${attachment.messageId}-${attachment.url}`} href={attachment.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+              <div className="min-w-0">
+                <p className="truncate font-medium text-slate-950">{attachment.name}</p>
+                <p className="mt-1 text-xs text-slate-500">{attachment.senderLabel} · {formatDate(attachment.occurredAt, 'Sin fecha')}</p>
+              </div>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700">Abrir</span>
+            </a>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={threadInfoOpen} onOpenChange={setThreadInfoOpen}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Información del contacto</DialogTitle>
+          <DialogDescription>Resumen de la conversación interna y sus participantes.</DialogDescription>
+        </DialogHeader>
+        {selectedThread ? (
+          <div className="space-y-4 text-sm text-slate-700">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Tipo</div>
+              <div className="mt-1 font-medium text-slate-950">{selectedThread.type === 'GROUP' ? 'Grupo interno' : 'Chat directo'}</div>
+              <div className="mt-2 text-xs text-slate-500">Notificaciones {selectedThreadId && mutedThreadIds.includes(selectedThreadId) ? 'silenciadas' : 'activas'}</div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Participantes</div>
+              <div className="mt-3 space-y-2">
+                {selectedThread.participants.map((participant) => (
+                  <div key={participant.id} className="rounded-xl border border-slate-200 px-3 py-2">
+                    <div className="font-medium text-slate-950">{participant.user.name || participant.user.email || participant.user.id}</div>
+                    <div className="text-xs text-slate-500">{participant.user.email || 'Sin correo visible'}{participant.user.role ? ` · ${participant.user.role}` : ''}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </DialogContent>
+    </Dialog>
     </>
   )
 }
@@ -858,4 +1141,38 @@ function mapLibraryItemToAttachment(item: CrmFileItem): ChatAttachment {
     mimeType: item.mimeType,
     sizeBytes: item.sizeBytes,
   }
+}
+
+function normalizeMutedThreadIds(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return Array.from(new Set(value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)))
+}
+
+function canDeleteInternalMessage(message: Pick<ThreadMessage, 'sentByUserId' | 'occurredAt' | 'canDelete'>, currentUserId: string | null) {
+  if (!currentUserId || message.sentByUserId !== currentUserId) return false
+  if (message.canDelete === false) return false
+  const occurredAt = new Date(message.occurredAt).getTime()
+  if (!Number.isFinite(occurredAt)) return false
+  return (Date.now() - occurredAt) <= 30_000
+}
+
+function renderMessageStatusIcon(status: ThreadMessage['status']) {
+  if (status === 'READ') return <CheckCheck className="h-3.5 w-3.5 text-sky-600" />
+  if (status === 'SENT') return <Check className="h-3.5 w-3.5 text-sky-600" />
+  if (status === 'PENDING') return <Check className="h-3.5 w-3.5 text-slate-400" />
+  return null
+}
+
+function renderHighlightedText(text: string | null | undefined, query: string, className = 'bg-amber-100 text-amber-950') {
+  const source = text ?? ''
+  const term = query.trim()
+  if (!term) return source
+  const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const matcher = new RegExp(`(${escapedTerm})`, 'ig')
+  const lowerTerm = term.toLowerCase()
+  return source.split(matcher).map((part, index) => (
+    part.toLowerCase() === lowerTerm
+      ? <mark key={`${part}-${index}`} className={className}>{part}</mark>
+      : <span key={`${part}-${index}`}>{part}</span>
+  ))
 }

@@ -3,18 +3,20 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { AlertTriangle, Bot, Clock3, FileText, Mail, MessageCircle, PhoneCall } from 'lucide-react'
+import { AlertTriangle, BellOff, Bot, Clock3, FileText, Mail, MessageCircle, MoreVertical, PhoneCall } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { CardInfoHeader } from '@/components/ui/card-info-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useI18n } from '@/components/providers/i18n-provider'
+import { useChatMutePreferences } from '@/hooks/use-chat-mute-preferences'
 import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
 
 type ConversationStatus = 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM'
@@ -390,6 +392,23 @@ function getVisibleStock(material: MaterialLookupItem) {
   return 0
 }
 
+function renderHighlightedText(text: string | null | undefined, query: string, className = 'bg-amber-100 text-amber-950') {
+  const source = text ?? ''
+  const term = query.trim()
+  if (!term) return source
+
+  const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const matcher = new RegExp(`(${escapedTerm})`, 'ig')
+  const lowerTerm = term.toLowerCase()
+  const parts = source.split(matcher)
+
+  return parts.map((part, index) => (
+    part.toLowerCase() === lowerTerm
+      ? <mark key={`${part}-${index}`} className={className}>{part}</mark>
+      : <span key={`${part}-${index}`}>{part}</span>
+  ))
+}
+
 export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const { language } = useI18n()
   const locale = language === 'en' ? 'en-US' : 'es-CO'
@@ -411,6 +430,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [conversations, setConversations] = useState<ConversationListItem[]>([])
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
   const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null)
+  const { mutedCrmConversationIds, setMutedCrmConversationIds } = useChatMutePreferences()
   const [conversationAi, setConversationAi] = useState<ConversationAiSuggestion | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [assignees, setAssignees] = useState<Assignee[]>([])
@@ -674,6 +694,13 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   useEffect(() => {
     setSelectedConversationId((current) => current && visibleConversations.some((item) => item.id === current) ? current : visibleConversations[0]?.id ?? null)
   }, [visibleConversations])
+
+  function toggleMuteSelectedConversation() {
+    if (!selectedConversationId) return
+    setMutedCrmConversationIds((current) => current.includes(selectedConversationId)
+      ? current.filter((item) => item !== selectedConversationId)
+      : [...current, selectedConversationId])
+  }
 
   async function submitAssign() {
     if (!selectedConversation) return
@@ -1315,6 +1342,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
             {!loading && visibleConversations.length === 0 ? <p className="text-sm text-muted-foreground">No hay conversaciones para mostrar.</p> : null}
             {visibleConversations.map((item) => {
               const isActive = item.id === selectedConversationId
+              const isMuted = mutedCrmConversationIds.includes(item.id)
               const preview = item.messages?.[0]?.bodyText || item.sourceCampaign || item.contactEmail || item.contactPhone || naText
               const origin = getConversationOrigin(item.channelConnection)
               const slaMeta = getConversationSlaMeta(item, locale)
@@ -1330,11 +1358,12 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                   <div className="flex items-start justify-between gap-3">
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-slate-900">{item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || 'Contacto sin nombre'}</span>
+                        <span className="font-semibold text-slate-900">{renderHighlightedText(item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || 'Contacto sin nombre', search)}</span>
                         <OriginChip originKey={origin.key} label={origin.label} />
                         <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${priorityMeta.className}`}>{priorityMeta.label}</span>
+                        {isMuted ? <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600">Silenciado</span> : null}
                       </div>
-                      <p className="line-clamp-2 text-sm text-slate-600">{preview}</p>
+                      <p className="line-clamp-2 text-sm text-slate-600">{renderHighlightedText(preview, search)}</p>
                     </div>
                     <div className="grid gap-2 text-right">
                       <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${statusMeta.className}`}>{statusMeta.label}</span>
@@ -1384,14 +1413,16 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                   const selectedSla = getConversationSlaMeta(selectedConversation, locale)
                   const selectedPriority = getConversationPriorityMeta(selectedConversation, locale)
                   const selectedStatus = getConversationStatusMeta(selectedConversation.status)
+                  const isMuted = mutedCrmConversationIds.includes(selectedConversation.id)
                   return (
                 <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-slate-50/70 p-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-xl font-semibold text-slate-950">{selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación sin alias'}</h2>
+                      <h2 className="text-xl font-semibold text-slate-950">{renderHighlightedText(selectedConversation.contactDisplayName || selectedConversation.contactPhone || selectedConversation.contactEmail || 'Conversación sin alias', search)}</h2>
                       <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${selectedStatus.className}`}>{selectedStatus.label}</span>
                       <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${selectedPriority.className}`}>{selectedPriority.label}</span>
                       <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${selectedSla.className}`}>{selectedSla.label}</span>
+                      {isMuted ? <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Silenciado</span> : null}
                     </div>
                     <p className="text-sm text-slate-600">
                       {selectedConversation.contactPhone || naText} · {selectedConversation.contactEmail || naText} · {selectedConversation.channelConnection.name}
@@ -1408,6 +1439,20 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="icon" className="rounded-xl border-slate-200 bg-white" aria-label="Opciones de conversación">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-60 rounded-2xl p-2">
+                        <DropdownMenuLabel>Conversación CRM</DropdownMenuLabel>
+                        <DropdownMenuItem onSelect={toggleMuteSelectedConversation}>
+                          <BellOff className="mr-2 h-4 w-4" />
+                          {isMuted ? 'Activar notificaciones' : 'Silenciar notificaciones'}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     {selectedConversation.lead ? (
                       <Button asChild variant="outline" className="rounded-xl border-slate-200 bg-white">
                         <Link href={`/dashboard/crm/leads/${selectedConversation.lead.id}`}>Abrir lead</Link>
@@ -1751,7 +1796,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                   <span>{formatDate(message.occurredAt, locale, naText)}</span>
                                 </div>
                               </div>
-                              <p className="mt-2 whitespace-pre-wrap leading-6">{message.bodyText || 'Sin contenido textual'}</p>
+                              <p className="mt-2 whitespace-pre-wrap leading-6">{renderHighlightedText(message.bodyText || 'Sin contenido textual', search)}</p>
                               {Array.isArray(message.attachmentsJson) && message.attachmentsJson.length > 0 ? (
                                 <div className="mt-3 space-y-2">
                                   {message.attachmentsJson.map((attachment, index) => (
