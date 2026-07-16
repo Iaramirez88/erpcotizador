@@ -9,7 +9,7 @@ import {
   type RbacV2Scope,
 } from '@/lib/rbac-v2-catalog'
 import type { Session } from 'next-auth'
-import { AccessLevel, ModuleKey } from '@prisma/client'
+import { AccessLevel, ModuleKey, SedeRole } from '@prisma/client'
 import { resolveUserIdFromSession } from '@/lib/session-user'
 
 export type ApiAccessOk = {
@@ -18,6 +18,7 @@ export type ApiAccessOk = {
   userId: string
   sedeId: string
   empresaId: string
+  membershipRole: SedeRole | null
 }
 
 export type ApiAccessFail = {
@@ -39,6 +40,12 @@ export type ApiCapabilityAccessOk = ApiAccessOk & {
   matchedLegacyModule: ModuleKey | null
   legacyModulesChecked: ModuleKey[]
   resolvedBy: 'rbac-v2-grant' | 'legacy-module-fallback'
+}
+
+const ISOLATED_VERTICAL_HREFS: Partial<Record<string, string>> = {
+  ODONTOLOGIA: '/dashboard/odontologia',
+  RESTAURANTE: '/dashboard/restaurante',
+  DOTACIONES: '/dashboard/dotaciones',
 }
 
 const MODULE_LABELS: Record<ModuleKey, string> = {
@@ -166,16 +173,15 @@ async function resolveApiAccessContext(sedeIdOverride?: string): Promise<ApiAcce
     return { ok: false, response: NextResponse.json({ error: 'Sede no encontrada' }, { status: 404 }) }
   }
 
-  if (sedeIdOverride) {
-    const membership = await prisma.sedeMembership.findUnique({
-      where: { sedeId_userId: { sedeId: sede.id, userId } },
-      select: { sedeId: true },
-    })
-    if (!membership) {
-      return {
-        ok: false,
-        response: NextResponse.json({ error: buildSedeMembershipDeniedMessage() }, { status: 403 }),
-      }
+  const membership = await prisma.sedeMembership.findUnique({
+    where: { sedeId_userId: { sedeId: sede.id, userId } },
+    select: { sedeId: true, role: true },
+  })
+
+  if (!membership) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: buildSedeMembershipDeniedMessage() }, { status: 403 }),
     }
   }
 
@@ -185,7 +191,12 @@ async function resolveApiAccessContext(sedeIdOverride?: string): Promise<ApiAcce
     userId,
     sedeId: sede.id,
     empresaId: sede.empresaId,
+    membershipRole: membership.role,
   }
+}
+
+function isIsolatedVerticalCapability(args: Pick<ApiCapabilityAccessArgs, 'domain' | 'subdomain'>) {
+  return args.domain === 'VERTICALES' && typeof ISOLATED_VERTICAL_HREFS[args.subdomain] === 'string'
 }
 
 function capabilityActionToLegacyAccessLevel(action: RbacV2CapabilityAction): AccessLevel {
@@ -407,6 +418,21 @@ export async function canAccessCapability(
   if (accessFromV2) return accessFromV2
 
   if (args.allowLegacyFallback === false) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: buildCapabilityAccessDeniedMessage(args),
+          capability: args,
+          checkedModules: [],
+          resolvedBy: 'strict-rbac-v2',
+        },
+        { status: 403 }
+      ),
+    }
+  }
+
+  if (isIsolatedVerticalCapability(args)) {
     return {
       ok: false,
       response: NextResponse.json(

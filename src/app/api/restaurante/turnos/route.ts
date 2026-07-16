@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import { ModuleKey, RestauranteTurnoStatus } from '@prisma/client'
+import { RestauranteTurnoStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { computeRestaurantBoardSummary, createEmptyRestaurantBoard, sanitizeRestaurantBoard } from '@/lib/restaurante'
 
 export const runtime = 'nodejs'
@@ -23,7 +23,7 @@ function buildTurnoTitle(now: Date) {
 
 export async function POST(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.POS, 'WRITE')
+    const access = await requireCapabilityAccess({ domain: 'VERTICALES', subdomain: 'RESTAURANTE', action: 'UPDATE', allowLegacyFallback: false })
     if (!access.ok) return access.response
 
     const body = (await request.json().catch(() => null)) as PostBody | null

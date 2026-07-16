@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { AccessLevel, ModuleKey } from '@prisma/client'
+import { AccessLevel, ModuleKey, SedeRole } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getEffectiveAccessMap, NAV_MODULES } from '@/lib/rbac'
 import { isSuperAdminEmail } from '@/lib/super-admin'
@@ -25,10 +25,17 @@ type DashboardAccessContext = {
   empresaId: string
   sedeId: string
   isSuperAdmin: boolean
+  membershipRole: SedeRole | null
   legacyAccess: Partial<Record<ModuleKey, AccessLevel>>
   disabledDomains: Set<string>
   disabledCapabilities: Set<string>
   grantsByCapability: Map<string, Array<{ allowed: boolean; scopeType: string; scopeValue: string | null; source: string }>>
+}
+
+const ISOLATED_VERTICAL_HREFS: Partial<Record<string, string>> = {
+  ODONTOLOGIA: '/dashboard/odontologia',
+  RESTAURANTE: '/dashboard/restaurante',
+  DOTACIONES: '/dashboard/dotaciones',
 }
 
 const ACCESS_ORDER: Record<AccessLevel, number> = {
@@ -95,8 +102,12 @@ async function buildDashboardAccessContext(args: {
   empresaId: string
   sedeId: string
 }): Promise<DashboardAccessContext> {
-  const [user, legacyAccess, domainEntitlements, capabilityEntitlements, grants] = await Promise.all([
+  const [user, membership, legacyAccess, domainEntitlements, capabilityEntitlements, grants] = await Promise.all([
     prisma.user.findUnique({ where: { id: args.userId }, select: { email: true } }),
+    prisma.sedeMembership.findUnique({
+      where: { sedeId_userId: { sedeId: args.sedeId, userId: args.userId } },
+      select: { role: true },
+    }),
     getEffectiveAccessMap({ userId: args.userId, sedeId: args.sedeId, modules: NAV_MODULES }),
     prisma.domainEntitlement.findMany({ where: { empresaId: args.empresaId }, select: { domain: true, enabled: true } }),
     prisma.capabilityEntitlement.findMany({ where: { empresaId: args.empresaId }, select: { domain: true, subdomain: true, action: true, enabled: true } }),
@@ -119,17 +130,21 @@ async function buildDashboardAccessContext(args: {
     current.push({ allowed: grant.allowed, scopeType: grant.scopeType, scopeValue: grant.scopeValue, source: grant.source })
     grantsByCapability.set(key, current)
   }
-
   return {
     userId: args.userId,
     empresaId: args.empresaId,
     sedeId: args.sedeId,
     isSuperAdmin: isSuperAdminEmail(user?.email),
+    membershipRole: membership?.role ?? null,
     legacyAccess,
     disabledDomains,
     disabledCapabilities,
     grantsByCapability,
   }
+}
+
+function isIsolatedVerticalCapability(capability: CapabilityRef) {
+  return capability.domain === 'VERTICALES' && typeof ISOLATED_VERTICAL_HREFS[capability.subdomain] === 'string'
 }
 
 function grantMatchesScope(args: {
@@ -195,7 +210,7 @@ function canAccessCapabilityFromContext(args: {
 
   if (applicable.some((grant) => !grant.allowed)) return false
   if (applicable.some((grant) => grant.allowed)) return true
-  if (args.directGrantOnly) return false
+  if (args.directGrantOnly || isIsolatedVerticalCapability(args.capability)) return false
 
   const neededLevel = capabilityActionToAccessLevel(args.action)
   return getLegacyModulesForCapability(args.capability).some((moduleKey) => {

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react"
 import { Sparkles, LoaderCircle, ClipboardCopy, ArrowRight, ExternalLink, MessageSquareText, SendHorizonal, ChevronLeft, ChevronRight, History } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import type { LitografiaAiHandoff } from "@/lib/litografia-ai-handoff"
@@ -454,6 +455,7 @@ export function LitografiaAiAssistant(props: {
   const [historyTotalPages, setHistoryTotalPages] = useState(1)
   const [historyTotal, setHistoryTotal] = useState(0)
   const [historyScope, setHistoryScope] = useState<"company" | "personal">("personal")
+  const [selectedHistoryEntry, setSelectedHistoryEntry] = useState<QuoteHistoryEntry | null>(null)
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -1105,11 +1107,9 @@ export function LitografiaAiAssistant(props: {
                   <Button type="button" variant="outline" size="sm" onClick={() => setBrief(entry.prompt)}>
                     Usar brief
                   </Button>
-                  {entry.responseText ? (
-                    <Button type="button" variant="outline" size="sm" onClick={() => setFollowUp(`Toma como referencia esta consulta previa: ${entry.prompt}`)}>
-                      Tomar referencia
-                    </Button>
-                  ) : null}
+                  <Button type="button" variant="outline" size="sm" onClick={() => setSelectedHistoryEntry(entry)}>
+                    Ver consulta
+                  </Button>
                 </div>
               </div>
             ))}
@@ -1150,6 +1150,67 @@ export function LitografiaAiAssistant(props: {
           </div>
         </div>
       </div>
+
+      <Dialog open={!!selectedHistoryEntry} onOpenChange={(open) => {
+        if (!open) {
+          setSelectedHistoryEntry(null)
+        }
+      }}>
+        <DialogContent className="max-h-[85vh] max-w-4xl overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>{selectedHistoryEntry?.quoteType || "Consulta IA"}</DialogTitle>
+            <DialogDescription>
+              {selectedHistoryEntry
+                ? `${formatDateTimeLabel(selectedHistoryEntry.createdAt)}${selectedHistoryEntry.actorLabel ? ` · ${selectedHistoryEntry.actorLabel}` : ""}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedHistoryEntry ? (
+            <div className="space-y-4 overflow-y-auto pr-1 text-sm text-slate-700">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {selectedHistoryEntry.confidence ? (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Confianza</p>
+                    <p className="mt-1 font-medium text-slate-900">{selectedHistoryEntry.confidence}</p>
+                  </div>
+                ) : null}
+                {selectedHistoryEntry.totalSuggested != null ? (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Total guía</p>
+                    <p className="mt-1 font-medium text-slate-900">{currencyFormatter.format(selectedHistoryEntry.totalSuggested)}</p>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Brief original</p>
+                <p className="mt-2 whitespace-pre-line text-slate-900">{selectedHistoryEntry.prompt}</p>
+              </div>
+
+              {selectedHistoryEntry.summary ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Resumen guardado</p>
+                  <p className="mt-2 whitespace-pre-line text-slate-900">{selectedHistoryEntry.summary}</p>
+                </div>
+              ) : null}
+
+              {selectedHistoryEntry.responseText ? (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">Respuesta completa</p>
+                  <p className="mt-2 whitespace-pre-line text-emerald-950">{selectedHistoryEntry.responseText}</p>
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" onClick={() => setBrief(selectedHistoryEntry.prompt)}>
+                  Usar brief
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

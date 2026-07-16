@@ -139,6 +139,24 @@ export async function ensureDefaultSedeForEmpresa(empresaId: string, userId: str
 export async function getActiveSedeForUser(userId: string): Promise<Sede> {
   const empresaId = await requireEmpresaIdForUser(userId)
 
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { sedeDefaultId: true },
+  })
+
+  if (user?.sedeDefaultId) {
+    const defaultMembership = await prisma.sedeMembership.findFirst({
+      where: {
+        userId,
+        sedeId: user.sedeDefaultId,
+        sede: { empresaId },
+      },
+      include: { sede: true },
+    })
+
+    if (defaultMembership?.sede) return defaultMembership.sede
+  }
+
   const memberSede = await prisma.sedeMembership.findFirst({
     where: { userId, sede: { empresaId } },
     include: { sede: true },

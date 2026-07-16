@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import { ModuleKey, PosInvoiceStatus, RestauranteTurnoStatus } from '@prisma/client'
+import { PosInvoiceStatus, RestauranteTurnoStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { computeRestaurantBoardSummary, sanitizeRestaurantBoard } from '@/lib/restaurante'
 
 export const runtime = 'nodejs'
@@ -18,7 +18,7 @@ function addDays(date: Date, days: number) {
 
 export async function GET() {
   try {
-    const access = await requireApiAccess(ModuleKey.POS, 'READ')
+    const access = await requireCapabilityAccess({ domain: 'VERTICALES', subdomain: 'RESTAURANTE', action: 'READ', allowLegacyFallback: false })
     if (!access.ok) return access.response
 
     const now = new Date()

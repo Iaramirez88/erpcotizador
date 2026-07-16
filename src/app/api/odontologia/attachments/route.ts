@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs/promises'
 import path from 'path'
-import { ModuleKey } from '@prisma/client'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 
 export const runtime = 'nodejs'
 
@@ -35,7 +34,7 @@ function resolveAttachmentType(fileType: string): 'image' | 'document' | null {
 
 export async function POST(request: NextRequest) {
   try {
-    const access = await requireApiAccess(ModuleKey.CLIENTES, 'WRITE')
+    const access = await requireCapabilityAccess({ domain: 'VERTICALES', subdomain: 'ODONTOLOGIA', action: 'UPDATE', allowLegacyFallback: false })
     if (!access.ok) return access.response
 
     const form = await request.formData().catch(() => null)

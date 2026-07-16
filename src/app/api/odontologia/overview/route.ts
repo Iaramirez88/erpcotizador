@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import { ModuleKey } from '@prisma/client'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { prisma } from '@/lib/prisma'
 import { ensureOdontologySeedsForEmpresa, getOdontologyDropdownKeys } from '@/lib/business-type-seeds'
 
@@ -8,7 +7,7 @@ export const runtime = 'nodejs'
 
 export async function GET() {
   try {
-    const access = await requireApiAccess(ModuleKey.CLIENTES, 'READ')
+    const access = await requireCapabilityAccess({ domain: 'VERTICALES', subdomain: 'ODONTOLOGIA', action: 'READ', allowLegacyFallback: false })
     if (!access.ok) return access.response
 
     const empresaId = access.empresaId

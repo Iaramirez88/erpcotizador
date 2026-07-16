@@ -99,6 +99,8 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
       'superAdmin.users.errors.loadManagementFailed': 'No se pudo cargar el detalle administrable del usuario.',
     'superAdmin.users.errors.saveFailed': 'No se pudo guardar el usuario.',
     'superAdmin.users.errors.deleteFailed': 'No se pudo eliminar el usuario.',
+    'superAdmin.users.errors.enterWorkspaceFailed': 'No se pudo ingresar al espacio de trabajo del usuario.',
+    'superAdmin.users.actions.enterWorkspace': 'Entrar al workspace',
       'superAdmin.users.labels.noCompanyAssigned': 'El usuario no tiene empresa asignada.',
       'superAdmin.users.labels.noSedeAssigned': 'El usuario no tiene sedes asignadas para editar accesos.',
 
@@ -2226,6 +2228,8 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'superAdmin.users.errors.loadManagementFailed': 'Could not load the manageable user detail.',
     'superAdmin.users.errors.saveFailed': 'Could not save the user.',
     'superAdmin.users.errors.deleteFailed': 'Could not delete the user.',
+    'superAdmin.users.errors.enterWorkspaceFailed': 'Could not enter the user workspace.',
+    'superAdmin.users.actions.enterWorkspace': 'Enter workspace',
     'superAdmin.users.labels.noCompanyAssigned': 'This user has no company assigned.',
     'superAdmin.users.labels.noSedeAssigned': 'This user has no sites assigned to edit access.',
 

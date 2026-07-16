@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { DotacionPedidoItemStatus, DotacionPedidoStatus, EstadoCotizacion, ModuleKey } from '@prisma/client'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { DotacionPedidoItemStatus, DotacionPedidoStatus, EstadoCotizacion } from '@prisma/client'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
@@ -56,7 +56,7 @@ function computePedidoStatus(statuses: DotacionPedidoItemStatus[]): DotacionPedi
 
 export async function POST(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.COTIZADOR, 'WRITE')
+    const access = await requireCapabilityAccess({ domain: 'VERTICALES', subdomain: 'DOTACIONES', action: 'UPDATE', allowLegacyFallback: false })
     if (!access.ok) return access.response
 
     const body = (await request.json().catch(() => null)) as PostBody | null

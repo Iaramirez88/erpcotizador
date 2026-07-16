@@ -140,6 +140,10 @@ function hasExplicitLevel(levels: Partial<Record<ModuleKey, AccessLevel>>, modul
   return Object.prototype.hasOwnProperty.call(levels, moduleKey)
 }
 
+function isIsolatedVerticalEntry(entry: ModuleEntry) {
+  return entry.capabilityEntries.length > 0 && entry.capabilityEntries.every((capability) => capability.domain === 'VERTICALES')
+}
+
 export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeAccess, initialSedeRole, modules, initial, initialGlobalAccess, initialCapabilities, canManagePermissionProfiles = false, open: controlledOpen, onOpenChange: controlledOnOpenChange, trigger }: Props) {
   const router = useRouter()
   const { t } = useI18n()
@@ -517,28 +521,35 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
                   {section.entries.map((entry) => {
                     const moduleLevel = selectedLevel(entry.moduleKey)
                     const inheritedLevel = effectiveLevel(entry.moduleKey)
+                    const isolatedVerticalEntry = isIsolatedVerticalEntry(entry)
 
                     return (
-                      <div key={entry.moduleKey} className={cn('rounded-2xl border p-4 shadow-sm', section.tone.panel)}>
+                      <div key={entry.key} className={cn('rounded-2xl border p-4 shadow-sm', section.tone.panel)}>
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                           <div>
                             <div className="text-lg font-semibold text-slate-950">{entry.label}</div>
                             <div className="mt-1 text-sm text-slate-500">{entry.capabilityEntries.length} submódulos configurables</div>
                           </div>
                           <div className="w-full lg:w-[256px]">
-                            <select
-                              value={moduleLevel}
-                              onChange={(e) => void updateModuleLevel(entry.moduleKey, e.target.value as AccessChoice)}
-                              disabled={!hasSedeAccess || Boolean(saving[entry.moduleKey])}
-                              className={cn('h-10 w-full rounded-md border px-3 text-sm', getAccessTone(moduleLevel, inheritedLevel))}
-                            >
-                              <option value="INHERIT">Heredar del rol de sede</option>
-                              {ACCESS_OPTIONS.map((option) => (
-                                <option key={option} value={option}>
-                                  {getAccessLabel(option)}
-                                </option>
-                              ))}
-                            </select>
+                            {isolatedVerticalEntry ? (
+                              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                                Este vertical no aparece por defecto y se controla solo desde sus submódulos, sin tocar el módulo ERP base.
+                              </div>
+                            ) : (
+                              <select
+                                value={moduleLevel}
+                                onChange={(e) => void updateModuleLevel(entry.moduleKey, e.target.value as AccessChoice)}
+                                disabled={!hasSedeAccess || Boolean(saving[entry.moduleKey])}
+                                className={cn('h-10 w-full rounded-md border px-3 text-sm', getAccessTone(moduleLevel, inheritedLevel))}
+                              >
+                                <option value="INHERIT">Heredar del rol de sede</option>
+                                {ACCESS_OPTIONS.map((option) => (
+                                  <option key={option} value={option}>
+                                    {getAccessLabel(option)}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
                           </div>
                         </div>
 
@@ -548,7 +559,7 @@ export function UserPermissionsModal({ sedeId, sedeNombre, user, initialHasSedeA
                             <div className="space-y-2">
                               {entry.capabilityEntries.map((capability) => {
                                 const value = capabilityLevels[capability.permissionKey] ?? 'INHERIT'
-                                const currentLevel = capabilityLevels[capability.permissionKey] ?? effectiveLevel(entry.moduleKey)
+                                const currentLevel = capabilityLevels[capability.permissionKey] ?? (isolatedVerticalEntry ? 'NONE' : effectiveLevel(entry.moduleKey))
                                 return (
                                   <div key={capability.permissionKey} className="grid gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 md:grid-cols-[minmax(0,1fr)_260px] md:items-center">
                                     <div>

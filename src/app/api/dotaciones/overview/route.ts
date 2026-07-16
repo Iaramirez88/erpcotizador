@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { DotacionPedidoStatus, EstadoCotizacion, ModuleKey, PayrollEmployeeStatus } from '@prisma/client'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { DotacionPedidoStatus, EstadoCotizacion, PayrollEmployeeStatus } from '@prisma/client'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { prisma } from '@/lib/prisma'
 import { buildPayrollEmployeeFullName } from '@/lib/payroll'
 
@@ -8,7 +8,7 @@ export const runtime = 'nodejs'
 
 export async function GET() {
   try {
-    const access = await requireApiAccess(ModuleKey.COTIZADOR, 'READ')
+    const access = await requireCapabilityAccess({ domain: 'VERTICALES', subdomain: 'DOTACIONES', action: 'READ', allowLegacyFallback: false })
     if (!access.ok) return access.response
 
     const empresaId = access.empresaId

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { ModuleKey, OdontologyAppointmentStatus } from '@prisma/client'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { OdontologyAppointmentStatus } from '@prisma/client'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
@@ -35,7 +35,7 @@ function normalizeAppointmentStatus(value: unknown) {
 
 export async function GET() {
   try {
-    const access = await requireApiAccess(ModuleKey.CLIENTES, 'READ')
+    const access = await requireCapabilityAccess({ domain: 'VERTICALES', subdomain: 'ODONTOLOGIA', action: 'READ', allowLegacyFallback: false })
     if (!access.ok) return access.response
 
     const appointments = await prisma.odontologyAppointment.findMany({
@@ -65,7 +65,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.CLIENTES, 'WRITE')
+    const access = await requireCapabilityAccess({ domain: 'VERTICALES', subdomain: 'ODONTOLOGIA', action: 'UPDATE', allowLegacyFallback: false })
     if (!access.ok) return access.response
 
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
@@ -148,7 +148,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.CLIENTES, 'WRITE')
+    const access = await requireCapabilityAccess({ domain: 'VERTICALES', subdomain: 'ODONTOLOGIA', action: 'UPDATE', allowLegacyFallback: false })
     if (!access.ok) return access.response
 
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>

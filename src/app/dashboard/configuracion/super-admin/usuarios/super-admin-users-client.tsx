@@ -148,6 +148,7 @@ export default function SuperAdminUsersClient() {
   const [editing, setEditing] = useState<Row | null>(null)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [enteringWorkspaceId, setEnteringWorkspaceId] = useState<string | null>(null)
   const [managementLoading, setManagementLoading] = useState(false)
   const [managementError, setManagementError] = useState<string | null>(null)
   const [management, setManagement] = useState<ManagementUser | null>(null)
@@ -366,6 +367,27 @@ export default function SuperAdminUsersClient() {
     }))
   }
 
+  async function enterWorkspace(userId: string) {
+    setEnteringWorkspaceId(userId)
+    try {
+      const res = await fetch(`/api/super-admin/users/${userId}/enter-workspace`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; redirectTo?: string }
+      if (!res.ok || !json.ok) {
+        alert(json.error || t('superAdmin.users.errors.enterWorkspaceFailed'))
+        return
+      }
+
+      window.location.assign(json.redirectTo || '/dashboard')
+    } catch {
+      alert(t('superAdmin.users.errors.enterWorkspaceFailed'))
+    } finally {
+      setEnteringWorkspaceId(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -459,6 +481,15 @@ export default function SuperAdminUsersClient() {
                     </div>
 
                     <div className="mt-4 flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={!user.empresa || enteringWorkspaceId === user.id}
+                        onClick={() => void enterWorkspace(user.id)}
+                      >
+                        {enteringWorkspaceId === user.id ? t('common.processing') : t('superAdmin.users.actions.enterWorkspace')}
+                      </Button>
                       <Button type="button" variant="outline" size="sm" onClick={() => void openEdit(user)}>
                         {t('common.edit')}
                       </Button>
@@ -547,6 +578,15 @@ export default function SuperAdminUsersClient() {
                       <td className="py-3 pr-4">{fmtDate(user.createdAt, locale, naText)}</td>
                       <td className="py-3 text-right">
                         <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={!user.empresa || enteringWorkspaceId === user.id}
+                            onClick={() => void enterWorkspace(user.id)}
+                          >
+                            {enteringWorkspaceId === user.id ? t('common.processing') : t('superAdmin.users.actions.enterWorkspace')}
+                          </Button>
                           <Button type="button" variant="outline" size="sm" onClick={() => void openEdit(user)}>
                             {t('common.edit')}
                           </Button>
@@ -628,6 +668,19 @@ export default function SuperAdminUsersClient() {
                     <div className="mt-3 text-muted-foreground">{t('superAdmin.users.fields.company')}</div>
                     <div className="font-medium">{management.empresa?.nombre ?? t('superAdmin.users.labels.noCompanyAssigned')}</div>
                     {management.empresa ? <div className="text-xs text-muted-foreground">{management.empresa.nit}</div> : null}
+                    {management.empresa ? (
+                      <div className="mt-3">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={enteringWorkspaceId === management.id}
+                          onClick={() => void enterWorkspace(management.id)}
+                        >
+                          {enteringWorkspaceId === management.id ? t('common.processing') : t('superAdmin.users.actions.enterWorkspace')}
+                        </Button>
+                      </div>
+                    ) : null}
                     <div className="mt-3 text-muted-foreground">{t('superAdmin.users.columns.createdAt')}</div>
                     <div>{fmtDate(management.createdAt, locale, naText)}</div>
                   </div>

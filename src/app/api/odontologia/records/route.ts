@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
-import { ModuleKey } from '@prisma/client'
-import { requireApiAccess } from '@/lib/api-rbac'
+import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { prisma } from '@/lib/prisma'
 import { normalizeOdontogramPayload } from '@/lib/odontology'
 
@@ -24,7 +23,7 @@ function asNullableDate(value: unknown) {
 
 export async function GET(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.CLIENTES, 'READ')
+    const access = await requireCapabilityAccess({ domain: 'VERTICALES', subdomain: 'ODONTOLOGIA', action: 'READ', allowLegacyFallback: false })
     if (!access.ok) return access.response
 
     const url = new URL(request.url)
@@ -68,7 +67,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const access = await requireApiAccess(ModuleKey.CLIENTES, 'WRITE')
+    const access = await requireCapabilityAccess({ domain: 'VERTICALES', subdomain: 'ODONTOLOGIA', action: 'UPDATE', allowLegacyFallback: false })
     if (!access.ok) return access.response
 
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>

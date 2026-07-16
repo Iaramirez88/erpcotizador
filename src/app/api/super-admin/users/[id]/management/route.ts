@@ -3,12 +3,15 @@ import {
   BillingCycle,
   ModuleKey,
   PlanTier,
+  RbacGrantSource,
+  RbacScopeType,
   SedeRole,
   UserRole,
 } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { ALL_MODULE_KEYS } from '@/lib/plan-modules'
+import { detachPermissionProfileAssignment, publishPermissionUpdateNotification } from '@/lib/rbac-permission-sync'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import { sedeRoleToBaseAccess } from '@/lib/rbac'
 
@@ -227,12 +230,16 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   }
 
   try {
+    const touchedSedeIds = new Set<string>()
+    let targetEmpresaId: string | null = null
+
     await prisma.$transaction(async (tx) => {
       const current = await tx.user.findUnique({
         where: { id: userId },
         select: { id: true, email: true, empresaId: true },
       })
       if (!current) throw new Error('USER_NOT_FOUND')
+      targetEmpresaId = current.empresaId
 
       const userData: { name?: string | null; role?: UserRole } = {}
       if (typeof body.name === 'string' || body.name === null) userData.name = body.name
@@ -310,10 +317,24 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         })
         if (!membership?.id) continue
 
+        if (current.empresaId) {
+          await detachPermissionProfileAssignment({ client: tx, empresaId: current.empresaId, sedeId: sedeAccess.sedeId, userId })
+          await tx.userCapabilityGrant.deleteMany({
+            where: {
+              empresaId: current.empresaId,
+              userId,
+              scopeType: RbacScopeType.SEDE,
+              scopeValue: sedeAccess.sedeId,
+              source: RbacGrantSource.DIRECT,
+            },
+          })
+        }
+
         await tx.sedeMembership.update({
           where: { sedeId_userId: { sedeId: sedeAccess.sedeId, userId } },
           data: { role: sedeAccess.sedeRole },
         })
+        touchedSedeIds.add(sedeAccess.sedeId)
 
         const baseLevel = sedeRoleToBaseAccess(sedeAccess.sedeRole)
         for (const moduleKey of ALL_MODULE_KEYS) {
@@ -331,6 +352,18 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
     const result = await buildUserManagement(userId)
     if (!result) return NextResponse.json({ ok: false, error: 'Usuario no encontrado' }, { status: 404 })
+
+    if (targetEmpresaId && touchedSedeIds.size > 0) {
+      await publishPermissionUpdateNotification({
+        client: prisma,
+        userId,
+        empresaId: targetEmpresaId,
+        sedeId: [...touchedSedeIds][0] ?? null,
+        title: 'Permisos actualizados',
+        body: 'Super Admin actualizó tus accesos y se resincronizaron tus reglas manuales para evitar conflictos.',
+      })
+    }
+
     return NextResponse.json({ ok: true, ...result })
   } catch (error) {
     if (error instanceof Error) {
