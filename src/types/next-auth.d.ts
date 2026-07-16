@@ -10,12 +10,20 @@ declare module "next-auth" {
     user: {
       id: string
       role: string
+      isImpersonating?: boolean
+      impersonatedByUserId?: string
+      impersonatedByEmail?: string
+      impersonatedByName?: string
     } & DefaultSession["user"]
   }
 
   interface User {
     role: string
     remember?: boolean
+    isImpersonating?: boolean
+    impersonatedByUserId?: string
+    impersonatedByEmail?: string
+    impersonatedByName?: string
   }
 }
 
@@ -26,5 +34,9 @@ declare module "next-auth/jwt" {
     remember?: boolean
     absExp?: number
     lastActive?: number
+    isImpersonating?: boolean
+    impersonatedByUserId?: string
+    impersonatedByEmail?: string
+    impersonatedByName?: string
   }
 }

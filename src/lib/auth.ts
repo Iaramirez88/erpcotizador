@@ -48,6 +48,10 @@ function sanitizeJwtToken(token: JWT) {
     "remember",
     "absExp",
     "lastActive",
+    "isImpersonating",
+    "impersonatedByUserId",
+    "impersonatedByEmail",
+    "impersonatedByName",
   ])
 
   for (const key of Object.keys(token)) {
@@ -103,6 +107,10 @@ export const authOptions: NextAuthConfig = {
             role: coerceEffectiveUserRole({ email: user.email, role: user.role }),
             image: user.image,
             remember: false,
+            isImpersonating: true,
+            impersonatedByUserId: user.impersonatedByUserId,
+            impersonatedByEmail: user.impersonatedByEmail ?? undefined,
+            impersonatedByName: user.impersonatedByName ?? undefined,
           }
         }
 
@@ -207,6 +215,10 @@ export const authOptions: NextAuthConfig = {
         token.remember = remember
         token.absExp = now + (remember ? ABSOLUTE_REMEMBER : ABSOLUTE_DEFAULT)
         token.lastActive = now
+        token.isImpersonating = Boolean((user as User).isImpersonating)
+        token.impersonatedByUserId = typeof (user as User).impersonatedByUserId === 'string' ? (user as User).impersonatedByUserId : undefined
+        token.impersonatedByEmail = typeof (user as User).impersonatedByEmail === 'string' ? (user as User).impersonatedByEmail : undefined
+        token.impersonatedByName = typeof (user as User).impersonatedByName === 'string' ? (user as User).impersonatedByName : undefined
         return sanitizeJwtToken(token)
       }
 
@@ -239,6 +251,10 @@ export const authOptions: NextAuthConfig = {
         if (token.role) session.user.role = token.role as string
         if (typeof token.name === 'string') session.user.name = token.name
         if (typeof token.email === 'string') session.user.email = token.email
+        session.user.isImpersonating = Boolean(token.isImpersonating)
+        session.user.impersonatedByUserId = typeof token.impersonatedByUserId === 'string' ? token.impersonatedByUserId : undefined
+        session.user.impersonatedByEmail = typeof token.impersonatedByEmail === 'string' ? token.impersonatedByEmail : undefined
+        session.user.impersonatedByName = typeof token.impersonatedByName === 'string' ? token.impersonatedByName : undefined
         // No usar `token.picture` para evitar inflar el cookie; se refresca desde BD.
 
         // Mantener datos frescos (avatar/nombre) si cambian en BD.

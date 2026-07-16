@@ -11,6 +11,9 @@ type ImpersonationUser = {
   role: string
   image: string | null
   emailVerified: Date | null
+  impersonatedByUserId: string
+  impersonatedByEmail: string | null
+  impersonatedByName: string | null
 }
 
 function buildIdentifier(issuedByUserId: string, targetUserId: string) {
@@ -58,25 +61,41 @@ export async function consumeImpersonationToken(rawToken: string): Promise<Imper
   if (record.expires <= now) return null
   if (!record.identifier.startsWith(`${IMPERSONATION_IDENTIFIER_PREFIX}:`)) return null
 
-  const [, , targetUserId] = record.identifier.split(':')
-  if (!targetUserId) return null
+  const [, issuedByUserId, targetUserId] = record.identifier.split(':')
+  if (!targetUserId || !issuedByUserId) return null
 
-  const user = await prisma.user.findUnique({
-    where: { id: targetUserId },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      role: true,
-      image: true,
-      emailVerified: true,
-    },
-  })
+  const [user, issuer] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        image: true,
+        emailVerified: true,
+      },
+    }),
+    prisma.user.findUnique({
+      where: { id: issuedByUserId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
+    }),
+  ])
 
   if (!user?.id) return null
+  if (!issuer?.id) return null
   if (!user.emailVerified) {
     throw new Error('EMAIL_NOT_VERIFIED')
   }
 
-  return user
+  return {
+    ...user,
+    impersonatedByUserId: issuer.id,
+    impersonatedByEmail: issuer.email,
+    impersonatedByName: issuer.name,
+  }
 }

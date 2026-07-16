@@ -9,6 +9,7 @@
 import Link from "next/link"
 import Image from 'next/image'
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { signOut } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { useUiStore } from "@/lib/ui-store"
@@ -32,6 +33,9 @@ interface HeaderProps {
     name?: string | null
     role?: string
     image?: string | null
+    isImpersonating?: boolean
+    impersonatedByName?: string | null
+    impersonatedByEmail?: string | null
     allowedModules?: string[] | null
     allowedNavHrefs?: string[] | null
     canManageBilling?: boolean
@@ -49,6 +53,7 @@ function normalizeSidebarTooltipPrefs(value: Partial<SidebarTooltipPrefs> | null
 }
 
 export default function Header({ user }: HeaderProps) {
+  const router = useRouter()
   const { t, language, setLanguage } = useI18n()
   const { theme, setTheme } = useTheme()
   const [unreadCount, setUnreadCount] = useState<number>(0)
@@ -60,6 +65,7 @@ export default function Header({ user }: HeaderProps) {
   const [sidebarTooltipPrefs, setSidebarTooltipPrefs] = useState<SidebarTooltipPrefs>(DEFAULT_SIDEBAR_TOOLTIP_PREFS)
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
   const [navSettingsOpen, setNavSettingsOpen] = useState(false)
+  const [returningToSuperAdmin, setReturningToSuperAdmin] = useState(false)
   const [canManageBilling] = useState(Boolean(user.canManageBilling))
   const [canAccessWebsiteServices] = useState(Boolean(user.canAccessWebsiteServices))
   const [allowedNavHrefs] = useState<string[]>(() => user.allowedNavHrefs ?? [])
@@ -167,6 +173,28 @@ export default function Header({ user }: HeaderProps) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nav: next, navOrder: nextOrder, sidebarTooltips: nextTooltipPrefs }),
     }).catch(() => null)
+  }
+
+  async function returnToSuperAdmin() {
+    setReturningToSuperAdmin(true)
+    try {
+      const res = await fetch('/api/auth/impersonation/return', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; accessUrl?: string }
+      if (!res.ok || !json.ok || !json.accessUrl) {
+        alert(json.error || t('header.returnToSuperAdminError'))
+        return
+      }
+
+      router.push(json.accessUrl)
+      router.refresh()
+    } catch {
+      alert(t('header.returnToSuperAdminError'))
+    } finally {
+      setReturningToSuperAdmin(false)
+    }
   }
 
   return (
@@ -301,6 +329,11 @@ export default function Header({ user }: HeaderProps) {
 
           {/* User Menu */}
           <div className="flex items-center gap-1.5 sm:gap-2">
+            {user.isImpersonating ? (
+              <div className="hidden rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800 lg:block">
+                {t('header.impersonatingAs', { user: user.impersonatedByName || user.impersonatedByEmail || 'superadmin' })}
+              </div>
+            ) : null}
             <Link href="/dashboard/perfil" aria-label={t('header.profile')} className="group flex items-center gap-1.5 rounded-full p-0.5 transition hover:bg-accent/60 sm:gap-2">
               <div className="relative h-8 w-8 overflow-hidden rounded-full border border-border bg-card shadow-sm ring-0 transition group-hover:ring-2 group-hover:ring-sky-200">
                 {user.image ? (
@@ -324,6 +357,18 @@ export default function Header({ user }: HeaderProps) {
                 ) : null}
               </div>
             </Link>
+
+            {user.isImpersonating ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void returnToSuperAdmin()}
+                className="h-8 px-2"
+                disabled={returningToSuperAdmin}
+              >
+                {returningToSuperAdmin ? t('common.processing') : t('header.returnToSuperAdmin')}
+              </Button>
+            ) : null}
             
             <Button
               variant="outline"

@@ -1621,6 +1621,9 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'header.profile': 'Mi perfil',
     'header.notifications': 'Notificaciones',
     'header.customizeMenu': 'Personalizar menú',
+    'header.impersonatingAs': 'Sesión temporal. Volver a {user}',
+    'header.returnToSuperAdmin': 'Volver a superadmin',
+    'header.returnToSuperAdminError': 'No se pudo restaurar la sesión del superadmin.',
     'header.signOut': 'Cerrar sesión',
 
     'header.tour.view': 'Ver tutorial de esta pantalla',
@@ -3752,6 +3755,9 @@ export const MESSAGES: Record<UiLanguage, Record<string, string>> = {
     'header.profile': 'My profile',
     'header.notifications': 'Notifications',
     'header.customizeMenu': 'Customize menu',
+    'header.impersonatingAs': 'Temporary session. Return to {user}',
+    'header.returnToSuperAdmin': 'Return to superadmin',
+    'header.returnToSuperAdminError': 'Could not restore the superadmin session.',
     'header.signOut': 'Sign out',
 
     'header.tour.view': 'View tutorial for this screen',
