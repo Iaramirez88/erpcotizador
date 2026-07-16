@@ -1156,7 +1156,7 @@ export function LitografiaAiAssistant(props: {
           setSelectedHistoryEntry(null)
         }
       }}>
-        <DialogContent className="max-h-[85vh] max-w-4xl overflow-hidden">
+        <DialogContent className="flex max-h-[85vh] max-w-4xl flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>{selectedHistoryEntry?.quoteType || "Consulta IA"}</DialogTitle>
             <DialogDescription>
@@ -1167,7 +1167,8 @@ export function LitografiaAiAssistant(props: {
           </DialogHeader>
 
           {selectedHistoryEntry ? (
-            <div className="space-y-4 overflow-y-auto pr-1 text-sm text-slate-700">
+            <div className="min-h-0 flex-1 overflow-y-auto pr-2 text-sm text-slate-700">
+              <div className="space-y-4 pb-1">
               <div className="grid gap-3 sm:grid-cols-2">
                 {selectedHistoryEntry.confidence ? (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
@@ -1206,6 +1207,7 @@ export function LitografiaAiAssistant(props: {
                 <Button type="button" variant="outline" onClick={() => setBrief(selectedHistoryEntry.prompt)}>
                   Usar brief
                 </Button>
+              </div>
               </div>
             </div>
           ) : null}

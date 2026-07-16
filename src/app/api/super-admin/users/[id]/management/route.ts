@@ -14,6 +14,7 @@ import { ALL_MODULE_KEYS } from '@/lib/plan-modules'
 import { detachPermissionProfileAssignment, publishPermissionUpdateNotification } from '@/lib/rbac-permission-sync'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import { sedeRoleToBaseAccess } from '@/lib/rbac'
+import { buildUserPermissionSnapshot } from '@/lib/user-permission-snapshot'
 
 export const runtime = 'nodejs'
 
@@ -144,31 +145,38 @@ async function buildUserManagement(userId: string) {
 
   if (!user) return null
 
-  const moduleAccess = await prisma.userModuleAccess.findMany({
-    where: { userId },
-    select: { sedeId: true, module: true, level: true },
-  })
+  const globalSnapshot = user.empresa?.id
+    ? await buildUserPermissionSnapshot({
+        empresaId: user.empresa.id,
+        sedeId: null,
+        userIds: [user.id],
+      })
+    : null
 
-  const accessMap = new Map<string, Map<ModuleKey, boolean>>()
-  for (const row of moduleAccess) {
-    const bySede = accessMap.get(row.sedeId) ?? new Map<ModuleKey, boolean>()
-    bySede.set(row.module, row.level !== 'NONE')
-    accessMap.set(row.sedeId, bySede)
-  }
+  const sedes = await Promise.all(user.sedeMemberships.map(async (membership) => {
+    const snapshot = user.empresa?.id
+      ? await buildUserPermissionSnapshot({
+          empresaId: user.empresa.id,
+          sedeId: membership.sedeId,
+          userIds: [user.id],
+        })
+      : {
+          membershipByUserId: {},
+          moduleAccessByUserId: {},
+          globalAccessByUserId: {},
+          capabilityAccessByUserId: {},
+          permissionProfileByUserId: {},
+        }
 
-  const sedes = user.sedeMemberships.map((membership) => {
-    const explicit = accessMap.get(membership.sedeId) ?? new Map<ModuleKey, boolean>()
-    const baseEnabled = sedeRoleToBaseAccess(membership.role) !== 'NONE'
     return {
       sedeId: membership.sedeId,
       sedeNombre: membership.sede.nombre,
-      sedeRole: membership.role,
-      modules: ALL_MODULE_KEYS.map((moduleKey) => ({
-        module: moduleKey,
-        enabled: explicit.has(moduleKey) ? Boolean(explicit.get(moduleKey)) : baseEnabled,
-      })),
+      sedeRole: snapshot.membershipByUserId[user.id] ?? membership.role,
+      initialAccess: snapshot.moduleAccessByUserId[user.id] ?? {},
+      initialCapabilities: snapshot.capabilityAccessByUserId[user.id] ?? {},
+      permissionProfile: snapshot.permissionProfileByUserId[user.id] ?? null,
     }
-  })
+  }))
 
   const selectedSedeId = user.sedeDefaultId && sedes.some((item) => item.sedeId === user.sedeDefaultId)
     ? user.sedeDefaultId
@@ -181,6 +189,8 @@ async function buildUserManagement(userId: string) {
       name: user.name,
       role: user.role,
       createdAt: user.createdAt.toISOString(),
+      globalAccessLevel: globalSnapshot?.globalAccessByUserId[user.id] ?? 'NONE',
+      sedeDefaultId: user.sedeDefaultId,
       empresa: user.empresa
         ? {
             id: user.empresa.id,

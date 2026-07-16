@@ -23,6 +23,7 @@ import type { PlanTier } from '@/lib/plans'
 type BillingCycle = 'MONTHLY' | 'YEARLY'
 type UserRole = 'ADMIN' | 'USER' | 'VENDEDOR' | 'PRODUCCION' | 'CLIENTE'
 type SedeRole = 'ADMIN' | 'MANAGER' | 'MEMBER' | 'READER'
+type AccessLevel = 'NONE' | 'READ' | 'WRITE' | 'ADMIN'
 type ModuleKey =
   | 'DASHBOARD'
   | 'COTIZADOR'
@@ -77,7 +78,9 @@ type ManagementSede = {
   sedeId: string
   sedeNombre: string
   sedeRole: SedeRole
-  modules: Array<{ module: ModuleKey; enabled: boolean }>
+  initialAccess: Partial<Record<ModuleKey, AccessLevel>>
+  initialCapabilities: Record<string, AccessLevel>
+  permissionProfile: { id: string; name: string } | null
 }
 
 type ManagementUser = {
@@ -96,6 +99,8 @@ type ManagementUser = {
     trialTier: PlanTier | null
     trialValidUntil: string | null
   }
+  globalAccessLevel: AccessLevel
+  sedeDefaultId: string | null
   sedes: ManagementSede[]
   selectedSedeId: string | null
 }
@@ -148,7 +153,7 @@ export default function SuperAdminUsersClient() {
   const [editing, setEditing] = useState<Row | null>(null)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [enteringWorkspaceId, setEnteringWorkspaceId] = useState<string | null>(null)
+  const [previewingUserId, setPreviewingUserId] = useState<string | null>(null)
   const [managementLoading, setManagementLoading] = useState(false)
   const [managementError, setManagementError] = useState<string | null>(null)
   const [management, setManagement] = useState<ManagementUser | null>(null)
@@ -290,11 +295,6 @@ export default function SuperAdminUsersClient() {
           planValidUntil: management.empresa ? (editPlanValidUntil || null) : undefined,
           clearTrial: management.empresa ? editClearTrial : undefined,
           isPaid: management.empresa && editIsPaidTouched ? editIsPaid : undefined,
-          sedeAccesses: sedeStates.map((sede) => ({
-            sedeId: sede.sedeId,
-            sedeRole: sede.sedeRole,
-            modules: Object.fromEntries(sede.modules.map((moduleRow) => [moduleRow.module, moduleRow.enabled])),
-          })),
         }),
       })
       const json = (await res.json().catch(() => ({}))) as ManagementResponse
@@ -353,38 +353,14 @@ export default function SuperAdminUsersClient() {
     }
   }
 
-  function updateSedeRole(sedeId: string, role: SedeRole) {
-    setSedeStates((prev) => prev.map((sede) => sede.sedeId === sedeId ? { ...sede, sedeRole: role } : sede))
-  }
-
-  function updateModuleEnabled(sedeId: string, moduleKey: ModuleKey, enabled: boolean) {
-    setSedeStates((prev) => prev.map((sede) => {
-      if (sede.sedeId !== sedeId) return sede
-      return {
-        ...sede,
-        modules: sede.modules.map((moduleRow) => moduleRow.module === moduleKey ? { ...moduleRow, enabled } : moduleRow),
-      }
-    }))
-  }
-
-  async function enterWorkspace(userId: string) {
-    setEnteringWorkspaceId(userId)
+  async function viewAsUser(userId: string) {
+    setPreviewingUserId(userId)
     try {
-      const res = await fetch(`/api/super-admin/users/${userId}/enter-workspace`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      })
-      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; redirectTo?: string }
-      if (!res.ok || !json.ok) {
-        alert(json.error || t('superAdmin.users.errors.enterWorkspaceFailed'))
-        return
-      }
-
-      window.location.assign(json.redirectTo || '/dashboard')
+      window.open(`/dashboard/configuracion/super-admin/usuarios/preview/${userId}`, '_blank', 'noopener,noreferrer')
     } catch {
-      alert(t('superAdmin.users.errors.enterWorkspaceFailed'))
+      alert(t('superAdmin.users.errors.viewAsUserFailed'))
     } finally {
-      setEnteringWorkspaceId(null)
+      setPreviewingUserId(null)
     }
   }
 
@@ -485,10 +461,10 @@ export default function SuperAdminUsersClient() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={!user.empresa || enteringWorkspaceId === user.id}
-                        onClick={() => void enterWorkspace(user.id)}
+                        disabled={!user.empresa || previewingUserId === user.id}
+                        onClick={() => void viewAsUser(user.id)}
                       >
-                        {enteringWorkspaceId === user.id ? t('common.processing') : t('superAdmin.users.actions.enterWorkspace')}
+                        {previewingUserId === user.id ? t('common.processing') : t('superAdmin.users.actions.viewAsUser')}
                       </Button>
                       <Button type="button" variant="outline" size="sm" onClick={() => void openEdit(user)}>
                         {t('common.edit')}
@@ -582,10 +558,10 @@ export default function SuperAdminUsersClient() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            disabled={!user.empresa || enteringWorkspaceId === user.id}
-                            onClick={() => void enterWorkspace(user.id)}
+                            disabled={!user.empresa || previewingUserId === user.id}
+                            onClick={() => void viewAsUser(user.id)}
                           >
-                            {enteringWorkspaceId === user.id ? t('common.processing') : t('superAdmin.users.actions.enterWorkspace')}
+                            {previewingUserId === user.id ? t('common.processing') : t('superAdmin.users.actions.viewAsUser')}
                           </Button>
                           <Button type="button" variant="outline" size="sm" onClick={() => void openEdit(user)}>
                             {t('common.edit')}
@@ -674,10 +650,10 @@ export default function SuperAdminUsersClient() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          disabled={enteringWorkspaceId === management.id}
-                          onClick={() => void enterWorkspace(management.id)}
+                          disabled={previewingUserId === management.id}
+                          onClick={() => void viewAsUser(management.id)}
                         >
-                          {enteringWorkspaceId === management.id ? t('common.processing') : t('superAdmin.users.actions.enterWorkspace')}
+                          {previewingUserId === management.id ? t('common.processing') : t('superAdmin.users.actions.viewAsUser')}
                         </Button>
                       </div>
                     ) : null}
@@ -797,37 +773,42 @@ export default function SuperAdminUsersClient() {
 
                     {selectedSede ? (
                       <div className="space-y-4">
-                        <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)] md:items-end">
-                          <div className="space-y-2">
-                            <Label htmlFor="super-admin-sede-role">{t('superAdmin.users.fields.sedeRole')}</Label>
-                            <select
-                              id="super-admin-sede-role"
-                              className="w-full rounded-md border px-3 py-2 text-sm"
-                              value={selectedSede.sedeRole}
-                              onChange={(e) => updateSedeRole(selectedSede.sedeId, e.target.value as SedeRole)}
-                            >
-                              {(['ADMIN', 'MANAGER', 'MEMBER', 'READER'] as SedeRole[]).map((role) => (
-                                <option key={role} value={role}>{t(`rbac.sedeRole.${role}`)}</option>
-                              ))}
-                            </select>
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <div className="rounded-md border bg-slate-50 p-3 text-sm">
+                            <div className="text-xs uppercase tracking-[0.12em] text-slate-500">Rol sede</div>
+                            <div className="mt-2 font-semibold text-slate-900">{t(`rbac.sedeRole.${selectedSede.sedeRole}`)}</div>
                           </div>
-                          <div className="text-xs text-muted-foreground">{t('superAdmin.users.fields.accessRoleHelp')}</div>
+                          <div className="rounded-md border bg-slate-50 p-3 text-sm">
+                            <div className="text-xs uppercase tracking-[0.12em] text-slate-500">Permiso general</div>
+                            <div className="mt-2 font-semibold text-slate-900">{t(`rbac.access.${management.globalAccessLevel}`)}</div>
+                          </div>
+                          <div className="rounded-md border bg-slate-50 p-3 text-sm">
+                            <div className="text-xs uppercase tracking-[0.12em] text-slate-500">Regla aplicada</div>
+                            <div className="mt-2 font-semibold text-slate-900">{selectedSede.permissionProfile?.name ?? 'Sin regla'}</div>
+                          </div>
                         </div>
 
-                        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                          {selectedSede.modules.map((moduleRow) => (
-                            <label key={moduleRow.module} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
-                              <div>
-                                <div className="font-medium">{t(`rbac.module.${moduleRow.module}`)}</div>
-                                <div className="text-[11px] text-muted-foreground">{moduleRow.module}</div>
+                        <div className="rounded-md border p-4">
+                          <div className="text-sm font-medium text-slate-900">Snapshot centralizado</div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Esta vista usa la misma resolución central de permisos que el panel operativo. Para ver exactamente la navegación y accesos resultantes, usa "Ver como usuario" en una nueva ventana.
+                          </div>
+                          <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                            {Object.entries(selectedSede.initialAccess).length ? Object.entries(selectedSede.initialAccess).map(([moduleKey, level]) => (
+                              <div key={moduleKey} className="rounded-md border px-3 py-2 text-sm">
+                                <div className="font-medium">{t(`rbac.module.${moduleKey}`)}</div>
+                                <div className="text-[11px] text-muted-foreground">{moduleKey}</div>
+                                <div className="mt-1 text-xs text-slate-700">Explícito: {t(`rbac.access.${level}`)}</div>
                               </div>
-                              <input
-                                type="checkbox"
-                                checked={moduleRow.enabled}
-                                onChange={(e) => updateModuleEnabled(selectedSede.sedeId, moduleRow.module, e.target.checked)}
-                              />
-                            </label>
-                          ))}
+                            )) : (
+                              <div className="rounded-md border px-3 py-3 text-sm text-muted-foreground">
+                                No hay overrides explícitos por módulo en esta sede.
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-4 rounded-md bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                            Submódulos/capacidades con override explícito: {Object.keys(selectedSede.initialCapabilities).length}
+                          </div>
                         </div>
                       </div>
                     ) : null}

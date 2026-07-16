@@ -17,6 +17,7 @@ import { checkPlanLimit } from '@/lib/plan-limits'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { AccessLevel, ModuleKey, SedeRole } from '@prisma/client'
 import { deriveExplicitCapabilityLevel } from '@/lib/dashboard-access'
+import { buildUserPermissionSnapshot } from '@/lib/user-permission-snapshot'
 import { DASHBOARD_PERMISSION_RULES } from '@/lib/dashboard-permission-catalog'
 
 export const runtime = 'nodejs'
@@ -363,95 +364,17 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
       })
     : allUsers
 
-  const memberships = activeSedeId
-    ? await prisma.sedeMembership.findMany({
-        where: { sedeId: activeSedeId, userId: { in: users.map((user) => user.id) } },
-        select: { userId: true, role: true },
-      })
-    : []
-
-  const membershipByUserId: Record<string, SedeRole> = {}
-  for (const membership of memberships) {
-    membershipByUserId[membership.userId] = membership.role
-  }
-
-  const moduleAccessRows = activeSedeId
-    ? await prisma.userModuleAccess.findMany({
-        where: { sedeId: activeSedeId, userId: { in: users.map((user) => user.id) } },
-        orderBy: [{ userId: 'asc' }, { module: 'asc' }],
-        select: { userId: true, module: true, level: true },
-      })
-    : []
-
-  const moduleAccessByUserId: Record<string, Partial<Record<ModuleKey, AccessLevel>>> = {}
-  for (const row of moduleAccessRows) {
-    if (!moduleAccessByUserId[row.userId]) moduleAccessByUserId[row.userId] = {}
-    moduleAccessByUserId[row.userId][row.module] = row.level
-  }
-
-  const globalAccessRows = await prisma.userGlobalAccess.findMany({
-    where: { empresaId, userId: { in: users.map((user) => user.id) } },
-    select: { userId: true, level: true },
+  const {
+    membershipByUserId,
+    moduleAccessByUserId,
+    globalAccessByUserId,
+    capabilityAccessByUserId,
+    permissionProfileByUserId,
+  } = await buildUserPermissionSnapshot({
+    empresaId,
+    sedeId: activeSedeId,
+    userIds: users.map((user) => user.id),
   })
-
-  const globalAccessByUserId: Partial<Record<string, AccessLevel>> = {}
-  for (const row of globalAccessRows) {
-    globalAccessByUserId[row.userId] = row.level
-  }
-
-  const capabilityGrantRows = activeSedeId
-    ? await prisma.userCapabilityGrant.findMany({
-        where: {
-          empresaId,
-          scopeType: 'SEDE',
-          scopeValue: activeSedeId,
-          userId: { in: users.map((user) => user.id) },
-          source: 'DIRECT',
-        },
-        select: {
-          userId: true,
-          domain: true,
-          subdomain: true,
-          action: true,
-          allowed: true,
-        },
-      })
-    : []
-
-  const capabilityAccessByUserId: Record<string, Record<string, AccessLevel>> = {}
-  for (const user of users) {
-    capabilityAccessByUserId[user.id] = {}
-  }
-  for (const rule of DASHBOARD_PERMISSION_RULES) {
-    const capability = rule.capabilities[0]
-    if (!capability) continue
-    for (const user of users) {
-      const rows = capabilityGrantRows.filter(
-        (grant) => grant.userId === user.id && grant.domain === capability.domain && grant.subdomain === capability.subdomain
-      )
-      const level = deriveExplicitCapabilityLevel({
-        domain: capability.domain,
-        subdomain: capability.subdomain,
-        grants: rows,
-      })
-      if (level) {
-        capabilityAccessByUserId[user.id][rule.key] = level
-      }
-    }
-  }
-
-  const permissionProfileAssignments = activeSedeId
-    ? await prisma.permissionProfileAssignment.findMany({
-        where: { empresaId, sedeId: activeSedeId, userId: { in: users.map((user) => user.id) } },
-        select: {
-          userId: true,
-          profile: { select: { id: true, name: true } },
-        },
-      })
-    : []
-  const permissionProfileByUserId = Object.fromEntries(
-    permissionProfileAssignments.map((assignment) => [assignment.userId, assignment.profile])
-  ) as Record<string, { id: string; name: string }>
 
   const usersWithSedeAccess = users.filter((user) => Boolean(membershipByUserId[user.id])).length
   const usersWithoutSedeAccess = users.length - usersWithSedeAccess
