@@ -32,6 +32,8 @@ type TeamUser = {
   name?: string | null
   email?: string | null
   role?: string | null
+  sedeDefaultId?: string | null
+  sedeMembershipIds?: string[]
 }
 
 type SedeOption = {
@@ -434,7 +436,7 @@ export function CrmTaskWorkspacesClient() {
   }
 
   const loadTasks = useCallback(async (workspaceId = selectedWorkspaceId, allTasks = showAllTasks) => {
-    if (!allTasks && !workspaceId) {
+    if ((allTasks && !currentUserId) || (!allTasks && !workspaceId)) {
       setTasks([])
       return
     }
@@ -442,9 +444,12 @@ export function CrmTaskWorkspacesClient() {
     if (!allTasks && workspaceId) {
       query.set('workspaceId', workspaceId)
     }
+    if (allTasks && currentUserId) {
+      query.set('assignedToUserId', currentUserId)
+    }
     const taskRes = await requestJson<TaskItem[]>(`/api/crm/tasks?${query.toString()}`)
     setTasks(Array.isArray(taskRes.data) ? taskRes.data.map((row) => normalizeTask(row)) : [])
-  }, [selectedWorkspaceId, showAllTasks, showArchived])
+  }, [currentUserId, selectedWorkspaceId, showAllTasks, showArchived])
 
   async function loadTaskDetail(taskId: string) {
     const detailRes = await requestJson<TaskItem>(`/api/crm/tasks/${taskId}`)
@@ -621,7 +626,10 @@ export function CrmTaskWorkspacesClient() {
 
   const filteredTasks = useMemo(() => {
     const term = search.trim().toLowerCase()
-    const projectScopedTasks = !showAllTasks && selectedProjectId ? tasks.filter((task) => task.project?.id === selectedProjectId) : tasks
+    const assignedTasks = showAllTasks && currentUserId
+      ? tasks.filter((task) => task.assignments.some((assignment) => assignment.userId === currentUserId))
+      : tasks
+    const projectScopedTasks = !showAllTasks && selectedProjectId ? assignedTasks.filter((task) => task.project?.id === selectedProjectId) : assignedTasks
     const matchingTasks = !term ? projectScopedTasks : projectScopedTasks.filter((task) => {
       const haystack = [task.title, task.description, task.createdBy?.name, task.workspace?.name, task.lead?.nombre, task.opportunity?.title, task.cliente?.nombre, ...task.assignments.map((assignment) => assignment.user.name || assignment.user.email || ''), ...(task.customFieldsJson || []).map((field) => `${field.label} ${field.textValue || field.file?.name || ''}`)].filter(Boolean).join(' ').toLowerCase()
       return haystack.includes(term)
@@ -632,7 +640,7 @@ export function CrmTaskWorkspacesClient() {
       const rightTime = new Date(right.createdAt).getTime()
       return taskSortDirection === 'asc' ? leftTime - rightTime : rightTime - leftTime
     })
-  }, [search, selectedProjectId, showAllTasks, taskSortDirection, tasks])
+  }, [currentUserId, search, selectedProjectId, showAllTasks, taskSortDirection, tasks])
 
   function handleSelectWorkspace(workspaceId: string) {
     setShowAllTasks(false)
@@ -644,19 +652,34 @@ export function CrmTaskWorkspacesClient() {
     setSelectedProjectId('')
   }
 
+  function userBelongsToSede(user: TeamUser, sedeId: string) {
+    return user.sedeDefaultId === sedeId || Boolean(user.sedeMembershipIds?.includes(sedeId))
+  }
+
+  const workspaceScopeUsers = useMemo(() => {
+    if (workspaceForm.scope !== 'SEDE' || !workspaceForm.sedeId) return users
+    return users.filter((user) => userBelongsToSede(user, workspaceForm.sedeId))
+  }, [users, workspaceForm.scope, workspaceForm.sedeId])
+
+  const workspaceSettingsScopeUsers = useMemo(() => {
+    const selectedSedeId = selectedWorkspace?.scope === 'SEDE' ? selectedWorkspace.sede?.id || '' : ''
+    if (!selectedSedeId) return users
+    return users.filter((user) => userBelongsToSede(user, selectedSedeId))
+  }, [selectedWorkspace, users])
+
   const workspaceCandidates = useMemo(() => {
     const term = workspaceSearch.trim().toLowerCase()
-    return users.filter((user) => !term || (user.name || '').toLowerCase().includes(term) || (user.email || '').toLowerCase().includes(term))
-  }, [users, workspaceSearch])
+    return workspaceScopeUsers.filter((user) => !term || (user.name || '').toLowerCase().includes(term) || (user.email || '').toLowerCase().includes(term))
+  }, [workspaceScopeUsers, workspaceSearch])
 
   const workspaceMemberCandidates = useMemo(() => {
     const term = workspaceMemberSearch.trim().toLowerCase()
     const selectedIds = new Set(workspaceSettingsForm.members.map((member) => member.userId))
-    return users.filter((user) => {
+    return workspaceSettingsScopeUsers.filter((user) => {
       if (selectedIds.has(user.id)) return false
       return !term || (user.name || '').toLowerCase().includes(term) || (user.email || '').toLowerCase().includes(term)
     })
-  }, [users, workspaceMemberSearch, workspaceSettingsForm.members])
+  }, [workspaceMemberSearch, workspaceSettingsForm.members, workspaceSettingsScopeUsers])
 
   const taskAssigneeCandidates = useMemo(() => {
     const term = assigneeSearch.trim().toLowerCase()
@@ -1052,11 +1075,10 @@ export function CrmTaskWorkspacesClient() {
         return
       }
 
-      setDetailForm((current) => current.attachmentsJson.some((attachment) => attachment.url === json.data?.url)
+      setDetailForm((current) => current.attachmentsJson.some((existing) => existing.url === json.data?.url)
         ? current
         : { ...current, attachmentsJson: [...current.attachmentsJson, json.data as TaskAttachment] })
       setExternalAttachmentForm(getInitialExternalAttachmentForm())
-      setExternalAttachmentDialogOpen(false)
     } finally {
       setUploadingAttachment(false)
     }
@@ -1725,7 +1747,7 @@ export function CrmTaskWorkspacesClient() {
 
       <Dialog open={workspaceSettingsOpen} onOpenChange={setWorkspaceSettingsOpen}><DialogContent className="max-h-[90vh] max-w-[880px] overflow-y-auto"><DialogHeader><DialogTitle>Administrar espacio de trabajo</DialogTitle><DialogDescription>Edita miembros después de creado y aplica roles reales con restricciones operativas.</DialogDescription></DialogHeader><div className="grid gap-3 py-1.5"><div className="grid gap-3 md:grid-cols-2"><div className="grid gap-1.5"><Label>Nombre</Label><Input value={workspaceSettingsForm.name} onChange={(event) => setWorkspaceSettingsForm((current) => ({ ...current, name: event.target.value }))} disabled={!canManageWorkspace} /></div><div className="grid gap-1.5"><Label>Responsable</Label><Select value={workspaceSettingsForm.ownerUserId || '__none__'} onValueChange={(value) => setWorkspaceSettingsForm((current) => ({ ...current, ownerUserId: value === '__none__' ? '' : value, members: value !== '__none__' && !current.members.some((item) => item.userId === value) ? [...current.members, { userId: value, role: 'MANAGER' }] : current.members }))} disabled={!canManageWorkspace}><SelectTrigger><SelectValue placeholder="Selecciona un responsable" /></SelectTrigger><SelectContent><SelectItem value="__none__">Sin responsable</SelectItem>{users.map((user) => <SelectItem key={user.id} value={user.id}>{user.name || user.email || user.id}</SelectItem>)}</SelectContent></Select></div></div><div className="grid gap-1.5"><Label>Descripción</Label><Textarea value={workspaceSettingsForm.description} onChange={(event) => setWorkspaceSettingsForm((current) => ({ ...current, description: event.target.value }))} rows={3} disabled={!canManageWorkspace} /></div><div className="grid gap-3 lg:grid-cols-[0.95fr_1.05fr]"><div className="grid gap-1.5"><Label>Agregar miembro</Label><Input value={workspaceMemberSearch} onChange={(event) => setWorkspaceMemberSearch(event.target.value)} placeholder="Busca usuarios para invitarlos al espacio..." disabled={!canManageWorkspace} /><div className="max-h-52 space-y-1.5 overflow-y-auto rounded-xl border border-slate-200 p-2.5">{workspaceMemberCandidates.map((user) => <button key={user.id} type="button" onClick={() => setWorkspaceSettingsForm((current) => ({ ...current, members: [...current.members, { userId: user.id, role: 'VIEWER' }] }))} className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-left" disabled={!canManageWorkspace}><span>{user.name || user.email || user.id}</span><span className="text-xs text-slate-500">Agregar</span></button>)}{!workspaceMemberCandidates.length ? <p className="text-sm text-slate-400">No hay usuarios adicionales con ese filtro.</p> : null}</div></div><div className="grid gap-1.5"><Label>Miembros y roles</Label><div className="max-h-64 space-y-1.5 overflow-y-auto rounded-xl border border-slate-200 p-2.5">{workspaceSettingsForm.members.map((member) => { const user = users.find((item) => item.id === member.userId); const locked = member.userId === selectedWorkspace?.createdBy?.id || member.userId === workspaceSettingsForm.ownerUserId; return <div key={member.userId} className="grid gap-1.5 rounded-xl border border-slate-200 bg-slate-50/70 p-2.5 md:grid-cols-[1fr_160px_96px] md:items-center"><div><p className="font-medium text-slate-950">{user?.name || user?.email || member.userId}</p><p className="text-xs text-slate-500">{locked ? 'Rol protegido por propiedad del espacio' : 'Puedes cambiar el rol o quitar el acceso'}</p></div><Select value={member.role} onValueChange={(value) => setWorkspaceSettingsForm((current) => ({ ...current, members: current.members.map((item) => item.userId === member.userId ? { ...item, role: value as WorkspaceRole } : item) }))} disabled={!canManageWorkspace || locked}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="VIEWER">Lector</SelectItem><SelectItem value="EDITOR">Editor</SelectItem><SelectItem value="MANAGER">Administrador</SelectItem></SelectContent></Select><Button variant="outline" onClick={() => setWorkspaceSettingsForm((current) => ({ ...current, members: current.members.filter((item) => item.userId !== member.userId) }))} disabled={!canManageWorkspace || locked}>Quitar</Button></div>})}</div></div></div></div><DialogFooter><Button variant="outline" onClick={() => setWorkspaceSettingsOpen(false)}>Cancelar</Button><Button onClick={() => void handleSaveWorkspaceSettings()} disabled={savingWorkspace || !canManageWorkspace}>{savingWorkspace ? 'Guardando...' : 'Guardar cambios'}</Button></DialogFooter></DialogContent></Dialog>
 
-      <Dialog open={workspaceDialogOpen} onOpenChange={setWorkspaceDialogOpen}><DialogContent className="max-w-[760px]"><DialogHeader><DialogTitle>Nuevo espacio de trabajo</DialogTitle><DialogDescription>Define si el espacio pertenece a una sede o a un usuario, y luego invita quién puede verlo.</DialogDescription></DialogHeader><div className="grid gap-3 py-1.5"><div className="grid gap-1.5"><Label>Nombre</Label><Input value={workspaceForm.name} onChange={(event) => setWorkspaceForm((current) => ({ ...current, name: event.target.value }))} /></div><div className="grid gap-1.5"><Label>Descripción</Label><Textarea value={workspaceForm.description} onChange={(event) => setWorkspaceForm((current) => ({ ...current, description: event.target.value }))} rows={3} /></div><div className="grid gap-3 md:grid-cols-2"><div className="grid gap-1.5"><Label>Tipo de espacio</Label><Select value={workspaceForm.scope} onValueChange={(value) => setWorkspaceForm((current) => ({ ...current, scope: value as WorkspaceScope, sedeId: '', ownerUserId: '' }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="SEDE">Por sede</SelectItem><SelectItem value="USER">Por usuario</SelectItem></SelectContent></Select></div>{workspaceForm.scope === 'SEDE' ? <div className="grid gap-1.5"><Label>Sede</Label><Select value={workspaceForm.sedeId || '__none__'} onValueChange={(value) => setWorkspaceForm((current) => ({ ...current, sedeId: value === '__none__' ? '' : value }))}><SelectTrigger><SelectValue placeholder="Selecciona una sede" /></SelectTrigger><SelectContent><SelectItem value="__none__">Selecciona</SelectItem>{sedes.map((sede) => <SelectItem key={sede.id} value={sede.id}>{sede.nombre}</SelectItem>)}</SelectContent></Select></div> : <div className="grid gap-1.5"><Label>Usuario responsable</Label><Select value={workspaceForm.ownerUserId || '__none__'} onValueChange={(value) => setWorkspaceForm((current) => ({ ...current, ownerUserId: value === '__none__' ? '' : value }))}><SelectTrigger><SelectValue placeholder="Selecciona un usuario" /></SelectTrigger><SelectContent><SelectItem value="__none__">Selecciona</SelectItem>{users.map((user) => <SelectItem key={user.id} value={user.id}>{user.name || user.email || user.id}</SelectItem>)}</SelectContent></Select></div>}</div><div className="grid gap-1.5"><Label>Invitar usuarios con acceso</Label><Input value={workspaceSearch} onChange={(event) => setWorkspaceSearch(event.target.value)} placeholder="Busca usuarios por nombre o correo..." /><div className="max-h-40 space-y-1.5 overflow-y-auto rounded-xl border border-slate-200 p-2.5">{workspaceCandidates.map((user) => { const selected = workspaceForm.memberUserIds.includes(user.id); return <button key={user.id} type="button" onClick={() => setWorkspaceForm((current) => ({ ...current, memberUserIds: selected ? current.memberUserIds.filter((item) => item !== user.id) : [...current.memberUserIds, user.id] }))} className={selected ? 'flex w-full items-center justify-between rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-left' : 'flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-left'}><span>{user.name || user.email || user.id}</span><span className="text-xs text-slate-500">{selected ? 'Invitado' : 'Agregar'}</span></button>})}</div></div></div><DialogFooter><Button variant="outline" onClick={() => setWorkspaceDialogOpen(false)}>Cancelar</Button><Button onClick={() => void handleCreateWorkspace()} disabled={savingWorkspace}>{savingWorkspace ? 'Guardando...' : 'Crear espacio'}</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={workspaceDialogOpen} onOpenChange={setWorkspaceDialogOpen}><DialogContent className="max-w-[760px]"><DialogHeader><DialogTitle>Nuevo espacio de trabajo</DialogTitle><DialogDescription>Define si el espacio pertenece a una sede o a un usuario, y luego invita quién puede verlo.</DialogDescription></DialogHeader><div className="grid gap-3 py-1.5"><div className="grid gap-1.5"><Label>Nombre</Label><Input value={workspaceForm.name} onChange={(event) => setWorkspaceForm((current) => ({ ...current, name: event.target.value }))} /></div><div className="grid gap-1.5"><Label>Descripción</Label><Textarea value={workspaceForm.description} onChange={(event) => setWorkspaceForm((current) => ({ ...current, description: event.target.value }))} rows={3} /></div><div className="grid gap-3 md:grid-cols-2"><div className="grid gap-1.5"><Label>Tipo de espacio</Label><Select value={workspaceForm.scope} onValueChange={(value) => setWorkspaceForm((current) => ({ ...current, scope: value as WorkspaceScope, sedeId: '', ownerUserId: '', memberUserIds: [] }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="SEDE">Por sede</SelectItem><SelectItem value="USER">Por usuario</SelectItem></SelectContent></Select></div>{workspaceForm.scope === 'SEDE' ? <div className="grid gap-1.5"><Label>Sede</Label><Select value={workspaceForm.sedeId || '__none__'} onValueChange={(value) => setWorkspaceForm((current) => ({ ...current, sedeId: value === '__none__' ? '' : value, memberUserIds: [] }))}><SelectTrigger><SelectValue placeholder="Selecciona una sede" /></SelectTrigger><SelectContent><SelectItem value="__none__">Selecciona</SelectItem>{sedes.map((sede) => <SelectItem key={sede.id} value={sede.id}>{sede.nombre}</SelectItem>)}</SelectContent></Select></div> : <div className="grid gap-1.5"><Label>Usuario responsable</Label><Select value={workspaceForm.ownerUserId || '__none__'} onValueChange={(value) => setWorkspaceForm((current) => ({ ...current, ownerUserId: value === '__none__' ? '' : value }))}><SelectTrigger><SelectValue placeholder="Selecciona un usuario" /></SelectTrigger><SelectContent><SelectItem value="__none__">Selecciona</SelectItem>{users.map((user) => <SelectItem key={user.id} value={user.id}>{user.name || user.email || user.id}</SelectItem>)}</SelectContent></Select></div>}</div><div className="grid gap-1.5"><Label>Invitar usuarios con acceso</Label><Input value={workspaceSearch} onChange={(event) => setWorkspaceSearch(event.target.value)} placeholder="Busca usuarios por nombre o correo..." /><div className="max-h-40 space-y-1.5 overflow-y-auto rounded-xl border border-slate-200 p-2.5">{workspaceCandidates.map((user) => { const selected = workspaceForm.memberUserIds.includes(user.id); return <button key={user.id} type="button" onClick={() => setWorkspaceForm((current) => ({ ...current, memberUserIds: selected ? current.memberUserIds.filter((item) => item !== user.id) : [...current.memberUserIds, user.id] }))} className={selected ? 'flex w-full items-center justify-between rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-left' : 'flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-left'}><span>{user.name || user.email || user.id}</span><span className="text-xs text-slate-500">{selected ? 'Invitado' : 'Agregar'}</span></button>})}</div></div></div><DialogFooter><Button variant="outline" onClick={() => setWorkspaceDialogOpen(false)}>Cancelar</Button><Button onClick={() => void handleCreateWorkspace()} disabled={savingWorkspace}>{savingWorkspace ? 'Guardando...' : 'Crear espacio'}</Button></DialogFooter></DialogContent></Dialog>
 
       <Dialog open={taskDialogOpen} onOpenChange={setTaskDialogOpen}><DialogContent className="max-h-[90vh] max-w-[760px] overflow-y-auto"><DialogHeader><DialogTitle>Nueva tarea</DialogTitle><DialogDescription>Crea una tarea con estado inicial, color visual fuerte y responsables dentro del espacio seleccionado.</DialogDescription></DialogHeader><div className="grid gap-3 py-1.5"><div className="grid gap-1.5"><Label>Título</Label><Input value={taskForm.title} onChange={(event) => setTaskForm((current) => ({ ...current, title: event.target.value }))} /></div><div className="grid gap-1.5"><Label>Descripción</Label><Textarea value={taskForm.description} onChange={(event) => setTaskForm((current) => ({ ...current, description: event.target.value }))} rows={4} /></div><div className="grid gap-3 md:grid-cols-2"><div className="grid gap-1.5"><Label>Estado inicial</Label><Select value={taskForm.status} onValueChange={(value) => setTaskForm((current) => ({ ...current, status: value as TaskStatus }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="OPEN">No iniciado</SelectItem><SelectItem value="IN_PROGRESS">En curso</SelectItem><SelectItem value="DONE">Finalizada</SelectItem><SelectItem value="CANCELED">Cancelada</SelectItem></SelectContent></Select></div><div className="grid gap-1.5"><Label>Prioridad</Label><Select value={taskForm.priority} onValueChange={(value) => setTaskForm((current) => ({ ...current, priority: value as TaskPriority }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="LOW">Baja</SelectItem><SelectItem value="NORMAL">Normal</SelectItem><SelectItem value="HIGH">Alta</SelectItem></SelectContent></Select></div></div><div className="grid gap-1.5"><Label>Color de la tarea</Label><div className="flex flex-wrap items-center gap-2.5">{COLOR_PRESETS.map((color) => <button key={color} type="button" className={normalizeHex(taskForm.colorHex) === color ? 'h-9 w-9 rounded-full ring-4 ring-slate-300' : 'h-9 w-9 rounded-full ring-1 ring-slate-200'} style={{ backgroundColor: color }} onClick={() => setTaskForm((current) => ({ ...current, colorHex: color }))} />)}<Input type="color" value={normalizeHex(taskForm.colorHex)} onChange={(event) => setTaskForm((current) => ({ ...current, colorHex: event.target.value.toUpperCase() }))} className="h-9 w-12 rounded-lg p-1" /></div></div><div className="grid gap-3 md:grid-cols-2"><div className="grid gap-1.5"><Label>Fecha y hora de entrega</Label><Input type="datetime-local" value={taskForm.dueAt} onChange={(event) => setTaskForm((current) => ({ ...current, dueAt: event.target.value }))} /></div><div className="rounded-xl border border-slate-200 p-3" style={{ background: `linear-gradient(135deg, ${normalizeHex(taskForm.colorHex)} 0%, #ffffff 120%)` }}><p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/80">Vista rápida</p><p className="mt-1.5 font-semibold text-white">{taskForm.title || 'Nueva tarea'}</p><p className="mt-1 text-sm text-white/85">{formatStatus(taskForm.status)} · {PRIORITY_META[taskForm.priority].label}</p></div></div><div className="grid gap-1.5"><Label>Asignar usuarios</Label><Input value={assigneeSearch} onChange={(event) => setAssigneeSearch(event.target.value)} placeholder="Busca usuarios por nombre o correo..." /><div className="max-h-40 space-y-1.5 overflow-y-auto rounded-xl border border-slate-200 p-2.5">{taskAssigneeCandidates.map((user) => { const selected = taskForm.assignedToUserIds.includes(user.id); return <button key={user.id} type="button" onClick={() => setTaskForm((current) => ({ ...current, assignedToUserIds: selected ? current.assignedToUserIds.filter((item) => item !== user.id) : [...current.assignedToUserIds, user.id] }))} className={selected ? 'flex w-full items-center justify-between rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-left' : 'flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-left'}><span>{user.name || user.email || user.id}</span><span className="text-xs text-slate-500">{selected ? 'Asignado' : 'Asignar'}</span></button>})}</div></div></div><DialogFooter><Button variant="outline" onClick={() => setTaskDialogOpen(false)}>Cancelar</Button><Button onClick={() => void handleCreateTask()} disabled={savingTask || !canEditTasks}>{savingTask ? 'Guardando...' : 'Crear tarea'}</Button></DialogFooter></DialogContent></Dialog>
 

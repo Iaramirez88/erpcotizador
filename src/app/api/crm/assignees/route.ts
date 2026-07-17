@@ -49,7 +49,6 @@ export async function GET() {
           lastLoginAt: true,
           globalAccess: { select: { level: true } },
           sedeMemberships: {
-            where: { sedeId: access.sedeId },
             select: { sedeId: true, role: true },
           },
         },
@@ -72,7 +71,7 @@ export async function GET() {
 
     const eligibleRows = rows.filter((row) => {
       const globalBase = row.globalAccess?.level ?? 'NONE'
-      const membership = row.sedeMemberships[0]
+      const membership = row.sedeMemberships.find((item) => item.sedeId === access.sedeId)
       const effective = membership ? sedeRoleToBaseAccess(membership.role) : globalBase
       return ACCESS_LEVEL_ORDER[effective] >= ACCESS_LEVEL_ORDER.WRITE
     })
@@ -104,6 +103,7 @@ export async function GET() {
         email: row.email,
         role: row.role,
         sedeDefaultId: row.sedeDefaultId,
+        sedeMembershipIds: row.sedeMemberships.map((membership) => membership.sedeId),
         lastLoginAt: row.lastLoginAt,
         activeCount: bucket?.activeCount ?? 0,
         immediateCount: bucket?.immediateCount ?? 0,
