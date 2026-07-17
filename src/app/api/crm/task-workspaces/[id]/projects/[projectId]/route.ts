@@ -148,7 +148,7 @@ export async function DELETE(_: Request, context: RouteContext) {
     const access = await requireCapabilityAccess({
       domain: 'OPERACIONES',
       subdomain: 'TASK_WORKSPACES',
-      action: 'DELETE',
+      action: 'UPDATE',
       scope: 'SEDE',
     })
     if (!access.ok) return access.response
