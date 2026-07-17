@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { signIn } from 'next-auth/react'
+import { signIn, signOut } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -24,21 +24,23 @@ export default function ImpersonatePage() {
     let cancelled = false
 
     async function startImpersonation() {
+      await signOut({ redirect: false })
+
       const result = await signIn('credentials', {
         impersonationToken: token,
+        callbackUrl: '/dashboard',
         redirect: false,
       })
 
       if (cancelled) return
 
-      if (result?.error) {
+      if (result?.error || !result?.ok) {
         setStatus('error')
         setError('No se pudo iniciar la sesión temporal del usuario. El código puede haber expirado o ya fue usado.')
         return
       }
 
-      router.replace('/dashboard')
-      router.refresh()
+      window.location.replace(result.url || '/dashboard')
     }
 
     void startImpersonation()

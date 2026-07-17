@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Archive, ArrowDownUp, ChevronDown, Columns3, Eye, GripVertical, LayoutPanelLeft, MoreVertical, Plus, Search as SearchIcon, Users } from 'lucide-react'
+import { Archive, ArrowDownUp, ChevronDown, Columns3, Eye, GripVertical, LayoutPanelLeft, MoreVertical, Plus, Rows3, Search as SearchIcon, Users } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -320,6 +320,7 @@ const TASK_COLUMN_WIDTH_STORAGE_KEY = 'crm-task-workspaces:task-column-width'
 const TASK_EXTRA_COLUMNS_STORAGE_KEY = 'crm-task-workspaces:task-extra-columns'
 const TASK_PRIORITY_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-priority-column-visible'
 const TASK_CREATED_AT_COLUMN_STORAGE_KEY = 'crm-task-workspaces:task-created-at-column-visible'
+const LAST_WORKSPACE_STORAGE_KEY = 'crm-task-workspaces:last-workspace-id'
 
 export function CrmTaskWorkspacesClient() {
   const pathname = usePathname()
@@ -360,6 +361,7 @@ export function CrmTaskWorkspacesClient() {
   const [quickNoteDraft, setQuickNoteDraft] = useState('')
   const [savingQuickNote, setSavingQuickNote] = useState(false)
   const [workspacePanelCollapsed, setWorkspacePanelCollapsed] = useState(false)
+  const [showAllTasks, setShowAllTasks] = useState(false)
   const [taskColumnWidth, setTaskColumnWidth] = useState(150)
   const [taskSortDirection, setTaskSortDirection] = useState<TaskSortDirection>('desc')
   const [showPriorityColumn, setShowPriorityColumn] = useState(true)
@@ -395,7 +397,7 @@ export function CrmTaskWorkspacesClient() {
   const editableWorkspaces = useMemo(() => workspaces.filter((workspace) => workspace.permissions?.canEditTasks), [workspaces])
   const selectedMoveWorkspace = useMemo(() => workspaces.find((workspace) => workspace.id === taskMoveForm.workspaceId) ?? null, [taskMoveForm.workspaceId, workspaces])
   const clampedTaskColumnWidth = useMemo(() => Math.min(220, Math.max(120, taskColumnWidth)), [taskColumnWidth])
-  const totalTaskColumnCount = useMemo(() => 7 + visibleExtraTaskColumns.length + (showPriorityColumn ? 1 : 0) + (showCreatedAtColumn ? 1 : 0), [showCreatedAtColumn, showPriorityColumn, visibleExtraTaskColumns.length])
+  const totalTaskColumnCount = useMemo(() => 7 + visibleExtraTaskColumns.length + (showAllTasks ? 1 : 0) + (showPriorityColumn ? 1 : 0) + (showCreatedAtColumn ? 1 : 0), [showAllTasks, showCreatedAtColumn, showPriorityColumn, visibleExtraTaskColumns.length])
   const taskGridTemplate = useMemo(() => `repeat(${totalTaskColumnCount}, ${clampedTaskColumnWidth}px)`, [clampedTaskColumnWidth, totalTaskColumnCount])
   const taskTableMinWidth = useMemo(() => clampedTaskColumnWidth * totalTaskColumnCount + 32, [clampedTaskColumnWidth, totalTaskColumnCount])
   const quickTask = useMemo(() => quickTaskPanel ? tasks.find((task) => task.id === quickTaskPanel.taskId) ?? null : null, [quickTaskPanel, tasks])
@@ -410,6 +412,7 @@ export function CrmTaskWorkspacesClient() {
         requestJson<SedeOption[]>('/api/crm/sedes'),
       ])
       const nextWorkspaces = Array.isArray(workspaceRes.data) ? workspaceRes.data : []
+      const lastWorkspaceId = typeof window !== 'undefined' ? window.localStorage.getItem(LAST_WORKSPACE_STORAGE_KEY) || '' : ''
       setWorkspaces(nextWorkspaces)
       setUsers(Array.isArray(userRes.data) ? userRes.data : [])
       setSedes(Array.isArray(sedeRes.data) ? sedeRes.data : [])
@@ -417,22 +420,31 @@ export function CrmTaskWorkspacesClient() {
         if (requestedWorkspaceId && nextWorkspaces.some((workspace) => workspace.id === requestedWorkspaceId)) {
           return requestedWorkspaceId
         }
-        return current && nextWorkspaces.some((workspace) => workspace.id === current) ? current : nextWorkspaces[0]?.id || ''
+        if (current && nextWorkspaces.some((workspace) => workspace.id === current)) {
+          return current
+        }
+        if (lastWorkspaceId && nextWorkspaces.some((workspace) => workspace.id === lastWorkspaceId)) {
+          return lastWorkspaceId
+        }
+        return nextWorkspaces[0]?.id || ''
       })
     } finally {
       setLoading(false)
     }
   }
 
-  const loadTasks = useCallback(async (workspaceId = selectedWorkspaceId) => {
-    if (!workspaceId) {
+  const loadTasks = useCallback(async (workspaceId = selectedWorkspaceId, allTasks = showAllTasks) => {
+    if (!allTasks && !workspaceId) {
       setTasks([])
       return
     }
-    const query = new URLSearchParams({ workspaceId, includeArchived: String(showArchived) })
+    const query = new URLSearchParams({ includeArchived: String(showArchived) })
+    if (!allTasks && workspaceId) {
+      query.set('workspaceId', workspaceId)
+    }
     const taskRes = await requestJson<TaskItem[]>(`/api/crm/tasks?${query.toString()}`)
     setTasks(Array.isArray(taskRes.data) ? taskRes.data.map((row) => normalizeTask(row)) : [])
-  }, [selectedWorkspaceId, showArchived])
+  }, [selectedWorkspaceId, showAllTasks, showArchived])
 
   async function loadTaskDetail(taskId: string) {
     const detailRes = await requestJson<TaskItem>(`/api/crm/tasks/${taskId}`)
@@ -468,12 +480,17 @@ export function CrmTaskWorkspacesClient() {
   }
 
   useEffect(() => { void loadBase() }, [])
-  useEffect(() => { void loadTasks(selectedWorkspaceId) }, [loadTasks, selectedWorkspaceId])
+  useEffect(() => { void loadTasks(selectedWorkspaceId, showAllTasks) }, [loadTasks, selectedWorkspaceId, showAllTasks])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
     try {
-      setWorkspacePanelCollapsed(window.localStorage.getItem(WORKSPACE_PANEL_STORAGE_KEY) === 'true')
+      const savedWorkspacePanelState = window.localStorage.getItem(WORKSPACE_PANEL_STORAGE_KEY)
+      if (savedWorkspacePanelState === 'true' || savedWorkspacePanelState === 'false') {
+        setWorkspacePanelCollapsed(savedWorkspacePanelState === 'true')
+      } else {
+        setWorkspacePanelCollapsed(window.innerWidth < 1280)
+      }
       const savedColumnWidth = Number(window.localStorage.getItem(TASK_COLUMN_WIDTH_STORAGE_KEY) || '')
       if (Number.isFinite(savedColumnWidth)) {
         setTaskColumnWidth(Math.min(220, Math.max(120, savedColumnWidth)))
@@ -507,6 +524,16 @@ export function CrmTaskWorkspacesClient() {
       // ignore
     }
   }, [clampedTaskColumnWidth, showCreatedAtColumn, showPriorityColumn, visibleExtraTaskColumns, workspacePanelCollapsed])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!selectedWorkspaceId) return
+    try {
+      window.localStorage.setItem(LAST_WORKSPACE_STORAGE_KEY, selectedWorkspaceId)
+    } catch {
+      // ignore
+    }
+  }, [selectedWorkspaceId])
 
   useEffect(() => {
     if (!requestedTaskId) {
@@ -579,7 +606,7 @@ export function CrmTaskWorkspacesClient() {
       setSelectedProjectId('')
       return
     }
-    setSelectedProjectId((current) => current && selectedWorkspace.projects.some((project) => project.id === current) ? current : selectedWorkspace.projects[0]?.id || '')
+    setSelectedProjectId((current) => current && selectedWorkspace.projects.some((project) => project.id === current) ? current : '')
   }, [selectedWorkspace])
 
   useEffect(() => {
@@ -594,7 +621,7 @@ export function CrmTaskWorkspacesClient() {
 
   const filteredTasks = useMemo(() => {
     const term = search.trim().toLowerCase()
-    const projectScopedTasks = selectedProjectId ? tasks.filter((task) => task.project?.id === selectedProjectId) : tasks
+    const projectScopedTasks = !showAllTasks && selectedProjectId ? tasks.filter((task) => task.project?.id === selectedProjectId) : tasks
     const matchingTasks = !term ? projectScopedTasks : projectScopedTasks.filter((task) => {
       const haystack = [task.title, task.description, task.createdBy?.name, task.workspace?.name, task.lead?.nombre, task.opportunity?.title, task.cliente?.nombre, ...task.assignments.map((assignment) => assignment.user.name || assignment.user.email || ''), ...(task.customFieldsJson || []).map((field) => `${field.label} ${field.textValue || field.file?.name || ''}`)].filter(Boolean).join(' ').toLowerCase()
       return haystack.includes(term)
@@ -605,7 +632,17 @@ export function CrmTaskWorkspacesClient() {
       const rightTime = new Date(right.createdAt).getTime()
       return taskSortDirection === 'asc' ? leftTime - rightTime : rightTime - leftTime
     })
-  }, [search, selectedProjectId, taskSortDirection, tasks])
+  }, [search, selectedProjectId, showAllTasks, taskSortDirection, tasks])
+
+  function handleSelectWorkspace(workspaceId: string) {
+    setShowAllTasks(false)
+    setSelectedWorkspaceId(workspaceId)
+  }
+
+  function handleToggleAllTasks() {
+    setShowAllTasks((current) => !current)
+    setSelectedProjectId('')
+  }
 
   const workspaceCandidates = useMemo(() => {
     const term = workspaceSearch.trim().toLowerCase()
@@ -1261,18 +1298,18 @@ export function CrmTaskWorkspacesClient() {
         ]}
       />
 
-      <div className={`grid gap-4 ${workspacePanelCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[320px_minmax(0,1fr)]'}`}>
+      <div className={`grid gap-4 xl:items-start ${workspacePanelCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[320px_minmax(0,1fr)]'}`}>
         {!workspacePanelCollapsed ? (
-          <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)]">
+          <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)] xl:max-h-[calc(100vh-12rem)] xl:overflow-hidden">
             <CardHeader className="border-b border-slate-100 pb-5">
               <CardTitle className="text-xl">Espacios de trabajo</CardTitle>
               <CardDescription>Selecciona un espacio, ajusta sus opciones desde el menú y crea tareas solo dentro de un proyecto.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3 p-4 md:p-5">
+            <CardContent className="space-y-3 p-4 md:p-5 xl:overflow-y-auto">
               {loading ? <p className="text-sm text-muted-foreground">Cargando espacios...</p> : null}
               {!loading && workspaces.length === 0 ? <p className="text-sm text-muted-foreground">No tienes espacios de trabajo todavía.</p> : null}
               {workspaces.map((workspace) => {
-                const isSelected = selectedWorkspaceId === workspace.id
+                const isSelected = !showAllTasks && selectedWorkspaceId === workspace.id
                 const canManageCurrentWorkspace = Boolean(workspace.permissions?.canManage)
 
                 return (
@@ -1289,7 +1326,7 @@ export function CrmTaskWorkspacesClient() {
                       : `w-full rounded-3xl border bg-[linear-gradient(180deg,_#ffffff,_#fbfdff)] p-4 text-left shadow-sm transition-shadow hover:shadow-md ${dragOverWorkspaceId === workspace.id ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-slate-200'}`}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <button type="button" onClick={() => setSelectedWorkspaceId(workspace.id)} className="min-w-0 flex-1 text-left">
+                      <button type="button" onClick={() => handleSelectWorkspace(workspace.id)} className="min-w-0 flex-1 text-left">
                         <p className="font-semibold text-slate-950">{workspace.name}</p>
                         <p className="mt-1 text-sm text-slate-600">{workspace.description || (workspace.scope === 'SEDE' ? workspace.sede?.nombre || 'Espacio por sede' : workspace.ownerUser?.name || workspace.ownerUser?.email || 'Espacio por usuario')}</p>
                       </button>
@@ -1305,16 +1342,16 @@ export function CrmTaskWorkspacesClient() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-52 rounded-2xl p-1.5">
-                            <DropdownMenuItem onSelect={() => setSelectedWorkspaceId(workspace.id)}>
+                            <DropdownMenuItem onSelect={() => handleSelectWorkspace(workspace.id)}>
                               Ver proyectos
                             </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => { setSelectedWorkspaceId(workspace.id); openWorkspaceSettings(workspace) }}>
+                            <DropdownMenuItem onSelect={() => { handleSelectWorkspace(workspace.id); openWorkspaceSettings(workspace) }}>
                               Asignar espacio
                             </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => { setSelectedWorkspaceId(workspace.id); void openProjectDialog(workspace.id) }} disabled={!canManageCurrentWorkspace}>
+                            <DropdownMenuItem onSelect={() => { handleSelectWorkspace(workspace.id); void openProjectDialog(workspace.id) }} disabled={!canManageCurrentWorkspace}>
                               Crear proyecto
                             </DropdownMenuItem>
-                            <DropdownMenuItem onSelect={() => { setSelectedWorkspaceId(workspace.id); openWorkspaceSettings(workspace) }} disabled={!canManageCurrentWorkspace}>
+                            <DropdownMenuItem onSelect={() => { handleSelectWorkspace(workspace.id); openWorkspaceSettings(workspace) }} disabled={!canManageCurrentWorkspace}>
                               Editar
                             </DropdownMenuItem>
                             <DropdownMenuItem onSelect={() => void handleDeleteWorkspace(workspace)} disabled={!canManageCurrentWorkspace} className="text-rose-600 focus:text-rose-700">
@@ -1421,86 +1458,100 @@ export function CrmTaskWorkspacesClient() {
           <CardHeader className="border-b border-slate-100 pb-5">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <CardTitle className="text-xl">Tareas del espacio</CardTitle>
+                <CardTitle className="text-xl">{showAllTasks ? 'Todas las tareas' : 'Tareas del espacio'}</CardTitle>
                 <CardDescription>
-                  {selectedWorkspace
+                  {showAllTasks
+                    ? `Vista global con tareas de todos los espacios accesibles${selectedWorkspace ? ` · base actual ${selectedWorkspace.name}` : ''}`
+                    : selectedWorkspace
                     ? `${selectedWorkspace.name}${selectedProject ? ` · Proyecto ${selectedProject.name}` : ' · Todos los proyectos'} · ${formatRole(selectedWorkspace.currentUserRole)}${selectedWorkspace.permissions?.canEditTasks ? ' con edición de tareas' : ' solo lectura'}`
                     : 'Tabla operativa con responsables, estado, color, evidencia y acceso a detalle completo.'}
                 </CardDescription>
               </div>
               <TooltipProvider delayDuration={150}>
-                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => setWorkspacePanelCollapsed((current) => !current)} aria-label={workspacePanelCollapsed ? 'Mostrar espacios' : 'Ocultar espacios'}>
-                        <LayoutPanelLeft className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{workspacePanelCollapsed ? 'Mostrar espacios' : 'Ocultar espacios'}</TooltipContent>
-                  </Tooltip>
-                  {canManageWorkspace ? <Tooltip><TooltipTrigger asChild><Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => openWorkspaceSettings()} aria-label="Miembros y roles"><Users className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Miembros y roles</TooltipContent></Tooltip> : null}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant={searchPanelOpen ? 'default' : 'outline'} size="icon" className="h-9 w-9 rounded-xl" onClick={() => setSearchPanelOpen((current) => !current)} aria-label="Buscar tareas">
-                        <SearchIcon className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Buscar por tarea, responsable, campo o descripción</TooltipContent>
-                  </Tooltip>
-                  {searchPanelOpen ? <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar..." className="h-9 w-full rounded-xl text-sm sm:w-[220px]" /> : null}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant={showArchived ? 'default' : 'outline'} size="icon" className="h-9 w-9 rounded-xl" onClick={() => setShowArchived((current) => !current)} aria-label={showArchived ? 'Ocultar archivadas' : 'Ver archivadas'}>
-                        <Archive className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>{showArchived ? 'Ocultar archivadas' : 'Ver archivadas'}</TooltipContent>
-                  </Tooltip>
-                  <DropdownMenu>
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" aria-label="Columnas visibles">
-                            <Columns3 className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
+                        <Button variant="outline" className="h-9 gap-2 rounded-xl px-3 sm:w-9 sm:px-0" onClick={() => setWorkspacePanelCollapsed((current) => !current)} aria-label={workspacePanelCollapsed ? 'Mostrar espacios' : 'Ocultar espacios'}>
+                          <LayoutPanelLeft className="h-4 w-4" />
+                          <span className="text-xs sm:hidden">Espacios</span>
+                        </Button>
                       </TooltipTrigger>
-                      <TooltipContent>Columnas visibles</TooltipContent>
+                      <TooltipContent>{workspacePanelCollapsed ? 'Mostrar espacios' : 'Ocultar espacios'}</TooltipContent>
                     </Tooltip>
-                    <DropdownMenuContent align="end" className="w-56 rounded-2xl p-1.5">
-                      <DropdownMenuCheckboxItem checked={showPriorityColumn} onCheckedChange={(checked) => setShowPriorityColumn(Boolean(checked))}>
-                        Prioridad
-                      </DropdownMenuCheckboxItem>
-                      <DropdownMenuCheckboxItem checked={showCreatedAtColumn} onCheckedChange={(checked) => setShowCreatedAtColumn(Boolean(checked))}>
-                        Fecha de creación
-                      </DropdownMenuCheckboxItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('attachments')} onCheckedChange={(checked) => toggleExtraTaskColumn('attachments', Boolean(checked))}>
-                        Adjuntos
-                      </DropdownMenuCheckboxItem>
-                      <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('custom-fields')} onCheckedChange={(checked) => toggleExtraTaskColumn('custom-fields', Boolean(checked))}>
-                        Campos personalizados
-                      </DropdownMenuCheckboxItem>
-                      <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('history')} onCheckedChange={(checked) => toggleExtraTaskColumn('history', Boolean(checked))}>
-                        Último cambio
-                      </DropdownMenuCheckboxItem>
-                      <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('note')} onCheckedChange={(checked) => toggleExtraTaskColumn('note', Boolean(checked))}>
-                        Nota rápida
-                      </DropdownMenuCheckboxItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-2.5 py-2">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant={showAllTasks ? 'default' : 'outline'} className="h-9 gap-2 rounded-xl px-3 sm:w-9 sm:px-0" onClick={handleToggleAllTasks} aria-label={showAllTasks ? 'Volver al espacio actual' : 'Ver todas las tareas'}>
+                          <Rows3 className="h-4 w-4" />
+                          <span className="text-xs sm:hidden">Todas</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{showAllTasks ? 'Volver al espacio actual' : 'Ver todas las tareas'}</TooltipContent>
+                    </Tooltip>
+                    {canManageWorkspace ? <Tooltip><TooltipTrigger asChild><Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => openWorkspaceSettings()} aria-label="Miembros y roles"><Users className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Miembros y roles</TooltipContent></Tooltip> : null}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant={searchPanelOpen ? 'default' : 'outline'} size="icon" className="h-9 w-9 rounded-xl" onClick={() => setSearchPanelOpen((current) => !current)} aria-label="Buscar tareas">
+                          <SearchIcon className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Buscar por tarea, responsable, campo o descripción</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant={showArchived ? 'default' : 'outline'} size="icon" className="h-9 w-9 rounded-xl" onClick={() => setShowArchived((current) => !current)} aria-label={showArchived ? 'Ocultar archivadas' : 'Ver archivadas'}>
+                          <Archive className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{showArchived ? 'Ocultar archivadas' : 'Ver archivadas'}</TooltipContent>
+                    </Tooltip>
+                    <DropdownMenu>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" aria-label="Columnas visibles">
+                              <Columns3 className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent>Columnas visibles</TooltipContent>
+                      </Tooltip>
+                      <DropdownMenuContent align="end" className="w-56 rounded-2xl p-1.5">
+                        <DropdownMenuCheckboxItem checked={showPriorityColumn} onCheckedChange={(checked) => setShowPriorityColumn(Boolean(checked))}>
+                          Prioridad
+                        </DropdownMenuCheckboxItem>
+                        <DropdownMenuCheckboxItem checked={showCreatedAtColumn} onCheckedChange={(checked) => setShowCreatedAtColumn(Boolean(checked))}>
+                          Fecha de creación
+                        </DropdownMenuCheckboxItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('attachments')} onCheckedChange={(checked) => toggleExtraTaskColumn('attachments', Boolean(checked))}>
+                          Adjuntos
+                        </DropdownMenuCheckboxItem>
+                        <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('custom-fields')} onCheckedChange={(checked) => toggleExtraTaskColumn('custom-fields', Boolean(checked))}>
+                          Campos personalizados
+                        </DropdownMenuCheckboxItem>
+                        <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('history')} onCheckedChange={(checked) => toggleExtraTaskColumn('history', Boolean(checked))}>
+                          Último cambio
+                        </DropdownMenuCheckboxItem>
+                        <DropdownMenuCheckboxItem checked={visibleExtraTaskColumns.includes('note')} onCheckedChange={(checked) => toggleExtraTaskColumn('note', Boolean(checked))}>
+                          Nota rápida
+                        </DropdownMenuCheckboxItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  {searchPanelOpen ? <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar..." className="h-9 w-full rounded-xl text-sm sm:w-[220px]" /> : null}
+                  <div className="flex w-full items-center gap-2 rounded-xl border border-slate-200 px-2.5 py-2 sm:w-fit">
                     <Label htmlFor="task-column-width" className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Ancho</Label>
-                  <input
-                    id="task-column-width"
-                    type="range"
+                    <input
+                      id="task-column-width"
+                      type="range"
                       min="120"
                       max="220"
-                    step="10"
-                    value={clampedTaskColumnWidth}
-                    onChange={(event) => setTaskColumnWidth(Number(event.target.value))}
-                      className="w-24 accent-slate-900"
-                  />
+                      step="10"
+                      value={clampedTaskColumnWidth}
+                      onChange={(event) => setTaskColumnWidth(Number(event.target.value))}
+                      className="w-full accent-slate-900 sm:w-24"
+                    />
                     <span className="min-w-[46px] text-[11px] font-semibold text-slate-600">{clampedTaskColumnWidth}px</span>
                   </div>
                 </div>
@@ -1512,6 +1563,7 @@ export function CrmTaskWorkspacesClient() {
               <div className="w-max" style={{ minWidth: `${taskTableMinWidth}px` }}>
                 <div className="grid gap-3 border-b border-slate-100 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500" style={{ gridTemplateColumns: taskGridTemplate }}>
                   <span>Tarea</span>
+                  {showAllTasks ? <span>Espacio</span> : null}
                   {showPriorityColumn ? <span>Prioridad</span> : null}
                   <span>Descripción</span>
                   <span>Responsables</span>
@@ -1536,6 +1588,7 @@ export function CrmTaskWorkspacesClient() {
                       style={{ gridTemplateColumns: taskGridTemplate, borderLeft: `5px solid ${normalizeHex(task.colorHex)}`, borderBottomColor: 'rgba(226,232,240,0.9)' }}
                     >
                       <div className="flex min-w-0 items-center gap-2"><GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-400" /><p className="truncate font-semibold text-slate-950">{task.title}</p></div>
+                      {showAllTasks ? <div className="min-w-0"><p className="truncate font-medium text-slate-900">{task.workspace?.name || 'Sin espacio'}</p><p className="truncate text-[11px] text-slate-500">{task.project?.name || 'Sin proyecto'}</p></div> : null}
                       {showPriorityColumn ? <div className="overflow-hidden">{renderTaskPriorityControl(task)}</div> : null}
                       <p className="truncate text-slate-600">{task.description || 'Sin descripción'}</p>
                       <div className="flex min-w-0 flex-wrap items-center gap-2 overflow-hidden">{renderTaskAssignments(task)}</div>
@@ -1572,7 +1625,7 @@ export function CrmTaskWorkspacesClient() {
                     </div>
                   )
                 })}
-                {!filteredTasks.length ? <div className="px-6 py-8 text-sm text-slate-500">{selectedWorkspace ? (selectedProject ? 'No hay tareas para mostrar en este proyecto.' : selectedWorkspace.projects.length ? 'Selecciona un proyecto o crea una tarea desde el botón +.' : 'Crea primero un proyecto dentro del espacio para empezar a registrar tareas.') : 'Selecciona un espacio de trabajo para ver tareas.'}</div> : null}
+                {!filteredTasks.length ? <div className="px-6 py-8 text-sm text-slate-500">{showAllTasks ? 'No hay tareas para mostrar en los espacios disponibles.' : selectedWorkspace ? (selectedProject ? 'No hay tareas para mostrar en este proyecto.' : selectedWorkspace.projects.length ? 'No hay tareas para mostrar en este espacio.' : 'Crea primero un proyecto dentro del espacio para empezar a registrar tareas.') : 'Selecciona un espacio de trabajo para ver tareas.'}</div> : null}
               </div>
             </div>
           </CardContent>
