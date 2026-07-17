@@ -240,6 +240,7 @@ export function mapWorkspaceForUser(workspace: CrmTaskWorkspaceWithAccess, userI
   const currentUserRole = getWorkspaceRoleForUser(workspace, userId)
   return {
     ...workspace,
+    currentUserId: userId,
     currentUserRole,
     permissions: {
       canView: Boolean(currentUserRole),

@@ -420,3 +420,57 @@ export async function PATCH(request: Request, context: RouteContext) {
     return NextResponse.json({ error: 'Error actualizando tarea CRM' }, { status: 500 })
   }
 }
+
+export async function DELETE(_: Request, context: RouteContext) {
+  try {
+    const access = await requireWorkspaceTaskCapability({
+      action: 'UPDATE',
+      scope: 'SEDE',
+    })
+    if (!access.ok) return access.response
+
+    const { id } = await context.params
+    const current = await prisma.crmTask.findUnique({
+      where: { id },
+      include: {
+        workspace: {
+          include: {
+            members: true,
+          },
+        },
+      },
+    })
+
+    if (!current || current.empresaId !== access.empresaId) {
+      return NextResponse.json({ error: 'Tarea no encontrada' }, { status: 404 })
+    }
+
+    if (current.createdById !== access.userId) {
+      return NextResponse.json({ error: 'Solo el usuario creador puede eliminar esta tarea.' }, { status: 403 })
+    }
+
+    if (current.workspaceId) {
+      const workspace = await getAccessibleTaskWorkspace(prisma, {
+        workspaceId: current.workspaceId,
+        empresaId: access.empresaId,
+        userId: access.userId,
+      })
+      if (!workspace) return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
+      if (!canUserAccessWorkspace(workspace, access.userId, 'edit')) {
+        return NextResponse.json({ error: 'Solo un editor o manager puede eliminar esta tarea.' }, { status: 403 })
+      }
+    }
+
+    if (current.sedeId) {
+      const denied = await assertCrmSedeAccess({ sedeId: current.sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
+      if (denied) return denied
+    }
+
+    await prisma.crmTask.delete({ where: { id: current.id } })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Error eliminando tarea CRM:', error)
+    return NextResponse.json({ error: 'Error eliminando tarea CRM' }, { status: 500 })
+  }
+}

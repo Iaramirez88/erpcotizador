@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { normalizeString } from '@/lib/crm'
-import { canUserAccessWorkspace, getAccessibleTaskWorkspace } from '@/lib/crm-task-workspaces'
+import { canUserAccessWorkspace, ensureWorkspaceEditors, getAccessibleTaskWorkspace } from '@/lib/crm-task-workspaces'
 
 export const runtime = 'nodejs'
 
@@ -38,6 +38,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null
     const name = normalizeString(body?.name)
     const description = normalizeString(body?.description)
+    const nextWorkspaceId = normalizeString(body?.workspaceId)
 
     const current = await prisma.crmTaskWorkspaceProject.findFirst({
       where: {
@@ -45,7 +46,7 @@ export async function PATCH(request: Request, context: RouteContext) {
         workspaceId: workspace.id,
         empresaId: access.empresaId,
       },
-      select: { id: true, name: true },
+      select: { id: true, name: true, workspaceId: true },
     })
 
     if (!current) {
@@ -56,10 +57,28 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: 'name es requerido' }, { status: 400 })
     }
 
+    const targetWorkspace = nextWorkspaceId && nextWorkspaceId !== workspace.id
+      ? await getAccessibleTaskWorkspace(prisma, {
+          workspaceId: nextWorkspaceId,
+          empresaId: access.empresaId,
+          userId: access.userId,
+        })
+      : workspace
+
+    if (nextWorkspaceId && !targetWorkspace) {
+      return NextResponse.json({ error: 'workspaceId inválido' }, { status: 400 })
+    }
+
+    if (targetWorkspace && !canUserAccessWorkspace(targetWorkspace, access.userId, 'manage')) {
+      return NextResponse.json({ error: 'No tienes permisos para mover proyectos a ese espacio.' }, { status: 403 })
+    }
+
+    const resolvedWorkspaceId = targetWorkspace?.id || workspace.id
+
     const duplicate = await prisma.crmTaskWorkspaceProject.findFirst({
       where: {
         empresaId: access.empresaId,
-        workspaceId: workspace.id,
+        workspaceId: resolvedWorkspaceId,
         name,
         id: { not: current.id },
       },
@@ -70,21 +89,51 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: 'Ya existe un proyecto con ese nombre en este espacio.' }, { status: 400 })
     }
 
-    const project = await prisma.crmTaskWorkspaceProject.update({
-      where: { id: current.id },
-      data: {
-        name,
-        description: description || null,
-      },
-      select: {
-        id: true,
-        workspaceId: true,
-        name: true,
-        description: true,
-        createdAt: true,
-        updatedAt: true,
-        _count: { select: { tasks: true } },
-      },
+    const project = await prisma.$transaction(async (tx) => {
+      const updated = await tx.crmTaskWorkspaceProject.update({
+        where: { id: current.id },
+        data: {
+          workspaceId: resolvedWorkspaceId,
+          name,
+          description: description || null,
+        },
+        select: {
+          id: true,
+          workspaceId: true,
+          name: true,
+          description: true,
+          createdAt: true,
+          updatedAt: true,
+          _count: { select: { tasks: true } },
+        },
+      })
+
+      if (resolvedWorkspaceId !== current.workspaceId) {
+        await tx.crmTask.updateMany({
+          where: {
+            empresaId: access.empresaId,
+            projectId: current.id,
+          },
+          data: {
+            workspaceId: resolvedWorkspaceId,
+          },
+        })
+
+        const assignmentRows = await tx.crmTaskAssignment.findMany({
+          where: {
+            empresaId: access.empresaId,
+            task: { projectId: current.id },
+          },
+          select: { userId: true },
+        })
+
+        await ensureWorkspaceEditors(tx, {
+          workspaceId: resolvedWorkspaceId,
+          userIds: assignmentRows.map((row) => row.userId),
+        })
+      }
+
+      return updated
     })
 
     return NextResponse.json({ success: true, data: project })
