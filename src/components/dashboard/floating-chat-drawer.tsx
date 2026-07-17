@@ -1504,61 +1504,6 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                     {!teamLoading && !selectedThread ? <p className="text-sm text-slate-500">Selecciona un compañero o un grupo para abrir la conversación.</p> : null}
                     {selectedThread ? (
                       <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 px-3 py-3">
-                        <div className="shrink-0 rounded-[22px] border border-slate-200 bg-slate-50/70 p-3">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-slate-950">{formatThreadName(selectedThread)}</p>
-                              <p className="mt-0.5 text-[11px] uppercase tracking-[0.16em] text-slate-500">{selectedThread.type === 'GROUP' ? 'Grupo interno' : 'Chat directo'}</p>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-xl" onClick={() => setThreadSearchOpen((current) => !current)} aria-label="Buscar en el chat">
-                                <Search className="h-4 w-4" />
-                              </Button>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-xl" aria-label="Más opciones del chat">
-                                    <MoreVertical className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-60 rounded-2xl p-2">
-                                  <DropdownMenuLabel>Conversación</DropdownMenuLabel>
-                                  <DropdownMenuItem onSelect={() => setSharedFilesOpen(true)}>
-                                    <Paperclip className="mr-2 h-4 w-4" />
-                                    Archivos compartidos
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onSelect={() => setThreadInfoOpen(true)}>
-                                    <Info className="mr-2 h-4 w-4" />
-                                    Información del contacto
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onSelect={() => setThreadSearchOpen(true)}>
-                                    <Search className="mr-2 h-4 w-4" />
-                                    Buscar en el chat
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onSelect={toggleMuteSelectedThread}>
-                                    <BellOff className="mr-2 h-4 w-4" />
-                                    {selectedThreadId && mutedTeamThreadIds.includes(selectedThreadId) ? 'Activar notificaciones' : 'Silenciar notificaciones'}
-                                  </DropdownMenuItem>
-                                  {selectedThread.type === 'GROUP' ? (
-                                    <>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem onSelect={() => void handleLeaveSelectedGroup()} className="text-rose-700 focus:text-rose-800">
-                                        <LogOut className="mr-2 h-4 w-4" />
-                                        {leavingGroup ? 'Saliendo...' : 'Salir del grupo'}
-                                      </DropdownMenuItem>
-                                    </>
-                                  ) : null}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {selectedThread.participants.map((participant) => (
-                              <span key={participant.id} className="rounded-full bg-white px-2.5 py-1 text-xs text-slate-700 shadow-sm">
-                                {participant.user.name || participant.user.email || participant.user.id}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
 
                         {threadSearchOpen ? (
                           <div className="shrink-0 rounded-[18px] border border-slate-200 bg-white px-3 py-2.5">
