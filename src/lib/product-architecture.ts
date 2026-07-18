@@ -55,6 +55,7 @@ export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard/plantillas', label: 'Plantillas', labelKey: 'nav.templates', section: 'Inicio', layer: 'Inicio', domain: 'Plantillas', moduleKey: 'DASHBOARD' },
   { href: '/dashboard/notificaciones', label: 'Notificaciones', section: 'Inicio', layer: 'Inicio', domain: 'Mensajería transversal', moduleKey: 'NOTIFICACIONES' },
   { href: '/dashboard/notificaciones/crear', label: 'Crear notificación', section: 'Inicio', layer: 'Inicio', domain: 'Mensajería transversal', moduleKey: 'NOTIFICACIONES' },
+  { href: '/dashboard/ayuda', label: 'Ayuda', section: 'Inicio', layer: 'Inicio', domain: 'Ayuda y documentación', moduleKey: null },
 
   { href: '/dashboard/crm', label: 'Frente comercial', section: 'Captación', layer: 'Captación', domain: 'CRM', moduleKey: 'CRM' },
   { href: '/dashboard/crm/conversations', label: 'Inbox omnicanal', section: 'Captación', layer: 'Captación', domain: 'Inbox omnicanal', moduleKey: 'CRM' },

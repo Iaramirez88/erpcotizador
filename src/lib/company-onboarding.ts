@@ -192,6 +192,8 @@ const GOAL_LABELS: Record<OnboardingGoal, string> = {
 const COMMON_ALLOWED_HREFS = [
   '/dashboard',
   '/dashboard/perfil',
+  '/dashboard/notificaciones',
+  '/dashboard/ayuda',
   '/dashboard/reportes',
   '/dashboard/configuracion/empresa',
   '/dashboard/configuracion/usuarios',

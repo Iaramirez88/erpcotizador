@@ -7,6 +7,16 @@ import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { labelForDashboardPath } from '@/lib/dashboard-navigation'
 
+const ALWAYS_ALLOWED_PREFERENCE_PATHS = [
+  '/dashboard/perfil',
+  '/dashboard/notificaciones',
+  '/dashboard/ayuda',
+] as const
+
+function isAlwaysAllowedPreferencePath(pathname: string) {
+  return ALWAYS_ALLOWED_PREFERENCE_PATHS.some((href) => pathname === href || pathname.startsWith(`${href}/`))
+}
+
 function isAllowedDashboardPath(pathname: string, allowedHrefs: Set<string>) {
   if (pathname === '/dashboard') return true
 
@@ -30,6 +40,7 @@ export default function DashboardPermissionBoundary({ allowedHrefs, children }: 
 
   const isAllowed = useMemo(() => {
     if (!pathname || pathname.startsWith('/dashboard/onboarding')) return true
+    if (isAlwaysAllowedPreferencePath(pathname)) return true
     if (!allowedHrefSet) return true
     return isAllowedDashboardPath(pathname, allowedHrefSet)
   }, [allowedHrefSet, pathname])
