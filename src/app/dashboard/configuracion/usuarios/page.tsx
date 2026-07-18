@@ -46,6 +46,25 @@ type PageProps = {
   searchParams?: { [key: string]: string | string[] | undefined }
 }
 
+const USER_TABS = ['sede', 'invite', 'requests', 'users', 'profiles'] as const
+
+type UserTab = (typeof USER_TABS)[number]
+
+function buildUsuariosQuery(params: {
+  sedeId?: string | null
+  q?: string
+  tab?: UserTab
+  lastAccessSort?: 'asc' | 'desc'
+}) {
+  const query = new URLSearchParams()
+  if (params.sedeId) query.set('sedeId', params.sedeId)
+  if (params.q) query.set('q', params.q)
+  if (params.tab) query.set('tab', params.tab)
+  if (params.lastAccessSort) query.set('lastAccessSort', params.lastAccessSort)
+  const queryString = query.toString()
+  return queryString ? `/dashboard/configuracion/usuarios?${queryString}` : '/dashboard/configuracion/usuarios'
+}
+
 function fmtDate(value: Date | null | undefined, locale: string, naText: string): string {
   if (!value) return naText
   try {
@@ -130,6 +149,10 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
   const requestedSedeId = typeof requestedSedeIdRaw === 'string' ? requestedSedeIdRaw : ''
   const searchQueryRaw = searchParams?.q
   const searchQuery = typeof searchQueryRaw === 'string' ? searchQueryRaw.trim() : ''
+  const tabRaw = typeof searchParams?.tab === 'string' ? searchParams.tab : 'sede'
+  const activeTab = (USER_TABS as readonly string[]).includes(tabRaw) ? (tabRaw as UserTab) : 'sede'
+  const lastAccessSortRaw = typeof searchParams?.lastAccessSort === 'string' ? searchParams.lastAccessSort : 'desc'
+  const lastAccessSort = lastAccessSortRaw === 'asc' ? 'asc' : 'desc'
   const normalizedSearchQuery = normalizeSearchValue(searchQuery)
   const activeSedeId = sedes.some((sede) => sede.id === requestedSedeId) ? requestedSedeId : sedes[0]?.id ?? null
   const activeSede = activeSedeId ? sedes.find((sede) => sede.id === activeSedeId) ?? null : null
@@ -351,6 +374,7 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
       image: true,
       role: true,
       sedeDefaultId: true,
+      sedeDefault: { select: { id: true, nombre: true, codigo: true } },
       createdAt: true,
       lastLoginAt: true,
     },
@@ -398,12 +422,10 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
       })
     : []
   const sortedUsers = [...users].sort((left, right) => {
-    const leftHasAccess = Boolean(membershipByUserId[left.id])
-    const rightHasAccess = Boolean(membershipByUserId[right.id])
-
-    if (leftHasAccess !== rightHasAccess) {
-      return leftHasAccess ? 1 : -1
-    }
+    const leftAccessTime = left.lastLoginAt?.getTime() ?? Number.POSITIVE_INFINITY
+    const rightAccessTime = right.lastLoginAt?.getTime() ?? Number.POSITIVE_INFINITY
+    const accessDiff = lastAccessSort === 'asc' ? leftAccessTime - rightAccessTime : rightAccessTime - leftAccessTime
+    if (accessDiff !== 0) return accessDiff
 
     const leftName = (left.name || left.email).localeCompare(right.name || right.email, locale, { sensitivity: 'base' })
     if (leftName !== 0) return leftName
@@ -433,7 +455,7 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
         ]}
       />
 
-      <Tabs defaultValue="sede" className="space-y-4">
+      <Tabs defaultValue={activeTab} className="space-y-4">
         <TabsList className="h-auto w-full flex-wrap justify-start gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
           <TabsTrigger value="sede" className="rounded-xl px-4 py-2.5">Administración por sede</TabsTrigger>
           <TabsTrigger value="invite" className="rounded-xl px-4 py-2.5">Invitar por correo</TabsTrigger>
@@ -460,6 +482,7 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
                 <div className="grid gap-3 xl:w-full xl:max-w-4xl xl:grid-cols-[minmax(0,16rem)_minmax(0,20rem)]">
                   <form method="get" className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
                     <input type="hidden" name="q" value={searchQuery} />
+                    <input type="hidden" name="tab" value="sede" />
                     <label className="text-sm font-medium">Sede activa para administrar acceso</label>
                     <select name="sedeId" defaultValue={activeSedeId ?? ''} className="border rounded px-3 py-2 bg-white">
                       {sedes.map((sede) => (
@@ -473,6 +496,7 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
 
                   <form method="get" className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
                     <input type="hidden" name="sedeId" value={activeSedeId ?? ''} />
+                    <input type="hidden" name="tab" value="sede" />
                     <label className="text-sm font-medium">Buscar usuario</label>
                     <input
                       name="q"
@@ -484,7 +508,7 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
                       <Button type="submit">Buscar</Button>
                       {searchQuery ? (
                         <Button asChild type="button" variant="outline">
-                          <a href={activeSedeId ? `/dashboard/configuracion/usuarios?sedeId=${encodeURIComponent(activeSedeId)}` : '/dashboard/configuracion/usuarios'}>
+                          <a href={buildUsuariosQuery({ sedeId: activeSedeId, tab: 'sede' })}>
                             Limpiar
                           </a>
                         </Button>
@@ -587,6 +611,20 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
               <CardTitle>{t('rbac.users.listTitle', { count: users.length })}</CardTitle>
             </CardHeader>
             <CardContent>
+              <div className="mb-4 flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-sm font-medium text-slate-900">Ordenar por último acceso</div>
+                  <div className="text-xs text-slate-600">Cambia entre el acceso más reciente primero o el más antiguo primero.</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button asChild size="sm" variant={lastAccessSort === 'desc' ? 'default' : 'outline'}>
+                    <a href={buildUsuariosQuery({ sedeId: activeSedeId, q: searchQuery, tab: 'users', lastAccessSort: 'desc' })}>Descendente</a>
+                  </Button>
+                  <Button asChild size="sm" variant={lastAccessSort === 'asc' ? 'default' : 'outline'}>
+                    <a href={buildUsuariosQuery({ sedeId: activeSedeId, q: searchQuery, tab: 'users', lastAccessSort: 'asc' })}>Ascendente</a>
+                  </Button>
+                </div>
+              </div>
               {searchQuery ? (
                 <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                   Mostrando {users.length} resultado{users.length === 1 ? '' : 's'} para "{searchQuery}".
@@ -599,6 +637,7 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
                   <th className="py-2 text-left">{t('rbac.users.table.user')}</th>
                   <th className="py-2 text-left">{t('rbac.users.table.email')}</th>
                   <th className="py-2 text-left">{t('rbac.users.table.role')}</th>
+                  <th className="py-2 text-left">Sede</th>
                   <th className="py-2 text-left">{activeSede ? `Acceso en ${activeSede.nombre}` : 'Acceso en sede'}</th>
                   <th className="py-2 text-left">{t('rbac.users.table.created')}</th>
                   <th className="py-2 text-left">{t('rbac.users.table.lastLogin')}</th>
@@ -621,13 +660,21 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
                         </div>
                         <div>
                           <div className="font-medium">{u.name ?? naText}</div>
-                          <div className="text-xs text-muted-foreground">{u.id}</div>
-                          {u.sedeDefaultId ? <div className="text-[11px] text-slate-500">Tiene sede predeterminada asignada</div> : null}
                         </div>
                       </div>
                     </td>
                     <td className="py-2">{u.email}</td>
                     <td className="py-2">{t(userRoleKey(u.role))}</td>
+                    <td className="py-2">
+                      {u.sedeDefault ? (
+                        <div className="space-y-1">
+                          <div className="font-medium text-slate-900">{u.sedeDefault.nombre}</div>
+                          {u.sedeDefault.codigo ? <div className="text-xs text-muted-foreground">{u.sedeDefault.codigo}</div> : null}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">{naText}</span>
+                      )}
+                    </td>
                     <td className="py-2">
                       {activeSede ? (
                         membershipByUserId[u.id] ? (
@@ -673,9 +720,9 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
                             initialCapabilities={capabilityAccessByUserId[u.id] ?? {}}
                             canManagePermissionProfiles={canManagePermissionProfiles}
                             trigger={
-                              <Button type="button" size="sm" variant={membershipByUserId[u.id] ? 'outline' : 'default'}>
+                              <Button type="button" size="sm" variant="outline">
                                 <Plus className="mr-2 h-4 w-4" />
-                                {membershipByUserId[u.id] ? 'Editar acceso' : 'Dar acceso'}
+                                Editar acceso
                               </Button>
                             }
                           />
@@ -702,7 +749,7 @@ export default async function UsuariosPage({ searchParams }: PageProps) {
                 ))}
                 {users.length === 0 ? (
                   <tr>
-                    <td className="py-6 text-center text-muted-foreground" colSpan={7}>
+                    <td className="py-6 text-center text-muted-foreground" colSpan={8}>
                       {t('rbac.users.empty')}
                     </td>
                   </tr>

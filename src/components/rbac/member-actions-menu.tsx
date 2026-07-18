@@ -23,7 +23,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { UserPermissionsModal } from '@/components/rbac/user-permissions-modal'
 
 type SedeRef = { id: string; nombre: string; codigo: string | null }
 
@@ -68,7 +67,6 @@ export function MemberActionsMenu({
   const { toast } = useToast()
 
   const [menuOpen, setMenuOpen] = useState(false)
-  const [permissionsOpen, setPermissionsOpen] = useState(false)
   const [defaultSedeOpen, setDefaultSedeOpen] = useState(false)
   const [savingDefaultSede, setSavingDefaultSede] = useState(false)
   const [defaultSedeError, setDefaultSedeError] = useState<string | null>(null)
@@ -152,36 +150,6 @@ export function MemberActionsMenu({
           >
             {t('rbac.defaultSede.assign')}
           </DropdownMenuItem>
-
-          <UserPermissionsModal
-            sedeId={activeSedeId}
-            sedeNombre={activeSedeNombre}
-            user={user}
-            initialHasSedeAccess={initialHasSedeAccess}
-            initialSedeRole={initialSedeRole}
-            modules={modules}
-            initial={initialAccess}
-            initialGlobalAccess={initialGlobalAccess}
-            initialCapabilities={initialCapabilityAccess}
-            canManagePermissionProfiles={canManagePermissionProfiles}
-            open={permissionsOpen}
-            onOpenChange={(nextOpen) => {
-              setPermissionsOpen(nextOpen)
-              if (nextOpen) setMenuOpen(false)
-            }}
-            trigger={
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  e.preventDefault()
-                  setMenuOpen(false)
-                  setPermissionsOpen(true)
-                }}
-              >
-                {t('rbac.userPermissions.button')}
-              </DropdownMenuItem>
-            }
-          />
-
           <DropdownMenuItem
             className="text-rose-700 focus:text-rose-800"
             onSelect={(e) => {

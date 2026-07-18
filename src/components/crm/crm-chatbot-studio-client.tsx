@@ -329,6 +329,17 @@ function getStageOptionAnchorX(node: StudioGraphNode) {
   return node.x + node.width - 16
 }
 
+function getStageActionAnchorY(node: StudioGraphNode, responseCount: number, actionIndex: number) {
+  return node.y + 134 + (responseCount * 42) + (actionIndex * 42)
+}
+
+function getNodeDropAnchorY(node: StudioGraphNode, pointerY?: number) {
+  if (typeof pointerY !== 'number') return getNodeAnchorY(node)
+  const top = node.y + 24
+  const bottom = node.y + 96
+  return Math.max(top, Math.min(bottom, pointerY))
+}
+
 function getBezierMidpoint(args: { startX: number; startY: number; control1X: number; control1Y: number; control2X: number; control2Y: number; endX: number; endY: number }) {
   const t = 0.5
   const x = ((1 - t) ** 3 * args.startX)
@@ -369,6 +380,13 @@ function getEdgeCurveMetrics(source: StudioGraphNode, target: StudioGraphNode, a
     midpoint,
     path: `M ${startX} ${startY} C ${control1X} ${startY}, ${control2X} ${endY}, ${endX} ${endY}`,
   }
+}
+
+function isPointInsideNode(node: StudioGraphNode, point: { x: number; y: number }, padding = 18) {
+  return point.x >= (node.x - padding)
+    && point.x <= (node.x + node.width + padding)
+    && point.y >= (node.y - padding)
+    && point.y <= (node.y + 120 + padding)
 }
 
 function duplicateResponseOption(option: ChatbotFlowResponseOption): ChatbotFlowResponseOption {
@@ -630,7 +648,7 @@ function buildStudioGraph(builder: BuilderState) {
       })
     })
 
-    stage.quickActionIds.forEach((actionId) => {
+    stage.quickActionIds.forEach((actionId, actionIndex) => {
       if (!builder.quickActions.some((action) => action.id === actionId)) return
       edges.push({
         id: `${sourceId}-action-${actionId}`,
@@ -639,6 +657,8 @@ function buildStudioGraph(builder: BuilderState) {
         sourceKind: 'stage',
         targetKind: 'action',
         label: 'accion',
+        sourceOptionId: actionId,
+        sourceOptionIndex: actionIndex,
         toneClass: 'stroke-fuchsia-300',
         showLabel: false,
         dashed: true,
@@ -853,6 +873,9 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [inspectorAdvancedOpen, setInspectorAdvancedOpen] = useState(false)
   const [minimapOpen, setMinimapOpen] = useState(true)
+  const [studioOverviewOpen, setStudioOverviewOpen] = useState(true)
+  const [studioReferenceOpen, setStudioReferenceOpen] = useState(true)
+  const [studioRulesOpen, setStudioRulesOpen] = useState(false)
   const [studioMounted, setStudioMounted] = useState(false)
   const [boardViewportSize, setBoardViewportSize] = useState({ width: 0, height: 0 })
   const [error, setError] = useState<string | null>(null)
@@ -2086,9 +2109,48 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     return false
   }
 
+  function getConnectionHandleAnchor(args: { node: StudioGraphNode; sourceOptionId?: string; sourceOptionIndex?: number; targetKind?: StudioGraphNode['kind'] }) {
+    if (args.node.kind === 'stage' && typeof args.sourceOptionIndex === 'number') {
+      if (args.targetKind === 'action') {
+        const stageId = args.node.id.split(':')[1] || ''
+        const stage = builder.flowStages.find((item) => item.id === stageId)
+        const responseCount = stage?.responseOptions.length ?? 0
+        return {
+          x: getStageOptionAnchorX(args.node),
+          y: getStageActionAnchorY(args.node, responseCount, args.sourceOptionIndex),
+        }
+      }
+      return {
+        x: getStageOptionAnchorX(args.node),
+        y: getStageOptionAnchorY(args.node, args.sourceOptionIndex),
+      }
+    }
+
+    return {
+      x: getNodeAnchorX(args.node, 'right'),
+      y: getNodeAnchorY(args.node),
+    }
+  }
+
+  function findConnectionTargetNode(point: { x: number; y: number }, draft: StudioConnectionDraft) {
+    const candidates = [...studioGraph.nodes].reverse()
+    return candidates.find((node) => {
+      if (node.id === draft.fromId) return false
+      const canConnect = draft.sourceOptionId
+        ? draft.fromKind === 'stage' && (node.kind === 'stage' || node.kind === 'action')
+        : canConnectNodes(draft.fromKind, node.kind)
+      if (!canConnect) return false
+      return isPointInsideNode(node, point)
+    }) ?? null
+  }
+
   function applyConnection(sourceNode: StudioGraphNode, targetNode: StudioGraphNode, sourceOptionId?: string) {
+    const stage = sourceNode.kind === 'stage'
+      ? builder.flowStages.find((item) => item.id === (sourceNode.id.split(':')[1] || ''))
+      : null
+    const isActionLink = Boolean(sourceOptionId && stage?.quickActionIds.includes(sourceOptionId))
     const canConnect = sourceOptionId
-      ? sourceNode.kind === 'stage' && targetNode.kind === 'stage'
+      ? sourceNode.kind === 'stage' && (targetNode.kind === 'stage' || (isActionLink && targetNode.kind === 'action'))
       : canConnectNodes(sourceNode.kind, targetNode.kind)
     if (!canConnect) return
 
@@ -2106,7 +2168,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       return
     }
 
-    if (sourceNode.kind === 'stage' && targetNode.kind === 'stage') {
+    if (sourceNode.kind === 'stage' && targetNode.kind === 'stage' && !isActionLink) {
       setBuilder((current) => updateSelectedFlowInBuilder(current, {
         flowStages: current.flowStages.map((stage) => {
           if (stage.id !== sourceId) return stage
@@ -2132,7 +2194,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     if (sourceNode.kind === 'stage' && targetNode.kind === 'action') {
       setBuilder((current) => updateSelectedFlowInBuilder(current, {
         flowStages: current.flowStages.map((stage) => stage.id === sourceId
-          ? { ...stage, quickActionIds: stage.quickActionIds.includes(targetId) ? stage.quickActionIds : [...stage.quickActionIds, targetId] }
+          ? {
+              ...stage,
+              quickActionIds: sourceOptionId && stage.quickActionIds.includes(sourceOptionId)
+                ? stage.quickActionIds.map((actionId) => actionId === sourceOptionId ? targetId : actionId)
+                : (stage.quickActionIds.includes(targetId) ? stage.quickActionIds : [...stage.quickActionIds, targetId]),
+            }
           : stage),
       }))
       setNotice('Accion enlazada al mensaje.')
@@ -2173,18 +2240,6 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       currentX: startX,
       currentY: startY,
     })
-  }
-
-  function handleConnectionDrop(event: React.PointerEvent<HTMLButtonElement>, node: StudioGraphNode) {
-    if (!connectionDraft) return
-    event.stopPropagation()
-    const sourceNode = studioGraph.nodes.find((item) => item.id === connectionDraft.fromId)
-    if (!sourceNode || sourceNode.id === node.id) {
-      setConnectionDraft(null)
-      return
-    }
-    applyConnection(sourceNode, node, connectionDraft.sourceOptionId)
-    setConnectionDraft(null)
   }
 
   function openContextMenu(node: StudioFocusNode, x: number, y: number) {
@@ -3180,6 +3235,65 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     )
   }
 
+  function renderWorkspaceSwitcher(compact = false) {
+    return (
+      <div className="space-y-3">
+        {error ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-700">{error}</div> : null}
+        {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-700">{notice}</div> : null}
+
+        <Card className="border-slate-200">
+          <CardContent className={`p-3 ${compact ? 'space-y-3' : 'flex flex-wrap items-center justify-between gap-2'}`}>
+            <div className="flex items-center gap-2 rounded-xl">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-emerald-700">
+                <Bot className="h-4.5 w-4.5" />
+              </div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <span>Canal de trabajo</span>
+                <InfoHint content="Selecciona el chatbot web que vas a diseñar u operar." label="Ver ayuda del canal de trabajo" />
+              </div>
+            </div>
+
+            <div className={`flex flex-wrap items-center gap-2 ${compact ? 'w-full' : ''}`}>
+              <Select value={selectedChannelId || '__none__'} onValueChange={(value) => setSelectedChannelId(value === '__none__' ? '' : value)}>
+                <SelectTrigger className={compact ? 'w-full' : 'min-w-[260px]'}>
+                  <SelectValue placeholder="Selecciona un canal chatbot" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sin canal seleccionado</SelectItem>
+                  {channels.map((channel) => <SelectItem key={channel.id} value={channel.id}>{channel.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {selectedChannelId ? (
+                <div className={`rounded-full border px-3 py-1 text-xs font-medium ${hasUnsavedChanges ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
+                  {hasUnsavedChanges ? 'Cambios pendientes' : 'Sin cambios pendientes'}
+                </div>
+              ) : null}
+              <Button variant="outline" onClick={() => void handleCreateChannel('empty')} disabled={creating} className={compact ? 'flex-1' : ''}>{creating ? 'Creando...' : 'Crear vacío'}</Button>
+              <Button variant="outline" onClick={() => void handleCreateChannel('template')} disabled={creating} className={compact ? 'flex-1' : ''}>{creating ? 'Creando...' : 'Crear con plantilla'}</Button>
+              <Button
+                variant="outline"
+                className={`border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100 ${compact ? 'flex-1' : ''}`}
+                onClick={() => {
+                  if (!selectedChannelId) return
+                  window.location.assign(`/dashboard/crm/integraciones?channelId=${encodeURIComponent(selectedChannelId)}&open=wizard`)
+                }}
+                disabled={!selectedChannelId}
+              >
+                Configurar canal
+              </Button>
+              <Button onClick={() => void handleSaveChannel()} disabled={!selectedChannelId || saving || !hasUnsavedChanges} className={compact ? 'flex-1' : ''}>{saving ? 'Guardando...' : hasUnsavedChanges ? 'Guardar studio' : 'Studio guardado'}</Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <TabsList className={compact ? 'grid w-full grid-cols-2' : undefined}>
+          <TabsTrigger value="studio">Studio</TabsTrigger>
+          <TabsTrigger value="historial">Historial</TabsTrigger>
+        </TabsList>
+      </div>
+    )
+  }
+
   function renderMapWorkspace(overlay = false) {
     const canEditFlow = overlay && flowEditMode
     const showFullscreenInspector = canEditFlow && inspectorOpen && Boolean(focusedNode)
@@ -3330,11 +3444,15 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                           const source = studioGraph.nodes.find((node) => node.id === edge.fromId)
                           const target = studioGraph.nodes.find((node) => node.id === edge.toId)
                           if (!source || !target) return null
+                          const sourceAnchor = getConnectionHandleAnchor({
+                            node: source,
+                            sourceOptionId: edge.sourceOptionId,
+                            sourceOptionIndex: edge.sourceOptionIndex,
+                            targetKind: edge.targetKind,
+                          })
                           const metrics = getEdgeCurveMetrics(source, target, {
-                            startX: edge.sourceKind === 'stage' && typeof edge.sourceOptionIndex === 'number' ? getStageOptionAnchorX(source) : undefined,
-                            startY: edge.sourceKind === 'stage' && typeof edge.sourceOptionIndex === 'number'
-                              ? getStageOptionAnchorY(source, edge.sourceOptionIndex)
-                              : undefined,
+                            startX: sourceAnchor.x,
+                            startY: sourceAnchor.y,
                           })
                           return (
                             <g key={edge.id}>
@@ -3365,11 +3483,15 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         const source = studioGraph.nodes.find((node) => node.id === edge.fromId)
                         const target = studioGraph.nodes.find((node) => node.id === edge.toId)
                         if (!source || !target) return null
+                        const sourceAnchor = getConnectionHandleAnchor({
+                          node: source,
+                          sourceOptionId: edge.sourceOptionId,
+                          sourceOptionIndex: edge.sourceOptionIndex,
+                          targetKind: edge.targetKind,
+                        })
                         const metrics = getEdgeCurveMetrics(source, target, {
-                          startX: edge.sourceKind === 'stage' && typeof edge.sourceOptionIndex === 'number' ? getStageOptionAnchorX(source) : undefined,
-                          startY: edge.sourceKind === 'stage' && typeof edge.sourceOptionIndex === 'number'
-                            ? getStageOptionAnchorY(source, edge.sourceOptionIndex)
-                            : undefined,
+                          startX: sourceAnchor.x,
+                          startY: sourceAnchor.y,
                         })
                         const isActiveEdge = activeEdgeId === edge.id
                         const panelLeft = Math.max(24, Math.min(studioGraph.contentWidth - 232, metrics.midpoint.x - 108))
@@ -3508,10 +3630,20 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         const active = node.kind !== 'start' && focusedNode?.kind === node.kind && focusedNode.id === nodeKey
                         const canStartConnection = node.kind !== 'action'
                         const validTarget = connectionDraft
-                          ? node.id !== connectionDraft.fromId && (connectionDraft.sourceOptionId ? connectionDraft.fromKind === 'stage' && node.kind === 'stage' : canConnectNodes(connectionDraft.fromKind, node.kind))
+                          ? node.id !== connectionDraft.fromId && (
+                              connectionDraft.sourceOptionId
+                                ? connectionDraft.fromKind === 'stage' && (node.kind === 'stage' || node.kind === 'action')
+                                : canConnectNodes(connectionDraft.fromKind, node.kind)
+                            )
                           : false
                         const responseHandles = node.kind === 'stage'
                           ? (stageMap[nodeKey]?.responseOptions ?? []).slice(0, 6)
+                          : []
+                        const actionHandles = node.kind === 'stage'
+                          ? (stageMap[nodeKey]?.quickActionIds ?? [])
+                              .slice(0, 6)
+                              .map((actionId) => builder.quickActions.find((action) => action.id === actionId))
+                              .filter((action): action is ChatbotQuickAction => Boolean(action))
                           : []
                         return (
                           <div
@@ -3575,11 +3707,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                 if (!canEditFlow) return
                                 event.stopPropagation()
                               }}
-                              onPointerUp={(event) => {
-                                if (!canEditFlow) return
-                                handleConnectionDrop(event, node)
-                              }}
-                              className={`absolute -left-2.5 top-[40px] h-5 w-5 rounded-full border bg-white shadow ${validTarget ? 'border-sky-400' : 'border-slate-300'}`}
+                              className={`absolute -left-2.5 top-[40px] h-5 w-5 rounded-full border bg-white shadow ${validTarget ? 'border-sky-400 ring-2 ring-sky-200' : 'border-slate-300'}`}
                             />
                             {canStartConnection ? (
                               <button
@@ -3632,6 +3760,28 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                       className={`absolute -right-2.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border bg-white shadow ${connectionDraft?.sourceOptionId === option.id ? 'border-sky-400' : 'border-slate-300'}`}
                                     >
                                       <span className="inline-block h-2 w-2 rounded-full bg-slate-400" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                            {node.kind === 'stage' && actionHandles.length ? (
+                              <div className="mt-3 space-y-2 border-t border-fuchsia-100/80 pt-3">
+                                {actionHandles.map((action, index) => (
+                                  <div key={action.id} className="relative flex items-center gap-2 rounded-xl border border-fuchsia-200/70 bg-fuchsia-50/55 px-2.5 py-2 pr-7 text-[11px] font-medium text-fuchsia-900 shadow-sm">
+                                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-fuchsia-500" />
+                                    <span className="min-w-0 flex-1 truncate">{action.label}</span>
+                                    <button
+                                      type="button"
+                                      aria-label={`Reconectar acción ${action.label}`}
+                                      onPointerDown={(event) => {
+                                        if (!canEditFlow) return
+                                        event.stopPropagation()
+                                        handleConnectionStart(event, node, action.id, action.label, index)
+                                      }}
+                                      className={`absolute -right-2.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border bg-white shadow ${connectionDraft?.sourceOptionId === action.id ? 'border-fuchsia-400' : 'border-fuchsia-200'}`}
+                                    >
+                                      <span className="inline-block h-2 w-2 rounded-full bg-fuchsia-500" />
                                     </button>
                                   </div>
                                 ))}
@@ -3749,47 +3899,83 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               </div>
             ) : !overlay ? (
               <div className="space-y-3 rounded-[24px] border border-slate-200/80 bg-white/95 p-4 lg:sticky lg:top-4 lg:h-[calc(100vh-140px)] lg:max-h-[calc(100vh-140px)] lg:overflow-y-auto">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Vista del flujo</div>
-                  <div className="mt-1 text-sm text-slate-600">Activa editar flujo para mostrar el panel de bloques, el arrastre y las acciones avanzadas.</div>
+                {renderWorkspaceSwitcher(true)}
+                <div className="rounded-2xl border border-slate-200 bg-white/90">
+                  <button
+                    type="button"
+                    onClick={() => setStudioOverviewOpen((current) => !current)}
+                    className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                  >
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Vista del flujo</div>
+                      <div className="mt-1 text-sm text-slate-600">Activa editar flujo para mostrar el panel de bloques, el arrastre y las acciones avanzadas.</div>
+                    </div>
+                    {studioOverviewOpen ? <ChevronUp className="h-4 w-4 text-slate-500" /> : <ChevronDown className="h-4 w-4 text-slate-500" />}
+                  </button>
+                  {studioOverviewOpen ? (
+                    <div className="border-t border-slate-200 px-4 pb-4 pt-3">
+                      {!overlay ? (
+                        <Button type="button" className="w-full rounded-2xl" onClick={startFlowEditing}>Editar flujo en pantalla completa</Button>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
-                {!overlay ? (
-                  <Button type="button" className="w-full rounded-2xl" onClick={startFlowEditing}>Editar flujo en pantalla completa</Button>
-                ) : null}
                 <div className="rounded-[22px] border border-slate-200 bg-[linear-gradient(180deg,#f8fafc,#ffffff)] p-3">
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Referencia visual</div>
-                  <svg viewBox="0 0 240 170" className="mt-3 h-auto w-full">
-                    <rect x="10" y="58" width="62" height="42" rx="14" className="fill-emerald-50 stroke-emerald-300" />
-                    <text x="22" y="77" className="fill-emerald-950 text-[10px] font-semibold">Mensaje</text>
-                    <text x="22" y="90" className="fill-slate-500 text-[8px]">Recibe y guía</text>
+                  <button
+                    type="button"
+                    onClick={() => setStudioReferenceOpen((current) => !current)}
+                    className="flex w-full items-center justify-between gap-3 text-left"
+                  >
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Referencia visual</div>
+                    {studioReferenceOpen ? <ChevronUp className="h-4 w-4 text-slate-500" /> : <ChevronDown className="h-4 w-4 text-slate-500" />}
+                  </button>
+                  {studioReferenceOpen ? (
+                    <>
+                      <svg viewBox="0 0 240 170" className="mt-3 h-auto w-full">
+                        <rect x="10" y="58" width="62" height="42" rx="14" className="fill-emerald-50 stroke-emerald-300" />
+                        <text x="22" y="77" className="fill-emerald-950 text-[10px] font-semibold">Mensaje</text>
+                        <text x="22" y="90" className="fill-slate-500 text-[8px]">Recibe y guía</text>
 
-                    <rect x="90" y="16" width="62" height="42" rx="14" className="fill-amber-50 stroke-amber-300" />
-                    <text x="107" y="35" className="fill-amber-950 text-[10px] font-semibold">Filtro</text>
-                    <text x="100" y="48" className="fill-slate-500 text-[8px]">Decide la ruta</text>
+                        <rect x="90" y="16" width="62" height="42" rx="14" className="fill-amber-50 stroke-amber-300" />
+                        <text x="107" y="35" className="fill-amber-950 text-[10px] font-semibold">Filtro</text>
+                        <text x="100" y="48" className="fill-slate-500 text-[8px]">Decide la ruta</text>
 
-                    <rect x="168" y="58" width="62" height="42" rx="14" className="fill-fuchsia-50 stroke-fuchsia-300" />
-                    <text x="183" y="77" className="fill-fuchsia-950 text-[10px] font-semibold">Accion</text>
-                    <text x="176" y="90" className="fill-slate-500 text-[8px]">Responde o escala</text>
+                        <rect x="168" y="58" width="62" height="42" rx="14" className="fill-fuchsia-50 stroke-fuchsia-300" />
+                        <text x="183" y="77" className="fill-fuchsia-950 text-[10px] font-semibold">Accion</text>
+                        <text x="176" y="90" className="fill-slate-500 text-[8px]">Responde o escala</text>
 
-                    <rect x="90" y="112" width="62" height="42" rx="14" className="fill-sky-50 stroke-sky-300" />
-                    <text x="106" y="131" className="fill-sky-950 text-[10px] font-semibold">Pausa</text>
-                    <text x="101" y="144" className="fill-slate-500 text-[8px]">Espera y sigue</text>
+                        <rect x="90" y="112" width="62" height="42" rx="14" className="fill-sky-50 stroke-sky-300" />
+                        <text x="106" y="131" className="fill-sky-950 text-[10px] font-semibold">Pausa</text>
+                        <text x="101" y="144" className="fill-slate-500 text-[8px]">Espera y sigue</text>
 
-                    <path d="M 72 79 C 86 79, 84 40, 90 37" className="fill-none stroke-amber-300 stroke-[2]" />
-                    <path d="M 152 37 C 166 37, 160 79, 168 79" className="fill-none stroke-fuchsia-300 stroke-[2]" />
-                    <path d="M 72 79 C 92 79, 76 132, 90 132" className="fill-none stroke-sky-300 stroke-[2]" />
-                    <circle cx="72" cy="79" r="3" className="fill-emerald-400" />
-                    <circle cx="90" cy="37" r="3" className="fill-amber-400" />
-                    <circle cx="168" cy="79" r="3" className="fill-fuchsia-400" />
-                    <circle cx="90" cy="132" r="3" className="fill-sky-400" />
-                  </svg>
-                  <div className="mt-2 text-[11px] leading-5 text-slate-500">Mensaje inicia la conversación, Filtro decide, Accion ejecuta algo y Pausa espera antes de continuar.</div>
+                        <path d="M 72 79 C 86 79, 84 40, 90 37" className="fill-none stroke-amber-300 stroke-[2]" />
+                        <path d="M 152 37 C 166 37, 160 79, 168 79" className="fill-none stroke-fuchsia-300 stroke-[2]" />
+                        <path d="M 72 79 C 92 79, 76 132, 90 132" className="fill-none stroke-sky-300 stroke-[2]" />
+                        <circle cx="72" cy="79" r="3" className="fill-emerald-400" />
+                        <circle cx="90" cy="37" r="3" className="fill-amber-400" />
+                        <circle cx="168" cy="79" r="3" className="fill-fuchsia-400" />
+                        <circle cx="90" cy="132" r="3" className="fill-sky-400" />
+                      </svg>
+                      <div className="mt-2 text-[11px] leading-5 text-slate-500">Mensaje inicia la conversación, Filtro decide, Accion ejecuta algo y Pausa espera antes de continuar.</div>
+                    </>
+                  ) : null}
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-                  <div className="font-semibold text-slate-900">Reglas de conexion</div>
-                  <div className="mt-2">Mensaje → Mensaje, Accion o Pausa</div>
-                  <div className="mt-1">Filtro → Mensaje</div>
-                  <div className="mt-1">Pausa → Mensaje</div>
+                  <button
+                    type="button"
+                    onClick={() => setStudioRulesOpen((current) => !current)}
+                    className="flex w-full items-center justify-between gap-3 text-left"
+                  >
+                    <div className="font-semibold text-slate-900">Reglas de conexion</div>
+                    {studioRulesOpen ? <ChevronUp className="h-4 w-4 text-slate-500" /> : <ChevronDown className="h-4 w-4 text-slate-500" />}
+                  </button>
+                  {studioRulesOpen ? (
+                    <>
+                      <div className="mt-2">Mensaje → Mensaje, Accion o Pausa</div>
+                      <div className="mt-1">Filtro → Mensaje</div>
+                      <div className="mt-1">Pausa → Mensaje</div>
+                    </>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -3882,14 +4068,29 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     function handlePointerMove(event: PointerEvent) {
       const rect = boardViewportRef.current?.getBoundingClientRect()
       if (!rect) return
+      const pointerX = (event.clientX - rect.left - builder.studioViewport.x) / builder.studioViewport.scale
+      const pointerY = (event.clientY - rect.top - builder.studioViewport.y) / builder.studioViewport.scale
+      const hoveredTarget = findConnectionTargetNode({ x: pointerX, y: pointerY }, activeDraft)
       setConnectionDraft({
         ...activeDraft,
-        currentX: (event.clientX - rect.left - builder.studioViewport.x) / builder.studioViewport.scale,
-        currentY: (event.clientY - rect.top - builder.studioViewport.y) / builder.studioViewport.scale,
+        currentX: hoveredTarget ? getNodeAnchorX(hoveredTarget, 'left') : pointerX,
+        currentY: hoveredTarget ? getNodeDropAnchorY(hoveredTarget, pointerY) : pointerY,
       })
     }
 
-    function handlePointerUp() {
+    function handlePointerUp(event: PointerEvent) {
+      const rect = boardViewportRef.current?.getBoundingClientRect()
+      if (rect) {
+        const sourceNode = studioGraph.nodes.find((node) => node.id === activeDraft.fromId)
+        const pointer = {
+          x: (event.clientX - rect.left - builder.studioViewport.x) / builder.studioViewport.scale,
+          y: (event.clientY - rect.top - builder.studioViewport.y) / builder.studioViewport.scale,
+        }
+        const targetNode = sourceNode ? findConnectionTargetNode(pointer, activeDraft) : null
+        if (sourceNode && targetNode) {
+          applyConnection(sourceNode, targetNode, activeDraft.sourceOptionId)
+        }
+      }
       setConnectionDraft(null)
     }
 
@@ -3993,61 +4194,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
         ]}
       />
 
-      {error ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-700">{error}</div> : null}
-      {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-sm text-emerald-700">{notice}</div> : null}
-
-      <Card className="border-slate-200">
-        <CardContent className="flex flex-wrap items-center justify-between gap-2 p-3">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="flex items-center gap-2 rounded-xl">
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-emerald-700">
-                <Bot className="h-4.5 w-4.5" />
-              </div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                <span>Canal de trabajo</span>
-                <InfoHint content="Selecciona el chatbot web que vas a diseñar u operar." label="Ver ayuda del canal de trabajo" />
-              </div>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={selectedChannelId || '__none__'} onValueChange={(value) => setSelectedChannelId(value === '__none__' ? '' : value)}>
-              <SelectTrigger className="min-w-[260px]">
-                <SelectValue placeholder="Selecciona un canal chatbot" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">Sin canal seleccionado</SelectItem>
-                {channels.map((channel) => <SelectItem key={channel.id} value={channel.id}>{channel.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            {selectedChannelId ? (
-              <div className={`rounded-full border px-3 py-1 text-xs font-medium ${hasUnsavedChanges ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
-                {hasUnsavedChanges ? 'Cambios pendientes' : 'Sin cambios pendientes'}
-              </div>
-            ) : null}
-            <Button variant="outline" onClick={() => void handleCreateChannel('empty')} disabled={creating}>{creating ? 'Creando...' : 'Crear vacío'}</Button>
-            <Button variant="outline" onClick={() => void handleCreateChannel('template')} disabled={creating}>{creating ? 'Creando...' : 'Crear con plantilla'}</Button>
-            <Button
-              variant="outline"
-              className="border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100"
-              onClick={() => {
-                if (!selectedChannelId) return
-                window.location.assign(`/dashboard/crm/integraciones?channelId=${encodeURIComponent(selectedChannelId)}&open=wizard`)
-              }}
-              disabled={!selectedChannelId}
-            >
-              Configurar canal
-            </Button>
-            <Button onClick={() => void handleSaveChannel()} disabled={!selectedChannelId || saving || !hasUnsavedChanges}>{saving ? 'Guardando...' : hasUnsavedChanges ? 'Guardar studio' : 'Studio guardado'}</Button>
-          </div>
-        </CardContent>
-      </Card>
-
       <Tabs defaultValue="studio" className="space-y-3">
-        <TabsList>
-          <TabsTrigger value="studio">Studio</TabsTrigger>
-          <TabsTrigger value="historial">Historial</TabsTrigger>
-        </TabsList>
-
         <TabsContent value="studio" className="space-y-3">
           {!studioMounted ? (
             <Card>
@@ -4460,6 +4607,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
         </TabsContent>
 
         <TabsContent value="historial" className="space-y-4">
+          {renderWorkspaceSwitcher(false)}
           {renderConversationsWorkspace()}
         </TabsContent>
       </Tabs>
