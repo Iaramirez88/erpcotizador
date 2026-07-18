@@ -82,6 +82,34 @@ type PlanCatalogResponse =
   | { ok: true; rows: PlanCatalogRow[] }
   | { ok?: false; error?: string }
 
+type BusinessType =
+  | 'ODONTOLOGIA'
+  | 'RESTAURANTE'
+  | 'ABOGADOS'
+  | 'CLINICA'
+  | 'CONTABILIDAD'
+  | 'DOTACIONES'
+  | 'LITOGRAFIA'
+  | 'COMERCIO'
+  | 'SERVICIOS'
+
+type BusinessTypeRow = {
+  businessType: BusinessType
+  label: string
+  description: string
+  active: boolean
+  sortOrder: number
+  updatedAt: string
+}
+
+type BusinessTypesResponse =
+  | { ok: true; rows: BusinessTypeRow[] }
+  | { ok?: false; error?: string }
+
+type BusinessTypePutResponse =
+  | { ok: true; row: BusinessTypeRow }
+  | { ok?: false; error?: string }
+
 function serializeIncludeGroups(groups: PlanCatalogRow['incluye']) {
   return groups.map((group) => [group.title, ...group.items.map((item) => `- ${item}`)].join('\n')).join('\n\n')
 }
@@ -162,6 +190,8 @@ export default function SuperAdminPlanModulesClient() {
   const [planRows, setPlanRows] = useState<PlanCatalogRow[]>([])
   const [savingPlanTier, setSavingPlanTier] = useState<PlanTier | null>(null)
   const [copySourceByTier, setCopySourceByTier] = useState<Partial<Record<PlanTier, PlanTier>>>({})
+  const [businessTypeRows, setBusinessTypeRows] = useState<BusinessTypeRow[]>([])
+  const [savingBusinessType, setSavingBusinessType] = useState<BusinessType | null>(null)
 
   const [empresaNit, setEmpresaNit] = useState('')
   const [empresaId, setEmpresaId] = useState('')
@@ -184,6 +214,8 @@ export default function SuperAdminPlanModulesClient() {
         const commercialPricesJson = (await commercialPricesRes.json().catch(() => ({}))) as CommercialPricesResponse
         const planCatalogRes = await fetch('/api/super-admin/plan-catalog', { cache: 'no-store' })
         const planCatalogJson = (await planCatalogRes.json().catch(() => ({}))) as PlanCatalogResponse
+        const businessTypesRes = await fetch('/api/super-admin/onboarding-business-types', { cache: 'no-store' })
+        const businessTypesJson = (await businessTypesRes.json().catch(() => ({}))) as BusinessTypesResponse
         if (!res.ok || !('ok' in json) || !json.ok) {
           setError(('error' in json && json.error) || 'No se pudo cargar la configuración')
           return
@@ -200,6 +232,10 @@ export default function SuperAdminPlanModulesClient() {
           setError(('error' in planCatalogJson && planCatalogJson.error) || 'No se pudo cargar el catálogo de planes')
           return
         }
+        if (!businessTypesRes.ok || !('ok' in businessTypesJson) || !businessTypesJson.ok) {
+          setError(('error' in businessTypesJson && businessTypesJson.error) || 'No se pudo cargar los nichos de onboarding')
+          return
+        }
 
         if (!cancelled) {
           setPlanTiers(json.planTiers)
@@ -208,6 +244,7 @@ export default function SuperAdminPlanModulesClient() {
           setPriceRows(pricesJson.rows)
           setCommercialPriceRows(commercialPricesJson.rows)
           setPlanRows(planCatalogJson.rows)
+          setBusinessTypeRows(businessTypesJson.rows)
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error inesperado')
@@ -380,6 +417,32 @@ export default function SuperAdminPlanModulesClient() {
     }
   }
 
+  function updateBusinessTypeRow(businessType: BusinessType, updater: (row: BusinessTypeRow) => BusinessTypeRow) {
+    setBusinessTypeRows((prev) => prev.map((row) => (row.businessType === businessType ? updater(row) : row)))
+  }
+
+  async function saveBusinessType(row: BusinessTypeRow) {
+    setSavingBusinessType(row.businessType)
+    setError(null)
+    try {
+      const res = await fetch('/api/super-admin/onboarding-business-types', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessType: row.businessType, active: row.active, sortOrder: row.sortOrder }),
+      })
+      const json = (await res.json().catch(() => ({}))) as BusinessTypePutResponse
+      if (!res.ok || !json.ok || !json.row) {
+        setError(('error' in json && json.error) || 'No se pudo guardar el nicho')
+        return
+      }
+      updateBusinessTypeRow(row.businessType, () => json.row)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error inesperado')
+    } finally {
+      setSavingBusinessType(null)
+    }
+  }
+
   async function generateEmpresaCode() {
     setGeneratingCode(true)
     setError(null)
@@ -474,6 +537,46 @@ export default function SuperAdminPlanModulesClient() {
           </div>
         </CardContent>
       </Card>
+
+      {!loading && !error ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Nichos visibles en onboarding</CardTitle>
+            <CardDescription>Controla qué nichos aparecen en la configuración inicial y el orden en que se muestran.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {businessTypeRows.map((row) => (
+              <div key={row.businessType} className="rounded-2xl border border-slate-200 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-base font-semibold text-slate-900">{row.label}</div>
+                    <div className="mt-1 text-sm text-slate-500">{row.description}</div>
+                  </div>
+                  <Switch checked={row.active} onCheckedChange={(value) => updateBusinessTypeRow(row.businessType, (current) => ({ ...current, active: Boolean(value) }))} />
+                </div>
+                <div className="mt-4 grid gap-3">
+                  <div className="grid gap-1.5">
+                    <Label className="text-sm">Orden</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={row.sortOrder}
+                      onChange={(event) => updateBusinessTypeRow(row.businessType, (current) => ({ ...current, sortOrder: Number(event.target.value || 0) }))}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+                    <span>{row.active ? 'Visible en onboarding' : 'Oculto del onboarding'}</span>
+                    <span>{savingBusinessType === row.businessType ? 'Guardando…' : ''}</span>
+                  </div>
+                  <Button type="button" onClick={() => void saveBusinessType(row)} disabled={savingBusinessType === row.businessType}>
+                    {savingBusinessType === row.businessType ? 'Guardando…' : 'Guardar nicho'}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {!loading && !error ? (
         <Card>

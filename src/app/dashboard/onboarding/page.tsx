@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import OnboardingWizardClient from './onboarding-wizard-client'
 import { getBusinessTypeLabel, parseCompanyOnboardingData, resolveDashboardConfig } from '@/lib/company-onboarding'
+import { getVisibleOnboardingBusinessTypes } from '@/lib/onboarding-business-type-settings'
 
 export default async function DashboardOnboardingPage() {
   const session = await auth()
@@ -41,6 +42,7 @@ export default async function DashboardOnboardingPage() {
   }
 
   const locked = Boolean(empresa.onboardingCompletedAt)
+  const availableBusinessTypes = await getVisibleOnboardingBusinessTypes()
   const dashboard = resolveDashboardConfig({
     dashboardConfig: empresa.dashboardConfig,
     onboardingData: empresa.onboardingData,
@@ -91,6 +93,7 @@ export default async function DashboardOnboardingPage() {
       ) : (
         <OnboardingWizardClient
           initialData={parseCompanyOnboardingData(empresa.onboardingData)}
+          availableBusinessTypes={availableBusinessTypes}
           mode="page"
         />
       )}

@@ -12,6 +12,7 @@ import { ALL_MODULE_KEYS, saveEmpresaModuleOverride } from '@/lib/plan-modules'
 import { ensureBusinessTypeSeedsForEmpresa } from '@/lib/business-type-seeds'
 import { getActiveSedeForUser } from '@/lib/rbac'
 import { buildAllowedDashboardHrefsForUser } from '@/lib/dashboard-access'
+import { getVisibleOnboardingBusinessTypes } from '@/lib/onboarding-business-type-settings'
 
 export const runtime = 'nodejs'
 
@@ -74,6 +75,7 @@ export async function GET() {
       baseAllowedHrefs: dashboard?.allowedHrefs ?? null,
     })
     const locked = Boolean(context.empresa.onboardingCompletedAt)
+    const availableBusinessTypes = await getVisibleOnboardingBusinessTypes()
 
     return NextResponse.json({
       ok: true,
@@ -84,6 +86,7 @@ export async function GET() {
       businessType: context.empresa.businessType,
       businessTypeLabel: getBusinessTypeLabel(context.empresa.businessType as Parameters<typeof getBusinessTypeLabel>[0]),
       completedAt: context.empresa.onboardingCompletedAt,
+      availableBusinessTypes,
       data,
       dashboard: dashboard
         ? {
@@ -117,6 +120,10 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null)
     const onboarding = parseCompanyOnboardingData(body)
+    const availableBusinessTypes = await getVisibleOnboardingBusinessTypes()
+    if (!availableBusinessTypes.includes(onboarding.businessType)) {
+      return NextResponse.json({ ok: false, error: 'Ese nicho no está disponible en la configuración inicial.' }, { status: 400 })
+    }
     const preset = buildCompanyPreset(onboarding)
 
     await ensureBusinessTypeSeedsForEmpresa({ empresaId: context.empresa.id, businessType: onboarding.businessType })

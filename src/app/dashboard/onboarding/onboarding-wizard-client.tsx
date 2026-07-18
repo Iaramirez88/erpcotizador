@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { BriefcaseBusiness, Building2, Calculator, Check, ChefHat, ChevronLeft, ChevronRight, HeartPulse, Scale, Sparkles, Stethoscope } from 'lucide-react'
+import { BriefcaseBusiness, Building2, Calculator, Check, ChefHat, ChevronLeft, ChevronRight, HeartPulse, Printer, Scale, Sparkles, Stethoscope } from 'lucide-react'
 import {
   BUSINESS_TYPES,
   ONBOARDING_GOALS,
@@ -10,6 +10,7 @@ import {
   TEAM_SIZES,
   WORKFLOW_NEEDS,
   buildCompanyPreset,
+  getBusinessTypeCardDescription,
   getBusinessOnboardingProfile,
   getBusinessTypeLabel,
   getDefaultCompanyOnboardingData,
@@ -26,6 +27,7 @@ import { cn } from '@/lib/utils'
 
 type OnboardingWizardClientProps = {
   initialData: CompanyOnboardingData
+  availableBusinessTypes?: CompanyOnboardingData['businessType'][]
   mode?: 'page' | 'modal'
   open?: boolean
   required?: boolean
@@ -79,6 +81,7 @@ const BUSINESS_ICONS: Record<(typeof BUSINESS_TYPES)[number], React.ComponentTyp
   CLINICA: HeartPulse,
   CONTABILIDAD: Calculator,
   DOTACIONES: BriefcaseBusiness,
+  LITOGRAFIA: Printer,
   COMERCIO: Building2,
   SERVICIOS: Sparkles,
 }
@@ -147,6 +150,7 @@ function StepPill(props: { index: number; currentStep: number; label: string }) 
 
 export default function OnboardingWizardClient({
   initialData,
+  availableBusinessTypes,
   mode = 'page',
   open = true,
   required = false,
@@ -159,6 +163,7 @@ export default function OnboardingWizardClient({
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
   const [showFinishingLoader, setShowFinishingLoader] = useState(false)
+  const isModal = mode === 'modal'
 
   const selectedGoalSet = useMemo(() => new Set(form.primaryGoals), [form.primaryGoals])
   const selectedWorkflowSet = useMemo(() => new Set(form.workflowNeeds), [form.workflowNeeds])
@@ -166,6 +171,10 @@ export default function OnboardingWizardClient({
   const presetPreview = useMemo(() => buildCompanyPreset(form), [form])
   const businessProfile = useMemo(() => getBusinessOnboardingProfile(form.businessType), [form.businessType])
   const addonDefinitions = useMemo(() => getOptionalAddonDefinitions(form.businessType), [form.businessType])
+  const visibleBusinessTypes = useMemo(
+    () => (availableBusinessTypes?.length ? availableBusinessTypes : [...BUSINESS_TYPES]),
+    [availableBusinessTypes]
+  )
 
   function setBusinessType(value: CompanyOnboardingData['businessType']) {
     setForm((current) => ({ ...current, businessType: value }))
@@ -269,24 +278,27 @@ export default function OnboardingWizardClient({
   }
 
   const content = (
-    <div className={cn('space-y-5', mode === 'modal' ? 'max-h-[85vh] overflow-y-auto pr-1' : '')}>
-      <div className="space-y-4">
+    <div className="space-y-4">
+      <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           {STEP_TITLES.map((label, index) => (
             <StepPill key={label} index={index} currentStep={step} label={label} />
           ))}
         </div>
 
-        <div className="rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.08),transparent_26%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.12),transparent_32%),linear-gradient(180deg,#ffffff,#f8fafc)] p-5 shadow-[0_20px_45px_-35px_rgba(15,23,42,0.3)]">
+        <div className={cn(
+          'rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.08),transparent_26%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.12),transparent_32%),linear-gradient(180deg,#ffffff,#f8fafc)] shadow-[0_20px_45px_-35px_rgba(15,23,42,0.3)]',
+          isModal ? 'p-4' : 'p-5'
+        )}>
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Configuración guiada</div>
-              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{businessProfile.heroTitle}</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+              <h2 className={cn('mt-2 font-semibold tracking-tight text-slate-950', isModal ? 'text-2xl' : 'text-3xl')}>{businessProfile.heroTitle}</h2>
+              <p className={cn('mt-2 max-w-2xl text-slate-600', isModal ? 'text-sm leading-5' : 'text-sm leading-6')}>
                 {businessProfile.heroDescription}
               </p>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-600 shadow-sm">
+            <div className={cn('rounded-2xl border border-slate-200 bg-white/80 text-sm text-slate-600 shadow-sm', isModal ? 'px-3.5 py-2.5' : 'px-4 py-3')}>
               <div className="font-medium text-slate-950">{presetPreview.dashboard.headline}</div>
               <div className="mt-1">{presetPreview.modules.length} módulos activos para arrancar</div>
               <div className="mt-1 text-xs text-slate-500">Sin frentes sobrantes para {getBusinessTypeLabel(form.businessType).toLowerCase()}.</div>
@@ -300,8 +312,8 @@ export default function OnboardingWizardClient({
       {!showFinishingLoader ? (
         <>
           {step === 0 ? (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {BUSINESS_TYPES.map((item) => {
+            <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {visibleBusinessTypes.map((item) => {
                 const Icon = BUSINESS_ICONS[item]
                 const selected = form.businessType === item
                 return (
@@ -310,25 +322,19 @@ export default function OnboardingWizardClient({
                     type="button"
                     onClick={() => setBusinessType(item)}
                     className={cn(
-                      'rounded-[24px] border p-4 text-left transition-all',
+                      'rounded-[22px] border text-left transition-all',
+                      isModal ? 'p-3.5' : 'p-4',
                       selected
                         ? 'border-sky-300 bg-[linear-gradient(180deg,#f7fcff,#eef8ff)] shadow-[0_18px_34px_-24px_rgba(14,165,233,0.45)]'
                         : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
                     )}
                   >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-[18px] border border-white/70 bg-white/85 text-slate-900 shadow-sm">
-                      <Icon className="h-6 w-6" />
+                    <div className={cn('flex items-center justify-center rounded-[18px] border border-white/70 bg-white/85 text-slate-900 shadow-sm', isModal ? 'h-10 w-10' : 'h-12 w-12')}>
+                      <Icon className={cn(isModal ? 'h-5 w-5' : 'h-6 w-6')} />
                     </div>
-                    <div className="mt-4 text-lg font-semibold text-slate-950">{getBusinessTypeLabel(item)}</div>
-                    <div className="mt-1 text-sm leading-6 text-slate-600">
-                      {item === 'ODONTOLOGIA' ? 'Historia clínica, agenda, pacientes y flujo clínico base.' : null}
-                      {item === 'CONTABILIDAD' ? 'Cierres, cartera, reportes y operación financiera formal.' : null}
-                      {item === 'ABOGADOS' ? 'Clientes, seguimiento de casos y operación de servicios profesionales.' : null}
-                      {item === 'RESTAURANTE' ? 'Caja, inventario, compras y ritmo operativo diario.' : null}
-                      {item === 'DOTACIONES' ? 'Cotización, pedidos, inventario y entregas para dotaciones.' : null}
-                      {item === 'COMERCIO' ? 'Venta, cobro, inventario y entregas para retail o distribución.' : null}
-                      {item === 'CLINICA' ? 'Atención, pacientes y facturación de servicios de salud.' : null}
-                      {item === 'SERVICIOS' ? 'Cotización, clientes y operación ligera de servicios.' : null}
+                    <div className={cn('font-semibold text-slate-950', isModal ? 'mt-3 text-base' : 'mt-4 text-lg')}>{getBusinessTypeLabel(item)}</div>
+                    <div className={cn('mt-1 text-slate-600', isModal ? 'text-xs leading-5' : 'text-sm leading-6')}>
+                      {getBusinessTypeCardDescription(item)}
                     </div>
                   </button>
                 )
@@ -565,8 +571,8 @@ export default function OnboardingWizardClient({
   if (mode === 'modal') {
     return (
       <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen && !required) onDismiss?.() }}>
-        <DialogContent hideClose={required} className="max-w-6xl rounded-[30px] border-slate-200 p-0">
-          <div className="border-b border-slate-100 px-6 py-5">
+        <DialogContent hideClose={required} className="flex max-h-[88vh] max-w-5xl flex-col overflow-hidden rounded-[30px] border-slate-200 p-0">
+          <div className="border-b border-slate-100 px-5 py-4 sm:px-6">
             <DialogHeader>
               <DialogTitle className="text-2xl text-slate-950">Configura tu espacio inicial</DialogTitle>
               <DialogDescription className="text-sm leading-6 text-slate-600">
@@ -574,7 +580,7 @@ export default function OnboardingWizardClient({
               </DialogDescription>
             </DialogHeader>
           </div>
-          <div className="px-6 py-5">{content}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">{content}</div>
         </DialogContent>
       </Dialog>
     )

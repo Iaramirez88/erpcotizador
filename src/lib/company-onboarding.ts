@@ -7,6 +7,7 @@ export const BUSINESS_TYPES = [
   'CLINICA',
   'CONTABILIDAD',
   'DOTACIONES',
+  'LITOGRAFIA',
   'COMERCIO',
   'SERVICIOS',
 ] as const
@@ -110,8 +111,21 @@ const BUSINESS_TYPE_LABELS: Record<BusinessType, string> = {
   CLINICA: 'Clínica',
   CONTABILIDAD: 'Contabilidad',
   DOTACIONES: 'Dotaciones',
+  LITOGRAFIA: 'Litografía',
   COMERCIO: 'Comercio',
   SERVICIOS: 'Servicios profesionales',
+}
+
+const BUSINESS_TYPE_CARD_DESCRIPTIONS: Record<BusinessType, string> = {
+  ODONTOLOGIA: 'Historia clínica, agenda, pacientes y flujo clínico base.',
+  RESTAURANTE: 'Caja, inventario, compras y ritmo operativo diario.',
+  ABOGADOS: 'Clientes, seguimiento de casos y operación de servicios profesionales.',
+  CLINICA: 'Atención, pacientes y facturación de servicios de salud.',
+  CONTABILIDAD: 'Cierres, cartera, reportes y operación financiera formal.',
+  DOTACIONES: 'Cotización, pedidos, inventario y entregas para dotaciones.',
+  LITOGRAFIA: 'Cotización, preprensa y producción litográfica con apoyo de IA.',
+  COMERCIO: 'Venta, cobro, inventario y entregas para retail o distribución.',
+  SERVICIOS: 'Cotización, clientes y operación ligera de servicios.',
 }
 
 const BUSINESS_ONBOARDING_PROFILES: Record<BusinessType, BusinessOnboardingProfile> = {
@@ -163,6 +177,14 @@ const BUSINESS_ONBOARDING_PROFILES: Record<BusinessType, BusinessOnboardingProfi
     addonsTitle: 'Amplía seguimiento y control solo si tu ciclo lo pide',
     addonsDescription: 'Los precios se muestran claros para que elijas addons por utilidad real, no por paquete inflado.',
   },
+  LITOGRAFIA: {
+    heroTitle: 'Activa un frente litográfico listo para cotizar y producir',
+    heroDescription: 'Priorizamos cotización litográfica, pedidos, producción y apoyo con IA sin mezclar módulos que no aportan al taller.',
+    priorityPrompt: '¿Qué debe quedar más fuerte en tu arranque litográfico?',
+    operationsPrompt: 'Ajusta cómo cotizarás, producirás y coordinarás el trabajo desde el primer día.',
+    addonsTitle: 'Amplía la litografía solo cuando mejore cierre o control',
+    addonsDescription: 'CRM, contabilidad y nómina se ofrecen como capas opcionales para crecer sin inflar el espacio base.',
+  },
   COMERCIO: {
     heroTitle: 'Prepara una operación comercial ágil y visible',
     heroDescription: 'Dejamos POS, inventario, compras y remisiones listos para rotación diaria y control básico.',
@@ -208,6 +230,7 @@ const BUSINESS_TYPE_CORE_MODULES: Record<BusinessType, ModuleKey[]> = {
   CLINICA: ['DASHBOARD', 'CONFIG', 'NOTIFICACIONES', 'REPORTES', 'CLIENTES', 'POS'],
   CONTABILIDAD: ['DASHBOARD', 'CONFIG', 'NOTIFICACIONES', 'REPORTES', 'CLIENTES', 'CONTABILIDAD'],
   DOTACIONES: ['DASHBOARD', 'CONFIG', 'NOTIFICACIONES', 'REPORTES', 'COTIZADOR', 'COTIZACIONES', 'CLIENTES', 'INVENTARIO', 'COMPRAS', 'PROVEEDORES', 'REMISIONES'],
+  LITOGRAFIA: ['DASHBOARD', 'CONFIG', 'NOTIFICACIONES', 'REPORTES', 'COTIZADOR', 'COTIZACIONES', 'CLIENTES', 'ORDENES', 'ESCANEOS', 'MATERIALES'],
   COMERCIO: ['DASHBOARD', 'CONFIG', 'NOTIFICACIONES', 'REPORTES', 'POS', 'CLIENTES', 'INVENTARIO', 'COMPRAS', 'PROVEEDORES', 'REMISIONES'],
   SERVICIOS: ['DASHBOARD', 'CONFIG', 'NOTIFICACIONES', 'REPORTES', 'COTIZADOR', 'COTIZACIONES', 'CLIENTES'],
 }
@@ -219,6 +242,7 @@ const BUSINESS_TYPE_ALLOWED_HREFS: Record<BusinessType, string[]> = {
   CLINICA: ['/dashboard/clientes', '/dashboard/pos'],
   CONTABILIDAD: ['/dashboard/clientes', '/dashboard/contabilidad', '/dashboard/contabilidad/nomina'],
   DOTACIONES: ['/dashboard/dotaciones', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/clientes', '/dashboard/inventario', '/dashboard/compras', '/dashboard/proveedores', '/dashboard/remisiones'],
+  LITOGRAFIA: ['/dashboard/litografia', '/dashboard/litografia/conocimiento-ia', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/clientes', '/dashboard/ordenes', '/dashboard/escaneos', '/dashboard/productos'],
   COMERCIO: ['/dashboard/pos', '/dashboard/clientes', '/dashboard/inventario', '/dashboard/compras', '/dashboard/proveedores', '/dashboard/remisiones'],
   SERVICIOS: ['/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/clientes'],
 }
@@ -230,6 +254,7 @@ const BUSINESS_TYPE_PRIORITIES: Record<BusinessType, string[]> = {
   CLINICA: ['/dashboard/clientes', '/dashboard/pos'],
   CONTABILIDAD: ['/dashboard/contabilidad', '/dashboard/contabilidad/nomina', '/dashboard/clientes'],
   DOTACIONES: ['/dashboard/dotaciones', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/remisiones'],
+  LITOGRAFIA: ['/dashboard/litografia', '/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/ordenes'],
   COMERCIO: ['/dashboard/pos', '/dashboard/inventario', '/dashboard/remisiones'],
   SERVICIOS: ['/dashboard/cotizador', '/dashboard/cotizaciones', '/dashboard/clientes'],
 }
@@ -328,6 +353,10 @@ function addIfMissing(target: ModuleKey[], modules: ModuleKey[]) {
 export function getBusinessTypeLabel(value: BusinessType | null | undefined) {
   if (!value || !BUSINESS_TYPE_LABELS[value]) return 'Configuración personalizada'
   return BUSINESS_TYPE_LABELS[value]
+}
+
+export function getBusinessTypeCardDescription(value: BusinessType) {
+  return BUSINESS_TYPE_CARD_DESCRIPTIONS[value]
 }
 
 export function getDefaultCompanyOnboardingData(): CompanyOnboardingData {

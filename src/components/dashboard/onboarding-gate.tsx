@@ -10,6 +10,7 @@ type OnboardingStatusResponse = {
   required?: boolean
   editable?: boolean
   data?: CompanyOnboardingData
+  availableBusinessTypes?: CompanyOnboardingData['businessType'][]
 }
 
 export default function OnboardingGate() {
@@ -18,6 +19,7 @@ export default function OnboardingGate() {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [initialData, setInitialData] = useState<CompanyOnboardingData | null>(null)
+  const [availableBusinessTypes, setAvailableBusinessTypes] = useState<CompanyOnboardingData['businessType'][]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -29,6 +31,7 @@ export default function OnboardingGate() {
         if (cancelled || !res.ok || !json.ok) return
         if (pathname.startsWith('/dashboard/onboarding')) return
         setInitialData(json.data ?? null)
+        setAvailableBusinessTypes(Array.isArray(json.availableBusinessTypes) ? json.availableBusinessTypes : [])
         setOpen(Boolean(json.required))
       } catch {
         // no-op
@@ -51,6 +54,7 @@ export default function OnboardingGate() {
       open={open}
       required
       initialData={initialData}
+      availableBusinessTypes={availableBusinessTypes}
       onCompleted={() => {
         setOpen(false)
         router.refresh()
