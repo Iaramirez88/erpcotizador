@@ -25,14 +25,10 @@ function addTrialWindow(startedAt: Date) {
   return new Date(startedAt.getTime() + PERSONAL_TRIAL_DAYS * 24 * 60 * 60 * 1000)
 }
 
-function parseEmpresaIdFromEmpCode(code: string): string | null {
-  const raw = code.trim()
-  if (!raw) return null
-  const up = raw.toUpperCase()
-  if (!up.startsWith('EMP-')) return null
-  const parts = raw.split('-')
-  const empresaId = (parts[1] ?? '').trim()
-  return empresaId || null
+function normalizeWorkspaceCode(code: string): string | null {
+  const normalized = code.trim().toUpperCase()
+  if (!/^WS-[A-Z0-9]+$/i.test(normalized)) return null
+  return normalized
 }
 
 async function createPersonalEmpresa(args: { nombre: string; email: string }) {
@@ -114,16 +110,17 @@ export async function POST(request: Request) {
     // Resolver empresa (entidad cabeza). Si no llega empresaId, creamos una cuenta personal.
     const rawEmpresaId = typeof empresaId === 'string' ? empresaId.trim() : ''
 
-    // Compat: si llega el código EMP-... en el campo empresaId, derivamos el ID y usamos el mismo string como código.
     let derivedAccessCode = typeof accessCode === 'string' ? accessCode.trim() : ''
-    const parsedFromEmp = rawEmpresaId ? parseEmpresaIdFromEmpCode(rawEmpresaId) : null
+    const workspaceCode = rawEmpresaId ? normalizeWorkspaceCode(rawEmpresaId) : null
 
-    const resolvedEmpresaId = parsedFromEmp ?? rawEmpresaId
-    if (parsedFromEmp && !derivedAccessCode) {
-      derivedAccessCode = rawEmpresaId
-    }
+    const resolvedEmpresaId = workspaceCode ? '' : rawEmpresaId
 
-    const empresa = resolvedEmpresaId
+    const empresa = workspaceCode
+      ? await prisma.empresa.findUnique({
+          where: { workspaceCode },
+          select: { id: true, nombre: true, registrationCodeHash: true },
+        })
+      : resolvedEmpresaId
       ? await prisma.empresa.findUnique({
           where: { id: resolvedEmpresaId },
           select: { id: true, nombre: true, registrationCodeHash: true },
@@ -139,7 +136,7 @@ export async function POST(request: Request) {
       return NextResponse.json(userLimit, { status: 402 })
     }
 
-    if (resolvedEmpresaId && empresa?.registrationCodeHash) {
+    if (resolvedEmpresaId && !workspaceCode && empresa?.registrationCodeHash) {
       const code = derivedAccessCode
       if (!code) {
         return NextResponse.json({ error: 'Código de acceso requerido' }, { status: 400 })

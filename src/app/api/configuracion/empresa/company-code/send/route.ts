@@ -1,19 +1,12 @@
 import { NextResponse } from 'next/server'
-import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { requireApiAccess } from '@/lib/api-rbac'
 import { ModuleKey } from '@prisma/client'
 import { sendEmail } from '@/lib/email'
 import { escapeHtml, renderEmail, renderEmailCode, renderEmailLink } from '@/lib/email-template'
+import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
 
 export const runtime = 'nodejs'
-
-function randomCodePart(length: number): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let out = ''
-  for (let i = 0; i < length; i++) out += chars[Math.floor(Math.random() * chars.length)]
-  return out
-}
 
 function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/+$/, '')
@@ -55,33 +48,29 @@ export async function POST(request: Request) {
   const empresa = await prisma.empresa.findUnique({ where: { id: empresaId }, select: { id: true, nombre: true } })
   if (!empresa?.id) return NextResponse.json({ ok: false, error: 'Empresa no encontrada' }, { status: 404 })
 
-  // Nota: el código se guarda hasheado; para compartirlo por correo lo generamos de nuevo.
-  const codePlain = `EMP-${empresaId}-${randomCodePart(8)}`
-  const codeHash = await bcrypt.hash(codePlain, 12)
-
-  await prisma.empresa.update({ where: { id: empresaId }, data: { registrationCodeHash: codeHash }, select: { id: true } })
+  const codePlain = await ensureWorkspaceCodeForEmpresa(empresaId)
 
   const baseUrl = getBaseUrl(request)
   const registerUrlObj = baseUrl ? new URL('/auth/register', baseUrl) : null
   if (registerUrlObj) {
-    registerUrlObj.searchParams.set('empresaId', empresaId)
+    registerUrlObj.searchParams.set('empresaId', codePlain)
     registerUrlObj.searchParams.set('email', email)
   }
 
   const registerUrl = registerUrlObj
     ? registerUrlObj.toString()
-    : `/auth/register?empresaId=${encodeURIComponent(empresaId)}&email=${encodeURIComponent(email)}`
+    : `/auth/register?empresaId=${encodeURIComponent(codePlain)}&email=${encodeURIComponent(email)}`
 
-  const subject = `Código de empresa · ${empresa.nombre} · Ordex`
+  const subject = `Código de espacio · ${empresa.nombre} · Ordex`
 
   const html = renderEmail({
     title: `Acceso a ${empresa.nombre}`,
-    preheader: 'Código de empresa para registrarte o unirte al espacio de trabajo.',
-    intro: `Usa este código para registrarte o unirte a ${empresa.nombre}:`,
+    preheader: 'Código de espacio para registrarte o unirte al espacio de trabajo.',
+    intro: `Usa este código WS para registrarte o unirte a ${empresa.nombre}:`,
     bodyHtml: `
       ${renderEmailCode(codePlain, { size: 'md' })}
       <p style="margin:0 0 12px; color:#374151;">Registro: ${renderEmailLink(registerUrl, 'Abrir registro')}</p>
-      <p style="margin:0; color:#6B7280; font-size:12px;">Importante: por seguridad, el código puede rotar si se vuelve a generar.</p>
+      <p style="margin:0; color:#6B7280; font-size:12px;">Importante: este es el código único del espacio para compartir acceso.</p>
     `,
     cta: { label: 'Crear cuenta', href: registerUrl },
     footerNote: `Espacio: ${escapeHtml(empresa.nombre)}`,

@@ -189,8 +189,8 @@ export default function ConfigEmpresaPage() {
             <>
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <Label>Código para solicitar acceso (WS-...)</Label>
-                  <InfoHint content="Este es el código que debes enviar a un usuario existente para que pida acceso desde Mi perfil. Es único y no cambia." label="Ver ayuda del código de acceso" />
+                  <Label>Código de acceso del espacio (WS-...)</Label>
+                  <InfoHint content="Este es el único código que debes compartir para que otra persona se registre o active su acceso al espacio. Es único y no cambia." label="Ver ayuda del código de acceso" />
                 </div>
                 <Input value={config.workspaceCode} readOnly disabled className="font-mono" />
               </div>

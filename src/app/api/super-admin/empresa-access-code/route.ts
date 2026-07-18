@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import bcrypt from 'bcryptjs'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import type { BillingCycle, PlanTier } from '@prisma/client'
+import { ensureWorkspaceCodeForEmpresa } from '@/lib/workspace-code'
 
 export const runtime = 'nodejs'
 
@@ -11,13 +11,6 @@ function requireSuperAdmin(session: { user?: { role?: string; email?: string | n
   const email = session?.user?.email ?? null
   if (!session?.user || !isSuperAdminEmail(email)) return null
   return session
-}
-
-function randomCodePart(length: number): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let out = ''
-  for (let i = 0; i < length; i++) out += chars[Math.floor(Math.random() * chars.length)]
-  return out
 }
 
 type PostBody = {
@@ -48,15 +41,11 @@ export async function POST(req: NextRequest) {
   })
 
   if (!empresa) return NextResponse.json({ ok: false, error: 'Empresa no encontrada' }, { status: 404 })
-
-  // Formato recomendado para facilitar el claim sin escaneo.
-  const codePlain = `EMP-${empresa.id}-${randomCodePart(8)}`
-  const codeHash = await bcrypt.hash(codePlain, 12)
+  const codePlain = await ensureWorkspaceCodeForEmpresa(empresa.id)
 
   await prisma.empresa.update({
     where: { id: empresa.id },
     data: {
-      registrationCodeHash: codeHash,
       ...(planTier ? { planTier } : {}),
       ...(billingCycle ? { billingCycle } : {}),
     },

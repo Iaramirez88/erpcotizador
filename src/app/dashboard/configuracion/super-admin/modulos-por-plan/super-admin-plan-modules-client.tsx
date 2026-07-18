@@ -488,9 +488,9 @@ export default function SuperAdminPlanModulesClient() {
 
       <Card>
         <CardHeader>
-          <CardTitle>ID de empresa (EMP-...)</CardTitle>
+          <CardTitle>Código de espacio (WS-...)</CardTitle>
           <CardDescription>
-            Genera un ID para registrar/asignar usuarios a una empresa ya registrada (formato: EMP-&lt;empresaId&gt;-...).
+            Obtiene el código único del espacio para registrar/asignar usuarios a una empresa ya registrada.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3">
@@ -530,7 +530,7 @@ export default function SuperAdminPlanModulesClient() {
             </Button>
             {generatedCode ? (
               <div className="text-sm">
-                <span className="text-muted-foreground">ID de empresa: </span>
+                <span className="text-muted-foreground">Código de espacio: </span>
                 <span className="font-mono">{generatedCode}</span>
               </div>
             ) : null}

@@ -18,15 +18,11 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/components/providers/i18n-provider"
 
-function parseEmpresaIdFromEmpCode(code: string): string | null {
+function isWorkspaceCode(code: string): boolean {
   const raw = code.trim()
-  if (!raw) return null
+  if (!raw) return false
   const up = raw.toUpperCase()
-  if (!up.startsWith('EMP-')) return null
-  const parts = raw.split('-')
-  // Formato esperado: EMP-<empresaId>-<random>
-  const empresaId = (parts[1] ?? '').trim()
-  return empresaId || null
+  return /^WS-[A-Z0-9]+$/i.test(up)
 }
 
 function validatePassword(password: string, t: (key: string) => string): string | null {
@@ -102,8 +98,7 @@ export function RegisterPageClient() {
 
   const empresaHelperText = useMemo(() => {
     if (!empresaIdInput.trim()) return t('auth.register.empresaHelp.empty')
-    const parsed = parseEmpresaIdFromEmpCode(empresaIdInput)
-    if (parsed) return t('auth.register.empresaHelp.parsed')
+    if (isWorkspaceCode(empresaIdInput)) return t('auth.register.empresaHelp.parsed')
     return t('auth.register.empresaHelp.hint')
   }, [empresaIdInput, t])
 

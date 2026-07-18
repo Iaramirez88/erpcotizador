@@ -242,13 +242,13 @@ export default function PlanPaywallModal() {
         {reason === 'PERSONAL_NO_PLAN' || reason === 'TRIAL_EXPIRED' ? (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              ¿Tienes un código de empresa? Ingresa el código para activar tu acceso.
+              ¿Tienes un código del espacio? Ingresa el código WS-... que aparece en la empresa para activar tu acceso.
             </p>
             <div className="flex gap-2">
               <Input
                 value={companyCode}
                 onChange={(e) => setCompanyCode(e.target.value)}
-                placeholder="Código de empresa"
+                placeholder="WS-..."
                 autoComplete="one-time-code"
               />
               <Button
