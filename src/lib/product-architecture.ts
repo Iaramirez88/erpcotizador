@@ -50,6 +50,7 @@ export const DASHBOARD_SECTION_ORDER: DashboardSectionTitle[] = [
 
 export const DASHBOARD_NAV_CATALOG: DashboardNavCatalogItem[] = [
   { href: '/dashboard', label: 'Dashboard', labelKey: 'nav.dashboard', section: 'Inicio', layer: 'Inicio', domain: 'Inicio', moduleKey: 'DASHBOARD' },
+  { href: '/dashboard/perfil', label: 'Mi perfil', labelKey: 'header.profile', section: 'Inicio', layer: 'Inicio', domain: 'Perfil de usuario', moduleKey: null },
   { href: '/dashboard/mapa-producto', label: 'Mapa de producto', section: 'Inicio', layer: 'Inicio', domain: 'Arquitectura de producto', moduleKey: 'DASHBOARD' },
   { href: '/dashboard/plantillas', label: 'Plantillas', labelKey: 'nav.templates', section: 'Inicio', layer: 'Inicio', domain: 'Plantillas', moduleKey: 'DASHBOARD' },
   { href: '/dashboard/notificaciones', label: 'Notificaciones', section: 'Inicio', layer: 'Inicio', domain: 'Mensajería transversal', moduleKey: 'NOTIFICACIONES' },
