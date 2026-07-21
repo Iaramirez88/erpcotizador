@@ -605,9 +605,13 @@ function resolveChatStage(args: {
   catalogIntent: boolean
   nextField: ChatFlowNextField
 }) {
+  const currentStage = findChatbotFlowStage(args.flowStages, args.currentStageId)
+    ?? args.flowStages[0]
+    ?? null
+
   if (args.matchedResponseOption) {
     return findChatbotFlowStage(args.flowStages, args.matchedResponseOption.targetStageId)
-      ?? findChatbotFlowStage(args.flowStages, args.currentStageId)
+      ?? currentStage
       ?? args.flowStages[0]
       ?? null
   }
@@ -615,46 +619,23 @@ function resolveChatStage(args: {
   const selectedQuickAction = findChatbotQuickAction(args.quickActions, args.quickActionId)
 
   if (args.requestHuman || selectedQuickAction?.kind === 'human') {
-    return findChatbotFlowStage(args.flowStages, 'handoff') ?? args.flowStages.at(-1) ?? null
-  }
-
-  if (args.leadQualified) {
-    return findChatbotFlowStage(args.flowStages, 'handoff')
-      ?? findChatbotFlowStage(args.flowStages, 'qualification')
-      ?? args.flowStages[0]
+    const humanStage = args.flowStages.find((stage) => getStageQuickActions(stage, args.quickActions).some((action) => action.kind === 'human'))
+    return humanStage
+      ?? findChatbotFlowStage(args.flowStages, 'handoff')
+      ?? currentStage
+      ?? args.flowStages.at(-1)
       ?? null
   }
 
-  if (selectedQuickAction?.kind === 'catalog' || selectedQuickAction?.kind === 'stock' || args.catalogIntent || args.requestedProduct) {
-    return findChatbotFlowStage(args.flowStages, 'catalog')
-      ?? findChatbotFlowStage(args.flowStages, args.currentStageId)
-      ?? args.flowStages[0]
-      ?? null
+  if (selectedQuickAction && selectedQuickAction.kind !== 'message') {
+    return currentStage
   }
 
-  if (selectedQuickAction?.kind === 'product_lookup' || selectedQuickAction?.kind === 'service_lookup') {
-    return findChatbotFlowStage(args.flowStages, 'catalog')
-      ?? findChatbotFlowStage(args.flowStages, args.currentStageId)
-      ?? args.flowStages[0]
-      ?? null
+  if (args.leadQualified || args.catalogIntent || args.requestedProduct || args.nextField) {
+    return currentStage
   }
 
-  if (args.nextField === 'name') {
-    return findChatbotFlowStage(args.flowStages, 'welcome')
-      ?? findChatbotFlowStage(args.flowStages, args.currentStageId)
-      ?? args.flowStages[0]
-      ?? null
-  }
-
-  if (args.nextField) {
-    return findChatbotFlowStage(args.flowStages, 'qualification')
-      ?? findChatbotFlowStage(args.flowStages, args.currentStageId)
-      ?? args.flowStages[0]
-      ?? null
-  }
-
-  return findChatbotFlowStage(args.flowStages, args.currentStageId)
-    ?? findChatbotFlowStage(args.flowStages, 'qualification')
+  return currentStage
     ?? args.flowStages[0]
     ?? null
 }
@@ -683,6 +664,15 @@ function appendPauseCopy(baseBody: string, pauseNode: ChatbotStudioPauseNode | n
     ? `${pauseNode.description.trim()}\nDuracion estimada: ${pauseNode.durationMinutes} min.`
     : `Haré una pausa automática de ${pauseNode.durationMinutes} min antes de continuar con el siguiente paso.`
   return [baseBody.trim(), pauseSummary].filter(Boolean).join('\n\n')
+}
+
+function buildQuickActionAttachments(action: ChatbotQuickAction | null) {
+  if (!action?.responseAttachmentType || !action.responseAttachmentUrl) return [] as Array<{ type: 'image' | 'document'; url: string; alt: string | null }>
+  return [{
+    type: action.responseAttachmentType,
+    url: action.responseAttachmentUrl,
+    alt: action.responseAttachmentName || action.label || null,
+  }]
 }
 
 function splitConfigValues(value: string) {
@@ -1605,6 +1595,12 @@ export async function POST(request: Request) {
         pauseDurationMinutes = automationPauseDurationMinutes || pauseDurationMinutes
       }
 
+      const quickActionAttachments = buildQuickActionAttachments(selectedQuickAction)
+      const catalogAttachments = [catalogInsight.primary, ...catalogInsight.alternatives]
+        .filter((item): item is MaterialMatch => Boolean(item?.imagenUrl))
+        .slice(0, 3)
+        .map((item) => ({ type: 'image' as const, url: item.imagenUrl!, alt: item.nombre }))
+
       await tx.crmMessage.create({
         data: {
           empresaId: channel.empresaId,
@@ -1643,10 +1639,7 @@ export async function POST(request: Request) {
             businessWorkOrderNumber: businessActionResult?.workOrderNumber || null,
             matchedTriggerId: matchedTrigger.matchedTrigger?.id || null,
           },
-          attachmentsJson: [catalogInsight.primary, ...catalogInsight.alternatives]
-            .filter((item): item is MaterialMatch => Boolean(item?.imagenUrl))
-            .slice(0, 3)
-            .map((item) => ({ type: 'image', url: item.imagenUrl, alt: item.nombre })),
+          attachmentsJson: [...quickActionAttachments, ...catalogAttachments],
           occurredAt: new Date(),
         },
       })

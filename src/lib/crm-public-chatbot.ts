@@ -4,6 +4,10 @@ import {
   normalizeChatbotFlowStages,
   normalizeChatbotQuickActions,
 } from '@/lib/crm-chatbot-flow'
+import {
+  getChatbotStudioSettings,
+  getDefaultChatbotAutomationFlowFromSettings,
+} from '@/lib/crm-chatbot-studio'
 
 export type PublicChatbotSettings = {
   chatbotTitle: string
@@ -57,6 +61,8 @@ export function getPublicChatbotSettings(settingsJson: unknown): PublicChatbotSe
   const settings = settingsJson && typeof settingsJson === 'object' && !Array.isArray(settingsJson)
     ? settingsJson as Record<string, unknown>
     : {}
+  const studioSettings = getChatbotStudioSettings(settings)
+  const defaultFlow = getDefaultChatbotAutomationFlowFromSettings(studioSettings)
 
   const rawAllowedDomains = typeof settings.allowedDomains === 'string' ? settings.allowedDomains : ''
   const allowedDomains = rawAllowedDomains
@@ -97,8 +103,12 @@ export function getPublicChatbotSettings(settingsJson: unknown): PublicChatbotSe
     productPlaceholder: typeof settings.productPlaceholder === 'string' && settings.productPlaceholder.trim() ? settings.productPlaceholder.trim() : 'Ej: mugs, flyers, etiquetas',
     messageLabel: typeof settings.messageLabel === 'string' && settings.messageLabel.trim() ? settings.messageLabel.trim() : 'Mensaje',
     messagePlaceholder: typeof settings.messagePlaceholder === 'string' && settings.messagePlaceholder.trim() ? settings.messagePlaceholder.trim() : 'Cuéntanos qué necesitas y en qué cantidad.',
-    quickActions: normalizeChatbotQuickActions(settings.quickActions),
-    flowStages: normalizeChatbotFlowStages(settings.flowStages),
+    quickActions: defaultFlow.quickActions.length
+      ? defaultFlow.quickActions
+      : normalizeChatbotQuickActions(settings.quickActions),
+    flowStages: defaultFlow.flowStages.length
+      ? defaultFlow.flowStages
+      : normalizeChatbotFlowStages(settings.flowStages),
     allowedDomains,
   }
 }

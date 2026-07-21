@@ -1,5 +1,6 @@
 "use client"
 
+import Link from 'next/link'
 import { Button } from "@/components/ui/button"
 import { useI18n } from "@/components/providers/i18n-provider"
 
@@ -26,7 +27,14 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             {t('auth.subtitle')}
           </div>
         </div>
-        <div className="text-xs text-muted-foreground">© {new Date().getFullYear()} Ordex</div>
+        <div className="space-y-2 text-xs text-muted-foreground">
+          <div>© {new Date().getFullYear()} Ordex</div>
+          <div>
+            <Link href="/politica-de-privacidad" className="underline underline-offset-4 hover:text-foreground">
+              Política de privacidad
+            </Link>
+          </div>
+        </div>
       </div>
 
       <div className="w-full md:w-1/2 flex items-center justify-center p-6">

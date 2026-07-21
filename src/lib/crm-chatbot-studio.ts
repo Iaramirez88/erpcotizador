@@ -478,6 +478,41 @@ export function getDefaultChatbotAutomationFlowFromSettings(settings: ChatbotStu
     ?? getDefaultChatbotAutomationFlow()
 }
 
+export function mergeChatbotDefaultFlowSettings(args: {
+  settingsJson: unknown
+  quickActions: unknown
+  flowStages: unknown
+}) {
+  const baseSettings = asRecord(args.settingsJson) ?? {}
+  const studioSettings = getChatbotStudioSettings(baseSettings)
+  const currentDefaultFlow = getDefaultChatbotAutomationFlowFromSettings(studioSettings)
+  const nextDefaultFlow: ChatbotAutomationFlow = {
+    ...currentDefaultFlow,
+    isDefault: true,
+    quickActions: normalizeChatbotQuickActions(args.quickActions),
+    flowStages: normalizeChatbotFlowStages(args.flowStages),
+  }
+  const automationFlows = studioSettings.automationFlows.length
+    ? studioSettings.automationFlows.map((flow) => (
+        flow.id === currentDefaultFlow.id
+          ? nextDefaultFlow
+          : { ...flow, isDefault: false }
+      ))
+    : [nextDefaultFlow]
+
+  return {
+    ...baseSettings,
+    automationFlows,
+    defaultFlowId: nextDefaultFlow.id,
+    quickActions: nextDefaultFlow.quickActions,
+    flowStages: nextDefaultFlow.flowStages,
+    flowTriggers: nextDefaultFlow.flowTriggers,
+    pauseNodes: nextDefaultFlow.pauseNodes,
+    studioNodeLayout: nextDefaultFlow.studioNodeLayout,
+    studioViewport: nextDefaultFlow.studioViewport,
+  }
+}
+
 export function getEnabledChatbotAutomationFlows(args: { settings: ChatbotStudioSettings; provider?: ChatbotAutomationProvider | null }) {
   return args.settings.automationFlows.filter((flow) => flow.enabled && (!args.provider || flow.providers.includes(args.provider)))
 }

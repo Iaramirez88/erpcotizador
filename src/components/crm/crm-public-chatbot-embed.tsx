@@ -426,7 +426,7 @@ function CrmPublicChatbotAccessIssue(props: PublicChatbotEmbedProps & { accessIs
 function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const floatingLauncherActive = props.floatingLauncherEnabled && props.embedMode === 'widget'
-  const initialStage = useMemo(() => findChatbotFlowStage(props.flowStages, 'welcome') ?? props.flowStages[0] ?? null, [props.flowStages])
+  const initialStage = useMemo(() => props.flowStages[0] ?? findChatbotFlowStage(props.flowStages, 'welcome') ?? null, [props.flowStages])
   const [ready, setReady] = useState(false)
   const [sessionId, setSessionId] = useState('')
   const [identity, setIdentity] = useState<ChatIdentity>({ nombre: '', email: '', telefono: '', whatsapp: '', producto: '', empresaNombre: '', documento: '', ciudad: '', direccion: '' })
@@ -679,7 +679,9 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
 
   function triggerResponseOption(option: ChatbotFlowResponseOption) {
     const currentStageId = activeStage?.id || initialStage?.id || ''
+    const targetStage = findChatbotFlowStage(props.flowStages, option.targetStageId)
     const shouldRequestHuman = option.targetStageId === 'handoff'
+      || getStageQuickActions(targetStage, props.quickActions).some((action) => action.kind === 'human')
     void sendMessage(option.userMessage || option.label, shouldRequestHuman, {
       responseOptionId: option.id,
       currentStageId,
@@ -797,6 +799,18 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
                 <div className="mt-3 space-y-2">
                   {message.attachments.filter((item) => item?.type === 'image' && item?.url).map((item, index) => (
                     <img key={`${message.id}-attachment-${index}`} src={item.url || ''} alt={item.alt || 'Imagen del producto'} className="w-full rounded-2xl border border-slate-200 object-cover" />
+                  ))}
+                  {message.attachments.filter((item) => item?.type === 'document' && item?.url).map((item, index) => (
+                    <a
+                      key={`${message.id}-document-${index}`}
+                      href={item.url || '#'}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-900 transition hover:border-slate-300 hover:bg-slate-100"
+                    >
+                      <span>{item.alt || 'Abrir documento'}</span>
+                      <span className="text-xs uppercase tracking-[0.14em] text-slate-500">PDF</span>
+                    </a>
                   ))}
                 </div>
               ) : null}

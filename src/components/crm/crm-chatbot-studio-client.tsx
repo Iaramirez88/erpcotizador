@@ -23,6 +23,7 @@ import {
   type ChatbotFlowResponseOption,
   type ChatbotFlowStage,
   type ChatbotQuickAction,
+  type ChatbotQuickActionAttachmentType,
   type ChatbotQuickActionKind,
 } from '@/lib/crm-chatbot-flow'
 import {
@@ -833,6 +834,52 @@ function buildSettingsPayload(state: BuilderState) {
 
 function serializeBuilderState(state: BuilderState) {
   return JSON.stringify(state)
+}
+
+function renderQuickActionAttachmentFields(args: {
+  action: ChatbotQuickAction
+  update: (patch: Partial<ChatbotQuickAction>) => void
+}) {
+  const attachmentEnabled = Boolean(args.action.responseAttachmentType)
+
+  return (
+    <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-medium text-slate-900">Adjunto de respuesta</div>
+          <div className="text-xs text-slate-500">Envía una imagen o PDF junto con la respuesta de esta acción.</div>
+        </div>
+        <Switch
+          checked={attachmentEnabled}
+          onCheckedChange={(checked) => args.update(checked
+            ? { responseAttachmentType: 'image', responseAttachmentUrl: args.action.responseAttachmentUrl || '', responseAttachmentName: args.action.responseAttachmentName || '' }
+            : { responseAttachmentType: null, responseAttachmentUrl: null, responseAttachmentName: null })}
+        />
+      </div>
+      {attachmentEnabled ? (
+        <>
+          <div className="grid gap-2">
+            <Label>Tipo de adjunto</Label>
+            <Select value={args.action.responseAttachmentType || 'image'} onValueChange={(value) => args.update({ responseAttachmentType: value as ChatbotQuickActionAttachmentType })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="image">Imagen</SelectItem>
+                <SelectItem value="document">PDF o documento</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label>URL del adjunto</Label>
+            <Input value={args.action.responseAttachmentUrl || ''} onChange={(event) => args.update({ responseAttachmentUrl: event.target.value })} placeholder="https://..." />
+          </div>
+          <div className="grid gap-2">
+            <Label>Nombre visible</Label>
+            <Input value={args.action.responseAttachmentName || ''} onChange={(event) => args.update({ responseAttachmentName: event.target.value })} placeholder="Catálogo julio 2026.pdf" />
+          </div>
+        </>
+      ) : null}
+    </div>
+  )
 }
 
 export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?: string } = {}) {
@@ -1783,7 +1830,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     const nextActionId = makeId('action')
     const position = args?.position ?? getVisibleInsertPosition()
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
-      quickActions: [...current.quickActions, { id: nextActionId, label: 'Nueva accion', kind: 'message', message: 'Mensaje de accion rapida.', actionUrl: null, enabled: true, automation: getDefaultChatbotQuickActionAutomationConfig() }],
+      quickActions: [...current.quickActions, { id: nextActionId, label: 'Nueva accion', kind: 'message', message: 'Mensaje de accion rapida.', actionUrl: null, responseAttachmentType: null, responseAttachmentUrl: null, responseAttachmentName: null, enabled: true, automation: getDefaultChatbotQuickActionAutomationConfig() }],
       flowStages: args?.sourceNode?.kind === 'stage'
         ? current.flowStages.map((stage) => stage.id === args.sourceNode?.id ? { ...stage, quickActionIds: [...stage.quickActionIds, nextActionId] } : stage)
         : current.flowStages,
@@ -2768,6 +2815,10 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                 <Input value={selectedAction.actionUrl || ''} onChange={(event) => updateQuickAction(selectedAction.id, { actionUrl: event.target.value })} placeholder="https://... o /ruta-interna" />
               </div>
             ) : null}
+            {renderQuickActionAttachmentFields({
+              action: selectedAction,
+              update: (patch) => updateQuickAction(selectedAction.id, patch),
+            })}
             {renderQuickActionAutomationFields(selectedAction)}
           </div>
         ) : null}
@@ -4862,6 +4913,10 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                     <Input value={editingAction.actionUrl || ''} onChange={(event) => updateQuickAction(editingAction.id, { actionUrl: event.target.value })} placeholder="https://... o /ruta-interna" />
                   </div>
                 ) : null}
+                {renderQuickActionAttachmentFields({
+                  action: editingAction,
+                  update: (patch) => updateQuickAction(editingAction.id, patch),
+                })}
                 <div className="flex items-center justify-between rounded-2xl border border-slate-200 px-3 py-2.5">
                   <div>
                     <div className="text-sm font-medium text-slate-900">Acción habilitada</div>

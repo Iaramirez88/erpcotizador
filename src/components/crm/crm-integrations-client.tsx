@@ -42,6 +42,11 @@ import {
   type ChatbotQuickAction,
 } from '@/lib/crm-chatbot-flow'
 import {
+  getChatbotStudioSettings,
+  getDefaultChatbotAutomationFlowFromSettings,
+  mergeChatbotDefaultFlowSettings,
+} from '@/lib/crm-chatbot-studio'
+import {
   buildBookingEmbedUrl,
   buildBookingIframeSnippet,
   buildBookingSnippet,
@@ -1994,6 +1999,9 @@ function getWebFormBuilderState(settingsJson: Record<string, unknown> | null | u
 }
 
 function getChatbotBuilderState(settingsJson: Record<string, unknown> | null | undefined): ChatbotBuilderState {
+  const studioSettings = getChatbotStudioSettings(settingsJson)
+  const defaultFlow = getDefaultChatbotAutomationFlowFromSettings(studioSettings)
+
   return {
     chatbotTitle: getChatbotTitle(settingsJson),
     chatbotPrompt: getChatbotPrompt(settingsJson),
@@ -2026,8 +2034,12 @@ function getChatbotBuilderState(settingsJson: Record<string, unknown> | null | u
     productPlaceholder: getSettingText(settingsJson, 'productPlaceholder', '¿Qué producto necesitas?'),
     messageLabel: getSettingText(settingsJson, 'messageLabel', 'Mensaje'),
     messagePlaceholder: getSettingText(settingsJson, 'messagePlaceholder', 'Cuéntanos qué necesitas y para cuándo.'),
-    quickActions: normalizeChatbotQuickActions(settingsJson?.quickActions),
-    flowStages: normalizeChatbotFlowStages(settingsJson?.flowStages),
+    quickActions: defaultFlow.quickActions.length
+      ? defaultFlow.quickActions
+      : normalizeChatbotQuickActions(settingsJson?.quickActions),
+    flowStages: defaultFlow.flowStages.length
+      ? defaultFlow.flowStages
+      : normalizeChatbotFlowStages(settingsJson?.flowStages),
   }
 }
 
@@ -3052,7 +3064,7 @@ export function CrmIntegrationsClient() {
 
     setSaving(true)
     try {
-      const settingsJson = {
+      const settingsJsonBase = {
         testingToken: createForm.testingToken,
         bridgeKind: createForm.bridgeKind,
         googleSheetsSpreadsheetId: createForm.googleSheetsSpreadsheetId,
@@ -3112,8 +3124,6 @@ export function CrmIntegrationsClient() {
         showCompanyField: createForm.showCompanyField,
         showCityField: createForm.showCityField,
         showProductField: createForm.showProductField,
-        quickActions: createForm.quickActions,
-        flowStages: createForm.flowStages,
         showMessageField: createForm.showMessageField,
         nameLabel: createForm.nameLabel,
         namePlaceholder: createForm.namePlaceholder,
@@ -3138,6 +3148,13 @@ export function CrmIntegrationsClient() {
         termsLinkUrl: createForm.termsLinkUrl,
         allowHumanHandoff: true,
       }
+      const settingsJson = createForm.provider === 'WEB_CHATBOT'
+        ? mergeChatbotDefaultFlowSettings({
+            settingsJson: settingsJsonBase,
+            quickActions: createForm.quickActions,
+            flowStages: createForm.flowStages,
+          })
+        : settingsJsonBase
 
       const isEditing = Boolean(editingChannelId)
       const json = await requestJson<ChannelConnection>(isEditing ? `/api/crm/channels/${editingChannelId}` : '/api/crm/channels', {
@@ -4005,7 +4022,7 @@ export function CrmIntegrationsClient() {
 
     setSavingChatbotBuilder(true)
     try {
-      const mergedSettings = {
+      const mergedSettingsBase = {
         ...(selectedSettings ?? {}),
         ...chatbotBuilderDraft,
         iframeHeight: normalizePixelValue(chatbotBuilderDraft.iframeHeight, '720'),
@@ -4022,6 +4039,11 @@ export function CrmIntegrationsClient() {
           panelShadowPreset: chatbotBuilderDraft.panelShadowPreset,
         }),
       }
+      const mergedSettings = mergeChatbotDefaultFlowSettings({
+        settingsJson: mergedSettingsBase,
+        quickActions: chatbotBuilderDraft.quickActions,
+        flowStages: chatbotBuilderDraft.flowStages,
+      })
 
       const json = await requestJson<ChannelConnection>(`/api/crm/channels/${selectedChannel.id}`, {
         method: 'PATCH',

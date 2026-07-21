@@ -1,6 +1,7 @@
 export type ChatbotFlowNextField = 'name' | 'email' | 'phone' | 'whatsapp' | 'product' | 'quantity' | 'company' | 'document' | 'city' | 'address' | 'confirmation' | 'none'
 
 export type ChatbotFlowResponseMatchMode = 'exact' | 'contains'
+export type ChatbotQuickActionAttachmentType = 'image' | 'document'
 
 export type ChatbotQuickActionKind = 'catalog' | 'stock' | 'human' | 'message' | 'url' | 'product_lookup' | 'service_lookup' | 'create_quote' | 'create_invoice' | 'create_work_order'
 
@@ -72,6 +73,9 @@ export type ChatbotQuickAction = {
   kind: ChatbotQuickActionKind
   message: string
   actionUrl: string | null
+  responseAttachmentType: ChatbotQuickActionAttachmentType | null
+  responseAttachmentUrl: string | null
+  responseAttachmentName: string | null
   enabled: boolean
   automation: ChatbotQuickActionAutomationConfig
 }
@@ -156,6 +160,10 @@ function isQuickActionKind(value: unknown): value is ChatbotQuickActionKind {
     || value === 'create_quote'
     || value === 'create_invoice'
     || value === 'create_work_order'
+}
+
+function isQuickActionAttachmentType(value: unknown): value is ChatbotQuickActionAttachmentType {
+  return value === 'image' || value === 'document'
 }
 
 export function getDefaultChatbotQuickActionAutomationConfig(): ChatbotQuickActionAutomationConfig {
@@ -282,6 +290,9 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       kind: 'catalog',
       message: 'Quiero ver el catálogo disponible.',
       actionUrl: null,
+      responseAttachmentType: null,
+      responseAttachmentUrl: null,
+      responseAttachmentName: null,
       enabled: true,
       automation: getDefaultChatbotQuickActionAutomationConfig(),
     },
@@ -291,6 +302,9 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       kind: 'stock',
       message: 'Muéstrame productos con stock disponible.',
       actionUrl: null,
+      responseAttachmentType: null,
+      responseAttachmentUrl: null,
+      responseAttachmentName: null,
       enabled: true,
       automation: getDefaultChatbotQuickActionAutomationConfig(),
     },
@@ -300,6 +314,9 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       kind: 'human',
       message: 'Quiero hablar con un asesor humano.',
       actionUrl: null,
+      responseAttachmentType: null,
+      responseAttachmentUrl: null,
+      responseAttachmentName: null,
       enabled: true,
       automation: {
         ...getDefaultChatbotQuickActionAutomationConfig(),
@@ -452,12 +469,17 @@ export function normalizeChatbotQuickActions(value: unknown): ChatbotQuickAction
       const record = asRecord(item)
       if (!record) return null
       const actionUrl = asText(record.actionUrl)
+      const responseAttachmentUrl = asText(record.responseAttachmentUrl)
+      const responseAttachmentName = asText(record.responseAttachmentName)
       return {
         id: asText(record.id),
         label: asText(record.label),
         kind: isQuickActionKind(record.kind) ? record.kind : 'message',
         message: asText(record.message),
         actionUrl: actionUrl || null,
+        responseAttachmentType: isQuickActionAttachmentType(record.responseAttachmentType) ? record.responseAttachmentType : null,
+        responseAttachmentUrl: responseAttachmentUrl || null,
+        responseAttachmentName: responseAttachmentName || null,
         enabled: asBoolean(record.enabled, true),
         automation: normalizeChatbotQuickActionAutomationConfig(record.automation),
       } satisfies ChatbotQuickAction

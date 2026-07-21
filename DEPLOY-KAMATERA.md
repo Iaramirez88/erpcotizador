@@ -152,6 +152,45 @@ Si el Postgres queda dentro del mismo servidor, planifica backups:
 - `git pull` + `docker compose up -d --build`
 - Considera ventanas de mantenimiento (habrá rebuild/restart).
 
+Eso actualiza la aplicación. No actualiza Ubuntu ni los paquetes del sistema.
+
+#### Actualizaciones del sistema operativo
+Cuando el login del VPS muestra mensajes como `68 updates can be applied immediately` o `System restart required`, las actualizaciones se hacen con `apt`, no con Docker.
+
+Secuencia recomendada:
+
+1. Revisa qué se va a actualizar:
+  - `sudo apt update`
+  - `apt list --upgradable`
+2. Aplica las actualizaciones disponibles:
+  - `sudo apt upgrade -y`
+3. Si también quieres incluir cambios que agregan o reemplazan dependencias del sistema:
+  - `sudo apt full-upgrade -y`
+4. Limpia paquetes que ya no se usan:
+  - `sudo apt autoremove -y`
+  - `sudo apt autoclean`
+5. Si Ubuntu indica reinicio pendiente:
+  - `sudo reboot`
+
+Verificación después del reinicio:
+
+- `sudo apt update`
+- `apt list --upgradable`
+- `sudo docker ps`
+- `df -h /`
+
+Qué conviene hacer antes de un `upgrade` en este VPS:
+
+- Confirmar que la app esté estable: `docker compose -f docker-compose.prod.yml ps`
+- Tener backup reciente de Postgres si vas a hacer mantenimiento amplio
+- Hacerlo en una ventana corta de mantenimiento, porque un update del kernel o de librerías base puede requerir reinicio
+
+Notas prácticas:
+
+- `sudo apt upgrade -y` suele ser suficiente para mantenimiento rutinario
+- `sudo apt full-upgrade -y` úsalo cuando quieras dejar el sistema completamente al día y aceptas posibles cambios adicionales de paquetes
+- Si solo quieres instalar parches de seguridad automáticos, puedes evaluar `unattended-upgrades`, pero en este servidor hoy no está configurado
+
 Para VPS pequeños, usa esta secuencia para reducir picos y hacer el proceso más predecible:
 - `BUILDKIT_PROGRESS=plain docker compose -f docker-compose.prod.yml build app ocr`
 - `docker compose -f docker-compose.prod.yml up -d --no-build`
@@ -167,13 +206,90 @@ Eso fuerza salida lineal continua y evita la pantalla "pausada" del renderer TTY
 - CPU/RAM
 - Logs de contenedores
 
+### Limpieza segura de disco
+En una revisión real de este VPS, el consumo fuerte no vino de la carpeta del proyecto ni de los volúmenes Docker de la app, sino de estas rutas del sistema:
+
+- `/var/log/journal`
+- `/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs`
+- `/var/lib/containerd/io.containerd.content.v1.content`
+
+Antes de borrar nada, revisa primero:
+
+- `df -h /`
+- `sudo du -xhd1 /var 2>/dev/null | sort -h`
+- `sudo du -xhd1 /var/lib 2>/dev/null | sort -h`
+- `sudo du -xhd1 /var/lib/containerd 2>/dev/null | sort -h`
+- `sudo du -xhd1 /var/log 2>/dev/null | sort -h`
+- `sudo journalctl --disk-usage`
+- `docker ps -a`
+- `docker images`
+
+#### Limpieza de logs del sistema
+Esto suele liberar varios GB sin tocar la app:
+
+- `sudo journalctl --vacuum-time=7d`
+- `sudo journalctl --vacuum-size=300M`
+
+Verificación:
+
+- `sudo journalctl --disk-usage`
+- `df -h /`
+
+Para dejar el límite permanente de logs:
+
+- `sudo mkdir -p /etc/systemd/journald.conf.d`
+- `sudo tee /etc/systemd/journald.conf.d/limits.conf >/dev/null <<'EOF'`
+- `[Journal]`
+- `SystemMaxUse=300M`
+- `SystemKeepFree=2G`
+- `MaxRetentionSec=7day`
+- `EOF`
+- `sudo systemctl restart systemd-journald`
+
+#### Limpieza segura de contenedores e imágenes no usadas
+Primero elimina contenedores detenidos:
+
+- `docker container prune -f`
+
+Luego elimina imágenes de builds viejos que ya no estén en uso. En esta app, si `docker images` muestra imágenes antiguas como `plataforma-gestion-empresarial-app`, `plataforma-gestion-empresarial-worker` o `plataforma-gestion-empresarial-migrate` y los contenedores activos están corriendo con `plataforma-gestion-empresarial-runtime`, esas imágenes viejas se pueden remover.
+
+Ejemplo:
+
+- `docker image rm plataforma-gestion-empresarial-app:latest plataforma-gestion-empresarial-migrate:latest plataforma-gestion-empresarial-worker:latest`
+
+Después de eso, limpia residuos menores:
+
+- `docker image prune -f`
+- `docker builder prune -a -f`
+
+Verificación:
+
+- `docker images`
+- `sudo du -xhd1 /var/lib/containerd 2>/dev/null | sort -h`
+- `df -h /`
+
+#### Qué no debes borrar manualmente
+Para evitar romper contenedores o perder datos:
+
+- No borres archivos a mano dentro de `/var/lib/containerd`
+- No uses `docker system prune --volumes` sin validar exactamente qué volumen vas a perder
+- No elimines volúmenes de datos como `db_data`, `runtime_data`, `uploads_data`, `scans_data`, `soportes_data`
+
+#### Mantenimiento recomendado después de despliegues
+Si haces muchos builds en el mismo VPS, revisa periódicamente:
+
+- `df -h /`
+- `sudo journalctl --disk-usage`
+- `sudo du -xhd1 /var/lib/containerd 2>/dev/null | sort -h`
+
+Y usa esta secuencia para evitar crecimiento innecesario:
+
+- `BUILDKIT_PROGRESS=plain docker compose -f docker-compose.prod.yml build app ocr`
+- `docker compose -f docker-compose.prod.yml up -d --no-build`
+- `docker builder prune -a -f`
+
 ## Notas importantes (para evitar sustos)
 
 - Si dejas archivos en disco local (sin S3), el tamaño del disco es crítico.
 - El OCR es el principal riesgo de picos: por eso se limitaron CPU/RAM y threads en `docker-compose.prod.yml`.
 - Si planeas varias instancias, hay que migrar archivos a S3/Spaces (no disco local).
-
-
-#ERPPonyo2026*
-sudo docker builder prune -a -f
-docker compose -f docker-compose.prod.yml build --no-cache app
