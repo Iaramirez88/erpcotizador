@@ -72,6 +72,7 @@ export type ChatbotQuickAction = {
   label: string
   kind: ChatbotQuickActionKind
   message: string
+  targetStageId: string
   actionUrl: string | null
   responseAttachmentType: ChatbotQuickActionAttachmentType | null
   responseAttachmentUrl: string | null
@@ -289,6 +290,7 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       label: 'Ver catálogo',
       kind: 'catalog',
       message: 'Quiero ver el catálogo disponible.',
+      targetStageId: '',
       actionUrl: null,
       responseAttachmentType: null,
       responseAttachmentUrl: null,
@@ -301,6 +303,7 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       label: 'Productos con stock',
       kind: 'stock',
       message: 'Muéstrame productos con stock disponible.',
+      targetStageId: '',
       actionUrl: null,
       responseAttachmentType: null,
       responseAttachmentUrl: null,
@@ -313,6 +316,7 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       label: 'Hablar con asesor',
       kind: 'human',
       message: 'Quiero hablar con un asesor humano.',
+      targetStageId: '',
       actionUrl: null,
       responseAttachmentType: null,
       responseAttachmentUrl: null,
@@ -476,6 +480,7 @@ export function normalizeChatbotQuickActions(value: unknown): ChatbotQuickAction
         label: asText(record.label),
         kind: isQuickActionKind(record.kind) ? record.kind : 'message',
         message: asText(record.message),
+        targetStageId: asText(record.targetStageId),
         actionUrl: actionUrl || null,
         responseAttachmentType: isQuickActionAttachmentType(record.responseAttachmentType) ? record.responseAttachmentType : null,
         responseAttachmentUrl: responseAttachmentUrl || null,

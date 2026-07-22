@@ -3,6 +3,7 @@ import { AccessLevel, ModuleKey, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { assertCrmSedeAccess, normalizeString, parseMessageType } from '@/lib/crm'
+import { findOutboundMessagingLimitViolation, formatOutboundMessagingLimitViolation, getOutboundMessagingLimitConfig, getOutboundMessagingUsageSnapshot, hasOutboundMessagingLimits } from '@/lib/crm-channel-limits'
 import { getMetaMessagingDispatchConfig, sendMetaMediaMessage, sendMetaTextMessage } from '@/lib/crm-meta'
 import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppMediaMessage, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
 
@@ -53,6 +54,8 @@ export async function POST(request: Request, context: RouteContext) {
       include: {
         channelConnection: {
           select: {
+            id: true,
+            name: true,
             provider: true,
             externalPhoneNumberId: true,
             externalPageId: true,
@@ -98,6 +101,8 @@ export async function POST(request: Request, context: RouteContext) {
     const metaConfig = getMetaMessagingDispatchConfig(current.channelConnection.settingsJson)
     const recipientPhone = normalizeWhatsAppRecipient(current.contactPhone)
     const recipientThreadId = normalizeString(current.externalThreadId)
+    const outboundLimits = getOutboundMessagingLimitConfig(current.channelConnection.settingsJson)
+    const hasCostedProviderDispatch = (isWhatsApp && whatsappConfig.enabled) || (isMetaMessaging && metaConfig.enabled)
 
     let providerMessageId: string | null = null
     let providerPayload: Prisma.InputJsonValue = { testing: true, provider: current.channelConnection.provider }
@@ -156,6 +161,69 @@ export async function POST(request: Request, context: RouteContext) {
           : 'La ventana de respuesta de Meta está cerrada. Espera un nuevo inbound del contacto para responder desde el inbox.',
         data: failedMessage,
       }, { status: 409 })
+    }
+
+    if (hasCostedProviderDispatch && hasOutboundMessagingLimits(outboundLimits)) {
+      const usage = await getOutboundMessagingUsageSnapshot({
+        empresaId: access.empresaId,
+        channelConnectionId: current.channelConnection.id,
+      })
+      const violation = findOutboundMessagingLimitViolation(outboundLimits, usage)
+
+      if (violation) {
+        const limitMessage = formatOutboundMessagingLimitViolation(violation)
+        const failedMessage = await prisma.$transaction(async (tx) => {
+          const message = await tx.crmMessage.create({
+            data: {
+              empresaId: access.empresaId,
+              sedeId: current.sedeId,
+              conversationId: current.id,
+              providerMessageId: null,
+              direction: 'OUTBOUND',
+              messageType,
+              status: 'FAILED',
+              bodyText: bodyText || null,
+              payloadJson: {
+                provider: current.channelConnection.provider,
+                dispatch: 'operational-limit',
+                scope: violation.scope,
+                window: violation.window,
+                limit: violation.limit,
+                used: violation.used,
+                channelName: current.channelConnection.name,
+              },
+              attachmentsJson,
+              sentByUserId: access.userId,
+              occurredAt: new Date(),
+            },
+            include: { sentByUser: { select: { id: true, name: true, email: true } } },
+          })
+
+          await tx.crmActivity.create({
+            data: {
+              empresaId: access.empresaId,
+              sedeId: current.sedeId,
+              type: isWhatsApp ? 'WHATSAPP' : 'OTHER',
+              summary: 'Intento bloqueado por límite operativo de mensajería',
+              details: `${limitMessage} Ajusta el límite del canal o espera la siguiente ventana operativa.`,
+              leadId: current.leadId,
+              opportunityId: current.opportunityId,
+              clienteId: current.clienteId,
+              occurredAt: message.occurredAt,
+              createdById: access.userId,
+            },
+          })
+
+          return message
+        })
+
+        return NextResponse.json({
+          error: limitMessage,
+          data: failedMessage,
+          limit: violation,
+          usage,
+        }, { status: 409 })
+      }
     }
 
     if (isWhatsApp && whatsappConfig.enabled) {

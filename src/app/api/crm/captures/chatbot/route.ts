@@ -618,6 +618,13 @@ function resolveChatStage(args: {
 
   const selectedQuickAction = findChatbotQuickAction(args.quickActions, args.quickActionId)
 
+  if (selectedQuickAction?.targetStageId) {
+    return findChatbotFlowStage(args.flowStages, selectedQuickAction.targetStageId)
+      ?? currentStage
+      ?? args.flowStages[0]
+      ?? null
+  }
+
   if (args.requestHuman || selectedQuickAction?.kind === 'human') {
     const humanStage = args.flowStages.find((stage) => getStageQuickActions(stage, args.quickActions).some((action) => action.kind === 'human'))
     return humanStage

@@ -159,6 +159,27 @@ export function getMetaPageAccessToken(settingsJson: unknown) {
   return normalizeString(settings.metaPageAccessToken)
 }
 
+export function isWhatsAppCloudChannelReadyForProduction(args: {
+  provider: CrmChannelProvider
+  settingsJson: unknown
+  externalAccountId?: string | null
+  externalPhoneNumberId?: string | null
+}) {
+  if (args.provider !== 'WHATSAPP_CLOUD') return true
+
+  const settings = parseJsonObject(args.settingsJson)
+  const hasConnectedAt = Boolean(normalizeString(settings.metaConnectedAt))
+  const hasEncryptedToken = Boolean(normalizeString(settings.metaAccessTokenEncrypted))
+  const selectedPhoneNumberId = normalizeString(settings.metaSelectedPhoneNumberId)
+  const externalPhoneNumberId = normalizeString(args.externalPhoneNumberId)
+
+  return hasConnectedAt
+    && hasEncryptedToken
+    && Boolean(normalizeString(args.externalAccountId))
+    && Boolean(externalPhoneNumberId)
+    && selectedPhoneNumberId === externalPhoneNumberId
+}
+
 export async function fetchMetaLeadgenRecord(args: { accessToken: string; leadgenId: string }) {
   const json = await fetchMetaGraph<Record<string, unknown>>(`/${args.leadgenId}`, {
     fields: 'id,created_time,field_data,form_id,campaign_id,campaign_name,ad_id,ad_name,adgroup_id,adgroup_name,platform',

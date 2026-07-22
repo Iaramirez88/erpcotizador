@@ -695,6 +695,21 @@ function buildStudioGraph(builder: BuilderState) {
     })
   })
 
+  builder.quickActions.forEach((action) => {
+    if (!action.targetStageId || !stageIndexById.has(action.targetStageId)) return
+    edges.push({
+      id: `action-${action.id}-to-stage-${action.targetStageId}`,
+      fromId: `action:${action.id}`,
+      toId: `stage:${action.targetStageId}`,
+      sourceKind: 'action',
+      targetKind: 'stage',
+      label: 'continua',
+      toneClass: action.enabled ? 'stroke-fuchsia-300' : 'stroke-slate-300',
+      showLabel: false,
+      dashed: true,
+    })
+  })
+
   builder.flowTriggers.forEach((trigger) => {
     if (!stageIndexById.has(trigger.targetStageId)) return
     edges.push({
@@ -1858,10 +1873,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     const nextActionId = makeId('action')
     const position = args?.position ?? getVisibleInsertPosition()
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
-      quickActions: [...current.quickActions, { id: nextActionId, label: 'Nueva accion', kind: 'message', message: 'Mensaje de accion rapida.', actionUrl: null, responseAttachmentType: null, responseAttachmentUrl: null, responseAttachmentName: null, enabled: true, automation: getDefaultChatbotQuickActionAutomationConfig() }],
-      flowStages: args?.sourceNode?.kind === 'stage'
-        ? current.flowStages.map((stage) => stage.id === args.sourceNode?.id ? { ...stage, quickActionIds: [...stage.quickActionIds, nextActionId] } : stage)
-        : current.flowStages,
+      quickActions: [...current.quickActions, { id: nextActionId, label: 'Nueva accion', kind: 'message', message: 'Mensaje de accion rapida.', targetStageId: '', actionUrl: null, responseAttachmentType: null, responseAttachmentUrl: null, responseAttachmentName: null, enabled: true, automation: getDefaultChatbotQuickActionAutomationConfig() }],
       studioNodeLayout: {
         ...current.studioNodeLayout,
         [`action:${nextActionId}`]: position,
@@ -2133,6 +2145,14 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       return
     }
 
+    if (edge.sourceKind === 'action' && edge.targetKind === 'stage') {
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        quickActions: current.quickActions.map((action) => action.id === sourceId ? { ...action, targetStageId: value } : action),
+      }))
+      setNotice('Se actualizó el destino de la acción.')
+      return
+    }
+
     if (edge.sourceKind === 'trigger' && edge.targetKind === 'stage') {
       updateTrigger(sourceId, { targetStageId: value })
       setNotice('El filtro quedó reconectado desde el canvas.')
@@ -2142,6 +2162,18 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     if (edge.sourceKind === 'pause' && edge.targetKind === 'stage') {
       updatePauseNode(sourceId, { targetStageId: value })
       setNotice('Se actualizó el destino de la pausa.')
+    }
+  }
+
+  function disconnectEdge(edge: StudioGraphEdge) {
+    const sourceId = edge.fromId.split(':')[1] || ''
+
+    if (edge.sourceKind === 'action' && edge.targetKind === 'stage') {
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        quickActions: current.quickActions.map((action) => action.id === sourceId ? { ...action, targetStageId: '' } : action),
+      }))
+      setActiveEdgeId(null)
+      setNotice('La acción quedó huérfana nuevamente.')
     }
   }
 
@@ -2179,6 +2211,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   function canConnectNodes(sourceKind: StudioGraphNode['kind'], targetKind: StudioGraphNode['kind']) {
     if (sourceKind === 'start') return targetKind === 'stage'
     if (sourceKind === 'stage') return targetKind === 'stage' || targetKind === 'action' || targetKind === 'pause'
+    if (sourceKind === 'action') return targetKind === 'stage'
     if (sourceKind === 'trigger') return targetKind === 'stage'
     if (sourceKind === 'pause') return targetKind === 'stage'
     return false
@@ -2287,6 +2320,14 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       return
     }
 
+    if (sourceNode.kind === 'action' && targetNode.kind === 'stage') {
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        quickActions: current.quickActions.map((action) => action.id === sourceId ? { ...action, targetStageId: targetId } : action),
+      }))
+      setNotice('Accion conectada al siguiente mensaje.')
+      return
+    }
+
     if (sourceNode.kind === 'trigger' && targetNode.kind === 'stage') {
       updateTrigger(sourceId, { targetStageId: targetId })
       setNotice('Filtro conectado al mensaje destino.')
@@ -2300,7 +2341,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   }
 
   function handleConnectionStart(event: React.PointerEvent<HTMLButtonElement>, node: StudioGraphNode, sourceOptionId?: string, sourceLabel?: string, sourceOptionIndex?: number) {
-    if (event.button !== 0 || node.kind === 'action') return
+    if (event.button !== 0) return
     event.stopPropagation()
     const startX = sourceOptionId && typeof sourceOptionIndex === 'number' ? getStageOptionAnchorX(node) : getNodeAnchorX(node, 'right')
     const startY = sourceOptionId && typeof sourceOptionIndex === 'number' ? getStageOptionAnchorY(node, sourceOptionIndex) : getNodeAnchorY(node)
@@ -3651,6 +3692,17 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                       </Select>
                                     </>
                                   ) : null}
+                                  {edge.sourceKind === 'action' && edge.targetKind === 'stage' ? (
+                                    <>
+                                      <Label className="text-[11px]">Siguiente mensaje de la acción</Label>
+                                      <Select value={targetValue} onValueChange={(value) => updateInlineEdgeTarget(edge, value)}>
+                                        <SelectTrigger className="h-9 bg-white text-xs"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                          {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                                        </SelectContent>
+                                      </Select>
+                                    </>
+                                  ) : null}
                                   {edge.sourceKind === 'trigger' && edge.targetKind === 'stage' ? (
                                     <>
                                       <Label className="text-[11px]">Mensaje destino del filtro</Label>
@@ -3697,6 +3749,17 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                       Editar destino
                                     </Button>
                                   ) : null}
+                                  {edge.sourceKind === 'action' && edge.targetKind === 'stage' ? (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 border-rose-200 text-xs text-rose-700 hover:bg-rose-50"
+                                      onClick={() => disconnectEdge(edge)}
+                                    >
+                                      Soltar conexión
+                                    </Button>
+                                  ) : null}
                                 </div>
                               </div>
                             ) : null}
@@ -3707,7 +3770,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                       {studioGraph.nodes.map((node) => {
                         const nodeKey = node.id.split(':')[1]
                         const active = node.kind !== 'start' && focusedNode?.kind === node.kind && focusedNode.id === nodeKey
-                        const canStartConnection = node.kind !== 'action'
+                        const canStartConnection = node.kind !== 'start'
                         const validTarget = connectionDraft
                           ? node.id !== connectionDraft.fromId && (
                               connectionDraft.sourceOptionId

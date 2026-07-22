@@ -9,6 +9,7 @@ import {
   parseChannelConnectionStatus,
   parseChannelProvider,
 } from '@/lib/crm'
+import { isWhatsAppCloudChannelReadyForProduction } from '@/lib/crm-meta'
 import { maskTokenPreview } from '@/lib/crm-omnichannel'
 
 export const runtime = 'nodejs'
@@ -90,6 +91,15 @@ export async function POST(request: Request) {
     if (sedeId) {
       const denied = await assertCrmSedeAccess({ sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.WRITE })
       if (denied) return denied
+    }
+
+    if (!isWhatsAppCloudChannelReadyForProduction({
+      provider,
+      settingsJson,
+      externalAccountId: normalizeString(body?.externalAccountId) || null,
+      externalPhoneNumberId: normalizeString(body?.externalPhoneNumberId) || null,
+    }) && status === 'ACTIVE') {
+      return NextResponse.json({ error: 'WhatsApp Cloud solo puede pasar a ACTIVE cuando el canal queda conectado por Meta OAuth y con un número sincronizado del cliente.' }, { status: 400 })
     }
 
     const row = await prisma.crmChannelConnection.create({

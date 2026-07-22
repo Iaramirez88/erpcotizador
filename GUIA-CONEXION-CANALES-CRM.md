@@ -295,6 +295,14 @@ Este canal usa el webhook global de Meta y puede apoyarse en OAuth para dejar ID
    - Version Graph API.
 6. Guarda el canal.
 
+Regla operativa importante para facturacion y riesgo:
+
+1. Un canal WhatsApp Cloud nuevo debe crearse en TESTING.
+2. No debe pasar a ACTIVE solo con credenciales manuales pegadas en el formulario.
+3. Para pasar a ACTIVE debe quedar conectado por Meta OAuth y con el Phone Number ID sincronizado del cliente.
+4. La configuracion manual debe tratarse como respaldo o prueba controlada, no como alta productiva por defecto.
+5. Define topes operativos de salida por canal o por empresa antes de abrir el inbox al equipo comercial.
+
 Nunca pegues access tokens reales en esta guia ni en capturas. Si ya se expuso uno, debes rotarlo inmediatamente en Meta.
 
 ### 8.2 Forma recomendada de conectarlo
@@ -410,6 +418,7 @@ Fase 1, inmediata:
 3. Mostrar un checklist visual antes de lanzar a Meta.
 4. Guiar al usuario para elegir el numero activo cuando vuelva del OAuth.
 5. Documentar claramente el caso "app no activa".
+6. Bloquear ACTIVE en WhatsApp Cloud si el canal no quedo conectado a Meta con un numero sincronizado del cliente.
 
 Fase 2, experiencia mas simple:
 
@@ -477,6 +486,7 @@ Este es el paso a paso recomendado para tu SaaS hoy, con la arquitectura actual 
 2. Verifica que entre al inbox omnicanal.
 3. Verifica lead, conversacion, mensaje y captura.
 4. Cuando todo funcione, cambia el canal a ACTIVE.
+5. Si vas a operar con volumen real, define desde el canal limites diarios o mensuales de salida para cortar el envio antes de escalar costo.
 
 #### Paso 8. Si vuelve a salir "app no activa"
 
@@ -547,6 +557,7 @@ Del lado del sistema SGDigital debe quedar listo esto:
 5. META_WEBHOOK_VERIFY_TOKEN definido en entorno si quieres desacoplar la verificacion de los tokens por canal.
 6. Canal creado en CRM con provider WhatsApp Cloud y estado TESTING o ACTIVE.
 7. Si van a enviar desde el inbox, access token y Phone Number ID reales guardados o sincronizados desde Meta.
+8. Si quieres control preventivo de costo, limites operativos de salida configurados por canal y, si aplica, por empresa.
 
 Del lado del cliente, lo minimo viable es esto:
 

@@ -9,6 +9,8 @@ import {
   parseChannelConnectionStatus,
   parseChannelProvider,
 } from '@/lib/crm'
+import { buildOutboundMessagingUsageMeters, getOutboundMessagingLimitConfig, getOutboundMessagingUsageSnapshot, hasOutboundMessagingLimits } from '@/lib/crm-channel-limits'
+import { isWhatsAppCloudChannelReadyForProduction } from '@/lib/crm-meta'
 import { maskTokenPreview } from '@/lib/crm-omnichannel'
 
 export const runtime = 'nodejs'
@@ -41,11 +43,24 @@ export async function GET(_request: Request, context: RouteContext) {
       return NextResponse.json({ error: 'Canal no encontrado' }, { status: 404 })
     }
 
+    const outboundMessagingLimitConfig = getOutboundMessagingLimitConfig(row.settingsJson)
+    const outboundMessagingUsage = hasOutboundMessagingLimits(outboundMessagingLimitConfig)
+      ? await getOutboundMessagingUsageSnapshot({ empresaId: row.empresaId, channelConnectionId: row.id })
+      : null
+    const outboundMessagingMeters = outboundMessagingUsage
+      ? buildOutboundMessagingUsageMeters(outboundMessagingLimitConfig, outboundMessagingUsage)
+      : []
+
     return NextResponse.json({
       success: true,
       data: {
         ...row,
         verifyTokenPreview: maskTokenPreview(row.verifyToken),
+        outboundMessagingStats: {
+          config: outboundMessagingLimitConfig,
+          usage: outboundMessagingUsage,
+          meters: outboundMessagingMeters,
+        },
       },
     })
   } catch (error) {
@@ -67,7 +82,15 @@ export async function PATCH(request: Request, context: RouteContext) {
     const { id } = await context.params
     const current = await prisma.crmChannelConnection.findFirst({
       where: { id, empresaId: access.empresaId },
-      select: { id: true, sedeId: true },
+      select: {
+        id: true,
+        sedeId: true,
+        provider: true,
+        status: true,
+        settingsJson: true,
+        externalAccountId: true,
+        externalPhoneNumberId: true,
+      },
     })
 
     if (!current) {
@@ -107,6 +130,21 @@ export async function PATCH(request: Request, context: RouteContext) {
     if (body?.settingsJson !== undefined) {
       if (!isPlainObject(body.settingsJson)) return NextResponse.json({ error: 'settingsJson inválido' }, { status: 400 })
       patch.settingsJson = body.settingsJson as Prisma.InputJsonValue
+    }
+
+    const nextProvider = (patch.provider as typeof current.provider | undefined) ?? current.provider
+    const nextStatus = (patch.status as typeof current.status | undefined) ?? current.status
+    const nextSettingsJson = (patch.settingsJson as Prisma.InputJsonValue | undefined) ?? current.settingsJson
+    const nextExternalAccountId = patch.externalAccountId !== undefined ? normalizeString(patch.externalAccountId as string | null | undefined) || null : current.externalAccountId
+    const nextExternalPhoneNumberId = patch.externalPhoneNumberId !== undefined ? normalizeString(patch.externalPhoneNumberId as string | null | undefined) || null : current.externalPhoneNumberId
+
+    if (!isWhatsAppCloudChannelReadyForProduction({
+      provider: nextProvider,
+      settingsJson: nextSettingsJson,
+      externalAccountId: nextExternalAccountId,
+      externalPhoneNumberId: nextExternalPhoneNumberId,
+    }) && nextStatus === 'ACTIVE') {
+      return NextResponse.json({ error: 'WhatsApp Cloud solo puede pasar a ACTIVE cuando el canal queda conectado por Meta OAuth y con un número sincronizado del cliente.' }, { status: 400 })
     }
 
     const updated = await prisma.crmChannelConnection.update({

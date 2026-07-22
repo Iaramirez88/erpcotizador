@@ -91,6 +91,27 @@ type ChannelConnection = {
   updatedAt: string
   createdAt: string
   _count?: { conversations: number; captures: number }
+  outboundMessagingStats?: {
+    config?: {
+      perChannelDaily?: number | null
+      perChannelMonthly?: number | null
+      perEmpresaDaily?: number | null
+      perEmpresaMonthly?: number | null
+    } | null
+    usage?: {
+      perChannelDaily: number
+      perChannelMonthly: number
+      perEmpresaDaily: number
+      perEmpresaMonthly: number
+    } | null
+    meters?: Array<{
+      key: string
+      label: string
+      limit: number
+      used: number
+      percentage: number
+    }>
+  }
 }
 
 type MetaPageAsset = {
@@ -505,6 +526,10 @@ function getInitialChannelForm() {
     externalPhoneNumberId: '',
     whatsappAccessToken: '',
     whatsappApiVersion: 'v23.0',
+    outboundLimitPerChannelDay: '',
+    outboundLimitPerChannelMonth: '',
+    outboundLimitPerEmpresaDay: '',
+    outboundLimitPerEmpresaMonth: '',
     formSelector: '#lead-form',
     chatbotTitle: 'Asesor virtual SGDigital',
     chatbotPrompt: 'Cuéntanos tu proyecto y te contactamos.',
@@ -1267,6 +1292,10 @@ function getWhatsAppApiVersion(settingsJson: Record<string, unknown> | null | un
   return typeof settingsJson?.whatsappApiVersion === 'string' ? settingsJson.whatsappApiVersion : 'v23.0'
 }
 
+function getOperationalLimitValue(settingsJson: Record<string, unknown> | null | undefined, key: 'outboundLimitPerChannelDay' | 'outboundLimitPerChannelMonth' | 'outboundLimitPerEmpresaDay' | 'outboundLimitPerEmpresaMonth') {
+  return typeof settingsJson?.[key] === 'string' ? settingsJson[key] : ''
+}
+
 function getChatbotTitle(settingsJson: Record<string, unknown> | null | undefined) {
   return typeof settingsJson?.chatbotTitle === 'string' ? settingsJson.chatbotTitle : 'Asesor virtual SGDigital'
 }
@@ -1744,6 +1773,12 @@ function usesMetaProvider(provider: CrmChannelProvider) {
   return provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX' || provider === 'FACEBOOK_PAGE' || provider === 'MESSENGER' || provider === 'INSTAGRAM_DM'
 }
 
+function getUsageMeterTone(percentage: number) {
+  if (percentage >= 100) return 'bg-rose-500'
+  if (percentage >= 80) return 'bg-amber-500'
+  return 'bg-emerald-500'
+}
+
 function getMetaConnectionState(settingsJson: Record<string, unknown> | null | undefined) {
   return {
     connectedUserName: typeof settingsJson?.metaConnectedUserName === 'string' ? settingsJson.metaConnectedUserName : '',
@@ -1773,6 +1808,10 @@ function hasManualMetaConfiguration(form: ChannelFormState) {
   )
 }
 
+function requiresMetaOAuthBeforeActive(form: ChannelFormState) {
+  return form.provider === 'WHATSAPP_CLOUD' && form.status === 'ACTIVE'
+}
+
 function getMetaWizardChecklist(form: ChannelFormState, baseUrl: string): ReadinessItem[] {
   const isWhatsApp = form.provider === 'WHATSAPP_CLOUD' || form.provider === 'WHATSAPP_SANDBOX'
 
@@ -1796,6 +1835,11 @@ function getMetaWizardChecklist(form: ChannelFormState, baseUrl: string): Readin
       label: isWhatsApp ? 'OAuth recomendado antes de credenciales manuales' : 'OAuth recomendado antes de IDs manuales',
       done: !hasManualMetaConfiguration(form),
       hint: isWhatsApp ? 'Primero conecta Meta; deja Business Account, Phone Number ID y Access Token manuales solo para casos especiales.' : 'Primero conecta Meta; deja Account ID o Page ID manuales solo como respaldo.',
+    },
+    {
+      label: 'ACTIVE solo con conexión Meta real del cliente',
+      done: !requiresMetaOAuthBeforeActive(form),
+      hint: 'Para evitar cobros en activos equivocados, WhatsApp Cloud no debe crearse en ACTIVE con credenciales manuales. Déjalo en TESTING y pásalo a ACTIVE solo después de Conectar con Meta y aplicar el número sincronizado.',
     },
   ]
 }
@@ -2205,6 +2249,7 @@ export function CrmIntegrationsClient() {
   const [wizardChatPreviewMode, setWizardChatPreviewMode] = useState<ChatbotPreviewMode>('expanded')
   const [wizardChatPreviewViewport, setWizardChatPreviewViewport] = useState<ChatbotPreviewViewport>('desktop')
   const [googleSheetsActions, setGoogleSheetsActions] = useState<GoogleSheetsActionState>(getInitialGoogleSheetsActionState())
+  const [selectedChannelUsageStats, setSelectedChannelUsageStats] = useState<ChannelConnection['outboundMessagingStats'] | null>(null)
   const metaPopupRef = useRef<Window | null>(null)
   const metaPopupIntervalRef = useRef<number | null>(null)
   const metaPhoneSelectionRef = useRef<HTMLDivElement | null>(null)
@@ -2327,6 +2372,27 @@ export function CrmIntegrationsClient() {
     openEditWizard(channel, { forceWizard: true })
     window.history.replaceState({}, '', window.location.pathname)
   }, [channels, pendingWizardChannelId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadSelectedChannelUsage() {
+      if (!selectedChannelId) {
+        if (!cancelled) setSelectedChannelUsageStats(null)
+        return
+      }
+
+      const json = await requestJson<ChannelConnection>(`/api/crm/channels/${selectedChannelId}`)
+      if (cancelled) return
+      setSelectedChannelUsageStats(json.data?.outboundMessagingStats ?? null)
+    }
+
+    void loadSelectedChannelUsage()
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedChannelId, channels])
 
   const selectedChannel = useMemo(() => channels.find((item) => item.id === selectedChannelId) ?? null, [channels, selectedChannelId])
   const createPreset = useMemo(() => TEMPLATE_PRESETS.find((item) => item.key === createForm.templateKey) ?? TEMPLATE_PRESETS[0], [createForm.templateKey])
@@ -2733,6 +2799,10 @@ export function CrmIntegrationsClient() {
       externalPhoneNumberId: channel.externalPhoneNumberId || '',
       whatsappAccessToken: getWhatsAppAccessToken(settings),
       whatsappApiVersion: getWhatsAppApiVersion(settings),
+      outboundLimitPerChannelDay: getOperationalLimitValue(settings, 'outboundLimitPerChannelDay'),
+      outboundLimitPerChannelMonth: getOperationalLimitValue(settings, 'outboundLimitPerChannelMonth'),
+      outboundLimitPerEmpresaDay: getOperationalLimitValue(settings, 'outboundLimitPerEmpresaDay'),
+      outboundLimitPerEmpresaMonth: getOperationalLimitValue(settings, 'outboundLimitPerEmpresaMonth'),
       formSelector: getFormSelector(settings),
       chatbotTitle: getChatbotTitle(settings),
       chatbotPrompt: getChatbotPrompt(settings),
@@ -3062,6 +3132,11 @@ export function CrmIntegrationsClient() {
       return
     }
 
+    if (requiresMetaOAuthBeforeActive(createForm)) {
+      alert('WhatsApp Cloud debe crearse en TESTING. Pásalo a ACTIVE solo después de Conectar con Meta y aplicar el número sincronizado del cliente.')
+      return
+    }
+
     setSaving(true)
     try {
       const settingsJsonBase = {
@@ -3075,6 +3150,10 @@ export function CrmIntegrationsClient() {
         googleSheetsOpportunityStage: createForm.googleSheetsOpportunityStage,
         whatsappAccessToken: createForm.whatsappAccessToken,
         whatsappApiVersion: createForm.whatsappApiVersion,
+        outboundLimitPerChannelDay: createForm.outboundLimitPerChannelDay.replace(/[^0-9]/g, ''),
+        outboundLimitPerChannelMonth: createForm.outboundLimitPerChannelMonth.replace(/[^0-9]/g, ''),
+        outboundLimitPerEmpresaDay: createForm.outboundLimitPerEmpresaDay.replace(/[^0-9]/g, ''),
+        outboundLimitPerEmpresaMonth: createForm.outboundLimitPerEmpresaMonth.replace(/[^0-9]/g, ''),
         formSelector: createForm.formSelector,
         chatbotTitle: createForm.chatbotTitle,
         chatbotPrompt: createForm.chatbotPrompt,
@@ -5070,6 +5149,46 @@ export function CrmIntegrationsClient() {
                       </div>
                     </div>
 
+                    {selectedChannelUsageStats?.meters?.length ? (
+                      <div className="rounded-3xl border border-amber-200 bg-amber-50/70 p-5">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Consumo operativo</p>
+                            <p className="mt-2 text-lg font-semibold text-amber-950">Mensajes salientes con costo frente a límites configurados</p>
+                          </div>
+                          <p className="text-xs leading-5 text-amber-800">El porcentaje se calcula solo sobre envíos con providerMessageId real.</p>
+                        </div>
+                        {selectedChannelUsageStats.meters.some((meter) => meter.percentage >= 100) ? (
+                          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/90 p-3 text-sm text-rose-900">
+                            <p className="font-semibold">Límite agotado</p>
+                            <p className="mt-1 leading-6">Al menos uno de los topes operativos ya llegó al 100%. El inbox bloqueará nuevos envíos con costo hasta que ajustes el límite o cambie la ventana diaria o mensual.</p>
+                          </div>
+                        ) : selectedChannelUsageStats.meters.some((meter) => meter.percentage >= 80) ? (
+                          <div className="mt-4 rounded-2xl border border-amber-300 bg-amber-100/90 p-3 text-sm text-amber-950">
+                            <p className="font-semibold">Consumo alto</p>
+                            <p className="mt-1 leading-6">Al menos uno de los límites operativos ya superó el 80%. Conviene revisar el volumen antes de que el canal quede bloqueado.</p>
+                          </div>
+                        ) : null}
+                        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                          {selectedChannelUsageStats.meters.map((meter) => (
+                            <div key={meter.key} className="rounded-2xl border border-white/70 bg-white/85 p-4">
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-sm font-semibold text-slate-900">{meter.label}</p>
+                                <div className="flex items-center gap-2">
+                                  {meter.percentage >= 100 ? <span className="rounded-full bg-rose-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-700">Bloqueado</span> : meter.percentage >= 80 ? <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">Alerta</span> : null}
+                                  <p className="text-sm font-semibold text-slate-900">{meter.percentage}%</p>
+                                </div>
+                              </div>
+                              <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-slate-200">
+                                <div className={`h-full rounded-full ${getUsageMeterTone(meter.percentage)}`} style={{ width: `${Math.max(4, meter.percentage)}%` }} />
+                              </div>
+                              <p className="mt-3 text-xs leading-5 text-slate-600">{meter.used} de {meter.limit} mensajes consumidos.</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
                     {selectedChannel.provider === 'WEB_CHATBOT' ? (
                       <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
                         <div className="rounded-3xl border border-emerald-200 bg-emerald-50/70 p-5 text-sm text-emerald-950">
@@ -6403,7 +6522,55 @@ export function CrmIntegrationsClient() {
                               <Label>Versión Graph API</Label>
                               <Input value={createForm.whatsappApiVersion} onChange={(e) => setCreateForm((prev) => ({ ...prev, whatsappApiVersion: e.target.value }))} className="h-11 rounded-xl" placeholder="v23.0" />
                             </div>
+                            <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-900 md:col-span-2">
+                              <p className="font-semibold">Límites operativos para controlar costo</p>
+                              <p className="mt-2 leading-6">Estos topes se aplican antes de despachar mensajes salientes con costo desde el inbox. Déjalos vacíos si no quieres límite en ese nivel.</p>
+                              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                                <div className="grid gap-2">
+                                  <Label>Límite diario por canal</Label>
+                                  <Input value={createForm.outboundLimitPerChannelDay} onChange={(e) => setCreateForm((prev) => ({ ...prev, outboundLimitPerChannelDay: e.target.value.replace(/[^0-9]/g, '') }))} className="h-11 rounded-xl" placeholder="200" />
+                                </div>
+                                <div className="grid gap-2">
+                                  <Label>Límite mensual por canal</Label>
+                                  <Input value={createForm.outboundLimitPerChannelMonth} onChange={(e) => setCreateForm((prev) => ({ ...prev, outboundLimitPerChannelMonth: e.target.value.replace(/[^0-9]/g, '') }))} className="h-11 rounded-xl" placeholder="3000" />
+                                </div>
+                                <div className="grid gap-2">
+                                  <Label>Límite diario por empresa</Label>
+                                  <Input value={createForm.outboundLimitPerEmpresaDay} onChange={(e) => setCreateForm((prev) => ({ ...prev, outboundLimitPerEmpresaDay: e.target.value.replace(/[^0-9]/g, '') }))} className="h-11 rounded-xl" placeholder="500" />
+                                </div>
+                                <div className="grid gap-2">
+                                  <Label>Límite mensual por empresa</Label>
+                                  <Input value={createForm.outboundLimitPerEmpresaMonth} onChange={(e) => setCreateForm((prev) => ({ ...prev, outboundLimitPerEmpresaMonth: e.target.value.replace(/[^0-9]/g, '') }))} className="h-11 rounded-xl" placeholder="10000" />
+                                </div>
+                              </div>
+                              <p className="mt-3 text-xs leading-5 text-amber-800">El conteo usa mensajes salientes con providerMessageId real. Cuando se supera un tope, el inbox bloquea el envío, registra el intento fallido y deja trazabilidad en la actividad CRM.</p>
+                            </div>
                           </>
+                        ) : null}
+                        {usesMetaProvider(createForm.provider) && createForm.provider !== 'WHATSAPP_CLOUD' && createForm.provider !== 'WHATSAPP_SANDBOX' ? (
+                          <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-900 md:col-span-2">
+                            <p className="font-semibold">Límites operativos para controlar costo y volumen</p>
+                            <p className="mt-2 leading-6">Estos topes se aplican antes de despachar mensajes salientes por Meta desde el inbox. Déjalos vacíos si no quieres límite en ese nivel.</p>
+                            <div className="mt-4 grid gap-3 md:grid-cols-2">
+                              <div className="grid gap-2">
+                                <Label>Límite diario por canal</Label>
+                                <Input value={createForm.outboundLimitPerChannelDay} onChange={(e) => setCreateForm((prev) => ({ ...prev, outboundLimitPerChannelDay: e.target.value.replace(/[^0-9]/g, '') }))} className="h-11 rounded-xl" placeholder="200" />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>Límite mensual por canal</Label>
+                                <Input value={createForm.outboundLimitPerChannelMonth} onChange={(e) => setCreateForm((prev) => ({ ...prev, outboundLimitPerChannelMonth: e.target.value.replace(/[^0-9]/g, '') }))} className="h-11 rounded-xl" placeholder="3000" />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>Límite diario por empresa</Label>
+                                <Input value={createForm.outboundLimitPerEmpresaDay} onChange={(e) => setCreateForm((prev) => ({ ...prev, outboundLimitPerEmpresaDay: e.target.value.replace(/[^0-9]/g, '') }))} className="h-11 rounded-xl" placeholder="500" />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>Límite mensual por empresa</Label>
+                                <Input value={createForm.outboundLimitPerEmpresaMonth} onChange={(e) => setCreateForm((prev) => ({ ...prev, outboundLimitPerEmpresaMonth: e.target.value.replace(/[^0-9]/g, '') }))} className="h-11 rounded-xl" placeholder="10000" />
+                              </div>
+                            </div>
+                            <p className="mt-3 text-xs leading-5 text-amber-800">El porcentaje y el bloqueo usan mensajes salientes con providerMessageId real, igual que en WhatsApp Cloud.</p>
+                          </div>
                         ) : null}
                       </>
                     ) : null}
@@ -6522,6 +6689,13 @@ export function CrmIntegrationsClient() {
                             <p className="text-[11px] uppercase tracking-[0.14em] text-sky-700">Siguiente paso después de crear</p>
                             <p className="mt-2 text-sm font-semibold text-sky-900">Conecta Meta y aplica el activo sincronizado</p>
                             <p className="mt-2 text-xs leading-5 text-sky-800">Después de guardar el canal, usa Conectar con Meta. Cuando vuelvas, selecciona el número, página o cuenta correcta desde el bloque Conexión real con Meta.</p>
+                          </div>
+                        ) : null}
+                        {requiresMetaOAuthBeforeActive(createForm) ? (
+                          <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-3 sm:col-span-2">
+                            <p className="text-[11px] uppercase tracking-[0.14em] text-rose-700">Bloqueo de salida productiva</p>
+                            <p className="mt-2 text-sm font-semibold text-rose-900">WhatsApp Cloud no puede guardarse en ACTIVE antes de conectar Meta</p>
+                            <p className="mt-2 text-xs leading-5 text-rose-800">Esto evita dejar números productivos cobrando sobre un activo manual o equivocado. Crea el canal en TESTING y cambia a ACTIVE solo cuando el número del cliente ya quede sincronizado.</p>
                           </div>
                         ) : null}
                         <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:col-span-2">
