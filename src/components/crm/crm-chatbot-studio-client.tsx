@@ -169,6 +169,7 @@ type StudioGraphNode = {
   x: number
   y: number
   width: number
+  height: number
   accentClass: string
   headerClass: string
   headerBadgeClass: string
@@ -322,6 +323,28 @@ function getNodeAnchorY(node: StudioGraphNode) {
   return node.y + 52
 }
 
+function getGraphNodeHeight(args: { kind: StudioGraphNode['kind']; responseCount?: number; actionCount?: number }) {
+  const baseHeight = 120
+
+  if (args.kind !== 'stage') {
+    return baseHeight
+  }
+
+  const responseCount = Math.min(args.responseCount ?? 0, 6)
+  const actionCount = Math.min(args.actionCount ?? 0, 6)
+  let height = baseHeight
+
+  if (responseCount > 0) {
+    height += 24 + (responseCount * 40)
+  }
+
+  if (actionCount > 0) {
+    height += 24 + (actionCount * 40)
+  }
+
+  return height
+}
+
 function getStageOptionAnchorY(node: StudioGraphNode, optionIndex: number) {
   return node.y + 118 + (optionIndex * 42)
 }
@@ -337,7 +360,7 @@ function getStageActionAnchorY(node: StudioGraphNode, responseCount: number, act
 function getNodeDropAnchorY(node: StudioGraphNode, pointerY?: number) {
   if (typeof pointerY !== 'number') return getNodeAnchorY(node)
   const top = node.y + 24
-  const bottom = node.y + 96
+  const bottom = node.y + Math.max(40, node.height - 24)
   return Math.max(top, Math.min(bottom, pointerY))
 }
 
@@ -387,7 +410,7 @@ function isPointInsideNode(node: StudioGraphNode, point: { x: number; y: number 
   return point.x >= (node.x - padding)
     && point.x <= (node.x + node.width + padding)
     && point.y >= (node.y - padding)
-    && point.y <= (node.y + 120 + padding)
+    && point.y <= (node.y + node.height + padding)
 }
 
 function duplicateResponseOption(option: ChatbotFlowResponseOption): ChatbotFlowResponseOption {
@@ -499,6 +522,7 @@ function buildStudioGraph(builder: BuilderState) {
     x: startX,
     y: laneY.stages,
     width: 172,
+    height: getGraphNodeHeight({ kind: 'start' }),
     accentClass: 'border-emerald-200 bg-white text-slate-900',
     headerClass: 'bg-emerald-50 text-emerald-900',
     headerBadgeClass: 'bg-white/90 text-emerald-700',
@@ -519,6 +543,7 @@ function buildStudioGraph(builder: BuilderState) {
       x: layout?.x ?? stageStartX + (index * stageSpacing),
       y: layout?.y ?? laneY.stages,
       width: 232,
+      height: getGraphNodeHeight({ kind: 'stage', responseCount: stage.responseOptions.length, actionCount: stage.quickActionIds.length }),
       accentClass: 'border-emerald-200 bg-white text-slate-900',
       headerClass: 'bg-emerald-50 text-emerald-900',
       headerBadgeClass: 'bg-white/90 text-emerald-700',
@@ -547,6 +572,7 @@ function buildStudioGraph(builder: BuilderState) {
       x: layout?.x ?? (targetStageNode ? targetStageNode.x + 18 : stageStartX + ((stageIndexById.get(trigger.targetStageId) ?? index) * stageSpacing)),
       y: layout?.y ?? laneY.triggers + (triggerCount * triggerStackGap),
       width: 220,
+      height: getGraphNodeHeight({ kind: 'trigger' }),
       accentClass: 'border-slate-200 bg-white text-slate-900',
       headerClass: trigger.enabled ? 'bg-amber-400 text-white' : 'bg-slate-200 text-slate-600',
       headerBadgeClass: trigger.enabled ? 'bg-white/90 text-amber-700' : 'bg-white/75 text-slate-500',
@@ -581,6 +607,7 @@ function buildStudioGraph(builder: BuilderState) {
       x: layout?.x ?? stageStartX + (sourceIndex * stageSpacing) + 20,
       y: layout?.y ?? laneY.actions + (actionCount * actionStackGap),
       width: 220,
+      height: getGraphNodeHeight({ kind: 'action' }),
       accentClass: 'border-slate-200 bg-white text-slate-900',
       headerClass: action.enabled ? 'bg-fuchsia-500 text-white' : 'bg-slate-200 text-slate-600',
       headerBadgeClass: action.enabled ? 'bg-white/90 text-fuchsia-700' : 'bg-white/75 text-slate-500',
@@ -608,6 +635,7 @@ function buildStudioGraph(builder: BuilderState) {
       x: layout?.x ?? stageStartX + (midpointIndex * stageSpacing) - 94,
       y: layout?.y ?? laneY.pauses + (pauseCount * pauseStackGap),
       width: 206,
+      height: getGraphNodeHeight({ kind: 'pause' }),
       accentClass: 'border-slate-200 bg-white text-slate-900',
       headerClass: pause.enabled ? 'bg-sky-500 text-white' : 'bg-slate-200 text-slate-600',
       headerBadgeClass: pause.enabled ? 'bg-white/90 text-sky-700' : 'bg-white/75 text-slate-500',
@@ -710,7 +738,7 @@ function buildStudioGraph(builder: BuilderState) {
   })
 
   const contentWidth = Math.max(...nodes.map((node) => node.x + node.width), 1320) + 180
-  const contentHeight = Math.max(...nodes.map((node) => node.y + 144), 820)
+  const contentHeight = Math.max(...nodes.map((node) => node.y + node.height + 24), 820)
 
   return { nodes, edges, contentWidth, contentHeight }
 }
