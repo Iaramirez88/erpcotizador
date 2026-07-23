@@ -657,6 +657,50 @@ function getStageMessageContent(stage: ChatbotFlowStage) {
   return stage.prompt.trim() || stage.description.trim()
 }
 
+function escapePreviewHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function getPreChatPreviewFields(builder: BuilderState) {
+  const fields: Array<{ label: string; placeholder: string; required?: boolean }> = []
+
+  if (builder.preChatFormShowNameField) {
+    fields.push({ label: builder.nameLabel || 'Nombre', placeholder: builder.namePlaceholder || 'Tu nombre', required: builder.preChatFormRequireName })
+  }
+  if (builder.preChatFormShowEmailField) {
+    fields.push({ label: builder.emailLabel || 'Correo', placeholder: builder.emailPlaceholder || 'tu@correo.com', required: builder.preChatFormRequireEmail })
+  }
+  if (builder.preChatFormShowPhoneField) {
+    fields.push({ label: builder.phoneLabel || 'Teléfono', placeholder: builder.phonePlaceholder || 'Tu WhatsApp o teléfono', required: builder.preChatFormRequirePhone })
+  }
+  if (builder.preChatFormShowDepartmentField) {
+    fields.push({ label: builder.preChatFormDepartmentLabel || 'Campo adicional', placeholder: builder.preChatFormDepartmentPlaceholder || 'Selecciona una opción' })
+  }
+
+  return fields
+}
+
+function getPreChatFormPreviewHtml(builder: BuilderState) {
+  const fields = getPreChatPreviewFields(builder)
+  const fieldsHtml = fields.length
+    ? fields.map((field) => `<div><strong>${escapePreviewHtml(field.label)}${field.required ? ' *' : ''}</strong><br /><span>${escapePreviewHtml(field.placeholder)}</span></div>`).join('')
+    : '<div><strong>Sin campos visibles</strong><br /><span>Activa al menos una entrada en el panel derecho.</span></div>'
+
+  return `
+    <div>
+      <h3>${escapePreviewHtml(builder.preChatFormTitle || 'Formulario previo al chat')}</h3>
+      <p>${escapePreviewHtml(builder.preChatFormDescription || 'Completa estos datos antes de iniciar la conversación.')}</p>
+      ${fieldsHtml}
+      <p><strong>Botón:</strong> ${escapePreviewHtml(builder.preChatFormSubmitLabel || 'Continuar')}</p>
+    </div>
+  `.trim()
+}
+
 function getStageMessageHtml(stage: ChatbotFlowStage) {
   return normalizeRichTextHtml(getStageMessageContent(stage))
 }
@@ -683,6 +727,14 @@ function getStageCardResponsePreview(stage: ChatbotFlowStage) {
 function getStageCardMeta(stage: ChatbotFlowStage) {
   const promptPreview = getStageCardPreview(stage)
   const hasCapture = stage.nextField !== 'none'
+
+  if (stage.templateKey === 'prechat-form') {
+    return {
+      title: stage.title?.trim() || 'Formulario previo',
+      subtitle: 'Vista previa del formulario',
+      description: 'Muestra cómo verá el visitante este bloque antes de entrar al chat.',
+    }
+  }
 
   return {
     title: stage.title?.trim() || 'Mensaje',
@@ -726,8 +778,8 @@ function buildStudioGraph(builder: BuilderState) {
     const id = `stage:${stage.id}`
     const layout = builder.studioNodeLayout[id]
     const meta = getStageCardMeta(stage)
-    const messageHtml = getStageMessageHtml(stage)
-    const messageText = getStageMessageText(stage)
+    const messageHtml = stage.templateKey === 'prechat-form' ? getPreChatFormPreviewHtml(builder) : getStageMessageHtml(stage)
+    const messageText = stage.templateKey === 'prechat-form' ? `${builder.preChatFormTitle}\n${builder.preChatFormDescription}\n${getPreChatPreviewFields(builder).map((field) => `${field.label}: ${field.placeholder}`).join('\n')}` : getStageMessageText(stage)
     return {
       id,
       domId: toDomId('stage', stage.id),
@@ -2996,6 +3048,41 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     return false
   }
 
+  function canConnectFromSource(args: { sourceKind: StudioGraphNode['kind']; targetKind: StudioGraphNode['kind']; sourceOptionId?: string }) {
+    if (args.sourceOptionId) {
+      return (args.sourceKind === 'stage' || args.sourceKind === 'trigger')
+        && (args.targetKind === 'stage' || args.targetKind === 'action' || (args.sourceKind === 'stage' && args.targetKind === 'trigger'))
+    }
+    return canConnectNodes(args.sourceKind, args.targetKind)
+  }
+
+  function getStudioGraphNodeFromFocusNode(node: StudioFocusNode | undefined) {
+    if (!node) return null
+    return studioGraph.nodes.find((item) => item.id === `${node.kind}:${node.id}`) ?? null
+  }
+
+  function getConnectableExistingNodes(target?: StudioCreateMenuTarget) {
+    const sourceNode = getStudioGraphNodeFromFocusNode(target?.sourceNode)
+    if (!sourceNode) return []
+
+    return studioGraph.nodes.filter((node) => {
+      if (node.id === sourceNode.id || node.kind === 'start') return false
+      return canConnectFromSource({
+        sourceKind: sourceNode.kind,
+        targetKind: node.kind,
+        sourceOptionId: target?.sourceOptionId,
+      })
+    })
+  }
+
+  function connectExistingNodeFromMenu(targetNodeId: string) {
+    const sourceNode = getStudioGraphNodeFromFocusNode(contextMenu?.createTarget?.sourceNode)
+    const targetNode = studioGraph.nodes.find((node) => node.id === targetNodeId) ?? null
+    if (!sourceNode || !targetNode) return
+    applyConnection(sourceNode, targetNode, contextMenu?.createTarget?.sourceOptionId)
+    setContextMenu(null)
+  }
+
   function getConnectionHandleAnchor(args: { node: StudioGraphNode; sourceOptionId?: string; sourceOptionIndex?: number; targetKind?: StudioGraphNode['kind'] }) {
     const measuredAnchor = getMeasuredHandleAnchor(args.node.id, args.sourceOptionId)
     if (measuredAnchor) {
@@ -3037,9 +3124,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     const candidates = [...studioGraph.nodes].reverse()
     return candidates.find((node) => {
       if (node.id === draft.fromId) return false
-      const canConnect = draft.sourceOptionId
-        ? (draft.fromKind === 'stage' || draft.fromKind === 'trigger') && (node.kind === 'stage' || node.kind === 'action' || (draft.fromKind === 'stage' && node.kind === 'trigger'))
-        : canConnectNodes(draft.fromKind, node.kind)
+      const canConnect = canConnectFromSource({ sourceKind: draft.fromKind, targetKind: node.kind, sourceOptionId: draft.sourceOptionId })
       if (!canConnect) return false
       return isPointInsideNode(node, point)
     }) ?? null
@@ -3053,9 +3138,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       ? builder.flowTriggers.find((item) => item.id === (sourceNode.id.split(':')[1] || ''))
       : null
     const isActionLink = Boolean(sourceOptionId && stage?.quickActionIds.includes(sourceOptionId))
-    const canConnect = sourceOptionId
-      ? (sourceNode.kind === 'stage' || sourceNode.kind === 'trigger') && (targetNode.kind === 'stage' || targetNode.kind === 'action' || (sourceNode.kind === 'stage' && targetNode.kind === 'trigger'))
-      : canConnectNodes(sourceNode.kind, targetNode.kind)
+    const canConnect = canConnectFromSource({ sourceKind: sourceNode.kind, targetKind: targetNode.kind, sourceOptionId })
     if (!canConnect) return
 
     const sourceId = sourceNode.id.split(':')[1] || ''
@@ -3652,6 +3735,26 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <div className="text-sm font-semibold text-emerald-950">Formulario previo al chat</div>
                   <div className="mt-1 text-xs leading-5 text-emerald-900">Controla aquí el título, el mensaje y la cantidad de entradas visibles antes de abrir la conversación.</div>
                 </div>
+                <div className="rounded-[24px] border border-emerald-200 bg-white px-4 py-4 shadow-sm">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Preview para el usuario</div>
+                  <div className="mt-3 rounded-[22px] border border-slate-200 bg-slate-50/70 px-4 py-4">
+                    <div className="text-base font-semibold text-slate-950">{builder.preChatFormTitle || 'Formulario previo al chat'}</div>
+                    <div className="mt-2 text-sm leading-6 text-slate-600">{builder.preChatFormDescription || 'Completa estos datos antes de iniciar la conversación.'}</div>
+                    <div className="mt-4 space-y-3">
+                      {getPreChatPreviewFields(builder).length ? getPreChatPreviewFields(builder).map((field) => (
+                        <div key={`${field.label}-${field.placeholder}`} className="space-y-1.5">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{field.label}{field.required ? ' *' : ''}</div>
+                          <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-400">{field.placeholder}</div>
+                        </div>
+                      )) : (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">Activa al menos un campo para ver la estructura del formulario.</div>
+                      )}
+                    </div>
+                    <div className="mt-4 flex justify-end">
+                      <div className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white">{builder.preChatFormSubmitLabel || 'Continuar'}</div>
+                    </div>
+                  </div>
+                </div>
                 <div className="grid gap-2">
                   <Label>Título del formulario</Label>
                   <Input value={builder.preChatFormTitle} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormTitle: event.target.value }))} />
@@ -3664,7 +3767,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <Label>Texto del botón</Label>
                   <Input value={builder.preChatFormSubmitLabel} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormSubmitLabel: event.target.value }))} />
                 </div>
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="grid gap-3">
                   <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Mostrar nombre</span><Switch checked={builder.preChatFormShowNameField} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormShowNameField: checked }))} /></div>
                   <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Requerir nombre</span><Switch checked={builder.preChatFormRequireName} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormRequireName: checked }))} disabled={!builder.preChatFormShowNameField} /></div>
                   {builder.preChatFormShowNameField ? (
@@ -3707,8 +3810,8 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                       </div>
                     </>
                   ) : null}
-                  <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-white px-4 py-3 md:col-span-2"><span className="text-sm text-slate-700">Exigir al menos correo o teléfono</span><Switch checked={builder.preChatFormRequireContactMethod} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormRequireContactMethod: checked }))} disabled={!builder.preChatFormShowEmailField && !builder.preChatFormShowPhoneField} /></div>
-                  <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-white px-4 py-3 md:col-span-2"><span className="text-sm text-slate-700">Mostrar campo adicional</span><Switch checked={builder.preChatFormShowDepartmentField} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormShowDepartmentField: checked }))} /></div>
+                  <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Exigir al menos correo o teléfono</span><Switch checked={builder.preChatFormRequireContactMethod} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormRequireContactMethod: checked }))} disabled={!builder.preChatFormShowEmailField && !builder.preChatFormShowPhoneField} /></div>
+                  <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Mostrar campo adicional</span><Switch checked={builder.preChatFormShowDepartmentField} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormShowDepartmentField: checked }))} /></div>
                   {builder.preChatFormShowDepartmentField ? (
                     <>
                       <div className="grid gap-2">
@@ -3719,7 +3822,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         <Label>Placeholder del campo adicional</Label>
                         <Input value={builder.preChatFormDepartmentPlaceholder} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormDepartmentPlaceholder: event.target.value }))} />
                       </div>
-                      <div className="grid gap-2 md:col-span-2">
+                      <div className="grid gap-2">
                         <Label>Opciones del campo adicional</Label>
                         <Textarea value={builder.preChatFormDepartmentOptions} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormDepartmentOptions: event.target.value }))} rows={4} placeholder="Ventas&#10;Soporte técnico&#10;Facturación" />
                       </div>
@@ -4942,9 +5045,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         const canStartConnection = node.kind !== 'start'
                         const validTarget = connectionDraft
                           ? node.id !== connectionDraft.fromId && (
-                              connectionDraft.sourceOptionId
-                                ? (connectionDraft.fromKind === 'stage' || connectionDraft.fromKind === 'trigger') && (node.kind === 'stage' || node.kind === 'action' || (connectionDraft.fromKind === 'stage' && node.kind === 'trigger'))
-                                : canConnectNodes(connectionDraft.fromKind, node.kind)
+                              canConnectFromSource({ sourceKind: connectionDraft.fromKind, targetKind: node.kind, sourceOptionId: connectionDraft.sourceOptionId })
                             )
                           : false
                         const responseHandles = node.kind === 'stage'
@@ -5045,9 +5146,22 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                             {node.kind === 'trigger' && triggerConditionHandles.length ? (
                               <div className="mt-3 space-y-2 border-t border-slate-200/70 pt-3">
                                 {triggerConditionHandles.map((condition, index) => (
-                                  <div key={condition.id} className="relative flex items-center gap-2 rounded-xl border border-slate-200 bg-white/88 px-2.5 py-2 pr-7 text-[11px] font-medium text-slate-700 shadow-sm">
+                                  <div key={condition.id} className="relative flex items-center gap-2 rounded-xl border border-slate-200 bg-white/88 px-2.5 py-2 pr-14 text-[11px] font-medium text-slate-700 shadow-sm">
                                     <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />
                                     <span className="min-w-0 flex-1 truncate">{getTriggerConditionSummary(condition)}</span>
+                                    <button
+                                      type="button"
+                                      aria-label={`Crear o vincular desde condición ${index + 1}`}
+                                      onPointerDown={(event) => event.stopPropagation()}
+                                      onClick={(event) => {
+                                        if (!canEditFlow) return
+                                        event.stopPropagation()
+                                        openCreateMenu({ x: node.x + node.width + 24, y: node.y + 88 + (index * 34), target: { sourceNode: { kind: node.kind, id: nodeKey }, sourceOptionId: condition.id } })
+                                      }}
+                                      className="absolute right-5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border border-slate-300 bg-white shadow"
+                                    >
+                                      <Plus className="h-3 w-3" />
+                                    </button>
                                     <button
                                       type="button"
                                       aria-label={`Reconectar condición ${index + 1}`}
@@ -5068,9 +5182,22 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                             {node.kind === 'stage' && responseHandles.length ? (
                               <div className="mt-3 space-y-2 border-t border-slate-200/70 pt-3">
                                 {responseHandles.map((option, index) => (
-                                  <div key={option.id} className="relative flex items-center gap-2 rounded-xl border border-slate-200 bg-white/88 px-2.5 py-2 pr-7 text-[11px] font-medium text-slate-700 shadow-sm">
+                                  <div key={option.id} className="relative flex items-center gap-2 rounded-xl border border-slate-200 bg-white/88 px-2.5 py-2 pr-14 text-[11px] font-medium text-slate-700 shadow-sm">
                                     <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-400" />
                                     <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                                    <button
+                                      type="button"
+                                      aria-label={`Crear o vincular desde ${option.label}`}
+                                      onPointerDown={(event) => event.stopPropagation()}
+                                      onClick={(event) => {
+                                        if (!canEditFlow) return
+                                        event.stopPropagation()
+                                        openCreateMenu({ x: node.x + node.width + 24, y: node.y + 88 + (index * 34), target: { sourceNode: { kind: node.kind, id: nodeKey }, sourceOptionId: option.id } })
+                                      }}
+                                      className="absolute right-5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border border-slate-300 bg-white shadow"
+                                    >
+                                      <Plus className="h-3 w-3" />
+                                    </button>
                                     <button
                                       type="button"
                                       aria-label={`Reconectar rama ${option.label}`}
@@ -5195,7 +5322,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                           ) : null}
                           {contextMenu.mode === 'create' ? (
                             <>
-                              <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Que quieres agregar</div>
+                              <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Crear o vincular</div>
                               {[
                                 { kind: 'stage', label: 'Mensaje' },
                                 { kind: 'action', label: 'Accion' },
@@ -5207,6 +5334,22 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                   <Plus className="h-4 w-4" />
                                 </button>
                               ))}
+                              {contextMenu.createTarget?.sourceNode ? (
+                                <>
+                                  <div className="mx-2 my-2 border-t border-slate-200" />
+                                  <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Vincular bloque existente</div>
+                                  <div className="max-h-56 space-y-1 overflow-y-auto px-1 pb-1">
+                                    {getConnectableExistingNodes(contextMenu.createTarget).length ? getConnectableExistingNodes(contextMenu.createTarget).map((node) => (
+                                      <button key={node.id} type="button" onClick={() => connectExistingNodeFromMenu(node.id)} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50">
+                                        <span className="truncate">{node.title}</span>
+                                        <span className="ml-3 shrink-0 text-[11px] uppercase tracking-[0.14em] text-slate-400">{getNodeTypeLabel(node.kind)}</span>
+                                      </button>
+                                    )) : (
+                                      <div className="rounded-xl border border-dashed border-slate-200 px-3 py-2 text-xs leading-5 text-slate-500">No hay bloques existentes compatibles para esta rama.</div>
+                                    )}
+                                  </div>
+                                </>
+                              ) : null}
                             </>
                           ) : null}
                         </div>
