@@ -10,7 +10,7 @@ export type ChatbotFlowResponseMatchMode = 'exact' | 'contains'
 export type ChatbotQuickActionAttachmentType = 'image' | 'document'
 
 export type ChatbotQuickActionKind = 'catalog' | 'stock' | 'human' | 'message' | 'url' | 'product_lookup' | 'service_lookup' | 'create_quote' | 'create_invoice' | 'create_work_order'
-
+export type ChatbotFlowStageTemplateKey = 'prechat-form'
 export type ChatbotQuickActionChatConfig = {
   openChat: boolean
   changeAssignee: boolean
@@ -106,6 +106,7 @@ export type ChatbotFlowStage = {
   title: string
   description: string
   prompt: string
+  templateKey: ChatbotFlowStageTemplateKey | null
   nextField: ChatbotFlowNextField
   quickActionIds: string[]
   responseOptions: ChatbotFlowResponseOption[]
@@ -367,6 +368,7 @@ export function getDefaultChatbotFlowStages(): ChatbotFlowStage[] {
       title: 'Descubrimiento',
       description: 'Recibe al visitante y lo orienta hacia catálogo o captura.',
       prompt: 'Hola. Soy tu asistente comercial y puedo ayudarte a explorar catálogo, revisar stock o dejar tu solicitud lista para el equipo.',
+      templateKey: null,
       nextField: 'name',
       quickActionIds: ['view-catalog', 'products-in-stock', 'talk-to-advisor'],
       inactivityRule: getDefaultChatbotInactivityRule(),
@@ -405,6 +407,7 @@ export function getDefaultChatbotFlowStages(): ChatbotFlowStage[] {
       title: 'Catálogo y stock',
       description: 'Enfoca la conversación en productos, disponibilidad y referencias.',
       prompt: 'Puedo mostrarte referencias activas, disponibilidad aproximada y alternativas cercanas según el producto que busques.',
+      templateKey: null,
       nextField: 'product',
       quickActionIds: ['view-catalog', 'products-in-stock', 'talk-to-advisor'],
       inactivityRule: getDefaultChatbotInactivityRule(),
@@ -434,6 +437,7 @@ export function getDefaultChatbotFlowStages(): ChatbotFlowStage[] {
       title: 'Calificación',
       description: 'Captura datos de contacto, producto y cantidad para el CRM.',
       prompt: 'Perfecto. Ahora voy a completar los datos necesarios para dejar el lead listo y que el equipo comercial continúe el seguimiento.',
+      templateKey: null,
       nextField: 'email',
       quickActionIds: ['products-in-stock', 'talk-to-advisor'],
       inactivityRule: getDefaultChatbotInactivityRule(),
@@ -454,6 +458,7 @@ export function getDefaultChatbotFlowStages(): ChatbotFlowStage[] {
       title: 'Escalamiento humano',
       description: 'Cierra el flujo automático y deriva el caso a un asesor.',
       prompt: 'Ya dejé el contexto preparado y ahora voy a escalar la conversación al equipo para seguimiento humano.',
+      templateKey: null,
       nextField: 'none',
       quickActionIds: ['talk-to-advisor'],
       inactivityRule: getDefaultChatbotInactivityRule(),
@@ -527,22 +532,24 @@ export function normalizeChatbotFlowStages(value: unknown): ChatbotFlowStage[] {
   const defaults = getDefaultChatbotFlowStages()
   if (!Array.isArray(value)) return defaults
   const items = value
-  const normalized = items
-    .map((item) => {
+  const normalized = items.reduce<ChatbotFlowStage[]>((accumulator, item) => {
       const record = asRecord(item)
-      if (!record) return null
-      return {
+      if (!record) return accumulator
+      const normalizedStage = {
         id: asText(record.id),
         title: asText(record.title),
         description: asText(record.description),
         prompt: asText(record.prompt),
+        templateKey: asText(record.templateKey) === 'prechat-form' ? 'prechat-form' : null,
         nextField: isFlowNextField(record.nextField) ? record.nextField : 'none',
         quickActionIds: normalizeIds(record.quickActionIds),
         responseOptions: normalizeChatbotFlowResponseOptions(record.responseOptions, asText(record.id)),
         inactivityRule: normalizeChatbotInactivityRule(record.inactivityRule),
       } satisfies ChatbotFlowStage
-    })
-    .filter((item): item is ChatbotFlowStage => Boolean(item?.id && item.title))
+      if (!normalizedStage.id || !normalizedStage.title) return accumulator
+      accumulator.push(normalizedStage)
+      return accumulator
+    }, [])
 
   return normalized
 }

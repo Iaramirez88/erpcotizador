@@ -102,6 +102,7 @@ type PublicChatbotEmbedProps = {
   termsLabel: string
   termsLinkText: string
   termsLinkUrl: string
+  startStageId: string
   quickActions: ChatbotQuickAction[]
   flowStages: ChatbotFlowStage[]
   accessIssue?: PublicChatbotAccessIssue
@@ -514,7 +515,13 @@ function CrmPublicChatbotAccessIssue(props: PublicChatbotEmbedProps & { accessIs
 function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const floatingLauncherActive = props.floatingLauncherEnabled && props.embedMode === 'widget'
-  const initialStage = useMemo(() => props.flowStages[0] ?? findChatbotFlowStage(props.flowStages, 'welcome') ?? null, [props.flowStages])
+  const initialStage = useMemo(() => {
+    if (props.startStageId) {
+      const configuredStage = findChatbotFlowStage(props.flowStages, props.startStageId)
+      if (configuredStage) return configuredStage
+    }
+    return findChatbotFlowStage(props.flowStages, 'welcome') ?? null
+  }, [props.flowStages, props.startStageId])
   const defaultMessages = useMemo(() => buildInitialMessages(props.prompt, initialStage, props.quickActions), [initialStage, props.prompt, props.quickActions])
   const preChatRequired = props.preChatFormEnabled
   const [ready, setReady] = useState(false)
@@ -1106,25 +1113,37 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
               <p className="mt-2 text-sm leading-6 text-slate-600">{props.preChatFormDescription}</p>
               <div className="mt-4 grid gap-3">
                 {props.preChatFormShowNameField ? (
-                  <Input value={identity.nombre} onChange={(event) => updateIdentityField('nombre', event.target.value)} placeholder={props.namePlaceholder} className="h-11 rounded-2xl border-slate-200" />
+                  <div className="grid gap-1.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{props.nameLabel}</p>
+                    <Input value={identity.nombre} onChange={(event) => updateIdentityField('nombre', event.target.value)} placeholder={props.namePlaceholder} className="h-11 rounded-2xl border-slate-200" />
+                  </div>
                 ) : null}
                 {props.preChatFormShowEmailField ? (
-                  <Input value={identity.email} onChange={(event) => updateIdentityField('email', event.target.value)} placeholder={props.emailPlaceholder} type="email" className="h-11 rounded-2xl border-slate-200" />
+                  <div className="grid gap-1.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{props.emailLabel}</p>
+                    <Input value={identity.email} onChange={(event) => updateIdentityField('email', event.target.value)} placeholder={props.emailPlaceholder} type="email" className="h-11 rounded-2xl border-slate-200" />
+                  </div>
                 ) : null}
                 {props.preChatFormShowPhoneField ? (
-                  <Input value={identity.telefono} onChange={(event) => updateIdentityField('telefono', event.target.value)} placeholder={props.phonePlaceholder} className="h-11 rounded-2xl border-slate-200" />
+                  <div className="grid gap-1.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{props.phoneLabel}</p>
+                    <Input value={identity.telefono} onChange={(event) => updateIdentityField('telefono', event.target.value)} placeholder={props.phonePlaceholder} className="h-11 rounded-2xl border-slate-200" />
+                  </div>
                 ) : null}
                 {departmentOptionsAvailable ? (
-                  <Select value={identity.departamento} onValueChange={(value) => updateIdentityField('departamento', value)}>
-                    <SelectTrigger className="h-11 rounded-2xl border-slate-200">
-                      <SelectValue placeholder={props.preChatFormDepartmentPlaceholder || props.preChatFormDepartmentLabel} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {props.preChatFormDepartmentOptions.map((option) => (
-                        <SelectItem key={option.id} value={option.value}>{option.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="grid gap-1.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{props.preChatFormDepartmentLabel}</p>
+                    <Select value={identity.departamento} onValueChange={(value) => updateIdentityField('departamento', value)}>
+                      <SelectTrigger className="h-11 rounded-2xl border-slate-200">
+                        <SelectValue placeholder={props.preChatFormDepartmentPlaceholder || props.preChatFormDepartmentLabel} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {props.preChatFormDepartmentOptions.map((option) => (
+                          <SelectItem key={option.id} value={option.value}>{option.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 ) : null}
               </div>
               {preChatError ? <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-700">{preChatError}</p> : null}

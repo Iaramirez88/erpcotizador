@@ -236,6 +236,7 @@ export type PublicChatbotSettings = {
   termsLabel: string
   termsLinkText: string
   termsLinkUrl: string
+  startStageId: string
   quickActions: ChatbotQuickAction[]
   flowStages: ChatbotFlowStage[]
   allowedDomains: string[]
@@ -334,6 +335,7 @@ export function getPublicChatbotSettings(settingsJson: unknown): PublicChatbotSe
     termsLabel: normalizeString(settings.termsLabel, 'Acepto el tratamiento de datos personales.'),
     termsLinkText: normalizeString(settings.termsLinkText, 'Leer términos'),
     termsLinkUrl: normalizeString(settings.termsLinkUrl),
+    startStageId: defaultFlow.startStageId,
     quickActions: defaultFlow.quickActions.length
       ? defaultFlow.quickActions
       : normalizeChatbotQuickActions(settings.quickActions),

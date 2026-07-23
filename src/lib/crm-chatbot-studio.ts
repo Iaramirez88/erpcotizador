@@ -445,7 +445,7 @@ export function normalizeChatbotAutomationFlows(value: unknown, fallback?: { qui
         enabled: asBoolean(record.enabled, true),
         isDefault: asBoolean(record.isDefault, index === 0),
         providers: providers.length ? providers : getDefaultChatbotAutomationProviders(),
-        startStageId: normalizeString(record.startStageId) || flowStages[0]?.id || '',
+        startStageId: Object.prototype.hasOwnProperty.call(record, 'startStageId') ? asText(record.startStageId) : (flowStages[0]?.id || ''),
         quickActions: normalizeChatbotQuickActions(record.quickActions),
         flowStages,
         flowTriggers: normalizeChatbotFlowTriggers(record.flowTriggers),

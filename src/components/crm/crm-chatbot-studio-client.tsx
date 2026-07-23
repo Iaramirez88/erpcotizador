@@ -22,6 +22,7 @@ import {
   type ChatbotFlowResponseMatchMode,
   type ChatbotFlowResponseOption,
   type ChatbotFlowStage,
+  type ChatbotFlowStageTemplateKey,
   type ChatbotQuickAction,
   type ChatbotQuickActionAttachmentType,
   type ChatbotQuickActionKind,
@@ -126,6 +127,12 @@ type BuilderState = {
   assistantName: string
   publicEmbedEnabled: boolean
   allowedDomains: string
+  nameLabel: string
+  namePlaceholder: string
+  emailLabel: string
+  emailPlaceholder: string
+  phoneLabel: string
+  phonePlaceholder: string
   resetConversationAfterValue: string
   resetConversationAfterUnit: PublicChatbotResetConversationUnit
   resetConversationAfterAction: ChatbotInactivityAction
@@ -840,7 +847,7 @@ function buildStudioGraph(builder: BuilderState) {
   const nodes = [startNode, ...triggerNodes, ...stageNodes, ...pauseNodes, ...actionNodes]
   const edges: StudioGraphEdge[] = []
 
-  const startTargetStageId = builder.startStageId || builder.flowStages[0]?.id || ''
+  const startTargetStageId = builder.startStageId
   const startTargetNode = startTargetStageId ? stageNodes.find((node) => node.id === `stage:${startTargetStageId}`) : null
 
   if (startTargetNode) {
@@ -968,7 +975,7 @@ function applySelectedFlowToBuilder(base: BuilderState, flowId?: string) {
   return {
     ...base,
     selectedFlowId: selectedFlow.id,
-    startStageId: selectedFlow.startStageId || selectedFlow.flowStages[0]?.id || '',
+    startStageId: selectedFlow.startStageId,
     quickActions: selectedFlow.quickActions,
     flowStages: selectedFlow.flowStages,
     flowTriggers: selectedFlow.flowTriggers,
@@ -1019,6 +1026,12 @@ function hydrateBuilder(channel?: ChannelConnection | null): BuilderState {
     assistantName: publicSettings.assistantName,
     publicEmbedEnabled: publicSettings.publicEmbedEnabled,
     allowedDomains: publicSettings.allowedDomains.join('\n'),
+    nameLabel: publicSettings.nameLabel,
+    namePlaceholder: publicSettings.namePlaceholder,
+    emailLabel: publicSettings.emailLabel,
+    emailPlaceholder: publicSettings.emailPlaceholder,
+    phoneLabel: publicSettings.phoneLabel,
+    phonePlaceholder: publicSettings.phonePlaceholder,
     resetConversationAfterValue: String(publicSettings.resetConversationAfterValue),
     resetConversationAfterUnit: publicSettings.resetConversationAfterUnit,
     resetConversationAfterAction: publicSettings.resetConversationAfterAction,
@@ -1048,7 +1061,7 @@ function hydrateBuilder(channel?: ChannelConnection | null): BuilderState {
     termsLinkUrl: publicSettings.termsLinkUrl,
     automationFlows: studioSettings.automationFlows,
     selectedFlowId: defaultFlow.id,
-    startStageId: defaultFlow.startStageId || defaultFlow.flowStages[0]?.id || '',
+    startStageId: defaultFlow.startStageId,
     quickActions: defaultFlow.quickActions,
     flowStages: defaultFlow.flowStages,
     flowTriggers: defaultFlow.flowTriggers,
@@ -1092,6 +1105,12 @@ function buildSettingsPayload(state: BuilderState) {
     assistantName: snapshot.assistantName,
     publicEmbedEnabled: snapshot.publicEmbedEnabled,
     allowedDomains: snapshot.allowedDomains,
+    nameLabel: snapshot.nameLabel,
+    namePlaceholder: snapshot.namePlaceholder,
+    emailLabel: snapshot.emailLabel,
+    emailPlaceholder: snapshot.emailPlaceholder,
+    phoneLabel: snapshot.phoneLabel,
+    phonePlaceholder: snapshot.phonePlaceholder,
     chatResetConversationAfterHours: undefined,
     chatResetConversationAfterValue: snapshot.resetConversationAfterValue,
     chatResetConversationAfterUnit: snapshot.resetConversationAfterUnit,
@@ -2241,6 +2260,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
         title: 'Nuevo mensaje',
         description: 'Describe el objetivo de este bloque.',
         prompt: 'Mensaje del asistente.',
+        templateKey: null,
         nextField: 'none',
         quickActionIds: [],
         responseOptions: [],
@@ -2266,7 +2286,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       })
 
       return updateSelectedFlowInBuilder(current, {
-        startStageId: current.startStageId || nextStageId,
+        startStageId: current.startStageId,
         flowStages: nextFlowStages,
         flowTriggers: args?.sourceNode?.kind === 'trigger'
           ? current.flowTriggers.map((trigger) => {
@@ -2444,11 +2464,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
         sourceNode,
         preset: {
           title: 'Formulario de contacto',
-          description: 'Captura datos del visitante antes de cotizar.',
-          prompt: plainTextToRichTextHtml('Formulario activo. El visitante verá campos de nombre, correo, teléfono y tipo de solicitud antes de entrar al chat. Después de eso continuamos con este paso.'),
-          nextField: 'email',
+          description: 'Configura aquí qué datos pedir antes de abrir el chat.',
+          prompt: plainTextToRichTextHtml('Gracias por completar el formulario. Continúo con la conversación desde este mensaje.'),
+          templateKey: 'prechat-form' satisfies ChatbotFlowStageTemplateKey,
+          nextField: 'none',
         },
-        notice: 'Plantilla de formulario agregada al flujo con entradas reales de nombre, correo, teléfono y solicitud.',
+        notice: 'Plantilla de formulario agregada al flujo. Puedes editar título, mensaje y campos desde este bloque.',
       })
       return
     }
@@ -3625,10 +3646,92 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               <Label>Título</Label>
               <Input value={selectedStage.title} onChange={(event) => updateStage(selectedStage.id, { title: event.target.value })} />
             </div>
+            {selectedStage.templateKey === 'prechat-form' ? (
+              <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-3">
+                <div>
+                  <div className="text-sm font-semibold text-emerald-950">Formulario previo al chat</div>
+                  <div className="mt-1 text-xs leading-5 text-emerald-900">Controla aquí el título, el mensaje y la cantidad de entradas visibles antes de abrir la conversación.</div>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Título del formulario</Label>
+                  <Input value={builder.preChatFormTitle} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormTitle: event.target.value }))} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Mensaje del formulario</Label>
+                  <Textarea value={builder.preChatFormDescription} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormDescription: event.target.value }))} rows={3} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Texto del botón</Label>
+                  <Input value={builder.preChatFormSubmitLabel} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormSubmitLabel: event.target.value }))} />
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Mostrar nombre</span><Switch checked={builder.preChatFormShowNameField} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormShowNameField: checked }))} /></div>
+                  <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Requerir nombre</span><Switch checked={builder.preChatFormRequireName} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormRequireName: checked }))} disabled={!builder.preChatFormShowNameField} /></div>
+                  {builder.preChatFormShowNameField ? (
+                    <>
+                      <div className="grid gap-2">
+                        <Label>Nombre del campo nombre</Label>
+                        <Input value={builder.nameLabel} onChange={(event) => setBuilder((current) => ({ ...current, nameLabel: event.target.value }))} />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Placeholder nombre</Label>
+                        <Input value={builder.namePlaceholder} onChange={(event) => setBuilder((current) => ({ ...current, namePlaceholder: event.target.value }))} />
+                      </div>
+                    </>
+                  ) : null}
+                  <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Mostrar correo</span><Switch checked={builder.preChatFormShowEmailField} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormShowEmailField: checked }))} /></div>
+                  <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Requerir correo</span><Switch checked={builder.preChatFormRequireEmail} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormRequireEmail: checked }))} disabled={!builder.preChatFormShowEmailField} /></div>
+                  {builder.preChatFormShowEmailField ? (
+                    <>
+                      <div className="grid gap-2">
+                        <Label>Nombre del campo correo</Label>
+                        <Input value={builder.emailLabel} onChange={(event) => setBuilder((current) => ({ ...current, emailLabel: event.target.value }))} />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Placeholder correo</Label>
+                        <Input value={builder.emailPlaceholder} onChange={(event) => setBuilder((current) => ({ ...current, emailPlaceholder: event.target.value }))} />
+                      </div>
+                    </>
+                  ) : null}
+                  <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Mostrar teléfono</span><Switch checked={builder.preChatFormShowPhoneField} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormShowPhoneField: checked }))} /></div>
+                  <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Requerir teléfono</span><Switch checked={builder.preChatFormRequirePhone} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormRequirePhone: checked }))} disabled={!builder.preChatFormShowPhoneField} /></div>
+                  {builder.preChatFormShowPhoneField ? (
+                    <>
+                      <div className="grid gap-2">
+                        <Label>Nombre del campo teléfono</Label>
+                        <Input value={builder.phoneLabel} onChange={(event) => setBuilder((current) => ({ ...current, phoneLabel: event.target.value }))} />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Placeholder teléfono</Label>
+                        <Input value={builder.phonePlaceholder} onChange={(event) => setBuilder((current) => ({ ...current, phonePlaceholder: event.target.value }))} />
+                      </div>
+                    </>
+                  ) : null}
+                  <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-white px-4 py-3 md:col-span-2"><span className="text-sm text-slate-700">Exigir al menos correo o teléfono</span><Switch checked={builder.preChatFormRequireContactMethod} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormRequireContactMethod: checked }))} disabled={!builder.preChatFormShowEmailField && !builder.preChatFormShowPhoneField} /></div>
+                  <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-white px-4 py-3 md:col-span-2"><span className="text-sm text-slate-700">Mostrar campo adicional</span><Switch checked={builder.preChatFormShowDepartmentField} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormShowDepartmentField: checked }))} /></div>
+                  {builder.preChatFormShowDepartmentField ? (
+                    <>
+                      <div className="grid gap-2">
+                        <Label>Nombre del campo adicional</Label>
+                        <Input value={builder.preChatFormDepartmentLabel} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormDepartmentLabel: event.target.value }))} />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Placeholder del campo adicional</Label>
+                        <Input value={builder.preChatFormDepartmentPlaceholder} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormDepartmentPlaceholder: event.target.value }))} />
+                      </div>
+                      <div className="grid gap-2 md:col-span-2">
+                        <Label>Opciones del campo adicional</Label>
+                        <Textarea value={builder.preChatFormDepartmentOptions} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormDepartmentOptions: event.target.value }))} rows={4} placeholder="Ventas&#10;Soporte técnico&#10;Facturación" />
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
             <div className="grid gap-2">
               <Label>Editor del mensaje</Label>
               <RichTextComposer value={getStageMessageContent(selectedStage)} onChange={(nextValue) => updateStageMessageContent(selectedStage.id, nextValue)} placeholder="Escribe aqui el mensaje exactamente como lo verá el usuario en el chat." variableOptions={triggerVariableOptions} />
-              <div className="text-[11px] leading-5 text-slate-500">Este es el único campo de contenido del mensaje. El Studio mostrará esta misma pieza en la caja del canvas y en el chatbot.</div>
+              <div className="text-[11px] leading-5 text-slate-500">{selectedStage.templateKey === 'prechat-form' ? 'Este mensaje se envía después de que el visitante completa el formulario.' : 'Este es el único campo de contenido del mensaje. El Studio mostrará esta misma pieza en la caja del canvas y en el chatbot.'}</div>
             </div>
             <div className="grid gap-2">
               <Label>Dato esperado</Label>

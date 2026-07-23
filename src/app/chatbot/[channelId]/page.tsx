@@ -110,6 +110,7 @@ export default async function PublicChatbotPage(props: PageProps) {
       termsLabel={settings.termsLabel}
       termsLinkText={settings.termsLinkText}
       termsLinkUrl={settings.termsLinkUrl}
+      startStageId={settings.startStageId}
       quickActions={settings.quickActions}
       flowStages={settings.flowStages}
       allowHumanHandoff={settings.allowHumanHandoff}

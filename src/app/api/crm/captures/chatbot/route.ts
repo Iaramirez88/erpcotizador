@@ -684,8 +684,17 @@ function resolveFlowDestination(args: {
   }
 }
 
+function resolveInitialFlowStage(flowStages: ChatbotFlowStage[], startStageId: string) {
+  if (startStageId) {
+    const configuredStage = findChatbotFlowStage(flowStages, startStageId)
+    if (configuredStage) return configuredStage
+  }
+  return findChatbotFlowStage(flowStages, 'welcome') ?? null
+}
+
 function resolveChatStage(args: {
   currentStageId: string
+  startStageId: string
   flowStages: ChatbotFlowStage[]
   flowTriggers: ChatbotFlowTrigger[]
   quickActions: ChatbotQuickAction[]
@@ -700,7 +709,7 @@ function resolveChatStage(args: {
   nextField: ChatFlowNextField
 }) {
   const currentStage = findChatbotFlowStage(args.flowStages, args.currentStageId)
-    ?? args.flowStages[0]
+    ?? resolveInitialFlowStage(args.flowStages, args.startStageId)
     ?? null
 
   const matchedResponseDestination = args.matchedResponseOption
@@ -719,7 +728,6 @@ function resolveChatStage(args: {
   if (matchedResponseDestination?.stageId) {
     return findChatbotFlowStage(args.flowStages, matchedResponseDestination.stageId)
       ?? currentStage
-      ?? args.flowStages[0]
       ?? null
   }
 
@@ -739,7 +747,6 @@ function resolveChatStage(args: {
   if (quickActionDestination?.stageId) {
     return findChatbotFlowStage(args.flowStages, quickActionDestination.stageId)
       ?? currentStage
-      ?? args.flowStages[0]
       ?? null
   }
 
@@ -761,7 +768,6 @@ function resolveChatStage(args: {
   }
 
   return currentStage
-    ?? args.flowStages[0]
     ?? null
 }
 
@@ -918,6 +924,7 @@ function buildAssistantReply(args: {
   businessActionResult?: BusinessActionResult | null
   showProductField: boolean
   currentStageId: string
+  startStageId: string
   quickActionId: string
   responseOptionId: string
   flowStages: ChatbotFlowStage[]
@@ -925,7 +932,7 @@ function buildAssistantReply(args: {
   quickActions: ChatbotQuickAction[]
   triggerContext: Record<string, string | number | boolean | null | undefined>
 }) {
-  const currentStage = findChatbotFlowStage(args.flowStages, args.currentStageId) ?? args.flowStages[0] ?? null
+  const currentStage = findChatbotFlowStage(args.flowStages, args.currentStageId) ?? resolveInitialFlowStage(args.flowStages, args.startStageId) ?? null
   const matchedResponseOption = findChatbotFlowResponseOption(currentStage, args.responseOptionId)
     ?? matchChatbotFlowResponseOption(currentStage, args.messageText)
   const selectedQuickAction = findChatbotQuickAction(args.quickActions, args.quickActionId)
@@ -933,6 +940,7 @@ function buildAssistantReply(args: {
   if (args.requestHuman) {
     const handoffStage = resolveChatStage({
       currentStageId: args.currentStageId,
+      startStageId: args.startStageId,
       flowStages: args.flowStages,
       flowTriggers: args.flowTriggers,
       quickActions: args.quickActions,
@@ -969,6 +977,7 @@ function buildAssistantReply(args: {
 
   const nextStage = resolveChatStage({
     currentStageId: args.currentStageId,
+    startStageId: args.startStageId,
     flowStages: args.flowStages,
     flowTriggers: args.flowTriggers,
     quickActions: args.quickActions,
@@ -1341,7 +1350,7 @@ export async function POST(request: Request) {
       const flowTriggers = activeFlow.flowTriggers.length ? activeFlow.flowTriggers : studioSettings.flowTriggers
       const pauseNodes = activeFlow.pauseNodes
       const matchedTriggerCondition = matchedTrigger.matchedTrigger?.matchedCondition ?? null
-      const currentStage = findChatbotFlowStage(flowStages, currentStageId) ?? flowStages[0] ?? null
+      const currentStage = findChatbotFlowStage(flowStages, currentStageId) ?? resolveInitialFlowStage(flowStages, activeFlow.startStageId) ?? null
       const matchedResponseOption = findChatbotFlowResponseOption(currentStage, responseOptionId)
         ?? matchChatbotFlowResponseOption(currentStage, messageText)
       const matchedTriggerDestination = resolveFlowDestination({
@@ -1458,6 +1467,7 @@ export async function POST(request: Request) {
         businessActionResult,
         showProductField: settings.showProductField,
         currentStageId,
+        startStageId: activeFlow.startStageId,
         quickActionId: effectiveQuickActionId,
         responseOptionId,
         flowStages,
