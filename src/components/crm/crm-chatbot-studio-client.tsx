@@ -155,6 +155,7 @@ type BuilderState = {
   termsLinkUrl: string
   automationFlows: ChatbotAutomationFlow[]
   selectedFlowId: string
+  startStageId: string
   quickActions: ChatbotQuickAction[]
   flowStages: ChatbotFlowStage[]
   flowTriggers: ChatbotFlowTrigger[]
@@ -839,11 +840,14 @@ function buildStudioGraph(builder: BuilderState) {
   const nodes = [startNode, ...triggerNodes, ...stageNodes, ...pauseNodes, ...actionNodes]
   const edges: StudioGraphEdge[] = []
 
-  if (stageNodes[0]) {
+  const startTargetStageId = builder.startStageId || builder.flowStages[0]?.id || ''
+  const startTargetNode = startTargetStageId ? stageNodes.find((node) => node.id === `stage:${startTargetStageId}`) : null
+
+  if (startTargetNode) {
     edges.push({
       id: 'start-to-first-stage',
       fromId: startNode.id,
-      toId: stageNodes[0].id,
+      toId: startTargetNode.id,
       sourceKind: 'start',
       targetKind: 'stage',
       label: 'inicio',
@@ -964,6 +968,7 @@ function applySelectedFlowToBuilder(base: BuilderState, flowId?: string) {
   return {
     ...base,
     selectedFlowId: selectedFlow.id,
+    startStageId: selectedFlow.startStageId || selectedFlow.flowStages[0]?.id || '',
     quickActions: selectedFlow.quickActions,
     flowStages: selectedFlow.flowStages,
     flowTriggers: selectedFlow.flowTriggers,
@@ -987,6 +992,7 @@ function materializeSelectedFlow(current: BuilderState) {
     automationFlows: current.automationFlows.map((flow) => flow.id === current.selectedFlowId
       ? {
           ...flow,
+          startStageId: current.startStageId,
           quickActions: current.quickActions,
           flowStages: current.flowStages,
           flowTriggers: current.flowTriggers,
@@ -1042,6 +1048,7 @@ function hydrateBuilder(channel?: ChannelConnection | null): BuilderState {
     termsLinkUrl: publicSettings.termsLinkUrl,
     automationFlows: studioSettings.automationFlows,
     selectedFlowId: defaultFlow.id,
+    startStageId: defaultFlow.startStageId || defaultFlow.flowStages[0]?.id || '',
     quickActions: defaultFlow.quickActions,
     flowStages: defaultFlow.flowStages,
     flowTriggers: defaultFlow.flowTriggers,
@@ -1062,6 +1069,7 @@ function createChannelBuilderPreset(mode: 'empty' | 'template'): BuilderState {
     ...hydrateBuilder(null),
     automationFlows: [emptyFlow],
     selectedFlowId: emptyFlow.id,
+    startStageId: emptyFlow.startStageId,
     quickActions: emptyFlow.quickActions,
     flowStages: emptyFlow.flowStages,
     flowTriggers: emptyFlow.flowTriggers,
@@ -1984,7 +1992,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const editingTrigger = editingNode?.kind === 'trigger' ? builder.flowTriggers.find((trigger) => trigger.id === editingNode.id) ?? null : null
   const editingAction = editingNode?.kind === 'action' ? builder.quickActions.find((action) => action.id === editingNode.id) ?? null : null
   const editingPause = editingNode?.kind === 'pause' ? builder.pauseNodes.find((pause) => pause.id === editingNode.id) ?? null : null
-  const selectedStartStage = builder.flowStages[0] ?? null
+  const selectedStartStage = builder.flowStages.find((stage) => stage.id === builder.startStageId) ?? null
   const selectedStage = focusedNode?.kind === 'stage' ? builder.flowStages.find((stage) => stage.id === focusedNode.id) ?? null : null
   const selectedTrigger = focusedNode?.kind === 'trigger' ? builder.flowTriggers.find((trigger) => trigger.id === focusedNode.id) ?? null : null
   const selectedAction = focusedNode?.kind === 'action' ? builder.quickActions.find((action) => action.id === focusedNode.id) ?? null : null
@@ -2258,6 +2266,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       })
 
       return updateSelectedFlowInBuilder(current, {
+        startStageId: current.startStageId || nextStageId,
         flowStages: nextFlowStages,
         flowTriggers: args?.sourceNode?.kind === 'trigger'
           ? current.flowTriggers.map((trigger) => {
@@ -2398,28 +2407,48 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
   function setInitialStage(stageId: string) {
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
-      flowStages: moveStageToFirst(current.flowStages, stageId),
+      startStageId: stageId,
     }))
     setFocusedNode({ kind: 'start', id: 'start' })
     setActiveEdgeId(null)
     setContextMenu(null)
-    setNotice('La caja de inicio ahora apunta al mensaje seleccionado.')
+    setNotice(stageId ? 'La caja de inicio ahora apunta al mensaje seleccionado.' : 'La caja de inicio quedó sin mensaje principal.')
   }
 
   function applyTemplate(templateId: string, position?: { x: number; y: number }) {
     const sourceNode = focusedNode
 
     if (templateId === 'template-stage-form') {
+      const preset = getPublicChatbotPreChatFormPreset('quote-request')
+      setBuilder((current) => ({
+        ...current,
+        preChatFormEnabled: true,
+        preChatFormTemplate: preset.value,
+        preChatFormTitle: preset.title,
+        preChatFormDescription: preset.description,
+        preChatFormSubmitLabel: preset.submitLabel,
+        preChatFormShowNameField: preset.showNameField,
+        preChatFormShowEmailField: preset.showEmailField,
+        preChatFormShowPhoneField: preset.showPhoneField,
+        preChatFormRequireName: preset.requireName,
+        preChatFormRequireEmail: true,
+        preChatFormRequirePhone: preset.requirePhone,
+        preChatFormRequireContactMethod: preset.requireContactMethod,
+        preChatFormShowDepartmentField: preset.showDepartmentField,
+        preChatFormDepartmentLabel: preset.departmentLabel,
+        preChatFormDepartmentPlaceholder: preset.departmentPlaceholder,
+        preChatFormDepartmentOptions: preset.departmentOptions.map((item) => item.label).join('\n'),
+      }))
       createStage({
         position,
         sourceNode,
         preset: {
           title: 'Formulario de contacto',
           description: 'Captura datos del visitante antes de cotizar.',
-          prompt: plainTextToRichTextHtml('Hola {{contact_name}}. Antes de continuar, compárteme estos datos:\n\n1. Nombre o empresa\n2. Correo\n3. WhatsApp\n4. Producto o servicio que necesitas'),
-          nextField: 'name',
+          prompt: plainTextToRichTextHtml('Formulario activo. El visitante verá campos de nombre, correo, teléfono y tipo de solicitud antes de entrar al chat. Después de eso continuamos con este paso.'),
+          nextField: 'email',
         },
-        notice: 'Plantilla de formulario agregada al flujo.',
+        notice: 'Plantilla de formulario agregada al flujo con entradas reales de nombre, correo, teléfono y solicitud.',
       })
       return
     }
@@ -2623,6 +2652,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       const remainingStages = builder.flowStages.filter((item) => item.id !== node.id)
       const fallbackStageId = remainingStages[0]?.id || ''
       setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        startStageId: current.startStageId === node.id ? fallbackStageId : current.startStageId,
         flowStages: current.flowStages
           .filter((item) => item.id !== node.id)
           .map((stage) => ({
@@ -2729,45 +2759,43 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   function updateInlineEdgeTarget(edge: StudioGraphEdge, value: string) {
     const sourceId = edge.fromId.split(':')[1] || ''
     const targetId = edge.toId.split(':')[1] || ''
+    const nextValue = value === '__none__' ? '' : value
 
     if (edge.sourceKind === 'start' && edge.targetKind === 'stage') {
       setBuilder((current) => updateSelectedFlowInBuilder(current, {
-        flowStages: [
-          ...current.flowStages.filter((stage) => stage.id === value),
-          ...current.flowStages.filter((stage) => stage.id !== value),
-        ],
+        startStageId: nextValue,
       }))
-      setNotice('Se actualizó el mensaje inicial del flujo.')
+      setNotice(nextValue ? 'Se actualizó el mensaje inicial del flujo.' : 'La caja Inicio quedó sin mensaje principal.')
       return
     }
 
     if (edge.sourceKind === 'stage' && edge.targetKind === 'stage' && edge.sourceOptionId) {
-      updateResponseOption(sourceId, edge.sourceOptionId, { targetStageId: value, targetActionId: '', targetTriggerId: '' })
+      updateResponseOption(sourceId, edge.sourceOptionId, { targetStageId: nextValue, targetActionId: '', targetTriggerId: '' })
       setNotice('La rama quedó reconectada desde el canvas.')
       return
     }
 
     if (edge.sourceKind === 'stage' && edge.targetKind === 'trigger' && edge.sourceOptionId) {
-      updateResponseOption(sourceId, edge.sourceOptionId, { targetTriggerId: value, targetStageId: '', targetActionId: '' })
+      updateResponseOption(sourceId, edge.sourceOptionId, { targetTriggerId: nextValue, targetStageId: '', targetActionId: '' })
       setNotice('La rama ahora apunta al filtro elegido.')
       return
     }
 
     if (edge.sourceKind === 'stage' && edge.targetKind === 'action') {
-      replaceStageQuickActionLink(sourceId, targetId, value)
+      replaceStageQuickActionLink(sourceId, targetId, nextValue)
       setNotice('La acción rápida enlazada fue actualizada.')
       return
     }
 
     if (edge.sourceKind === 'stage' && edge.targetKind === 'pause') {
-      updatePauseNode(targetId, { sourceStageId: value })
+      updatePauseNode(targetId, { sourceStageId: nextValue })
       setNotice('Se actualizó el origen de la pausa.')
       return
     }
 
     if (edge.sourceKind === 'action' && edge.targetKind === 'stage') {
       setBuilder((current) => updateSelectedFlowInBuilder(current, {
-        quickActions: current.quickActions.map((action) => action.id === sourceId ? { ...action, targetStageId: value, targetTriggerId: '' } : action),
+        quickActions: current.quickActions.map((action) => action.id === sourceId ? { ...action, targetStageId: nextValue, targetTriggerId: '' } : action),
       }))
       setNotice('Se actualizó el destino de la acción.')
       return
@@ -2775,7 +2803,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
     if (edge.sourceKind === 'action' && edge.targetKind === 'trigger') {
       setBuilder((current) => updateSelectedFlowInBuilder(current, {
-        quickActions: current.quickActions.map((action) => action.id === sourceId ? { ...action, targetTriggerId: value, targetStageId: '' } : action),
+        quickActions: current.quickActions.map((action) => action.id === sourceId ? { ...action, targetTriggerId: nextValue, targetStageId: '' } : action),
       }))
       setNotice('Se actualizó el filtro destino de la acción.')
       return
@@ -2783,23 +2811,23 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
     if (edge.sourceKind === 'trigger' && edge.targetKind === 'stage') {
       if (edge.sourceOptionId) {
-        updateTriggerCondition(sourceId, edge.sourceOptionId, { targetStageId: value, targetActionId: '' })
+        updateTriggerCondition(sourceId, edge.sourceOptionId, { targetStageId: nextValue, targetActionId: '' })
         setNotice('La condición del filtro quedó reconectada desde el canvas.')
         return
       }
-      updateTrigger(sourceId, { targetStageId: value })
+      updateTrigger(sourceId, { targetStageId: nextValue })
       setNotice('El filtro quedó reconectado desde el canvas.')
       return
     }
 
     if (edge.sourceKind === 'trigger' && edge.targetKind === 'action' && edge.sourceOptionId) {
-      updateTriggerCondition(sourceId, edge.sourceOptionId, { targetActionId: value, targetStageId: '' })
+      updateTriggerCondition(sourceId, edge.sourceOptionId, { targetActionId: nextValue, targetStageId: '' })
       setNotice('La condición del filtro ahora apunta a la acción elegida.')
       return
     }
 
     if (edge.sourceKind === 'pause' && edge.targetKind === 'stage') {
-      updatePauseNode(sourceId, { targetStageId: value })
+      updatePauseNode(sourceId, { targetStageId: nextValue })
       setNotice('Se actualizó el destino de la pausa.')
     }
   }
@@ -2809,8 +2837,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     const targetId = edge.toId.split(':')[1] || ''
 
     if (edge.sourceKind === 'start' && edge.targetKind === 'stage') {
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        startStageId: '',
+      }))
       setActiveEdgeId(null)
-      setNotice('El bloque Inicio siempre debe apuntar a un mensaje. Edítalo para cambiar el destino.')
+      setNotice('La caja Inicio quedó sin conexión. Ahora puedes definir otra caja principal.')
       return
     }
 
@@ -3011,10 +3042,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
     if (sourceNode.kind === 'start' && targetNode.kind === 'stage') {
       setBuilder((current) => updateSelectedFlowInBuilder(current, {
-        flowStages: [
-          ...current.flowStages.filter((stage) => stage.id === targetId),
-          ...current.flowStages.filter((stage) => stage.id !== targetId),
-        ],
+        startStageId: targetId,
       }))
       setNotice('Nodo inicial conectado al mensaje principal.')
       return
@@ -3158,7 +3186,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   }
 
   function openEdgeContextMenu(edge: StudioGraphEdge, x: number, y: number) {
-    setActiveEdgeId(edge.id)
+    setActiveEdgeId(null)
     setContextMenu({ mode: 'edge', edge, x, y })
   }
 
@@ -3403,9 +3431,10 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   </div>
                   <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
                     <Label>Mensaje inicial</Label>
-                    <Select value={selectedStartStage?.id || '__none__'} onValueChange={(value) => { if (value !== '__none__') setInitialStage(value) }}>
+                    <Select value={selectedStartStage?.id || '__none__'} onValueChange={(value) => setInitialStage(value === '__none__' ? '' : value)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="__none__">Sin caja principal</SelectItem>
                         {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
                       </SelectContent>
                     </Select>
@@ -3574,9 +3603,10 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
             </div>
             <div className="grid gap-2">
               <Label>Mensaje inicial</Label>
-              <Select value={selectedStartStage?.id || '__none__'} onValueChange={(value) => { if (value !== '__none__') setInitialStage(value) }}>
+              <Select value={selectedStartStage?.id || '__none__'} onValueChange={(value) => setInitialStage(value === '__none__' ? '' : value)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__none__">Sin caja principal</SelectItem>
                   {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -4563,7 +4593,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         })() : null}
                       </svg>
 
-                      <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${studioGraph.contentWidth} ${studioGraph.contentHeight}`} fill="none">
+                      <svg className="absolute inset-0 z-30 h-full w-full" viewBox={`0 0 ${studioGraph.contentWidth} ${studioGraph.contentHeight}`} fill="none">
                         {studioGraph.edges.map((edge) => {
                           const source = studioGraph.nodes.find((node) => node.id === edge.fromId)
                           const target = studioGraph.nodes.find((node) => node.id === edge.toId)
@@ -4631,7 +4661,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                             : (edge.targetKind === 'action' || edge.targetKind === 'stage' || edge.targetKind === 'trigger' ? edgeTargetId : builder.pauseNodes.find((pause) => pause.id === edgeSourceId)?.targetStageId || '__none__')
 
                         return (
-                          <div key={`edge-editor-${edge.id}`} className="absolute" style={{ left: `${panelLeft}px`, top: `${panelTop}px` }}>
+                          <div key={`edge-editor-${edge.id}`} className={`absolute ${isActiveEdge ? 'z-[90]' : 'z-40'}`} style={{ left: `${panelLeft}px`, top: `${panelTop}px` }}>
                             <button
                               type="button"
                               aria-label={`Editar conexión ${edge.label || 'del flujo'}`}
@@ -4667,6 +4697,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                       <Select value={targetValue} onValueChange={(value) => updateInlineEdgeTarget(edge, value)}>
                                         <SelectTrigger className="h-9 bg-white text-xs"><SelectValue /></SelectTrigger>
                                         <SelectContent>
+                                          <SelectItem value="__none__">Sin caja principal</SelectItem>
                                           {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
                                         </SelectContent>
                                       </Select>
@@ -4823,12 +4854,6 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                           <div
                             key={node.id}
                             id={node.domId}
-                            onContextMenu={(event) => {
-                              if (!canEditFlow) return
-                              event.preventDefault()
-                              event.stopPropagation()
-                              openContextMenu({ kind: node.kind, id: nodeKey }, node.x + node.width + 14, node.y + 18)
-                            }}
                             onPointerDown={(event) => {
                               if (!canEditFlow) return
                               handleBoardNodePointerDown(event, node)
@@ -4929,12 +4954,6 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                         event.stopPropagation()
                                         handleConnectionStart(event, node, condition.id, condition.variableKey, index)
                                       }}
-                                      onContextMenu={(event) => {
-                                        if (!canEditFlow) return
-                                        event.preventDefault()
-                                        event.stopPropagation()
-                                        openCreateMenu({ x: node.x + node.width + 24, y: node.y + 78, target: { sourceNode: { kind: 'trigger', id: nodeKey }, sourceOptionId: condition.id } })
-                                      }}
                                       className={`absolute -right-2.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border bg-white shadow ${connectionDraft?.sourceOptionId === condition.id ? 'border-sky-400' : 'border-slate-300'}`}
                                     >
                                       <span className="inline-block h-2 w-2 rounded-full bg-slate-400" />
@@ -4957,12 +4976,6 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                         if (!canEditFlow) return
                                         event.stopPropagation()
                                         handleConnectionStart(event, node, option.id, option.label, index)
-                                      }}
-                                      onContextMenu={(event) => {
-                                        if (!canEditFlow) return
-                                        event.preventDefault()
-                                        event.stopPropagation()
-                                        openCreateMenu({ x: node.x + node.width + 24, y: node.y + 78, target: { sourceNode: { kind: 'stage', id: nodeKey }, sourceOptionId: option.id } })
                                       }}
                                       className={`absolute -right-2.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border bg-white shadow ${connectionDraft?.sourceOptionId === option.id ? 'border-sky-400' : 'border-slate-300'}`}
                                     >
@@ -4991,7 +5004,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
                       {canEditFlow && contextMenu ? (
                         <div
-                          className="absolute z-20 min-w-[200px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.3)]"
+                          className="absolute z-[120] min-w-[200px] rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.3)]"
                           style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
                           onPointerDown={(event) => {
                             event.stopPropagation()

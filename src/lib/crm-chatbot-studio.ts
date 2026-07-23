@@ -68,6 +68,7 @@ export type ChatbotAutomationFlow = {
   enabled: boolean
   isDefault: boolean
   providers: ChatbotAutomationProvider[]
+  startStageId: string
   quickActions: ChatbotQuickAction[]
   flowStages: ChatbotFlowStage[]
   flowTriggers: ChatbotFlowTrigger[]
@@ -276,6 +277,7 @@ export function getDefaultChatbotAutomationFlow(): ChatbotAutomationFlow {
     enabled: true,
     isDefault: true,
     providers: getDefaultChatbotAutomationProviders(),
+    startStageId: getDefaultChatbotFlowStages()[0]?.id || '',
     quickActions: getDefaultChatbotQuickActions(),
     flowStages: getDefaultChatbotFlowStages(),
     flowTriggers: getDefaultChatbotFlowTriggers(),
@@ -293,6 +295,7 @@ export function getEmptyChatbotAutomationFlow(): ChatbotAutomationFlow {
     enabled: true,
     isDefault: true,
     providers: getDefaultChatbotAutomationProviders(),
+    startStageId: '',
     quickActions: [],
     flowStages: [],
     flowTriggers: [],
@@ -433,6 +436,8 @@ export function normalizeChatbotAutomationFlows(value: unknown, fallback?: { qui
         ? record.providers.filter((provider): provider is ChatbotAutomationProvider => isAutomationProvider(provider))
         : []
 
+      const flowStages = normalizeChatbotFlowStages(record.flowStages)
+
       return {
         id: normalizeString(record.id) || `flow-${index + 1}`,
         name: normalizeString(record.name) || `Flujo ${index + 1}`,
@@ -440,8 +445,9 @@ export function normalizeChatbotAutomationFlows(value: unknown, fallback?: { qui
         enabled: asBoolean(record.enabled, true),
         isDefault: asBoolean(record.isDefault, index === 0),
         providers: providers.length ? providers : getDefaultChatbotAutomationProviders(),
+        startStageId: normalizeString(record.startStageId) || flowStages[0]?.id || '',
         quickActions: normalizeChatbotQuickActions(record.quickActions),
-        flowStages: normalizeChatbotFlowStages(record.flowStages),
+        flowStages,
         flowTriggers: normalizeChatbotFlowTriggers(record.flowTriggers),
         pauseNodes: normalizeChatbotStudioPauseNodes(record.pauseNodes),
         studioNodeLayout: normalizeStudioNodeLayout(record.studioNodeLayout),
@@ -457,6 +463,7 @@ export function normalizeChatbotAutomationFlows(value: unknown, fallback?: { qui
 
   return [{
     ...getDefaultChatbotAutomationFlow(),
+    startStageId: normalizeChatbotFlowStages(fallback?.flowStages)[0]?.id || getDefaultChatbotAutomationFlow().startStageId,
     quickActions: normalizeChatbotQuickActions(fallback?.quickActions),
     flowStages: normalizeChatbotFlowStages(fallback?.flowStages),
     flowTriggers: normalizeChatbotFlowTriggers(fallback?.flowTriggers),
