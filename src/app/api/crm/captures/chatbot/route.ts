@@ -30,6 +30,7 @@ import {
   type ChatbotFlowTriggerCondition,
   type ChatbotStudioPauseNode,
 } from '@/lib/crm-chatbot-studio'
+import { normalizeChatbotInactivityRule, type ChatbotInactivityRule } from '@/lib/crm-chatbot-inactivity'
 import { extractHostFromUrl, getPublicChatbotSettings, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
 import { getReferrerHost, getRequestHost } from '@/lib/crm-public-chatbot-server'
 import { normalizeRichTextHtml, richTextToPlainText } from '@/lib/chatbot-rich-text'
@@ -885,6 +886,17 @@ function hasFuturePause(pauseUntil: string | null) {
   if (!pauseUntil) return false
   const pauseUntilMs = Date.parse(pauseUntil)
   return Number.isFinite(pauseUntilMs) && pauseUntilMs > Date.now()
+}
+
+function resolveActiveInactivityRule(args: {
+  stage: ChatbotFlowStage | null
+  quickAction: ChatbotQuickAction | null
+  trigger: ChatbotFlowTrigger | null
+}) {
+  if (args.quickAction?.inactivityRule?.enabled) return normalizeChatbotInactivityRule(args.quickAction.inactivityRule)
+  if (args.trigger?.inactivityRule?.enabled) return normalizeChatbotInactivityRule(args.trigger.inactivityRule)
+  if (args.stage?.inactivityRule?.enabled) return normalizeChatbotInactivityRule(args.stage.inactivityRule)
+  return null
 }
 
 function buildAssistantReply(args: {
@@ -1794,6 +1806,12 @@ export async function POST(request: Request) {
         pauseDurationMinutes = automationPauseDurationMinutes || pauseDurationMinutes
       }
 
+      const activeInactivityRule = resolveActiveInactivityRule({
+        stage: resolvedStage,
+        quickAction: selectedQuickAction,
+        trigger: matchedTrigger.matchedTrigger ?? null,
+      })
+
       const quickActionAttachments = buildQuickActionAttachments(selectedQuickAction)
       const catalogAttachments = [catalogInsight.primary, ...catalogInsight.alternatives]
         .filter((item): item is MaterialMatch => Boolean(item?.imagenUrl))
@@ -1828,6 +1846,7 @@ export async function POST(request: Request) {
             chatPauseDurationMinutes: pauseDurationMinutes,
             chatPauseDescription: pauseDescription,
             chatPauseUntil: pauseUntil,
+            chatInactivityRule: activeInactivityRule as ChatbotInactivityRule | null,
             chatbotRuntime: runtimeState,
             quantity: resolvedIdentity.quantity,
             whatsapp: resolvedIdentity.whatsapp,

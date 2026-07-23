@@ -1,3 +1,9 @@
+import {
+  getDefaultChatbotInactivityRule,
+  normalizeChatbotInactivityRule,
+  type ChatbotInactivityRule,
+} from '@/lib/crm-chatbot-inactivity'
+
 export type ChatbotFlowNextField = 'name' | 'email' | 'phone' | 'whatsapp' | 'product' | 'quantity' | 'company' | 'document' | 'city' | 'address' | 'confirmation' | 'none'
 
 export type ChatbotFlowResponseMatchMode = 'exact' | 'contains'
@@ -79,6 +85,7 @@ export type ChatbotQuickAction = {
   responseAttachmentUrl: string | null
   responseAttachmentName: string | null
   enabled: boolean
+  inactivityRule: ChatbotInactivityRule
   automation: ChatbotQuickActionAutomationConfig
 }
 
@@ -102,6 +109,7 @@ export type ChatbotFlowStage = {
   nextField: ChatbotFlowNextField
   quickActionIds: string[]
   responseOptions: ChatbotFlowResponseOption[]
+  inactivityRule: ChatbotInactivityRule
 }
 
 function asRecord(value: unknown) {
@@ -300,6 +308,7 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       responseAttachmentUrl: null,
       responseAttachmentName: null,
       enabled: true,
+      inactivityRule: getDefaultChatbotInactivityRule(),
       automation: getDefaultChatbotQuickActionAutomationConfig(),
     },
     {
@@ -314,6 +323,7 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       responseAttachmentUrl: null,
       responseAttachmentName: null,
       enabled: true,
+      inactivityRule: getDefaultChatbotInactivityRule(),
       automation: getDefaultChatbotQuickActionAutomationConfig(),
     },
     {
@@ -328,6 +338,7 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       responseAttachmentUrl: null,
       responseAttachmentName: null,
       enabled: true,
+      inactivityRule: getDefaultChatbotInactivityRule(),
       automation: {
         ...getDefaultChatbotQuickActionAutomationConfig(),
         chat: {
@@ -358,6 +369,7 @@ export function getDefaultChatbotFlowStages(): ChatbotFlowStage[] {
       prompt: 'Hola. Soy tu asistente comercial y puedo ayudarte a explorar catálogo, revisar stock o dejar tu solicitud lista para el equipo.',
       nextField: 'name',
       quickActionIds: ['view-catalog', 'products-in-stock', 'talk-to-advisor'],
+      inactivityRule: getDefaultChatbotInactivityRule(),
       responseOptions: [
         createResponseOption({
           id: 'welcome-catalog',
@@ -395,6 +407,7 @@ export function getDefaultChatbotFlowStages(): ChatbotFlowStage[] {
       prompt: 'Puedo mostrarte referencias activas, disponibilidad aproximada y alternativas cercanas según el producto que busques.',
       nextField: 'product',
       quickActionIds: ['view-catalog', 'products-in-stock', 'talk-to-advisor'],
+      inactivityRule: getDefaultChatbotInactivityRule(),
       responseOptions: [
         createResponseOption({
           id: 'catalog-search-product',
@@ -423,6 +436,7 @@ export function getDefaultChatbotFlowStages(): ChatbotFlowStage[] {
       prompt: 'Perfecto. Ahora voy a completar los datos necesarios para dejar el lead listo y que el equipo comercial continúe el seguimiento.',
       nextField: 'email',
       quickActionIds: ['products-in-stock', 'talk-to-advisor'],
+      inactivityRule: getDefaultChatbotInactivityRule(),
       responseOptions: [
         createResponseOption({
           id: 'qualification-human',
@@ -442,6 +456,7 @@ export function getDefaultChatbotFlowStages(): ChatbotFlowStage[] {
       prompt: 'Ya dejé el contexto preparado y ahora voy a escalar la conversación al equipo para seguimiento humano.',
       nextField: 'none',
       quickActionIds: ['talk-to-advisor'],
+      inactivityRule: getDefaultChatbotInactivityRule(),
       responseOptions: [],
     },
   ]
@@ -499,6 +514,7 @@ export function normalizeChatbotQuickActions(value: unknown): ChatbotQuickAction
         responseAttachmentUrl: responseAttachmentUrl || null,
         responseAttachmentName: responseAttachmentName || null,
         enabled: asBoolean(record.enabled, true),
+        inactivityRule: normalizeChatbotInactivityRule(record.inactivityRule),
         automation: normalizeChatbotQuickActionAutomationConfig(record.automation),
       } satisfies ChatbotQuickAction
     })
@@ -523,6 +539,7 @@ export function normalizeChatbotFlowStages(value: unknown): ChatbotFlowStage[] {
         nextField: isFlowNextField(record.nextField) ? record.nextField : 'none',
         quickActionIds: normalizeIds(record.quickActionIds),
         responseOptions: normalizeChatbotFlowResponseOptions(record.responseOptions, asText(record.id)),
+        inactivityRule: normalizeChatbotInactivityRule(record.inactivityRule),
       } satisfies ChatbotFlowStage
     })
     .filter((item): item is ChatbotFlowStage => Boolean(item?.id && item.title))

@@ -50,7 +50,18 @@ import {
   type ChatbotMessageTone,
   type ChatbotStudioPauseNode,
 } from '@/lib/crm-chatbot-studio'
-import { getPublicChatbotSettings } from '@/lib/crm-public-chatbot'
+import {
+  getPublicChatbotPreChatFormPreset,
+  getPublicChatbotPreChatFormPresets,
+  getPublicChatbotSettings,
+  type PublicChatbotResetConversationUnit,
+} from '@/lib/crm-public-chatbot'
+import {
+  getDefaultChatbotInactivityRule,
+  type ChatbotInactivityAction,
+  type ChatbotInactivityRule,
+  type ChatbotInactivityUnit,
+} from '@/lib/crm-chatbot-inactivity'
 import { normalizeRichTextHtml, plainTextToRichTextHtml, richTextToPlainText, summarizeRichText } from '@/lib/chatbot-rich-text'
 
 type ChannelStatus = 'DRAFT' | 'TESTING' | 'ACTIVE' | 'DISABLED' | 'ERROR'
@@ -115,6 +126,33 @@ type BuilderState = {
   assistantName: string
   publicEmbedEnabled: boolean
   allowedDomains: string
+  resetConversationAfterValue: string
+  resetConversationAfterUnit: PublicChatbotResetConversationUnit
+  resetConversationAfterAction: ChatbotInactivityAction
+  preChatFormEnabled: boolean
+  preChatFormInactivityEnabled: boolean
+  preChatFormInactivityValue: string
+  preChatFormInactivityUnit: ChatbotInactivityUnit
+  preChatFormInactivityAction: ChatbotInactivityAction
+  preChatFormTemplate: string
+  preChatFormTitle: string
+  preChatFormDescription: string
+  preChatFormSubmitLabel: string
+  preChatFormShowNameField: boolean
+  preChatFormShowEmailField: boolean
+  preChatFormShowPhoneField: boolean
+  preChatFormRequireName: boolean
+  preChatFormRequireEmail: boolean
+  preChatFormRequirePhone: boolean
+  preChatFormRequireContactMethod: boolean
+  preChatFormShowDepartmentField: boolean
+  preChatFormDepartmentLabel: string
+  preChatFormDepartmentPlaceholder: string
+  preChatFormDepartmentOptions: string
+  termsEnabled: boolean
+  termsLabel: string
+  termsLinkText: string
+  termsLinkUrl: string
   automationFlows: ChatbotAutomationFlow[]
   selectedFlowId: string
   quickActions: ChatbotQuickAction[]
@@ -913,6 +951,33 @@ function hydrateBuilder(channel?: ChannelConnection | null): BuilderState {
     assistantName: publicSettings.assistantName,
     publicEmbedEnabled: publicSettings.publicEmbedEnabled,
     allowedDomains: publicSettings.allowedDomains.join('\n'),
+    resetConversationAfterValue: String(publicSettings.resetConversationAfterValue),
+    resetConversationAfterUnit: publicSettings.resetConversationAfterUnit,
+    resetConversationAfterAction: publicSettings.resetConversationAfterAction,
+    preChatFormEnabled: publicSettings.preChatFormEnabled,
+    preChatFormInactivityEnabled: publicSettings.preChatFormInactivityRule.enabled,
+    preChatFormInactivityValue: String(publicSettings.preChatFormInactivityRule.timeoutValue),
+    preChatFormInactivityUnit: publicSettings.preChatFormInactivityRule.timeoutUnit,
+    preChatFormInactivityAction: publicSettings.preChatFormInactivityRule.action,
+    preChatFormTemplate: publicSettings.preChatFormTemplate,
+    preChatFormTitle: publicSettings.preChatFormTitle,
+    preChatFormDescription: publicSettings.preChatFormDescription,
+    preChatFormSubmitLabel: publicSettings.preChatFormSubmitLabel,
+    preChatFormShowNameField: publicSettings.preChatFormShowNameField,
+    preChatFormShowEmailField: publicSettings.preChatFormShowEmailField,
+    preChatFormShowPhoneField: publicSettings.preChatFormShowPhoneField,
+    preChatFormRequireName: publicSettings.preChatFormRequireName,
+    preChatFormRequireEmail: publicSettings.preChatFormRequireEmail,
+    preChatFormRequirePhone: publicSettings.preChatFormRequirePhone,
+    preChatFormRequireContactMethod: publicSettings.preChatFormRequireContactMethod,
+    preChatFormShowDepartmentField: publicSettings.preChatFormShowDepartmentField,
+    preChatFormDepartmentLabel: publicSettings.preChatFormDepartmentLabel,
+    preChatFormDepartmentPlaceholder: publicSettings.preChatFormDepartmentPlaceholder,
+    preChatFormDepartmentOptions: publicSettings.preChatFormDepartmentOptions.map((item) => item.label).join('\n'),
+    termsEnabled: publicSettings.termsEnabled,
+    termsLabel: publicSettings.termsLabel,
+    termsLinkText: publicSettings.termsLinkText,
+    termsLinkUrl: publicSettings.termsLinkUrl,
     automationFlows: studioSettings.automationFlows,
     selectedFlowId: defaultFlow.id,
     quickActions: defaultFlow.quickActions,
@@ -957,6 +1022,36 @@ function buildSettingsPayload(state: BuilderState) {
     assistantName: snapshot.assistantName,
     publicEmbedEnabled: snapshot.publicEmbedEnabled,
     allowedDomains: snapshot.allowedDomains,
+    chatResetConversationAfterHours: undefined,
+    chatResetConversationAfterValue: snapshot.resetConversationAfterValue,
+    chatResetConversationAfterUnit: snapshot.resetConversationAfterUnit,
+    chatResetConversationAfterAction: snapshot.resetConversationAfterAction,
+    preChatFormEnabled: snapshot.preChatFormEnabled,
+    preChatFormInactivityRule: {
+      enabled: snapshot.preChatFormInactivityEnabled,
+      timeoutValue: Math.max(1, Number(snapshot.preChatFormInactivityValue) || 1),
+      timeoutUnit: snapshot.preChatFormInactivityUnit,
+      action: snapshot.preChatFormInactivityAction,
+    },
+    preChatFormTemplate: snapshot.preChatFormTemplate,
+    preChatFormTitle: snapshot.preChatFormTitle,
+    preChatFormDescription: snapshot.preChatFormDescription,
+    preChatFormSubmitLabel: snapshot.preChatFormSubmitLabel,
+    preChatFormShowNameField: snapshot.preChatFormShowNameField,
+    preChatFormShowEmailField: snapshot.preChatFormShowEmailField,
+    preChatFormShowPhoneField: snapshot.preChatFormShowPhoneField,
+    preChatFormRequireName: snapshot.preChatFormRequireName,
+    preChatFormRequireEmail: snapshot.preChatFormRequireEmail,
+    preChatFormRequirePhone: snapshot.preChatFormRequirePhone,
+    preChatFormRequireContactMethod: snapshot.preChatFormRequireContactMethod,
+    preChatFormShowDepartmentField: snapshot.preChatFormShowDepartmentField,
+    preChatFormDepartmentLabel: snapshot.preChatFormDepartmentLabel,
+    preChatFormDepartmentPlaceholder: snapshot.preChatFormDepartmentPlaceholder,
+    preChatFormDepartmentOptions: snapshot.preChatFormDepartmentOptions,
+    termsEnabled: snapshot.termsEnabled,
+    termsLabel: snapshot.termsLabel,
+    termsLinkText: snapshot.termsLinkText,
+    termsLinkUrl: snapshot.termsLinkUrl,
     automationFlows,
     defaultFlowId: defaultFlow.id,
     quickActions: defaultFlow.quickActions,
@@ -974,6 +1069,54 @@ function buildSettingsPayload(state: BuilderState) {
 
 function serializeBuilderState(state: BuilderState) {
   return JSON.stringify(state)
+}
+
+function renderInactivityRuleFields(args: {
+  title: string
+  description: string
+  rule: ChatbotInactivityRule
+  onChange: (rule: ChatbotInactivityRule) => void
+}) {
+  return (
+    <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-medium text-slate-900">{args.title}</div>
+          <div className="text-xs text-slate-500">{args.description}</div>
+        </div>
+        <Switch checked={args.rule.enabled} onCheckedChange={(checked) => args.onChange({ ...args.rule, enabled: checked })} />
+      </div>
+      {args.rule.enabled ? (
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-2">
+            <Label>Tiempo</Label>
+            <Input value={String(args.rule.timeoutValue)} onChange={(event) => args.onChange({ ...args.rule, timeoutValue: Math.max(1, Number(event.target.value.replace(/[^0-9]/g, '')) || 1) })} />
+          </div>
+          <div className="grid gap-2">
+            <Label>Unidad</Label>
+            <Select value={args.rule.timeoutUnit} onValueChange={(value) => args.onChange({ ...args.rule, timeoutUnit: value as ChatbotInactivityUnit })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="minutes">Minutos</SelectItem>
+                <SelectItem value="hours">Horas</SelectItem>
+                <SelectItem value="days">Días</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label>Al vencer</Label>
+            <Select value={args.rule.action} onValueChange={(value) => args.onChange({ ...args.rule, action: value as ChatbotInactivityAction })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="restart">Volver al inicio</SelectItem>
+                <SelectItem value="close">Cerrar conversación</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 function renderQuickActionAttachmentFields(args: {
@@ -2029,6 +2172,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
         nextField: 'none',
         quickActionIds: [],
         responseOptions: [],
+        inactivityRule: getDefaultChatbotInactivityRule(),
       }
 
       const nextFlowStages = [...current.flowStages, nextStage].map((stage) => {
@@ -2076,7 +2220,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     const nextActionId = makeId('action')
     const position = args?.position ?? getVisibleInsertPosition()
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
-      quickActions: [...current.quickActions, { id: nextActionId, label: 'Nueva accion', kind: 'message', message: 'Mensaje de accion rapida.', targetStageId: '', targetTriggerId: '', actionUrl: null, responseAttachmentType: null, responseAttachmentUrl: null, responseAttachmentName: null, enabled: true, automation: getDefaultChatbotQuickActionAutomationConfig() }],
+      quickActions: [...current.quickActions, { id: nextActionId, label: 'Nueva accion', kind: 'message', message: 'Mensaje de accion rapida.', targetStageId: '', targetTriggerId: '', actionUrl: null, responseAttachmentType: null, responseAttachmentUrl: null, responseAttachmentName: null, enabled: true, inactivityRule: getDefaultChatbotInactivityRule(), automation: getDefaultChatbotQuickActionAutomationConfig() }],
       flowStages: args?.sourceNode?.kind === 'stage'
         ? current.flowStages.map((stage) => {
             if (stage.id !== args.sourceNode?.id) return stage
@@ -2120,7 +2264,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     const nextTriggerId = makeId('trigger')
     const position = args?.position ?? getVisibleInsertPosition()
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
-      flowTriggers: [...current.flowTriggers, { id: nextTriggerId, label: 'Nuevo filtro', event: 'message', matchMode: 'contains', matchValue: '', targetStageId: '', targetActionId: '', targetTriggerId: '', assistantReply: '', enabled: true, conditions: [createTriggerCondition(nextTriggerId)] }],
+      flowTriggers: [...current.flowTriggers, { id: nextTriggerId, label: 'Nuevo filtro', event: 'message', matchMode: 'contains', matchValue: '', targetStageId: '', targetActionId: '', targetTriggerId: '', assistantReply: '', enabled: true, conditions: [createTriggerCondition(nextTriggerId)], inactivityRule: getDefaultChatbotInactivityRule() }],
       studioNodeLayout: {
         ...current.studioNodeLayout,
         [`trigger:${nextTriggerId}`]: position,
@@ -3155,6 +3299,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               <div className="mt-2">{selectedStage.responseOptions.length} rutas configuradas</div>
               <div className="mt-1">{selectedStage.responseOptions.filter((option) => option.targetActionId).length} opciones enlazadas a acciones</div>
             </div>
+            {renderInactivityRuleFields({
+              title: 'Expiración de esta caja',
+              description: 'Aplica si el visitante se queda detenido en este mensaje sin responder.',
+              rule: selectedStage.inactivityRule || getDefaultChatbotInactivityRule(),
+              onChange: (rule) => updateStage(selectedStage.id, { inactivityRule: rule }),
+            })}
             <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
               <div className="flex items-center justify-between gap-2">
                 <div>
@@ -3268,6 +3418,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                 <Input value={selectedAction.actionUrl || ''} onChange={(event) => updateQuickAction(selectedAction.id, { actionUrl: event.target.value })} placeholder="https://... o /ruta-interna" />
               </div>
             ) : null}
+            {renderInactivityRuleFields({
+              title: 'Expiración de esta acción',
+              description: 'Si el visitante queda parado después de ejecutar esta acción, puedes devolverlo al inicio o cerrar el hilo.',
+              rule: selectedAction.inactivityRule || getDefaultChatbotInactivityRule(),
+              onChange: (rule) => updateQuickAction(selectedAction.id, { inactivityRule: rule }),
+            })}
             {renderQuickActionAttachmentFields({
               action: selectedAction,
               update: (patch) => updateQuickAction(selectedAction.id, patch),
@@ -3293,6 +3449,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                 </SelectContent>
               </Select>
             </div>
+            {renderInactivityRuleFields({
+              title: 'Expiración de este filtro',
+              description: 'Úsalo cuando esta evaluación deje al usuario esperando y quieras reiniciar o cerrar por inactividad.',
+              rule: selectedTrigger.inactivityRule || getDefaultChatbotInactivityRule(),
+              onChange: (rule) => updateTrigger(selectedTrigger.id, { inactivityRule: rule }),
+            })}
             <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
               <div className="flex items-center justify-between gap-2">
                 <div>
@@ -5014,6 +5176,151 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                       <Textarea value={builder.allowedDomains} onChange={(event) => setBuilder((current) => ({ ...current, allowedDomains: event.target.value }))} rows={3} placeholder="midominio.com&#10;app.midominio.com" />
                       <p className="text-xs text-slate-500">Deja este campo vacio para permitir el iframe en cualquier dominio. Si quieres restringirlo, agrega un dominio por linea, sin protocolo ni rutas.</p>
                     </div>
+                    <div className="grid gap-3 md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                        <div>
+                          <div className="text-sm font-medium text-slate-900">Formulario previo al chat</div>
+                          <div className="text-xs text-slate-500">Activa una plantilla para pedir datos antes de mostrar la conversación del visitante.</div>
+                        </div>
+                        <Switch checked={builder.preChatFormEnabled} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormEnabled: checked }))} />
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <div className="grid gap-2">
+                          <Label>Reiniciar conversación después de</Label>
+                          <Input value={builder.resetConversationAfterValue} onChange={(event) => setBuilder((current) => ({ ...current, resetConversationAfterValue: event.target.value.replace(/[^0-9]/g, '') || '1' }))} />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Unidad</Label>
+                          <Select value={builder.resetConversationAfterUnit} onValueChange={(value) => setBuilder((current) => ({ ...current, resetConversationAfterUnit: value as PublicChatbotResetConversationUnit }))}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="minutes">Minutos</SelectItem>
+                              <SelectItem value="hours">Horas</SelectItem>
+                              <SelectItem value="days">Días</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid gap-2 md:col-span-2">
+                          <Label>Acción al vencer</Label>
+                          <Select value={builder.resetConversationAfterAction} onValueChange={(value) => setBuilder((current) => ({ ...current, resetConversationAfterAction: value as ChatbotInactivityAction }))}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="restart">Volver al inicio</SelectItem>
+                              <SelectItem value="close">Cerrar conversación</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Plantilla</Label>
+                          <Select value={builder.preChatFormTemplate} onValueChange={(value) => {
+                            const preset = getPublicChatbotPreChatFormPreset(value)
+                            setBuilder((current) => ({
+                              ...current,
+                              preChatFormTemplate: preset.value,
+                              preChatFormTitle: preset.title,
+                              preChatFormDescription: preset.description,
+                              preChatFormSubmitLabel: preset.submitLabel,
+                              preChatFormShowNameField: preset.showNameField,
+                              preChatFormShowEmailField: preset.showEmailField,
+                              preChatFormShowPhoneField: preset.showPhoneField,
+                              preChatFormRequireName: preset.requireName,
+                              preChatFormRequireEmail: preset.requireEmail,
+                              preChatFormRequirePhone: preset.requirePhone,
+                              preChatFormRequireContactMethod: preset.requireContactMethod,
+                              preChatFormShowDepartmentField: preset.showDepartmentField,
+                              preChatFormDepartmentLabel: preset.departmentLabel,
+                              preChatFormDepartmentPlaceholder: preset.departmentPlaceholder,
+                              preChatFormDepartmentOptions: preset.departmentOptions.map((item) => item.label).join('\n'),
+                            }))
+                          }}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {getPublicChatbotPreChatFormPresets().map((preset) => (
+                                <SelectItem key={preset.value} value={preset.value}>{preset.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-500">Ejemplos: 5 minutos, 1 hora o 12 horas. Cuando expire, el prospecto ve un chat nuevo, pero el administrador puede seguir unificando por correo o teléfono.</p>
+                      {builder.preChatFormEnabled ? (
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="md:col-span-2">
+                            {renderInactivityRuleFields({
+                              title: 'Inactividad del formulario previo',
+                              description: 'Si el prospecto deja el formulario abierto sin avanzar, puedes reiniciarlo o cerrar la conversación.',
+                              rule: {
+                                enabled: builder.preChatFormInactivityEnabled,
+                                timeoutValue: Math.max(1, Number(builder.preChatFormInactivityValue) || 1),
+                                timeoutUnit: builder.preChatFormInactivityUnit,
+                                timeoutMinutes: 0,
+                                action: builder.preChatFormInactivityAction,
+                              },
+                              onChange: (rule) => setBuilder((current) => ({
+                                ...current,
+                                preChatFormInactivityEnabled: rule.enabled,
+                                preChatFormInactivityValue: String(rule.timeoutValue),
+                                preChatFormInactivityUnit: rule.timeoutUnit,
+                                preChatFormInactivityAction: rule.action,
+                              })),
+                            })}
+                          </div>
+                          <div className="grid gap-2 md:col-span-2">
+                            <Label>Título</Label>
+                            <Input value={builder.preChatFormTitle} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormTitle: event.target.value }))} />
+                          </div>
+                          <div className="grid gap-2 md:col-span-2">
+                            <Label>Descripción</Label>
+                            <Textarea value={builder.preChatFormDescription} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormDescription: event.target.value }))} rows={3} />
+                          </div>
+                          <div className="grid gap-2 md:col-span-2">
+                            <Label>Botón principal</Label>
+                            <Input value={builder.preChatFormSubmitLabel} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormSubmitLabel: event.target.value }))} />
+                          </div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Mostrar nombre</span><Switch checked={builder.preChatFormShowNameField} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormShowNameField: checked }))} /></div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Requerir nombre</span><Switch checked={builder.preChatFormRequireName} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormRequireName: checked }))} disabled={!builder.preChatFormShowNameField} /></div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Mostrar correo</span><Switch checked={builder.preChatFormShowEmailField} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormShowEmailField: checked }))} /></div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Requerir correo</span><Switch checked={builder.preChatFormRequireEmail} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormRequireEmail: checked }))} disabled={!builder.preChatFormShowEmailField} /></div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Mostrar teléfono</span><Switch checked={builder.preChatFormShowPhoneField} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormShowPhoneField: checked }))} /></div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Requerir teléfono</span><Switch checked={builder.preChatFormRequirePhone} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormRequirePhone: checked }))} disabled={!builder.preChatFormShowPhoneField} /></div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2"><span className="text-sm text-slate-700">Exigir al menos correo o teléfono</span><Switch checked={builder.preChatFormRequireContactMethod} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormRequireContactMethod: checked }))} disabled={!builder.preChatFormShowEmailField && !builder.preChatFormShowPhoneField} /></div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2"><span className="text-sm text-slate-700">Mostrar selector de departamento</span><Switch checked={builder.preChatFormShowDepartmentField} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, preChatFormShowDepartmentField: checked }))} /></div>
+                          {builder.preChatFormShowDepartmentField ? (
+                            <>
+                              <div className="grid gap-2">
+                                <Label>Label departamento</Label>
+                                <Input value={builder.preChatFormDepartmentLabel} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormDepartmentLabel: event.target.value }))} />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>Placeholder departamento</Label>
+                                <Input value={builder.preChatFormDepartmentPlaceholder} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormDepartmentPlaceholder: event.target.value }))} />
+                              </div>
+                              <div className="grid gap-2 md:col-span-2">
+                                <Label>Opciones del departamento</Label>
+                                <Textarea value={builder.preChatFormDepartmentOptions} onChange={(event) => setBuilder((current) => ({ ...current, preChatFormDepartmentOptions: event.target.value }))} rows={4} placeholder="Ventas&#10;Soporte técnico&#10;Facturación" />
+                              </div>
+                            </>
+                          ) : null}
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2"><span className="text-sm text-slate-700">Mostrar nota legal</span><Switch checked={builder.termsEnabled} onCheckedChange={(checked) => setBuilder((current) => ({ ...current, termsEnabled: checked }))} /></div>
+                          {builder.termsEnabled ? (
+                            <>
+                              <div className="grid gap-2 md:col-span-2">
+                                <Label>Texto legal</Label>
+                                <Textarea value={builder.termsLabel} onChange={(event) => setBuilder((current) => ({ ...current, termsLabel: event.target.value }))} rows={2} />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>Texto del enlace</Label>
+                                <Input value={builder.termsLinkText} onChange={(event) => setBuilder((current) => ({ ...current, termsLinkText: event.target.value }))} />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>URL política</Label>
+                                <Input value={builder.termsLinkUrl} onChange={(event) => setBuilder((current) => ({ ...current, termsLinkUrl: event.target.value }))} placeholder="https://..." />
+                              </div>
+                            </>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
                   </CardContent>
                 </Card>
               ) : null}
@@ -5088,7 +5395,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                       <div className="text-sm text-slate-500">{builder.flowTriggers.filter((item) => item.enabled).length} activos</div>
                       <Button variant="outline" size="sm" onClick={() => setBuilder((current) => {
                         const nextTriggerId = makeId('trigger')
-                        return updateSelectedFlowInBuilder(current, { flowTriggers: [...current.flowTriggers, { id: nextTriggerId, label: 'Nuevo disparador', event: 'message', matchMode: 'contains', matchValue: '', targetStageId: '', targetActionId: '', targetTriggerId: '', assistantReply: '', enabled: true, conditions: [createTriggerCondition(nextTriggerId)] }] })
+                        return updateSelectedFlowInBuilder(current, { flowTriggers: [...current.flowTriggers, { id: nextTriggerId, label: 'Nuevo disparador', event: 'message', matchMode: 'contains', matchValue: '', targetStageId: '', targetActionId: '', targetTriggerId: '', assistantReply: '', enabled: true, conditions: [createTriggerCondition(nextTriggerId)], inactivityRule: getDefaultChatbotInactivityRule() }] })
                       })}>Agregar disparador</Button>
                     </div>
                     <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/50 p-4">

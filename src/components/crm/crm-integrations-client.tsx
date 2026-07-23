@@ -47,6 +47,13 @@ import {
   mergeChatbotDefaultFlowSettings,
 } from '@/lib/crm-chatbot-studio'
 import {
+  getPublicChatbotPreChatFormPreset,
+  getPublicChatbotPreChatFormPresets,
+  getPublicChatbotSettings,
+  type PublicChatbotResetConversationUnit,
+} from '@/lib/crm-public-chatbot'
+import { type ChatbotInactivityAction, type ChatbotInactivityUnit } from '@/lib/crm-chatbot-inactivity'
+import {
   buildBookingEmbedUrl,
   buildBookingIframeSnippet,
   buildBookingSnippet,
@@ -462,10 +469,43 @@ type ChatbotBuilderState = Pick<ChannelFormState,
   | 'messageBubbleRadius'
   | 'panelShadowPreset'
   | 'showProductField'
+  | 'nameLabel'
+  | 'namePlaceholder'
+  | 'emailLabel'
+  | 'emailPlaceholder'
+  | 'phoneLabel'
+  | 'phonePlaceholder'
   | 'productLabel'
   | 'productPlaceholder'
   | 'messageLabel'
   | 'messagePlaceholder'
+  | 'chatResetConversationAfterValue'
+  | 'chatResetConversationAfterUnit'
+  | 'chatResetConversationAfterAction'
+  | 'preChatFormEnabled'
+  | 'preChatFormInactivityEnabled'
+  | 'preChatFormInactivityValue'
+  | 'preChatFormInactivityUnit'
+  | 'preChatFormInactivityAction'
+  | 'preChatFormTemplate'
+  | 'preChatFormTitle'
+  | 'preChatFormDescription'
+  | 'preChatFormSubmitLabel'
+  | 'preChatFormShowNameField'
+  | 'preChatFormShowEmailField'
+  | 'preChatFormShowPhoneField'
+  | 'preChatFormRequireName'
+  | 'preChatFormRequireEmail'
+  | 'preChatFormRequirePhone'
+  | 'preChatFormRequireContactMethod'
+  | 'preChatFormShowDepartmentField'
+  | 'preChatFormDepartmentLabel'
+  | 'preChatFormDepartmentPlaceholder'
+  | 'preChatFormDepartmentOptions'
+  | 'termsEnabled'
+  | 'termsLabel'
+  | 'termsLinkText'
+  | 'termsLinkUrl'
   | 'quickActions'
   | 'flowStages'
 >
@@ -505,6 +545,8 @@ function getWebFormFieldTypeLabel(type: WebFormCustomFieldType) {
 }
 
 function getInitialChannelForm() {
+  const preChatPreset = getPublicChatbotPreChatFormPreset('sales-support')
+
   return {
     templateKey: 'web-form',
     name: 'Formulario Web Principal',
@@ -534,6 +576,29 @@ function getInitialChannelForm() {
     chatbotTitle: 'Asesor virtual SGDigital',
     chatbotPrompt: 'Cuéntanos tu proyecto y te contactamos.',
     assistantName: 'Asesor virtual SGDigital',
+    chatResetConversationAfterValue: '12',
+    chatResetConversationAfterUnit: 'hours' as PublicChatbotResetConversationUnit,
+    chatResetConversationAfterAction: 'restart' as ChatbotInactivityAction,
+    preChatFormEnabled: false,
+    preChatFormInactivityEnabled: false,
+    preChatFormInactivityValue: '12',
+    preChatFormInactivityUnit: 'hours' as ChatbotInactivityUnit,
+    preChatFormInactivityAction: 'restart' as ChatbotInactivityAction,
+    preChatFormTemplate: preChatPreset.value,
+    preChatFormTitle: preChatPreset.title,
+    preChatFormDescription: preChatPreset.description,
+    preChatFormSubmitLabel: preChatPreset.submitLabel,
+    preChatFormShowNameField: preChatPreset.showNameField,
+    preChatFormShowEmailField: preChatPreset.showEmailField,
+    preChatFormShowPhoneField: preChatPreset.showPhoneField,
+    preChatFormRequireName: preChatPreset.requireName,
+    preChatFormRequireEmail: preChatPreset.requireEmail,
+    preChatFormRequirePhone: preChatPreset.requirePhone,
+    preChatFormRequireContactMethod: preChatPreset.requireContactMethod,
+    preChatFormShowDepartmentField: preChatPreset.showDepartmentField,
+    preChatFormDepartmentLabel: preChatPreset.departmentLabel,
+    preChatFormDepartmentPlaceholder: preChatPreset.departmentPlaceholder,
+    preChatFormDepartmentOptions: preChatPreset.departmentOptions.map((item) => item.label).join('\n'),
     publicEmbedEnabled: true,
     iframeHeight: '720',
     allowedDomains: '',
@@ -1590,6 +1655,7 @@ function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
   const welcomeActions = builderState.quickActions.filter((item) => welcomeStage?.quickActionIds.includes(item.id) && item.enabled)
   const welcomeResponses = welcomeStage?.responseOptions ?? []
   const launcherLabelVisible = mode !== 'compact' && launcherMetrics.labelVisible
+  const preChatDepartmentOptions = builderState.preChatFormDepartmentOptions.split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean)
 
   return (
     <div className="relative overflow-hidden rounded-[26px] border border-emerald-200 p-3 shadow-sm" style={{ background: `radial-gradient(circle at top, rgba(16,185,129,0.12), transparent 30%), linear-gradient(180deg, ${builderState.pageBackgroundColor} 0%, ${builderState.pageBackgroundColor} 55%, ${builderState.backgroundColor} 100%)`, minHeight }}>
@@ -1606,7 +1672,9 @@ function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
               </div>
             </div>
             <div className="space-y-3 px-4 py-4" style={{ backgroundColor: builderState.backgroundColor }}>
-              {welcomeStage ? (
+              {builderState.preChatFormEnabled && welcomeStage ? (
+                <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>{welcomeStage.prompt || builderState.chatbotPrompt}</div>
+              ) : welcomeStage ? (
                 <div className="rounded-[20px] border border-slate-200 bg-slate-50/80 px-4 py-3 shadow-sm">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -1618,8 +1686,21 @@ function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
                   <p className="mt-2 text-xs leading-5 text-slate-600">{welcomeStage.description}</p>
                 </div>
               ) : null}
-              <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>{welcomeStage?.prompt || builderState.chatbotPrompt}</div>
-              {welcomeResponses.length ? (
+              {builderState.preChatFormEnabled ? (
+                <div className="max-w-[92%] rounded-[22px] border border-slate-200 bg-slate-50/80 px-4 py-4 shadow-sm">
+                  <p className="text-sm font-semibold text-slate-900">{builderState.preChatFormTitle}</p>
+                  <p className="mt-2 text-xs leading-5 text-slate-600">{builderState.preChatFormDescription}</p>
+                  <div className="mt-3 grid gap-2">
+                    {builderState.preChatFormShowNameField ? <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-400">{builderState.nameLabel}: {builderState.namePlaceholder}</div> : null}
+                    {builderState.preChatFormShowEmailField ? <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-400">{builderState.emailLabel}: {builderState.emailPlaceholder}</div> : null}
+                    {builderState.preChatFormShowPhoneField ? <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-400">{builderState.phoneLabel}: {builderState.phonePlaceholder}</div> : null}
+                    {builderState.preChatFormShowDepartmentField && preChatDepartmentOptions.length ? <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-400">{builderState.preChatFormDepartmentLabel}: {preChatDepartmentOptions.join(' / ')}</div> : null}
+                    {builderState.termsEnabled ? <div className="text-[11px] leading-5 text-slate-500">{builderState.termsLabel}</div> : null}
+                    <div className="rounded-xl px-3 py-2 text-center text-xs font-semibold text-white" style={{ backgroundColor: builderState.accentColor }}>{builderState.preChatFormSubmitLabel}</div>
+                  </div>
+                </div>
+              ) : <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>{welcomeStage?.prompt || builderState.chatbotPrompt}</div>}
+              {!builderState.preChatFormEnabled && welcomeResponses.length ? (
                 <div className="flex max-w-[92%] flex-wrap gap-2">
                   {welcomeResponses.map((option) => (
                     <div key={option.id} className="rounded-2xl border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] font-semibold text-violet-900 shadow-sm">
@@ -1629,8 +1710,8 @@ function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
                   ))}
                 </div>
               ) : null}
-              {builderState.showProductField ? <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>También puedo tomar producto y contexto inicial para enrutar mejor el lead.</div> : null}
-              <div className="ml-auto max-w-[78%] px-4 py-3 text-xs leading-5 text-white shadow-sm" style={{ backgroundColor: builderState.accentColor, borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>Hola, necesito ayuda para una nueva cotización.</div>
+              {!builderState.preChatFormEnabled && builderState.showProductField ? <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>También puedo tomar producto y contexto inicial para enrutar mejor el lead.</div> : null}
+              <div className="ml-auto max-w-[78%] px-4 py-3 text-xs leading-5 text-white shadow-sm" style={{ backgroundColor: builderState.accentColor, borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>{builderState.preChatFormEnabled ? 'Listo, ya completé mis datos.' : 'Hola, necesito ayuda para una nueva cotización.'}</div>
               <div className="max-w-[84%] border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-700 shadow-sm" style={{ borderRadius: `${normalizePixelValue(builderState.messageBubbleRadius, '22')}px` }}>{catalogStage?.prompt || `Perfecto. Soy ${builderState.assistantName} y te ayudo a capturar lo necesario.`}</div>
             </div>
             <div className="border-t border-slate-100 bg-white px-4 py-4">
@@ -2045,11 +2126,39 @@ function getWebFormBuilderState(settingsJson: Record<string, unknown> | null | u
 function getChatbotBuilderState(settingsJson: Record<string, unknown> | null | undefined): ChatbotBuilderState {
   const studioSettings = getChatbotStudioSettings(settingsJson)
   const defaultFlow = getDefaultChatbotAutomationFlowFromSettings(studioSettings)
+  const publicSettings = getPublicChatbotSettings(settingsJson)
 
   return {
-    chatbotTitle: getChatbotTitle(settingsJson),
-    chatbotPrompt: getChatbotPrompt(settingsJson),
-    assistantName: getAssistantName(settingsJson),
+    chatbotTitle: publicSettings.chatbotTitle,
+    chatbotPrompt: publicSettings.chatbotPrompt,
+    assistantName: publicSettings.assistantName,
+    chatResetConversationAfterValue: String(publicSettings.resetConversationAfterValue),
+    chatResetConversationAfterUnit: publicSettings.resetConversationAfterUnit,
+    chatResetConversationAfterAction: publicSettings.resetConversationAfterAction,
+    preChatFormEnabled: publicSettings.preChatFormEnabled,
+    preChatFormInactivityEnabled: publicSettings.preChatFormInactivityRule.enabled,
+    preChatFormInactivityValue: String(publicSettings.preChatFormInactivityRule.timeoutValue),
+    preChatFormInactivityUnit: publicSettings.preChatFormInactivityRule.timeoutUnit,
+    preChatFormInactivityAction: publicSettings.preChatFormInactivityRule.action,
+    preChatFormTemplate: publicSettings.preChatFormTemplate,
+    preChatFormTitle: publicSettings.preChatFormTitle,
+    preChatFormDescription: publicSettings.preChatFormDescription,
+    preChatFormSubmitLabel: publicSettings.preChatFormSubmitLabel,
+    preChatFormShowNameField: publicSettings.preChatFormShowNameField,
+    preChatFormShowEmailField: publicSettings.preChatFormShowEmailField,
+    preChatFormShowPhoneField: publicSettings.preChatFormShowPhoneField,
+    preChatFormRequireName: publicSettings.preChatFormRequireName,
+    preChatFormRequireEmail: publicSettings.preChatFormRequireEmail,
+    preChatFormRequirePhone: publicSettings.preChatFormRequirePhone,
+    preChatFormRequireContactMethod: publicSettings.preChatFormRequireContactMethod,
+    preChatFormShowDepartmentField: publicSettings.preChatFormShowDepartmentField,
+    preChatFormDepartmentLabel: publicSettings.preChatFormDepartmentLabel,
+    preChatFormDepartmentPlaceholder: publicSettings.preChatFormDepartmentPlaceholder,
+    preChatFormDepartmentOptions: publicSettings.preChatFormDepartmentOptions.map((item) => item.label).join('\n'),
+    termsEnabled: publicSettings.termsEnabled,
+    termsLabel: publicSettings.termsLabel,
+    termsLinkText: publicSettings.termsLinkText,
+    termsLinkUrl: publicSettings.termsLinkUrl,
     publicEmbedEnabled: getPublicEmbedEnabled(settingsJson),
     iframeHeight: getIframeHeight(settingsJson),
     allowedDomains: getAllowedDomains(settingsJson),
@@ -2074,6 +2183,12 @@ function getChatbotBuilderState(settingsJson: Record<string, unknown> | null | u
     messageBubbleRadius: getMessageBubbleRadius(settingsJson),
     panelShadowPreset: getPanelShadowPreset(settingsJson),
     showProductField: getShowProductField(settingsJson),
+    nameLabel: getSettingText(settingsJson, 'nameLabel', 'Nombre'),
+    namePlaceholder: getSettingText(settingsJson, 'namePlaceholder', 'Tu nombre'),
+    emailLabel: getSettingText(settingsJson, 'emailLabel', 'Correo'),
+    emailPlaceholder: getSettingText(settingsJson, 'emailPlaceholder', 'tu@correo.com'),
+    phoneLabel: getSettingText(settingsJson, 'phoneLabel', 'Teléfono o WhatsApp'),
+    phonePlaceholder: getSettingText(settingsJson, 'phonePlaceholder', '300 000 0000'),
     productLabel: getSettingText(settingsJson, 'productLabel', 'Producto'),
     productPlaceholder: getSettingText(settingsJson, 'productPlaceholder', '¿Qué producto necesitas?'),
     messageLabel: getSettingText(settingsJson, 'messageLabel', 'Mensaje'),
@@ -2779,6 +2894,7 @@ export function CrmIntegrationsClient() {
     setEditingChannelId(channel.id)
   setWizardMetaAdvancedOpen(Boolean(channel.externalAccountId || channel.externalPageId || channel.externalPhoneNumberId || getWhatsAppAccessToken(settings) || getWhatsAppApiVersion(settings) !== 'v23.0'))
     setCreateForm({
+      ...getInitialChannelForm(),
       templateKey: templateMatch?.key ?? 'web-form',
       name: channel.name,
       provider: channel.provider,
@@ -3158,6 +3274,16 @@ export function CrmIntegrationsClient() {
         chatbotTitle: createForm.chatbotTitle,
         chatbotPrompt: createForm.chatbotPrompt,
         assistantName: createForm.assistantName,
+        chatResetConversationAfterHours: undefined,
+        chatResetConversationAfterValue: createForm.chatResetConversationAfterValue,
+        chatResetConversationAfterUnit: createForm.chatResetConversationAfterUnit,
+        chatResetConversationAfterAction: createForm.chatResetConversationAfterAction,
+        preChatFormInactivityRule: {
+          enabled: createForm.preChatFormInactivityEnabled,
+          timeoutValue: Math.max(1, Number(createForm.preChatFormInactivityValue) || 1),
+          timeoutUnit: createForm.preChatFormInactivityUnit,
+          action: createForm.preChatFormInactivityAction,
+        },
         publicEmbedEnabled: createForm.publicEmbedEnabled,
         iframeHeight: createForm.iframeHeight,
         allowedDomains: createForm.allowedDomains,
@@ -3257,7 +3383,6 @@ export function CrmIntegrationsClient() {
       }
 
       setCreateOpen(false)
-      setEditingChannelId(null)
       setWizardStep('template')
       setWizardChatPreviewMode('expanded')
       setWizardChatPreviewViewport('desktop')
@@ -3327,6 +3452,7 @@ export function CrmIntegrationsClient() {
           nextField: 'none',
           quickActionIds: [],
           responseOptions: [],
+          inactivityRule: getDefaultChatbotFlowStages()[0]?.inactivityRule ?? { enabled: false, timeoutValue: 12, timeoutUnit: 'hours', timeoutMinutes: 720, action: 'restart' },
         },
       ],
     }))
@@ -3354,6 +3480,7 @@ export function CrmIntegrationsClient() {
           nextField: 'none',
           quickActionIds: [],
           responseOptions: [],
+          inactivityRule: getDefaultChatbotFlowStages()[0]?.inactivityRule ?? { enabled: false, timeoutValue: 12, timeoutUnit: 'hours', timeoutMinutes: 720, action: 'restart' },
         },
       ],
     }))
@@ -4106,6 +4233,14 @@ export function CrmIntegrationsClient() {
       const mergedSettingsBase = {
         ...(selectedSettings ?? {}),
         ...chatbotBuilderDraft,
+        chatResetConversationAfterHours: undefined,
+        chatResetConversationAfterAction: chatbotBuilderDraft.chatResetConversationAfterAction,
+        preChatFormInactivityRule: {
+          enabled: chatbotBuilderDraft.preChatFormInactivityEnabled,
+          timeoutValue: Math.max(1, Number(chatbotBuilderDraft.preChatFormInactivityValue) || 1),
+          timeoutUnit: chatbotBuilderDraft.preChatFormInactivityUnit,
+          action: chatbotBuilderDraft.preChatFormInactivityAction,
+        },
         iframeHeight: normalizePixelValue(chatbotBuilderDraft.iframeHeight, '720'),
         chatShellRadius: normalizePixelValue(chatbotBuilderDraft.chatShellRadius, '30'),
         messageBubbleRadius: normalizePixelValue(chatbotBuilderDraft.messageBubbleRadius, '22'),
@@ -6114,11 +6249,115 @@ export function CrmIntegrationsClient() {
                 ) : null}
 
                 {chatbotBuilderSection === 'copy' ? (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="grid gap-2"><Label>Label producto</Label><Input value={chatbotBuilderDraft.productLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, productLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                    <div className="grid gap-2"><Label>Placeholder producto</Label><Input value={chatbotBuilderDraft.productPlaceholder} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, productPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
-                    <div className="grid gap-2 md:col-span-2"><Label>Label mensaje</Label><Input value={chatbotBuilderDraft.messageLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messageLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
-                    <div className="grid gap-2 md:col-span-2"><Label>Placeholder mensaje</Label><Input value={chatbotBuilderDraft.messagePlaceholder} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messagePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                  <div className="grid gap-4">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="grid gap-2"><Label>Label producto</Label><Input value={chatbotBuilderDraft.productLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, productLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2"><Label>Placeholder producto</Label><Input value={chatbotBuilderDraft.productPlaceholder} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, productPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2 md:col-span-2"><Label>Label mensaje</Label><Input value={chatbotBuilderDraft.messageLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messageLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                      <div className="grid gap-2 md:col-span-2"><Label>Placeholder mensaje</Label><Input value={chatbotBuilderDraft.messagePlaceholder} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, messagePlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                    </div>
+
+                    <div className="grid gap-3 rounded-[24px] border border-slate-200 bg-slate-50/70 p-4 md:grid-cols-2">
+                      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">Formulario previo al chat</p>
+                          <p className="text-xs text-slate-500">Pide datos y área antes de abrir la conversación del visitante.</p>
+                        </div>
+                        <Switch checked={chatbotBuilderDraft.preChatFormEnabled} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormEnabled: checked }))} />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Reiniciar conversación después de</Label>
+                        <Input value={chatbotBuilderDraft.chatResetConversationAfterValue} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, chatResetConversationAfterValue: e.target.value.replace(/[^0-9]/g, '') || '1' }))} className="h-11 rounded-xl" />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Unidad</Label>
+                        <Select value={chatbotBuilderDraft.chatResetConversationAfterUnit} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, chatResetConversationAfterUnit: value as PublicChatbotResetConversationUnit }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="minutes">Minutos</SelectItem><SelectItem value="hours">Horas</SelectItem><SelectItem value="days">Días</SelectItem></SelectContent></Select>
+                      </div>
+                      <div className="grid gap-2 md:col-span-2">
+                        <Label>Acción al vencer</Label>
+                        <Select value={chatbotBuilderDraft.chatResetConversationAfterAction} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, chatResetConversationAfterAction: value as ChatbotInactivityAction }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="restart">Volver al inicio</SelectItem><SelectItem value="close">Cerrar conversación</SelectItem></SelectContent></Select>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Plantilla</Label>
+                        <Select value={chatbotBuilderDraft.preChatFormTemplate} onValueChange={(value) => {
+                          const preset = getPublicChatbotPreChatFormPreset(value)
+                          setChatbotBuilderDraft((current) => ({
+                            ...current,
+                            preChatFormTemplate: preset.value,
+                            preChatFormTitle: preset.title,
+                            preChatFormDescription: preset.description,
+                            preChatFormSubmitLabel: preset.submitLabel,
+                            preChatFormShowNameField: preset.showNameField,
+                            preChatFormShowEmailField: preset.showEmailField,
+                            preChatFormShowPhoneField: preset.showPhoneField,
+                            preChatFormRequireName: preset.requireName,
+                            preChatFormRequireEmail: preset.requireEmail,
+                            preChatFormRequirePhone: preset.requirePhone,
+                            preChatFormRequireContactMethod: preset.requireContactMethod,
+                            preChatFormShowDepartmentField: preset.showDepartmentField,
+                            preChatFormDepartmentLabel: preset.departmentLabel,
+                            preChatFormDepartmentPlaceholder: preset.departmentPlaceholder,
+                            preChatFormDepartmentOptions: preset.departmentOptions.map((item) => item.label).join('\n'),
+                          }))
+                        }}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent>{getPublicChatbotPreChatFormPresets().map((preset) => <SelectItem key={preset.value} value={preset.value}>{preset.label}</SelectItem>)}</SelectContent></Select>
+                      </div>
+                      <div className="text-xs text-slate-500 md:col-span-2">Ejemplos: 5 minutos, 1 hora o 12 horas. Al vencer el tiempo, el visitante ve un hilo nuevo y el CRM puede seguir agrupando por correo o teléfono.</div>
+                      {chatbotBuilderDraft.preChatFormEnabled ? (
+                        <>
+                          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:col-span-2 md:grid-cols-3">
+                            <div className="flex items-center justify-between rounded-2xl border border-slate-200 px-4 py-3 md:col-span-3">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">Inactividad del formulario previo</p>
+                                <p className="text-xs text-slate-500">Si el prospecto no termina esta plantilla, puedes reiniciarla o cerrar la conversación.</p>
+                              </div>
+                              <Switch checked={chatbotBuilderDraft.preChatFormInactivityEnabled} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormInactivityEnabled: checked }))} />
+                            </div>
+                            {chatbotBuilderDraft.preChatFormInactivityEnabled ? (
+                              <>
+                                <div className="grid gap-2">
+                                  <Label>Tiempo</Label>
+                                  <Input value={chatbotBuilderDraft.preChatFormInactivityValue} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormInactivityValue: e.target.value.replace(/[^0-9]/g, '') || '1' }))} className="h-11 rounded-xl" />
+                                </div>
+                                <div className="grid gap-2">
+                                  <Label>Unidad</Label>
+                                  <Select value={chatbotBuilderDraft.preChatFormInactivityUnit} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormInactivityUnit: value as ChatbotInactivityUnit }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="minutes">Minutos</SelectItem><SelectItem value="hours">Horas</SelectItem><SelectItem value="days">Días</SelectItem></SelectContent></Select>
+                                </div>
+                                <div className="grid gap-2">
+                                  <Label>Al vencer</Label>
+                                  <Select value={chatbotBuilderDraft.preChatFormInactivityAction} onValueChange={(value) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormInactivityAction: value as ChatbotInactivityAction }))}><SelectTrigger className="h-11 rounded-xl bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="restart">Volver al inicio</SelectItem><SelectItem value="close">Cerrar conversación</SelectItem></SelectContent></Select>
+                                </div>
+                              </>
+                            ) : null}
+                          </div>
+                          <div className="grid gap-2 md:col-span-2"><Label>Título del formulario</Label><Input value={chatbotBuilderDraft.preChatFormTitle} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormTitle: e.target.value }))} className="h-11 rounded-xl" /></div>
+                          <div className="grid gap-2 md:col-span-2"><Label>Descripción</Label><Textarea value={chatbotBuilderDraft.preChatFormDescription} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormDescription: e.target.value }))} rows={3} className="rounded-2xl" /></div>
+                          <div className="grid gap-2 md:col-span-2"><Label>Texto del botón</Label><Input value={chatbotBuilderDraft.preChatFormSubmitLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormSubmitLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Mostrar nombre</span><Switch checked={chatbotBuilderDraft.preChatFormShowNameField} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormShowNameField: checked }))} /></div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Requerir nombre</span><Switch checked={chatbotBuilderDraft.preChatFormRequireName} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormRequireName: checked }))} disabled={!chatbotBuilderDraft.preChatFormShowNameField} /></div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Mostrar correo</span><Switch checked={chatbotBuilderDraft.preChatFormShowEmailField} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormShowEmailField: checked }))} /></div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Requerir correo</span><Switch checked={chatbotBuilderDraft.preChatFormRequireEmail} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormRequireEmail: checked }))} disabled={!chatbotBuilderDraft.preChatFormShowEmailField} /></div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Mostrar teléfono</span><Switch checked={chatbotBuilderDraft.preChatFormShowPhoneField} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormShowPhoneField: checked }))} /></div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3"><span className="text-sm text-slate-700">Requerir teléfono</span><Switch checked={chatbotBuilderDraft.preChatFormRequirePhone} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormRequirePhone: checked }))} disabled={!chatbotBuilderDraft.preChatFormShowPhoneField} /></div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2"><span className="text-sm text-slate-700">Exigir al menos correo o teléfono</span><Switch checked={chatbotBuilderDraft.preChatFormRequireContactMethod} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormRequireContactMethod: checked }))} disabled={!chatbotBuilderDraft.preChatFormShowEmailField && !chatbotBuilderDraft.preChatFormShowPhoneField} /></div>
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2"><span className="text-sm text-slate-700">Mostrar selector de departamento</span><Switch checked={chatbotBuilderDraft.preChatFormShowDepartmentField} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormShowDepartmentField: checked }))} /></div>
+                          {chatbotBuilderDraft.preChatFormShowDepartmentField ? (
+                            <>
+                              <div className="grid gap-2"><Label>Label departamento</Label><Input value={chatbotBuilderDraft.preChatFormDepartmentLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormDepartmentLabel: e.target.value }))} className="h-11 rounded-xl" /></div>
+                              <div className="grid gap-2"><Label>Placeholder departamento</Label><Input value={chatbotBuilderDraft.preChatFormDepartmentPlaceholder} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormDepartmentPlaceholder: e.target.value }))} className="h-11 rounded-xl" /></div>
+                              <div className="grid gap-2 md:col-span-2"><Label>Opciones del departamento</Label><Textarea value={chatbotBuilderDraft.preChatFormDepartmentOptions} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, preChatFormDepartmentOptions: e.target.value }))} rows={4} className="rounded-2xl" placeholder="Ventas&#10;Soporte técnico&#10;Facturación" /></div>
+                            </>
+                          ) : null}
+                          <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2"><span className="text-sm text-slate-700">Mostrar nota legal</span><Switch checked={chatbotBuilderDraft.termsEnabled} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, termsEnabled: checked }))} /></div>
+                          {chatbotBuilderDraft.termsEnabled ? (
+                            <>
+                              <div className="grid gap-2 md:col-span-2"><Label>Texto legal</Label><Textarea value={chatbotBuilderDraft.termsLabel} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, termsLabel: e.target.value }))} rows={2} className="rounded-2xl" /></div>
+                              <div className="grid gap-2"><Label>Texto enlace</Label><Input value={chatbotBuilderDraft.termsLinkText} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, termsLinkText: e.target.value }))} className="h-11 rounded-xl" /></div>
+                              <div className="grid gap-2"><Label>URL política</Label><Input value={chatbotBuilderDraft.termsLinkUrl} onChange={(e) => setChatbotBuilderDraft((current) => ({ ...current, termsLinkUrl: e.target.value }))} className="h-11 rounded-xl" placeholder="https://..." /></div>
+                            </>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
               </div>

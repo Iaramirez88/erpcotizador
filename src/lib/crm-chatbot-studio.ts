@@ -6,6 +6,11 @@ import {
   type ChatbotFlowStage,
   type ChatbotQuickAction,
 } from '@/lib/crm-chatbot-flow'
+import {
+  getDefaultChatbotInactivityRule,
+  normalizeChatbotInactivityRule,
+  type ChatbotInactivityRule,
+} from '@/lib/crm-chatbot-inactivity'
 
 export type ChatbotFlowTriggerEvent = 'message' | 'quick_action' | 'response_option' | 'human_request' | 'lead_qualified'
 export type ChatbotFlowTriggerMatchMode = 'contains' | 'exact' | 'equals' | 'starts_with' | 'regex'
@@ -43,6 +48,7 @@ export type ChatbotFlowTrigger = {
   assistantReply: string
   enabled: boolean
   conditions: ChatbotFlowTriggerCondition[]
+  inactivityRule: ChatbotInactivityRule
 }
 
 export type ChatbotFlowTriggerCondition = {
@@ -239,6 +245,7 @@ export function getDefaultChatbotFlowTriggers(): ChatbotFlowTrigger[] {
       assistantReply: 'Claro. Voy a dejar esta conversación lista para que continúe un asesor humano.',
       enabled: true,
       conditions: [],
+      inactivityRule: getDefaultChatbotInactivityRule(),
     },
     {
       id: 'qualified-lead',
@@ -252,6 +259,7 @@ export function getDefaultChatbotFlowTriggers(): ChatbotFlowTrigger[] {
       assistantReply: 'Perfecto. Ya tengo el contexto suficiente para que el equipo comercial continúe contigo.',
       enabled: true,
       conditions: [],
+      inactivityRule: getDefaultChatbotInactivityRule(),
     },
   ]
 }
@@ -407,6 +415,7 @@ export function normalizeChatbotFlowTriggers(value: unknown): ChatbotFlowTrigger
           targetActionId: normalizeString(record.targetActionId),
           targetTriggerId: normalizeString(record.targetTriggerId),
         }),
+        inactivityRule: normalizeChatbotInactivityRule(record.inactivityRule),
       } satisfies ChatbotFlowTrigger
     })
     .filter((item): item is ChatbotFlowTrigger => Boolean(item?.id && item.label))

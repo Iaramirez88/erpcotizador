@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { normalizeString } from '@/lib/crm'
+import { normalizeChatbotInactivityRule } from '@/lib/crm-chatbot-inactivity'
 import { extractHostFromUrl, getPublicChatbotSettings, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
 import { getReferrerHost, getRequestHost } from '@/lib/crm-public-chatbot-server'
 import { plainTextToRichTextHtml } from '@/lib/chatbot-rich-text'
@@ -96,10 +97,11 @@ export async function GET(request: Request, context: RouteContext) {
                 responseOptionIds: Array.isArray(message.payloadJson.chatFlowResponseOptionIds)
                   ? message.payloadJson.chatFlowResponseOptionIds.filter((item): item is string => typeof item === 'string')
                   : [],
-                  pauseNodeId: typeof message.payloadJson.chatPauseNodeId === 'string' ? message.payloadJson.chatPauseNodeId : null,
-                  pauseDurationMinutes: typeof message.payloadJson.chatPauseDurationMinutes === 'number' ? message.payloadJson.chatPauseDurationMinutes : null,
-                  pauseDescription: typeof message.payloadJson.chatPauseDescription === 'string' ? message.payloadJson.chatPauseDescription : null,
-                  pauseUntil: typeof message.payloadJson.chatPauseUntil === 'string' ? message.payloadJson.chatPauseUntil : null,
+                pauseNodeId: typeof message.payloadJson.chatPauseNodeId === 'string' ? message.payloadJson.chatPauseNodeId : null,
+                pauseDurationMinutes: typeof message.payloadJson.chatPauseDurationMinutes === 'number' ? message.payloadJson.chatPauseDurationMinutes : null,
+                pauseDescription: typeof message.payloadJson.chatPauseDescription === 'string' ? message.payloadJson.chatPauseDescription : null,
+                pauseUntil: typeof message.payloadJson.chatPauseUntil === 'string' ? message.payloadJson.chatPauseUntil : null,
+                inactivityRule: message.payloadJson.chatInactivityRule ? normalizeChatbotInactivityRule(message.payloadJson.chatInactivityRule) : null,
               }
             : undefined,
         })),

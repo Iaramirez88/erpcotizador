@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import {
   findChatbotFlowStage,
@@ -9,10 +11,18 @@ import {
   findChatbotFlowResponseOption,
   getStageResponseOptions,
   getStageQuickActions,
+  type ChatbotFlowNextField,
   type ChatbotFlowStage,
   type ChatbotFlowResponseOption,
   type ChatbotQuickAction,
 } from '@/lib/crm-chatbot-flow'
+import {
+  getDefaultChatbotInactivityRule,
+  normalizeChatbotInactivityRule,
+  type ChatbotInactivityAction,
+  type ChatbotInactivityRule,
+} from '@/lib/crm-chatbot-inactivity'
+import { type PublicChatbotPreChatDepartmentOption } from '@/lib/crm-public-chatbot'
 import { normalizeRichTextHtml, plainTextToRichTextHtml, richTextToPlainText } from '@/lib/chatbot-rich-text'
 
 type PublicChatbotMessage = {
@@ -32,6 +42,7 @@ type PublicChatbotMessage = {
     pauseDurationMinutes?: number | null
     pauseDescription?: string | null
     pauseUntil?: string | null
+    inactivityRule?: ChatbotInactivityRule | null
   }
 }
 
@@ -69,6 +80,28 @@ type PublicChatbotEmbedProps = {
   productPlaceholder: string
   messageLabel: string
   messagePlaceholder: string
+  resetConversationAfterMinutes: number
+  resetConversationAfterAction: ChatbotInactivityAction
+  preChatFormEnabled: boolean
+  preChatFormInactivityRule: ChatbotInactivityRule
+  preChatFormTitle: string
+  preChatFormDescription: string
+  preChatFormSubmitLabel: string
+  preChatFormShowNameField: boolean
+  preChatFormShowEmailField: boolean
+  preChatFormShowPhoneField: boolean
+  preChatFormRequireName: boolean
+  preChatFormRequireEmail: boolean
+  preChatFormRequirePhone: boolean
+  preChatFormRequireContactMethod: boolean
+  preChatFormShowDepartmentField: boolean
+  preChatFormDepartmentLabel: string
+  preChatFormDepartmentPlaceholder: string
+  preChatFormDepartmentOptions: PublicChatbotPreChatDepartmentOption[]
+  termsEnabled: boolean
+  termsLabel: string
+  termsLinkText: string
+  termsLinkUrl: string
   quickActions: ChatbotQuickAction[]
   flowStages: ChatbotFlowStage[]
   accessIssue?: PublicChatbotAccessIssue
@@ -86,6 +119,7 @@ type ChatIdentity = {
   telefono: string
   whatsapp: string
   producto: string
+  departamento: string
   empresaNombre: string
   documento: string
   ciudad: string
@@ -95,6 +129,7 @@ type ChatIdentity = {
 type ConversationSyncResponse = {
   success?: boolean
   data?: {
+    conversationId?: string | null
     messages?: PublicChatbotMessage[]
   }
 }
@@ -105,6 +140,13 @@ type ChatbotErrorResponse = {
 
 const identityStorageSuffix = 'identity'
 const sessionStorageSuffix = 'session'
+const stateStorageSuffix = 'state'
+
+type StoredWidgetState = {
+  lastActivityAt: number
+  preChatCompleted: boolean
+  inactivityRule: ChatbotInactivityRule | null
+}
 
 function makeSessionId(channelId: string) {
   return `webchat-${channelId}-${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36)}`
@@ -112,6 +154,45 @@ function makeSessionId(channelId: string) {
 
 function nowIso() {
   return new Date().toISOString()
+}
+
+function buildInitialMessages(prompt: string, stage: ChatbotFlowStage | null, quickActions: ChatbotQuickAction[]) {
+  return [buildWelcomeMessage(prompt, stage, quickActions)]
+}
+
+function normalizeStoredActivityAt(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.round(value))
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value.trim(), 10)
+    if (Number.isFinite(parsed)) return Math.max(0, parsed)
+  }
+  return 0
+}
+
+function parseStoredWidgetState(rawValue: string | null, defaultPreChatCompleted: boolean): StoredWidgetState {
+  if (!rawValue) {
+    return { lastActivityAt: 0, preChatCompleted: defaultPreChatCompleted, inactivityRule: null }
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as Partial<StoredWidgetState>
+    return {
+      lastActivityAt: normalizeStoredActivityAt(parsed.lastActivityAt),
+      preChatCompleted: typeof parsed.preChatCompleted === 'boolean' ? parsed.preChatCompleted : defaultPreChatCompleted,
+      inactivityRule: parsed.inactivityRule ? normalizeChatbotInactivityRule(parsed.inactivityRule, { enabled: false }) : null,
+    }
+  } catch {
+    return { lastActivityAt: 0, preChatCompleted: defaultPreChatCompleted, inactivityRule: null }
+  }
+}
+
+function resolveFallbackInactivityRule(props: Pick<PublicChatbotEmbedProps, 'resetConversationAfterMinutes' | 'resetConversationAfterAction'>) {
+  return getDefaultChatbotInactivityRule({
+    enabled: true,
+    timeoutValue: Math.max(1, Math.round(props.resetConversationAfterMinutes)),
+    timeoutUnit: 'minutes',
+    action: props.resetConversationAfterAction,
+  })
 }
 
 async function getResponseErrorMessage(response: Response) {
@@ -147,6 +228,7 @@ function buildWelcomeMessage(prompt: string, stage: ChatbotFlowStage | null, qui
       stageId: stage?.id || null,
       quickActionIds: getStageQuickActions(stage, quickActions).map((item) => item.id),
       responseOptionIds: getStageResponseOptions(stage).map((item) => item.id),
+      inactivityRule: stage?.inactivityRule?.enabled ? normalizeChatbotInactivityRule(stage.inactivityRule) : null,
     },
   }
 }
@@ -254,6 +336,7 @@ function inferIdentityFromMessage(current: ChatIdentity, messageBody: string, ne
     telefono: current.telefono || (nextField === 'phone' ? extractedPhone : extractedPhone),
     whatsapp: current.whatsapp || (nextField === 'whatsapp' ? extractedPhone || trimmedMessage : current.whatsapp),
     producto: current.producto || ((nextField === 'product' || canTreatAsProduct) ? trimmedMessage : current.producto),
+    departamento: current.departamento,
     empresaNombre: current.empresaNombre || (nextField === 'company' ? trimmedMessage : current.empresaNombre),
     documento: current.documento || (nextField === 'document' ? trimmedMessage : current.documento),
     ciudad: current.ciudad || (nextField === 'city' ? trimmedMessage : current.ciudad),
@@ -432,18 +515,31 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const floatingLauncherActive = props.floatingLauncherEnabled && props.embedMode === 'widget'
   const initialStage = useMemo(() => props.flowStages[0] ?? findChatbotFlowStage(props.flowStages, 'welcome') ?? null, [props.flowStages])
+  const defaultMessages = useMemo(() => buildInitialMessages(props.prompt, initialStage, props.quickActions), [initialStage, props.prompt, props.quickActions])
+  const preChatRequired = props.preChatFormEnabled
   const [ready, setReady] = useState(false)
   const [sessionId, setSessionId] = useState('')
-  const [identity, setIdentity] = useState<ChatIdentity>({ nombre: '', email: '', telefono: '', whatsapp: '', producto: '', empresaNombre: '', documento: '', ciudad: '', direccion: '' })
+  const [identity, setIdentity] = useState<ChatIdentity>({ nombre: '', email: '', telefono: '', whatsapp: '', producto: '', departamento: '', empresaNombre: '', documento: '', ciudad: '', direccion: '' })
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [endingConversation, setEndingConversation] = useState(false)
   const [connectionState, setConnectionState] = useState<'connecting' | 'online' | 'error'>('connecting')
   const [connectionError, setConnectionError] = useState<string | null>(null)
-  const [messages, setMessages] = useState<PublicChatbotMessage[]>([buildWelcomeMessage(props.prompt, initialStage, props.quickActions)])
+  const [messages, setMessages] = useState<PublicChatbotMessage[]>(defaultMessages)
   const [isEmbedded, setIsEmbedded] = useState(false)
   const [panelOpen, setPanelOpen] = useState(!floatingLauncherActive)
   const [clockTick, setClockTick] = useState(() => Date.now())
+  const [preChatCompleted, setPreChatCompleted] = useState(!preChatRequired)
+  const [preChatError, setPreChatError] = useState<string | null>(null)
+  const [lastActivityAt, setLastActivityAt] = useState(() => Date.now())
+  const [activeInactivityRule, setActiveInactivityRule] = useState<ChatbotInactivityRule | null>(null)
+  const lastServerMessageIdRef = useRef('')
+  const expiringRef = useRef(false)
+  const fallbackInactivityRule = useMemo(() => resolveFallbackInactivityRule({
+    resetConversationAfterMinutes: props.resetConversationAfterMinutes,
+    resetConversationAfterAction: props.resetConversationAfterAction,
+  }), [props.resetConversationAfterAction, props.resetConversationAfterMinutes])
 
   const accentStyle = useMemo(() => ({ ['--chat-accent' as string]: props.accentColor, ['--chat-background' as string]: props.backgroundColor, ['--chat-page-background' as string]: props.pageBackgroundColor, fontFamily: props.fontFamily }), [props.accentColor, props.backgroundColor, props.pageBackgroundColor, props.fontFamily])
   const launcherMetrics = useMemo(() => getLauncherMetrics(props.launcherSize), [props.launcherSize])
@@ -493,6 +589,73 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   }, [activeAssistantMeta?.responseOptionIds, activeStage])
   const shouldShowSelectableOptions = latestMessage?.role === 'assistant'
   const hasSelectableOptions = shouldShowSelectableOptions && (activeResponseOptions.length > 0 || activeQuickActions.length > 0)
+  const welcomeMessage = defaultMessages[0] ?? null
+  const shouldBlockConversation = preChatRequired && !preChatCompleted
+  const departmentOptionsAvailable = props.preChatFormShowDepartmentField && props.preChatFormDepartmentOptions.length > 0
+  const effectiveInactivityRule = useMemo(() => {
+    if (shouldBlockConversation) {
+      return props.preChatFormInactivityRule.enabled ? props.preChatFormInactivityRule : fallbackInactivityRule
+    }
+    if (activeInactivityRule?.enabled) return activeInactivityRule
+    if (activeAssistantMeta?.inactivityRule?.enabled) return activeAssistantMeta.inactivityRule
+    return fallbackInactivityRule
+  }, [activeAssistantMeta?.inactivityRule, activeInactivityRule, fallbackInactivityRule, props.preChatFormInactivityRule, shouldBlockConversation])
+
+  const resetConversation = useCallback((options?: { resetPreChat?: boolean }) => {
+    if (typeof window === 'undefined') return
+
+    const sessionKey = `sgd-crm-chatbot:${props.channelId}:${sessionStorageSuffix}`
+    const stateKey = `sgd-crm-chatbot:${props.channelId}:${stateStorageSuffix}`
+    const nextSessionId = makeSessionId(props.channelId)
+    const nextPreChatCompleted = options?.resetPreChat === true ? !preChatRequired : preChatCompleted
+    const nextActivityAt = Date.now()
+    const nextInactivityRule = nextPreChatCompleted
+      ? defaultMessages[0]?.meta?.inactivityRule || fallbackInactivityRule
+      : (props.preChatFormInactivityRule.enabled ? props.preChatFormInactivityRule : fallbackInactivityRule)
+
+    window.localStorage.setItem(sessionKey, nextSessionId)
+    window.localStorage.setItem(stateKey, JSON.stringify({ lastActivityAt: nextActivityAt, preChatCompleted: nextPreChatCompleted, inactivityRule: nextInactivityRule }))
+
+    setSessionId(nextSessionId)
+    setMessages(defaultMessages)
+    setDraft('')
+    setSending(false)
+    setSyncing(false)
+    setConnectionState('connecting')
+    setConnectionError(null)
+    setPreChatCompleted(nextPreChatCompleted)
+    setPreChatError(null)
+    setLastActivityAt(nextActivityAt)
+    setActiveInactivityRule(nextInactivityRule)
+    lastServerMessageIdRef.current = ''
+  }, [defaultMessages, fallbackInactivityRule, preChatCompleted, preChatRequired, props.channelId, props.preChatFormInactivityRule])
+
+  const applyConversationExpiration = useCallback(async (rule: ChatbotInactivityRule | null) => {
+    if (expiringRef.current) return
+    expiringRef.current = true
+    const resolvedRule = rule?.enabled ? rule : fallbackInactivityRule
+
+    try {
+      if (resolvedRule.action === 'close' && sessionId) {
+        try {
+          await fetch(`/api/public/chatbot/${props.channelId}/conversation/close`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              threadId: sessionId,
+              parentReferrer: document.referrer || '',
+            }),
+          })
+        } catch (error) {
+          console.error(error)
+        }
+      }
+
+      resetConversation({ resetPreChat: true })
+    } finally {
+      expiringRef.current = false
+    }
+  }, [fallbackInactivityRule, props.channelId, resetConversation, sessionId])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -501,11 +664,51 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
 
     const sessionKey = `sgd-crm-chatbot:${props.channelId}:${sessionStorageSuffix}`
     const identityKey = `sgd-crm-chatbot:${props.channelId}:${identityStorageSuffix}`
+    const stateKey = `sgd-crm-chatbot:${props.channelId}:${stateStorageSuffix}`
 
-    const existingSession = window.localStorage.getItem(sessionKey)
+    const storedState = parseStoredWidgetState(window.localStorage.getItem(stateKey), !preChatRequired)
+    const now = Date.now()
+    const initialRule = storedState.inactivityRule?.enabled
+      ? storedState.inactivityRule
+      : (storedState.preChatCompleted
+          ? defaultMessages[0]?.meta?.inactivityRule || fallbackInactivityRule
+          : (props.preChatFormInactivityRule.enabled ? props.preChatFormInactivityRule : fallbackInactivityRule))
+    const expirationWindowMs = initialRule.timeoutMinutes * 60 * 1000
+    const isExpired = storedState.lastActivityAt > 0 && (now - storedState.lastActivityAt) >= expirationWindowMs
+    const previousSessionId = window.localStorage.getItem(sessionKey)
+
+    if (isExpired && initialRule.action === 'close' && previousSessionId) {
+      void fetch(`/api/public/chatbot/${props.channelId}/conversation/close`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          threadId: previousSessionId,
+          parentReferrer: document.referrer || '',
+        }),
+      }).catch((error) => {
+        console.error(error)
+      })
+    }
+
+    const existingSession = !isExpired ? window.localStorage.getItem(sessionKey) : null
     const nextSession = existingSession || makeSessionId(props.channelId)
     if (!existingSession) window.localStorage.setItem(sessionKey, nextSession)
     setSessionId(nextSession)
+    setMessages(defaultMessages)
+    setPreChatCompleted(isExpired ? !preChatRequired : storedState.preChatCompleted)
+    setLastActivityAt(isExpired ? now : storedState.lastActivityAt || now)
+    setActiveInactivityRule(isExpired
+      ? (preChatRequired ? (props.preChatFormInactivityRule.enabled ? props.preChatFormInactivityRule : fallbackInactivityRule) : (defaultMessages[0]?.meta?.inactivityRule || fallbackInactivityRule))
+      : initialRule)
+    if (isExpired || !window.localStorage.getItem(stateKey)) {
+      window.localStorage.setItem(stateKey, JSON.stringify({
+        lastActivityAt: now,
+        preChatCompleted: isExpired ? !preChatRequired : storedState.preChatCompleted,
+        inactivityRule: isExpired
+          ? (preChatRequired ? (props.preChatFormInactivityRule.enabled ? props.preChatFormInactivityRule : fallbackInactivityRule) : (defaultMessages[0]?.meta?.inactivityRule || fallbackInactivityRule))
+          : initialRule,
+      }))
+    }
 
     const storedIdentity = window.localStorage.getItem(identityKey)
     if (storedIdentity) {
@@ -517,6 +720,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
           telefono: typeof parsed.telefono === 'string' ? parsed.telefono : '',
           whatsapp: typeof parsed.whatsapp === 'string' ? parsed.whatsapp : '',
           producto: typeof parsed.producto === 'string' ? parsed.producto : '',
+          departamento: typeof parsed.departamento === 'string' ? parsed.departamento : '',
           empresaNombre: typeof parsed.empresaNombre === 'string' ? parsed.empresaNombre : '',
           documento: typeof parsed.documento === 'string' ? parsed.documento : '',
           ciudad: typeof parsed.ciudad === 'string' ? parsed.ciudad : '',
@@ -528,13 +732,19 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     }
 
     setReady(true)
-  }, [props.channelId])
+  }, [defaultMessages, fallbackInactivityRule, preChatRequired, props.channelId, props.preChatFormInactivityRule])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !ready) return
     const identityKey = `sgd-crm-chatbot:${props.channelId}:${identityStorageSuffix}`
     window.localStorage.setItem(identityKey, JSON.stringify(identity))
   }, [identity, props.channelId, ready])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !ready) return
+    const stateKey = `sgd-crm-chatbot:${props.channelId}:${stateStorageSuffix}`
+    window.localStorage.setItem(stateKey, JSON.stringify({ lastActivityAt, preChatCompleted, inactivityRule: activeInactivityRule }))
+  }, [activeInactivityRule, lastActivityAt, preChatCompleted, props.channelId, ready])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -544,8 +754,14 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     return () => window.clearInterval(timer)
   }, [])
 
+  useEffect(() => {
+    if (!ready || !effectiveInactivityRule?.enabled || !lastActivityAt) return
+    if ((clockTick - lastActivityAt) < (effectiveInactivityRule.timeoutMinutes * 60 * 1000)) return
+    void applyConversationExpiration(effectiveInactivityRule)
+  }, [applyConversationExpiration, clockTick, effectiveInactivityRule, lastActivityAt, ready])
+
   const syncConversation = useCallback(async () => {
-    if (!sessionId) return
+    if (!sessionId || shouldBlockConversation) return
 
     setSyncing(true)
     try {
@@ -564,7 +780,17 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
         ? json.data?.messages.filter((item) => item.body)
         : []
 
-      setMessages(serverMessages.length > 0 ? [buildWelcomeMessage(props.prompt, initialStage, props.quickActions), ...serverMessages] : [buildWelcomeMessage(props.prompt, initialStage, props.quickActions)])
+      const mergedMessages = serverMessages.length > 0 ? [buildWelcomeMessage(props.prompt, initialStage, props.quickActions), ...serverMessages] : defaultMessages
+      const latestServerMessageId = serverMessages[serverMessages.length - 1]?.id || ''
+      setMessages(mergedMessages)
+      if (latestServerMessageId && latestServerMessageId !== lastServerMessageIdRef.current) {
+        lastServerMessageIdRef.current = latestServerMessageId
+        setLastActivityAt(Date.now())
+      }
+      const nextInactivityRule = shouldBlockConversation
+        ? (props.preChatFormInactivityRule.enabled ? props.preChatFormInactivityRule : fallbackInactivityRule)
+        : ([...mergedMessages].reverse().find((item) => item.role === 'assistant' && item.meta?.inactivityRule?.enabled)?.meta?.inactivityRule || fallbackInactivityRule)
+      setActiveInactivityRule(nextInactivityRule)
       setConnectionState('online')
       setConnectionError(null)
     } catch (error) {
@@ -574,10 +800,10 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     } finally {
       setSyncing(false)
     }
-  }, [initialStage, props.channelId, props.prompt, props.quickActions, sessionId])
+  }, [defaultMessages, fallbackInactivityRule, initialStage, props.channelId, props.preChatFormInactivityRule, props.prompt, props.quickActions, sessionId, shouldBlockConversation])
 
   useEffect(() => {
-    if (!ready || !sessionId) return
+    if (!ready || !sessionId || shouldBlockConversation) return
 
     void syncConversation()
     const interval = window.setInterval(() => {
@@ -585,14 +811,15 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     }, 3500)
 
     return () => window.clearInterval(interval)
-  }, [ready, sessionId, syncConversation])
+  }, [ready, sessionId, shouldBlockConversation, syncConversation])
 
   async function sendMessage(messageBody: string, requestHuman = false, overrides?: { quickActionId?: string; responseOptionId?: string; currentStageId?: string }) {
     const trimmedMessage = messageBody.trim()
-    if (!trimmedMessage || sending || !sessionId) return
+    if (!trimmedMessage || sending || !sessionId || shouldBlockConversation) return
 
     const nextIdentity = inferIdentityFromMessage(identity, trimmedMessage, latestAssistantPrompt)
     setIdentity(nextIdentity)
+    setPreChatError(null)
 
     const optimisticMessage: PublicChatbotMessage = {
       id: `optimistic-${Date.now()}`,
@@ -615,6 +842,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
           telefono: nextIdentity.telefono,
           whatsapp: nextIdentity.whatsapp,
           producto: nextIdentity.producto,
+          departamento: nextIdentity.departamento,
           empresaNombre: nextIdentity.empresaNombre,
           documento: nextIdentity.documento,
           ciudad: nextIdentity.ciudad,
@@ -629,6 +857,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
             source: 'iframe-chatbot',
             userAgent: navigator.userAgent,
             chatFlowNextField: latestAssistantPrompt,
+            preChatDepartment: nextIdentity.departamento || null,
             quickActionId: overrides?.quickActionId || null,
             responseOptionId: overrides?.responseOptionId || null,
             currentStageId: overrides?.currentStageId || activeStage?.id || null,
@@ -646,6 +875,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
 
       setConnectionState('online')
       setConnectionError(null)
+      setLastActivityAt(Date.now())
       await syncConversation()
     } catch (error) {
       console.error(error)
@@ -667,6 +897,43 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
 
   function submitDraft() {
     void sendMessage(draft)
+  }
+
+  function updateIdentityField(field: keyof ChatIdentity, value: string) {
+    setIdentity((current) => ({ ...current, [field]: value }))
+    setPreChatError(null)
+  }
+
+  function submitPreChatForm() {
+    if (props.preChatFormRequireName && !identity.nombre.trim()) {
+      setPreChatError('Escribe el nombre antes de continuar.')
+      return
+    }
+
+    if (props.preChatFormRequireEmail && !identity.email.trim()) {
+      setPreChatError('Completa el correo para iniciar el chat.')
+      return
+    }
+
+    if (props.preChatFormRequirePhone && !identity.telefono.trim()) {
+      setPreChatError('Completa el teléfono para iniciar el chat.')
+      return
+    }
+
+    if (props.preChatFormRequireContactMethod && !identity.email.trim() && !identity.telefono.trim()) {
+      setPreChatError('Necesitamos al menos un correo o un teléfono para continuar.')
+      return
+    }
+
+    if (departmentOptionsAvailable && !identity.departamento.trim()) {
+      setPreChatError('Selecciona el departamento antes de iniciar el chat.')
+      return
+    }
+
+    setPreChatCompleted(true)
+    setPreChatError(null)
+    setLastActivityAt(Date.now())
+    setActiveInactivityRule(defaultMessages[0]?.meta?.inactivityRule || fallbackInactivityRule)
   }
 
   function requestHumanSupport() {
@@ -705,6 +972,34 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     setPanelOpen(false)
   }
 
+  async function endConversation() {
+    if (endingConversation) return
+
+    setEndingConversation(true)
+    try {
+      if (sessionId) {
+        const response = await fetch(`/api/public/chatbot/${props.channelId}/conversation/close`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            threadId: sessionId,
+            parentReferrer: document.referrer || '',
+          }),
+        })
+
+        if (!response.ok) {
+          const detail = await getResponseErrorMessage(response)
+          throw new Error(`No se pudo cerrar la conversación. ${detail}`)
+        }
+      }
+    } catch (error) {
+      console.error(error)
+    } finally {
+      resetConversation({ resetPreChat: true })
+      setEndingConversation(false)
+    }
+  }
+
   useEffect(() => {
     if (typeof window === 'undefined') return
 
@@ -736,7 +1031,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
       window.clearTimeout(timeout)
       window.removeEventListener('resize', scheduleResize)
     }
-  }, [connectionState, floatingLauncherActive, launcherMetrics.buttonHeight, messages.length, panelOpen, props.channelId, sending, syncing])
+  }, [connectionState, floatingLauncherActive, launcherMetrics.buttonHeight, messages.length, panelOpen, preChatCompleted, props.channelId, sending, syncing])
 
   return (
     <div ref={rootRef} className="sgd-chatbot-page p-3 text-slate-950" style={{ ...accentStyle, minHeight: floatingLauncherActive && !panelOpen ? `${launcherOffsetY + 84}px` : '100vh', background: floatingLauncherActive && !panelOpen ? 'transparent' : `radial-gradient(circle at top, rgba(14,165,233,0.12), transparent 30%), linear-gradient(180deg, ${props.pageBackgroundColor} 0%, ${props.pageBackgroundColor} 45%, ${props.backgroundColor} 100%)`, position: 'relative' }}>
@@ -800,7 +1095,57 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
               <p className="mt-1 whitespace-pre-wrap leading-6">{connectionError}</p>
             </div>
           ) : null}
-          {messages.map((message) => (
+          {shouldBlockConversation && welcomeMessage ? (
+            <div className="sgd-chatbot-bubble-assistant mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
+              <div className="[&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_p]:my-0 [&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_u]:underline leading-6" dangerouslySetInnerHTML={{ __html: normalizeRichTextHtml(welcomeMessage.bodyHtml || plainTextToRichTextHtml(welcomeMessage.body)) }} />
+            </div>
+          ) : null}
+          {shouldBlockConversation ? (
+            <div className="mx-auto w-full max-w-[96%] rounded-[26px] border border-slate-200 bg-white px-4 py-4 shadow-sm">
+              <p className="text-base font-semibold text-slate-950">{props.preChatFormTitle}</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{props.preChatFormDescription}</p>
+              <div className="mt-4 grid gap-3">
+                {props.preChatFormShowNameField ? (
+                  <Input value={identity.nombre} onChange={(event) => updateIdentityField('nombre', event.target.value)} placeholder={props.namePlaceholder} className="h-11 rounded-2xl border-slate-200" />
+                ) : null}
+                {props.preChatFormShowEmailField ? (
+                  <Input value={identity.email} onChange={(event) => updateIdentityField('email', event.target.value)} placeholder={props.emailPlaceholder} type="email" className="h-11 rounded-2xl border-slate-200" />
+                ) : null}
+                {props.preChatFormShowPhoneField ? (
+                  <Input value={identity.telefono} onChange={(event) => updateIdentityField('telefono', event.target.value)} placeholder={props.phonePlaceholder} className="h-11 rounded-2xl border-slate-200" />
+                ) : null}
+                {departmentOptionsAvailable ? (
+                  <Select value={identity.departamento} onValueChange={(value) => updateIdentityField('departamento', value)}>
+                    <SelectTrigger className="h-11 rounded-2xl border-slate-200">
+                      <SelectValue placeholder={props.preChatFormDepartmentPlaceholder || props.preChatFormDepartmentLabel} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {props.preChatFormDepartmentOptions.map((option) => (
+                        <SelectItem key={option.id} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : null}
+              </div>
+              {preChatError ? <p className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-700">{preChatError}</p> : null}
+              {props.termsEnabled ? (
+                <p className="mt-3 text-xs leading-5 text-slate-500">
+                  {props.termsLabel}
+                  {props.termsLinkUrl && props.termsLinkText ? (
+                    <>
+                      {' '}
+                      <a href={props.termsLinkUrl} target="_blank" rel="noreferrer" className="font-medium text-slate-700 underline underline-offset-2">{props.termsLinkText}</a>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
+              <div className="mt-4 flex justify-end">
+                <Button className="rounded-xl text-white" style={{ backgroundColor: props.accentColor }} onClick={submitPreChatForm}>
+                  {props.preChatFormSubmitLabel}
+                </Button>
+              </div>
+            </div>
+          ) : messages.map((message) => (
             <div key={message.id} className={message.role === 'user' ? 'sgd-chatbot-bubble-user ml-auto max-w-[88%] rounded-[22px] bg-slate-950 px-4 py-3 text-sm text-white shadow-sm' : message.role === 'system' ? 'sgd-chatbot-bubble-system mx-auto max-w-[92%] rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900' : 'sgd-chatbot-bubble-assistant mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'}>
               {message.role === 'user' ? (
                 <p className="whitespace-pre-wrap leading-6">{message.body}</p>
@@ -829,7 +1174,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
               {message.author ? <p className="mt-2 text-[11px] text-slate-500">{message.author}</p> : null}
             </div>
           ))}
-          {hasSelectableOptions ? (
+          {!shouldBlockConversation && hasSelectableOptions ? (
             <div className="mr-auto max-w-[88%] rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-sm text-slate-700 shadow-sm">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Siguiente paso</p>
               <p className="mt-2 text-sm font-semibold text-slate-900">Elige una opcion para continuar</p>
@@ -896,18 +1241,25 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
             ) : null}
             <div className="grid gap-1.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{props.messageLabel}</p>
-              <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} placeholder={interactionLocked ? 'Espera a que termine la pausa para continuar.' : hasSelectableOptions ? 'Selecciona una opcion de la lista o escribe tu respuesta.' : props.messagePlaceholder} className="rounded-2xl border-slate-200" disabled={interactionLocked} />
+              <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} placeholder={shouldBlockConversation ? 'Completa el formulario para habilitar el chat.' : interactionLocked ? 'Espera a que termine la pausa para continuar.' : hasSelectableOptions ? 'Selecciona una opcion de la lista o escribe tu respuesta.' : props.messagePlaceholder} className="rounded-2xl border-slate-200" disabled={interactionLocked || shouldBlockConversation} />
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button className="flex-1 rounded-xl text-white" style={{ backgroundColor: props.accentColor }} onClick={submitDraft} disabled={sending || !ready || interactionLocked}>
+              <Button className="flex-1 rounded-xl text-white" style={{ backgroundColor: props.accentColor }} onClick={submitDraft} disabled={sending || !ready || interactionLocked || shouldBlockConversation || endingConversation}>
                 {interactionLocked ? 'Pausa activa...' : sending ? 'Enviando...' : 'Responder'}
               </Button>
               {props.allowHumanHandoff ? (
-                <Button variant="outline" className="rounded-xl border-slate-200" onClick={requestHumanSupport} disabled={sending || !ready || interactionLocked}>
+                <Button variant="outline" className="rounded-xl border-slate-200" onClick={requestHumanSupport} disabled={sending || !ready || interactionLocked || shouldBlockConversation || endingConversation}>
                   Pedir asesor
                 </Button>
               ) : null}
             </div>
+            {!shouldBlockConversation ? (
+              <div className="flex justify-end">
+                <button type="button" onClick={() => void endConversation()} disabled={endingConversation} className="text-xs font-medium text-rose-600 transition hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-60">
+                  {endingConversation ? 'Terminando conversación...' : 'Terminar conversación'}
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
