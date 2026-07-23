@@ -13,11 +13,13 @@ import {
   type ChatbotFlowResponseOption,
   type ChatbotQuickAction,
 } from '@/lib/crm-chatbot-flow'
+import { normalizeRichTextHtml, plainTextToRichTextHtml, richTextToPlainText } from '@/lib/chatbot-rich-text'
 
 type PublicChatbotMessage = {
   id: string
   role: 'assistant' | 'user' | 'system'
   body: string
+  bodyHtml?: string
   at: string
   author?: string | null
   attachments?: Array<{ type?: string | null; url?: string | null; alt?: string | null }>
@@ -133,10 +135,12 @@ function formatRemainingPause(ms: number) {
 }
 
 function buildWelcomeMessage(prompt: string, stage: ChatbotFlowStage | null, quickActions: ChatbotQuickAction[]): PublicChatbotMessage {
+  const source = stage?.prompt || prompt
   return {
     id: 'welcome',
     role: 'assistant',
-    body: stage?.prompt || prompt,
+    body: richTextToPlainText(source),
+    bodyHtml: normalizeRichTextHtml(source),
     at: nowIso(),
     meta: {
       nextField: stage?.nextField === 'none' ? null : stage?.nextField || 'name',
@@ -798,7 +802,11 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
           ) : null}
           {messages.map((message) => (
             <div key={message.id} className={message.role === 'user' ? 'sgd-chatbot-bubble-user ml-auto max-w-[88%] rounded-[22px] bg-slate-950 px-4 py-3 text-sm text-white shadow-sm' : message.role === 'system' ? 'sgd-chatbot-bubble-system mx-auto max-w-[92%] rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900' : 'sgd-chatbot-bubble-assistant mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'}>
-              <p className="whitespace-pre-wrap leading-6">{message.body}</p>
+              {message.role === 'user' ? (
+                <p className="whitespace-pre-wrap leading-6">{message.body}</p>
+              ) : (
+                <div className="[&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_p]:my-0 [&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_u]:underline leading-6" dangerouslySetInnerHTML={{ __html: normalizeRichTextHtml(message.bodyHtml || plainTextToRichTextHtml(message.body)) }} />
+              )}
               {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
                 <div className="mt-3 space-y-2">
                   {message.attachments.filter((item) => item?.type === 'image' && item?.url).map((item, index) => (

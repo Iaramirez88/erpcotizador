@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { normalizeString } from '@/lib/crm'
 import { extractHostFromUrl, getPublicChatbotSettings, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
 import { getReferrerHost, getRequestHost } from '@/lib/crm-public-chatbot-server'
+import { plainTextToRichTextHtml } from '@/lib/chatbot-rich-text'
 
 export const runtime = 'nodejs'
 
@@ -79,6 +80,9 @@ export async function GET(request: Request, context: RouteContext) {
           id: message.id,
           role: message.direction === 'OUTBOUND' ? 'assistant' : message.direction === 'SYSTEM' ? 'system' : 'user',
           body: message.bodyText || '',
+          bodyHtml: message.payloadJson && typeof message.payloadJson === 'object' && !Array.isArray(message.payloadJson) && typeof message.payloadJson.chatRenderedHtml === 'string'
+            ? message.payloadJson.chatRenderedHtml
+            : plainTextToRichTextHtml(message.bodyText || ''),
           at: message.occurredAt,
           author: message.sentByUser?.name || message.sentByUser?.email || null,
           attachments: Array.isArray(message.attachmentsJson) ? message.attachmentsJson : [],

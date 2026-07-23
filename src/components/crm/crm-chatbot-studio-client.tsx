@@ -51,6 +51,7 @@ import {
   type ChatbotStudioPauseNode,
 } from '@/lib/crm-chatbot-studio'
 import { getPublicChatbotSettings } from '@/lib/crm-public-chatbot'
+import { normalizeRichTextHtml, plainTextToRichTextHtml, richTextToPlainText, summarizeRichText } from '@/lib/chatbot-rich-text'
 
 type ChannelStatus = 'DRAFT' | 'TESTING' | 'ACTIVE' | 'DISABLED' | 'ERROR'
 
@@ -143,7 +144,8 @@ type StudioFocusNode = {
 type StudioEditingNode = StudioFocusNode | null
 type StudioPrimaryPanel = 'map' | 'general' | 'summary' | 'library' | 'flow' | 'triggers' | 'variables' | 'assignments' | 'conversations'
 
-const STUDIO_EMOJI_CHOICES = ['😀', '😂', '😉', '😍', '🤝', '👏', '🔥', '✅', '🙏', '📌', '📎', '🚀']
+const STUDIO_EMOJI_CHOICES = ['😀', '😁', '😂', '🙂', '😉', '😍', '🤩', '🤝', '👏', '🔥', '✅', '🙏', '📌', '📎', '🚀', '🎉', '🛒', '💬', '📞', '📦', '⭐', '💡', '🎯', '❤️']
+const RICH_TEXT_RENDER_CLASS = '[&_h1]:text-xl [&_h1]:font-semibold [&_h1]:leading-tight [&_h1]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:leading-tight [&_h2]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:leading-tight [&_h3]:mb-2 [&_p]:my-0 [&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_u]:underline [&_span]:whitespace-pre-wrap [&_div]:whitespace-pre-wrap'
 
 const FILTER_VARIABLE_FALLBACK_OPTIONS: Array<{ key: string; label: string }> = [
   { key: 'productoCotizar', label: 'productoCotizar' },
@@ -192,6 +194,7 @@ type StudioGraphNode = {
   title: string
   subtitle: string
   description: string
+  richContentHtml?: string
   x: number
   y: number
   width: number
@@ -349,7 +352,7 @@ function getNodeAnchorY(node: StudioGraphNode) {
   return node.y + 52
 }
 
-function getGraphNodeHeight(args: { kind: StudioGraphNode['kind']; responseCount?: number; actionCount?: number }) {
+function getGraphNodeHeight(args: { kind: StudioGraphNode['kind']; responseCount?: number; actionCount?: number; messageLength?: number }) {
   const baseHeight = 120
 
   if (args.kind !== 'stage') {
@@ -359,6 +362,11 @@ function getGraphNodeHeight(args: { kind: StudioGraphNode['kind']; responseCount
   const responseCount = Math.min(args.responseCount ?? 0, 6)
   const actionCount = Math.min(args.actionCount ?? 0, 6)
   let height = baseHeight
+
+  if (args.kind === 'stage' && typeof args.messageLength === 'number') {
+    const estimatedLines = Math.min(10, Math.max(2, Math.ceil(args.messageLength / 34)))
+    height += estimatedLines * 16
+  }
 
   if (responseCount > 0) {
     height += 24 + (responseCount * 40)
@@ -524,8 +532,16 @@ function getStageMessageContent(stage: ChatbotFlowStage) {
   return stage.prompt.trim() || stage.description.trim()
 }
 
+function getStageMessageHtml(stage: ChatbotFlowStage) {
+  return normalizeRichTextHtml(getStageMessageContent(stage))
+}
+
+function getStageMessageText(stage: ChatbotFlowStage) {
+  return richTextToPlainText(getStageMessageHtml(stage))
+}
+
 function getStageCardPreview(stage: ChatbotFlowStage) {
-  const lines = getStageMessageContent(stage)
+  const lines = getStageMessageText(stage)
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
@@ -585,6 +601,8 @@ function buildStudioGraph(builder: BuilderState) {
     const id = `stage:${stage.id}`
     const layout = builder.studioNodeLayout[id]
     const meta = getStageCardMeta(stage)
+    const messageHtml = getStageMessageHtml(stage)
+    const messageText = getStageMessageText(stage)
     return {
       id,
       domId: toDomId('stage', stage.id),
@@ -592,10 +610,11 @@ function buildStudioGraph(builder: BuilderState) {
       title: meta.title,
       subtitle: meta.subtitle,
       description: meta.description,
+      richContentHtml: messageHtml,
       x: layout?.x ?? stageStartX + (index * stageSpacing),
       y: layout?.y ?? laneY.stages,
       width: 232,
-      height: getGraphNodeHeight({ kind: 'stage', responseCount: stage.responseOptions.length, actionCount: 0 }),
+      height: getGraphNodeHeight({ kind: 'stage', responseCount: stage.responseOptions.length, actionCount: 0, messageLength: messageText.length }),
       accentClass: 'border-emerald-200 bg-white text-slate-900',
       headerClass: 'bg-emerald-50 text-emerald-900',
       headerBadgeClass: 'bg-white/90 text-emerald-700',
@@ -2796,7 +2815,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
                     <div className="font-semibold text-slate-900">Contenido</div>
-                    <div className="mt-1.5 line-clamp-6 whitespace-pre-wrap text-xs leading-5">{getStageMessageContent(selectedStage) || 'Sin contenido definido.'}</div>
+                    {getStageMessageContent(selectedStage) ? <RichTextContent html={getStageMessageContent(selectedStage)} className="mt-1.5 text-xs leading-5" /> : <div className="mt-1.5 text-xs leading-5 text-slate-500">Sin contenido definido.</div>}
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
                     <div className="flex items-center justify-between gap-2">
@@ -2943,16 +2962,8 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               <Input value={selectedStage.title} onChange={(event) => updateStage(selectedStage.id, { title: event.target.value })} />
             </div>
             <div className="grid gap-2">
-              <div className="flex items-center justify-between gap-2">
-                <Label>Editor del mensaje</Label>
-                <div className="flex flex-wrap gap-1">
-                  <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(selectedStage.id, '*Texto en negrilla*')}>Negrilla</Button>
-                  <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(selectedStage.id, '😀')}>Emoji</Button>
-                  <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(selectedStage.id, `{{${builder.flowVariables.find((item) => item.enabled)?.key || 'contact_name'}}}`)}>Variable</Button>
-                  <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(selectedStage.id, '1. Primer punto\n2. Segundo punto\n3. Tercer punto')}>Lista</Button>
-                </div>
-              </div>
-              <Textarea value={getStageMessageContent(selectedStage)} onChange={(event) => updateStageMessageContent(selectedStage.id, event.target.value)} rows={10} placeholder="Escribe aqui todo el mensaje. Puedes mezclar texto, variables, emojis, listas y formato simple." />
+              <Label>Editor del mensaje</Label>
+              <RichTextComposer value={getStageMessageContent(selectedStage)} onChange={(nextValue) => updateStageMessageContent(selectedStage.id, nextValue)} placeholder="Escribe aqui el mensaje exactamente como lo verá el usuario en el chat." variableOptions={triggerVariableOptions} />
               <div className="text-[11px] leading-5 text-slate-500">Este es el único campo de contenido del mensaje. El Studio mostrará esta misma pieza en la caja del canvas y en el chatbot.</div>
             </div>
             <div className="grid gap-2">
@@ -4086,7 +4097,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                             </div>
                             <div className="px-4 py-3">
                               <div className="line-clamp-1 text-xs font-medium text-slate-600">{node.subtitle}</div>
-                              <div className="mt-2 line-clamp-2 text-[11px] leading-5 text-slate-500">{node.description}</div>
+                              {node.kind === 'stage' && node.richContentHtml ? (
+                                <RichTextContent html={node.richContentHtml} className="mt-2 text-[11px] leading-5 text-slate-500" />
+                              ) : (
+                                <div className="mt-2 line-clamp-2 text-[11px] leading-5 text-slate-500">{node.description}</div>
+                              )}
                             {node.kind === 'stage' && responseHandles.length ? (
                               <div className="mt-3 space-y-2 border-t border-slate-200/70 pt-3">
                                 {responseHandles.map((option, index) => (
@@ -5032,16 +5047,8 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   </div>
                 </div>
                 <div className="grid gap-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label>Editor completo del mensaje</Label>
-                    <div className="flex flex-wrap gap-1">
-                      <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(editingStage.id, '*Texto en negrilla*')}>Negrilla</Button>
-                      <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(editingStage.id, '😀')}>Emoji</Button>
-                      <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(editingStage.id, `{{${builder.flowVariables.find((item) => item.enabled)?.key || 'contact_name'}}}`)}>Variable</Button>
-                      <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(editingStage.id, '1. Primer punto\n2. Segundo punto\n3. Tercer punto')}>Lista</Button>
-                    </div>
-                  </div>
-                  <Textarea value={getStageMessageContent(editingStage)} onChange={(event) => updateStageMessageContent(editingStage.id, event.target.value)} rows={10} placeholder="Escribe aqui el texto completo del mensaje, con variables, emojis, listas y formato simple." />
+                  <Label>Editor completo del mensaje</Label>
+                  <RichTextComposer value={getStageMessageContent(editingStage)} onChange={(nextValue) => updateStageMessageContent(editingStage.id, nextValue)} placeholder="Escribe aqui el texto completo del mensaje, con títulos, tamaños, variables, emojis y listas." variableOptions={triggerVariableOptions} />
                   <div className="text-xs text-slate-500">Todo el contenido del mensaje se administra desde esta sola casilla.</div>
                 </div>
                 <div className="space-y-2.5">
@@ -5525,4 +5532,138 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
 function joinConfigValues(values: string[]) {
   return values.join(', ')
+}
+
+type RichTextComposerProps = {
+  value: string
+  placeholder: string
+  variableOptions: Array<{ key: string; label: string }>
+  onChange: (value: string) => void
+}
+
+function RichTextContent({ html, className }: { html: string; className?: string }) {
+  const normalized = normalizeRichTextHtml(html)
+  if (!normalized) return null
+  return <div className={`${RICH_TEXT_RENDER_CLASS} ${className || ''}`.trim()} dangerouslySetInnerHTML={{ __html: normalized }} />
+}
+
+function RichTextComposer({ value, placeholder, variableOptions, onChange }: RichTextComposerProps) {
+  const editorRef = useRef<HTMLDivElement | null>(null)
+  const selectionRef = useRef<Range | null>(null)
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  const normalizedValue = normalizeRichTextHtml(value)
+  const isEmpty = !richTextToPlainText(normalizedValue)
+
+  useEffect(() => {
+    const element = editorRef.current
+    if (!element) return
+    if (element.innerHTML !== normalizedValue) {
+      element.innerHTML = normalizedValue
+    }
+  }, [normalizedValue])
+
+  function saveSelection() {
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0 || !editorRef.current) return
+    const range = selection.getRangeAt(0)
+    if (!editorRef.current.contains(range.commonAncestorContainer)) return
+    selectionRef.current = range.cloneRange()
+  }
+
+  function restoreSelection() {
+    if (!selectionRef.current) {
+      editorRef.current?.focus()
+      return
+    }
+    const selection = window.getSelection()
+    if (!selection) return
+    selection.removeAllRanges()
+    selection.addRange(selectionRef.current)
+    editorRef.current?.focus()
+  }
+
+  function emitChange() {
+    const nextValue = normalizeRichTextHtml(editorRef.current?.innerHTML || '')
+    onChange(nextValue)
+  }
+
+  function runCommand(command: string, commandValue?: string) {
+    restoreSelection()
+    document.execCommand(command, false, commandValue)
+    emitChange()
+    saveSelection()
+  }
+
+  function insertHtml(html: string) {
+    restoreSelection()
+    document.execCommand('insertHTML', false, html)
+    emitChange()
+    saveSelection()
+  }
+
+  function insertVariable(key: string) {
+    insertHtml(`<span>{{${key}}}</span>`)
+  }
+
+  function insertEmoji(emoji: string) {
+    insertHtml(`<span>${emoji}</span>`)
+    setEmojiOpen(false)
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-slate-50 p-2">
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('formatBlock', 'p')}>Párrafo</Button>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('formatBlock', 'h1')}>Título</Button>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('formatBlock', 'h2')}>Subtítulo</Button>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('bold')}>Negrilla</Button>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('italic')}>Itálica</Button>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('underline')}>Subrayado</Button>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('fontSize', '2')}>Chico</Button>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('fontSize', '3')}>Normal</Button>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('fontSize', '5')}>Grande</Button>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('insertUnorderedList')}>Lista</Button>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => runCommand('insertOrderedList')}>Numerada</Button>
+        <Select onValueChange={(selectedValue) => selectedValue !== '__none__' ? insertVariable(selectedValue) : undefined}>
+          <SelectTrigger className="h-8 w-[140px] bg-white text-xs"><SelectValue placeholder="Variable" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">Variable</SelectItem>
+            {variableOptions.map((option) => <SelectItem key={option.key} value={option.key}>{option.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => setEmojiOpen((current) => !current)}>Emojis</Button>
+      </div>
+      {emojiOpen ? (
+        <div className="grid grid-cols-8 gap-2 rounded-2xl border border-slate-200 bg-white p-3">
+          {STUDIO_EMOJI_CHOICES.map((emoji) => (
+            <button key={emoji} type="button" className="rounded-xl border border-slate-200 px-2 py-2 text-lg hover:bg-slate-50" onMouseDown={(event) => event.preventDefault()} onClick={() => insertEmoji(emoji)}>
+              {emoji}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="relative rounded-2xl border border-slate-200 bg-white">
+        {isEmpty ? <div className="pointer-events-none absolute left-4 top-3 text-sm text-slate-400">{placeholder}</div> : null}
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          className={`min-h-[260px] w-full overflow-y-auto px-4 py-3 text-sm leading-6 text-slate-800 outline-none ${RICH_TEXT_RENDER_CLASS}`}
+          onFocus={saveSelection}
+          onKeyUp={saveSelection}
+          onMouseUp={saveSelection}
+          onInput={() => {
+            emitChange()
+            saveSelection()
+          }}
+          onBlur={saveSelection}
+          onPaste={(event) => {
+            event.preventDefault()
+            const plainText = event.clipboardData.getData('text/plain')
+            insertHtml(plainTextToRichTextHtml(plainText) || plainText)
+          }}
+        />
+      </div>
+    </div>
+  )
 }

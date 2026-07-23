@@ -30,6 +30,7 @@ import {
 } from '@/lib/crm-chatbot-studio'
 import { extractHostFromUrl, getPublicChatbotSettings, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
 import { getReferrerHost, getRequestHost } from '@/lib/crm-public-chatbot-server'
+import { normalizeRichTextHtml, richTextToPlainText } from '@/lib/chatbot-rich-text'
 
 export const runtime = 'nodejs'
 
@@ -648,12 +649,14 @@ function resolveChatStage(args: {
 }
 
 function decorateAssistantReply(baseBody: string, stage: ChatbotFlowStage | null, currentStageId: string, quickActionId: string) {
-  if (!stage?.prompt.trim()) return baseBody
-  const normalizedBody = normalizeString(baseBody).toLowerCase()
-  const normalizedPrompt = normalizeString(stage.prompt).toLowerCase()
-  if (normalizedPrompt && normalizedBody.includes(normalizedPrompt)) return baseBody
-  if (!quickActionId && currentStageId === stage.id) return baseBody
-  return `${stage.prompt}\n\n${baseBody}`
+  const normalizedBaseHtml = normalizeRichTextHtml(baseBody)
+  if (!stage?.prompt.trim()) return normalizedBaseHtml
+  const normalizedPromptHtml = normalizeRichTextHtml(stage.prompt)
+  const normalizedBody = normalizeString(richTextToPlainText(normalizedBaseHtml)).toLowerCase()
+  const normalizedPrompt = normalizeString(richTextToPlainText(normalizedPromptHtml)).toLowerCase()
+  if (normalizedPrompt && normalizedBody.includes(normalizedPrompt)) return normalizedBaseHtml
+  if (!quickActionId && currentStageId === stage.id) return normalizedBaseHtml
+  return `${normalizedPromptHtml}${normalizedBaseHtml}`
 }
 
 function resolveChatPauseNode(args: {
@@ -1599,7 +1602,7 @@ export async function POST(request: Request) {
       }
 
       const assistantBodyTemplate = matchedTrigger.matchedTrigger?.assistantReply || assistantReply.body
-      const assistantBody = applyChatbotMessageCoherence({
+      const assistantBodyHtml = normalizeRichTextHtml(applyChatbotMessageCoherence({
         body: interpolateChatbotVariables({
           template: resolvedPauseNode
             ? appendPauseCopy(assistantBodyTemplate, resolvedPauseNode)
@@ -1610,7 +1613,8 @@ export async function POST(request: Request) {
         coherence: studioSettings.messageCoherence,
         variables: flowVariables,
         context: assistantContext,
-      })
+      }))
+      const assistantBody = richTextToPlainText(assistantBodyHtml)
 
       const stageQuickActions = getStageQuickActions(resolvedStage, quickActions)
       const stageResponseOptions = getStageResponseOptions(resolvedStage)
@@ -1646,6 +1650,7 @@ export async function POST(request: Request) {
           payloadJson: {
             provider: 'WEB_CHATBOT',
             dispatch: 'guided-chatbot-autoreply',
+            chatRenderedHtml: assistantBodyHtml,
             matchedMaterialId: catalogInsight.primary?.id || null,
             alternativeMaterialIds: catalogInsight.alternatives.map((item) => item.id),
             catalogIntent: catalogInsight.catalogIntent,
