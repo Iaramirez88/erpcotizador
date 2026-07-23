@@ -545,7 +545,7 @@ function buildStudioGraph(builder: BuilderState) {
       x: layout?.x ?? stageStartX + (index * stageSpacing),
       y: layout?.y ?? laneY.stages,
       width: 232,
-      height: getGraphNodeHeight({ kind: 'stage', responseCount: stage.responseOptions.length, actionCount: stage.quickActionIds.length }),
+      height: getGraphNodeHeight({ kind: 'stage', responseCount: stage.responseOptions.length, actionCount: 0 }),
       accentClass: 'border-emerald-200 bg-white text-slate-900',
       headerClass: 'bg-emerald-50 text-emerald-900',
       headerBadgeClass: 'bg-white/90 text-emerald-700',
@@ -584,6 +584,11 @@ function buildStudioGraph(builder: BuilderState) {
 
   const actionStageIndex = new Map<string, number>()
   builder.flowStages.forEach((stage, index) => {
+    stage.responseOptions.forEach((option) => {
+      if (option.targetActionId && !actionStageIndex.has(option.targetActionId)) {
+        actionStageIndex.set(option.targetActionId, index)
+      }
+    })
     stage.quickActionIds.forEach((actionId) => {
       if (!actionStageIndex.has(actionId)) {
         actionStageIndex.set(actionId, index)
@@ -677,23 +682,6 @@ function buildStudioGraph(builder: BuilderState) {
         sourceOptionIndex: optionIndex,
         toneClass: actionTarget ? 'stroke-fuchsia-300' : 'stroke-sky-300',
         showLabel: true,
-      })
-    })
-
-    stage.quickActionIds.forEach((actionId, actionIndex) => {
-      if (!builder.quickActions.some((action) => action.id === actionId)) return
-      edges.push({
-        id: `${sourceId}-action-${actionId}`,
-        fromId: sourceId,
-        toId: `action:${actionId}`,
-        sourceKind: 'stage',
-        targetKind: 'action',
-        label: 'accion',
-        sourceOptionId: actionId,
-        sourceOptionIndex: actionIndex,
-        toneClass: 'stroke-fuchsia-300',
-        showLabel: false,
-        dashed: true,
       })
     })
   })
@@ -1462,10 +1450,14 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
       flowStages: current.flowStages.map((stage) => {
         if (stage.id !== stageId) return stage
-        if (stage.quickActionIds.includes(fallbackActionId)) return stage
         return {
           ...stage,
-          quickActionIds: [...stage.quickActionIds, fallbackActionId],
+          responseOptions: [...stage.responseOptions, createStageResponseOption(current.flowStages, stageId, {
+            label: builder.quickActions[0]?.label || 'Nueva opción',
+            userMessage: builder.quickActions[0]?.label || 'Quiero continuar por esta ruta.',
+            targetStageId: '',
+            targetActionId: fallbackActionId,
+          })],
         }
       }),
     }))
@@ -1912,11 +1904,31 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     setNotice('Nuevo bloque de mensaje creado.')
   }
 
-  function createAction(args?: { sourceNode?: StudioFocusNode; position?: { x: number; y: number } }) {
+  function createAction(args?: { sourceNode?: StudioFocusNode; sourceOptionId?: string; position?: { x: number; y: number } }) {
     const nextActionId = makeId('action')
     const position = args?.position ?? getVisibleInsertPosition()
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
       quickActions: [...current.quickActions, { id: nextActionId, label: 'Nueva accion', kind: 'message', message: 'Mensaje de accion rapida.', targetStageId: '', actionUrl: null, responseAttachmentType: null, responseAttachmentUrl: null, responseAttachmentName: null, enabled: true, automation: getDefaultChatbotQuickActionAutomationConfig() }],
+      flowStages: args?.sourceNode?.kind === 'stage'
+        ? current.flowStages.map((stage) => {
+            if (stage.id !== args.sourceNode?.id) return stage
+            if (args.sourceOptionId) {
+              return {
+                ...stage,
+                responseOptions: stage.responseOptions.map((option) => option.id === args.sourceOptionId ? { ...option, targetActionId: nextActionId, targetStageId: '' } : option),
+              }
+            }
+            return {
+              ...stage,
+              responseOptions: [...stage.responseOptions, createStageResponseOption(current.flowStages, stage.id, {
+                label: 'Nueva opción',
+                userMessage: 'Quiero continuar por esta ruta.',
+                targetStageId: '',
+                targetActionId: nextActionId,
+              })],
+            }
+          })
+        : current.flowStages,
       studioNodeLayout: {
         ...current.studioNodeLayout,
         [`action:${nextActionId}`]: position,
@@ -2437,7 +2449,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       return
     }
     if (kind === 'action') {
-      createAction({ sourceNode: target?.sourceNode, position })
+      createAction({ sourceNode: target?.sourceNode, sourceOptionId: target?.sourceOptionId, position })
       return
     }
     if (kind === 'trigger') {
@@ -2835,7 +2847,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
               <div className="font-semibold text-slate-900">Resumen</div>
               <div className="mt-2">{selectedStage.responseOptions.length} rutas configuradas</div>
-              <div className="mt-1">{selectedStage.quickActionIds.length} acciones rápidas enlazadas</div>
+              <div className="mt-1">{selectedStage.responseOptions.filter((option) => option.targetActionId).length} opciones enlazadas a acciones</div>
             </div>
             <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
               <div className="flex items-center justify-between gap-2">
@@ -2854,7 +2866,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                     </div>
                     <div className="grid gap-2">
                       <Label>Ir a mensaje</Label>
-                      <Select value={option.targetStageId || '__none__'} onValueChange={(value) => updateResponseOption(selectedStage.id, option.id, { targetStageId: value === '__none__' ? '' : value })}>
+                      <Select value={option.targetStageId || '__none__'} onValueChange={(value) => updateResponseOption(selectedStage.id, option.id, { targetStageId: value === '__none__' ? '' : value, targetActionId: value === '__none__' ? option.targetActionId : '' })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="__none__">Sin enlazar</SelectItem>
@@ -2862,48 +2874,23 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         </SelectContent>
                       </Select>
                     </div>
+                    <div className="grid gap-2">
+                      <Label>Ir a acción</Label>
+                      <Select value={option.targetActionId || '__none__'} onValueChange={(value) => updateResponseOption(selectedStage.id, option.id, { targetActionId: value === '__none__' ? '' : value, targetStageId: value === '__none__' ? option.targetStageId : '' })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Sin enlazar</SelectItem>
+                          {builder.quickActions.map((action) => <SelectItem key={action.id} value={action.id}>{action.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => createAction({ sourceNode: { kind: 'stage', id: selectedStage.id }, sourceOptionId: option.id })}>Nueva acción</Button>
                       <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => duplicateStageResponseOption(selectedStage.id, option.id)}>Duplicar</Button>
                       <Button type="button" variant="outline" size="sm" className="h-8 border-rose-200 text-xs text-rose-700" onClick={() => removeResponseOption(selectedStage.id, option.id)}>Eliminar</Button>
                     </div>
                   </div>
                 )) : <div className="rounded-2xl border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-500">Todavía no hay opciones visibles para este mensaje.</div>}
-              </div>
-            </div>
-            <div className="space-y-3 rounded-2xl border border-slate-200 bg-white px-3 py-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <div className="text-sm font-semibold text-slate-900">Acciones enlazadas</div>
-                  <div className="text-xs text-slate-500">Vincula botones como catálogo, stock o asesor a este mensaje.</div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => addExistingQuickActionToStage(selectedStage.id)}>Vincular acción</Button>
-                  <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => createAction({ sourceNode: { kind: 'stage', id: selectedStage.id } })}>Nueva acción</Button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {selectedStage.quickActionIds.length ? selectedStage.quickActionIds.map((actionId) => {
-                  const linkedAction = builder.quickActions.find((action) => action.id === actionId)
-                  if (!linkedAction) return null
-                  return (
-                    <div key={actionId} className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
-                      <div className="grid gap-2">
-                        <Label>Acción visible</Label>
-                        <Select value={actionId} onValueChange={(value) => replaceStageQuickAction(selectedStage.id, actionId, value)}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {builder.quickActions.map((action) => <SelectItem key={action.id} value={action.id}>{action.label}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="text-xs text-slate-500">Tipo: {linkedAction.kind}</div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => openEditor({ kind: 'action', id: linkedAction.id })}>Editar acción</Button>
-                        <Button type="button" variant="outline" size="sm" className="h-8 border-rose-200 text-xs text-rose-700" onClick={() => removeStageQuickAction(selectedStage.id, linkedAction.id)}>Quitar</Button>
-                      </div>
-                    </div>
-                  )
-                }).filter(Boolean) : <div className="rounded-2xl border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-500">Este mensaje no tiene acciones rápidas enlazadas.</div>}
               </div>
             </div>
           </div>
@@ -3840,12 +3827,6 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         const responseHandles = node.kind === 'stage'
                           ? (stageMap[nodeKey]?.responseOptions ?? []).slice(0, 6)
                           : []
-                        const actionHandles = node.kind === 'stage'
-                          ? (stageMap[nodeKey]?.quickActionIds ?? [])
-                              .slice(0, 6)
-                              .map((actionId) => builder.quickActions.find((action) => action.id === actionId))
-                              .filter((action): action is ChatbotQuickAction => Boolean(action))
-                          : []
                         return (
                           <div
                             key={node.id}
@@ -3963,29 +3944,6 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                       className={`absolute -right-2.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border bg-white shadow ${connectionDraft?.sourceOptionId === option.id ? 'border-sky-400' : 'border-slate-300'}`}
                                     >
                                       <span className="inline-block h-2 w-2 rounded-full bg-slate-400" />
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : null}
-                            {node.kind === 'stage' && actionHandles.length ? (
-                              <div className="mt-3 space-y-2 border-t border-fuchsia-100/80 pt-3">
-                                {actionHandles.map((action, index) => (
-                                  <div key={action.id} className="relative flex items-center gap-2 rounded-xl border border-fuchsia-200/70 bg-fuchsia-50/55 px-2.5 py-2 pr-7 text-[11px] font-medium text-fuchsia-900 shadow-sm">
-                                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-fuchsia-500" />
-                                    <span className="min-w-0 flex-1 truncate">{action.label}</span>
-                                    <button
-                                      type="button"
-                                      aria-label={`Reconectar acción ${action.label}`}
-                                      ref={(element) => registerHandleElement(getHandleAnchorKey(node.id, action.id), element)}
-                                      onPointerDown={(event) => {
-                                        if (!canEditFlow) return
-                                        event.stopPropagation()
-                                        handleConnectionStart(event, node, action.id, action.label, index)
-                                      }}
-                                      className={`absolute -right-2.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border bg-white shadow ${connectionDraft?.sourceOptionId === action.id ? 'border-fuchsia-400' : 'border-fuchsia-200'}`}
-                                    >
-                                      <span className="inline-block h-2 w-2 rounded-full bg-fuchsia-500" />
                                     </button>
                                   </div>
                                 ))}
@@ -4876,20 +4834,6 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                 <div className="grid gap-1.5">
                   <Label>Mensaje del bot en esta etapa</Label>
                   <Textarea value={editingStage.prompt} onChange={(event) => updateStage(editingStage.id, { prompt: event.target.value })} rows={3} placeholder="Ej: Hola, soy Juan Bot. ¿En qué servicio te puedo ayudar hoy?" />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label>Acciones rápidas</Label>
-                  <div className="grid gap-1.5 md:grid-cols-2">
-                    {builder.quickActions.map((action) => {
-                      const active = editingStage.quickActionIds.includes(action.id)
-                      return (
-                        <label key={action.id} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 text-sm">
-                          <span>{action.label}</span>
-                          <Switch checked={active} onCheckedChange={(checked) => updateStage(editingStage.id, { quickActionIds: checked ? [...editingStage.quickActionIds, action.id] : editingStage.quickActionIds.filter((id) => id !== action.id) })} />
-                        </label>
-                      )
-                    })}
-                  </div>
                 </div>
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
