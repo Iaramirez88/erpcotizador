@@ -971,10 +971,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const [studioRulesOpen, setStudioRulesOpen] = useState(false)
   const [studioMounted, setStudioMounted] = useState(false)
   const [boardViewportSize, setBoardViewportSize] = useState({ width: 0, height: 0 })
+  const [measuredHandleAnchors, setMeasuredHandleAnchors] = useState<Record<string, { x: number; y: number }>>({})
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const dragMovedRef = useRef(false)
   const boardViewportRef = useRef<HTMLDivElement | null>(null)
+  const handleElementsRef = useRef<Map<string, HTMLButtonElement>>(new Map())
   const conversationThreadViewportRef = useRef<HTMLDivElement | null>(null)
   const conversationThreadBottomRef = useRef<HTMLDivElement | null>(null)
   const pinchStateRef = useRef<{ initialDistance: number; initialScale: number; centerX: number; centerY: number } | null>(null)
@@ -1582,6 +1584,44 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
   const stageMap = useMemo(() => Object.fromEntries(builder.flowStages.map((stage) => [stage.id, stage])), [builder.flowStages])
   const studioGraph = useMemo(() => buildStudioGraph(builder), [builder])
+
+  function getHandleAnchorKey(nodeId: string, sourceOptionId?: string) {
+    return `${nodeId}::${sourceOptionId || '__node__'}`
+  }
+
+  function measureHandleAnchor(element: HTMLButtonElement | null) {
+    const viewport = boardViewportRef.current
+    if (!viewport || !element) return null
+    const viewportRect = viewport.getBoundingClientRect()
+    const handleRect = element.getBoundingClientRect()
+    return {
+      x: ((handleRect.left + (handleRect.width / 2)) - viewportRect.left - builder.studioViewport.x) / builder.studioViewport.scale,
+      y: ((handleRect.top + (handleRect.height / 2)) - viewportRect.top - builder.studioViewport.y) / builder.studioViewport.scale,
+    }
+  }
+
+  function registerHandleElement(key: string, element: HTMLButtonElement | null) {
+    if (element) {
+      handleElementsRef.current.set(key, element)
+      return
+    }
+    handleElementsRef.current.delete(key)
+  }
+
+  function getMeasuredHandleAnchor(nodeId: string, sourceOptionId?: string) {
+    return measuredHandleAnchors[getHandleAnchorKey(nodeId, sourceOptionId)] ?? null
+  }
+
+  useEffect(() => {
+    const nextAnchors: Record<string, { x: number; y: number }> = {}
+    handleElementsRef.current.forEach((element, key) => {
+      const anchor = measureHandleAnchor(element)
+      if (anchor) {
+        nextAnchors[key] = anchor
+      }
+    })
+    setMeasuredHandleAnchors(nextAnchors)
+  }, [builder.studioViewport.scale, builder.studioViewport.x, builder.studioViewport.y, studioGraph.nodes, studioGraph.edges])
   const editingStage = editingNode?.kind === 'stage' ? builder.flowStages.find((stage) => stage.id === editingNode.id) ?? null : null
   const editingTrigger = editingNode?.kind === 'trigger' ? builder.flowTriggers.find((trigger) => trigger.id === editingNode.id) ?? null : null
   const editingAction = editingNode?.kind === 'action' ? builder.quickActions.find((action) => action.id === editingNode.id) ?? null : null
@@ -2221,14 +2261,17 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   }
 
   function getConnectionHandleAnchor(args: { node: StudioGraphNode; sourceOptionId?: string; sourceOptionIndex?: number; targetKind?: StudioGraphNode['kind'] }) {
+    const measuredAnchor = getMeasuredHandleAnchor(args.node.id, args.sourceOptionId)
+    if (measuredAnchor) {
+      return measuredAnchor
+    }
+
     if (args.node.kind === 'stage' && typeof args.sourceOptionIndex === 'number') {
       const stageId = args.node.id.split(':')[1] || ''
       const stage = builder.flowStages.find((item) => item.id === stageId)
       const isStageQuickActionHandle = Boolean(args.sourceOptionId && stage?.quickActionIds.includes(args.sourceOptionId))
 
-      if (args.targetKind === 'action' && isStageQuickActionHandle) {
-        const stageId = args.node.id.split(':')[1] || ''
-        const stage = builder.flowStages.find((item) => item.id === stageId)
+      if (isStageQuickActionHandle) {
         const responseCount = stage?.responseOptions.length ?? 0
         return {
           x: getStageOptionAnchorX(args.node),
@@ -2353,8 +2396,14 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   function handleConnectionStart(event: React.PointerEvent<HTMLButtonElement>, node: StudioGraphNode, sourceOptionId?: string, sourceLabel?: string, sourceOptionIndex?: number) {
     if (event.button !== 0) return
     event.stopPropagation()
-    const startX = sourceOptionId && typeof sourceOptionIndex === 'number' ? getStageOptionAnchorX(node) : getNodeAnchorX(node, 'right')
-    const startY = sourceOptionId && typeof sourceOptionIndex === 'number' ? getStageOptionAnchorY(node, sourceOptionIndex) : getNodeAnchorY(node)
+    const measuredAnchor = measureHandleAnchor(event.currentTarget)
+    const fallbackAnchor = getConnectionHandleAnchor({
+      node,
+      sourceOptionId,
+      sourceOptionIndex,
+    })
+    const startX = measuredAnchor?.x ?? fallbackAnchor.x
+    const startY = measuredAnchor?.y ?? fallbackAnchor.y
     setConnectionDraft({
       fromId: node.id,
       fromKind: node.kind,
@@ -3865,6 +3914,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                               <button
                                 type="button"
                                 aria-label={`Crear conexion desde ${node.title}`}
+                                ref={(element) => registerHandleElement(getHandleAnchorKey(node.id), element)}
                                 onPointerDown={(event) => {
                                   if (!canEditFlow) return
                                   handleConnectionStart(event, node)
@@ -3898,6 +3948,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                     <button
                                       type="button"
                                       aria-label={`Reconectar rama ${option.label}`}
+                                      ref={(element) => registerHandleElement(getHandleAnchorKey(node.id, option.id), element)}
                                       onPointerDown={(event) => {
                                         if (!canEditFlow) return
                                         event.stopPropagation()
@@ -3926,6 +3977,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                     <button
                                       type="button"
                                       aria-label={`Reconectar acción ${action.label}`}
+                                      ref={(element) => registerHandleElement(getHandleAnchorKey(node.id, action.id), element)}
                                       onPointerDown={(event) => {
                                         if (!canEditFlow) return
                                         event.stopPropagation()
