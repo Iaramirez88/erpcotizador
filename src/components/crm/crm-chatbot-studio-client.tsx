@@ -355,6 +355,11 @@ function getNodeAnchorY(node: StudioGraphNode) {
 function getGraphNodeHeight(args: { kind: StudioGraphNode['kind']; responseCount?: number; actionCount?: number; messageLength?: number }) {
   const baseHeight = 120
 
+  if (args.kind === 'trigger') {
+    const responseCount = Math.min(args.responseCount ?? 0, 6)
+    return baseHeight + (responseCount > 0 ? 24 + (responseCount * 40) : 0)
+  }
+
   if (args.kind !== 'stage') {
     return baseHeight
   }
@@ -385,6 +390,15 @@ function getStageOptionAnchorY(node: StudioGraphNode, optionIndex: number) {
 
 function getStageOptionAnchorX(node: StudioGraphNode) {
   return node.x + node.width - 16
+}
+
+function getTriggerConditionAnchorY(node: StudioGraphNode, optionIndex: number) {
+  return node.y + 118 + (optionIndex * 42)
+}
+
+function getTriggerConditionSummary(condition: ChatbotFlowTriggerCondition) {
+  const value = condition.matchValue.trim() || 'sin valor'
+  return `${condition.variableKey} ${condition.matchMode} ${value}`
 }
 
 function getStageActionAnchorY(node: StudioGraphNode, responseCount: number, actionIndex: number) {
@@ -643,7 +657,7 @@ function buildStudioGraph(builder: BuilderState) {
       x: layout?.x ?? (targetStageNode ? targetStageNode.x + 18 : stageStartX + ((stageIndexById.get(trigger.targetStageId) ?? index) * stageSpacing)),
       y: layout?.y ?? laneY.triggers + (triggerCount * triggerStackGap),
       width: 220,
-      height: getGraphNodeHeight({ kind: 'trigger' }),
+      height: getGraphNodeHeight({ kind: 'trigger', responseCount: trigger.conditions.length }),
       accentClass: 'border-slate-200 bg-white text-slate-900',
       headerClass: trigger.enabled ? 'bg-amber-400 text-white' : 'bg-slate-200 text-slate-600',
       headerBadgeClass: trigger.enabled ? 'bg-white/90 text-amber-700' : 'bg-white/75 text-slate-500',
@@ -771,6 +785,24 @@ function buildStudioGraph(builder: BuilderState) {
   })
 
   builder.flowTriggers.forEach((trigger) => {
+    trigger.conditions.forEach((condition, conditionIndex) => {
+      const actionTarget = condition.targetActionId ? builder.quickActions.find((action) => action.id === condition.targetActionId) : null
+      if (!actionTarget && (!condition.targetStageId || !stageIndexById.has(condition.targetStageId))) return
+      edges.push({
+        id: `trigger-${trigger.id}-condition-${condition.id}`,
+        fromId: `trigger:${trigger.id}`,
+        toId: actionTarget ? `action:${actionTarget.id}` : `stage:${condition.targetStageId}`,
+        sourceKind: 'trigger',
+        targetKind: actionTarget ? 'action' : 'stage',
+        label: getTriggerConditionSummary(condition),
+        sourceOptionId: condition.id,
+        sourceOptionIndex: conditionIndex,
+        toneClass: actionTarget ? 'stroke-fuchsia-300' : 'stroke-amber-300',
+        showLabel: true,
+      })
+    })
+
+    if (trigger.conditions.length) return
     if (!stageIndexById.has(trigger.targetStageId)) return
     edges.push({
       id: `trigger-${trigger.id}-to-stage-${trigger.targetStageId}`,
@@ -2013,7 +2045,14 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       return updateSelectedFlowInBuilder(current, {
         flowStages: nextFlowStages,
         flowTriggers: args?.sourceNode?.kind === 'trigger'
-          ? current.flowTriggers.map((trigger) => trigger.id === args.sourceNode?.id ? { ...trigger, targetStageId: nextStageId } : trigger)
+          ? current.flowTriggers.map((trigger) => {
+              if (trigger.id !== args.sourceNode?.id) return trigger
+              if (!args.sourceOptionId) return { ...trigger, targetStageId: nextStageId }
+              return {
+                ...trigger,
+                conditions: trigger.conditions.map((condition) => condition.id === args.sourceOptionId ? { ...condition, targetStageId: nextStageId, targetActionId: '' } : condition),
+              }
+            })
           : current.flowTriggers,
         pauseNodes: args?.sourceNode?.kind === 'pause'
           ? current.pauseNodes.map((pause) => pause.id === args.sourceNode?.id ? { ...pause, targetStageId: nextStageId } : pause)
@@ -2053,6 +2092,15 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
             }
           })
         : current.flowStages,
+      flowTriggers: args?.sourceNode?.kind === 'trigger'
+        ? current.flowTriggers.map((trigger) => {
+            if (trigger.id !== args.sourceNode?.id || !args.sourceOptionId) return trigger
+            return {
+              ...trigger,
+              conditions: trigger.conditions.map((condition) => condition.id === args.sourceOptionId ? { ...condition, targetActionId: nextActionId, targetStageId: '' } : condition),
+            }
+          })
+        : current.flowTriggers,
       studioNodeLayout: {
         ...current.studioNodeLayout,
         [`action:${nextActionId}`]: position,
@@ -2345,8 +2393,19 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     }
 
     if (edge.sourceKind === 'trigger' && edge.targetKind === 'stage') {
+      if (edge.sourceOptionId) {
+        updateTriggerCondition(sourceId, edge.sourceOptionId, { targetStageId: value, targetActionId: '' })
+        setNotice('La condición del filtro quedó reconectada desde el canvas.')
+        return
+      }
       updateTrigger(sourceId, { targetStageId: value })
       setNotice('El filtro quedó reconectado desde el canvas.')
+      return
+    }
+
+    if (edge.sourceKind === 'trigger' && edge.targetKind === 'action' && edge.sourceOptionId) {
+      updateTriggerCondition(sourceId, edge.sourceOptionId, { targetActionId: value, targetStageId: '' })
+      setNotice('La condición del filtro ahora apunta a la acción elegida.')
       return
     }
 
@@ -2370,10 +2429,29 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
     if (edge.sourceKind === 'trigger' && edge.targetKind === 'stage') {
       setBuilder((current) => updateSelectedFlowInBuilder(current, {
-        flowTriggers: current.flowTriggers.map((trigger) => trigger.id === sourceId ? { ...trigger, targetStageId: '' } : trigger),
+        flowTriggers: current.flowTriggers.map((trigger) => {
+          if (trigger.id !== sourceId) return trigger
+          if (!edge.sourceOptionId) return { ...trigger, targetStageId: '' }
+          return {
+            ...trigger,
+            conditions: trigger.conditions.map((condition) => condition.id === edge.sourceOptionId ? { ...condition, targetStageId: '' } : condition),
+          }
+        }),
       }))
       setActiveEdgeId(null)
-      setNotice('El filtro quedó huérfano nuevamente.')
+      setNotice(edge.sourceOptionId ? 'La condición del filtro quedó huérfana nuevamente.' : 'El filtro quedó huérfano nuevamente.')
+      return
+    }
+
+    if (edge.sourceKind === 'trigger' && edge.targetKind === 'action' && edge.sourceOptionId) {
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        flowTriggers: current.flowTriggers.map((trigger) => trigger.id === sourceId ? {
+          ...trigger,
+          conditions: trigger.conditions.map((condition) => condition.id === edge.sourceOptionId ? { ...condition, targetActionId: '' } : condition),
+        } : trigger),
+      }))
+      setActiveEdgeId(null)
+      setNotice('La condición del filtro quedó sin acción destino.')
     }
   }
 
@@ -2441,6 +2519,13 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       }
     }
 
+    if (args.node.kind === 'trigger' && typeof args.sourceOptionIndex === 'number') {
+      return {
+        x: getStageOptionAnchorX(args.node),
+        y: getTriggerConditionAnchorY(args.node, args.sourceOptionIndex),
+      }
+    }
+
     return {
       x: getNodeAnchorX(args.node, 'right'),
       y: getNodeAnchorY(args.node),
@@ -2452,7 +2537,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     return candidates.find((node) => {
       if (node.id === draft.fromId) return false
       const canConnect = draft.sourceOptionId
-        ? draft.fromKind === 'stage' && (node.kind === 'stage' || node.kind === 'action')
+        ? (draft.fromKind === 'stage' || draft.fromKind === 'trigger') && (node.kind === 'stage' || node.kind === 'action')
         : canConnectNodes(draft.fromKind, node.kind)
       if (!canConnect) return false
       return isPointInsideNode(node, point)
@@ -2463,9 +2548,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     const stage = sourceNode.kind === 'stage'
       ? builder.flowStages.find((item) => item.id === (sourceNode.id.split(':')[1] || ''))
       : null
+    const trigger = sourceNode.kind === 'trigger'
+      ? builder.flowTriggers.find((item) => item.id === (sourceNode.id.split(':')[1] || ''))
+      : null
     const isActionLink = Boolean(sourceOptionId && stage?.quickActionIds.includes(sourceOptionId))
     const canConnect = sourceOptionId
-      ? sourceNode.kind === 'stage' && (targetNode.kind === 'stage' || targetNode.kind === 'action')
+      ? (sourceNode.kind === 'stage' || sourceNode.kind === 'trigger') && (targetNode.kind === 'stage' || targetNode.kind === 'action')
       : canConnectNodes(sourceNode.kind, targetNode.kind)
     if (!canConnect) return
 
@@ -2539,8 +2627,19 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     }
 
     if (sourceNode.kind === 'trigger' && targetNode.kind === 'stage') {
+      if (sourceOptionId) {
+        updateTriggerCondition(sourceId, sourceOptionId, { targetStageId: targetId, targetActionId: '' })
+        setNotice('Condición del filtro conectada al mensaje destino.')
+        return
+      }
       updateTrigger(sourceId, { targetStageId: targetId })
       setNotice('Filtro conectado al mensaje destino.')
+      return
+    }
+
+    if (sourceNode.kind === 'trigger' && targetNode.kind === 'action' && sourceOptionId && trigger) {
+      updateTriggerCondition(sourceId, sourceOptionId, { targetActionId: targetId, targetStageId: '' })
+      setNotice('Condición del filtro conectada a la acción destino.')
       return
     }
 
@@ -3998,12 +4097,15 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         const validTarget = connectionDraft
                           ? node.id !== connectionDraft.fromId && (
                               connectionDraft.sourceOptionId
-                                ? connectionDraft.fromKind === 'stage' && (node.kind === 'stage' || node.kind === 'action')
+                                ? (connectionDraft.fromKind === 'stage' || connectionDraft.fromKind === 'trigger') && (node.kind === 'stage' || node.kind === 'action')
                                 : canConnectNodes(connectionDraft.fromKind, node.kind)
                             )
                           : false
                         const responseHandles = node.kind === 'stage'
                           ? (stageMap[nodeKey]?.responseOptions ?? []).slice(0, 6)
+                          : []
+                        const triggerConditionHandles = node.kind === 'trigger'
+                          ? (builder.flowTriggers.find((trigger) => trigger.id === nodeKey)?.conditions ?? []).slice(0, 6)
                           : []
                         return (
                           <div
@@ -4102,6 +4204,35 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                               ) : (
                                 <div className="mt-2 line-clamp-2 text-[11px] leading-5 text-slate-500">{node.description}</div>
                               )}
+                            {node.kind === 'trigger' && triggerConditionHandles.length ? (
+                              <div className="mt-3 space-y-2 border-t border-slate-200/70 pt-3">
+                                {triggerConditionHandles.map((condition, index) => (
+                                  <div key={condition.id} className="relative flex items-center gap-2 rounded-xl border border-slate-200 bg-white/88 px-2.5 py-2 pr-7 text-[11px] font-medium text-slate-700 shadow-sm">
+                                    <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-400" />
+                                    <span className="min-w-0 flex-1 truncate">{getTriggerConditionSummary(condition)}</span>
+                                    <button
+                                      type="button"
+                                      aria-label={`Reconectar condición ${index + 1}`}
+                                      ref={(element) => registerHandleElement(getHandleAnchorKey(node.id, condition.id), element)}
+                                      onPointerDown={(event) => {
+                                        if (!canEditFlow) return
+                                        event.stopPropagation()
+                                        handleConnectionStart(event, node, condition.id, condition.variableKey, index)
+                                      }}
+                                      onContextMenu={(event) => {
+                                        if (!canEditFlow) return
+                                        event.preventDefault()
+                                        event.stopPropagation()
+                                        openCreateMenu({ x: node.x + node.width + 24, y: node.y + 78, target: { sourceNode: { kind: 'trigger', id: nodeKey }, sourceOptionId: condition.id } })
+                                      }}
+                                      className={`absolute -right-2.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border bg-white shadow ${connectionDraft?.sourceOptionId === condition.id ? 'border-sky-400' : 'border-slate-300'}`}
+                                    >
+                                      <span className="inline-block h-2 w-2 rounded-full bg-slate-400" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
                             {node.kind === 'stage' && responseHandles.length ? (
                               <div className="mt-3 space-y-2 border-t border-slate-200/70 pt-3">
                                 {responseHandles.map((option, index) => (

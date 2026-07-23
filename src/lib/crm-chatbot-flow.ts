@@ -464,7 +464,7 @@ export function normalizeChatbotFlowResponseOptions(value: unknown, stageId: str
         targetActionId: asText(record.targetActionId),
       } satisfies ChatbotFlowResponseOption
     })
-    .filter((item): item is ChatbotFlowResponseOption => Boolean(item?.id && item.label && item.userMessage && item.targetStageId))
+    .filter((item): item is ChatbotFlowResponseOption => Boolean(item?.id && item.label && item.userMessage && (item.targetStageId || item.targetActionId)))
 
   return normalized
 }
