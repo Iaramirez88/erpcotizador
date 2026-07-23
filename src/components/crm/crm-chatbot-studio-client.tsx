@@ -4593,7 +4593,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         })() : null}
                       </svg>
 
-                      <svg className="absolute inset-0 z-30 h-full w-full" viewBox={`0 0 ${studioGraph.contentWidth} ${studioGraph.contentHeight}`} fill="none">
+                      <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${studioGraph.contentWidth} ${studioGraph.contentHeight}`} fill="none">
                         {studioGraph.edges.map((edge) => {
                           const source = studioGraph.nodes.find((node) => node.id === edge.fromId)
                           const target = studioGraph.nodes.find((node) => node.id === edge.toId)
