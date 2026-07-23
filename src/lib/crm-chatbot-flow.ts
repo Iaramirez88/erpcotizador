@@ -89,6 +89,7 @@ export type ChatbotFlowResponseOption = {
   matchMode: ChatbotFlowResponseMatchMode
   matchValue: string
   targetStageId: string
+  targetActionId: string
 }
 
 export type ChatbotFlowStage = {
@@ -335,8 +336,11 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
   ]
 }
 
-function createResponseOption(option: ChatbotFlowResponseOption): ChatbotFlowResponseOption {
-  return option
+function createResponseOption(option: Omit<ChatbotFlowResponseOption, 'targetActionId'> & { targetActionId?: string }): ChatbotFlowResponseOption {
+  return {
+    ...option,
+    targetActionId: option.targetActionId ?? '',
+  }
 }
 
 export function getDefaultChatbotFlowStages(): ChatbotFlowStage[] {
@@ -457,6 +461,7 @@ export function normalizeChatbotFlowResponseOptions(value: unknown, stageId: str
         matchMode: isResponseMatchMode(record.matchMode) ? record.matchMode : 'contains',
         matchValue: asText(record.matchValue),
         targetStageId: asText(record.targetStageId),
+        targetActionId: asText(record.targetActionId),
       } satisfies ChatbotFlowResponseOption
     })
     .filter((item): item is ChatbotFlowResponseOption => Boolean(item?.id && item.label && item.userMessage && item.targetStageId))

@@ -419,6 +419,7 @@ function duplicateResponseOption(option: ChatbotFlowResponseOption): ChatbotFlow
     id: makeId('option'),
     label: `${option.label} copia`,
     targetStageId: '',
+    targetActionId: '',
   }
 }
 
@@ -431,6 +432,7 @@ function createStageResponseOption(flowStages: ChatbotFlowStage[], currentStageI
     matchMode: 'contains',
     matchValue: '',
     targetStageId: '',
+    targetActionId: '',
     ...patch,
   }
 }
@@ -662,17 +664,18 @@ function buildStudioGraph(builder: BuilderState) {
   builder.flowStages.forEach((stage) => {
     const sourceId = `stage:${stage.id}`
     stage.responseOptions.forEach((option, optionIndex) => {
-      if (!option.targetStageId || !stageIndexById.has(option.targetStageId)) return
+      const actionTarget = option.targetActionId ? builder.quickActions.find((action) => action.id === option.targetActionId) : null
+      if (!actionTarget && (!option.targetStageId || !stageIndexById.has(option.targetStageId))) return
       edges.push({
         id: `${sourceId}-option-${option.id}`,
         fromId: sourceId,
-        toId: `stage:${option.targetStageId}`,
+        toId: actionTarget ? `action:${actionTarget.id}` : `stage:${option.targetStageId}`,
         sourceKind: 'stage',
-        targetKind: 'stage',
+        targetKind: actionTarget ? 'action' : 'stage',
         label: option.label || 'ruta',
         sourceOptionId: option.id,
         sourceOptionIndex: optionIndex,
-        toneClass: 'stroke-sky-300',
+        toneClass: actionTarget ? 'stroke-fuchsia-300' : 'stroke-sky-300',
         showLabel: true,
       })
     })
@@ -1840,12 +1843,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
           if (args.sourceOptionId) {
             return {
               ...stage,
-              responseOptions: stage.responseOptions.map((option) => option.id === args.sourceOptionId ? { ...option, targetStageId: nextStageId } : option),
+              responseOptions: stage.responseOptions.map((option) => option.id === args.sourceOptionId ? { ...option, targetStageId: nextStageId, targetActionId: '' } : option),
             }
           }
           return {
             ...stage,
-            responseOptions: [...stage.responseOptions, { id: makeId('option'), label: 'Nueva rama', userMessage: 'Continuar', assistantReply: '', matchMode: 'contains' as const, matchValue: '', targetStageId: nextStageId }],
+            responseOptions: [...stage.responseOptions, { id: makeId('option'), label: 'Nueva rama', userMessage: 'Continuar', assistantReply: '', matchMode: 'contains' as const, matchValue: '', targetStageId: nextStageId, targetActionId: '' }],
           }
         }
         return stage
@@ -2128,7 +2131,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     }
 
     if (edge.sourceKind === 'stage' && edge.targetKind === 'stage' && edge.sourceOptionId) {
-      updateResponseOption(sourceId, edge.sourceOptionId, { targetStageId: value })
+      updateResponseOption(sourceId, edge.sourceOptionId, { targetStageId: value, targetActionId: '' })
       setNotice('La rama quedó reconectada desde el canvas.')
       return
     }
@@ -2219,7 +2222,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
   function getConnectionHandleAnchor(args: { node: StudioGraphNode; sourceOptionId?: string; sourceOptionIndex?: number; targetKind?: StudioGraphNode['kind'] }) {
     if (args.node.kind === 'stage' && typeof args.sourceOptionIndex === 'number') {
-      if (args.targetKind === 'action') {
+      const stageId = args.node.id.split(':')[1] || ''
+      const stage = builder.flowStages.find((item) => item.id === stageId)
+      const isStageQuickActionHandle = Boolean(args.sourceOptionId && stage?.quickActionIds.includes(args.sourceOptionId))
+
+      if (args.targetKind === 'action' && isStageQuickActionHandle) {
         const stageId = args.node.id.split(':')[1] || ''
         const stage = builder.flowStages.find((item) => item.id === stageId)
         const responseCount = stage?.responseOptions.length ?? 0
@@ -2286,12 +2293,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
           if (existingOption) {
             return {
               ...stage,
-              responseOptions: stage.responseOptions.map((option) => option.id === existingOption.id ? { ...option, targetStageId: targetId } : option),
+              responseOptions: stage.responseOptions.map((option) => option.id === existingOption.id ? { ...option, targetStageId: targetId, targetActionId: '' } : option),
             }
           }
           return {
             ...stage,
-            responseOptions: [...stage.responseOptions, { id: makeId('option'), label: 'Siguiente mensaje', userMessage: 'Continuar', assistantReply: '', matchMode: 'contains', matchValue: '', targetStageId: targetId }],
+            responseOptions: [...stage.responseOptions, { id: makeId('option'), label: 'Siguiente mensaje', userMessage: 'Continuar', assistantReply: '', matchMode: 'contains', matchValue: '', targetStageId: targetId, targetActionId: '' }],
           }
         }),
       }))
@@ -2306,7 +2313,10 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               ...stage,
               quickActionIds: sourceOptionId && stage.quickActionIds.includes(sourceOptionId)
                 ? stage.quickActionIds.map((actionId) => actionId === sourceOptionId ? targetId : actionId)
-                : (stage.quickActionIds.includes(targetId) ? stage.quickActionIds : [...stage.quickActionIds, targetId]),
+                : (!sourceOptionId && !stage.quickActionIds.includes(targetId) ? [...stage.quickActionIds, targetId] : stage.quickActionIds),
+              responseOptions: sourceOptionId && !stage.quickActionIds.includes(sourceOptionId)
+                ? stage.responseOptions.map((option) => option.id === sourceOptionId ? { ...option, targetActionId: targetId, targetStageId: '' } : option)
+                : stage.responseOptions,
             }
           : stage),
       }))

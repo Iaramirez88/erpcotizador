@@ -609,7 +609,7 @@ function resolveChatStage(args: {
     ?? args.flowStages[0]
     ?? null
 
-  if (args.matchedResponseOption) {
+  if (args.matchedResponseOption?.targetStageId) {
     return findChatbotFlowStage(args.flowStages, args.matchedResponseOption.targetStageId)
       ?? currentStage
       ?? args.flowStages[0]

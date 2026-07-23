@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import {
   findChatbotFlowStage,
+  findChatbotQuickAction,
   findChatbotFlowResponseOption,
   getStageResponseOptions,
   getStageQuickActions,
@@ -680,9 +681,12 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   function triggerResponseOption(option: ChatbotFlowResponseOption) {
     const currentStageId = activeStage?.id || initialStage?.id || ''
     const targetStage = findChatbotFlowStage(props.flowStages, option.targetStageId)
+    const targetAction = findChatbotQuickAction(props.quickActions, option.targetActionId)
     const shouldRequestHuman = option.targetStageId === 'handoff'
       || getStageQuickActions(targetStage, props.quickActions).some((action) => action.kind === 'human')
+      || targetAction?.kind === 'human'
     void sendMessage(option.userMessage || option.label, shouldRequestHuman, {
+      quickActionId: targetAction?.id || undefined,
       responseOptionId: option.id,
       currentStageId,
     })

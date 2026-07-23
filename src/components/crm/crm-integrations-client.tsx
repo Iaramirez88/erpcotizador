@@ -3433,6 +3433,7 @@ export function CrmIntegrationsClient() {
               matchMode: 'contains',
               matchValue: 'continuar, seguir, siguiente',
               targetStageId: stage.id,
+              targetActionId: '',
             },
           ],
         }
