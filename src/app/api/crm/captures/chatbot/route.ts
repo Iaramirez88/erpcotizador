@@ -1165,17 +1165,33 @@ export async function POST(request: Request) {
       })
 
       const leadQualified = Boolean((resolvedIdentity.email || resolvedIdentity.phone || resolvedIdentity.whatsapp) && effectiveProduct && resolvedIdentity.quantity)
+      const triggerMatchContext = {
+        contact_name: resolvedIdentity.nombre,
+        contact_email: resolvedIdentity.email,
+        contact_phone: resolvedIdentity.phone || resolvedIdentity.whatsapp,
+        contact_whatsapp: resolvedIdentity.whatsapp,
+        product_name: effectiveProduct,
+        quantity: resolvedIdentity.quantity,
+        company_name: resolvedIdentity.companyName,
+        document: resolvedIdentity.document,
+        city: resolvedIdentity.city,
+        address: resolvedIdentity.address,
+        channel_name: channel.name,
+        assistant_name: settings.assistantName,
+        lead_tags: artifacts.lead.tags.join(', '),
+        ...priorRuntimeState.variables,
+      }
 
       let activeFlow = conversationFlow
       let matchedTrigger = requestHuman
-        ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'human_request', value: 'human_request' })
+        ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'human_request', value: 'human_request', context: triggerMatchContext })
         : leadQualified
-          ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'lead_qualified', value: 'lead_qualified' })
+          ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'lead_qualified', value: 'lead_qualified', context: triggerMatchContext })
           : responseOptionId
-            ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'response_option', value: responseOptionId })
+            ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'response_option', value: responseOptionId, context: triggerMatchContext })
             : quickActionId
-              ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'quick_action', value: quickActionId })
-              : resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'message', value: messageText })
+              ? resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'quick_action', value: quickActionId, context: triggerMatchContext })
+              : resolveChatbotAutomationFlowByTrigger({ settings: studioSettings, provider: 'WEB_CHATBOT', event: 'message', value: messageText, context: triggerMatchContext })
 
       if (matchedTrigger.flow?.id) {
         activeFlow = matchedTrigger.flow
@@ -1184,7 +1200,9 @@ export async function POST(request: Request) {
       const flowStages = activeFlow.flowStages.length ? activeFlow.flowStages : settings.flowStages
       const quickActions = activeFlow.quickActions.length ? activeFlow.quickActions : settings.quickActions
       const pauseNodes = activeFlow.pauseNodes
-      const selectedQuickAction = findChatbotQuickAction(quickActions, quickActionId)
+      const matchedTriggerCondition = matchedTrigger.matchedTrigger?.matchedCondition ?? null
+      const effectiveQuickActionId = matchedTriggerCondition?.targetActionId || matchedTrigger.matchedTrigger?.targetActionId || quickActionId
+      const selectedQuickAction = findChatbotQuickAction(quickActions, effectiveQuickActionId)
       const selectedAutomation = selectedQuickAction?.automation || null
 
       if (!selectedAutomation?.chat.openChat && (priorRuntimeState.botSubscriptionActive === false || hasFuturePause(priorRuntimeState.pauseUntil))) {
@@ -1264,14 +1282,15 @@ export async function POST(request: Request) {
         businessActionResult,
         showProductField: settings.showProductField,
         currentStageId,
-        quickActionId,
+        quickActionId: effectiveQuickActionId,
         responseOptionId,
         flowStages,
         quickActions,
       })
 
-      const resolvedStage = matchedTrigger.matchedTrigger
-        ? findChatbotFlowStage(flowStages, matchedTrigger.matchedTrigger.targetStageId) ?? assistantReply.stage
+      const resolvedStageId = matchedTriggerCondition?.targetStageId || matchedTrigger.matchedTrigger?.targetStageId || ''
+      const resolvedStage = resolvedStageId
+        ? findChatbotFlowStage(flowStages, resolvedStageId) ?? assistantReply.stage
         : assistantReply.stage
       const resolvedPauseNode = resolveChatPauseNode({
         currentStageId,
@@ -1279,7 +1298,8 @@ export async function POST(request: Request) {
         pauseNodes,
       })
 
-      const assistantContext = {
+      let runtimeState = priorRuntimeState
+      let assistantContext = {
         contact_name: resolvedIdentity.nombre,
         contact_email: resolvedIdentity.email,
         contact_phone: resolvedIdentity.phone || resolvedIdentity.whatsapp,
@@ -1292,9 +1312,10 @@ export async function POST(request: Request) {
         address: resolvedIdentity.address,
         channel_name: channel.name,
         assistant_name: settings.assistantName,
+        lead_tags: artifacts.lead.tags.join(', '),
+        ...runtimeState.variables,
       }
 
-      let runtimeState = priorRuntimeState
       let automationPauseDescription: string | null = null
       let automationPauseDurationMinutes: number | null = null
       const webhookJobs: ChatbotWebhookJob[] = []
@@ -1398,6 +1419,10 @@ export async function POST(request: Request) {
         runtimeState = {
           ...runtimeState,
           variables: nextRuntimeVariables,
+        }
+        assistantContext = {
+          ...assistantContext,
+          ...runtimeState.variables,
         }
 
         let opportunityId = existingConversation?.opportunityId || artifacts.conversation.opportunityId || null
@@ -1578,7 +1603,7 @@ export async function POST(request: Request) {
         body: interpolateChatbotVariables({
           template: resolvedPauseNode
             ? appendPauseCopy(assistantBodyTemplate, resolvedPauseNode)
-            : decorateAssistantReply(assistantBodyTemplate, resolvedStage, currentStageId, quickActionId),
+            : decorateAssistantReply(assistantBodyTemplate, resolvedStage, currentStageId, effectiveQuickActionId),
           variables: flowVariables,
           context: assistantContext,
         }),

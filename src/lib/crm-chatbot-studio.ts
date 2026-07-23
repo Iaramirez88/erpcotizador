@@ -8,7 +8,7 @@ import {
 } from '@/lib/crm-chatbot-flow'
 
 export type ChatbotFlowTriggerEvent = 'message' | 'quick_action' | 'response_option' | 'human_request' | 'lead_qualified'
-export type ChatbotFlowTriggerMatchMode = 'contains' | 'exact'
+export type ChatbotFlowTriggerMatchMode = 'contains' | 'exact' | 'equals' | 'starts_with' | 'regex'
 export type ChatbotFlowVariableSource = 'contact_name' | 'contact_email' | 'contact_phone' | 'contact_whatsapp' | 'product' | 'quantity' | 'company' | 'document' | 'city' | 'address' | 'channel_name' | 'assistant_name' | 'static'
 export type ChatbotAssignmentMode = 'channel-owner' | 'default-user' | 'handoff-user'
 export type ChatbotMessageTone = 'consultivo' | 'directo' | 'amable'
@@ -38,8 +38,19 @@ export type ChatbotFlowTrigger = {
   matchMode: ChatbotFlowTriggerMatchMode
   matchValue: string
   targetStageId: string
+  targetActionId: string
   assistantReply: string
   enabled: boolean
+  conditions: ChatbotFlowTriggerCondition[]
+}
+
+export type ChatbotFlowTriggerCondition = {
+  id: string
+  variableKey: string
+  matchMode: ChatbotFlowTriggerMatchMode
+  matchValue: string
+  targetStageId: string
+  targetActionId: string
 }
 
 export type ChatbotAutomationFlow = {
@@ -116,7 +127,45 @@ function isTriggerEvent(value: unknown): value is ChatbotFlowTriggerEvent {
 }
 
 function isMatchMode(value: unknown): value is ChatbotFlowTriggerMatchMode {
-  return value === 'contains' || value === 'exact'
+  return value === 'contains' || value === 'exact' || value === 'equals' || value === 'starts_with' || value === 'regex'
+}
+
+function normalizeTriggerVariableKey(value: unknown) {
+  return normalizeString(value) || 'productoCotizar'
+}
+
+function createLegacyTriggerCondition(trigger: Pick<ChatbotFlowTrigger, 'id' | 'matchMode' | 'matchValue' | 'targetStageId'> & { targetActionId?: string }): ChatbotFlowTriggerCondition {
+  return {
+    id: `${trigger.id}-condition-1`,
+    variableKey: 'ultimo_mensaje',
+    matchMode: trigger.matchMode,
+    matchValue: trigger.matchValue,
+    targetStageId: trigger.targetStageId,
+    targetActionId: normalizeString(trigger.targetActionId),
+  }
+}
+
+function normalizeChatbotFlowTriggerConditions(value: unknown, triggerId: string, fallback: { matchMode: ChatbotFlowTriggerMatchMode; matchValue: string; targetStageId: string; targetActionId: string }): ChatbotFlowTriggerCondition[] {
+  if (!Array.isArray(value)) {
+    return fallback.matchValue || fallback.targetStageId || fallback.targetActionId
+      ? [createLegacyTriggerCondition({ id: triggerId, matchMode: fallback.matchMode, matchValue: fallback.matchValue, targetStageId: fallback.targetStageId, targetActionId: fallback.targetActionId })]
+      : []
+  }
+
+  return value
+    .map((item, index) => {
+      const record = asRecord(item)
+      if (!record) return null
+      return {
+        id: normalizeString(record.id) || `${triggerId}-condition-${index + 1}`,
+        variableKey: normalizeTriggerVariableKey(record.variableKey),
+        matchMode: isMatchMode(record.matchMode) ? record.matchMode : fallback.matchMode,
+        matchValue: asText(record.matchValue),
+        targetStageId: normalizeString(record.targetStageId),
+        targetActionId: normalizeString(record.targetActionId),
+      } satisfies ChatbotFlowTriggerCondition
+    })
+    .filter((item): item is ChatbotFlowTriggerCondition => Boolean(item?.id))
 }
 
 function isVariableSource(value: unknown): value is ChatbotFlowVariableSource {
@@ -181,8 +230,10 @@ export function getDefaultChatbotFlowTriggers(): ChatbotFlowTrigger[] {
       matchMode: 'contains',
       matchValue: 'asesor, humano, agente, ejecutivo, vendedor',
       targetStageId: 'handoff',
+      targetActionId: '',
       assistantReply: 'Claro. Voy a dejar esta conversación lista para que continúe un asesor humano.',
       enabled: true,
+      conditions: [],
     },
     {
       id: 'qualified-lead',
@@ -191,8 +242,10 @@ export function getDefaultChatbotFlowTriggers(): ChatbotFlowTrigger[] {
       matchMode: 'contains',
       matchValue: 'qualified',
       targetStageId: 'handoff',
+      targetActionId: '',
       assistantReply: 'Perfecto. Ya tengo el contexto suficiente para que el equipo comercial continúe contigo.',
       enabled: true,
+      conditions: [],
     },
   ]
 }
@@ -337,11 +390,18 @@ export function normalizeChatbotFlowTriggers(value: unknown): ChatbotFlowTrigger
         matchMode: isMatchMode(record.matchMode) ? record.matchMode : 'contains',
         matchValue: asText(record.matchValue),
         targetStageId: normalizeString(record.targetStageId),
+        targetActionId: normalizeString(record.targetActionId),
         assistantReply: asText(record.assistantReply),
         enabled: asBoolean(record.enabled, true),
+        conditions: normalizeChatbotFlowTriggerConditions(record.conditions, normalizeString(record.id), {
+          matchMode: isMatchMode(record.matchMode) ? record.matchMode : 'contains',
+          matchValue: asText(record.matchValue),
+          targetStageId: normalizeString(record.targetStageId),
+          targetActionId: normalizeString(record.targetActionId),
+        }),
       } satisfies ChatbotFlowTrigger
     })
-    .filter((item): item is ChatbotFlowTrigger => Boolean(item?.id && item.label && item.targetStageId))
+    .filter((item): item is ChatbotFlowTrigger => Boolean(item?.id && item.label))
 
   return normalized
 }
@@ -522,10 +582,11 @@ export function resolveChatbotAutomationFlowByTrigger(args: {
   provider?: ChatbotAutomationProvider | null
   event: ChatbotFlowTriggerEvent
   value: string
+  context?: Record<string, string | number | boolean | null | undefined>
 }) {
   const candidateFlows = getEnabledChatbotAutomationFlows({ settings: args.settings, provider: args.provider })
   for (const flow of candidateFlows) {
-    const matchedTrigger = matchChatbotFlowTrigger({ triggers: flow.flowTriggers, event: args.event, value: args.value })
+    const matchedTrigger = matchChatbotFlowTrigger({ triggers: flow.flowTriggers, event: args.event, value: args.value, context: args.context })
     if (matchedTrigger) {
       return { flow, matchedTrigger }
     }
@@ -541,19 +602,44 @@ export function matchChatbotFlowTrigger(args: {
   triggers: ChatbotFlowTrigger[]
   event: ChatbotFlowTriggerEvent
   value: string
+  context?: Record<string, string | number | boolean | null | undefined>
 }) {
   const normalizedValue = normalizeString(args.value).toLowerCase()
-  return args.triggers.find((trigger) => {
-    if (!trigger.enabled || trigger.event !== args.event) return false
-    if (trigger.event === 'human_request' || trigger.event === 'lead_qualified') return true
-    const terms = trigger.matchValue
+  const normalizedContext = Object.fromEntries(
+    Object.entries(args.context ?? {}).map(([key, value]) => [key, normalizeString(value)]),
+  )
+
+  const matchesCondition = (condition: ChatbotFlowTriggerCondition) => {
+    const candidateValue = normalizeString(normalizedContext[condition.variableKey] ?? (condition.variableKey === 'ultimo_mensaje' ? args.value : '')).toLowerCase()
+    const terms = condition.matchValue
       .split(/[\n,;|]+/)
       .map((item) => normalizeString(item).toLowerCase())
       .filter(Boolean)
-    if (!terms.length) return false
-    if (trigger.matchMode === 'exact') return terms.some((term) => term === normalizedValue)
-    return terms.some((term) => normalizedValue.includes(term))
-  }) ?? null
+    if (!terms.length && condition.matchMode !== 'regex') return false
+    if (condition.matchMode === 'exact' || condition.matchMode === 'equals') return terms.some((term) => term === candidateValue)
+    if (condition.matchMode === 'starts_with') return terms.some((term) => candidateValue.startsWith(term))
+    if (condition.matchMode === 'regex') {
+      try {
+        return Boolean(new RegExp(condition.matchValue, 'i').test(candidateValue))
+      } catch {
+        return false
+      }
+    }
+    return terms.some((term) => candidateValue.includes(term))
+  }
+
+  for (const trigger of args.triggers) {
+    if (!trigger.enabled || trigger.event !== args.event) continue
+    if (trigger.event === 'human_request' || trigger.event === 'lead_qualified') {
+      return { ...trigger, matchedCondition: null }
+    }
+    const matchedCondition = trigger.conditions.find(matchesCondition) ?? null
+    if (matchedCondition) {
+      return { ...trigger, matchedCondition }
+    }
+  }
+
+  return null
 }
 
 export function resolveChatbotVariableValue(args: {

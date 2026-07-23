@@ -41,6 +41,7 @@ import {
   type ChatbotAssignmentMode,
   type ChatbotAssignmentRules,
   type ChatbotFlowTrigger,
+  type ChatbotFlowTriggerCondition,
   type ChatbotFlowTriggerEvent,
   type ChatbotFlowTriggerMatchMode,
   type ChatbotFlowVariable,
@@ -143,6 +144,31 @@ type StudioEditingNode = StudioFocusNode | null
 type StudioPrimaryPanel = 'map' | 'general' | 'summary' | 'library' | 'flow' | 'triggers' | 'variables' | 'assignments' | 'conversations'
 
 const STUDIO_EMOJI_CHOICES = ['😀', '😂', '😉', '😍', '🤝', '👏', '🔥', '✅', '🙏', '📌', '📎', '🚀']
+
+const FILTER_VARIABLE_FALLBACK_OPTIONS: Array<{ key: string; label: string }> = [
+  { key: 'productoCotizar', label: 'productoCotizar' },
+  { key: 'contact_name', label: 'Nombre' },
+  { key: 'lead_tags', label: 'Etiquetas' },
+  { key: 'assigned_user', label: 'Asignado' },
+  { key: 'contact_phone', label: 'Teléfono' },
+  { key: 'country', label: 'País' },
+  { key: 'was_in_flow', label: 'Estaba en flujo' },
+  { key: 'ai_enabled', label: 'La integración de IA está activada.' },
+  { key: 'was_in_campaign', label: 'Estaba en campaña' },
+  { key: 'source', label: 'Fuente' },
+  { key: 'last_activity', label: 'Última actividad' },
+  { key: 'created_at', label: 'Fecha de registro' },
+  { key: 'last_message_type', label: 'Tipo de último mensaje' },
+  { key: 'ultimo_mensaje', label: 'Último mensaje' },
+  { key: 'weekday', label: 'Días de la semana' },
+  { key: 'execution_date', label: 'Fecha de ejecución' },
+  { key: 'execution_time', label: 'Tiempo de ejecución' },
+  { key: 'payment_complete', label: 'Pago completo' },
+  { key: 'product_subscription', label: 'Suscripción al producto' },
+  { key: 'chat_open', label: 'Chat está abierto' },
+  { key: 'incoming_messages', label: 'Mensajes entrantes' },
+  { key: 'unread_messages', label: 'Mensajes no leídos' },
+]
 
 type StudioDragState = {
   nodeId: string
@@ -437,6 +463,18 @@ function createStageResponseOption(flowStages: ChatbotFlowStage[], currentStageI
   }
 }
 
+function createTriggerCondition(triggerId: string, patch?: Partial<ChatbotFlowTriggerCondition>): ChatbotFlowTriggerCondition {
+  return {
+    id: makeId(`${triggerId}-condition`),
+    variableKey: 'productoCotizar',
+    matchMode: 'equals',
+    matchValue: '',
+    targetStageId: '',
+    targetActionId: '',
+    ...patch,
+  }
+}
+
 function reorderItems<T extends { id: string }>(items: T[], itemId: string, direction: -1 | 1) {
   const index = items.findIndex((item) => item.id === itemId)
   if (index < 0) return items
@@ -471,8 +509,23 @@ function summarizeMatchValue(value: string, fallback: string) {
   return `${items[0]} +${items.length - 1}`
 }
 
+function summarizeTriggerConditions(trigger: ChatbotFlowTrigger) {
+  if (!trigger.conditions.length) return 'Sin condiciones configuradas.'
+  return trigger.conditions
+    .slice(0, 3)
+    .map((condition) => {
+      const value = condition.matchValue.trim() || 'sin valor'
+      return `${condition.variableKey} ${condition.matchMode} ${value}`
+    })
+    .join(' · ')
+}
+
+function getStageMessageContent(stage: ChatbotFlowStage) {
+  return stage.prompt.trim() || stage.description.trim()
+}
+
 function getStageCardPreview(stage: ChatbotFlowStage) {
-  const lines = (stage.prompt || stage.description || '')
+  const lines = getStageMessageContent(stage)
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
@@ -487,16 +540,13 @@ function getStageCardResponsePreview(stage: ChatbotFlowStage) {
 }
 
 function getStageCardMeta(stage: ChatbotFlowStage) {
-  const responsePreview = getStageCardResponsePreview(stage)
   const promptPreview = getStageCardPreview(stage)
   const hasCapture = stage.nextField !== 'none'
 
   return {
     title: stage.title?.trim() || 'Mensaje',
     subtitle: hasCapture ? 'Espera respuesta del usuario' : 'Mensaje regular',
-    description: responsePreview.length
-      ? responsePreview.join(' · ')
-      : (promptPreview.join(' ') || 'Escribe el contenido principal del mensaje.'),
+    description: promptPreview.join(' ') || 'Escribe el contenido principal del mensaje.',
   }
 }
 
@@ -570,7 +620,7 @@ function buildStudioGraph(builder: BuilderState) {
       kind: 'trigger',
       title: trigger.label || `Disparador ${index + 1}`,
       subtitle: 'Filtro',
-      description: summarizeMatchValue(trigger.matchValue, 'Define la condición de entrada'),
+      description: summarizeTriggerConditions(trigger),
       x: layout?.x ?? (targetStageNode ? targetStageNode.x + 18 : stageStartX + ((stageIndexById.get(trigger.targetStageId) ?? index) * stageSpacing)),
       y: layout?.y ?? laneY.triggers + (triggerCount * triggerStackGap),
       width: 220,
@@ -1036,6 +1086,13 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const selectedChannel = useMemo(() => channels.find((item) => item.id === selectedChannelId) ?? null, [channels, selectedChannelId])
   const selectedFlow = useMemo(() => builder.automationFlows.find((flow) => flow.id === builder.selectedFlowId) ?? null, [builder.automationFlows, builder.selectedFlowId])
   const editingVariable = editingVariableId ? builder.flowVariables.find((variable) => variable.id === editingVariableId) ?? null : null
+  const triggerVariableOptions = useMemo(() => {
+    const merged = [
+      ...builder.flowVariables.filter((variable) => variable.enabled).map((variable) => ({ key: variable.key, label: variable.label || variable.key })),
+      ...FILTER_VARIABLE_FALLBACK_OPTIONS,
+    ]
+    return merged.filter((option, index) => merged.findIndex((candidate) => candidate.key === option.key) === index)
+  }, [builder.flowVariables])
   const builderSnapshot = useMemo(() => serializeBuilderState(builder), [builder])
   const hasUnsavedChanges = builderSnapshot !== lastSavedSnapshotRef.current
   const canUndo = historyPast.length > 0
@@ -1394,6 +1451,21 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     }))
   }
 
+  function updateStageMessageContent(stageId: string, value: string) {
+    updateStage(stageId, {
+      prompt: value,
+      description: value,
+    })
+  }
+
+  function appendStageMessageSnippet(stageId: string, snippet: string) {
+    const stage = builder.flowStages.find((item) => item.id === stageId)
+    if (!stage) return
+    const currentValue = getStageMessageContent(stage)
+    const separator = currentValue && !currentValue.endsWith('\n') ? '\n' : ''
+    updateStageMessageContent(stageId, `${currentValue}${separator}${snippet}`)
+  }
+
   function updateResponseOption(stageId: string, optionId: string, patch: Partial<ChatbotFlowResponseOption>) {
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
       flowStages: current.flowStages.map((stage) => {
@@ -1511,6 +1583,39 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   function updateTrigger(triggerId: string, patch: Partial<ChatbotFlowTrigger>) {
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
       flowTriggers: current.flowTriggers.map((item) => item.id === triggerId ? { ...item, ...patch } : item),
+    }))
+  }
+
+  function updateTriggerCondition(triggerId: string, conditionId: string, patch: Partial<ChatbotFlowTriggerCondition>) {
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      flowTriggers: current.flowTriggers.map((trigger) => {
+        if (trigger.id !== triggerId) return trigger
+        return {
+          ...trigger,
+          conditions: trigger.conditions.map((condition) => condition.id === conditionId ? { ...condition, ...patch } : condition),
+        }
+      }),
+    }))
+  }
+
+  function addTriggerCondition(triggerId: string) {
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      flowTriggers: current.flowTriggers.map((trigger) => trigger.id === triggerId
+        ? { ...trigger, conditions: [...trigger.conditions, createTriggerCondition(triggerId)] }
+        : trigger),
+    }))
+  }
+
+  function removeTriggerCondition(triggerId: string, conditionId: string) {
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      flowTriggers: current.flowTriggers.map((trigger) => {
+        if (trigger.id !== triggerId) return trigger
+        const nextConditions = trigger.conditions.filter((condition) => condition.id !== conditionId)
+        return {
+          ...trigger,
+          conditions: nextConditions,
+        }
+      }),
     }))
   }
 
@@ -1941,9 +2046,8 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   function createTrigger(args?: { position?: { x: number; y: number } }) {
     const nextTriggerId = makeId('trigger')
     const position = args?.position ?? getVisibleInsertPosition()
-    const defaultStageId = builder.flowStages[0]?.id || 'welcome'
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
-      flowTriggers: [...current.flowTriggers, { id: nextTriggerId, label: 'Nuevo filtro', event: 'message', matchMode: 'contains', matchValue: '', targetStageId: current.flowStages[0]?.id || defaultStageId, assistantReply: '', enabled: true }],
+      flowTriggers: [...current.flowTriggers, { id: nextTriggerId, label: 'Nuevo filtro', event: 'message', matchMode: 'contains', matchValue: '', targetStageId: '', targetActionId: '', assistantReply: '', enabled: true, conditions: [createTriggerCondition(nextTriggerId)] }],
       studioNodeLayout: {
         ...current.studioNodeLayout,
         [`trigger:${nextTriggerId}`]: position,
@@ -2045,7 +2149,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       if (!trigger) return
       const nextTriggerId = makeId('trigger')
       setBuilder((current) => updateSelectedFlowInBuilder(current, {
-        flowTriggers: [...current.flowTriggers, { ...trigger, id: nextTriggerId, label: `${trigger.label} copia` }],
+        flowTriggers: [...current.flowTriggers, {
+          ...trigger,
+          id: nextTriggerId,
+          label: `${trigger.label} copia`,
+          conditions: trigger.conditions.map((condition) => ({ ...condition, id: makeId(`${nextTriggerId}-condition`) })),
+        }],
         studioNodeLayout: {
           ...current.studioNodeLayout,
           [`trigger:${nextTriggerId}`]: offsetNodeLayout(`trigger:${trigger.id}`) ?? { x: 360, y: 60 },
@@ -2085,7 +2194,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               .filter((option) => option.targetStageId !== node.id)
               .map((option) => ({ ...option, targetStageId: option.targetStageId || fallbackStageId })),
           })),
-        flowTriggers: current.flowTriggers.map((trigger) => trigger.targetStageId === node.id ? { ...trigger, targetStageId: fallbackStageId } : trigger),
+        flowTriggers: current.flowTriggers.map((trigger) => ({
+          ...trigger,
+          targetStageId: trigger.targetStageId === node.id ? '' : trigger.targetStageId,
+          conditions: trigger.conditions.map((condition) => condition.targetStageId === node.id ? { ...condition, targetStageId: '' } : condition),
+        })),
         pauseNodes: current.pauseNodes.filter((pause) => pause.sourceStageId !== node.id && pause.targetStageId !== node.id),
           studioNodeLayout: removeNodeLayoutEntry(current.studioNodeLayout, `stage:${node.id}`),
       }))
@@ -2101,6 +2214,10 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
         flowStages: current.flowStages.map((stage) => ({
           ...stage,
           quickActionIds: stage.quickActionIds.filter((actionId) => actionId !== node.id),
+        })),
+        flowTriggers: current.flowTriggers.map((trigger) => ({
+          ...trigger,
+          conditions: trigger.conditions.map((condition) => condition.targetActionId === node.id ? { ...condition, targetActionId: '' } : condition),
         })),
         studioNodeLayout: removeNodeLayoutEntry(current.studioNodeLayout, `action:${node.id}`),
       }))
@@ -2229,6 +2346,15 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       }))
       setActiveEdgeId(null)
       setNotice('La acción quedó huérfana nuevamente.')
+      return
+    }
+
+    if (edge.sourceKind === 'trigger' && edge.targetKind === 'stage') {
+      setBuilder((current) => updateSelectedFlowInBuilder(current, {
+        flowTriggers: current.flowTriggers.map((trigger) => trigger.id === sourceId ? { ...trigger, targetStageId: '' } : trigger),
+      }))
+      setActiveEdgeId(null)
+      setNotice('El filtro quedó huérfano nuevamente.')
     }
   }
 
@@ -2320,7 +2446,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       : null
     const isActionLink = Boolean(sourceOptionId && stage?.quickActionIds.includes(sourceOptionId))
     const canConnect = sourceOptionId
-      ? sourceNode.kind === 'stage' && (targetNode.kind === 'stage' || (isActionLink && targetNode.kind === 'action'))
+      ? sourceNode.kind === 'stage' && (targetNode.kind === 'stage' || targetNode.kind === 'action')
       : canConnectNodes(sourceNode.kind, targetNode.kind)
     if (!canConnect) return
 
@@ -2666,11 +2792,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2.5">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">Mensaje</div>
                     <div className="mt-1 truncate text-sm font-semibold text-slate-900">{selectedStage.title}</div>
-                    <div className="mt-1 line-clamp-2 text-xs text-slate-600">{selectedStage.description}</div>
+                    <div className="mt-1 line-clamp-2 text-xs text-slate-600">{selectedStage.nextField === 'none' ? 'Mensaje regular' : 'Espera respuesta del usuario'}</div>
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
-                    <div className="font-semibold text-slate-900">Prompt</div>
-                    <div className="mt-1.5 line-clamp-4 whitespace-pre-wrap text-xs leading-5">{selectedStage.prompt || 'Sin prompt definido.'}</div>
+                    <div className="font-semibold text-slate-900">Contenido</div>
+                    <div className="mt-1.5 line-clamp-6 whitespace-pre-wrap text-xs leading-5">{getStageMessageContent(selectedStage) || 'Sin contenido definido.'}</div>
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
                     <div className="flex items-center justify-between gap-2">
@@ -2708,11 +2834,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <div className="rounded-2xl border border-amber-200 bg-amber-50/70 px-3 py-2.5">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-700">Filtro</div>
                     <div className="mt-1 truncate text-sm font-semibold text-slate-900">{selectedTrigger.label}</div>
-                    <div className="mt-1 text-xs text-slate-600">{selectedTrigger.event} · {selectedTrigger.matchMode}</div>
+                    <div className="mt-1 text-xs text-slate-600">{selectedTrigger.event} · {selectedTrigger.conditions.length} rama(s)</div>
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
-                    <div className="font-semibold text-slate-900">Destino</div>
-                    <div className="mt-1.5 truncate">{stageMap[selectedTrigger.targetStageId]?.title || selectedTrigger.targetStageId}</div>
+                    <div className="font-semibold text-slate-900">Condiciones</div>
+                    <div className="mt-1.5 leading-5">{summarizeTriggerConditions(selectedTrigger)}</div>
                   </div>
                 </>
               ) : null}
@@ -2722,7 +2848,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <div className="rounded-2xl border border-sky-200 bg-sky-50/70 px-3 py-2.5">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">Pausa</div>
                     <div className="mt-1 truncate text-sm font-semibold text-slate-900">{selectedPause.title}</div>
-                    <div className="mt-1 text-xs text-slate-600">{selectedPause.durationMinutes} min de espera</div>
+                    <div className="mt-1 line-clamp-2 text-xs text-slate-600">Espera configurada dentro del flujo</div>
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
                     <div className="font-semibold text-slate-900">Recorrido</div>
@@ -2817,12 +2943,17 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               <Input value={selectedStage.title} onChange={(event) => updateStage(selectedStage.id, { title: event.target.value })} />
             </div>
             <div className="grid gap-2">
-              <Label>Descripción</Label>
-              <Textarea value={selectedStage.description} onChange={(event) => updateStage(selectedStage.id, { description: event.target.value })} rows={2} />
-            </div>
-            <div className="grid gap-2">
-              <Label>Prompt</Label>
-              <Textarea value={selectedStage.prompt} onChange={(event) => updateStage(selectedStage.id, { prompt: event.target.value })} rows={5} />
+              <div className="flex items-center justify-between gap-2">
+                <Label>Editor del mensaje</Label>
+                <div className="flex flex-wrap gap-1">
+                  <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(selectedStage.id, '*Texto en negrilla*')}>Negrilla</Button>
+                  <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(selectedStage.id, '😀')}>Emoji</Button>
+                  <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(selectedStage.id, `{{${builder.flowVariables.find((item) => item.enabled)?.key || 'contact_name'}}}`)}>Variable</Button>
+                  <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(selectedStage.id, '1. Primer punto\n2. Segundo punto\n3. Tercer punto')}>Lista</Button>
+                </div>
+              </div>
+              <Textarea value={getStageMessageContent(selectedStage)} onChange={(event) => updateStageMessageContent(selectedStage.id, event.target.value)} rows={10} placeholder="Escribe aqui todo el mensaje. Puedes mezclar texto, variables, emojis, listas y formato simple." />
+              <div className="text-[11px] leading-5 text-slate-500">Este es el único campo de contenido del mensaje. El Studio mostrará esta misma pieza en la caja del canvas y en el chatbot.</div>
             </div>
             <div className="grid gap-2">
               <Label>Dato esperado</Label>
@@ -2955,30 +3086,71 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-2">
-              <Label>Regla de coincidencia</Label>
-              <Select value={selectedTrigger.matchMode} onValueChange={(value) => updateTrigger(selectedTrigger.id, { matchMode: value as ChatbotFlowTriggerMatchMode })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="contains">Contiene</SelectItem>
-                  <SelectItem value="equals">Es igual a</SelectItem>
-                  <SelectItem value="starts_with">Empieza por</SelectItem>
-                  <SelectItem value="regex">Regex</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label>Valor</Label>
-              <Textarea value={selectedTrigger.matchValue} onChange={(event) => updateTrigger(selectedTrigger.id, { matchValue: event.target.value })} rows={3} />
-            </div>
-            <div className="grid gap-2">
-              <Label>Destino</Label>
-              <Select value={selectedTrigger.targetStageId} onValueChange={(value) => updateTrigger(selectedTrigger.id, { targetStageId: value })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Condiciones del filtro</div>
+                  <div className="text-xs text-slate-500">Cada condición puede evaluar una variable y enviar al usuario a un mensaje o a una acción concreta.</div>
+                </div>
+                <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => addTriggerCondition(selectedTrigger.id)}>Agregar condición</Button>
+              </div>
+              <div className="space-y-3">
+                {selectedTrigger.conditions.length ? selectedTrigger.conditions.map((condition) => (
+                  <div key={condition.id} className="space-y-2 rounded-2xl border border-slate-200 bg-white p-3">
+                    <div className="grid gap-2">
+                      <Label>Variable</Label>
+                      <Select value={condition.variableKey} onValueChange={(value) => updateTriggerCondition(selectedTrigger.id, condition.id, { variableKey: value })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {triggerVariableOptions.map((option) => <SelectItem key={option.key} value={option.key}>{option.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-[0.9fr_1.1fr]">
+                      <div className="grid gap-2">
+                        <Label>Operador</Label>
+                        <Select value={condition.matchMode} onValueChange={(value) => updateTriggerCondition(selectedTrigger.id, condition.id, { matchMode: value as ChatbotFlowTriggerMatchMode })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="contains">Contiene</SelectItem>
+                            <SelectItem value="equals">Es igual a</SelectItem>
+                            <SelectItem value="starts_with">Empieza por</SelectItem>
+                            <SelectItem value="regex">Regex</SelectItem>
+                            <SelectItem value="exact">Exacto</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Valor</Label>
+                        <Input value={condition.matchValue} onChange={(event) => updateTriggerCondition(selectedTrigger.id, condition.id, { matchValue: event.target.value })} placeholder="Ej: 5" />
+                      </div>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Ir a acción</Label>
+                      <Select value={condition.targetActionId || '__none__'} onValueChange={(value) => updateTriggerCondition(selectedTrigger.id, condition.id, { targetActionId: value === '__none__' ? '' : value, targetStageId: value === '__none__' ? condition.targetStageId : '' })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Sin acción</SelectItem>
+                          {builder.quickActions.map((action) => <SelectItem key={action.id} value={action.id}>{action.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Ir a mensaje</Label>
+                      <Select value={condition.targetStageId || '__none__'} onValueChange={(value) => updateTriggerCondition(selectedTrigger.id, condition.id, { targetStageId: value === '__none__' ? '' : value, targetActionId: value === '__none__' ? condition.targetActionId : '' })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">Sin mensaje</SelectItem>
+                          {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" size="sm" className="h-8 border-rose-200 text-xs text-rose-700" onClick={() => removeTriggerCondition(selectedTrigger.id, condition.id)}>Eliminar condición</Button>
+                    </div>
+                  </div>
+                )) : <div className="rounded-2xl border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-500">Este filtro todavía no tiene condiciones.</div>}
+              </div>
             </div>
           </div>
         ) : null}
@@ -3552,11 +3724,6 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   onDragOver={canEditFlow ? handleBoardDragOver : undefined}
                   onDrop={canEditFlow ? handleBoardDrop : undefined}
                   onContextMenu={canEditFlow ? handleBoardBackgroundContextMenu : undefined}
-                  onWheel={(event) => {
-                    event.preventDefault()
-                    const direction = event.deltaY > 0 ? -0.08 : 0.08
-                    setStudioScale(builder.studioViewport.scale + direction, { clientX: event.clientX, clientY: event.clientY })
-                  }}
                   className={`relative ${overlay ? 'h-[calc(100vh-120px)] min-h-[620px]' : 'h-[calc(100vh-320px)] min-h-[480px] md:h-[calc(100vh-280px)] md:min-h-[760px]'} touch-none overflow-hidden rounded-[24px] border border-slate-200/80 bg-[linear-gradient(rgba(148,163,184,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.12)_1px,transparent_1px)] bg-[size:32px_32px] ${panState ? 'cursor-grabbing' : 'cursor-grab'} ${paletteDragKind ? 'ring-2 ring-emerald-300 ring-offset-2' : ''}`}
                 >
                   {canEditFlow ? renderFullscreenShortcutHint() : null}
@@ -4292,6 +4459,24 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   }, [activeStudioPanel, mapFullscreen])
 
   useEffect(() => {
+    const element = boardViewportRef.current
+    if (!element) return
+
+    function handleWheel(event: WheelEvent) {
+      event.preventDefault()
+      event.stopPropagation()
+      const direction = event.deltaY > 0 ? -0.08 : 0.08
+      setStudioScale(builder.studioViewport.scale + direction, { clientX: event.clientX, clientY: event.clientY })
+    }
+
+    element.addEventListener('wheel', handleWheel, { passive: false })
+
+    return () => {
+      element.removeEventListener('wheel', handleWheel)
+    }
+  }, [builder.studioViewport.scale])
+
+  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (activeStudioPanel !== 'map') return
       if (isTypingElement(event.target)) return
@@ -4355,6 +4540,21 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
           { label: 'Conversaciones', value: conversations.length, hint: 'Historial del canal seleccionado', tone: 'amber' },
         ]}
       />
+
+      {!loading && !channels.length ? (
+        <Card className="border-sky-200 bg-white/95 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.24)]">
+          <CardContent className="flex min-h-[260px] flex-col items-center justify-center gap-4 px-6 py-10 text-center">
+            <div className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-700">Preconfiguración requerida</div>
+            <div className="max-w-xl space-y-2">
+              <h2 className="text-2xl font-semibold text-slate-950">No hay un canal de chatbot web listo para este Studio</h2>
+              <p className="text-sm leading-6 text-slate-600">
+                Primero debes crear y configurar un canal WEB_CHATBOT en Integraciones CRM. Solo después de eso se habilita el acceso al Studio para esta empresa.
+              </p>
+            </div>
+            <Button type="button" onClick={() => window.location.assign('/dashboard/crm/integraciones')}>Ir a Integraciones CRM</Button>
+          </CardContent>
+        </Card>
+      ) : (
 
       <Tabs defaultValue="studio" className="space-y-3">
         <TabsContent value="studio" className="space-y-3">
@@ -4621,7 +4821,10 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <CardContent className="space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="text-sm text-slate-500">{builder.flowTriggers.filter((item) => item.enabled).length} activos</div>
-                      <Button variant="outline" size="sm" onClick={() => setBuilder((current) => updateSelectedFlowInBuilder(current, { flowTriggers: [...current.flowTriggers, { id: makeId('trigger'), label: 'Nuevo disparador', event: 'message', matchMode: 'contains', matchValue: '', targetStageId: current.flowStages[0]?.id || 'welcome', assistantReply: '', enabled: true }] }))}>Agregar disparador</Button>
+                      <Button variant="outline" size="sm" onClick={() => setBuilder((current) => {
+                        const nextTriggerId = makeId('trigger')
+                        return updateSelectedFlowInBuilder(current, { flowTriggers: [...current.flowTriggers, { id: nextTriggerId, label: 'Nuevo disparador', event: 'message', matchMode: 'contains', matchValue: '', targetStageId: '', targetActionId: '', assistantReply: '', enabled: true, conditions: [createTriggerCondition(nextTriggerId)] }] })
+                      })}>Agregar disparador</Button>
                     </div>
                     <div className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
                       {builder.flowTriggers.map((trigger) => (
@@ -4630,8 +4833,8 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                             <div className="text-sm font-semibold text-slate-900">{trigger.label}</div>
                             <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${trigger.enabled ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{trigger.enabled ? 'Activo' : 'Inactivo'}</span>
                           </div>
-                          <div className="mt-1 text-xs text-slate-500">{trigger.event} · {trigger.matchMode}</div>
-                          <div className="mt-2 text-xs text-slate-500">Destino: {stageMap[trigger.targetStageId]?.title || trigger.targetStageId}</div>
+                          <div className="mt-1 text-xs text-slate-500">{trigger.event} · {trigger.conditions.length} rama(s)</div>
+                          <div className="mt-2 text-xs leading-5 text-slate-500">{summarizeTriggerConditions(trigger)}</div>
                         </button>
                       ))}
                     </div>
@@ -4773,6 +4976,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
           {renderConversationsWorkspace()}
         </TabsContent>
       </Tabs>
+      )}
 
       <Dialog open={mapFullscreen} onOpenChange={(open) => { if (open) { setMapFullscreen(true); return } stopFlowEditing() }}>
         <DialogContent className="h-[calc(100vh-8px)] w-[calc(100vw-8px)] max-w-none overflow-hidden border-none bg-white/98 p-1 shadow-[0_30px_90px_-32px_rgba(15,23,42,0.5)]">
@@ -4828,12 +5032,17 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   </div>
                 </div>
                 <div className="grid gap-1.5">
-                  <Label>Descripción</Label>
-                  <Textarea value={editingStage.description} onChange={(event) => updateStage(editingStage.id, { description: event.target.value })} rows={2} placeholder="Explica el objetivo de este paso dentro del flujo." />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label>Mensaje del bot en esta etapa</Label>
-                  <Textarea value={editingStage.prompt} onChange={(event) => updateStage(editingStage.id, { prompt: event.target.value })} rows={3} placeholder="Ej: Hola, soy Juan Bot. ¿En qué servicio te puedo ayudar hoy?" />
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Editor completo del mensaje</Label>
+                    <div className="flex flex-wrap gap-1">
+                      <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(editingStage.id, '*Texto en negrilla*')}>Negrilla</Button>
+                      <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(editingStage.id, '😀')}>Emoji</Button>
+                      <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(editingStage.id, `{{${builder.flowVariables.find((item) => item.enabled)?.key || 'contact_name'}}}`)}>Variable</Button>
+                      <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => appendStageMessageSnippet(editingStage.id, '1. Primer punto\n2. Segundo punto\n3. Tercer punto')}>Lista</Button>
+                    </div>
+                  </div>
+                  <Textarea value={getStageMessageContent(editingStage)} onChange={(event) => updateStageMessageContent(editingStage.id, event.target.value)} rows={10} placeholder="Escribe aqui el texto completo del mensaje, con variables, emojis, listas y formato simple." />
+                  <div className="text-xs text-slate-500">Todo el contenido del mensaje se administra desde esta sola casilla.</div>
                 </div>
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
@@ -4909,7 +5118,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
             <>
               <DialogHeader>
                 <DialogTitle>Editar disparador</DialogTitle>
-                <DialogDescription>Define cuándo se activa y hacia qué etapa enruta la conversación.</DialogDescription>
+                <DialogDescription>Define cuándo se activa cada condición del filtro y a qué acción o mensaje debe enviar la conversación.</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-2">
                 <div className="grid gap-4 md:grid-cols-2">
@@ -4935,32 +5144,77 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                     </Select>
                   </div>
                   <div className="grid gap-2">
-                    <Label>Modo</Label>
-                    <Select value={editingTrigger.matchMode} onValueChange={(value) => updateTrigger(editingTrigger.id, { matchMode: value as ChatbotFlowTriggerMatchMode })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="contains">Contiene</SelectItem>
-                        <SelectItem value="exact">Exacto</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label>Respuesta opcional</Label>
+                    <Textarea value={editingTrigger.assistantReply} onChange={(event) => updateTrigger(editingTrigger.id, { assistantReply: event.target.value })} rows={3} />
                   </div>
                 </div>
-                <div className="grid gap-2">
-                  <Label>Valor a detectar</Label>
-                  <Input value={editingTrigger.matchValue} onChange={(event) => updateTrigger(editingTrigger.id, { matchValue: event.target.value })} />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Etapa destino</Label>
-                  <Select value={editingTrigger.targetStageId} onValueChange={(value) => updateTrigger(editingTrigger.id, { targetStageId: value })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label>Respuesta opcional</Label>
-                  <Textarea value={editingTrigger.assistantReply} onChange={(event) => updateTrigger(editingTrigger.id, { assistantReply: event.target.value })} rows={3} />
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <Label>Condiciones del filtro</Label>
+                      <div className="mt-1 text-xs text-slate-500">Cada condición puede leer una variable distinta y mandar a una acción o mensaje concreto.</div>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => addTriggerCondition(editingTrigger.id)}>Agregar condición</Button>
+                  </div>
+                  <div className="space-y-3">
+                    {editingTrigger.conditions.map((condition) => (
+                      <div key={condition.id} className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3">
+                        <div className="grid gap-2">
+                          <Label>Variable</Label>
+                          <Select value={condition.variableKey} onValueChange={(value) => updateTriggerCondition(editingTrigger.id, condition.id, { variableKey: value })}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {triggerVariableOptions.map((option) => <SelectItem key={option.key} value={option.key}>{option.label}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="grid gap-2">
+                            <Label>Operador</Label>
+                            <Select value={condition.matchMode} onValueChange={(value) => updateTriggerCondition(editingTrigger.id, condition.id, { matchMode: value as ChatbotFlowTriggerMatchMode })}>
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="contains">Contiene</SelectItem>
+                                <SelectItem value="equals">Es igual a</SelectItem>
+                                <SelectItem value="starts_with">Empieza por</SelectItem>
+                                <SelectItem value="regex">Regex</SelectItem>
+                                <SelectItem value="exact">Exacto</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Valor</Label>
+                            <Input value={condition.matchValue} onChange={(event) => updateTriggerCondition(editingTrigger.id, condition.id, { matchValue: event.target.value })} placeholder="Ej: 5" />
+                          </div>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="grid gap-2">
+                            <Label>Acción destino</Label>
+                            <Select value={condition.targetActionId || '__none__'} onValueChange={(value) => updateTriggerCondition(editingTrigger.id, condition.id, { targetActionId: value === '__none__' ? '' : value, targetStageId: value === '__none__' ? condition.targetStageId : '' })}>
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">Sin acción</SelectItem>
+                                {builder.quickActions.map((action) => <SelectItem key={action.id} value={action.id}>{action.label}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Mensaje destino</Label>
+                            <Select value={condition.targetStageId || '__none__'} onValueChange={(value) => updateTriggerCondition(editingTrigger.id, condition.id, { targetStageId: value === '__none__' ? '' : value, targetActionId: value === '__none__' ? condition.targetActionId : '' })}>
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">Sin mensaje</SelectItem>
+                                {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="flex justify-end">
+                          <Button variant="outline" size="sm" className="border-rose-200 text-rose-700" onClick={() => removeTriggerCondition(editingTrigger.id, condition.id)}>Eliminar condición</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
               <DialogFooter>
