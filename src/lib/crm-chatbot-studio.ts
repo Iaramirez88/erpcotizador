@@ -39,6 +39,7 @@ export type ChatbotFlowTrigger = {
   matchValue: string
   targetStageId: string
   targetActionId: string
+  targetTriggerId: string
   assistantReply: string
   enabled: boolean
   conditions: ChatbotFlowTriggerCondition[]
@@ -51,6 +52,7 @@ export type ChatbotFlowTriggerCondition = {
   matchValue: string
   targetStageId: string
   targetActionId: string
+  targetTriggerId: string
 }
 
 export type ChatbotAutomationFlow = {
@@ -134,7 +136,7 @@ function normalizeTriggerVariableKey(value: unknown) {
   return normalizeString(value) || 'productoCotizar'
 }
 
-function createLegacyTriggerCondition(trigger: Pick<ChatbotFlowTrigger, 'id' | 'matchMode' | 'matchValue' | 'targetStageId'> & { targetActionId?: string }): ChatbotFlowTriggerCondition {
+function createLegacyTriggerCondition(trigger: Pick<ChatbotFlowTrigger, 'id' | 'matchMode' | 'matchValue' | 'targetStageId'> & { targetActionId?: string; targetTriggerId?: string }): ChatbotFlowTriggerCondition {
   return {
     id: `${trigger.id}-condition-1`,
     variableKey: 'ultimo_mensaje',
@@ -142,13 +144,14 @@ function createLegacyTriggerCondition(trigger: Pick<ChatbotFlowTrigger, 'id' | '
     matchValue: trigger.matchValue,
     targetStageId: trigger.targetStageId,
     targetActionId: normalizeString(trigger.targetActionId),
+    targetTriggerId: normalizeString(trigger.targetTriggerId),
   }
 }
 
-function normalizeChatbotFlowTriggerConditions(value: unknown, triggerId: string, fallback: { matchMode: ChatbotFlowTriggerMatchMode; matchValue: string; targetStageId: string; targetActionId: string }): ChatbotFlowTriggerCondition[] {
+function normalizeChatbotFlowTriggerConditions(value: unknown, triggerId: string, fallback: { matchMode: ChatbotFlowTriggerMatchMode; matchValue: string; targetStageId: string; targetActionId: string; targetTriggerId: string }): ChatbotFlowTriggerCondition[] {
   if (!Array.isArray(value)) {
-    return fallback.matchValue || fallback.targetStageId || fallback.targetActionId
-      ? [createLegacyTriggerCondition({ id: triggerId, matchMode: fallback.matchMode, matchValue: fallback.matchValue, targetStageId: fallback.targetStageId, targetActionId: fallback.targetActionId })]
+    return fallback.matchValue || fallback.targetStageId || fallback.targetActionId || fallback.targetTriggerId
+      ? [createLegacyTriggerCondition({ id: triggerId, matchMode: fallback.matchMode, matchValue: fallback.matchValue, targetStageId: fallback.targetStageId, targetActionId: fallback.targetActionId, targetTriggerId: fallback.targetTriggerId })]
       : []
   }
 
@@ -163,6 +166,7 @@ function normalizeChatbotFlowTriggerConditions(value: unknown, triggerId: string
         matchValue: asText(record.matchValue),
         targetStageId: normalizeString(record.targetStageId),
         targetActionId: normalizeString(record.targetActionId),
+        targetTriggerId: normalizeString(record.targetTriggerId),
       } satisfies ChatbotFlowTriggerCondition
     })
     .filter((item): item is ChatbotFlowTriggerCondition => Boolean(item?.id))
@@ -231,6 +235,7 @@ export function getDefaultChatbotFlowTriggers(): ChatbotFlowTrigger[] {
       matchValue: 'asesor, humano, agente, ejecutivo, vendedor',
       targetStageId: 'handoff',
       targetActionId: '',
+      targetTriggerId: '',
       assistantReply: 'Claro. Voy a dejar esta conversación lista para que continúe un asesor humano.',
       enabled: true,
       conditions: [],
@@ -243,6 +248,7 @@ export function getDefaultChatbotFlowTriggers(): ChatbotFlowTrigger[] {
       matchValue: 'qualified',
       targetStageId: 'handoff',
       targetActionId: '',
+      targetTriggerId: '',
       assistantReply: 'Perfecto. Ya tengo el contexto suficiente para que el equipo comercial continúe contigo.',
       enabled: true,
       conditions: [],
@@ -391,6 +397,7 @@ export function normalizeChatbotFlowTriggers(value: unknown): ChatbotFlowTrigger
         matchValue: asText(record.matchValue),
         targetStageId: normalizeString(record.targetStageId),
         targetActionId: normalizeString(record.targetActionId),
+        targetTriggerId: normalizeString(record.targetTriggerId),
         assistantReply: asText(record.assistantReply),
         enabled: asBoolean(record.enabled, true),
         conditions: normalizeChatbotFlowTriggerConditions(record.conditions, normalizeString(record.id), {
@@ -398,6 +405,7 @@ export function normalizeChatbotFlowTriggers(value: unknown): ChatbotFlowTrigger
           matchValue: asText(record.matchValue),
           targetStageId: normalizeString(record.targetStageId),
           targetActionId: normalizeString(record.targetActionId),
+          targetTriggerId: normalizeString(record.targetTriggerId),
         }),
       } satisfies ChatbotFlowTrigger
     })

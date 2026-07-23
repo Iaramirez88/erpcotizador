@@ -26,6 +26,8 @@ import {
   interpolateChatbotVariables,
   resolveChatbotAutomationFlowByTrigger,
   resolveChatbotAssignmentUserId,
+  type ChatbotFlowTrigger,
+  type ChatbotFlowTriggerCondition,
   type ChatbotStudioPauseNode,
 } from '@/lib/crm-chatbot-studio'
 import { extractHostFromUrl, getPublicChatbotSettings, isChatbotDomainAllowed } from '@/lib/crm-public-chatbot'
@@ -594,12 +596,102 @@ function getNextChatField(args: { nombre: string; email: string; phone: string; 
   return 'confirmation' satisfies ChatFlowNextField
 }
 
+function matchesTriggerCondition(args: {
+  condition: ChatbotFlowTriggerCondition
+  messageText: string
+  context: Record<string, string | number | boolean | null | undefined>
+}) {
+  const candidateValue = normalizeString(args.context[args.condition.variableKey] ?? (args.condition.variableKey === 'ultimo_mensaje' ? args.messageText : '')).toLowerCase()
+  const terms = args.condition.matchValue
+    .split(/[\n,;|]+/)
+    .map((item) => normalizeString(item).toLowerCase())
+    .filter(Boolean)
+  if (!terms.length && args.condition.matchMode !== 'regex') return false
+  if (args.condition.matchMode === 'exact' || args.condition.matchMode === 'equals') return terms.some((term) => term === candidateValue)
+  if (args.condition.matchMode === 'starts_with') return terms.some((term) => candidateValue.startsWith(term))
+  if (args.condition.matchMode === 'regex') {
+    try {
+      return Boolean(new RegExp(args.condition.matchValue, 'i').test(candidateValue))
+    } catch {
+      return false
+    }
+  }
+  return terms.some((term) => candidateValue.includes(term))
+}
+
+function resolveFlowDestination(args: {
+  targetStageId?: string | null
+  targetActionId?: string | null
+  targetTriggerId?: string | null
+  flowTriggers: ChatbotFlowTrigger[]
+  flowStages: ChatbotFlowStage[]
+  quickActions: ChatbotQuickAction[]
+  messageText: string
+  context: Record<string, string | number | boolean | null | undefined>
+  visited?: Set<string>
+}): { stageId: string; quickActionId: string } {
+  const visited = args.visited ?? new Set<string>()
+
+  if (args.targetActionId) {
+    const action = findChatbotQuickAction(args.quickActions, args.targetActionId)
+    if (!action) return { stageId: '', quickActionId: '' }
+    if (action.targetTriggerId && !visited.has(`trigger:${action.targetTriggerId}`)) {
+      visited.add(`action:${action.id}`)
+      const resolved = resolveFlowDestination({
+        targetTriggerId: action.targetTriggerId,
+        flowTriggers: args.flowTriggers,
+        flowStages: args.flowStages,
+        quickActions: args.quickActions,
+        messageText: args.messageText,
+        context: args.context,
+        visited,
+      })
+      return {
+        stageId: resolved.stageId,
+        quickActionId: action.id,
+      }
+    }
+    return {
+      stageId: action.targetStageId,
+      quickActionId: action.id,
+    }
+  }
+
+  if (args.targetTriggerId) {
+    const triggerKey = `trigger:${args.targetTriggerId}`
+    if (visited.has(triggerKey)) return { stageId: '', quickActionId: '' }
+    visited.add(triggerKey)
+    const trigger = args.flowTriggers.find((item) => item.id === args.targetTriggerId && item.enabled)
+    if (!trigger) return { stageId: '', quickActionId: '' }
+    const matchedCondition = trigger.conditions.find((condition) => matchesTriggerCondition({ condition, messageText: args.messageText, context: args.context })) ?? null
+    return resolveFlowDestination({
+      targetStageId: matchedCondition?.targetStageId || trigger.targetStageId,
+      targetActionId: matchedCondition?.targetActionId || trigger.targetActionId,
+      targetTriggerId: matchedCondition?.targetTriggerId || trigger.targetTriggerId,
+      flowTriggers: args.flowTriggers,
+      flowStages: args.flowStages,
+      quickActions: args.quickActions,
+      messageText: args.messageText,
+      context: args.context,
+      visited,
+    })
+  }
+
+  return {
+    stageId: args.targetStageId || '',
+    quickActionId: '',
+  }
+}
+
 function resolveChatStage(args: {
   currentStageId: string
   flowStages: ChatbotFlowStage[]
+  flowTriggers: ChatbotFlowTrigger[]
   quickActions: ChatbotQuickAction[]
   quickActionId: string
   matchedResponseOption: ChatbotFlowResponseOption | null
+  messageText: string
+  triggerContext: Record<string, string | number | boolean | null | undefined>
   requestedProduct: string
   requestHuman: boolean
   leadQualified: boolean
@@ -610,17 +702,41 @@ function resolveChatStage(args: {
     ?? args.flowStages[0]
     ?? null
 
-  if (args.matchedResponseOption?.targetStageId) {
-    return findChatbotFlowStage(args.flowStages, args.matchedResponseOption.targetStageId)
+  const matchedResponseDestination = args.matchedResponseOption
+    ? resolveFlowDestination({
+        targetStageId: args.matchedResponseOption.targetStageId,
+        targetActionId: args.matchedResponseOption.targetActionId,
+        targetTriggerId: args.matchedResponseOption.targetTriggerId,
+        flowTriggers: args.flowTriggers,
+        flowStages: args.flowStages,
+        quickActions: args.quickActions,
+        messageText: args.messageText,
+        context: args.triggerContext,
+      })
+    : null
+
+  if (matchedResponseDestination?.stageId) {
+    return findChatbotFlowStage(args.flowStages, matchedResponseDestination.stageId)
       ?? currentStage
       ?? args.flowStages[0]
       ?? null
   }
 
   const selectedQuickAction = findChatbotQuickAction(args.quickActions, args.quickActionId)
+  const quickActionDestination = selectedQuickAction
+    ? resolveFlowDestination({
+        targetStageId: selectedQuickAction.targetStageId,
+        targetTriggerId: selectedQuickAction.targetTriggerId,
+        flowTriggers: args.flowTriggers,
+        flowStages: args.flowStages,
+        quickActions: args.quickActions,
+        messageText: args.messageText,
+        context: args.triggerContext,
+      })
+    : null
 
-  if (selectedQuickAction?.targetStageId) {
-    return findChatbotFlowStage(args.flowStages, selectedQuickAction.targetStageId)
+  if (quickActionDestination?.stageId) {
+    return findChatbotFlowStage(args.flowStages, quickActionDestination.stageId)
       ?? currentStage
       ?? args.flowStages[0]
       ?? null
@@ -793,7 +909,9 @@ function buildAssistantReply(args: {
   quickActionId: string
   responseOptionId: string
   flowStages: ChatbotFlowStage[]
+  flowTriggers: ChatbotFlowTrigger[]
   quickActions: ChatbotQuickAction[]
+  triggerContext: Record<string, string | number | boolean | null | undefined>
 }) {
   const currentStage = findChatbotFlowStage(args.flowStages, args.currentStageId) ?? args.flowStages[0] ?? null
   const matchedResponseOption = findChatbotFlowResponseOption(currentStage, args.responseOptionId)
@@ -804,9 +922,12 @@ function buildAssistantReply(args: {
     const handoffStage = resolveChatStage({
       currentStageId: args.currentStageId,
       flowStages: args.flowStages,
+      flowTriggers: args.flowTriggers,
       quickActions: args.quickActions,
       quickActionId: args.quickActionId,
       matchedResponseOption,
+      messageText: args.messageText,
+      triggerContext: args.triggerContext,
       requestedProduct: args.requestedProduct,
       requestHuman: true,
       leadQualified: args.leadQualified,
@@ -837,9 +958,12 @@ function buildAssistantReply(args: {
   const nextStage = resolveChatStage({
     currentStageId: args.currentStageId,
     flowStages: args.flowStages,
+    flowTriggers: args.flowTriggers,
     quickActions: args.quickActions,
     quickActionId: args.quickActionId,
     matchedResponseOption,
+    messageText: args.messageText,
+    triggerContext: args.triggerContext,
     requestedProduct: args.requestedProduct,
     requestHuman: false,
     leadQualified: args.leadQualified,
@@ -1202,10 +1326,47 @@ export async function POST(request: Request) {
 
       const flowStages = activeFlow.flowStages.length ? activeFlow.flowStages : settings.flowStages
       const quickActions = activeFlow.quickActions.length ? activeFlow.quickActions : settings.quickActions
+      const flowTriggers = activeFlow.flowTriggers.length ? activeFlow.flowTriggers : studioSettings.flowTriggers
       const pauseNodes = activeFlow.pauseNodes
       const matchedTriggerCondition = matchedTrigger.matchedTrigger?.matchedCondition ?? null
-      const effectiveQuickActionId = matchedTriggerCondition?.targetActionId || matchedTrigger.matchedTrigger?.targetActionId || quickActionId
+      const currentStage = findChatbotFlowStage(flowStages, currentStageId) ?? flowStages[0] ?? null
+      const matchedResponseOption = findChatbotFlowResponseOption(currentStage, responseOptionId)
+        ?? matchChatbotFlowResponseOption(currentStage, messageText)
+      const matchedTriggerDestination = resolveFlowDestination({
+        targetStageId: matchedTriggerCondition?.targetStageId || matchedTrigger.matchedTrigger?.targetStageId,
+        targetActionId: matchedTriggerCondition?.targetActionId || matchedTrigger.matchedTrigger?.targetActionId,
+        targetTriggerId: matchedTriggerCondition?.targetTriggerId || matchedTrigger.matchedTrigger?.targetTriggerId,
+        flowTriggers,
+        flowStages,
+        quickActions,
+        messageText,
+        context: triggerMatchContext,
+      })
+      const matchedResponseDestination = matchedResponseOption
+        ? resolveFlowDestination({
+            targetStageId: matchedResponseOption.targetStageId,
+            targetActionId: matchedResponseOption.targetActionId,
+            targetTriggerId: matchedResponseOption.targetTriggerId,
+            flowTriggers,
+            flowStages,
+            quickActions,
+            messageText,
+            context: triggerMatchContext,
+          })
+        : { stageId: '', quickActionId: '' }
+      const effectiveQuickActionId = matchedTriggerDestination.quickActionId || matchedResponseDestination.quickActionId || quickActionId
       const selectedQuickAction = findChatbotQuickAction(quickActions, effectiveQuickActionId)
+      const selectedQuickActionDestination = selectedQuickAction
+        ? resolveFlowDestination({
+            targetStageId: selectedQuickAction.targetStageId,
+            targetTriggerId: selectedQuickAction.targetTriggerId,
+            flowTriggers,
+            flowStages,
+            quickActions,
+            messageText,
+            context: triggerMatchContext,
+          })
+        : { stageId: '', quickActionId: '' }
       const selectedAutomation = selectedQuickAction?.automation || null
 
       if (!selectedAutomation?.chat.openChat && (priorRuntimeState.botSubscriptionActive === false || hasFuturePause(priorRuntimeState.pauseUntil))) {
@@ -1288,10 +1449,12 @@ export async function POST(request: Request) {
         quickActionId: effectiveQuickActionId,
         responseOptionId,
         flowStages,
+        flowTriggers,
         quickActions,
+        triggerContext: triggerMatchContext,
       })
 
-      const resolvedStageId = matchedTriggerCondition?.targetStageId || matchedTrigger.matchedTrigger?.targetStageId || ''
+      const resolvedStageId = matchedTriggerDestination.stageId || selectedQuickActionDestination.stageId || matchedResponseDestination.stageId || ''
       const resolvedStage = resolvedStageId
         ? findChatbotFlowStage(flowStages, resolvedStageId) ?? assistantReply.stage
         : assistantReply.stage

@@ -73,6 +73,7 @@ export type ChatbotQuickAction = {
   kind: ChatbotQuickActionKind
   message: string
   targetStageId: string
+  targetTriggerId: string
   actionUrl: string | null
   responseAttachmentType: ChatbotQuickActionAttachmentType | null
   responseAttachmentUrl: string | null
@@ -90,6 +91,7 @@ export type ChatbotFlowResponseOption = {
   matchValue: string
   targetStageId: string
   targetActionId: string
+  targetTriggerId: string
 }
 
 export type ChatbotFlowStage = {
@@ -292,6 +294,7 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       kind: 'catalog',
       message: 'Quiero ver el catálogo disponible.',
       targetStageId: '',
+      targetTriggerId: '',
       actionUrl: null,
       responseAttachmentType: null,
       responseAttachmentUrl: null,
@@ -305,6 +308,7 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       kind: 'stock',
       message: 'Muéstrame productos con stock disponible.',
       targetStageId: '',
+      targetTriggerId: '',
       actionUrl: null,
       responseAttachmentType: null,
       responseAttachmentUrl: null,
@@ -318,6 +322,7 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
       kind: 'human',
       message: 'Quiero hablar con un asesor humano.',
       targetStageId: '',
+      targetTriggerId: '',
       actionUrl: null,
       responseAttachmentType: null,
       responseAttachmentUrl: null,
@@ -336,10 +341,11 @@ export function getDefaultChatbotQuickActions(): ChatbotQuickAction[] {
   ]
 }
 
-function createResponseOption(option: Omit<ChatbotFlowResponseOption, 'targetActionId'> & { targetActionId?: string }): ChatbotFlowResponseOption {
+function createResponseOption(option: Omit<ChatbotFlowResponseOption, 'targetActionId' | 'targetTriggerId'> & { targetActionId?: string; targetTriggerId?: string }): ChatbotFlowResponseOption {
   return {
     ...option,
     targetActionId: option.targetActionId ?? '',
+    targetTriggerId: option.targetTriggerId ?? '',
   }
 }
 
@@ -462,9 +468,10 @@ export function normalizeChatbotFlowResponseOptions(value: unknown, stageId: str
         matchValue: asText(record.matchValue),
         targetStageId: asText(record.targetStageId),
         targetActionId: asText(record.targetActionId),
+        targetTriggerId: asText(record.targetTriggerId),
       } satisfies ChatbotFlowResponseOption
     })
-    .filter((item): item is ChatbotFlowResponseOption => Boolean(item?.id && item.label && item.userMessage && (item.targetStageId || item.targetActionId)))
+    .filter((item): item is ChatbotFlowResponseOption => Boolean(item?.id && item.label && item.userMessage && (item.targetStageId || item.targetActionId || item.targetTriggerId)))
 
   return normalized
 }
@@ -486,6 +493,7 @@ export function normalizeChatbotQuickActions(value: unknown): ChatbotQuickAction
         kind: isQuickActionKind(record.kind) ? record.kind : 'message',
         message: asText(record.message),
         targetStageId: asText(record.targetStageId),
+        targetTriggerId: asText(record.targetTriggerId),
         actionUrl: actionUrl || null,
         responseAttachmentType: isQuickActionAttachmentType(record.responseAttachmentType) ? record.responseAttachmentType : null,
         responseAttachmentUrl: responseAttachmentUrl || null,

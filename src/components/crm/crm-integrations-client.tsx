@@ -3434,6 +3434,7 @@ export function CrmIntegrationsClient() {
               matchValue: 'continuar, seguir, siguiente',
               targetStageId: stage.id,
               targetActionId: '',
+              targetTriggerId: '',
             },
           ],
         }
