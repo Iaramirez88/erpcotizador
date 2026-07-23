@@ -175,7 +175,7 @@ type StudioViewport = {
 }
 
 type StudioFocusNode = {
-  kind: 'stage' | 'trigger' | 'action' | 'pause'
+  kind: 'stage' | 'trigger' | 'action' | 'pause' | 'start'
   id: string
 }
 
@@ -261,14 +261,23 @@ type StudioCreateMenuTarget = {
 }
 
 type StudioContextMenuState = {
-  mode: 'node' | 'canvas' | 'create'
+  mode: 'node' | 'canvas' | 'create' | 'edge'
   node?: StudioFocusNode
+  edge?: StudioGraphEdge
   createTarget?: StudioCreateMenuTarget
   x: number
   y: number
 }
 
 type StudioPaletteKind = 'stage' | 'action' | 'trigger' | 'pause'
+
+type StudioTemplateItem = {
+  id: string
+  kind: StudioPaletteKind
+  label: string
+  description: string
+  toneClass: string
+}
 
 type StudioGraphEdge = {
   id: string
@@ -316,6 +325,51 @@ const STUDIO_PALETTE_ITEMS: Array<{ kind: StudioPaletteKind; label: string; desc
     label: 'Pausa',
     description: 'Inserta una espera visible entre dos mensajes del flujo.',
     className: 'border-sky-200 bg-sky-50 text-sky-950 hover:border-sky-300',
+  },
+]
+
+const STUDIO_TEMPLATE_ITEMS: StudioTemplateItem[] = [
+  {
+    id: 'template-stage-form',
+    kind: 'stage',
+    label: 'Formulario',
+    description: 'Mensaje base para pedir datos del cliente con una estructura guiada.',
+    toneClass: 'border-emerald-200 bg-emerald-50 text-emerald-950',
+  },
+  {
+    id: 'template-stage-list',
+    kind: 'stage',
+    label: 'Lista guiada',
+    description: 'Bloque con opciones listas para enrutar servicios o estados.',
+    toneClass: 'border-teal-200 bg-teal-50 text-teal-950',
+  },
+  {
+    id: 'template-stage-variables',
+    kind: 'stage',
+    label: 'Variables',
+    description: 'Mensaje listo para reutilizar placeholders del asistente.',
+    toneClass: 'border-cyan-200 bg-cyan-50 text-cyan-950',
+  },
+  {
+    id: 'template-action-quote',
+    kind: 'action',
+    label: 'Acción cotizar',
+    description: 'Acción rápida preconfigurada para crear una cotización.',
+    toneClass: 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-950',
+  },
+  {
+    id: 'template-action-human',
+    kind: 'action',
+    label: 'Escalar a humano',
+    description: 'Atajo para derivar la conversación a un asesor.',
+    toneClass: 'border-rose-200 bg-rose-50 text-rose-950',
+  },
+  {
+    id: 'template-trigger-product',
+    kind: 'trigger',
+    label: 'Filtro producto',
+    description: 'Filtro de ejemplo para enrutar según el producto cotizado.',
+    toneClass: 'border-amber-200 bg-amber-50 text-amber-950',
   },
 ]
 
@@ -371,6 +425,7 @@ function clampStudioScale(value: number) {
 }
 
 function toDomId(kind: StudioFocusNode['kind'], id: string) {
+  if (kind === 'start') return 'studio-start'
   return `studio-${kind}-${id}`
 }
 
@@ -555,7 +610,14 @@ function removeNodeLayoutEntry(layout: StudioNodeLayout, nodeId: string) {
   return nextLayout
 }
 
+function moveStageToFirst<T extends { id: string }>(items: T[], stageId: string) {
+  const stage = items.find((item) => item.id === stageId)
+  if (!stage) return items
+  return [stage, ...items.filter((item) => item.id !== stageId)]
+}
+
 function getNodeKindLabel(kind: StudioFocusNode['kind']) {
+  if (kind === 'start') return 'Inicio'
   if (kind === 'stage') return 'Mensaje'
   if (kind === 'action') return 'Accion'
   if (kind === 'trigger') return 'Filtro'
@@ -1197,7 +1259,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const [panState, setPanState] = useState<StudioPanState | null>(null)
   const [connectionDraft, setConnectionDraft] = useState<StudioConnectionDraft | null>(null)
   const [contextMenu, setContextMenu] = useState<StudioContextMenuState | null>(null)
-  const [paletteDragKind, setPaletteDragKind] = useState<StudioPaletteKind | null>(null)
+  const [paletteDragKind, setPaletteDragKind] = useState<string | null>(null)
   const [mapFullscreen, setMapFullscreen] = useState(false)
   const [flowEditMode, setFlowEditMode] = useState(false)
   const [inspectorOpen, setInspectorOpen] = useState(true)
@@ -1922,6 +1984,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const editingTrigger = editingNode?.kind === 'trigger' ? builder.flowTriggers.find((trigger) => trigger.id === editingNode.id) ?? null : null
   const editingAction = editingNode?.kind === 'action' ? builder.quickActions.find((action) => action.id === editingNode.id) ?? null : null
   const editingPause = editingNode?.kind === 'pause' ? builder.pauseNodes.find((pause) => pause.id === editingNode.id) ?? null : null
+  const selectedStartStage = builder.flowStages[0] ?? null
   const selectedStage = focusedNode?.kind === 'stage' ? builder.flowStages.find((stage) => stage.id === focusedNode.id) ?? null : null
   const selectedTrigger = focusedNode?.kind === 'trigger' ? builder.flowTriggers.find((trigger) => trigger.id === focusedNode.id) ?? null : null
   const selectedAction = focusedNode?.kind === 'action' ? builder.quickActions.find((action) => action.id === focusedNode.id) ?? null : null
@@ -2156,16 +2219,17 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
   function queueNodeFocus(node: StudioFocusNode) {
     setFocusedNode(node)
-    setEditingNode(node)
+    if (node.kind !== 'start') {
+      setEditingNode(node)
+    }
     setContextMenu(null)
   }
 
-  function createStage(args?: { sourceNode?: StudioFocusNode; sourceOptionId?: string; position?: { x: number; y: number } }) {
+  function createStage(args?: { sourceNode?: StudioFocusNode | null; sourceOptionId?: string; position?: { x: number; y: number }; preset?: Partial<ChatbotFlowStage>; notice?: string }) {
     const nextStageId = makeId('stage')
     const position = args?.position ?? getVisibleInsertPosition()
     setBuilder((current) => {
       const nextStage: ChatbotFlowStage = {
-        id: nextStageId,
         title: 'Nuevo mensaje',
         description: 'Describe el objetivo de este bloque.',
         prompt: 'Mensaje del asistente.',
@@ -2173,6 +2237,8 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
         quickActionIds: [],
         responseOptions: [],
         inactivityRule: getDefaultChatbotInactivityRule(),
+        ...args?.preset,
+        id: nextStageId,
       }
 
       const nextFlowStages = [...current.flowStages, nextStage].map((stage) => {
@@ -2213,14 +2279,29 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       })
     })
     queueNodeFocus({ kind: 'stage', id: nextStageId })
-    setNotice('Nuevo bloque de mensaje creado.')
+    setNotice(args?.notice || 'Nuevo bloque de mensaje creado.')
   }
 
-  function createAction(args?: { sourceNode?: StudioFocusNode; sourceOptionId?: string; position?: { x: number; y: number } }) {
+  function createAction(args?: { sourceNode?: StudioFocusNode | null; sourceOptionId?: string; position?: { x: number; y: number }; preset?: Partial<ChatbotQuickAction>; notice?: string }) {
     const nextActionId = makeId('action')
     const position = args?.position ?? getVisibleInsertPosition()
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
-      quickActions: [...current.quickActions, { id: nextActionId, label: 'Nueva accion', kind: 'message', message: 'Mensaje de accion rapida.', targetStageId: '', targetTriggerId: '', actionUrl: null, responseAttachmentType: null, responseAttachmentUrl: null, responseAttachmentName: null, enabled: true, inactivityRule: getDefaultChatbotInactivityRule(), automation: getDefaultChatbotQuickActionAutomationConfig() }],
+      quickActions: [...current.quickActions, {
+        label: 'Nueva accion',
+        kind: 'message',
+        message: 'Mensaje de accion rapida.',
+        targetStageId: '',
+        targetTriggerId: '',
+        actionUrl: null,
+        responseAttachmentType: null,
+        responseAttachmentUrl: null,
+        responseAttachmentName: null,
+        enabled: true,
+        inactivityRule: getDefaultChatbotInactivityRule(),
+        automation: getDefaultChatbotQuickActionAutomationConfig(),
+        ...args?.preset,
+        id: nextActionId,
+      }],
       flowStages: args?.sourceNode?.kind === 'stage'
         ? current.flowStages.map((stage) => {
             if (stage.id !== args.sourceNode?.id) return stage
@@ -2257,37 +2338,54 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       },
     }))
     queueNodeFocus({ kind: 'action', id: nextActionId })
-    setNotice('Nueva accion creada.')
+    setNotice(args?.notice || 'Nueva accion creada.')
   }
 
-  function createTrigger(args?: { position?: { x: number; y: number } }) {
+  function createTrigger(args?: { position?: { x: number; y: number }; preset?: Partial<ChatbotFlowTrigger>; notice?: string }) {
     const nextTriggerId = makeId('trigger')
     const position = args?.position ?? getVisibleInsertPosition()
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
-      flowTriggers: [...current.flowTriggers, { id: nextTriggerId, label: 'Nuevo filtro', event: 'message', matchMode: 'contains', matchValue: '', targetStageId: '', targetActionId: '', targetTriggerId: '', assistantReply: '', enabled: true, conditions: [createTriggerCondition(nextTriggerId)], inactivityRule: getDefaultChatbotInactivityRule() }],
+      flowTriggers: [...current.flowTriggers, {
+        label: 'Nuevo filtro',
+        event: 'message',
+        matchMode: 'contains',
+        matchValue: '',
+        targetStageId: '',
+        targetActionId: '',
+        targetTriggerId: '',
+        assistantReply: '',
+        enabled: true,
+        inactivityRule: getDefaultChatbotInactivityRule(),
+        ...args?.preset,
+        id: nextTriggerId,
+        conditions: args?.preset?.conditions?.length
+          ? args.preset.conditions.map((condition) => ({ ...condition, id: makeId(`${nextTriggerId}-condition`) }))
+          : [createTriggerCondition(nextTriggerId)],
+      }],
       studioNodeLayout: {
         ...current.studioNodeLayout,
         [`trigger:${nextTriggerId}`]: position,
       },
     }))
     queueNodeFocus({ kind: 'trigger', id: nextTriggerId })
-    setNotice('Nuevo filtro creado.')
+    setNotice(args?.notice || 'Nuevo filtro creado.')
   }
 
-  function createPause(args?: { sourceNode?: StudioFocusNode; position?: { x: number; y: number } }) {
+  function createPause(args?: { sourceNode?: StudioFocusNode | null; position?: { x: number; y: number }; preset?: Partial<ChatbotStudioPauseNode>; notice?: string }) {
     const nextPauseId = makeId('pause')
     const position = args?.position ?? getVisibleInsertPosition()
     const defaultSourceStageId = builder.flowStages[0]?.id || ''
     const defaultTargetStageId = builder.flowStages[1]?.id || builder.flowStages[0]?.id || ''
     setBuilder((current) => updateSelectedFlowInBuilder(current, {
       pauseNodes: [...current.pauseNodes, {
-        id: nextPauseId,
         title: 'Nueva pausa',
         description: 'Espera antes del siguiente mensaje.',
         durationMinutes: 60,
         sourceStageId: args?.sourceNode?.kind === 'stage' ? args.sourceNode.id : (current.flowStages[0]?.id || defaultSourceStageId),
         targetStageId: current.flowStages[1]?.id || current.flowStages[0]?.id || defaultTargetStageId,
         enabled: true,
+        ...args?.preset,
+        id: nextPauseId,
       }],
       studioNodeLayout: {
         ...current.studioNodeLayout,
@@ -2295,7 +2393,129 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       },
     }))
     queueNodeFocus({ kind: 'pause', id: nextPauseId })
-    setNotice('Nueva pausa creada.')
+    setNotice(args?.notice || 'Nueva pausa creada.')
+  }
+
+  function setInitialStage(stageId: string) {
+    setBuilder((current) => updateSelectedFlowInBuilder(current, {
+      flowStages: moveStageToFirst(current.flowStages, stageId),
+    }))
+    setFocusedNode({ kind: 'start', id: 'start' })
+    setActiveEdgeId(null)
+    setContextMenu(null)
+    setNotice('La caja de inicio ahora apunta al mensaje seleccionado.')
+  }
+
+  function applyTemplate(templateId: string, position?: { x: number; y: number }) {
+    const sourceNode = focusedNode
+
+    if (templateId === 'template-stage-form') {
+      createStage({
+        position,
+        sourceNode,
+        preset: {
+          title: 'Formulario de contacto',
+          description: 'Captura datos del visitante antes de cotizar.',
+          prompt: plainTextToRichTextHtml('Hola {{contact_name}}. Antes de continuar, compárteme estos datos:\n\n1. Nombre o empresa\n2. Correo\n3. WhatsApp\n4. Producto o servicio que necesitas'),
+          nextField: 'name',
+        },
+        notice: 'Plantilla de formulario agregada al flujo.',
+      })
+      return
+    }
+
+    if (templateId === 'template-stage-list') {
+      createStage({
+        position,
+        sourceNode,
+        preset: {
+          title: 'Servicios disponibles',
+          description: 'Lista base de opciones para el cliente.',
+          prompt: plainTextToRichTextHtml('Selecciona uno de estos servicios para continuar.'),
+          responseOptions: [
+            createStageResponseOption(builder.flowStages, '', { label: 'Páginas web', userMessage: 'Quiero una página web' }),
+            createStageResponseOption(builder.flowStages, '', { label: 'Marketing digital', userMessage: 'Quiero marketing digital' }),
+            createStageResponseOption(builder.flowStages, '', { label: 'Desarrollo de software', userMessage: 'Quiero desarrollo de software' }),
+          ],
+        },
+        notice: 'Plantilla de lista guiada agregada al flujo.',
+      })
+      return
+    }
+
+    if (templateId === 'template-stage-variables') {
+      createStage({
+        position,
+        sourceNode,
+        preset: {
+          title: 'Mensaje con variables',
+          description: 'Usa placeholders listos para personalizar el mensaje.',
+          prompt: plainTextToRichTextHtml('Hola {{contact_name}}. Ya vi tu interés en {{product_name}} y te acompaño como {{assistant_name}} para el siguiente paso.'),
+        },
+        notice: 'Plantilla con variables agregada al flujo.',
+      })
+      return
+    }
+
+    if (templateId === 'template-action-quote') {
+      createAction({
+        position,
+        sourceNode,
+        preset: {
+          label: 'Generar cotización',
+          kind: 'create_quote',
+          message: 'Voy a generar la cotización con los datos capturados.',
+        },
+        notice: 'Plantilla de cotización agregada al flujo.',
+      })
+      return
+    }
+
+    if (templateId === 'template-action-human') {
+      createAction({
+        position,
+        sourceNode,
+        preset: {
+          label: 'Pasar a asesor',
+          kind: 'human',
+          message: 'Voy a pasarte con un asesor humano para continuar.',
+        },
+        notice: 'Plantilla de escalamiento agregada al flujo.',
+      })
+      return
+    }
+
+    if (templateId === 'template-trigger-product') {
+      createTrigger({
+        position,
+        preset: {
+          label: 'Filtrar por producto',
+          event: 'message',
+          conditions: [
+            createTriggerCondition('template-trigger-product', { variableKey: 'productoCotizar', matchMode: 'contains', matchValue: 'mug' }),
+          ],
+        },
+        notice: 'Plantilla de filtro agregada al flujo.',
+      })
+    }
+  }
+
+  function parsePaletteDragValue(value: string): { kind: StudioPaletteKind } | { templateId: string } | null {
+    if (value.startsWith('block:')) {
+      const kind = value.slice('block:'.length) as StudioPaletteKind
+      if (kind === 'stage' || kind === 'action' || kind === 'trigger' || kind === 'pause') {
+        return { kind }
+      }
+    }
+
+    if (value.startsWith('template:')) {
+      const templateId = value.slice('template:'.length)
+      if (STUDIO_TEMPLATE_ITEMS.some((item) => item.id === templateId)) {
+        return { templateId }
+      }
+    }
+
+    return null
   }
 
   function addStageFromPalette() {
@@ -2586,6 +2806,50 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
   function disconnectEdge(edge: StudioGraphEdge) {
     const sourceId = edge.fromId.split(':')[1] || ''
+    const targetId = edge.toId.split(':')[1] || ''
+
+    if (edge.sourceKind === 'start' && edge.targetKind === 'stage') {
+      setActiveEdgeId(null)
+      setNotice('El bloque Inicio siempre debe apuntar a un mensaje. Edítalo para cambiar el destino.')
+      return
+    }
+
+    if (edge.sourceKind === 'stage' && edge.targetKind === 'stage' && edge.sourceOptionId) {
+      updateResponseOption(sourceId, edge.sourceOptionId, { targetStageId: '' })
+      setActiveEdgeId(null)
+      setNotice('La rama quedó sin mensaje destino.')
+      return
+    }
+
+    if (edge.sourceKind === 'stage' && edge.targetKind === 'trigger' && edge.sourceOptionId) {
+      updateResponseOption(sourceId, edge.sourceOptionId, { targetTriggerId: '' })
+      setActiveEdgeId(null)
+      setNotice('La rama quedó sin filtro destino.')
+      return
+    }
+
+    if (edge.sourceKind === 'stage' && edge.targetKind === 'action') {
+      if (edge.sourceOptionId) {
+        updateResponseOption(sourceId, edge.sourceOptionId, { targetActionId: '' })
+      } else {
+        setBuilder((current) => updateSelectedFlowInBuilder(current, {
+          flowStages: current.flowStages.map((stage) => stage.id === sourceId ? {
+            ...stage,
+            quickActionIds: stage.quickActionIds.filter((actionId) => actionId !== targetId),
+          } : stage),
+        }))
+      }
+      setActiveEdgeId(null)
+      setNotice('La acción quedó desconectada del mensaje.')
+      return
+    }
+
+    if (edge.sourceKind === 'stage' && edge.targetKind === 'pause') {
+      updatePauseNode(targetId, { sourceStageId: '' })
+      setActiveEdgeId(null)
+      setNotice('La pausa quedó sin mensaje origen.')
+      return
+    }
 
     if (edge.sourceKind === 'action' && edge.targetKind === 'stage') {
       setBuilder((current) => updateSelectedFlowInBuilder(current, {
@@ -2630,6 +2894,13 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
       }))
       setActiveEdgeId(null)
       setNotice('La condición del filtro quedó sin acción destino.')
+      return
+    }
+
+    if (edge.sourceKind === 'pause' && edge.targetKind === 'stage') {
+      updatePauseNode(sourceId, { targetStageId: '' })
+      setActiveEdgeId(null)
+      setNotice('La pausa quedó sin mensaje destino.')
     }
   }
 
@@ -2886,6 +3157,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     setContextMenu({ mode: 'node', node, x, y })
   }
 
+  function openEdgeContextMenu(edge: StudioGraphEdge, x: number, y: number) {
+    setActiveEdgeId(edge.id)
+    setContextMenu({ mode: 'edge', edge, x, y })
+  }
+
   function openCanvasMenu(x: number, y: number) {
     setContextMenu({ mode: 'canvas', x, y })
   }
@@ -2985,10 +3261,10 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     }
   }
 
-  function handlePaletteDragStart(event: React.DragEvent<HTMLButtonElement>, kind: StudioPaletteKind) {
+  function handlePaletteDragStart(event: React.DragEvent<HTMLButtonElement>, value: string) {
     event.dataTransfer.effectAllowed = 'copy'
-    event.dataTransfer.setData('text/plain', kind)
-    setPaletteDragKind(kind)
+    event.dataTransfer.setData('text/plain', value)
+    setPaletteDragKind(value)
   }
 
   function handlePaletteDragEnd() {
@@ -3002,11 +3278,15 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   }
 
   function handleBoardDrop(event: React.DragEvent<HTMLDivElement>) {
-    const kind = (event.dataTransfer.getData('text/plain') || paletteDragKind) as StudioPaletteKind
-    if (!kind) return
+    const payload = parsePaletteDragValue(event.dataTransfer.getData('text/plain') || paletteDragKind || '')
+    if (!payload) return
     event.preventDefault()
     const position = getCanvasPointFromClient(event.clientX, event.clientY)
-    createNodeFromPalette(kind, position)
+    if ('kind' in payload) {
+      createNodeFromPalette(payload.kind, position)
+    } else {
+      applyTemplate(payload.templateId, position)
+    }
     setPaletteDragKind(null)
   }
 
@@ -3114,6 +3394,29 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
             </div>
 
             <div className="mt-3 flex-1 space-y-3 overflow-y-auto pr-1">
+              {focusedNode.kind === 'start' ? (
+                <>
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">Inicio</div>
+                    <div className="mt-1 truncate text-sm font-semibold text-slate-900">Nodo inicial del flujo</div>
+                    <div className="mt-1 text-xs text-slate-600">Define aquí cuál es la caja que abre el recorrido del chatbot.</div>
+                  </div>
+                  <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
+                    <Label>Mensaje inicial</Label>
+                    <Select value={selectedStartStage?.id || '__none__'} onValueChange={(value) => { if (value !== '__none__') setInitialStage(value) }}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
+                    <div className="font-semibold text-slate-900">Resumen</div>
+                    <div className="mt-1.5 leading-5 text-slate-500">Mensaje actual: {selectedStartStage?.title || 'Sin mensaje inicial configurado.'}</div>
+                  </div>
+                </>
+              ) : null}
+
               {selectedStage ? (
                 <>
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2.5">
@@ -3194,7 +3497,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                 <span>Mas opciones</span>
                 {inspectorAdvancedOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </button>
-              {inspectorAdvancedOpen ? (
+              {inspectorAdvancedOpen && focusedNode.kind !== 'start' ? (
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => openEditor(focusedNode)}>Editar</Button>
                   <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => duplicateNode(focusedNode)}>Duplicar</Button>
@@ -3258,10 +3561,33 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               if (focusedNode.kind === 'action' && selectedAction) updateQuickAction(selectedAction.id, { enabled: checked })
               if (focusedNode.kind === 'trigger' && selectedTrigger) updateTrigger(selectedTrigger.id, { enabled: checked })
               if (focusedNode.kind === 'pause' && selectedPause) updatePauseNode(selectedPause.id, { enabled: checked })
-            }} disabled={focusedNode.kind === 'stage'} />
+            }} disabled={focusedNode.kind === 'stage' || focusedNode.kind === 'start'} />
             <Button type="button" variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => setInspectorOpen(false)}>Cerrar</Button>
           </div>
         </div>
+
+        {focusedNode.kind === 'start' ? (
+          <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 pb-24">
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-3 text-xs text-emerald-900">
+              <div className="font-semibold">Nodo inicial</div>
+              <div className="mt-1 leading-5">Selecciona aquí la caja que debe iniciar el flujo. El Studio la moverá al primer lugar sin borrar el resto de conexiones.</div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Mensaje inicial</Label>
+              <Select value={selectedStartStage?.id || '__none__'} onValueChange={(value) => { if (value !== '__none__') setInitialStage(value) }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
+              <div className="font-semibold text-slate-900">Resumen</div>
+              <div className="mt-2">Mensaje actual: {selectedStartStage?.title || 'Sin mensaje inicial'}</div>
+              <div className="mt-1">Canal público: {builder.chatbotTitle || 'Sin título público'}</div>
+            </div>
+          </div>
+        ) : null}
 
         {selectedStage ? (
           <div className="mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 pb-24">
@@ -3559,13 +3885,15 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
           </div>
         ) : null}
 
-        <div className="grid grid-cols-2 gap-2 border-t border-slate-200 pt-3">
-          <Button type="button" variant="outline" size="sm" onClick={() => openEditor(focusedNode)}>Edición avanzada</Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => duplicateNode(focusedNode)}>Duplicar</Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => reorderNode(focusedNode, -1)}>Subir</Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => reorderNode(focusedNode, 1)}>Bajar</Button>
-          <Button type="button" variant="outline" size="sm" className="col-span-2 border-rose-200 text-rose-700" onClick={() => deleteNodeWithFeedback(focusedNode)}>Eliminar bloque</Button>
-        </div>
+        {focusedNode.kind !== 'start' ? (
+          <div className="grid grid-cols-2 gap-2 border-t border-slate-200 pt-3">
+            <Button type="button" variant="outline" size="sm" onClick={() => openEditor(focusedNode)}>Edición avanzada</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => duplicateNode(focusedNode)}>Duplicar</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => reorderNode(focusedNode, -1)}>Subir</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => reorderNode(focusedNode, 1)}>Bajar</Button>
+            <Button type="button" variant="outline" size="sm" className="col-span-2 border-rose-200 text-rose-700" onClick={() => deleteNodeWithFeedback(focusedNode)}>Eliminar bloque</Button>
+          </div>
+        ) : null}
 
         {deletionBlocker ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-900">
@@ -3577,32 +3905,84 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   }
 
   function renderFullscreenPaletteRail() {
+    const selectedTemplate = paletteDragKind ? parsePaletteDragValue(paletteDragKind) : null
+
     return (
-      <div className="hidden h-full rounded-[26px] border border-slate-200 bg-white/96 p-3 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.25)] xl:flex xl:flex-col xl:items-center xl:gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
-          <GitBranch className="h-5 w-5" />
+      <div className="hidden h-full min-h-0 rounded-[26px] border border-slate-200 bg-white/96 p-3 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.25)] xl:flex xl:flex-col xl:gap-4">
+        <div className="rounded-[20px] border border-slate-200 bg-slate-50/80 px-3 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
+              <GitBranch className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-slate-900">Bloques y plantillas</div>
+              <div className="text-xs leading-5 text-slate-500">Arrastra al canvas o haz clic para insertar. Si tienes una caja activa, la plantilla se conectará desde ella cuando aplique.</div>
+            </div>
+          </div>
         </div>
-        <div className="w-full border-t border-slate-200 pt-3" />
-        {STUDIO_PALETTE_ITEMS.map((item) => {
-          const Icon = item.kind === 'stage' ? Bot : item.kind === 'action' ? Zap : item.kind === 'trigger' ? GitBranch : History
-          return (
-            <button
-              key={`rail-${item.kind}`}
-              type="button"
-              draggable
-              onDragStart={(event) => handlePaletteDragStart(event, item.kind)}
-              onDragEnd={handlePaletteDragEnd}
-              onClick={() => handleCreateFromMenu(item.kind)}
-              className={`group flex w-full flex-col items-center gap-2 rounded-[18px] border px-2 py-3 text-center transition ${item.className} ${paletteDragKind === item.kind ? 'scale-[1.02] shadow-sm ring-2 ring-slate-900/10' : ''}`}
-              title={item.label}
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-current/15 bg-white/85">
-                <Icon className="h-4.5 w-4.5" />
-              </div>
-              <div className="text-[11px] font-semibold leading-4">{item.label}</div>
-            </button>
-          )
-        })}
+
+        <div className="space-y-2">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Bloques base</div>
+          <div className="grid gap-2">
+            {STUDIO_PALETTE_ITEMS.map((item) => {
+              const Icon = item.kind === 'stage' ? Bot : item.kind === 'action' ? Zap : item.kind === 'trigger' ? GitBranch : History
+              const dragValue = `block:${item.kind}`
+              return (
+                <button
+                  key={`rail-${item.kind}`}
+                  type="button"
+                  draggable
+                  onDragStart={(event) => handlePaletteDragStart(event, dragValue)}
+                  onDragEnd={handlePaletteDragEnd}
+                  onClick={() => handleCreateFromMenu(item.kind)}
+                  className={`flex w-full items-center gap-3 rounded-[18px] border px-3 py-3 text-left transition ${item.className} ${paletteDragKind === dragValue ? 'scale-[1.01] shadow-sm ring-2 ring-slate-900/10' : ''}`}
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-current/15 bg-white/85">
+                    <Icon className="h-4.5 w-4.5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold">{item.label}</div>
+                    <div className="text-[11px] leading-4 opacity-85">{item.description}</div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Plantillas</div>
+            {selectedTemplate && 'templateId' in selectedTemplate ? <div className="text-[10px] text-slate-400">Lista para soltar</div> : null}
+          </div>
+          <div className="grid gap-2">
+            {STUDIO_TEMPLATE_ITEMS.map((template) => {
+              const Icon = template.kind === 'stage' ? Bot : template.kind === 'action' ? Zap : template.kind === 'trigger' ? GitBranch : History
+              const dragValue = `template:${template.id}`
+              return (
+                <button
+                  key={template.id}
+                  type="button"
+                  draggable
+                  onDragStart={(event) => handlePaletteDragStart(event, dragValue)}
+                  onDragEnd={handlePaletteDragEnd}
+                  onClick={() => applyTemplate(template.id)}
+                  className={`w-full rounded-[18px] border px-3 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${template.toneClass} ${paletteDragKind === dragValue ? 'scale-[1.01] shadow-sm ring-2 ring-slate-900/10' : ''}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-current/15 bg-white/85">
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold">{template.label}</div>
+                      <div className="mt-1 text-[11px] leading-4 opacity-85">{template.description}</div>
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </div>
     )
   }
@@ -4011,7 +4391,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     return (
       <Card className={overlay ? 'flex h-full flex-col border-0 bg-transparent shadow-none' : ''}>
         <CardContent className={overlay ? 'flex-1 overflow-hidden px-0 pb-0 pt-0' : 'overflow-hidden pt-0'}>
-          <div className={`grid rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.08),_transparent_28%),linear-gradient(180deg,_rgba(248,250,252,0.98),_rgba(241,245,249,0.96))] ${overlay ? `h-full min-h-0 gap-2 p-1.5 ${showFullscreenInspector ? 'xl:grid-cols-[70px_minmax(0,1fr)_280px]' : 'xl:grid-cols-[70px_minmax(0,1fr)]'}` : 'gap-4 p-3 md:p-4 lg:grid-cols-[minmax(0,1fr)_260px]'}`}>
+          <div className={`grid rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.08),_transparent_28%),linear-gradient(180deg,_rgba(248,250,252,0.98),_rgba(241,245,249,0.96))] ${overlay ? `h-full min-h-0 gap-2 p-1.5 ${showFullscreenInspector ? 'xl:grid-cols-[290px_minmax(0,1fr)_280px]' : 'xl:grid-cols-[290px_minmax(0,1fr)]'}` : 'gap-4 p-3 md:p-4 lg:grid-cols-[minmax(0,1fr)_260px]'}`}>
             {canEditFlow ? renderFullscreenPaletteRail() : null}
             <div className="relative min-w-0 space-y-2 overflow-hidden">
               <div className={`flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200/80 bg-white/80 text-xs text-slate-500 ${overlay ? 'px-2 py-1.5' : 'px-3 py-2'}`}>
@@ -4098,7 +4478,9 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   {canEditFlow ? renderFullscreenShortcutHint() : null}
                   {canEditFlow && paletteDragKind ? (
                     <div className="pointer-events-none absolute inset-x-4 top-4 z-10 rounded-2xl border border-dashed border-emerald-300 bg-white/90 px-4 py-3 text-sm font-medium text-emerald-800 shadow-sm">
-                      Suelta aqui para crear un bloque de {STUDIO_PALETTE_ITEMS.find((item) => item.kind === paletteDragKind)?.label.toLowerCase()}.
+                      {'kind' in (parsePaletteDragValue(paletteDragKind) || {})
+                        ? `Suelta aqui para crear un bloque de ${STUDIO_PALETTE_ITEMS.find((item) => item.kind === (parsePaletteDragValue(paletteDragKind) as { kind: StudioPaletteKind }).kind)?.label.toLowerCase() || 'flujo'}.`
+                        : `Suelta aqui para insertar la plantilla ${STUDIO_TEMPLATE_ITEMS.find((item) => item.id === (parsePaletteDragValue(paletteDragKind) as { templateId: string } | null)?.templateId)?.label.toLowerCase() || 'seleccionada'}.`}
                     </div>
                   ) : null}
                   {!canEditFlow ? (
@@ -4181,6 +4563,48 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         })() : null}
                       </svg>
 
+                      <svg className="absolute inset-0 h-full w-full" viewBox={`0 0 ${studioGraph.contentWidth} ${studioGraph.contentHeight}`} fill="none">
+                        {studioGraph.edges.map((edge) => {
+                          const source = studioGraph.nodes.find((node) => node.id === edge.fromId)
+                          const target = studioGraph.nodes.find((node) => node.id === edge.toId)
+                          if (!source || !target) return null
+                          const sourceAnchor = getConnectionHandleAnchor({
+                            node: source,
+                            sourceOptionId: edge.sourceOptionId,
+                            sourceOptionIndex: edge.sourceOptionIndex,
+                            targetKind: edge.targetKind,
+                          })
+                          const metrics = getEdgeCurveMetrics(source, target, {
+                            startX: sourceAnchor.x,
+                            startY: sourceAnchor.y,
+                          })
+                          const edgeMenuX = Math.max(24, Math.min(studioGraph.contentWidth - 232, metrics.midpoint.x - 108))
+                          const edgeMenuY = Math.max(24, metrics.midpoint.y - 16)
+
+                          return (
+                            <path
+                              key={`edge-hit-${edge.id}`}
+                              d={metrics.path}
+                              fill="none"
+                              stroke="transparent"
+                              strokeWidth="18"
+                              style={{ pointerEvents: 'stroke' }}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setContextMenu(null)
+                                setActiveEdgeId((current) => current === edge.id ? null : edge.id)
+                              }}
+                              onContextMenu={(event) => {
+                                if (!canEditFlow) return
+                                event.preventDefault()
+                                event.stopPropagation()
+                                openEdgeContextMenu(edge, edgeMenuX, edgeMenuY)
+                              }}
+                            />
+                          )
+                        })}
+                      </svg>
+
                       {studioGraph.edges.map((edge) => {
                         const source = studioGraph.nodes.find((node) => node.id === edge.fromId)
                         const target = studioGraph.nodes.find((node) => node.id === edge.toId)
@@ -4212,8 +4636,15 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                               type="button"
                               aria-label={`Editar conexión ${edge.label || 'del flujo'}`}
                               onPointerDown={(event) => event.stopPropagation()}
+                              onContextMenu={(event) => {
+                                if (!canEditFlow) return
+                                event.preventDefault()
+                                event.stopPropagation()
+                                openEdgeContextMenu(edge, panelLeft, Math.max(24, panelTop + 20))
+                              }}
                               onClick={(event) => {
                                 event.stopPropagation()
+                                setContextMenu(null)
                                 setActiveEdgeId((current) => current === edge.id ? null : edge.id)
                               }}
                               className={`flex h-6 w-6 items-center justify-center rounded-full border bg-white/96 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.4)] transition hover:border-slate-300 ${isActiveEdge ? 'border-slate-400 ring-2 ring-slate-900/10' : 'border-slate-200'}`}
@@ -4353,7 +4784,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                       Editar destino
                                     </Button>
                                   ) : null}
-                                  {edge.sourceKind === 'action' && (edge.targetKind === 'stage' || edge.targetKind === 'trigger') ? (
+                                  {edge.sourceKind !== 'start' ? (
                                     <Button
                                       type="button"
                                       variant="outline"
@@ -4361,7 +4792,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                       className="h-8 border-rose-200 text-xs text-rose-700 hover:bg-rose-50"
                                       onClick={() => disconnectEdge(edge)}
                                     >
-                                      Soltar conexión
+                                      Eliminar conexión
                                     </Button>
                                   ) : null}
                                 </div>
@@ -4373,7 +4804,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
                       {studioGraph.nodes.map((node) => {
                         const nodeKey = node.id.split(':')[1]
-                        const active = node.kind !== 'start' && focusedNode?.kind === node.kind && focusedNode.id === nodeKey
+                        const active = focusedNode?.kind === node.kind && focusedNode.id === nodeKey
                         const canStartConnection = node.kind !== 'start'
                         const validTarget = connectionDraft
                           ? node.id !== connectionDraft.fromId && (
@@ -4391,11 +4822,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         return (
                           <div
                             key={node.id}
+                            id={node.domId}
                             onContextMenu={(event) => {
                               if (!canEditFlow) return
                               event.preventDefault()
                               event.stopPropagation()
-                              if (node.kind === 'start') return
                               openContextMenu({ kind: node.kind, id: nodeKey }, node.x + node.width + 14, node.y + 18)
                             }}
                             onPointerDown={(event) => {
@@ -4405,9 +4836,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                             onClick={(event) => {
                               event.stopPropagation()
                               setActiveEdgeId(null)
-                              if (node.kind !== 'start') {
-                                focusStudioNode({ kind: node.kind, id: nodeKey })
-                              }
+                              focusStudioNode({ kind: node.kind, id: nodeKey })
                             }}
                             className={`group absolute cursor-grab overflow-hidden rounded-[20px] border text-left shadow-[0_14px_30px_-24px_rgba(15,23,42,0.35)] transition active:cursor-grabbing ${node.accentClass} ${active ? 'ring-2 ring-slate-900/15 shadow-[0_18px_40px_-22px_rgba(15,23,42,0.32)]' : 'hover:-translate-y-0.5 hover:shadow-[0_16px_34px_-22px_rgba(15,23,42,0.3)]'} ${validTarget ? 'ring-2 ring-sky-300 ring-offset-2' : ''}`}
                             style={{ left: `${node.x}px`, top: `${node.y}px`, width: `${node.width}px` }}
@@ -4431,16 +4860,16 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                             ) : (
                               <button
                                 type="button"
-                                aria-label="Agregar mensaje inicial"
+                                aria-label="Editar inicio del flujo"
                                 onPointerDown={(event) => event.stopPropagation()}
                                 onClick={(event) => {
                                   if (!canEditFlow) return
                                   event.stopPropagation()
-                                  openCreateMenu({ x: node.x + node.width + 24, y: node.y + 20, target: { sourceNode: { kind: 'stage', id: builder.flowStages[0]?.id || '' } } })
+                                  focusStudioNode({ kind: 'start', id: 'start' })
                                 }}
                                 className={`absolute -right-3 -top-3 flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow transition hover:border-emerald-300 hover:text-emerald-700 ${active ? 'opacity-100' : 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100'}`}
                               >
-                                <Plus className="h-4 w-4" />
+                                <Info className="h-4 w-4" />
                               </button>
                             )}
                             <button
@@ -4574,30 +5003,62 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                           {contextMenu.mode === 'node' && contextMenu.node ? (
                             <>
                               <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Menu del bloque</div>
-                              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { openEditor(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
-                                <span>Editar bloque</span>
-                                <span>✎</span>
+                              {contextMenu.node.kind === 'start' ? (
+                                <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { focusStudioNode({ kind: 'start', id: 'start' }); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                  <span>Editar inicio</span>
+                                  <Info className="h-4 w-4" />
+                                </button>
+                              ) : (
+                                <>
+                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { openEditor(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                    <span>Editar bloque</span>
+                                    <span>✎</span>
+                                  </button>
+                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => openCreateMenu({ x: contextMenu.x + 18, y: contextMenu.y + 12, target: { sourceNode: contextMenu.node } })} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                    <span>Crear desde aqui</span>
+                                    <Plus className="h-4 w-4" />
+                                  </button>
+                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { duplicateNode(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                    <span>Duplicar bloque</span>
+                                    <span>+</span>
+                                  </button>
+                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { reorderNode(contextMenu.node!, -1); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                    <span>Mover antes</span>
+                                    <span>↑</span>
+                                  </button>
+                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { reorderNode(contextMenu.node!, 1); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                    <span>Mover despues</span>
+                                    <span>↓</span>
+                                  </button>
+                                  <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { deleteNodeWithFeedback(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-rose-700 transition hover:bg-rose-50">
+                                    <span>Eliminar bloque</span>
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </>
+                              )}
+                            </>
+                          ) : null}
+                          {contextMenu.mode === 'edge' && contextMenu.edge ? (
+                            <>
+                              <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Menu de conexión</div>
+                              <div className="px-3 pb-2 text-xs leading-5 text-slate-500">{contextMenu.edge.label || 'Ruta del flujo'}</div>
+                              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => {
+                                if (contextMenu.edge?.sourceKind === 'start') {
+                                  focusStudioNode({ kind: 'start', id: 'start' })
+                                } else if (contextMenu.edge) {
+                                  disconnectEdge(contextMenu.edge)
+                                }
+                                setContextMenu(null)
+                              }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-rose-700 transition hover:bg-rose-50">
+                                <span>{contextMenu.edge.sourceKind === 'start' ? 'Editar inicio' : 'Eliminar conexión'}</span>
+                                {contextMenu.edge.sourceKind === 'start' ? <Info className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
                               </button>
-                              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => openCreateMenu({ x: contextMenu.x + 18, y: contextMenu.y + 12, target: { sourceNode: contextMenu.node } })} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
-                                <span>Crear desde aqui</span>
-                                <Plus className="h-4 w-4" />
-                              </button>
-                              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { duplicateNode(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
-                                <span>Duplicar bloque</span>
-                                <span>+</span>
-                              </button>
-                              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { reorderNode(contextMenu.node!, -1); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
-                                <span>Mover antes</span>
-                                <span>↑</span>
-                              </button>
-                              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { reorderNode(contextMenu.node!, 1); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
-                                <span>Mover despues</span>
-                                <span>↓</span>
-                              </button>
-                              <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { deleteNodeWithFeedback(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-rose-700 transition hover:bg-rose-50">
-                                <span>Eliminar bloque</span>
-                                <Trash2 className="h-4 w-4" />
-                              </button>
+                              {contextMenu.edge.sourceKind === 'start' ? (
+                                <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { focusStudioNode({ kind: 'start', id: 'start' }); setContextMenu(null) }} className="mt-1 flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50">
+                                  <span>Seleccionar caja inicial</span>
+                                  <Plus className="h-4 w-4" />
+                                </button>
+                              ) : null}
                             </>
                           ) : null}
                           {contextMenu.mode === 'canvas' ? (
