@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, Bot, ChevronDown, ChevronUp, Copy, GitBranch, GripVertical, History, Info, Plus, Redo2, Save, Smile, Trash2, Undo2, Users, Variable, Zap } from 'lucide-react'
+import { Bell, Bot, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Copy, GitBranch, GripVertical, History, Info, Plus, Redo2, Save, Smile, Trash2, Undo2, Users, Variable, Zap } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -1346,6 +1346,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const [paletteDragKind, setPaletteDragKind] = useState<string | null>(null)
   const [mapFullscreen, setMapFullscreen] = useState(false)
   const [flowEditMode, setFlowEditMode] = useState(false)
+  const [paletteRailOpen, setPaletteRailOpen] = useState(true)
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [inspectorAdvancedOpen, setInspectorAdvancedOpen] = useState(false)
   const [minimapOpen, setMinimapOpen] = useState(true)
@@ -4067,16 +4068,16 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               onChange: (rule) => updateTrigger(selectedTrigger.id, { inactivityRule: rule }),
             })}
             <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
                   <div className="text-sm font-semibold text-slate-900">Condiciones del filtro</div>
-                  <div className="text-xs text-slate-500">Cada condición puede evaluar una variable y enviar al usuario a un mensaje o a una acción concreta.</div>
+                  <InfoHint content="Cada condición puede evaluar una variable y enviar al usuario a un mensaje o a una acción concreta." label="Ver ayuda de condiciones del filtro" />
                 </div>
                 <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => addTriggerCondition(selectedTrigger.id)}>Agregar condición</Button>
               </div>
               <div className="space-y-3">
                 {selectedTrigger.conditions.length ? selectedTrigger.conditions.map((condition) => (
-                  <div key={condition.id} className="space-y-2 rounded-2xl border border-slate-200 bg-white p-3">
+                  <div key={condition.id} className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3">
                     <div className="grid gap-2">
                       <Label>Variable</Label>
                       <Select value={condition.variableKey} onValueChange={(value) => updateTriggerCondition(selectedTrigger.id, condition.id, { variableKey: value })}>
@@ -4086,7 +4087,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="grid gap-2 md:grid-cols-[0.9fr_1.1fr]">
+                    <div className="grid gap-2 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
                       <div className="grid gap-2">
                         <Label>Operador</Label>
                         <Select value={condition.matchMode} onValueChange={(value) => updateTriggerCondition(selectedTrigger.id, condition.id, { matchMode: value as ChatbotFlowTriggerMatchMode })}>
@@ -4105,25 +4106,27 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         <Input value={condition.matchValue} onChange={(event) => updateTriggerCondition(selectedTrigger.id, condition.id, { matchValue: event.target.value })} placeholder="Ej: 5" />
                       </div>
                     </div>
-                    <div className="grid gap-2">
-                      <Label>Ir a acción</Label>
-                      <Select value={condition.targetActionId || '__none__'} onValueChange={(value) => updateTriggerCondition(selectedTrigger.id, condition.id, { targetActionId: value === '__none__' ? '' : value, targetStageId: value === '__none__' ? condition.targetStageId : '' })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Sin acción</SelectItem>
-                          {builder.quickActions.map((action) => <SelectItem key={action.id} value={action.id}>{action.label}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Ir a mensaje</Label>
-                      <Select value={condition.targetStageId || '__none__'} onValueChange={(value) => updateTriggerCondition(selectedTrigger.id, condition.id, { targetStageId: value === '__none__' ? '' : value, targetActionId: value === '__none__' ? condition.targetActionId : '' })}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Sin mensaje</SelectItem>
-                          {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                    <div className="grid gap-2 xl:grid-cols-2">
+                      <div className="grid gap-2">
+                        <Label>Ir a acción</Label>
+                        <Select value={condition.targetActionId || '__none__'} onValueChange={(value) => updateTriggerCondition(selectedTrigger.id, condition.id, { targetActionId: value === '__none__' ? '' : value, targetStageId: value === '__none__' ? condition.targetStageId : '' })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Sin acción</SelectItem>
+                            {builder.quickActions.map((action) => <SelectItem key={action.id} value={action.id}>{action.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Ir a mensaje</Label>
+                        <Select value={condition.targetStageId || '__none__'} onValueChange={(value) => updateTriggerCondition(selectedTrigger.id, condition.id, { targetStageId: value === '__none__' ? '' : value, targetActionId: value === '__none__' ? condition.targetActionId : '' })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Sin mensaje</SelectItem>
+                            {builder.flowStages.map((stage) => <SelectItem key={stage.id} value={stage.id}>{stage.title}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button type="button" variant="outline" size="sm" className="h-8 border-rose-200 text-xs text-rose-700" onClick={() => removeTriggerCondition(selectedTrigger.id, condition.id)}>Eliminar condición</Button>
@@ -4195,14 +4198,14 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     return (
       <div className="hidden h-full min-h-0 rounded-[26px] border border-slate-200 bg-white/96 p-3 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.25)] xl:flex xl:flex-col xl:gap-4">
         <div className="rounded-[20px] border border-slate-200 bg-slate-50/80 px-3 py-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
-              <GitBranch className="h-5 w-5" />
-            </div>
-            <div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
+                <GitBranch className="h-5 w-5" />
+              </div>
               <div className="text-sm font-semibold text-slate-900">Bloques y plantillas</div>
-              <div className="text-xs leading-5 text-slate-500">Arrastra al canvas o haz clic para insertar. Si tienes una caja activa, la plantilla se conectará desde ella cuando aplique.</div>
             </div>
+            <InfoHint content="Arrastra al canvas o haz clic para insertar. Si tienes una caja activa, la plantilla se conectará desde ella cuando aplique." label="Ver ayuda de bloques y plantillas" />
           </div>
         </div>
 
@@ -4220,14 +4223,17 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   onDragStart={(event) => handlePaletteDragStart(event, dragValue)}
                   onDragEnd={handlePaletteDragEnd}
                   onClick={() => handleCreateFromMenu(item.kind)}
-                  className={`flex w-full items-center gap-3 rounded-[18px] border px-3 py-3 text-left transition ${item.className} ${paletteDragKind === dragValue ? 'scale-[1.01] shadow-sm ring-2 ring-slate-900/10' : ''}`}
+                  className={`flex w-full items-center gap-2 rounded-[18px] border px-2.5 py-2.5 text-left transition ${item.className} ${paletteDragKind === dragValue ? 'scale-[1.01] shadow-sm ring-2 ring-slate-900/10' : ''}`}
+                  title={item.description}
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-current/15 bg-white/85">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-current/15 bg-white/85">
                     <Icon className="h-4.5 w-4.5" />
                   </div>
-                  <div>
-                    <div className="text-xs font-semibold">{item.label}</div>
-                    <div className="text-[11px] leading-4 opacity-85">{item.description}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="truncate text-xs font-semibold">{item.label}</div>
+                      <InfoHint content={item.description} label={`Ver ayuda de ${item.label}`} className="h-4.5 w-4.5 shrink-0" iconClassName="h-3 w-3" />
+                    </div>
                   </div>
                 </button>
               )
@@ -4252,15 +4258,18 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   onDragStart={(event) => handlePaletteDragStart(event, dragValue)}
                   onDragEnd={handlePaletteDragEnd}
                   onClick={() => applyTemplate(template.id)}
-                  className={`w-full rounded-[18px] border px-3 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${template.toneClass} ${paletteDragKind === dragValue ? 'scale-[1.01] shadow-sm ring-2 ring-slate-900/10' : ''}`}
+                  className={`w-full rounded-[18px] border px-2.5 py-2.5 text-left transition hover:-translate-y-0.5 hover:shadow-sm ${template.toneClass} ${paletteDragKind === dragValue ? 'scale-[1.01] shadow-sm ring-2 ring-slate-900/10' : ''}`}
+                  title={template.description}
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-current/15 bg-white/85">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-current/15 bg-white/85">
                       <Icon className="h-4 w-4" />
                     </div>
-                    <div>
-                      <div className="text-xs font-semibold">{template.label}</div>
-                      <div className="mt-1 text-[11px] leading-4 opacity-85">{template.description}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate text-xs font-semibold">{template.label}</div>
+                        <InfoHint content={template.description} label={`Ver ayuda de ${template.label}`} className="h-4.5 w-4.5 shrink-0" iconClassName="h-3 w-3" />
+                      </div>
                     </div>
                   </div>
                 </button>
@@ -4669,6 +4678,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   function renderMapWorkspace(overlay = false) {
     const canEditFlow = overlay && flowEditMode
     const showFullscreenInspector = canEditFlow && inspectorOpen && Boolean(focusedNode)
+    const showPaletteRail = canEditFlow && paletteRailOpen
     const startNode = studioGraph.nodes.find((node) => node.kind === 'start')
     const firstStageNode = studioGraph.nodes.find((node) => node.kind === 'stage')
     const startZoneWidth = firstStageNode ? firstStageNode.x + firstStageNode.width + 72 : 360
@@ -4676,8 +4686,8 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     return (
       <Card className={overlay ? 'flex h-full flex-col border-0 bg-transparent shadow-none' : ''}>
         <CardContent className={overlay ? 'flex-1 overflow-hidden px-0 pb-0 pt-0' : 'overflow-hidden pt-0'}>
-          <div className={`grid rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.08),_transparent_28%),linear-gradient(180deg,_rgba(248,250,252,0.98),_rgba(241,245,249,0.96))] ${overlay ? `h-full min-h-0 gap-2 p-1.5 ${showFullscreenInspector ? 'xl:grid-cols-[290px_minmax(0,1fr)_280px]' : 'xl:grid-cols-[290px_minmax(0,1fr)]'}` : 'gap-4 p-3 md:p-4 lg:grid-cols-[minmax(0,1fr)_260px]'}`}>
-            {canEditFlow ? renderFullscreenPaletteRail() : null}
+          <div className={`grid rounded-[28px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.08),_transparent_28%),linear-gradient(180deg,_rgba(248,250,252,0.98),_rgba(241,245,249,0.96))] ${overlay ? `h-full min-h-0 gap-2 p-1.5 ${showPaletteRail ? (showFullscreenInspector ? 'xl:grid-cols-[220px_minmax(0,1fr)_344px]' : 'xl:grid-cols-[220px_minmax(0,1fr)]') : (showFullscreenInspector ? 'xl:grid-cols-[minmax(0,1fr)_344px]' : 'xl:grid-cols-[minmax(0,1fr)]')}` : 'gap-4 p-3 md:p-4 lg:grid-cols-[minmax(0,1fr)_260px]'}`}>
+            {showPaletteRail ? renderFullscreenPaletteRail() : null}
             <div className="relative min-w-0 space-y-2 overflow-hidden">
               <div className={`flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200/80 bg-white/80 text-xs text-slate-500 ${overlay ? 'px-2 py-1.5' : 'px-3 py-2'}`}>
                 <div className="flex flex-wrap items-center gap-2">
@@ -4690,6 +4700,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {canEditFlow ? (
+                    <Button type="button" variant="outline" size="sm" onClick={() => setPaletteRailOpen((current) => !current)}>
+                      {paletteRailOpen ? <ChevronLeft className="mr-1.5 h-3.5 w-3.5" /> : <ChevronRight className="mr-1.5 h-3.5 w-3.5" />}
+                      {paletteRailOpen ? 'Ocultar bloques' : 'Mostrar bloques'}
+                    </Button>
+                  ) : null}
                   {canEditFlow && focusedNode ? (
                     <Button type="button" variant="outline" size="sm" onClick={() => setInspectorOpen((current) => !current)}>
                       {inspectorOpen ? 'Inspector' : 'Mostrar inspector'}
