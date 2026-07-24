@@ -743,7 +743,12 @@ function getStageCardMeta(stage: ChatbotFlowStage) {
   }
 }
 
-function buildStudioGraph(builder: BuilderState) {
+function buildStudioGraph(builder: BuilderState, measuredNodeHeights: Record<string, number> = {}) {
+  const applyMeasuredHeight = <T extends StudioGraphNode>(node: T): T => ({
+    ...node,
+    height: measuredNodeHeights[node.id] ?? node.height,
+  })
+
   const laneY = {
     triggers: 44,
     stages: 232,
@@ -757,7 +762,7 @@ function buildStudioGraph(builder: BuilderState) {
   const actionStackGap = 122
   const pauseStackGap = 112
 
-  const startNode: StudioGraphNode = {
+  const startNode: StudioGraphNode = applyMeasuredHeight({
     id: 'start',
     domId: 'studio-start',
     kind: 'start',
@@ -772,7 +777,7 @@ function buildStudioGraph(builder: BuilderState) {
     headerClass: 'bg-emerald-50 text-emerald-900',
     headerBadgeClass: 'bg-white/90 text-emerald-700',
     toneClass: 'stroke-emerald-400',
-  }
+  })
 
   const stageNodes: StudioGraphNode[] = builder.flowStages.map((stage, index) => {
     const id = `stage:${stage.id}`
@@ -780,7 +785,7 @@ function buildStudioGraph(builder: BuilderState) {
     const meta = getStageCardMeta(stage)
     const messageHtml = stage.templateKey === 'prechat-form' ? getPreChatFormPreviewHtml(builder) : getStageMessageHtml(stage)
     const messageText = stage.templateKey === 'prechat-form' ? `${builder.preChatFormTitle}\n${builder.preChatFormDescription}\n${getPreChatPreviewFields(builder).map((field) => `${field.label}: ${field.placeholder}`).join('\n')}` : getStageMessageText(stage)
-    return {
+    return applyMeasuredHeight({
       id,
       domId: toDomId('stage', stage.id),
       kind: 'stage',
@@ -796,7 +801,7 @@ function buildStudioGraph(builder: BuilderState) {
       headerClass: 'bg-emerald-50 text-emerald-900',
       headerBadgeClass: 'bg-white/90 text-emerald-700',
       toneClass: 'stroke-emerald-400',
-    }
+    })
   })
 
   const stageIndexById = new Map(builder.flowStages.map((stage, index) => [stage.id, index]))
@@ -810,7 +815,7 @@ function buildStudioGraph(builder: BuilderState) {
     const triggerCount = triggerCountByStageId.get(trigger.targetStageId) ?? 0
     triggerCountByStageId.set(trigger.targetStageId, triggerCount + 1)
 
-    return {
+    return applyMeasuredHeight({
       id,
       domId: toDomId('trigger', trigger.id),
       kind: 'trigger',
@@ -825,7 +830,7 @@ function buildStudioGraph(builder: BuilderState) {
       headerClass: trigger.enabled ? 'bg-amber-400 text-white' : 'bg-slate-200 text-slate-600',
       headerBadgeClass: trigger.enabled ? 'bg-white/90 text-amber-700' : 'bg-white/75 text-slate-500',
       toneClass: trigger.enabled ? 'stroke-amber-400' : 'stroke-slate-300',
-    }
+    })
   })
 
   const actionStageIndex = new Map<string, number>()
@@ -850,7 +855,7 @@ function buildStudioGraph(builder: BuilderState) {
     const actionCount = actionCountByStageIndex.get(sourceIndex) ?? 0
     actionCountByStageIndex.set(sourceIndex, actionCount + 1)
 
-    return {
+    return applyMeasuredHeight({
       id,
       domId: toDomId('action', action.id),
       kind: 'action',
@@ -865,7 +870,7 @@ function buildStudioGraph(builder: BuilderState) {
       headerClass: action.enabled ? 'bg-fuchsia-500 text-white' : 'bg-slate-200 text-slate-600',
       headerBadgeClass: action.enabled ? 'bg-white/90 text-fuchsia-700' : 'bg-white/75 text-slate-500',
       toneClass: action.enabled ? 'stroke-fuchsia-400' : 'stroke-slate-300',
-    }
+    })
   })
 
   const pauseCountBySourceIndex = new Map<number, number>()
@@ -878,7 +883,7 @@ function buildStudioGraph(builder: BuilderState) {
     pauseCountBySourceIndex.set(sourceIndex, pauseCount + 1)
     const midpointIndex = sourceIndex + Math.max(0.45, (targetIndex - sourceIndex) * 0.5)
 
-    return {
+    return applyMeasuredHeight({
       id,
       domId: toDomId('pause', pause.id),
       kind: 'pause',
@@ -893,7 +898,7 @@ function buildStudioGraph(builder: BuilderState) {
       headerClass: pause.enabled ? 'bg-sky-500 text-white' : 'bg-slate-200 text-slate-600',
       headerBadgeClass: pause.enabled ? 'bg-white/90 text-sky-700' : 'bg-white/75 text-slate-500',
       toneClass: pause.enabled ? 'stroke-sky-400' : 'stroke-slate-300',
-    }
+    })
   })
 
   const nodes = [startNode, ...triggerNodes, ...stageNodes, ...pauseNodes, ...actionNodes]
@@ -1349,11 +1354,13 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const [studioRulesOpen, setStudioRulesOpen] = useState(false)
   const [studioMounted, setStudioMounted] = useState(false)
   const [boardViewportSize, setBoardViewportSize] = useState({ width: 0, height: 0 })
+  const [measuredNodeHeights, setMeasuredNodeHeights] = useState<Record<string, number>>({})
   const [measuredHandleAnchors, setMeasuredHandleAnchors] = useState<Record<string, { x: number; y: number }>>({})
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const dragMovedRef = useRef(false)
   const boardViewportRef = useRef<HTMLDivElement | null>(null)
+  const nodeElementsRef = useRef<Map<string, HTMLDivElement>>(new Map())
   const handleElementsRef = useRef<Map<string, HTMLButtonElement>>(new Map())
   const conversationThreadViewportRef = useRef<HTMLDivElement | null>(null)
   const conversationThreadBottomRef = useRef<HTMLDivElement | null>(null)
@@ -2020,7 +2027,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   }
 
   const stageMap = useMemo(() => Object.fromEntries(builder.flowStages.map((stage) => [stage.id, stage])), [builder.flowStages])
-  const studioGraph = useMemo(() => buildStudioGraph(builder), [builder])
+  const studioGraph = useMemo(() => buildStudioGraph(builder, measuredNodeHeights), [builder, measuredNodeHeights])
 
   function getHandleAnchorKey(nodeId: string, sourceOptionId?: string) {
     return `${nodeId}::${sourceOptionId || '__node__'}`
@@ -2045,6 +2052,14 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     handleElementsRef.current.delete(key)
   }
 
+  function registerNodeElement(key: string, element: HTMLDivElement | null) {
+    if (element) {
+      nodeElementsRef.current.set(key, element)
+      return
+    }
+    nodeElementsRef.current.delete(key)
+  }
+
   function getMeasuredHandleAnchor(nodeId: string, sourceOptionId?: string) {
     return measuredHandleAnchors[getHandleAnchorKey(nodeId, sourceOptionId)] ?? null
   }
@@ -2059,6 +2074,40 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     })
     setMeasuredHandleAnchors(nextAnchors)
   }, [builder.studioViewport.scale, builder.studioViewport.x, builder.studioViewport.y, studioGraph.nodes, studioGraph.edges])
+
+  useEffect(() => {
+    const elements = nodeElementsRef.current
+
+    const updateHeights = () => {
+      const nextHeights: Record<string, number> = {}
+      elements.forEach((element, key) => {
+        nextHeights[key] = Math.ceil(element.clientHeight)
+      })
+
+      setMeasuredNodeHeights((current) => {
+        const currentKeys = Object.keys(current)
+        const nextKeys = Object.keys(nextHeights)
+        if (currentKeys.length === nextKeys.length && nextKeys.every((key) => current[key] === nextHeights[key])) {
+          return current
+        }
+        return nextHeights
+      })
+    }
+
+    updateHeights()
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateHeights()
+    })
+
+    elements.forEach((element) => {
+      resizeObserver.observe(element)
+    })
+
+    return () => {
+      resizeObserver.disconnect()
+    }
+  }, [studioGraph.nodes])
   const editingStage = editingNode?.kind === 'stage' ? builder.flowStages.find((stage) => stage.id === editingNode.id) ?? null : null
   const editingTrigger = editingNode?.kind === 'trigger' ? builder.flowTriggers.find((trigger) => trigger.id === editingNode.id) ?? null : null
   const editingAction = editingNode?.kind === 'action' ? builder.quickActions.find((action) => action.id === editingNode.id) ?? null : null
@@ -5040,7 +5089,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                       })}
 
                       {studioGraph.nodes.map((node) => {
-                        const nodeKey = node.id.split(':')[1]
+                        const nodeKey = node.id.split(':')[1] || node.id
                         const active = focusedNode?.kind === node.kind && focusedNode.id === nodeKey
                         const canStartConnection = node.kind !== 'start'
                         const validTarget = connectionDraft
@@ -5058,9 +5107,18 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                           <div
                             key={node.id}
                             id={node.domId}
+                            ref={(element) => registerNodeElement(node.id, element)}
                             onPointerDown={(event) => {
                               if (!canEditFlow) return
                               handleBoardNodePointerDown(event, node)
+                            }}
+                            onContextMenu={(event) => {
+                              if (!canEditFlow) return
+                              event.preventDefault()
+                              event.stopPropagation()
+                              setActiveEdgeId(null)
+                              const position = getCanvasPointFromClient(event.clientX, event.clientY)
+                              openContextMenu({ kind: node.kind, id: nodeKey }, position.x, position.y)
                             }}
                             onClick={(event) => {
                               event.stopPropagation()
@@ -5274,7 +5332,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                                     <span>↓</span>
                                   </button>
                                   <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => { deleteNodeWithFeedback(contextMenu.node!); setContextMenu(null) }} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-rose-700 transition hover:bg-rose-50">
-                                    <span>Eliminar bloque</span>
+                                    <span>Eliminar caja</span>
                                     <Trash2 className="h-4 w-4" />
                                   </button>
                                 </>
