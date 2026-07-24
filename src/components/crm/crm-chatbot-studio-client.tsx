@@ -208,6 +208,12 @@ const FILTER_VARIABLE_FALLBACK_OPTIONS: Array<{ key: string; label: string }> = 
   { key: 'created_at', label: 'Fecha de registro' },
   { key: 'last_message_type', label: 'Tipo de último mensaje' },
   { key: 'ultimo_mensaje', label: 'Último mensaje' },
+  { key: 'last_response_option_label', label: 'Última opción elegida' },
+  { key: 'last_response_option_id', label: 'ID de última opción elegida' },
+  { key: 'last_response_option_message', label: 'Texto de última opción elegida' },
+  { key: 'selected_options_list', label: 'Opciones elegidas acumuladas' },
+  { key: 'last_quick_action_label', label: 'Última acción ejecutada' },
+  { key: 'last_quick_action_id', label: 'ID de última acción ejecutada' },
   { key: 'weekday', label: 'Días de la semana' },
   { key: 'execution_date', label: 'Fecha de ejecución' },
   { key: 'execution_time', label: 'Tiempo de ejecución' },
@@ -1357,6 +1363,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   const [boardViewportSize, setBoardViewportSize] = useState({ width: 0, height: 0 })
   const [measuredNodeHeights, setMeasuredNodeHeights] = useState<Record<string, number>>({})
   const [measuredHandleAnchors, setMeasuredHandleAnchors] = useState<Record<string, { x: number; y: number }>>({})
+  const [testingNotificationActionId, setTestingNotificationActionId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const dragMovedRef = useRef(false)
@@ -1441,6 +1448,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     ]
     return merged.filter((option, index) => merged.findIndex((candidate) => candidate.key === option.key) === index)
   }, [builder.flowVariables])
+  const notificationValidationSummary = useMemo(() => validateBuilderNotificationConfigs(builder), [builder])
   const builderSnapshot = useMemo(() => serializeBuilderState(builder), [builder])
   const hasUnsavedChanges = builderSnapshot !== lastSavedSnapshotRef.current
   const canUndo = historyPast.length > 0
@@ -1704,6 +1712,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
   async function handleSaveChannel() {
     if (!selectedChannelId) return
+    if (notificationValidationSummary.hasErrors) {
+      setError(notificationValidationSummary.messages[0] || 'Corrige la configuración de Notificarme antes de guardar.')
+      setNotice(null)
+      return
+    }
     setSaving(true)
     setError(null)
     setNotice(null)
@@ -1728,6 +1741,51 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
     await loadBase()
     setSelectedChannelId(json.data.id)
     setSaving(false)
+  }
+
+  async function handleSendNotificationTest(action: ChatbotQuickAction) {
+    if (!selectedChannelId) return
+
+    const automation = action.automation ?? getDefaultChatbotQuickActionAutomationConfig()
+    const validation = validateStudioNotificationConfig(automation.notifications)
+    if (validation.hasErrors) {
+      setError(validation.errors[0] || 'Corrige la configuración de Notificarme antes de probar.')
+      setNotice(null)
+      return
+    }
+
+    setTestingNotificationActionId(action.id)
+    setError(null)
+    setNotice(null)
+
+    try {
+      const json = await requestJson<{ channels: string[]; counts: { internal: number; email: number; whatsapp: number; telegram: number }; warnings: string[] }>(`/api/crm/channels/${selectedChannelId}/chatbot-notifications/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actionLabel: action.label,
+          companyName: builder.channelName,
+          notifications: automation.notifications,
+        }),
+      })
+
+      if (!json.success || !json.data) {
+        setError(json.error || 'No se pudo enviar la prueba de notificación.')
+        return
+      }
+
+      const counts = json.data.counts
+      const fragments = [
+        counts.email ? `${counts.email} correo(s)` : '',
+        counts.whatsapp ? `${counts.whatsapp} WhatsApp` : '',
+        counts.telegram ? `${counts.telegram} Telegram` : '',
+        counts.internal ? `${counts.internal} interna(s)` : '',
+      ].filter(Boolean)
+      const warningText = json.data.warnings.length ? ` Advertencias: ${json.data.warnings.join(' ')}` : ''
+      setNotice(`Prueba enviada para ${action.label || 'la acción'}. ${fragments.join(' · ') || 'Sin destinatarios resueltos.'}.${warningText}`)
+    } finally {
+      setTestingNotificationActionId(null)
+    }
   }
 
   async function handleAssignConversation(conversationId: string, assignedToUserId: string) {
@@ -2121,6 +2179,23 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
   function renderQuickActionAutomationFields(action: ChatbotQuickAction) {
     const automation = action.automation ?? getDefaultChatbotQuickActionAutomationConfig()
+    const notificationValidation = validateStudioNotificationConfig(automation.notifications)
+    const notificationEmailValue = joinStudioConfigValues(notificationValidation.buckets.email)
+    const notificationWhatsAppValue = joinStudioConfigValues(notificationValidation.buckets.whatsapp)
+    const notificationTelegramValue = joinStudioConfigValues(notificationValidation.buckets.telegram)
+
+    function updateNotificationRecipientFields(patch: Partial<{ email: string; whatsapp: string; telegram: string }>) {
+      updateQuickActionAutomation(action.id, {
+        notifications: {
+          ...automation.notifications,
+          notifyRecipients: serializeStudioNotificationRecipients({
+            email: patch.email ?? notificationEmailValue,
+            whatsapp: patch.whatsapp ?? notificationWhatsAppValue,
+            telegram: patch.telegram ?? notificationTelegramValue,
+          }),
+        },
+      })
+    }
 
     return (
       <div className="grid gap-4">
@@ -2232,9 +2307,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                 <Switch checked={automation.variables.setVariableEnabled} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { variables: { ...automation.variables, setVariableEnabled: checked } })} />
               </div>
               {automation.variables.setVariableEnabled ? (
-                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                  <Input value={automation.variables.variableKey} onChange={(event) => updateQuickActionAutomation(action.id, { variables: { ...automation.variables, variableKey: event.target.value } })} placeholder="estado_lead" />
-                  <Input value={automation.variables.variableValue} onChange={(event) => updateQuickActionAutomation(action.id, { variables: { ...automation.variables, variableValue: event.target.value } })} placeholder="calificado" />
+                <div className="mt-3 space-y-2">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Input value={automation.variables.variableKey} onChange={(event) => updateQuickActionAutomation(action.id, { variables: { ...automation.variables, variableKey: event.target.value } })} placeholder="estado_lead" />
+                    <Input value={automation.variables.variableValue} onChange={(event) => updateQuickActionAutomation(action.id, { variables: { ...automation.variables, variableValue: event.target.value } })} placeholder="{{selected_options_list}}" />
+                  </div>
+                  <div className="text-[11px] leading-5 text-slate-500">Puedes reutilizar placeholders como {'{{last_response_option_label}}'}, {'{{last_response_option_message}}'}, {'{{selected_options_list}}'} o {'{{last_quick_action_label}}'}.</div>
                 </div>
               ) : null}
             </div>
@@ -2295,9 +2373,85 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
             <div className="rounded-2xl border border-slate-200 bg-white p-3">
               <div className="flex items-center justify-between gap-3"><span className="text-sm text-slate-900">Notificarme</span><Switch checked={automation.notifications.notifyMe} onCheckedChange={(checked) => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, notifyMe: checked } })} /></div>
               {automation.notifications.notifyMe ? (
-                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                  <Input value={joinConfigValues(automation.notifications.notifyChannels)} onChange={(event) => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, notifyChannels: event.target.value.split(/[\n,;|]+/).map((item) => item.trim()).filter(Boolean) } })} placeholder="telegram, whatsapp, correo" />
-                  <Input value={automation.notifications.notifyRecipients} onChange={(event) => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, notifyRecipients: event.target.value } })} placeholder="Destinatarios" />
+                <div className="mt-3 space-y-3">
+                  <div className="grid gap-2">
+                    <Label>Canales</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {STUDIO_NOTIFICATION_CHANNEL_OPTIONS.map((channelOption) => {
+                        const active = notificationValidation.channels.includes(channelOption.value)
+                        return (
+                          <Button
+                            key={channelOption.value}
+                            type="button"
+                            size="sm"
+                            variant={active ? 'default' : 'outline'}
+                            onClick={() => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, notifyChannels: toggleStudioNotificationChannel(automation.notifications.notifyChannels, channelOption.value) } })}
+                          >
+                            {channelOption.label}
+                          </Button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Destinatarios</Label>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div className="grid gap-2">
+                        <Label className="text-xs text-slate-500">Correos</Label>
+                        <Input value={notificationEmailValue} onChange={(event) => updateNotificationRecipientFields({ email: event.target.value })} placeholder="correo@dominio.com, ventas@dominio.com" />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label className="text-xs text-slate-500">WhatsApp</Label>
+                        <Input value={notificationWhatsAppValue} onChange={(event) => updateNotificationRecipientFields({ whatsapp: event.target.value })} placeholder="+573001112233, 3001112233" />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label className="text-xs text-slate-500">Telegram</Label>
+                        <Input value={notificationTelegramValue} onChange={(event) => updateNotificationRecipientFields({ telegram: event.target.value })} placeholder="123456789, -100987654321" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-[11px] leading-5 text-slate-500">Ahora cada canal tiene su campo separado. WhatsApp usa un canal Cloud activo de la empresa, correo usa Resend y Telegram usa TELEGRAM_BOT_TOKEN.</div>
+                  <div className="grid gap-2 md:grid-cols-4">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                      <div className="font-medium text-slate-900">Correo</div>
+                      <div>{notificationValidation.buckets.email.length} detectado(s)</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                      <div className="font-medium text-slate-900">WhatsApp</div>
+                      <div>{notificationValidation.buckets.whatsapp.length} detectado(s)</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                      <div className="font-medium text-slate-900">Telegram</div>
+                      <div>{notificationValidation.buckets.telegram.length} detectado(s)</div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                      <div className="font-medium text-slate-900">Internos</div>
+                      <div>{notificationValidation.buckets.internal.length} detectado(s)</div>
+                    </div>
+                  </div>
+                  {notificationValidation.errors.length ? (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                      {notificationValidation.errors.join(' ')}
+                    </div>
+                  ) : null}
+                  {notificationValidation.warnings.length ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                      {notificationValidation.warnings.join(' ')}
+                    </div>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void handleSendNotificationTest(action)}
+                      disabled={!selectedChannelId || testingNotificationActionId === action.id || notificationValidation.hasErrors || notificationValidation.channels.length === 0}
+                    >
+                      <Bell className="mr-1.5 h-3.5 w-3.5" />
+                      {testingNotificationActionId === action.id ? 'Enviando prueba...' : 'Probar notificación'}
+                    </Button>
+                    <span className="text-[11px] leading-5 text-slate-500">La prueba usa la configuración actual de esta acción, incluso si aún no has guardado el Studio.</span>
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -2772,17 +2926,13 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
         setError('Debe existir al menos un bloque de mensaje en el flujo.')
         return
       }
-      const remainingStages = builder.flowStages.filter((item) => item.id !== node.id)
-      const fallbackStageId = remainingStages[0]?.id || ''
       setBuilder((current) => updateSelectedFlowInBuilder(current, {
-        startStageId: current.startStageId === node.id ? fallbackStageId : current.startStageId,
+        startStageId: current.startStageId === node.id ? '' : current.startStageId,
         flowStages: current.flowStages
           .filter((item) => item.id !== node.id)
           .map((stage) => ({
             ...stage,
-            responseOptions: stage.responseOptions
-              .filter((option) => option.targetStageId !== node.id)
-              .map((option) => ({ ...option, targetStageId: option.targetStageId || fallbackStageId })),
+            responseOptions: stage.responseOptions.map((option) => option.targetStageId === node.id ? { ...option, targetStageId: '' } : option),
           })),
         flowTriggers: current.flowTriggers.map((trigger) => ({
           ...trigger,
@@ -2804,9 +2954,11 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
         flowStages: current.flowStages.map((stage) => ({
           ...stage,
           quickActionIds: stage.quickActionIds.filter((actionId) => actionId !== node.id),
+          responseOptions: stage.responseOptions.map((option) => option.targetActionId === node.id ? { ...option, targetActionId: '' } : option),
         })),
         flowTriggers: current.flowTriggers.map((trigger) => ({
           ...trigger,
+          targetActionId: trigger.targetActionId === node.id ? '' : trigger.targetActionId,
           conditions: trigger.conditions.map((condition) => condition.targetActionId === node.id ? { ...condition, targetActionId: '' } : condition),
         })),
         studioNodeLayout: removeNodeLayoutEntry(current.studioNodeLayout, `action:${node.id}`),
@@ -2819,7 +2971,13 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
     if (node.kind === 'trigger') {
       setBuilder((current) => updateSelectedFlowInBuilder(current, {
-        flowTriggers: current.flowTriggers.filter((item) => item.id !== node.id),
+        flowTriggers: current.flowTriggers
+          .filter((item) => item.id !== node.id)
+          .map((trigger) => ({
+            ...trigger,
+            targetTriggerId: trigger.targetTriggerId === node.id ? '' : trigger.targetTriggerId,
+            conditions: trigger.conditions.map((condition) => condition.targetTriggerId === node.id ? { ...condition, targetTriggerId: '' } : condition),
+          })),
         flowStages: current.flowStages.map((stage) => ({
           ...stage,
           responseOptions: stage.responseOptions.map((option) => option.targetTriggerId === node.id ? { ...option, targetTriggerId: '' } : option),
@@ -4662,7 +4820,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
               >
                 Configurar canal
               </Button>
-              <Button onClick={() => void handleSaveChannel()} disabled={!selectedChannelId || saving || !hasUnsavedChanges} className={compact ? 'flex-1' : ''}>{saving ? 'Guardando...' : hasUnsavedChanges ? 'Guardar studio' : 'Studio guardado'}</Button>
+              <Button onClick={() => void handleSaveChannel()} disabled={!selectedChannelId || saving || !hasUnsavedChanges || notificationValidationSummary.hasErrors} className={compact ? 'flex-1' : ''}>{saving ? 'Guardando...' : hasUnsavedChanges ? 'Guardar studio' : 'Studio guardado'}</Button>
             </div>
           </CardContent>
         </Card>
@@ -4726,7 +4884,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <Button type="button" variant="outline" size="sm" onClick={resetStudioViewport}>Centrar vista</Button>
                   {canEditFlow ? <Button type="button" variant="outline" size="sm" onClick={clearStudioLayout}>Auto ordenar</Button> : null}
                   {canEditFlow ? (
-                    <Button type="button" size="sm" onClick={() => void handleSaveChannel()} disabled={!selectedChannelId || saving || !hasUnsavedChanges}>
+                    <Button type="button" size="sm" onClick={() => void handleSaveChannel()} disabled={!selectedChannelId || saving || !hasUnsavedChanges || notificationValidationSummary.hasErrors}>
                       <Save className="mr-1.5 h-3.5 w-3.5" /> {saving ? 'Guardando...' : 'Guardar'}
                     </Button>
                   ) : null}
@@ -6915,6 +7073,203 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
 function joinConfigValues(values: string[]) {
   return values.join(', ')
+}
+
+type StudioNotificationChannel = 'email' | 'whatsapp' | 'telegram'
+
+type StudioNotificationRecipientBuckets = {
+  email: string[]
+  whatsapp: string[]
+  telegram: string[]
+  internal: string[]
+  invalid: string[]
+}
+
+type StudioNotificationValidation = {
+  channels: StudioNotificationChannel[]
+  buckets: StudioNotificationRecipientBuckets
+  errors: string[]
+  warnings: string[]
+  hasErrors: boolean
+}
+
+const STUDIO_NOTIFICATION_CHANNEL_OPTIONS: Array<{ value: StudioNotificationChannel; label: string }> = [
+  { value: 'email', label: 'Correo' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'telegram', label: 'Telegram' },
+]
+
+function splitStudioConfigValues(value: string) {
+  return value.split(/[\n,;|]+/).map((item) => item.trim()).filter(Boolean)
+}
+
+function joinStudioConfigValues(values: string[]) {
+  return values.join(', ')
+}
+
+function serializeStudioNotificationRecipients(args: { email: string; whatsapp: string; telegram: string }) {
+  const emailRecipients = splitStudioConfigValues(args.email)
+  const whatsappRecipients = splitStudioConfigValues(args.whatsapp)
+    .map((item) => normalizeStudioPhoneValue(item) || item.trim())
+    .filter(Boolean)
+    .map((item) => `wa:${item}`)
+  const telegramRecipients = splitStudioConfigValues(args.telegram)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => `tg:${item}`)
+
+  return [...emailRecipients, ...whatsappRecipients, ...telegramRecipients].join(', ')
+}
+
+function normalizeStudioNotificationChannel(value: string): StudioNotificationChannel | null {
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'email' || normalized === 'correo' || normalized === 'mail') return 'email'
+  if (normalized === 'whatsapp' || normalized === 'wa') return 'whatsapp'
+  if (normalized === 'telegram' || normalized === 'tg') return 'telegram'
+  return null
+}
+
+function normalizeStudioNotificationChannels(values: string[]) {
+  return Array.from(new Set(values
+    .map((value) => normalizeStudioNotificationChannel(value))
+    .filter((value): value is StudioNotificationChannel => Boolean(value))))
+}
+
+function toggleStudioNotificationChannel(values: string[], channel: StudioNotificationChannel) {
+  const current = new Set(normalizeStudioNotificationChannels(values))
+  if (current.has(channel)) {
+    current.delete(channel)
+  } else {
+    current.add(channel)
+  }
+  return Array.from(current)
+}
+
+function normalizeStudioPhoneValue(value: string) {
+  const trimmed = value.trim()
+  const digits = trimmed.replace(/\D/g, '')
+  if (digits.length < 8) return null
+  return trimmed.startsWith('+') ? `+${digits}` : digits
+}
+
+function isStudioValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+}
+
+function parseStudioNotificationRecipients(value: string): StudioNotificationRecipientBuckets {
+  const buckets: StudioNotificationRecipientBuckets = {
+    email: [],
+    whatsapp: [],
+    telegram: [],
+    internal: [],
+    invalid: [],
+  }
+
+  splitStudioConfigValues(value).forEach((rawValue) => {
+    const lowered = rawValue.toLowerCase()
+    if (lowered.startsWith('tg:') || lowered.startsWith('telegram:')) {
+      const chatId = rawValue.slice(rawValue.indexOf(':') + 1).trim()
+      if (chatId) {
+        buckets.telegram.push(chatId)
+      } else {
+        buckets.invalid.push(rawValue)
+      }
+      return
+    }
+
+    if (lowered.startsWith('wa:') || lowered.startsWith('whatsapp:')) {
+      const phone = normalizeStudioPhoneValue(rawValue.slice(rawValue.indexOf(':') + 1))
+      if (phone) {
+        buckets.whatsapp.push(phone)
+      } else {
+        buckets.invalid.push(rawValue)
+      }
+      return
+    }
+
+    if (rawValue.includes('@')) {
+      if (isStudioValidEmail(rawValue)) {
+        buckets.email.push(rawValue)
+      } else {
+        buckets.invalid.push(rawValue)
+      }
+      return
+    }
+
+    const phone = normalizeStudioPhoneValue(rawValue)
+    if (phone) {
+      buckets.whatsapp.push(phone)
+      return
+    }
+
+    buckets.internal.push(rawValue)
+  })
+
+  return {
+    email: Array.from(new Set(buckets.email)),
+    whatsapp: Array.from(new Set(buckets.whatsapp)),
+    telegram: Array.from(new Set(buckets.telegram)),
+    internal: Array.from(new Set(buckets.internal)),
+    invalid: Array.from(new Set(buckets.invalid)),
+  }
+}
+
+function validateStudioNotificationConfig(config: ChatbotQuickActionAutomationConfig['notifications']): StudioNotificationValidation {
+  const channels = normalizeStudioNotificationChannels(config.notifyChannels)
+  const buckets = parseStudioNotificationRecipients(config.notifyRecipients)
+  const errors: string[] = []
+  const warnings: string[] = []
+
+  if (!config.notifyMe) {
+    return { channels, buckets, errors, warnings, hasErrors: false }
+  }
+
+  if (!channels.length) {
+    errors.push('Selecciona al menos un canal en Notificarme.')
+  }
+
+  if (buckets.invalid.length) {
+    errors.push(`Revisa estos destinatarios: ${buckets.invalid.join(', ')}.`)
+  }
+
+  if (channels.includes('telegram') && buckets.telegram.length === 0) {
+    errors.push('Telegram requiere al menos un chat ID en su campo separado.')
+  }
+
+  if (channels.includes('email') && buckets.email.length === 0 && buckets.internal.length === 0) {
+    warnings.push('Correo no tiene direcciones explícitas. Si dejas el campo vacío, usará asignado o creador del canal cuando exista.')
+  }
+
+  if (channels.includes('whatsapp') && buckets.whatsapp.length === 0 && buckets.internal.length === 0) {
+    warnings.push('WhatsApp no tiene números explícitos. Si dejas el campo vacío, intentará usar el teléfono del asignado o del creador del canal.')
+  }
+
+  if (channels.includes('telegram') && buckets.internal.length > 0) {
+    warnings.push('Los IDs internos no sirven como fallback para Telegram; usa el campo separado de chat ID.')
+  }
+
+  return {
+    channels,
+    buckets,
+    errors,
+    warnings,
+    hasErrors: errors.length > 0,
+  }
+}
+
+function validateBuilderNotificationConfigs(builder: BuilderState) {
+  const messages = builder.quickActions
+    .map((action) => {
+      const validation = validateStudioNotificationConfig((action.automation ?? getDefaultChatbotQuickActionAutomationConfig()).notifications)
+      if (!validation.hasErrors) return null
+      return `${action.label || 'Accion sin nombre'}: ${validation.errors.join(' ')}`
+    })
+    .filter((value): value is string => Boolean(value))
+
+  return {
+    hasErrors: messages.length > 0,
+    messages,
+  }
 }
 
 type RichTextComposerProps = {

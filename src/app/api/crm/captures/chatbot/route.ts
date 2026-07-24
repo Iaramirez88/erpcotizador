@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
+import { sendEmail } from '@/lib/email'
+import { escapeHtml, renderEmail } from '@/lib/email-template'
 import { createInboundArtifacts, getConnectionToken, parseJsonObject } from '@/lib/crm-omnichannel'
 import { normalizeString } from '@/lib/crm'
 import { fetchGoogleSheetsRows } from '@/lib/crm-google-sheets'
+import { getWhatsAppDispatchConfig, normalizeWhatsAppRecipient, sendWhatsAppTextMessage } from '@/lib/crm-whatsapp'
+import { sendTelegramMessage } from '@/lib/telegram'
 import { ensureInvoiceFromQuote } from '@/lib/quote-invoicing'
 import { ensureWorkOrderFromQuote } from '@/lib/work-orders'
 import {
@@ -19,7 +23,6 @@ import {
   type ChatbotQuickAction,
 } from '@/lib/crm-chatbot-flow'
 import {
-  applyChatbotMessageCoherence,
   getChatbotAutomationFlowById,
   getDefaultChatbotAutomationFlowFromSettings,
   getChatbotStudioSettings,
@@ -83,6 +86,15 @@ type ChatbotRuntimeState = {
 type ChatbotWebhookJob = {
   url: string
   payload: Record<string, unknown>
+}
+
+type ChatbotNotificationChannel = 'email' | 'whatsapp' | 'telegram'
+
+type ResolvedChatbotNotificationRecipients = {
+  internalUserIds: string[]
+  emails: string[]
+  whatsapp: string[]
+  telegram: string[]
 }
 
 const SERVICE_HINT_TERMS = [
@@ -771,15 +783,8 @@ function resolveChatStage(args: {
     ?? null
 }
 
-function decorateAssistantReply(baseBody: string, stage: ChatbotFlowStage | null, currentStageId: string, quickActionId: string) {
-  const normalizedBaseHtml = normalizeRichTextHtml(baseBody)
-  if (!stage?.prompt.trim()) return normalizedBaseHtml
-  const normalizedPromptHtml = normalizeRichTextHtml(stage.prompt)
-  const normalizedBody = normalizeString(richTextToPlainText(normalizedBaseHtml)).toLowerCase()
-  const normalizedPrompt = normalizeString(richTextToPlainText(normalizedPromptHtml)).toLowerCase()
-  if (normalizedPrompt && normalizedBody.includes(normalizedPrompt)) return normalizedBaseHtml
-  if (!quickActionId && currentStageId === stage.id) return normalizedBaseHtml
-  return `${normalizedPromptHtml}${normalizedBaseHtml}`
+function decorateAssistantReply(baseBody: string, _stage?: ChatbotFlowStage | null, _currentStageId?: string, _quickActionId?: string) {
+  return normalizeRichTextHtml(baseBody)
 }
 
 function resolveChatPauseNode(args: {
@@ -814,6 +819,180 @@ function splitConfigValues(value: string) {
 
 function uniqueStrings(values: Array<string | null | undefined>) {
   return Array.from(new Set(values.map((item) => normalizeString(item)).filter(Boolean)))
+}
+
+function mergeRuntimeList(currentValue: string | undefined, nextValues: Array<string | null | undefined>) {
+  return uniqueStrings([
+    ...splitConfigValues(currentValue || ''),
+    ...nextValues,
+  ]).join(', ')
+}
+
+function normalizeNotificationChannels(values: string[]) {
+  const channels = new Set<ChatbotNotificationChannel>()
+
+  for (const value of values) {
+    const normalized = normalizeString(value).toLowerCase()
+    if (!normalized) continue
+    if (normalized === 'email' || normalized === 'correo' || normalized === 'mail') {
+      channels.add('email')
+      continue
+    }
+    if (normalized === 'whatsapp' || normalized === 'wa') {
+      channels.add('whatsapp')
+      continue
+    }
+    if (normalized === 'telegram' || normalized === 'tg') {
+      channels.add('telegram')
+    }
+  }
+
+  return channels
+}
+
+async function resolveChatbotNotificationRecipients(tx: Prisma.TransactionClient, args: { empresaId: string; rawRecipients: string[] }) {
+  const explicitEmails = new Set<string>()
+  const explicitPhones = new Set<string>()
+  const explicitTelegram = new Set<string>()
+  const candidateUserIds = new Set<string>()
+  const candidateUserEmails = new Set<string>()
+
+  for (const rawValue of args.rawRecipients) {
+    const value = normalizeString(rawValue)
+    if (!value) continue
+    const lowered = value.toLowerCase()
+
+    if (lowered.startsWith('tg:') || lowered.startsWith('telegram:')) {
+      const chatId = value.includes(':') ? value.slice(value.indexOf(':') + 1).trim() : ''
+      if (chatId) explicitTelegram.add(chatId)
+      continue
+    }
+
+    if (lowered.startsWith('wa:') || lowered.startsWith('whatsapp:')) {
+      const phone = normalizeWhatsAppRecipient(value.slice(value.indexOf(':') + 1))
+      if (phone) explicitPhones.add(phone)
+      continue
+    }
+
+    if (value.includes('@')) {
+      explicitEmails.add(value)
+      candidateUserEmails.add(value)
+      continue
+    }
+
+    const normalizedPhone = normalizeWhatsAppRecipient(value)
+    if (normalizedPhone && normalizedPhone.replace(/\D/g, '').length >= 8) {
+      explicitPhones.add(normalizedPhone)
+      continue
+    }
+
+    candidateUserIds.add(value)
+  }
+
+  const users = (candidateUserIds.size || candidateUserEmails.size)
+    ? await tx.user.findMany({
+        where: {
+          empresaId: args.empresaId,
+          OR: [
+            ...(candidateUserIds.size ? [{ id: { in: Array.from(candidateUserIds) } }] : []),
+            ...(candidateUserEmails.size ? [{ email: { in: Array.from(candidateUserEmails) } }] : []),
+          ],
+        },
+        select: { id: true, email: true, telefono: true },
+      })
+    : []
+
+  users.forEach((user) => {
+    if (user.email) explicitEmails.add(user.email)
+    const phone = normalizeWhatsAppRecipient(user.telefono)
+    if (phone) explicitPhones.add(phone)
+  })
+
+  return {
+    internalUserIds: users.map((user) => user.id),
+    emails: Array.from(explicitEmails),
+    whatsapp: Array.from(explicitPhones),
+    telegram: Array.from(explicitTelegram),
+  } satisfies ResolvedChatbotNotificationRecipients
+}
+
+function buildChatbotNotificationText(args: {
+  actionLabel: string
+  contactName: string
+  companyName: string
+  requestedProduct: string
+  quantity: number | null
+  whatsapp: string
+  email: string
+  summary: string
+}) {
+  return [
+    `Automatización del chatbot: ${args.actionLabel}`,
+    args.contactName ? `Contacto: ${args.contactName}` : '',
+    args.companyName ? `Empresa: ${args.companyName}` : '',
+    args.requestedProduct ? `Interés: ${args.requestedProduct}` : '',
+    args.quantity ? `Cantidad: ${args.quantity}` : '',
+    args.whatsapp ? `WhatsApp: ${args.whatsapp}` : '',
+    args.email ? `Correo: ${args.email}` : '',
+    args.summary,
+  ].filter(Boolean).join('\n')
+}
+
+async function sendChatbotNotificationEmail(args: {
+  to: string[]
+  actionLabel: string
+  companyName: string
+  bodyText: string
+}) {
+  if (!args.to.length) return
+  const html = renderEmail({
+    title: `Automatización del chatbot: ${args.actionLabel}`,
+    preheader: `Se ejecutó la acción ${args.actionLabel}`,
+    intro: args.companyName ? `Empresa: ${args.companyName}` : 'Se ejecutó una automatización del chatbot.',
+    bodyHtml: args.bodyText
+      .split('\n')
+      .map((line) => `<p style="margin:0 0 10px; color:#374151;">${escapeHtml(line)}</p>`)
+      .join(''),
+  })
+  await sendEmail({
+    to: args.to,
+    subject: `Chatbot: ${args.actionLabel}`,
+    html,
+  })
+}
+
+async function sendChatbotNotificationWhatsApp(tx: Prisma.TransactionClient, args: {
+  empresaId: string
+  sedeId: string | null
+  to: string[]
+  bodyText: string
+}) {
+  if (!args.to.length) return
+
+  const channels = await tx.crmChannelConnection.findMany({
+    where: {
+      empresaId: args.empresaId,
+      provider: { in: ['WHATSAPP_CLOUD', 'WHATSAPP_SANDBOX'] },
+      status: { in: ['TESTING', 'ACTIVE'] },
+      OR: args.sedeId ? [{ sedeId: args.sedeId }, { sedeId: null }] : [{ sedeId: null }, {}],
+    },
+    orderBy: [{ sedeId: 'desc' }, { updatedAt: 'desc' }],
+  })
+
+  const selectedChannel = channels.find((channel) => getWhatsAppDispatchConfig(channel).enabled)
+  if (!selectedChannel) return
+
+  const config = getWhatsAppDispatchConfig(selectedChannel)
+  await Promise.allSettled(args.to.map((phone) => sendWhatsAppTextMessage({
+    config,
+    to: phone,
+    bodyText: args.bodyText,
+  })))
+}
+
+async function sendChatbotNotificationTelegram(args: { to: string[]; bodyText: string }) {
+  if (!args.to.length) return
+  await Promise.allSettled(args.to.map((chatId) => sendTelegramMessage({ chatId, message: args.bodyText })))
 }
 
 function parsePauseDurationMinutes(value: string) {
@@ -1259,6 +1438,15 @@ export async function POST(request: Request) {
       const flowVariables = studioSettings.flowVariables.filter((item: { enabled: boolean }) => item.enabled)
       const resolvedIdentity = resolveChatIdentity({ nombre, email, phone, whatsapp, requestedProduct, companyName: empresaNombre, document, city: ciudad, address, messageText, expectedField })
       const effectiveProduct = resolvedIdentity.requestedProduct
+      const previewFlowStages = conversationFlow.flowStages.length ? conversationFlow.flowStages : settings.flowStages
+      const previewQuickActions = conversationFlow.quickActions.length ? conversationFlow.quickActions : settings.quickActions
+      const previewCurrentStage = findChatbotFlowStage(previewFlowStages, currentStageId) ?? resolveInitialFlowStage(previewFlowStages, conversationFlow.startStageId) ?? null
+      const previewMatchedResponseOption = findChatbotFlowResponseOption(previewCurrentStage, responseOptionId)
+        ?? matchChatbotFlowResponseOption(previewCurrentStage, messageText)
+      const previewSelectedQuickAction = findChatbotQuickAction(previewQuickActions, quickActionId)
+      const previewSelectedOptionsList = previewMatchedResponseOption?.label
+        ? mergeRuntimeList(priorRuntimeState.variables.selected_options_list, [previewMatchedResponseOption.label])
+        : (priorRuntimeState.variables.selected_options_list || '')
 
       const artifacts = await createInboundArtifacts({
         client: tx,
@@ -1327,6 +1515,12 @@ export async function POST(request: Request) {
         channel_name: channel.name,
         assistant_name: settings.assistantName,
         lead_tags: artifacts.lead.tags.join(', '),
+        last_response_option_id: previewMatchedResponseOption?.id || responseOptionId,
+        last_response_option_label: previewMatchedResponseOption?.label || '',
+        last_response_option_message: previewMatchedResponseOption?.userMessage || '',
+        selected_options_list: previewSelectedOptionsList,
+        last_quick_action_id: previewSelectedQuickAction?.id || quickActionId,
+        last_quick_action_label: previewSelectedQuickAction?.label || '',
         ...priorRuntimeState.variables,
       }
 
@@ -1390,11 +1584,26 @@ export async function POST(request: Request) {
         : { stageId: '', quickActionId: '' }
       const selectedAutomation = selectedQuickAction?.automation || null
 
+      const interactionRuntimeVariables = { ...priorRuntimeState.variables }
+      if (matchedResponseOption) {
+        interactionRuntimeVariables.last_response_option_id = matchedResponseOption.id
+        interactionRuntimeVariables.last_response_option_label = matchedResponseOption.label
+        interactionRuntimeVariables.last_response_option_message = matchedResponseOption.userMessage
+        interactionRuntimeVariables.selected_options_list = mergeRuntimeList(interactionRuntimeVariables.selected_options_list, [matchedResponseOption.label])
+      }
+      if (selectedQuickAction) {
+        interactionRuntimeVariables.last_quick_action_id = selectedQuickAction.id
+        interactionRuntimeVariables.last_quick_action_label = selectedQuickAction.label
+      }
+
       if (!selectedAutomation?.chat.openChat && (priorRuntimeState.botSubscriptionActive === false || hasFuturePause(priorRuntimeState.pauseUntil))) {
         await tx.crmLeadCapture.update({
           where: { id: artifacts.capture.id },
           data: {
-            normalizedDataJson: buildNormalizedCaptureData(artifacts.capture.normalizedDataJson, priorRuntimeState),
+            normalizedDataJson: buildNormalizedCaptureData(artifacts.capture.normalizedDataJson, {
+              ...priorRuntimeState,
+              variables: interactionRuntimeVariables,
+            }),
           },
         })
 
@@ -1486,7 +1695,10 @@ export async function POST(request: Request) {
         pauseNodes,
       })
 
-      let runtimeState = priorRuntimeState
+      let runtimeState: ChatbotRuntimeState = {
+        ...priorRuntimeState,
+        variables: interactionRuntimeVariables,
+      }
       let assistantContext = {
         contact_name: resolvedIdentity.nombre,
         contact_email: resolvedIdentity.email,
@@ -1682,23 +1894,43 @@ export async function POST(request: Request) {
           : []
 
         if (selectedAutomation.notifications.notifyMe) {
-          const users = notificationRecipients.length
-            ? await tx.user.findMany({
-                where: {
-                  empresaId: channel.empresaId,
-                  OR: [
-                    { id: { in: notificationRecipients } },
-                    { email: { in: notificationRecipients } },
-                  ],
-                },
-                select: { id: true },
-              })
-            : []
+          const resolvedRecipients = await resolveChatbotNotificationRecipients(tx, {
+            empresaId: channel.empresaId,
+            rawRecipients: notificationRecipients,
+          })
           const targetUserIds = uniqueStrings([
-            ...users.map((item) => item.id),
+            ...resolvedRecipients.internalUserIds,
             notificationRecipients.length ? null : conversationAssignedToUserId,
             notificationRecipients.length ? null : channel.createdBy.id,
           ])
+          if (!notificationRecipients.length && targetUserIds.length) {
+            const fallbackUsers = await tx.user.findMany({
+              where: {
+                empresaId: channel.empresaId,
+                id: { in: targetUserIds },
+              },
+              select: { email: true, telefono: true },
+            })
+            resolvedRecipients.emails = uniqueStrings([
+              ...resolvedRecipients.emails,
+              ...fallbackUsers.map((user) => user.email),
+            ])
+            resolvedRecipients.whatsapp = uniqueStrings([
+              ...resolvedRecipients.whatsapp,
+              ...fallbackUsers.map((user) => normalizeWhatsAppRecipient(user.telefono)),
+            ])
+          }
+          const notificationBodyText = buildChatbotNotificationText({
+            actionLabel: selectedQuickAction?.label || 'Acción del chatbot',
+            contactName: resolvedIdentity.nombre,
+            companyName: resolvedIdentity.companyName,
+            requestedProduct: effectiveProduct,
+            quantity: resolvedIdentity.quantity,
+            whatsapp: resolvedIdentity.whatsapp,
+            email: resolvedIdentity.email,
+            summary: richTextToPlainText(assistantReply.body),
+          })
+
           if (targetUserIds.length) {
             await tx.notification.createMany({
               data: targetUserIds.map((userId) => ({
@@ -1715,6 +1947,32 @@ export async function POST(request: Request) {
                 actionUrl: '/dashboard/crm',
                 actionLabel: 'Abrir CRM',
               })),
+            })
+          }
+
+          const normalizedChannels = normalizeNotificationChannels(selectedAutomation.notifications.notifyChannels)
+          if (normalizedChannels.has('email')) {
+            await sendChatbotNotificationEmail({
+              to: resolvedRecipients.emails,
+              actionLabel: selectedQuickAction?.label || 'Acción del chatbot',
+              companyName: resolvedIdentity.companyName,
+              bodyText: notificationBodyText,
+            })
+          }
+
+          if (normalizedChannels.has('whatsapp')) {
+            await sendChatbotNotificationWhatsApp(tx, {
+              empresaId: channel.empresaId,
+              sedeId: channel.sedeId,
+              to: resolvedRecipients.whatsapp,
+              bodyText: notificationBodyText,
+            })
+          }
+
+          if (normalizedChannels.has('telegram')) {
+            await sendChatbotNotificationTelegram({
+              to: resolvedRecipients.telegram,
+              bodyText: notificationBodyText,
             })
           }
         }
@@ -1787,15 +2045,10 @@ export async function POST(request: Request) {
       }
 
       const assistantBodyTemplate = matchedTrigger.matchedTrigger?.assistantReply || assistantReply.body
-      const assistantBodyHtml = normalizeRichTextHtml(applyChatbotMessageCoherence({
-        body: interpolateChatbotVariables({
-          template: resolvedPauseNode
-            ? appendPauseCopy(assistantBodyTemplate, resolvedPauseNode)
-            : decorateAssistantReply(assistantBodyTemplate, resolvedStage, currentStageId, effectiveQuickActionId),
-          variables: flowVariables,
-          context: assistantContext,
-        }),
-        coherence: studioSettings.messageCoherence,
+      const assistantBodyHtml = normalizeRichTextHtml(interpolateChatbotVariables({
+        template: resolvedPauseNode
+          ? appendPauseCopy(assistantBodyTemplate, resolvedPauseNode)
+          : decorateAssistantReply(assistantBodyTemplate),
         variables: flowVariables,
         context: assistantContext,
       }))

@@ -711,10 +711,17 @@ export function interpolateChatbotVariables(args: {
   variables: ChatbotFlowVariable[]
   context: Record<string, string | number | null | undefined>
 }) {
-  return args.variables.reduce((result, variable) => {
+  const interpolated = args.variables.reduce((result, variable) => {
     const value = resolveChatbotVariableValue({ variable, context: args.context })
     return result.replaceAll(`{{${variable.key}}}`, value)
   }, args.template)
+
+  return interpolated.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (token, key: string) => {
+    const value = args.context[key]
+    if (value === null || value === undefined) return token
+    const normalizedValue = String(value).trim()
+    return normalizedValue || token
+  })
 }
 
 export function applyChatbotMessageCoherence(args: {
