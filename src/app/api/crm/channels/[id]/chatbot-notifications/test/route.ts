@@ -33,6 +33,10 @@ function normalizeNotificationConfig(value: unknown): ChatbotQuickActionNotifica
       ? record.notifyChannels.map((item) => normalizeString(item)).filter(Boolean)
       : defaults.notifyChannels,
     notifyRecipients: normalizeString(record?.notifyRecipients),
+    emailRecipients: normalizeString(record?.emailRecipients),
+    whatsappRecipients: normalizeString(record?.whatsappRecipients),
+    telegramRecipients: normalizeString(record?.telegramRecipients),
+    whatsappChannelId: normalizeString(record?.whatsappChannelId),
     addNote: Boolean(record?.addNote),
     noteText: normalizeString(record?.noteText),
     sendWebhook: Boolean(record?.sendWebhook),
@@ -87,7 +91,7 @@ export async function POST(request: Request, context: RouteContext) {
       return NextResponse.json({ error: 'Selecciona al menos un canal para la prueba.' }, { status: 400 })
     }
 
-    if (selectedChannels.includes('telegram') && !notificationConfig.notifyRecipients.toLowerCase().includes('tg:')) {
+    if (selectedChannels.includes('telegram') && !notificationConfig.telegramRecipients.trim() && !notificationConfig.notifyRecipients.toLowerCase().includes('tg:')) {
       return NextResponse.json({ error: 'Telegram requiere al menos un destinatario con formato tg:chatId para la prueba.' }, { status: 400 })
     }
 

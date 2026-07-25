@@ -18,6 +18,7 @@ import {
   getStageResponseOptions,
   matchChatbotFlowResponseOption,
   type ChatbotFlowNextField,
+  type ChatbotQuickActionNotificationConfig,
   type ChatbotFlowResponseOption,
   type ChatbotFlowStage,
   type ChatbotQuickAction,
@@ -787,6 +788,20 @@ function decorateAssistantReply(baseBody: string, _stage?: ChatbotFlowStage | nu
   return normalizeRichTextHtml(baseBody)
 }
 
+function stripGenericStudioFlowCopy(value: string | null | undefined) {
+  const html = normalizeRichTextHtml(value || '')
+  const plain = normalizeString(richTextToPlainText(html)).toLowerCase()
+  if (!plain) return ''
+
+  const genericCopies = new Set([
+    'perfecto. te llevo al siguiente paso.',
+    'perfecto. continuemos con la siguiente etapa.',
+    'selecciona uno de estos servicios para continuar.',
+  ])
+
+  return genericCopies.has(plain) ? '' : html
+}
+
 function resolveChatPauseNode(args: {
   currentStageId: string
   resolvedStage: ChatbotFlowStage | null
@@ -826,6 +841,15 @@ function mergeRuntimeList(currentValue: string | undefined, nextValues: Array<st
     ...splitConfigValues(currentValue || ''),
     ...nextValues,
   ]).join(', ')
+}
+
+function buildNotificationRecipientsFromConfig(config: ChatbotQuickActionNotificationConfig) {
+  const separated = [
+    ...splitConfigValues(config.emailRecipients),
+    ...splitConfigValues(config.whatsappRecipients).map((item) => `wa:${item}`),
+    ...splitConfigValues(config.telegramRecipients).map((item) => `tg:${item}`),
+  ]
+  return uniqueStrings(separated.length ? separated : splitConfigValues(config.notifyRecipients))
 }
 
 function normalizeNotificationChannels(values: string[]) {
@@ -964,6 +988,7 @@ async function sendChatbotNotificationEmail(args: {
 async function sendChatbotNotificationWhatsApp(tx: Prisma.TransactionClient, args: {
   empresaId: string
   sedeId: string | null
+  channelId?: string
   to: string[]
   bodyText: string
 }) {
@@ -979,7 +1004,10 @@ async function sendChatbotNotificationWhatsApp(tx: Prisma.TransactionClient, arg
     orderBy: [{ sedeId: 'desc' }, { updatedAt: 'desc' }],
   })
 
-  const selectedChannel = channels.find((channel) => getWhatsAppDispatchConfig(channel).enabled)
+  const enabledChannels = channels.filter((channel) => getWhatsAppDispatchConfig(channel).enabled)
+  const selectedChannel = args.channelId
+    ? enabledChannels.find((channel) => channel.id === args.channelId) ?? null
+    : enabledChannels[0] ?? null
   if (!selectedChannel) return
 
   const config = getWhatsAppDispatchConfig(selectedChannel)
@@ -1194,8 +1222,10 @@ function buildAssistantReply(args: {
 
   if (matchedResponseOption) {
     const stageField = nextStage?.nextField === 'none' ? null : nextStage?.nextField || null
+    const optionReply = stripGenericStudioFlowCopy(matchedResponseOption.assistantReply)
+    const stagePrompt = stripGenericStudioFlowCopy(nextStage?.prompt)
     return {
-      body: decorateAssistantReply(matchedResponseOption.assistantReply || nextStage?.prompt || 'Perfecto. Continuemos con la siguiente etapa.', nextStage, args.currentStageId, args.quickActionId),
+      body: decorateAssistantReply(optionReply || stagePrompt || '', nextStage, args.currentStageId, args.quickActionId),
       nextField: stageField as ChatFlowNextField,
       stage: nextStage,
     }
@@ -1890,7 +1920,7 @@ export async function POST(request: Request) {
         }
 
         const notificationRecipients = selectedAutomation.notifications.notifyMe
-          ? uniqueStrings(splitConfigValues(selectedAutomation.notifications.notifyRecipients))
+          ? buildNotificationRecipientsFromConfig(selectedAutomation.notifications)
           : []
 
         if (selectedAutomation.notifications.notifyMe) {
@@ -1964,6 +1994,7 @@ export async function POST(request: Request) {
             await sendChatbotNotificationWhatsApp(tx, {
               empresaId: channel.empresaId,
               sedeId: channel.sedeId,
+              channelId: normalizeString(selectedAutomation.notifications.whatsappChannelId) || undefined,
               to: resolvedRecipients.whatsapp,
               bodyText: notificationBodyText,
             })

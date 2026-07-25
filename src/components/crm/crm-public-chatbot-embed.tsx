@@ -543,6 +543,8 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   const [activeInactivityRule, setActiveInactivityRule] = useState<ChatbotInactivityRule | null>(null)
   const lastServerMessageIdRef = useRef('')
   const expiringRef = useRef(false)
+  const messagesViewportRef = useRef<HTMLDivElement | null>(null)
+  const messagesBottomRef = useRef<HTMLDivElement | null>(null)
   const fallbackInactivityRule = useMemo(() => resolveFallbackInactivityRule({
     resetConversationAfterMinutes: props.resetConversationAfterMinutes,
     resetConversationAfterAction: props.resetConversationAfterAction,
@@ -762,6 +764,17 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   }, [])
 
   useEffect(() => {
+    if (typeof window === 'undefined' || shouldBlockConversation) return
+    window.requestAnimationFrame(() => {
+      messagesBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      const viewport = messagesViewportRef.current
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight
+      }
+    })
+  }, [messages, shouldBlockConversation, hasSelectableOptions, sending, syncing])
+
+  useEffect(() => {
     if (!ready || !effectiveInactivityRule?.enabled || !lastActivityAt) return
     if ((clockTick - lastActivityAt) < (effectiveInactivityRule.timeoutMinutes * 60 * 1000)) return
     void applyConversationExpiration(effectiveInactivityRule)
@@ -784,7 +797,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
 
       const json = await response.json().catch(() => ({})) as ConversationSyncResponse
       const serverMessages = Array.isArray(json.data?.messages)
-        ? json.data?.messages.filter((item) => item.body)
+        ? json.data?.messages.filter((item) => item.body || item.meta?.responseOptionIds?.length || item.meta?.quickActionIds?.length)
         : []
 
       const mergedMessages = serverMessages.length > 0 ? [buildWelcomeMessage(props.prompt, initialStage, props.quickActions), ...serverMessages] : defaultMessages
@@ -1095,7 +1108,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
           </div>
         </div>
 
-        <div className="sgd-chatbot-messages flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-4">
+        <div ref={messagesViewportRef} className="sgd-chatbot-messages flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-4">
           {connectionError ? (
             <div className="mx-auto max-w-[92%] rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm">
               <p className="font-semibold">Conexion con el chatbot interrumpida</p>
@@ -1164,12 +1177,17 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
                 </Button>
               </div>
             </div>
-          ) : messages.map((message) => (
-            <div key={message.id} className={message.role === 'user' ? 'sgd-chatbot-bubble-user ml-auto max-w-[88%] rounded-[22px] bg-slate-950 px-4 py-3 text-sm text-white shadow-sm' : message.role === 'system' ? 'sgd-chatbot-bubble-system mx-auto max-w-[92%] rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900' : 'sgd-chatbot-bubble-assistant mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'}>
+          ) : messages.map((message) => {
+            const normalizedBodyHtml = normalizeRichTextHtml(message.bodyHtml || plainTextToRichTextHtml(message.body))
+            const hasVisibleBody = Boolean(richTextToPlainText(normalizedBodyHtml).trim())
+            const assistantOnlyCarriesOptions = message.role === 'assistant' && !hasVisibleBody && Boolean(message.meta?.responseOptionIds?.length || message.meta?.quickActionIds?.length)
+            if (assistantOnlyCarriesOptions) return null
+
+            return <div key={message.id} className={message.role === 'user' ? 'sgd-chatbot-bubble-user ml-auto max-w-[88%] rounded-[22px] bg-slate-950 px-4 py-3 text-sm text-white shadow-sm' : message.role === 'system' ? 'sgd-chatbot-bubble-system mx-auto max-w-[92%] rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900' : 'sgd-chatbot-bubble-assistant mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'}>
               {message.role === 'user' ? (
                 <p className="whitespace-pre-wrap leading-6">{message.body}</p>
               ) : (
-                <div className="[&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_p]:my-0 [&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_u]:underline leading-6" dangerouslySetInnerHTML={{ __html: normalizeRichTextHtml(message.bodyHtml || plainTextToRichTextHtml(message.body)) }} />
+                <div className="[&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_p]:my-0 [&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_u]:underline leading-6" dangerouslySetInnerHTML={{ __html: normalizedBodyHtml }} />
               )}
               {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
                 <div className="mt-3 space-y-2">
@@ -1192,13 +1210,9 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
               ) : null}
               {message.author ? <p className="mt-2 text-[11px] text-slate-500">{message.author}</p> : null}
             </div>
-          ))}
+          })}
           {!shouldBlockConversation && hasSelectableOptions ? (
-            <div className="mr-auto max-w-[88%] rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-sm text-slate-700 shadow-sm">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Siguiente paso</p>
-              <p className="mt-2 text-sm font-semibold text-slate-900">Elige una opcion para continuar</p>
-              <p className="mt-1 text-xs leading-5 text-slate-500">Las opciones aparecen segun la conversacion actual.</p>
-              <div className="mt-3 space-y-2">
+            <div className="space-y-2">
                 {activeResponseOptions.map((option, index) => {
                   const visual = getResponseOptionVisual()
                   return (
@@ -1237,9 +1251,9 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
                     </button>
                   )
                 })}
-              </div>
             </div>
           ) : null}
+          <div ref={messagesBottomRef} />
         </div>
 
         <div className="sgd-chatbot-composer border-t border-slate-100 bg-white px-4 py-4">

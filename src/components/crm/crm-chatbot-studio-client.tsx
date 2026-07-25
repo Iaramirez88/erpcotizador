@@ -76,6 +76,40 @@ type ChannelConnection = {
   _count?: { conversations: number; captures: number }
 }
 
+type WhatsAppChannelConnection = {
+  id: string
+  name: string
+  provider: 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX'
+  status: ChannelStatus
+  externalAccountId?: string | null
+  externalPhoneNumberId?: string | null
+  settingsJson?: Record<string, unknown> | null
+}
+
+type WhatsAppDeliveryReadiness = {
+  ready: boolean
+  summary: string
+  detail: string
+  channelName: string | null
+}
+
+type WhatsAppChannelOption = {
+  id: string
+  label: string
+}
+
+type NotificationServiceStatus = {
+  ready: boolean
+  summary: string
+  detail: string
+  requirement: string
+}
+
+type NotificationServiceReadiness = {
+  email: NotificationServiceStatus
+  telegram: NotificationServiceStatus
+}
+
 type Assignee = {
   id: string
   name: string | null
@@ -404,6 +438,85 @@ function requestJson<T>(url: string, init?: RequestInit): Promise<{ success?: bo
   return fetch(url, init).then((res) => res.json().catch(() => ({}))) as Promise<{ success?: boolean; data?: T; error?: string }>
 }
 
+function normalizeStudioValue(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+function parseStudioSettingsJson(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function isWhatsAppChannelReadyForStudio(channel: WhatsAppChannelConnection) {
+  if (channel.provider === 'WHATSAPP_SANDBOX') {
+    return ['TESTING', 'ACTIVE'].includes(channel.status) && Boolean(normalizeStudioValue(channel.externalPhoneNumberId))
+  }
+
+  const settings = parseStudioSettingsJson(channel.settingsJson)
+  return Boolean(
+    normalizeStudioValue(settings.metaConnectedAt)
+    && normalizeStudioValue(settings.metaAccessTokenEncrypted)
+    && normalizeStudioValue(channel.externalAccountId)
+    && normalizeStudioValue(channel.externalPhoneNumberId)
+    && normalizeStudioValue(settings.metaSelectedPhoneNumberId) === normalizeStudioValue(channel.externalPhoneNumberId),
+  )
+}
+
+function getWhatsAppDeliveryReadiness(channels: WhatsAppChannelConnection[]): WhatsAppDeliveryReadiness {
+  if (!channels.length) {
+    return {
+      ready: false,
+      summary: 'WhatsApp no configurado',
+      detail: 'No existe ningún canal WHATSAPP_CLOUD o WHATSAPP_SANDBOX en esta empresa.',
+      channelName: null,
+    }
+  }
+
+  const readyChannel = channels.find((channel) => isWhatsAppChannelReadyForStudio(channel) && ['TESTING', 'ACTIVE'].includes(channel.status))
+  if (readyChannel) {
+    return {
+      ready: true,
+      summary: 'WhatsApp listo para pruebas',
+      detail: `El canal ${readyChannel.name} ya tiene configuración suficiente para enviar desde Notificarme.`,
+      channelName: readyChannel.name,
+    }
+  }
+
+  const activeButIncomplete = channels.find((channel) => ['TESTING', 'ACTIVE'].includes(channel.status))
+  if (activeButIncomplete) {
+    return {
+      ready: false,
+      summary: 'WhatsApp incompleto',
+      detail: `Existe el canal ${activeButIncomplete.name}, pero aún le faltan credenciales o el número sincronizado en Meta.`,
+      channelName: activeButIncomplete.name,
+    }
+  }
+
+  return {
+    ready: false,
+    summary: 'WhatsApp inactivo',
+    detail: 'Hay canales de WhatsApp creados, pero ninguno está en TESTING o ACTIVE.',
+    channelName: channels[0]?.name || null,
+  }
+}
+
+function getWhatsAppChannelDisplayNumber(channel: WhatsAppChannelConnection) {
+  const settings = parseStudioSettingsJson(channel.settingsJson)
+  const assets = Array.isArray(settings.metaWhatsAppAssets) ? settings.metaWhatsAppAssets : []
+  const matchedAsset = assets.find((item) => item && typeof item === 'object' && !Array.isArray(item) && normalizeStudioValue((item as Record<string, unknown>).phoneNumberId) === normalizeStudioValue(channel.externalPhoneNumberId)) as Record<string, unknown> | undefined
+  return normalizeStudioValue(matchedAsset?.displayPhoneNumber) || normalizeStudioValue(channel.externalPhoneNumberId) || 'Sin número visible'
+}
+
+function getWhatsAppChannelOptions(channels: WhatsAppChannelConnection[]): WhatsAppChannelOption[] {
+  return channels
+    .filter((channel) => isWhatsAppChannelReadyForStudio(channel) && ['TESTING', 'ACTIVE'].includes(channel.status))
+    .map((channel) => ({
+      id: channel.id,
+      label: `${channel.name} · ${getWhatsAppChannelDisplayNumber(channel)}`,
+    }))
+}
+
 function normalizeStudioNodeLayout(value: unknown): StudioNodeLayout {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   return Object.fromEntries(
@@ -584,7 +697,7 @@ function createStageResponseOption(flowStages: ChatbotFlowStage[], currentStageI
     id: makeId('option'),
     label: 'Nueva opción',
     userMessage: 'Quiero continuar por esta ruta.',
-    assistantReply: 'Perfecto. Te llevo al siguiente paso.',
+    assistantReply: '',
     matchMode: 'contains',
     matchValue: '',
     targetStageId: '',
@@ -1319,6 +1432,8 @@ function renderQuickActionAttachmentFields(args: {
 
 export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?: string } = {}) {
   const [channels, setChannels] = useState<ChannelConnection[]>([])
+  const [whatsAppChannels, setWhatsAppChannels] = useState<WhatsAppChannelConnection[]>([])
+  const [notificationServiceReadiness, setNotificationServiceReadiness] = useState<NotificationServiceReadiness | null>(null)
   const [assignees, setAssignees] = useState<Assignee[]>([])
   const [selectedChannelId, setSelectedChannelId] = useState<string>('')
   const [builder, setBuilder] = useState<BuilderState>(() => hydrateBuilder(null))
@@ -1439,6 +1554,8 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   }, [selectedConversation])
 
   const selectedChannel = useMemo(() => channels.find((item) => item.id === selectedChannelId) ?? null, [channels, selectedChannelId])
+  const whatsAppReadiness = useMemo(() => getWhatsAppDeliveryReadiness(whatsAppChannels), [whatsAppChannels])
+  const whatsAppChannelOptions = useMemo(() => getWhatsAppChannelOptions(whatsAppChannels), [whatsAppChannels])
   const selectedFlow = useMemo(() => builder.automationFlows.find((flow) => flow.id === builder.selectedFlowId) ?? null, [builder.automationFlows, builder.selectedFlowId])
   const editingVariable = editingVariableId ? builder.flowVariables.find((variable) => variable.id === editingVariableId) ?? null : null
   const triggerVariableOptions = useMemo(() => {
@@ -1536,9 +1653,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   async function loadBase() {
     setLoading(true)
     setError(null)
-    const [channelsJson, assigneesJson] = await Promise.all([
+    const [channelsJson, assigneesJson, whatsappCloudJson, whatsappSandboxJson, notificationReadinessJson] = await Promise.all([
       requestJson<ChannelConnection[]>('/api/crm/channels?provider=WEB_CHATBOT'),
       requestJson<Assignee[]>('/api/crm/assignees'),
+      requestJson<WhatsAppChannelConnection[]>('/api/crm/channels?provider=WHATSAPP_CLOUD'),
+      requestJson<WhatsAppChannelConnection[]>('/api/crm/channels?provider=WHATSAPP_SANDBOX'),
+      requestJson<NotificationServiceReadiness>('/api/crm/channels/notification-readiness'),
     ])
 
     if (!channelsJson.success || !channelsJson.data) {
@@ -1549,6 +1669,8 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
 
     setChannels(channelsJson.data)
     setAssignees(assigneesJson.data ?? [])
+    setWhatsAppChannels([...(whatsappCloudJson.data ?? []), ...(whatsappSandboxJson.data ?? [])])
+    setNotificationServiceReadiness(notificationReadinessJson.data ?? null)
     const requestedChannelId = initialChannelId && channelsJson.data.some((item) => item.id === initialChannelId)
       ? initialChannelId
       : ''
@@ -2180,14 +2302,18 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
   function renderQuickActionAutomationFields(action: ChatbotQuickAction) {
     const automation = action.automation ?? getDefaultChatbotQuickActionAutomationConfig()
     const notificationValidation = validateStudioNotificationConfig(automation.notifications)
-    const notificationEmailValue = joinStudioConfigValues(notificationValidation.buckets.email)
-    const notificationWhatsAppValue = joinStudioConfigValues(notificationValidation.buckets.whatsapp)
-    const notificationTelegramValue = joinStudioConfigValues(notificationValidation.buckets.telegram)
+    const notificationRecipientValues = getStudioNotificationRecipientValues(automation.notifications)
+    const notificationEmailValue = notificationRecipientValues.email
+    const notificationWhatsAppValue = notificationRecipientValues.whatsapp
+    const notificationTelegramValue = notificationRecipientValues.telegram
 
     function updateNotificationRecipientFields(patch: Partial<{ email: string; whatsapp: string; telegram: string }>) {
       updateQuickActionAutomation(action.id, {
         notifications: {
           ...automation.notifications,
+          emailRecipients: patch.email ?? notificationEmailValue,
+          whatsappRecipients: patch.whatsapp ?? notificationWhatsAppValue,
+          telegramRecipients: patch.telegram ?? notificationTelegramValue,
           notifyRecipients: serializeStudioNotificationRecipients({
             email: patch.email ?? notificationEmailValue,
             whatsapp: patch.whatsapp ?? notificationWhatsAppValue,
@@ -2393,6 +2519,36 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                       })}
                     </div>
                   </div>
+                  {notificationValidation.channels.includes('whatsapp') ? (
+                    <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                      <div className="grid gap-2">
+                        <Label>Numero emisor de WhatsApp</Label>
+                        <Select
+                          value={automation.notifications.whatsappChannelId || '__auto__'}
+                          onValueChange={(value) => updateQuickActionAutomation(action.id, { notifications: { ...automation.notifications, whatsappChannelId: value === '__auto__' ? '' : value } })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={whatsAppChannelOptions.length ? 'Selecciona un número configurado' : 'No hay números configurados'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__auto__">Automático: usar el primero disponible</SelectItem>
+                            {whatsAppChannelOptions.map((option) => (
+                              <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {!whatsAppChannelOptions.length ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => window.location.assign('/dashboard/crm/integraciones')}
+                        >
+                          Configura aqui tu numero de WhatsApp
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="grid gap-2">
                     <Label>Destinatarios</Label>
                     <div className="grid gap-3 md:grid-cols-3">
@@ -2411,6 +2567,44 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                     </div>
                   </div>
                   <div className="text-[11px] leading-5 text-slate-500">Ahora cada canal tiene su campo separado. WhatsApp usa un canal Cloud activo de la empresa, correo usa Resend y Telegram usa TELEGRAM_BOT_TOKEN.</div>
+                  <div className={`rounded-xl border px-3 py-2 text-xs ${whatsAppReadiness.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                    <div className="font-medium">{whatsAppReadiness.summary}</div>
+                    <div className="mt-1 leading-5">{whatsAppReadiness.detail}</div>
+                    {!whatsAppReadiness.ready ? (
+                      <div className="mt-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => window.location.assign('/dashboard/crm/integraciones')}
+                        >
+                          Configura aqui tu numero de WhatsApp
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                  {notificationValidation.channels.includes('email') && notificationServiceReadiness?.email ? (
+                    <div className={`rounded-xl border px-3 py-2 text-xs ${notificationServiceReadiness.email.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                      <div className="font-medium">{notificationServiceReadiness.email.summary}</div>
+                      <div className="mt-1 leading-5">{notificationServiceReadiness.email.detail}</div>
+                      {!notificationServiceReadiness.email.ready ? (
+                        <div className="mt-2 rounded-lg bg-white/70 px-2.5 py-2 text-[11px] leading-5 text-amber-900">
+                          {notificationServiceReadiness.email.requirement}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {notificationValidation.channels.includes('telegram') && notificationServiceReadiness?.telegram ? (
+                    <div className={`rounded-xl border px-3 py-2 text-xs ${notificationServiceReadiness.telegram.ready ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
+                      <div className="font-medium">{notificationServiceReadiness.telegram.summary}</div>
+                      <div className="mt-1 leading-5">{notificationServiceReadiness.telegram.detail}</div>
+                      {!notificationServiceReadiness.telegram.ready ? (
+                        <div className="mt-2 rounded-lg bg-white/70 px-2.5 py-2 text-[11px] leading-5 text-amber-900">
+                          {notificationServiceReadiness.telegram.requirement}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="grid gap-2 md:grid-cols-4">
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                       <div className="font-medium text-slate-900">Correo</div>
@@ -2737,7 +2931,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
         preset: {
           title: 'Servicios disponibles',
           description: 'Lista base de opciones para el cliente.',
-          prompt: plainTextToRichTextHtml('Selecciona uno de estos servicios para continuar.'),
+          prompt: '',
           responseOptions: [
             createStageResponseOption(builder.flowStages, '', { label: 'Páginas web', userMessage: 'Quiero una página web' }),
             createStageResponseOption(builder.flowStages, '', { label: 'Marketing digital', userMessage: 'Quiero marketing digital' }),
@@ -7121,6 +7315,23 @@ function serializeStudioNotificationRecipients(args: { email: string; whatsapp: 
   return [...emailRecipients, ...whatsappRecipients, ...telegramRecipients].join(', ')
 }
 
+function getStudioNotificationRecipientValues(config: ChatbotQuickActionAutomationConfig['notifications']) {
+  if (config.emailRecipients || config.whatsappRecipients || config.telegramRecipients) {
+    return {
+      email: config.emailRecipients,
+      whatsapp: config.whatsappRecipients,
+      telegram: config.telegramRecipients,
+    }
+  }
+
+  const buckets = parseStudioNotificationRecipients(config.notifyRecipients)
+  return {
+    email: joinStudioConfigValues(buckets.email),
+    whatsapp: joinStudioConfigValues(buckets.whatsapp),
+    telegram: joinStudioConfigValues(buckets.telegram),
+  }
+}
+
 function normalizeStudioNotificationChannel(value: string): StudioNotificationChannel | null {
   const normalized = value.trim().toLowerCase()
   if (normalized === 'email' || normalized === 'correo' || normalized === 'mail') return 'email'
@@ -7216,7 +7427,8 @@ function parseStudioNotificationRecipients(value: string): StudioNotificationRec
 
 function validateStudioNotificationConfig(config: ChatbotQuickActionAutomationConfig['notifications']): StudioNotificationValidation {
   const channels = normalizeStudioNotificationChannels(config.notifyChannels)
-  const buckets = parseStudioNotificationRecipients(config.notifyRecipients)
+  const recipientValues = getStudioNotificationRecipientValues(config)
+  const buckets = parseStudioNotificationRecipients(serializeStudioNotificationRecipients(recipientValues))
   const errors: string[] = []
   const warnings: string[] = []
 

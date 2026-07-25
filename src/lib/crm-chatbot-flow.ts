@@ -59,6 +59,10 @@ export type ChatbotQuickActionNotificationConfig = {
   notifyMe: boolean
   notifyChannels: string[]
   notifyRecipients: string
+  emailRecipients: string
+  whatsappRecipients: string
+  telegramRecipients: string
+  whatsappChannelId: string
   addNote: boolean
   noteText: string
   sendWebhook: boolean
@@ -225,6 +229,10 @@ export function getDefaultChatbotQuickActionAutomationConfig(): ChatbotQuickActi
       notifyMe: false,
       notifyChannels: [],
       notifyRecipients: '',
+      emailRecipients: '',
+      whatsappRecipients: '',
+      telegramRecipients: '',
+      whatsappChannelId: '',
       addNote: false,
       noteText: '',
       sendWebhook: false,
@@ -287,6 +295,10 @@ function normalizeChatbotQuickActionAutomationConfig(value: unknown): ChatbotQui
       notifyMe: asBoolean(notifications?.notifyMe, defaults.notifications.notifyMe),
       notifyChannels: normalizeStringList(notifications?.notifyChannels),
       notifyRecipients: asText(notifications?.notifyRecipients),
+      emailRecipients: asText(notifications?.emailRecipients),
+      whatsappRecipients: asText(notifications?.whatsappRecipients),
+      telegramRecipients: asText(notifications?.telegramRecipients),
+      whatsappChannelId: asText(notifications?.whatsappChannelId),
       addNote: asBoolean(notifications?.addNote, defaults.notifications.addNote),
       noteText: asText(notifications?.noteText),
       sendWebhook: asBoolean(notifications?.sendWebhook, defaults.notifications.sendWebhook),

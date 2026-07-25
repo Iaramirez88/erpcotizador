@@ -47,6 +47,15 @@ export function normalizeChatbotNotificationChannels(values: string[]) {
   return channels
 }
 
+function buildRawNotificationRecipients(config: ChatbotQuickActionNotificationConfig) {
+  const explicitRecipients = splitConfigValues(config.notifyRecipients)
+  const emailRecipients = splitConfigValues(config.emailRecipients)
+  const whatsappRecipients = splitConfigValues(config.whatsappRecipients).map((item) => `wa:${item}`)
+  const telegramRecipients = splitConfigValues(config.telegramRecipients).map((item) => `tg:${item}`)
+  const merged = [...emailRecipients, ...whatsappRecipients, ...telegramRecipients]
+  return uniqueStrings(merged.length ? merged : explicitRecipients)
+}
+
 async function resolveChatbotNotificationRecipients(db: ChatbotNotificationDbClient, args: { empresaId: string; rawRecipients: string[] }) {
   const explicitEmails = new Set<string>()
   const explicitPhones = new Set<string>()
@@ -149,6 +158,7 @@ async function sendChatbotNotificationEmail(args: {
 async function sendChatbotNotificationWhatsApp(db: ChatbotNotificationDbClient, args: {
   empresaId: string
   sedeId: string | null
+  channelId?: string
   to: string[]
   bodyText: string
 }) {
@@ -166,9 +176,12 @@ async function sendChatbotNotificationWhatsApp(db: ChatbotNotificationDbClient, 
     orderBy: [{ sedeId: 'desc' }, { updatedAt: 'desc' }],
   })
 
-  const selectedChannel = channels.find((channel) => getWhatsAppDispatchConfig(channel).enabled)
+  const enabledChannels = channels.filter((channel) => getWhatsAppDispatchConfig(channel).enabled)
+  const selectedChannel = args.channelId
+    ? enabledChannels.find((channel) => channel.id === args.channelId) ?? null
+    : enabledChannels[0] ?? null
   if (!selectedChannel) {
-    return { sentCount: 0, warnings: ['No hay canal activo de WhatsApp para esta empresa.'] }
+    return { sentCount: 0, warnings: [args.channelId ? 'El canal de WhatsApp seleccionado no está listo para enviar.' : 'No hay canal activo de WhatsApp para esta empresa.'] }
   }
 
   const config = getWhatsAppDispatchConfig(selectedChannel)
@@ -212,7 +225,7 @@ export async function dispatchChatbotActionNotifications(args: {
   internalNotificationActionLabel?: string
 }) {
   const notificationRecipients = args.notificationConfig.notifyMe
-    ? uniqueStrings(splitConfigValues(args.notificationConfig.notifyRecipients))
+    ? buildRawNotificationRecipients(args.notificationConfig)
     : []
 
   const resolvedRecipients = await resolveChatbotNotificationRecipients(args.db, {
@@ -283,6 +296,7 @@ export async function dispatchChatbotActionNotifications(args: {
     const result = await sendChatbotNotificationWhatsApp(args.db, {
       empresaId: args.empresaId,
       sedeId: args.sedeId,
+      channelId: normalizeString(args.notificationConfig.whatsappChannelId) || undefined,
       to: resolvedRecipients.whatsapp,
       bodyText: args.notificationBodyText,
     })
