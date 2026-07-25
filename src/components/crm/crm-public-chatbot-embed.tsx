@@ -25,7 +25,6 @@ import {
 } from '@/lib/crm-chatbot-inactivity'
 import { type PublicChatbotPreChatDepartmentOption } from '@/lib/crm-public-chatbot'
 import { normalizeRichTextHtml, plainTextToRichTextHtml, richTextToPlainText } from '@/lib/chatbot-rich-text'
-import { uploadFileWithProgress } from '@/lib/upload-file-with-progress'
 
 type PublicChatbotMessage = {
   id: string
@@ -265,6 +264,14 @@ function getResponseOptionVisual() {
     className: 'border-violet-200 bg-violet-50 text-violet-900 hover:border-violet-300 hover:bg-violet-100',
     icon: '↳',
   }
+}
+
+function isPlaceholderFlowOption(option: ChatbotFlowResponseOption | null | undefined) {
+  if (!option) return false
+  const label = option.label.trim().toLowerCase()
+  const userMessage = option.userMessage.trim().toLowerCase()
+  const assistantReply = option.assistantReply.trim()
+  return label === 'siguiente mensaje' && !assistantReply && (!userMessage || userMessage === 'continuar')
 }
 
 function getUserMessageDeliveryState(messages: PublicChatbotMessage[], index: number) {
@@ -641,8 +648,31 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     }
     return getStageResponseOptions(activeStage)
   }, [activeAssistantMeta?.responseOptionIds, activeStage])
+  const placeholderOption = useMemo(() => activeResponseOptions.length === 1 && isPlaceholderFlowOption(activeResponseOptions[0]) ? activeResponseOptions[0] : null, [activeResponseOptions])
+  const selectableStage = useMemo(() => {
+    if (!placeholderOption?.targetStageId) return activeStage
+    return findChatbotFlowStage(props.flowStages, placeholderOption.targetStageId) ?? activeStage
+  }, [activeStage, placeholderOption?.targetStageId, props.flowStages])
+  const selectableResponseOptions = useMemo(() => {
+    if (!placeholderOption) return activeResponseOptions
+    return getStageResponseOptions(selectableStage).filter((option) => !isPlaceholderFlowOption(option))
+  }, [activeResponseOptions, placeholderOption, selectableStage])
+  const selectableQuickActions = useMemo(() => {
+    if (!placeholderOption) return activeQuickActions
+    return getStageQuickActions(selectableStage, props.quickActions)
+  }, [activeQuickActions, placeholderOption, props.quickActions, selectableStage])
+  const selectableStagePromptHtml = useMemo(() => {
+    if (!placeholderOption) return ''
+    return normalizeRichTextHtml(selectableStage?.prompt || '')
+  }, [placeholderOption, selectableStage])
+  const effectiveAssistantPrompt = useMemo(() => {
+    if (placeholderOption) {
+      return selectableStage?.nextField === 'none' ? null : selectableStage?.nextField || null
+    }
+    return latestAssistantPrompt
+  }, [latestAssistantPrompt, placeholderOption, selectableStage])
   const shouldShowSelectableOptions = latestMessage?.role === 'assistant'
-  const hasSelectableOptions = shouldShowSelectableOptions && (activeResponseOptions.length > 0 || activeQuickActions.length > 0)
+  const hasSelectableOptions = shouldShowSelectableOptions && (selectableResponseOptions.length > 0 || selectableQuickActions.length > 0)
   const shouldBlockConversation = preChatRequired && !preChatCompleted
   const departmentOptionsAvailable = props.preChatFormShowDepartmentField && props.preChatFormDepartmentOptions.length > 0
   const effectiveInactivityRule = useMemo(() => {
@@ -884,7 +914,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     const attachments = overrides?.attachments ?? pendingAttachments
     if ((!trimmedMessage && attachments.length === 0) || sending || !sessionId || shouldBlockConversation) return
 
-    const nextIdentity = inferIdentityFromMessage(identity, trimmedMessage, latestAssistantPrompt)
+    const nextIdentity = inferIdentityFromMessage(identity, trimmedMessage, effectiveAssistantPrompt)
     setIdentity(nextIdentity)
     setPreChatError(null)
     setUploadError(null)
@@ -927,17 +957,17 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
           payload: {
             source: 'iframe-chatbot',
             userAgent: navigator.userAgent,
-            chatFlowNextField: latestAssistantPrompt,
+            chatFlowNextField: effectiveAssistantPrompt,
             preChatDepartment: nextIdentity.departamento || null,
             quickActionId: overrides?.quickActionId || null,
             responseOptionId: overrides?.responseOptionId || null,
-            currentStageId: overrides?.currentStageId || activeStage?.id || null,
+            currentStageId: overrides?.currentStageId || selectableStage?.id || activeStage?.id || null,
             attachments,
           },
           attachments,
           quickActionId: overrides?.quickActionId || undefined,
           responseOptionId: overrides?.responseOptionId || undefined,
-          currentStageId: overrides?.currentStageId || activeStage?.id || undefined,
+          currentStageId: overrides?.currentStageId || selectableStage?.id || activeStage?.id || undefined,
         }),
       })
 
@@ -1022,7 +1052,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   }
 
   function triggerQuickAction(action: ChatbotQuickAction) {
-    const currentStageId = activeStage?.id || initialStage?.id || ''
+    const currentStageId = selectableStage?.id || activeStage?.id || initialStage?.id || ''
     if (action.kind === 'human') {
       void sendMessage(action.message, true, { quickActionId: action.id, currentStageId })
       return
@@ -1031,7 +1061,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   }
 
   function triggerResponseOption(option: ChatbotFlowResponseOption) {
-    const currentStageId = activeStage?.id || initialStage?.id || ''
+    const currentStageId = selectableStage?.id || activeStage?.id || initialStage?.id || ''
     const targetStage = findChatbotFlowStage(props.flowStages, option.targetStageId)
     const targetAction = findChatbotQuickAction(props.quickActions, option.targetActionId)
     const shouldRequestHuman = option.targetStageId === 'handoff'
@@ -1325,7 +1355,12 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
           })}
           {!shouldBlockConversation && hasSelectableOptions ? (
             <div className="space-y-2">
-                {activeResponseOptions.map((option, index) => {
+                {placeholderOption && richTextToPlainText(selectableStagePromptHtml).trim() ? (
+                  <div className="mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
+                    <div className="[&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_p]:my-0 [&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_u]:underline leading-6" dangerouslySetInnerHTML={{ __html: selectableStagePromptHtml }} />
+                  </div>
+                ) : null}
+                {selectableResponseOptions.map((option, index) => {
                   const visual = getResponseOptionVisual()
                   return (
                     <button
@@ -1343,7 +1378,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
                     </button>
                   )
                 })}
-                {activeQuickActions.map((action, index) => {
+                {selectableQuickActions.map((action, index) => {
                   const visual = getQuickActionVisual(action.kind)
                   return (
                     <button
@@ -1353,7 +1388,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
                       disabled={sending || !ready || interactionLocked}
                       className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${visual.className}`}
                     >
-                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/90 text-xs font-semibold shadow-sm">{activeResponseOptions.length + index + 1}</span>
+                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/90 text-xs font-semibold shadow-sm">{selectableResponseOptions.length + index + 1}</span>
                       <span className="flex min-w-0 flex-1 flex-col">
                         <span className="text-sm font-semibold">{action.label}</span>
                         <span className="text-[11px] font-medium opacity-80">{visual.badge}</span>
@@ -1453,10 +1488,10 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
                 </div>
                 <button
                   type="button"
-                  onClick={() => appendEmoji(CHATBOT_EMOJI_CHOICES[0])}
+                  onClick={() => setComposerMenuOpen((current) => !current)}
                   className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={shouldBlockConversation || interactionLocked || endingConversation}
-                  aria-label="Agregar emoji"
+                  aria-label="Abrir selector de emoticones"
                 >
                   <Smile className="h-5 w-5" />
                 </button>

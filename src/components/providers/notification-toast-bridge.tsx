@@ -18,6 +18,7 @@ export function NotificationToastBridge() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.EventSource === 'undefined') return
+    if (window.location.pathname.startsWith('/chatbot/')) return
 
     const stream = new window.EventSource('/api/notificaciones/stream')
 

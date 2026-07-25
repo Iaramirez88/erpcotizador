@@ -802,7 +802,6 @@ function stripGenericStudioFlowCopy(value: string | null | undefined) {
   const genericCopies = new Set([
     'perfecto. te llevo al siguiente paso.',
     'perfecto. continuemos con la siguiente etapa.',
-    'selecciona uno de estos servicios para continuar.',
   ])
 
   return genericCopies.has(plain) ? '' : html

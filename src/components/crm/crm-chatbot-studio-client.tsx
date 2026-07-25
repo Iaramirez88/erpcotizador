@@ -857,7 +857,7 @@ function getStageCardMeta(stage: ChatbotFlowStage) {
 
   return {
     title: stage.title?.trim() || 'Mensaje',
-    subtitle: hasCapture ? 'Espera respuesta del usuario' : 'Mensaje regular',
+    subtitle: hasCapture ? 'Espera respuesta del usuario' : 'Sin captura',
     description: promptPreview.join(' ') || 'Escribe el contenido principal del mensaje.',
   }
 }
@@ -3957,7 +3957,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3 py-2.5">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-700">Mensaje</div>
                     <div className="mt-1 truncate text-sm font-semibold text-slate-900">{selectedStage.title}</div>
-                    <div className="mt-1 line-clamp-2 text-xs text-slate-600">{selectedStage.nextField === 'none' ? 'Mensaje regular' : 'Espera respuesta del usuario'}</div>
+                    <div className="mt-1 line-clamp-2 text-xs text-slate-600">{selectedStage.nextField === 'none' ? 'Sin captura' : 'Espera respuesta del usuario'}</div>
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700">
                     <div className="font-semibold text-slate-900">Contenido</div>
