@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ChangeEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Check, ChevronRight, Paperclip, Plus, Smile } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -24,6 +25,7 @@ import {
 } from '@/lib/crm-chatbot-inactivity'
 import { type PublicChatbotPreChatDepartmentOption } from '@/lib/crm-public-chatbot'
 import { normalizeRichTextHtml, plainTextToRichTextHtml, richTextToPlainText } from '@/lib/chatbot-rich-text'
+import { uploadFileWithProgress } from '@/lib/upload-file-with-progress'
 
 type PublicChatbotMessage = {
   id: string
@@ -44,6 +46,23 @@ type PublicChatbotMessage = {
     pauseUntil?: string | null
     inactivityRule?: ChatbotInactivityRule | null
   }
+}
+
+type PublicChatbotAttachment = {
+  type?: string | null
+  url?: string | null
+  alt?: string | null
+  name?: string | null
+}
+
+type UploadedPublicChatbotAttachment = {
+  id: string
+  name: string
+  url: string
+  type: 'image' | 'document'
+  mimeType?: string | null
+  sizeBytes?: number | null
+  uploadedAt: string
 }
 
 type PublicChatbotEmbedProps = {
@@ -142,6 +161,7 @@ type ChatbotErrorResponse = {
 const identityStorageSuffix = 'identity'
 const sessionStorageSuffix = 'session'
 const stateStorageSuffix = 'state'
+const CHATBOT_EMOJI_CHOICES = ['😀', '😁', '🙂', '😉', '😍', '🤝', '👏', '🔥', '✅', '🙏', '📎', '🚀']
 
 type StoredWidgetState = {
   lastActivityAt: number
@@ -159,6 +179,12 @@ function nowIso() {
 
 function buildInitialMessages(prompt: string, stage: ChatbotFlowStage | null, quickActions: ChatbotQuickAction[]) {
   return [buildWelcomeMessage(prompt, stage, quickActions)]
+}
+
+function normalizeAttachmentList(value: PublicChatbotAttachment[] | undefined) {
+  return Array.isArray(value)
+    ? value.filter((item) => item?.url && item?.type)
+    : []
 }
 
 function normalizeStoredActivityAt(value: unknown) {
@@ -237,9 +263,23 @@ function buildWelcomeMessage(prompt: string, stage: ChatbotFlowStage | null, qui
 function getResponseOptionVisual() {
   return {
     className: 'border-violet-200 bg-violet-50 text-violet-900 hover:border-violet-300 hover:bg-violet-100',
-    badge: 'Paso guiado',
     icon: '↳',
   }
+}
+
+function getUserMessageDeliveryState(messages: PublicChatbotMessage[], index: number) {
+  const message = messages[index]
+  if (!message || message.role !== 'user') return null
+  if (message.id.startsWith('optimistic-')) return 'sending' as const
+  const hasLaterAssistantReply = messages.slice(index + 1).some((item) => item.role === 'assistant' || item.role === 'system')
+  return hasLaterAssistantReply ? 'read' as const : 'received' as const
+}
+
+function getUserMessageDeliveryLabel(state: ReturnType<typeof getUserMessageDeliveryState>) {
+  if (state === 'sending') return 'Enviando'
+  if (state === 'read') return 'Leído'
+  if (state === 'received') return 'Recibido'
+  return ''
 }
 
 function getLauncherPreviewIcon(icon: string) {
@@ -541,10 +581,15 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   const [preChatError, setPreChatError] = useState<string | null>(null)
   const [lastActivityAt, setLastActivityAt] = useState(() => Date.now())
   const [activeInactivityRule, setActiveInactivityRule] = useState<ChatbotInactivityRule | null>(null)
+  const [composerMenuOpen, setComposerMenuOpen] = useState(false)
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [pendingAttachments, setPendingAttachments] = useState<UploadedPublicChatbotAttachment[]>([])
   const lastServerMessageIdRef = useRef('')
   const expiringRef = useRef(false)
   const messagesViewportRef = useRef<HTMLDivElement | null>(null)
   const messagesBottomRef = useRef<HTMLDivElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const fallbackInactivityRule = useMemo(() => resolveFallbackInactivityRule({
     resetConversationAfterMinutes: props.resetConversationAfterMinutes,
     resetConversationAfterAction: props.resetConversationAfterAction,
@@ -598,7 +643,6 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   }, [activeAssistantMeta?.responseOptionIds, activeStage])
   const shouldShowSelectableOptions = latestMessage?.role === 'assistant'
   const hasSelectableOptions = shouldShowSelectableOptions && (activeResponseOptions.length > 0 || activeQuickActions.length > 0)
-  const welcomeMessage = defaultMessages[0] ?? null
   const shouldBlockConversation = preChatRequired && !preChatCompleted
   const departmentOptionsAvailable = props.preChatFormShowDepartmentField && props.preChatFormDepartmentOptions.length > 0
   const effectiveInactivityRule = useMemo(() => {
@@ -628,6 +672,8 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     setSessionId(nextSessionId)
     setMessages(defaultMessages)
     setDraft('')
+    setPendingAttachments([])
+    setUploadError(null)
     setSending(false)
     setSyncing(false)
     setConnectionState('connecting')
@@ -833,22 +879,27 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     return () => window.clearInterval(interval)
   }, [ready, sessionId, shouldBlockConversation, syncConversation])
 
-  async function sendMessage(messageBody: string, requestHuman = false, overrides?: { quickActionId?: string; responseOptionId?: string; currentStageId?: string }) {
+  async function sendMessage(messageBody: string, requestHuman = false, overrides?: { quickActionId?: string; responseOptionId?: string; currentStageId?: string; attachments?: UploadedPublicChatbotAttachment[] }) {
     const trimmedMessage = messageBody.trim()
-    if (!trimmedMessage || sending || !sessionId || shouldBlockConversation) return
+    const attachments = overrides?.attachments ?? pendingAttachments
+    if ((!trimmedMessage && attachments.length === 0) || sending || !sessionId || shouldBlockConversation) return
 
     const nextIdentity = inferIdentityFromMessage(identity, trimmedMessage, latestAssistantPrompt)
     setIdentity(nextIdentity)
     setPreChatError(null)
+    setUploadError(null)
 
     const optimisticMessage: PublicChatbotMessage = {
       id: `optimistic-${Date.now()}`,
       role: 'user',
       body: trimmedMessage,
       at: nowIso(),
+      attachments: attachments.map((item) => ({ type: item.type, url: item.url, alt: item.name, name: item.name })),
     }
     setMessages((current) => [...current, optimisticMessage])
     setDraft('')
+    setPendingAttachments([])
+    setComposerMenuOpen(false)
     setSending(true)
 
     try {
@@ -881,7 +932,9 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
             quickActionId: overrides?.quickActionId || null,
             responseOptionId: overrides?.responseOptionId || null,
             currentStageId: overrides?.currentStageId || activeStage?.id || null,
+            attachments,
           },
+          attachments,
           quickActionId: overrides?.quickActionId || undefined,
           responseOptionId: overrides?.responseOptionId || undefined,
           currentStageId: overrides?.currentStageId || activeStage?.id || undefined,
@@ -916,6 +969,13 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   }
 
   function submitDraft() {
+    void sendMessage(draft)
+  }
+
+  function handleDraftKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Enter' || event.shiftKey) return
+    event.preventDefault()
+    if (sending || interactionLocked || shouldBlockConversation || endingConversation || uploadingAttachment) return
     void sendMessage(draft)
   }
 
@@ -957,6 +1017,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   }
 
   function requestHumanSupport() {
+    setComposerMenuOpen(false)
     void sendMessage('Quiero hablar con un asesor humano.', true)
   }
 
@@ -990,6 +1051,51 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   function closePanel() {
     if (!floatingLauncherActive) return
     setPanelOpen(false)
+    setComposerMenuOpen(false)
+  }
+
+  function appendEmoji(emoji: string) {
+    setDraft((current) => `${current}${emoji}`)
+    setComposerMenuOpen(false)
+  }
+
+  function openAttachmentPicker() {
+    if (!fileInputRef.current || uploadingAttachment || shouldBlockConversation) return
+    fileInputRef.current.value = ''
+    fileInputRef.current.click()
+  }
+
+  async function handleAttachmentInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setUploadingAttachment(true)
+    setUploadError(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('parentReferrer', document.referrer || '')
+
+      const response = await fetch(`/api/public/chatbot/${props.channelId}/attachments`, {
+        method: 'POST',
+        body: formData,
+      })
+      const json = await response.json().catch(() => ({})) as { success?: boolean; data?: UploadedPublicChatbotAttachment; error?: string }
+      if (!response.ok || !json.success || !json.data) {
+        throw new Error(json.error || 'No se pudo subir el archivo.')
+      }
+      setPendingAttachments((current) => [...current, json.data!])
+      setComposerMenuOpen(false)
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'No se pudo subir el archivo.')
+    } finally {
+      setUploadingAttachment(false)
+      event.target.value = ''
+    }
+  }
+
+  function removePendingAttachment(url: string) {
+    setPendingAttachments((current) => current.filter((item) => item.url !== url))
   }
 
   async function endConversation() {
@@ -1115,11 +1221,6 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
               <p className="mt-1 whitespace-pre-wrap leading-6">{connectionError}</p>
             </div>
           ) : null}
-          {shouldBlockConversation && welcomeMessage ? (
-            <div className="sgd-chatbot-bubble-assistant mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
-              <div className="[&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_p]:my-0 [&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_u]:underline leading-6" dangerouslySetInnerHTML={{ __html: normalizeRichTextHtml(welcomeMessage.bodyHtml || plainTextToRichTextHtml(welcomeMessage.body)) }} />
-            </div>
-          ) : null}
           {shouldBlockConversation ? (
             <div className="mx-auto w-full max-w-[96%] rounded-[26px] border border-slate-200 bg-white px-4 py-4 shadow-sm">
               <p className="text-base font-semibold text-slate-950">{props.preChatFormTitle}</p>
@@ -1177,11 +1278,13 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
                 </Button>
               </div>
             </div>
-          ) : messages.map((message) => {
+          ) : messages.map((message, index) => {
             const normalizedBodyHtml = normalizeRichTextHtml(message.bodyHtml || plainTextToRichTextHtml(message.body))
             const hasVisibleBody = Boolean(richTextToPlainText(normalizedBodyHtml).trim())
             const assistantOnlyCarriesOptions = message.role === 'assistant' && !hasVisibleBody && Boolean(message.meta?.responseOptionIds?.length || message.meta?.quickActionIds?.length)
             if (assistantOnlyCarriesOptions) return null
+            const attachments = normalizeAttachmentList(message.attachments)
+            const deliveryState = getUserMessageDeliveryState(messages, index)
 
             return <div key={message.id} className={message.role === 'user' ? 'sgd-chatbot-bubble-user ml-auto max-w-[88%] rounded-[22px] bg-slate-950 px-4 py-3 text-sm text-white shadow-sm' : message.role === 'system' ? 'sgd-chatbot-bubble-system mx-auto max-w-[92%] rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900' : 'sgd-chatbot-bubble-assistant mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'}>
               {message.role === 'user' ? (
@@ -1189,12 +1292,12 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
               ) : (
                 <div className="[&_h1]:mb-2 [&_h1]:text-xl [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:text-base [&_h3]:font-semibold [&_p]:my-0 [&_p+p]:mt-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_b]:font-semibold [&_em]:italic [&_u]:underline leading-6" dangerouslySetInnerHTML={{ __html: normalizedBodyHtml }} />
               )}
-              {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
+              {attachments.length > 0 ? (
                 <div className="mt-3 space-y-2">
-                  {message.attachments.filter((item) => item?.type === 'image' && item?.url).map((item, index) => (
+                  {attachments.filter((item) => item?.type === 'image' && item?.url).map((item, index) => (
                     <img key={`${message.id}-attachment-${index}`} src={item.url || ''} alt={item.alt || 'Imagen del producto'} className="w-full rounded-2xl border border-slate-200 object-cover" />
                   ))}
-                  {message.attachments.filter((item) => item?.type === 'document' && item?.url).map((item, index) => (
+                  {attachments.filter((item) => item?.type === 'document' && item?.url).map((item, index) => (
                     <a
                       key={`${message.id}-document-${index}`}
                       href={item.url || '#'}
@@ -1206,6 +1309,15 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
                       <span className="text-xs uppercase tracking-[0.14em] text-slate-500">PDF</span>
                     </a>
                   ))}
+                </div>
+              ) : null}
+              {message.role === 'user' && deliveryState ? (
+                <div className="mt-2 flex items-center justify-end gap-1 text-[11px] text-white/75">
+                  <span className="inline-flex items-center gap-0.5">
+                    <Check className="h-3 w-3" />
+                    {deliveryState === 'read' ? <Check className="-ml-1.5 h-3 w-3" /> : null}
+                  </span>
+                  <span>{getUserMessageDeliveryLabel(deliveryState)}</span>
                 </div>
               ) : null}
               {message.author ? <p className="mt-2 text-[11px] text-slate-500">{message.author}</p> : null}
@@ -1226,7 +1338,6 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
                       <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/90 text-xs font-semibold shadow-sm">{index + 1}</span>
                       <span className="flex min-w-0 flex-1 flex-col">
                         <span className="text-sm font-semibold">{option.label}</span>
-                        <span className="text-[11px] font-medium opacity-80">{visual.badge}</span>
                       </span>
                       <span className="text-sm font-semibold opacity-80">{visual.icon}</span>
                     </button>
@@ -1272,19 +1383,94 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
                 <p className="mt-2 text-xs leading-5 text-sky-800">{activePause.description || `Pausa automática configurada por ${activePause.durationMinutes || 0} min antes del siguiente bloque.`}</p>
               </div>
             ) : null}
-            <div className="grid gap-1.5">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{props.messageLabel}</p>
-              <Textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} placeholder={shouldBlockConversation ? 'Completa el formulario para habilitar el chat.' : interactionLocked ? 'Espera a que termine la pausa para continuar.' : hasSelectableOptions ? 'Selecciona una opcion de la lista o escribe tu respuesta.' : props.messagePlaceholder} className="rounded-2xl border-slate-200" disabled={interactionLocked || shouldBlockConversation} />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button className="flex-1 rounded-xl text-white" style={{ backgroundColor: props.accentColor }} onClick={submitDraft} disabled={sending || !ready || interactionLocked || shouldBlockConversation || endingConversation}>
-                {interactionLocked ? 'Pausa activa...' : sending ? 'Enviando...' : 'Responder'}
-              </Button>
-              {props.allowHumanHandoff ? (
-                <Button variant="outline" className="rounded-xl border-slate-200" onClick={requestHumanSupport} disabled={sending || !ready || interactionLocked || shouldBlockConversation || endingConversation}>
-                  Pedir asesor
-                </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+              onChange={handleAttachmentInputChange}
+            />
+            {pendingAttachments.length > 0 ? (
+              <div className="flex flex-wrap gap-2 rounded-[20px] border border-slate-200 bg-slate-50 px-3 py-2">
+                {pendingAttachments.map((attachment) => (
+                  <div key={attachment.url} className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700">
+                    <span className="max-w-[180px] truncate">{attachment.name}</span>
+                    <button type="button" onClick={() => removePendingAttachment(attachment.url)} className="text-slate-400 transition hover:text-slate-700">
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {uploadError ? <p className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-700">{uploadError}</p> : null}
+            <div className="relative">
+              {composerMenuOpen ? (
+                <div className="absolute bottom-[calc(100%+10px)] left-0 z-10 w-[260px] rounded-[22px] border border-slate-200 bg-white p-3 shadow-[0_18px_40px_-24px_rgba(15,23,42,0.4)]">
+                  <div className="space-y-2">
+                    {props.allowHumanHandoff ? (
+                      <button type="button" onClick={requestHumanSupport} className="flex w-full items-center justify-between rounded-2xl border border-slate-200 px-3 py-2.5 text-left text-sm font-medium text-slate-800 transition hover:bg-slate-50">
+                        <span>Hablar con asesor</span>
+                        <ChevronRight className="h-4 w-4 text-slate-400" />
+                      </button>
+                    ) : null}
+                    <button type="button" onClick={openAttachmentPicker} className="flex w-full items-center justify-between rounded-2xl border border-slate-200 px-3 py-2.5 text-left text-sm font-medium text-slate-800 transition hover:bg-slate-50" disabled={uploadingAttachment}>
+                      <span>{uploadingAttachment ? 'Subiendo archivo...' : 'Agregar archivo'}</span>
+                      <Paperclip className="h-4 w-4 text-slate-400" />
+                    </button>
+                    <div className="rounded-2xl border border-slate-200 p-2">
+                      <p className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Emoticones</p>
+                      <div className="grid grid-cols-6 gap-1.5">
+                        {CHATBOT_EMOJI_CHOICES.map((emoji) => (
+                          <button key={emoji} type="button" onClick={() => appendEmoji(emoji)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-base transition hover:bg-slate-50">
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               ) : null}
+              <div className="flex items-end gap-2 rounded-[26px] border border-slate-200 bg-slate-50 px-2 py-2 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setComposerMenuOpen((current) => !current)}
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={shouldBlockConversation || interactionLocked || endingConversation}
+                  aria-label="Abrir opciones del mensaje"
+                >
+                  <Plus className="h-5 w-5" />
+                </button>
+                <div className="min-w-0 flex-1 rounded-[22px] bg-white">
+                  <Textarea
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={handleDraftKeyDown}
+                    rows={2}
+                    placeholder={shouldBlockConversation ? 'Completa el formulario para habilitar el chat.' : interactionLocked ? 'Espera a que termine la pausa para continuar.' : hasSelectableOptions ? 'Selecciona una opción o escribe tu respuesta.' : props.messagePlaceholder}
+                    className="min-h-[52px] resize-none rounded-[22px] border-0 bg-white shadow-none focus-visible:ring-0"
+                    disabled={interactionLocked || shouldBlockConversation || endingConversation}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => appendEmoji(CHATBOT_EMOJI_CHOICES[0])}
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={shouldBlockConversation || interactionLocked || endingConversation}
+                  aria-label="Agregar emoji"
+                >
+                  <Smile className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={submitDraft}
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60"
+                  style={{ backgroundColor: props.accentColor }}
+                  disabled={sending || !ready || interactionLocked || shouldBlockConversation || endingConversation || uploadingAttachment || (!draft.trim() && pendingAttachments.length === 0)}
+                  aria-label={interactionLocked ? 'Pausa activa' : sending ? 'Enviando mensaje' : 'Enviar mensaje'}
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              </div>
             </div>
             {!shouldBlockConversation ? (
               <div className="flex justify-end">

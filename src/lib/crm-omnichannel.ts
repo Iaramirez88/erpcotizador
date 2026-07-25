@@ -753,6 +753,7 @@ export async function createInboundArtifacts(args: {
   referrerUrl?: string | null
   rawPayloadJson: Prisma.InputJsonValue
   normalizedDataJson: Prisma.InputJsonValue
+  attachmentsJson?: Prisma.InputJsonValue
 }) {
   const eventAt = args.eventAt ?? new Date()
   const assignedToUserId = await resolveInboundAssigneeUserId({
@@ -819,7 +820,7 @@ export async function createInboundArtifacts(args: {
       status: 'RECEIVED',
       bodyText: normalizeString(args.messageText) || null,
       payloadJson: args.rawPayloadJson,
-      attachmentsJson: [],
+      attachmentsJson: Array.isArray(args.attachmentsJson) ? args.attachmentsJson : [],
       occurredAt: eventAt,
     },
   })

@@ -122,6 +122,12 @@ const SERVICE_HINT_TERMS = [
 
 type ChatFlowNextField = Exclude<ChatbotFlowNextField, 'none'> | null
 
+type ChatbotInboundAttachment = {
+  type: 'image' | 'document'
+  url: string
+  name: string | null
+}
+
 function splitSearchTerms(value: string) {
   return Array.from(
     new Set(
@@ -1232,39 +1238,39 @@ function buildAssistantReply(args: {
   }
 
   if (nextField === 'name') {
-    return { body: decorateAssistantReply('Hola. Gracias por escribirnos. Me gustaría que me dijeras tu nombre para continuar.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
+    return { body: decorateAssistantReply(buildStagePromptFallback(nextStage, 'Hola. Gracias por escribirnos. Me gustaría que me dijeras tu nombre para continuar.'), nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
   }
 
   if (nextField === 'email') {
-    return { body: decorateAssistantReply(`Mucho gusto${args.nombre ? `, ${args.nombre}` : ''}. Ahora me gustaría que me dejaras tu correo para enviarte la información comercial.`, nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
+    return { body: decorateAssistantReply(buildStagePromptFallback(nextStage, `Mucho gusto${args.nombre ? `, ${args.nombre}` : ''}. Ahora me gustaría que me dejaras tu correo para enviarte la información comercial.`), nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
   }
 
   if (nextField === 'phone') {
-    return { body: decorateAssistantReply('Perfecto. Si gustas, déjame también un teléfono o WhatsApp para que el centro de ventas pueda comunicarse contigo más rápido. Si prefieres, también puedes escribirme de una vez el producto que te interesa.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
+    return { body: decorateAssistantReply(buildStagePromptFallback(nextStage, 'Perfecto. Si gustas, déjame también un teléfono o WhatsApp para que el centro de ventas pueda comunicarse contigo más rápido. Si prefieres, también puedes escribirme de una vez el producto que te interesa.'), nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
   }
 
   if (nextField === 'whatsapp') {
-    return { body: decorateAssistantReply('Gracias. Ahora déjame un WhatsApp de contacto para enviarte seguimiento y confirmar la solicitud.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
+    return { body: decorateAssistantReply(buildStagePromptFallback(nextStage, 'Gracias. Ahora déjame un WhatsApp de contacto para enviarte seguimiento y confirmar la solicitud.'), nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
   }
 
   if (nextField === 'product') {
-    return { body: decorateAssistantReply('Gracias. Ahora cuéntame qué producto o servicio te interesa para revisar inventario y precio de referencia.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
+    return { body: decorateAssistantReply(buildStagePromptFallback(nextStage, 'Gracias. Ahora cuéntame qué producto o servicio te interesa para revisar inventario y precio de referencia.'), nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
   }
 
   if (nextField === 'company') {
-    return { body: decorateAssistantReply('Perfecto. Para dejar la solicitud más completa, indícame el nombre de la empresa o razón social.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
+    return { body: decorateAssistantReply(buildStagePromptFallback(nextStage, 'Perfecto. Para dejar la solicitud más completa, indícame el nombre de la empresa o razón social.'), nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
   }
 
   if (nextField === 'document') {
-    return { body: decorateAssistantReply('Ahora compárteme el documento, NIT o identificación con la que debemos registrar la solicitud.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
+    return { body: decorateAssistantReply(buildStagePromptFallback(nextStage, 'Ahora compárteme el documento, NIT o identificación con la que debemos registrar la solicitud.'), nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
   }
 
   if (nextField === 'city') {
-    return { body: decorateAssistantReply('Gracias. ¿En qué ciudad debemos registrar esta solicitud?', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
+    return { body: decorateAssistantReply(buildStagePromptFallback(nextStage, 'Gracias. ¿En qué ciudad debemos registrar esta solicitud?'), nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
   }
 
   if (nextField === 'address') {
-    return { body: decorateAssistantReply('Perfecto. Ahora compárteme la dirección de entrega o facturación que debemos tener como referencia.', nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
+    return { body: decorateAssistantReply(buildStagePromptFallback(nextStage, 'Perfecto. Ahora compárteme la dirección de entrega o facturación que debemos tener como referencia.'), nextStage, args.currentStageId, args.quickActionId), nextField, stage: nextStage }
   }
 
   if (args.businessActionResult) {
@@ -1433,6 +1439,12 @@ export async function POST(request: Request) {
     const currentStageId = normalizeString(body?.currentStageId || payload.currentStageId)
     const currentFlowId = normalizeString(body?.currentFlowId || payload.currentFlowId || payload.chatFlowId)
     const externalThreadId = normalizeString(body?.externalThreadId || payload.externalThreadId || `${channel.id}-${phone || email || Date.now()}`)
+    const inboundAttachments = normalizeInboundAttachments(body?.attachments || payload.attachments)
+    const inboundMessageType = inboundAttachments[0]?.type === 'image'
+      ? 'IMAGE'
+      : inboundAttachments[0]?.type === 'document'
+        ? 'DOCUMENT'
+        : 'TEXT'
 
     if (publicEmbedEnabled) {
       const requestHost = await getRequestHost()
@@ -1488,7 +1500,7 @@ export async function POST(request: Request) {
         source: 'WEB',
         captureType: 'CHATBOT_START',
         activityType: 'NOTE',
-        messageType: 'TEXT',
+        messageType: inboundMessageType,
         eventAt,
         nombre: resolvedIdentity.nombre,
         empresaNombre: resolvedIdentity.companyName,
@@ -1527,7 +1539,9 @@ export async function POST(request: Request) {
           quantity: resolvedIdentity.quantity,
           landingPageUrl,
           referrerUrl,
+          attachments: inboundAttachments,
         },
+        attachmentsJson: inboundAttachments,
       })
 
       const leadQualified = Boolean((resolvedIdentity.email || resolvedIdentity.phone || resolvedIdentity.whatsapp) && effectiveProduct && resolvedIdentity.quantity)
@@ -2237,4 +2251,27 @@ export async function POST(request: Request) {
     console.error('Error capturando chatbot CRM:', error)
     return NextResponse.json({ error: 'Error capturando chatbot CRM' }, { status: 500 })
   }
+}
+
+function normalizeInboundAttachments(value: unknown): ChatbotInboundAttachment[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+      const raw = item as Record<string, unknown>
+      const type = normalizeString(raw.type).toLowerCase()
+      const url = normalizeString(raw.url)
+      if (!url || (type !== 'image' && type !== 'document')) return null
+      return {
+        type: type as ChatbotInboundAttachment['type'],
+        url,
+        name: normalizeString(raw.name || raw.alt) || null,
+      } satisfies ChatbotInboundAttachment
+    })
+    .filter((item): item is ChatbotInboundAttachment => Boolean(item))
+}
+
+function buildStagePromptFallback(nextStage: ChatbotFlowStage | null, fallbackCopy: string) {
+  const stagePrompt = richTextToPlainText(normalizeRichTextHtml(nextStage?.prompt || ''))
+  return stagePrompt || fallbackCopy
 }
