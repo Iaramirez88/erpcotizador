@@ -31,6 +31,7 @@ scripts/*
 !scripts/migrate-users-to-sgdigital.ts
 !scripts/seed-accounting-sample.ts
 !scripts/seed-rbac-v2-bootstrap.ts
+!scripts/debug-meta-whatsapp-assets.ts
 
 # Artefactos OS
 .DS_Store
