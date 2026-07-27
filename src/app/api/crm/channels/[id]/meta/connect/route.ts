@@ -45,7 +45,7 @@ export async function GET(_request: Request, context: RouteContext) {
       issuedAt: Math.floor(Date.now() / 1000),
     })
 
-    return NextResponse.redirect(buildMetaOAuthUrl({ state }))
+    return NextResponse.redirect(buildMetaOAuthUrl({ state, provider: channel.provider }))
   } catch (error) {
     console.error('Error iniciando OAuth de Meta:', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'No se pudo iniciar la conexión con Meta.' }, { status: 500 })

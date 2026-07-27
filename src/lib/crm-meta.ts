@@ -5,7 +5,7 @@ import { parseJsonObject } from '@/lib/crm-omnichannel'
 
 const META_GRAPH_VERSION = 'v23.0'
 
-export const META_OAUTH_SCOPES = [
+const META_OAUTH_SCOPES = [
   'business_management',
   'leads_retrieval',
   'pages_show_list',
@@ -15,6 +15,25 @@ export const META_OAUTH_SCOPES = [
   'instagram_manage_messages',
   'whatsapp_business_management',
   'whatsapp_business_messaging',
+]
+
+const META_WHATSAPP_OAUTH_SCOPES = [
+  'business_management',
+  'whatsapp_business_management',
+  'whatsapp_business_messaging',
+]
+
+const META_FACEBOOK_PAGE_OAUTH_SCOPES = [
+  'pages_show_list',
+  'pages_manage_metadata',
+  'pages_messaging',
+]
+
+const META_INSTAGRAM_OAUTH_SCOPES = [
+  'pages_show_list',
+  'pages_manage_metadata',
+  'instagram_basic',
+  'instagram_manage_messages',
 ]
 
 export type MetaPageAsset = {
@@ -100,7 +119,23 @@ async function fetchMetaGraph<T>(path: string, params: Record<string, string>, a
   return json
 }
 
-export function buildMetaOAuthUrl(args: { state: string }) {
+export function getMetaOAuthScopes(provider: CrmChannelProvider) {
+  if (provider === 'WHATSAPP_CLOUD' || provider === 'WHATSAPP_SANDBOX') {
+    return META_WHATSAPP_OAUTH_SCOPES
+  }
+
+  if (provider === 'INSTAGRAM_DM') {
+    return META_INSTAGRAM_OAUTH_SCOPES
+  }
+
+  if (provider === 'FACEBOOK_PAGE' || provider === 'MESSENGER') {
+    return META_FACEBOOK_PAGE_OAUTH_SCOPES
+  }
+
+  return META_OAUTH_SCOPES
+}
+
+export function buildMetaOAuthUrl(args: { state: string; provider: CrmChannelProvider }) {
   const { appId } = requireMetaEnv()
   const redirectUri = getMetaOAuthRedirectUri()
   const search = new URLSearchParams({
@@ -108,7 +143,7 @@ export function buildMetaOAuthUrl(args: { state: string }) {
     redirect_uri: redirectUri,
     state: args.state,
     response_type: 'code',
-    scope: META_OAUTH_SCOPES.join(','),
+    scope: getMetaOAuthScopes(args.provider).join(','),
   })
   return `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth?${search.toString()}`
 }
