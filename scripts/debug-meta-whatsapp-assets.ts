@@ -74,6 +74,7 @@ async function listCandidateChannels() {
 async function main() {
   const channelId = process.argv[2]
   const expectedPhoneNumberId = normalizeString(process.argv[3])
+  const explicitWabaId = normalizeString(process.argv[4])
 
   if (!channelId) {
     await listCandidateChannels()
@@ -142,6 +143,16 @@ async function main() {
 
   console.log('\nNegocios visibles para el token:')
   console.log(JSON.stringify(businesses.data || [], null, 2))
+
+  if (explicitWabaId) {
+    const directWabaPhoneNumbers = await fetchGraph<GraphListResponse<GraphPhoneNumber>>(`/${explicitWabaId}/phone_numbers`, accessToken, {
+      fields: 'id,display_phone_number,verified_name',
+      limit: '100',
+    }).catch((error) => ({ error: error instanceof Error ? error.message : String(error) }))
+
+    console.log(`\nConsulta directa de numeros para WABA ${explicitWabaId}:`)
+    console.log(JSON.stringify(directWabaPhoneNumbers, null, 2))
+  }
 
   for (const business of businesses.data || []) {
     const businessId = normalizeString(business.id)

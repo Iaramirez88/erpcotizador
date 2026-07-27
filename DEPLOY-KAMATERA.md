@@ -295,6 +295,6 @@ Y usa esta secuencia para evitar crecimiento innecesario:
 - Si planeas varias instancias, hay que migrar archivos a S3/Spaces (no disco local).
 
 
-#ERPPonyo2026*
+<!-- #ERPPonyo2026* -->
 sudo docker builder prune -a -f
 docker compose -f docker-compose.prod.yml build --no-cache app
