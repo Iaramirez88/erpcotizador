@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { Prisma, type CrmMessageStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { createInboundArtifacts, getConnectionToken } from '@/lib/crm-omnichannel'
+import { createConversationMessageEvent, createInboundArtifacts, getConnectionToken } from '@/lib/crm-omnichannel'
 import { normalizeString } from '@/lib/crm'
 import { getWebhookInboundMapping, normalizeWebhookInboundPayload } from '@/lib/crm-webhook-normalizer'
 
@@ -174,7 +174,12 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     const results = await prisma.$transaction(async (tx) => {
-      const processed = [] as Array<Awaited<ReturnType<typeof createInboundArtifacts>>>
+      const processed = [] as Array<{
+        lead: { id: string } | null
+        conversation: { id: string }
+        message: { id: string }
+        capture: { id: string } | null
+      }>
       let processedStatuses = 0
 
       for (const update of normalized.statusUpdates) {
@@ -186,34 +191,60 @@ export async function POST(request: Request, context: RouteContext) {
       }
 
       for (const event of normalized.events) {
-        const artifacts = await createInboundArtifacts({
-          client: tx,
-          empresaId: channel.empresaId,
-          sedeId: channel.sedeId,
-          createdById: channel.createdBy.id,
-          ownerUserId: channel.createdBy.id,
-          channelConnectionId: channel.id,
-          source: mapping.source,
-          captureType: mapping.captureType,
-          activityType: mapping.activityType,
-          messageType: event.messageType,
-          eventAt: event.eventAt,
-          nombre: event.nombre,
-          empresaNombre: event.empresaNombre,
-          email: event.email,
-          phone: event.phone,
-          ciudad: event.ciudad,
-          messageText: event.messageText,
-          externalThreadId: event.externalThreadId,
-          providerMessageId: event.providerMessageId,
-          providerLeadId: event.providerLeadId,
-          sourceLabel: mapping.sourceLabel,
-          sourceCampaign: event.sourceCampaign,
-          sourceMedium: event.sourceMedium,
-          sourceContent: event.sourceContent,
-          rawPayloadJson: event.rawPayloadJson,
-          normalizedDataJson: event.normalizedDataJson,
-        })
+        const artifacts = event.eventDirection === 'OUTBOUND'
+          ? await createConversationMessageEvent({
+              client: tx,
+              empresaId: channel.empresaId,
+              sedeId: channel.sedeId,
+              createdById: channel.createdBy.id,
+              ownerUserId: channel.createdBy.id,
+              activityType: mapping.activityType,
+              channelConnectionId: channel.id,
+              direction: 'OUTBOUND',
+              messageType: event.messageType,
+              eventAt: event.eventAt,
+              nombre: event.nombre,
+              email: event.email,
+              phone: event.phone,
+              messageText: event.messageText,
+              messageOrigin: event.messageOrigin,
+              externalThreadId: event.externalThreadId,
+              providerMessageId: event.providerMessageId,
+              sourceLabel: mapping.sourceLabel,
+              sourceCampaign: event.sourceCampaign,
+              sourceMedium: event.sourceMedium,
+              sourceContent: event.sourceContent,
+              rawPayloadJson: event.rawPayloadJson,
+            }).then((result) => ({ lead: null, conversation: result.conversation, message: result.message, capture: null }))
+          : await createInboundArtifacts({
+              client: tx,
+              empresaId: channel.empresaId,
+              sedeId: channel.sedeId,
+              createdById: channel.createdBy.id,
+              ownerUserId: channel.createdBy.id,
+              channelConnectionId: channel.id,
+              source: mapping.source,
+              captureType: mapping.captureType,
+              activityType: mapping.activityType,
+              messageType: event.messageType,
+              eventAt: event.eventAt,
+              nombre: event.nombre,
+              empresaNombre: event.empresaNombre,
+              email: event.email,
+              phone: event.phone,
+              ciudad: event.ciudad,
+              messageText: event.messageText,
+              messageOrigin: event.messageOrigin,
+              externalThreadId: event.externalThreadId,
+              providerMessageId: event.providerMessageId,
+              providerLeadId: event.providerLeadId,
+              sourceLabel: mapping.sourceLabel,
+              sourceCampaign: event.sourceCampaign,
+              sourceMedium: event.sourceMedium,
+              sourceContent: event.sourceContent,
+              rawPayloadJson: event.rawPayloadJson,
+              normalizedDataJson: event.normalizedDataJson,
+            })
 
         processed.push(artifacts)
       }
@@ -233,15 +264,15 @@ export async function POST(request: Request, context: RouteContext) {
       processed: results.processed.length,
       processedStatuses: results.processedStatuses,
       data: {
-        leadId: first?.lead.id ?? null,
+        leadId: first?.lead?.id ?? null,
         conversationId: first?.conversation.id ?? null,
         messageId: first?.message.id ?? null,
-        captureId: first?.capture.id ?? null,
+        captureId: first?.capture?.id ?? null,
         records: results.processed.map((result) => ({
-          leadId: result.lead.id,
+          leadId: result.lead?.id ?? null,
           conversationId: result.conversation.id,
           messageId: result.message.id,
-          captureId: result.capture.id,
+          captureId: result.capture?.id ?? null,
         })),
         testing: channel.status === 'TESTING',
       },

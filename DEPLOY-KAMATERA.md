@@ -293,8 +293,3 @@ Y usa esta secuencia para evitar crecimiento innecesario:
 - Si dejas archivos en disco local (sin S3), el tamaño del disco es crítico.
 - El OCR es el principal riesgo de picos: por eso se limitaron CPU/RAM y threads en `docker-compose.prod.yml`.
 - Si planeas varias instancias, hay que migrar archivos a S3/Spaces (no disco local).
-
-
-<!-- #ERPPonyo2026* -->
-sudo docker builder prune -a -f
-docker compose -f docker-compose.prod.yml build --no-cache app

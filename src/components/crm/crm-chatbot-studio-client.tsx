@@ -448,12 +448,45 @@ function parseStudioSettingsJson(value: unknown) {
     : {}
 }
 
+type MessageOrigin = 'CUSTOMER' | 'PHONE_APP' | 'CRM_AGENT' | 'BOT' | 'SYSTEM'
+
+function getConversationMessageOrigin(payloadJson: Record<string, unknown> | null | undefined, direction: string): MessageOrigin {
+  const origin = typeof payloadJson?.messageOrigin === 'string' ? payloadJson.messageOrigin : ''
+  if (origin === 'CUSTOMER' || origin === 'PHONE_APP' || origin === 'CRM_AGENT' || origin === 'BOT' || origin === 'SYSTEM') {
+    return origin
+  }
+
+  if (direction === 'OUTBOUND') return 'CRM_AGENT'
+  if (direction === 'SYSTEM') return 'SYSTEM'
+  return 'CUSTOMER'
+}
+
+function getConversationMessageOriginMeta(origin: MessageOrigin) {
+  switch (origin) {
+    case 'PHONE_APP':
+      return { label: 'Celular', className: 'bg-amber-100 text-amber-800' }
+    case 'CRM_AGENT':
+      return { label: 'CRM', className: 'bg-emerald-100 text-emerald-800' }
+    case 'BOT':
+      return { label: 'Bot', className: 'bg-fuchsia-100 text-fuchsia-800' }
+    case 'SYSTEM':
+      return { label: 'Sistema', className: 'bg-slate-200 text-slate-700' }
+    default:
+      return { label: 'Cliente', className: 'bg-white/80 text-slate-700' }
+  }
+}
+
+function hasConversationMessageCollision(payloadJson: Record<string, unknown> | null | undefined) {
+  return payloadJson?.collisionDetected === true
+}
+
 function isWhatsAppChannelReadyForStudio(channel: WhatsAppChannelConnection) {
+  const settings = parseStudioSettingsJson(channel.settingsJson)
+
   if (channel.provider === 'WHATSAPP_SANDBOX') {
     return ['TESTING', 'ACTIVE'].includes(channel.status) && Boolean(normalizeStudioValue(channel.externalPhoneNumberId))
   }
 
-  const settings = parseStudioSettingsJson(channel.settingsJson)
   return Boolean(
     normalizeStudioValue(settings.metaConnectedAt)
     && normalizeStudioValue(settings.metaAccessTokenEncrypted)
@@ -4816,12 +4849,19 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                   <div className="space-y-3">
                   {selectedConversation.messages.map((message) => {
                     const isOutbound = message.direction === 'OUTBOUND'
+                    const originMeta = getConversationMessageOriginMeta(getConversationMessageOrigin(message.payloadJson, message.direction))
+                    const hasCollision = hasConversationMessageCollision(message.payloadJson)
                     return (
                       <div key={message.id} className={isOutbound ? 'ml-auto max-w-[88%] rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-slate-700' : 'mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'}>
                         <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-slate-500">
-                          <span>{isOutbound ? (message.sentByUser?.name || 'Bot / asesor') : 'Visitante'}</span>
+                          <div className="flex items-center gap-2">
+                            <span>{isOutbound ? (message.sentByUser?.name || 'Bot / asesor') : 'Visitante'}</span>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold normal-case ${originMeta.className}`}>{originMeta.label}</span>
+                            {hasCollision ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold normal-case text-amber-800">Colisión</span> : null}
+                          </div>
                           <span>{formatDate(message.occurredAt)}</span>
                         </div>
+                        {hasCollision ? <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Se detectó una posible doble respuesta entre el celular y el CRM.</div> : null}
                         <div className="mt-2 whitespace-pre-wrap break-words leading-6">{message.bodyText || 'Sin texto'}</div>
                         {Array.isArray(message.payloadJson?.attachmentsJson) ? null : null}
                         {Array.isArray((message as { attachmentsJson?: Array<{ type?: string | null; url?: string | null; name?: string | null }> }).attachmentsJson) && (message as { attachmentsJson?: Array<{ type?: string | null; url?: string | null; name?: string | null }> }).attachmentsJson?.length ? (

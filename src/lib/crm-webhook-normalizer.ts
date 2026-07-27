@@ -6,9 +6,11 @@ type JsonObject = Record<string, unknown>
 
 export type NormalizedWebhookInboundEvent = {
   eventAt: Date
+  eventDirection: 'INBOUND' | 'OUTBOUND'
   externalThreadId: string | null
   providerMessageId: string | null
   providerLeadId: string | null
+  messageOrigin: 'CUSTOMER' | 'PHONE_APP' | 'CRM_AGENT' | 'BOT' | 'SYSTEM'
   nombre: string | null
   phone: string | null
   email: string | null
@@ -143,9 +145,11 @@ function normalizeWhatsAppMetaPayload(provider: CrmChannelProvider, body: Record
 
         events.push({
           eventAt,
+          eventDirection: 'INBOUND',
           externalThreadId: from || normalizeString(value.metadata && parseJsonObject(value.metadata).phone_number_id) || null,
           providerMessageId: normalizeString(message.id) || null,
           providerLeadId: from || null,
+          messageOrigin: 'CUSTOMER',
           nombre: normalizeString(profile.name) || null,
           phone: from || null,
           email: null,
@@ -234,7 +238,50 @@ function normalizeMessengerMetaPayload(provider: CrmChannelProvider, body: Recor
       }
 
       if (isEcho) {
-        ignoredReason = 'Evento echo saliente ignorado.'
+        const normalizedEcho = normalizeMetaMessagingEvent(message, postback)
+        const eventAt = parseMaybeDate(messaging.timestamp || entry.time)
+
+        if (recipientId || normalizedEcho.providerMessageId) {
+          events.push({
+            eventAt,
+            eventDirection: 'OUTBOUND',
+            externalThreadId: recipientId || senderId || null,
+            providerMessageId: normalizedEcho.providerMessageId,
+            providerLeadId: recipientId || null,
+            messageOrigin: 'PHONE_APP',
+            nombre: normalizeString(parseJsonObject(messaging.contact).name || recipient.name) || null,
+            phone: normalizeString(parseJsonObject(messaging.contact).phone || recipient.phone) || null,
+            email: normalizeString(parseJsonObject(messaging.contact).email || recipient.email).toLowerCase() || null,
+            empresaNombre: normalizeString(parseJsonObject(messaging.contact).company) || null,
+            ciudad: normalizeString(parseJsonObject(messaging.contact).city) || null,
+            messageText: normalizedEcho.messageText,
+            messageType: normalizedEcho.messageType,
+            sourceCampaign: normalizeString(parseJsonObject(messaging.metadata).campaign) || null,
+            sourceMedium: normalizeString(parseJsonObject(messaging.metadata).medium) || provider,
+            sourceContent: normalizeString(parseJsonObject(messaging.metadata).content) || null,
+            rawPayloadJson: {
+              object: body.object ?? null,
+              entry,
+              messaging,
+              sender,
+              recipient,
+              message,
+              postback,
+              isEcho: true,
+            } as Prisma.InputJsonValue,
+            normalizedDataJson: {
+              provider,
+              senderId: senderId || null,
+              recipientId: recipientId || null,
+              messageText: normalizedEcho.messageText,
+              messageType: normalizedEcho.messageType,
+              providerMessageId: normalizedEcho.providerMessageId,
+              isEcho: true,
+            } as Prisma.InputJsonValue,
+          })
+        } else {
+          ignoredReason = 'Evento echo saliente sin identificador utilizable.'
+        }
         continue
       }
 
@@ -245,9 +292,11 @@ function normalizeMessengerMetaPayload(provider: CrmChannelProvider, body: Recor
 
       events.push({
         eventAt,
+        eventDirection: 'INBOUND',
         externalThreadId: senderId || normalizeString(recipient.id) || null,
         providerMessageId: normalized.providerMessageId,
         providerLeadId: senderId || null,
+        messageOrigin: 'CUSTOMER',
         nombre: normalizeString(parseJsonObject(messaging.contact).name || sender.name) || null,
         phone: normalizeString(parseJsonObject(messaging.contact).phone || sender.phone) || null,
         email: normalizeString(parseJsonObject(messaging.contact).email || sender.email).toLowerCase() || null,
@@ -311,9 +360,11 @@ function normalizeSimplifiedPayload(provider: CrmChannelProvider, body: Record<s
     events: [
       {
         eventAt,
+        eventDirection: 'INBOUND',
         externalThreadId: externalThreadId || null,
         providerMessageId: providerMessageId || null,
         providerLeadId: providerLeadId || null,
+        messageOrigin: 'CUSTOMER',
         nombre: nombre || null,
         phone: phone || null,
         email: email || null,

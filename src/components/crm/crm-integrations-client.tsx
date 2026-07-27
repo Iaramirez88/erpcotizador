@@ -82,6 +82,8 @@ import {
 
 type ChannelStatus = 'DRAFT' | 'TESTING' | 'ACTIVE' | 'DISABLED' | 'ERROR'
 
+type WhatsAppConnectionMode = 'CRM_ONLY' | 'HYBRID_CRM_PHONE'
+
 type ChannelConnection = {
   id: string
   name: string
@@ -566,6 +568,7 @@ function getInitialChannelForm() {
     externalAccountId: '',
     externalPageId: '',
     externalPhoneNumberId: '',
+    whatsappConnectionMode: 'CRM_ONLY' as WhatsAppConnectionMode,
     whatsappDisplayPhoneNumber: '',
     whatsappAccessToken: '',
     whatsappApiVersion: 'v23.0',
@@ -1356,6 +1359,18 @@ function getWhatsAppAccessToken(settingsJson: Record<string, unknown> | null | u
 
 function getWhatsAppDisplayPhoneNumber(settingsJson: Record<string, unknown> | null | undefined) {
   return typeof settingsJson?.whatsappDisplayPhoneNumber === 'string' ? settingsJson.whatsappDisplayPhoneNumber : ''
+}
+
+function getWhatsAppConnectionMode(settingsJson: Record<string, unknown> | null | undefined): WhatsAppConnectionMode {
+  return settingsJson?.whatsappConnectionMode === 'HYBRID_CRM_PHONE' ? 'HYBRID_CRM_PHONE' : 'CRM_ONLY'
+}
+
+function getWhatsAppConnectionModeLabel(mode: WhatsAppConnectionMode, language: 'es' | 'en') {
+  if (mode === 'HYBRID_CRM_PHONE') {
+    return language === 'en' ? 'Hybrid CRM + phone' : 'Híbrido CRM + celular'
+  }
+
+  return language === 'en' ? 'CRM only' : 'Solo CRM'
 }
 
 function getWhatsAppApiVersion(settingsJson: Record<string, unknown> | null | undefined) {
@@ -2918,6 +2933,7 @@ export function CrmIntegrationsClient() {
       externalAccountId: channel.externalAccountId || '',
       externalPageId: channel.externalPageId || '',
       externalPhoneNumberId: channel.externalPhoneNumberId || '',
+      whatsappConnectionMode: getWhatsAppConnectionMode(settings),
       whatsappDisplayPhoneNumber: getWhatsAppDisplayPhoneNumber(settings),
       whatsappAccessToken: getWhatsAppAccessToken(settings),
       whatsappApiVersion: getWhatsAppApiVersion(settings),
@@ -3270,6 +3286,7 @@ export function CrmIntegrationsClient() {
         googleSheetsRowLimit: createForm.googleSheetsRowLimit,
         googleSheetsImportMode: createForm.googleSheetsImportMode,
         googleSheetsOpportunityStage: createForm.googleSheetsOpportunityStage,
+        whatsappConnectionMode: createForm.whatsappConnectionMode,
         whatsappDisplayPhoneNumber: createForm.whatsappDisplayPhoneNumber,
         whatsappAccessToken: createForm.whatsappAccessToken,
         whatsappApiVersion: createForm.whatsappApiVersion,
@@ -5212,7 +5229,16 @@ export function CrmIntegrationsClient() {
                               </div>
                             ) : null}
                             {selectedChannel.provider === 'WHATSAPP_CLOUD' || selectedChannel.provider === 'WHATSAPP_SANDBOX' ? (
-                              <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Active number:' : 'Número activo:'}</span> {selectedMeta.whatsappAssets.find((item) => item.phoneNumberId === selectedChannel.externalPhoneNumberId)?.displayPhoneNumber || getWhatsAppDisplayPhoneNumber(selectedSettings) || selectedChannel.externalPhoneNumberId || (language === 'en' ? 'No linked number' : 'Sin número asociado')}</p>
+                              <>
+                                <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Active number:' : 'Número activo:'}</span> {selectedMeta.whatsappAssets.find((item) => item.phoneNumberId === selectedChannel.externalPhoneNumberId)?.displayPhoneNumber || getWhatsAppDisplayPhoneNumber(selectedSettings) || selectedChannel.externalPhoneNumberId || (language === 'en' ? 'No linked number' : 'Sin número asociado')}</p>
+                                <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Connection mode:' : 'Modo de conexión:'}</span> {getWhatsAppConnectionModeLabel(getWhatsAppConnectionMode(selectedSettings), language)}</p>
+                                {getWhatsAppConnectionMode(selectedSettings) === 'HYBRID_CRM_PHONE' ? (
+                                  <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-3 text-xs leading-5 text-amber-900">
+                                    <p className="font-semibold">{language === 'en' ? 'Hybrid mode planned architecture' : 'Arquitectura prevista para modo híbrido'}</p>
+                                    <p>{language === 'en' ? 'This mode requires official Meta coexistence, inbound and outbound event reconciliation, and rules to avoid duplicate replies between the phone and the CRM.' : 'Este modo requiere coexistencia oficial de Meta, conciliación de eventos inbound y outbound, y reglas para evitar respuestas duplicadas entre el celular y el CRM.'}</p>
+                                  </div>
+                                ) : null}
+                              </>
                             ) : null}
                             {selectedChannel.provider === 'FACEBOOK_PAGE' || selectedChannel.provider === 'MESSENGER' ? (
                               <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Active page:' : 'Página activa:'}</span> {selectedMeta.pages.find((item) => item.pageId === selectedChannel.externalPageId)?.pageName || selectedChannel.externalPageId || (language === 'en' ? 'No linked page' : 'Sin página asociada')}</p>
@@ -6770,6 +6796,17 @@ export function CrmIntegrationsClient() {
                         </div>
                         {createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? (
                           <>
+                            <div className="grid gap-2 md:col-span-2">
+                              <Label>Modo de conexión del número</Label>
+                              <Select value={createForm.whatsappConnectionMode} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, whatsappConnectionMode: value as WhatsAppConnectionMode }))}>
+                                <SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="CRM_ONLY">Solo CRM</SelectItem>
+                                  <SelectItem value="HYBRID_CRM_PHONE">Híbrido CRM + celular</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <p className="text-xs leading-5 text-slate-500">Solo CRM mantiene el número operando desde la plataforma. Híbrido CRM + celular deja marcado que este canal debe evolucionar a coexistencia oficial y sincronización bidireccional.</p>
+                            </div>
                             <div className="grid gap-2">
                               <Label>Número visible de WhatsApp</Label>
                               <Input value={createForm.whatsappDisplayPhoneNumber} onChange={(e) => setCreateForm((prev) => ({ ...prev, whatsappDisplayPhoneNumber: e.target.value }))} className="h-11 rounded-xl" placeholder="+57 320 2102047" />

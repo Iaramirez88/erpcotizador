@@ -21,12 +21,13 @@ import { type CrmOriginKey, getCrmOriginMeta } from '@/lib/crm-origin'
 
 type ConversationStatus = 'OPEN' | 'PENDING' | 'BOT_ACTIVE' | 'HUMAN_ACTIVE' | 'RESOLVED' | 'SPAM'
 type MessageDirection = 'INBOUND' | 'OUTBOUND' | 'SYSTEM'
+type MessageOrigin = 'CUSTOMER' | 'PHONE_APP' | 'CRM_AGENT' | 'BOT' | 'SYSTEM'
 type ChannelProvider = 'WHATSAPP_CLOUD' | 'WHATSAPP_SANDBOX' | 'FACEBOOK_PAGE' | 'MESSENGER' | 'WEB_FORM' | 'WEB_CHATBOT' | 'INSTAGRAM_DM'
 type BridgeKind = 'GENERIC' | 'GMAIL' | 'OUTLOOK' | 'TIKTOK' | 'YOUTUBE'
 type OpportunityStage = 'NEW' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON' | 'LOST'
 type OriginFilter = 'ALL' | 'EMAIL' | 'FORM' | 'CHATBOT' | 'WHATSAPP' | 'SOCIAL' | 'PHONE' | 'REFERRAL' | 'IMPORT'
 type QueueScope = 'TEAM' | 'MINE' | 'UNASSIGNED'
-type QueueFocus = 'ALL' | 'IMMEDIATE' | 'WAITING_CUSTOMER' | 'NEW_UNASSIGNED' | 'BOT_HANDOFF'
+type QueueFocus = 'ALL' | 'IMMEDIATE' | 'WAITING_CUSTOMER' | 'NEW_UNASSIGNED' | 'BOT_HANDOFF' | 'HYBRID_PHONE_ACTIVITY' | 'HYBRID_COLLISION'
 
 type Assignee = {
   id: string
@@ -53,6 +54,7 @@ type ConversationMessage = {
   messageType?: string
   status?: string
   bodyText?: string | null
+  payloadJson?: Record<string, unknown> | null
   attachmentsJson?: Array<{
     type?: string | null
     url?: string | null
@@ -151,6 +153,15 @@ type MaterialLookupItem = {
 
 type JsonResponse<T> = { success?: boolean; data?: T; error?: string }
 
+type SendMessageResponse = JsonResponse<ConversationMessage> & {
+  code?: string
+  recentPhoneActivity?: {
+    id?: string
+    occurredAt?: string
+    bodyText?: string | null
+  }
+}
+
 type CrmConversationsClientProps = {
   initialProviderFilter?: ChannelProvider | null
   title?: string
@@ -200,6 +211,54 @@ function formatRelativeChannel(provider: ChannelProvider) {
 
 function getConversationOrigin(channel: Channel) {
   return getCrmOriginMeta({ provider: channel.provider, bridgeKind: channel.bridgeKind })
+}
+
+function getMessageOrigin(message: ConversationMessage): MessageOrigin {
+  const origin = typeof message.payloadJson?.messageOrigin === 'string' ? message.payloadJson.messageOrigin : ''
+  if (origin === 'CUSTOMER' || origin === 'PHONE_APP' || origin === 'CRM_AGENT' || origin === 'BOT' || origin === 'SYSTEM') {
+    return origin
+  }
+
+  if (message.direction === 'OUTBOUND') return 'CRM_AGENT'
+  if (message.direction === 'SYSTEM') return 'SYSTEM'
+  return 'CUSTOMER'
+}
+
+function getMessageOriginMeta(origin: MessageOrigin) {
+  switch (origin) {
+    case 'PHONE_APP':
+      return { label: 'Celular', className: 'bg-amber-100 text-amber-800' }
+    case 'CRM_AGENT':
+      return { label: 'CRM', className: 'bg-sky-100 text-sky-800' }
+    case 'BOT':
+      return { label: 'Bot', className: 'bg-emerald-100 text-emerald-800' }
+    case 'SYSTEM':
+      return { label: 'Sistema', className: 'bg-slate-200 text-slate-700' }
+    default:
+      return { label: 'Cliente', className: 'bg-white/80 text-slate-700' }
+  }
+}
+
+function hasMessageCollision(message: ConversationMessage) {
+  return message.payloadJson?.collisionDetected === true
+}
+
+function getConversationListSignal(item: ConversationListItem) {
+  const latestMessage = item.messages?.[0]
+  if (!latestMessage) {
+    return { hasCollision: false, hasPhoneActivity: false }
+  }
+
+  return {
+    hasCollision: hasMessageCollision(latestMessage),
+    hasPhoneActivity: getMessageOrigin(latestMessage) === 'PHONE_APP',
+  }
+}
+
+function formatRecentPhoneActivityHint(activity: NonNullable<SendMessageResponse['recentPhoneActivity']>, locale: string, fallback: string) {
+  const timestamp = formatDate(activity.occurredAt, locale, fallback)
+  const bodyText = activity.bodyText?.trim()
+  return bodyText ? `Último mensaje desde celular: ${timestamp}. Texto: ${bodyText}` : `Último mensaje desde celular: ${timestamp}.`
 }
 
 function getOriginTone(originKey: CrmOriginKey) {
@@ -659,6 +718,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
     const waitingCustomerCount = queueScopedConversations.filter((item) => item.status === 'PENDING').length
     const newUnassignedCount = queueScopedConversations.filter((item) => !item.assignedTo && item.status === 'OPEN').length
     const botHandoffCount = queueScopedConversations.filter((item) => item.status === 'BOT_ACTIVE').length
+    const hybridPhoneActivityCount = queueScopedConversations.filter((item) => getConversationListSignal(item).hasPhoneActivity).length
+    const hybridCollisionCount = queueScopedConversations.filter((item) => getConversationListSignal(item).hasCollision).length
 
     return {
       allCount: queueScopedConversations.length,
@@ -666,6 +727,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       waitingCustomerCount,
       newUnassignedCount,
       botHandoffCount,
+      hybridPhoneActivityCount,
+      hybridCollisionCount,
     }
   }, [locale, queueScopedConversations])
 
@@ -680,6 +743,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       if (queueFocus === 'WAITING_CUSTOMER') return item.status === 'PENDING'
       if (queueFocus === 'NEW_UNASSIGNED') return !item.assignedTo && item.status === 'OPEN'
       if (queueFocus === 'BOT_HANDOFF') return item.status === 'BOT_ACTIVE'
+      if (queueFocus === 'HYBRID_PHONE_ACTIVITY') return getConversationListSignal(item).hasPhoneActivity
+      if (queueFocus === 'HYBRID_COLLISION') return getConversationListSignal(item).hasCollision
       return true
     })
 
@@ -763,7 +828,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
     setSending(true)
     try {
-      const json = await requestJson<ConversationMessage>(`/api/crm/conversations/${selectedConversation.id}/messages`, {
+      const sendMessageRequest = (forceHybridOverride = false) => requestJson<ConversationMessage>(`/api/crm/conversations/${selectedConversation.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -772,8 +837,19 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
           attachments: requiresAttachment
             ? [{ type: messageTypeDraft, url: attachmentUrlDraft, filename: attachmentNameDraft || null }]
             : [],
+          forceHybridOverride,
         }),
-      })
+      }) as Promise<SendMessageResponse>
+
+      let json = await sendMessageRequest(false)
+      if (!json.success && json.code === 'HYBRID_RECENT_PHONE_ACTIVITY') {
+        const shouldOverride = window.confirm(`${json.error || 'Se detectó actividad reciente desde el celular.'}\n\n${json.recentPhoneActivity ? formatRecentPhoneActivityHint(json.recentPhoneActivity, locale, naText) : 'Revisa el hilo antes de responder.'}\n\nPulsa Aceptar para enviar de todas formas desde el CRM.`)
+        if (!shouldOverride) {
+          return
+        }
+        json = await sendMessageRequest(true)
+      }
+
       if (!json.success) {
         if (json.data) {
           await Promise.all([loadConversations(), loadDetail(selectedConversation.id)])
@@ -1224,7 +1300,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       </Card>
 
       <Card className="rounded-[24px] border-slate-200 bg-white/90 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.2)]">
-        <CardContent className="grid gap-3 p-3 md:grid-cols-5 md:p-4">
+        <CardContent className="grid gap-3 p-3 md:grid-cols-7 md:p-4">
           <button
             type="button"
             onClick={() => setQueueFocus('ALL')}
@@ -1269,6 +1345,24 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Bot a humano</p>
             <p className="mt-1 text-lg font-semibold text-slate-950">{queueFocusSummary.botHandoffCount}</p>
             <p className="mt-1 text-xs text-slate-500">Hilos donde ya toca relevo humano.</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setQueueFocus('HYBRID_PHONE_ACTIVITY')}
+            className={queueFocus === 'HYBRID_PHONE_ACTIVITY' ? 'rounded-2xl border border-amber-300 bg-amber-50 px-3 py-3 text-left' : 'rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left'}
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Actividad celular</p>
+            <p className="mt-1 text-lg font-semibold text-slate-950">{queueFocusSummary.hybridPhoneActivityCount}</p>
+            <p className="mt-1 text-xs text-slate-500">Último evento detectado fuera del CRM.</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setQueueFocus('HYBRID_COLLISION')}
+            className={queueFocus === 'HYBRID_COLLISION' ? 'rounded-2xl border border-rose-300 bg-rose-50 px-3 py-3 text-left' : 'rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left'}
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Colisiones</p>
+            <p className="mt-1 text-lg font-semibold text-slate-950">{queueFocusSummary.hybridCollisionCount}</p>
+            <p className="mt-1 text-xs text-slate-500">Posibles dobles respuestas detectadas.</p>
           </button>
         </CardContent>
       </Card>
@@ -1345,6 +1439,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
               const isMuted = mutedCrmConversationIds.includes(item.id)
               const preview = item.messages?.[0]?.bodyText || item.sourceCampaign || item.contactEmail || item.contactPhone || naText
               const origin = getConversationOrigin(item.channelConnection)
+              const signal = getConversationListSignal(item)
               const slaMeta = getConversationSlaMeta(item, locale)
               const priorityMeta = getConversationPriorityMeta(item, locale)
               const statusMeta = getConversationStatusMeta(item.status)
@@ -1361,6 +1456,8 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                         <span className="font-semibold text-slate-900">{renderHighlightedText(item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || 'Contacto sin nombre', search)}</span>
                         <OriginChip originKey={origin.key} label={origin.label} />
                         <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${priorityMeta.className}`}>{priorityMeta.label}</span>
+                        {signal.hasPhoneActivity ? <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">Celular</span> : null}
+                        {signal.hasCollision ? <span className="rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-900">Colisión</span> : null}
                         {isMuted ? <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600">Silenciado</span> : null}
                       </div>
                       <p className="line-clamp-2 text-sm text-slate-600">{renderHighlightedText(preview, search)}</p>
@@ -1787,15 +1884,24 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
 
                         <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
                           {selectedConversation.messages.length === 0 ? <p className="text-sm text-muted-foreground">No hay mensajes registrados.</p> : null}
-                          {selectedConversation.messages.map((message: ConversationMessage) => (
+                          {selectedConversation.messages.map((message: ConversationMessage) => {
+                            const originMeta = getMessageOriginMeta(getMessageOrigin(message))
+                            const hasCollision = hasMessageCollision(message)
+
+                            return (
                             <div key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[88%] rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[88%] rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600' : 'mr-auto max-w-[88%] rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}>
                               <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-slate-500">
-                                <span>{message.direction}</span>
+                                <div className="flex items-center gap-2">
+                                  <span>{message.direction}</span>
+                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold normal-case ${originMeta.className}`}>{originMeta.label}</span>
+                                  {hasCollision ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold normal-case text-amber-800">Colisión</span> : null}
+                                </div>
                                 <div className="flex items-center gap-2">
                                   {message.status ? <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{message.status}</span> : null}
                                   <span>{formatDate(message.occurredAt, locale, naText)}</span>
                                 </div>
                               </div>
+                              {hasCollision ? <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Se detectó una posible doble respuesta entre el celular y el CRM en esta conversación.</p> : null}
                               <p className="mt-2 whitespace-pre-wrap leading-6">{renderHighlightedText(message.bodyText || 'Sin contenido textual', search)}</p>
                               {Array.isArray(message.attachmentsJson) && message.attachmentsJson.length > 0 ? (
                                 <div className="mt-3 space-y-2">
@@ -1814,7 +1920,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                               ) : null}
                               {'sentByUser' in message && message.sentByUser ? <p className="mt-2 text-[11px] text-slate-500">{message.sentByUser.name || message.sentByUser.email}</p> : null}
                             </div>
-                          ))}
+                          )})}
                         </div>
                         <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
                           <Label>Responder desde el inbox</Label>

@@ -5,25 +5,41 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { useI18n } from '@/components/providers/i18n-provider'
 
 type Props = {
   initialName?: string | null
+  initialEmail?: string | null
   initialTelefono?: string | null
   initialCargo?: string | null
   initialSedeDefaultId?: string | null
   sedes?: Array<{ id: string; nombre: string; codigo?: string | null }>
+  requestableSedes?: Array<{ id: string; nombre: string; codigo?: string | null }>
 }
 
-export function ProfileBasicsForm({ initialName, initialTelefono, initialCargo, initialSedeDefaultId, sedes }: Props) {
+type SaveProfileResponse = {
+  success?: boolean
+  error?: string
+  message?: string
+  emailVerificationRequired?: boolean
+  emailDeliveryWarning?: string | null
+}
+
+export function ProfileBasicsForm({ initialName, initialEmail, initialTelefono, initialCargo, initialSedeDefaultId, sedes, requestableSedes }: Props) {
   const { t } = useI18n()
   const router = useRouter()
   const [name, setName] = useState(initialName ?? '')
+  const [email, setEmail] = useState(initialEmail ?? '')
   const [telefono, setTelefono] = useState(initialTelefono ?? '')
   const [cargo, setCargo] = useState(initialCargo ?? '')
   const [sedeDefaultId, setSedeDefaultId] = useState(initialSedeDefaultId ?? '')
   const [saving, setSaving] = useState(false)
+  const [requestingSede, setRequestingSede] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
+  const [sedeRequestStatus, setSedeRequestStatus] = useState<string | null>(null)
+  const [requestedSedeId, setRequestedSedeId] = useState('')
+  const [sedeRequestReason, setSedeRequestReason] = useState('')
 
   async function save() {
     setSaving(true)
@@ -32,17 +48,44 @@ export function ProfileBasicsForm({ initialName, initialTelefono, initialCargo, 
       const res = await fetch('/api/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, telefono, cargo, sedeDefaultId }),
+        body: JSON.stringify({ name, email, telefono, cargo, sedeDefaultId }),
       })
-      const json = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null
+      const json = (await res.json().catch(() => null)) as SaveProfileResponse | null
       if (!res.ok || !json?.success) {
         setStatus(json?.error ?? t('profile.basics.errors.saveFailed'))
         return
       }
-      setStatus(t('profile.basics.status.saved'))
+      setStatus(json.message || t('profile.basics.status.saved'))
       router.refresh()
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function requestSedeChange() {
+    if (!requestedSedeId) {
+      setSedeRequestStatus('Selecciona primero la sede que quieres solicitar.')
+      return
+    }
+
+    setRequestingSede(true)
+    setSedeRequestStatus(null)
+    try {
+      const res = await fetch('/api/me/sede-change-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetSedeId: requestedSedeId, reason: sedeRequestReason }),
+      })
+      const json = (await res.json().catch(() => null)) as { success?: boolean; error?: string; message?: string } | null
+      if (!res.ok || !json?.success) {
+        setSedeRequestStatus(json?.error || 'No se pudo enviar la solicitud de cambio de sede.')
+        return
+      }
+      setRequestedSedeId('')
+      setSedeRequestReason('')
+      setSedeRequestStatus(json.message || 'Solicitud enviada al administrador.')
+    } finally {
+      setRequestingSede(false)
     }
   }
 
@@ -54,6 +97,16 @@ export function ProfileBasicsForm({ initialName, initialTelefono, initialCargo, 
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t('profile.basics.namePlaceholder')}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label>Correo</Label>
+        <Input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="tu@correo.com"
         />
       </div>
 
@@ -89,6 +142,9 @@ export function ProfileBasicsForm({ initialName, initialTelefono, initialCargo, 
             </option>
           ))}
         </select>
+        <p className="text-xs text-muted-foreground">
+          Siempre verás aquí tus sedes ya asignadas. Si falta una sede que ya te habían dado, al guardar el perfil se regulariza la relación sin perder tu sede actual.
+        </p>
       </div>
 
       <div className="flex items-center gap-2">
@@ -97,6 +153,48 @@ export function ProfileBasicsForm({ initialName, initialTelefono, initialCargo, 
         </Button>
         {status ? <span className="text-xs text-muted-foreground">{status}</span> : null}
       </div>
+
+      {requestableSedes?.length ? (
+        <div className="space-y-3 rounded-xl border border-dashed border-slate-200 p-3">
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-slate-900">Solicitar cambio de sede</p>
+            <p className="text-xs text-muted-foreground">Si necesitas operar desde otra sede, envía la solicitud y un administrador podrá autorizarla.</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Sede solicitada</Label>
+            <select
+              className="px-3 py-2 border rounded-md w-full"
+              value={requestedSedeId}
+              onChange={(e) => setRequestedSedeId(e.target.value)}
+            >
+              <option value="">Selecciona una sede...</option>
+              {requestableSedes.map((sede) => (
+                <option key={sede.id} value={sede.id}>
+                  {sede.nombre}{sede.codigo ? ` (${sede.codigo})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Motivo para el administrador</Label>
+            <Textarea
+              value={sedeRequestReason}
+              onChange={(e) => setSedeRequestReason(e.target.value)}
+              rows={3}
+              placeholder="Explica por qué necesitas cambiar tu sede o agregar una nueva asignación."
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" onClick={() => void requestSedeChange()} disabled={requestingSede}>
+              {requestingSede ? 'Enviando...' : 'Solicitar autorización'}
+            </Button>
+            {sedeRequestStatus ? <span className="text-xs text-muted-foreground">{sedeRequestStatus}</span> : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

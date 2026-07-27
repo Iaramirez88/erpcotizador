@@ -7,11 +7,18 @@ import { resolveUserIdFromSession } from '@/lib/session-user'
 import { isPlanOwnerForEmpresa } from '@/lib/plan-owner'
 import { isSuperAdminEmail } from '@/lib/super-admin'
 import { getWebsiteServicesAccessForUser } from '@/lib/website-services'
+import { randomDigits, sha256Hex } from '@/lib/auth-tokens'
+import { sendEmail } from '@/lib/email'
+import { renderEmail, renderEmailCode } from '@/lib/email-template'
 
 export const runtime = 'nodejs'
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 }
 
 export async function GET() {
@@ -106,9 +113,45 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Body inválido' }, { status: 400 })
   }
 
+  const currentUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      emailVerified: true,
+      empresaId: true,
+      empresa: { select: { nombre: true } },
+      sedeDefaultId: true,
+      globalAccess: { select: { level: true } },
+    },
+  })
+  if (!currentUser?.id) {
+    return NextResponse.json({ success: false, error: 'Usuario no encontrado' }, { status: 404 })
+  }
+
   const name = typeof body.name === 'string' ? body.name.trim() : undefined
   if (name !== undefined && name.length > 80) {
     return NextResponse.json({ success: false, error: 'Nombre demasiado largo.' }, { status: 400 })
+  }
+
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : undefined
+  if (email !== undefined) {
+    if (!email) {
+      return NextResponse.json({ success: false, error: 'El correo no puede quedar vacío.' }, { status: 400 })
+    }
+    if (email.length > 190 || !isValidEmail(email)) {
+      return NextResponse.json({ success: false, error: 'Correo inválido.' }, { status: 400 })
+    }
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        email,
+        id: { not: userId },
+      },
+      select: { id: true },
+    })
+    if (existingUser?.id) {
+      return NextResponse.json({ success: false, error: 'Ese correo ya está en uso por otro usuario.' }, { status: 400 })
+    }
   }
 
   const telefono = typeof body.telefono === 'string' ? body.telefono.trim() : undefined
@@ -124,37 +167,108 @@ export async function PATCH(req: NextRequest) {
   const sedeDefaultIdRaw = typeof body.sedeDefaultId === 'string' ? body.sedeDefaultId.trim() : undefined
   const sedeDefaultId = sedeDefaultIdRaw === undefined ? undefined : (sedeDefaultIdRaw || null)
 
+  let selectedSedeBelongsToEmpresa = false
+
   if (sedeDefaultId !== undefined && sedeDefaultId !== null) {
+    const sede = await prisma.sede.findUnique({
+      where: { id: sedeDefaultId },
+      select: { id: true, empresaId: true },
+    })
+    if (!sede?.id || sede.empresaId !== currentUser.empresaId) {
+      return NextResponse.json({ success: false, error: 'La sede seleccionada no es válida para tu empresa.' }, { status: 400 })
+    }
+    selectedSedeBelongsToEmpresa = true
+
     const membership = await prisma.sedeMembership.findUnique({
       where: { sedeId_userId: { sedeId: sedeDefaultId, userId } },
       select: { id: true },
     })
-    if (!membership?.id) {
+    const isCurrentBrokenDefault = currentUser.sedeDefaultId === sedeDefaultId
+    if (!membership?.id && !isCurrentBrokenDefault) {
       return NextResponse.json({ success: false, error: 'La sede seleccionada no está asignada a tu usuario.' }, { status: 400 })
     }
   }
 
-  const updated = await prisma.user.update({
-    where: { id: userId },
-    data: {
-      name: name === '' ? null : name,
-      telefono: telefono === undefined ? undefined : (telefono === '' ? null : telefono),
-      cargo: cargo === undefined ? undefined : (cargo === '' ? null : cargo),
-      sedeDefaultId,
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      role: true,
-      image: true,
-      telefono: true,
-      cargo: true,
-      sedeDefaultId: true,
-      sedeDefault: { select: { id: true, nombre: true, codigo: true } },
-      updatedAt: true,
-    },
+  const emailChanged = typeof email === 'string' && email !== currentUser.email
+  const verificationCode = emailChanged ? randomDigits(6) : null
+  const verificationCodeHash = verificationCode ? sha256Hex(verificationCode) : null
+  const verificationExpiresAt = verificationCode ? new Date(Date.now() + 10 * 60 * 1000) : null
+
+  const updated = await prisma.$transaction(async (tx) => {
+    if (selectedSedeBelongsToEmpresa && sedeDefaultId && currentUser.sedeDefaultId === sedeDefaultId) {
+      await tx.sedeMembership.upsert({
+        where: { sedeId_userId: { sedeId: sedeDefaultId, userId } },
+        create: { sedeId: sedeDefaultId, userId, role: currentUser.globalAccess?.level === 'ADMIN' ? 'ADMIN' : currentUser.globalAccess?.level === 'WRITE' ? 'MEMBER' : 'READER' },
+        update: {},
+      })
+    }
+
+    if (emailChanged) {
+      await tx.emailVerificationCode.deleteMany({ where: { userId } })
+      await tx.emailVerificationCode.create({
+        data: {
+          userId,
+          email: email!,
+          codeHash: verificationCodeHash!,
+          expiresAt: verificationExpiresAt!,
+        },
+      })
+    }
+
+    return tx.user.update({
+      where: { id: userId },
+      data: {
+        name: name === '' ? null : name,
+        email: email === undefined ? undefined : email,
+        emailVerified: emailChanged ? null : undefined,
+        telefono: telefono === undefined ? undefined : (telefono === '' ? null : telefono),
+        cargo: cargo === undefined ? undefined : (cargo === '' ? null : cargo),
+        sedeDefaultId,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        image: true,
+        telefono: true,
+        cargo: true,
+        sedeDefaultId: true,
+        sedeDefault: { select: { id: true, nombre: true, codigo: true } },
+        updatedAt: true,
+      },
+    })
   })
 
-  return NextResponse.json({ success: true, data: updated })
+  let message = 'Cambios guardados.'
+  let emailDeliveryWarning: string | null = null
+
+  if (emailChanged && verificationCode) {
+    const empresaNombre = (currentUser.empresa?.nombre ?? '').trim()
+    const subject = empresaNombre
+      ? `Código de verificación · ${empresaNombre} · Ordex`
+      : 'Código de verificación · Ordex'
+
+    const html = renderEmail({
+      title: 'Verifica tu nuevo correo',
+      preheader: `Tu código de verificación es ${verificationCode}.`,
+      intro: 'Actualizaste tu correo de acceso. Usa este código para verificar la nueva dirección:',
+      bodyHtml: `
+        ${renderEmailCode(verificationCode, { size: 'lg' })}
+        <p style="margin:0; color:#6B7280; font-size:12px;">Este código expira en 10 minutos.</p>
+      `,
+    })
+
+    const send = await sendEmail({ to: email, subject, html })
+    if (!send.ok) {
+      emailDeliveryWarning = process.env.NODE_ENV !== 'production'
+        ? `No se pudo enviar el correo en modo dev. Usa el flujo de reenvío si lo necesitas.`
+        : 'No se pudo enviar el código de verificación de inmediato. Usa reenvío de verificación desde el login si hace falta.'
+      message = 'Perfil guardado, pero tu nuevo correo quedó pendiente de verificación.'
+    } else {
+      message = 'Perfil guardado. Verifica tu nuevo correo con el código enviado.'
+    }
+  }
+
+  return NextResponse.json({ success: true, data: updated, message, emailVerificationRequired: emailChanged, emailDeliveryWarning })
 }

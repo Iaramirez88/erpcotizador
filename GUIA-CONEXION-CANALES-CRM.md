@@ -407,6 +407,64 @@ Desventajas:
 2. Puedes perder control sobre billing, numeracion o soporte.
 3. La arquitectura del inbox y la trazabilidad multiempresa se vuelven mas condicionadas por el proveedor.
 
+### 8.2.4.1 Dos modos de conexion del numero en SGDigital
+
+Para aterrizar la operacion del canal, SGDigital debe manejar estos dos modos de forma explicita dentro del CRM:
+
+#### Modo 1. Numero solo CRM
+
+Uso recomendado:
+
+1. Cuando el numero trabajara principalmente desde el inbox del CRM.
+2. Cuando el cliente quiere multiagente, trazabilidad, auditoria y automatizacion.
+3. Cuando no necesita seguir respondiendo desde la app del celular.
+
+Comportamiento esperado:
+
+1. Meta entrega mensajes al webhook global.
+2. El CRM centraliza la conversacion.
+3. Las respuestas salen desde el CRM hacia Cloud API.
+4. La app del celular no es el punto operativo principal.
+
+#### Modo 2. Numero hibrido CRM + celular
+
+Uso recomendado:
+
+1. Cuando el cliente necesita seguir atendiendo tambien desde WhatsApp Business App.
+2. Cuando el CRM debe convivir con el celular como segundo punto operativo.
+
+Comportamiento objetivo:
+
+1. El mismo numero puede recibir y enviar tanto desde el CRM como desde el celular.
+2. El CRM debe reflejar no solo inbound del cliente, sino tambien actividad originada desde el telefono cuando Meta la exponga.
+3. El sistema debe evitar respuestas duplicadas y conflictos de asignacion.
+
+Regla importante:
+
+1. Este modo no debe prometerse como resuelto solo por activar el webhook.
+2. Requiere coexistencia oficial de Meta o una modalidad equivalente soportada por el proveedor.
+3. Requiere una capa adicional de conciliacion operativa en el CRM.
+
+### 8.2.4.2 Arquitectura minima para modo hibrido
+
+Si SGDigital va a soportar numero hibrido CRM + celular, la arquitectura minima debe cubrir esto:
+
+1. Guardar en el canal el modo de conexion seleccionado.
+2. Confirmar elegibilidad del numero para coexistencia oficial con Meta.
+3. Seguir procesando inbound desde /api/webhooks/meta como fuente principal de entrada.
+4. Capturar estados y ecos de mensajes salientes cuando Meta los entregue para reflejar actividad del telefono y del CRM.
+5. Conciliar mensajes por providerMessageId, externalThreadId y telefono del contacto para no duplicar hilos.
+6. Registrar el origen operativo del mensaje, por ejemplo CRM, celular o automatizacion.
+7. Definir reglas de bloqueo o alerta cuando dos asesores respondan el mismo hilo desde superficies distintas.
+8. Mantener trazabilidad de costo por tipo de mensaje y ventana de conversacion.
+
+Primera implementacion recomendada:
+
+1. Exponer el modo en la UI del canal.
+2. Persistirlo en settingsJson.
+3. Mostrar advertencias claras cuando el canal quede marcado como hibrido.
+4. No cambiar la logica productiva de dispatch hasta validar coexistencia real por numero.
+
 ### 8.2.5 Recomendacion pragmatica para SGDigital
 
 Si quieres vender esto como SaaS, el camino sano es por fases.

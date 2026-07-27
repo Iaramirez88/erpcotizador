@@ -445,6 +445,41 @@ En este repo ya existe una base simple en `src/lib/whatsapp.ts`, pero hoy sirve 
 - plantillas aprobadas para primer contacto fuera de ventana
 - asignación asesor / handoff bot -> humano
 
+### 15.1.1 Modos de conexion del numero
+
+Para que el producto no mezcle expectativas incompatibles, el canal de WhatsApp debe declarar un modo operativo del numero:
+
+- `CRM_ONLY`: el numero opera principalmente desde el CRM.
+- `HYBRID_CRM_PHONE`: el numero debe convivir entre CRM y celular.
+
+Esto puede vivir inicialmente en `settingsJson` del `CrmChannelConnection`, evitando una migracion temprana de schema mientras se valida adopcion real.
+
+### 15.1.2 Arquitectura objetivo para modo hibrido
+
+El modo hibrido requiere una capa extra sobre el flujo ya implementado de Cloud API.
+
+Componentes minimos:
+
+1. Persistencia del modo de conexion en el canal.
+2. Verificacion de elegibilidad del numero para coexistencia oficial de Meta.
+3. Ingestion inbound normal por webhook global.
+4. Reconciliacion de eventos outbound y status para reflejar actividad iniciada fuera del CRM.
+5. Marcacion del origen del mensaje: `CRM_AGENT`, `PHONE_APP`, `BOT`, `SYSTEM`.
+6. Prevencion de duplicados por `providerMessageId`, `externalThreadId` y telefono normalizado.
+7. Reglas de colision operativa cuando hay respuesta simultanea desde celular y CRM.
+8. Telemetria de costo y categoria de mensajeria para gobierno comercial.
+
+Secuencia recomendada de implementacion:
+
+1. Fase de configuracion: selector UI `CRM_ONLY` vs `HYBRID_CRM_PHONE` y warnings operativos.
+2. Fase de observabilidad: guardar en `payloadJson` y timeline el origen de cada evento que Meta entregue.
+3. Fase de conciliacion: unificar mensajes enviados desde CRM y desde telefono en la misma conversacion.
+4. Fase de control: bloqueo suave, handoff y alertas de doble respuesta.
+
+Riesgo principal:
+
+1. Si Meta no entrega coexistencia real para el numero, el modo hibrido debe quedarse marcado como objetivo arquitectonico y no como capacidad ya garantizada.
+
 ### 15.2 Facebook / Messenger
 
 Recomendación:

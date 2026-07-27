@@ -47,6 +47,15 @@ type EnsureConversationResult = {
   dedupe: DedupeTrace | null
 }
 
+export type CrmMessageOrigin = 'CUSTOMER' | 'PHONE_APP' | 'CRM_AGENT' | 'BOT' | 'SYSTEM'
+
+type ConversationMessageEventResult = {
+  conversation: CrmConversation
+  message: Awaited<ReturnType<TxClient['crmMessage']['create']>>
+  dedupe: DedupeTrace | null
+  wasCreated: boolean
+}
+
 export function parseJsonObject(value: unknown): JsonObject {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as JsonObject) : {}
 }
@@ -737,6 +746,7 @@ export async function createInboundArtifacts(args: {
   document?: string | null
   ciudad?: string | null
   messageText?: string | null
+  messageOrigin?: CrmMessageOrigin
   externalThreadId?: string | null
   providerMessageId?: string | null
   providerLeadId?: string | null
@@ -819,7 +829,11 @@ export async function createInboundArtifacts(args: {
       messageType: args.messageType ?? 'TEXT',
       status: 'RECEIVED',
       bodyText: normalizeString(args.messageText) || null,
-      payloadJson: args.rawPayloadJson,
+      payloadJson: {
+        ...parseJsonObject(args.rawPayloadJson),
+        messageOrigin: args.messageOrigin ?? 'CUSTOMER',
+        ingestionSource: 'WEBHOOK',
+      },
       attachmentsJson: Array.isArray(args.attachmentsJson) ? args.attachmentsJson : [],
       occurredAt: eventAt,
     },
@@ -879,4 +893,212 @@ export async function createInboundArtifacts(args: {
   }
 
   return { lead, conversation, message, capture }
+}
+
+export async function createConversationMessageEvent(args: {
+  client: TxClient
+  empresaId: string
+  sedeId?: string | null
+  channelConnectionId: string
+  createdById?: string | null
+  ownerUserId?: string | null
+  activityType?: CrmActivityType
+  eventAt?: Date
+  direction: 'INBOUND' | 'OUTBOUND'
+  messageType?: CrmMessageType
+  nombre?: string | null
+  email?: string | null
+  phone?: string | null
+  messageText?: string | null
+  messageOrigin?: CrmMessageOrigin
+  externalThreadId?: string | null
+  providerMessageId?: string | null
+  sourceLabel?: string | null
+  sourceCampaign?: string | null
+  sourceMedium?: string | null
+  sourceContent?: string | null
+  rawPayloadJson: Prisma.InputJsonValue
+  attachmentsJson?: Prisma.InputJsonValue
+}): Promise<ConversationMessageEventResult> {
+  const eventAt = args.eventAt ?? new Date()
+  const providerMessageId = normalizeString(args.providerMessageId)
+  const externalThreadId = normalizeString(args.externalThreadId)
+  const contactPhone = normalizePhoneForStorage(args.phone)
+  const contactEmail = normalizeString(args.email).toLowerCase()
+  const messageOrigin = args.messageOrigin ?? (args.direction === 'OUTBOUND' ? 'PHONE_APP' : 'CUSTOMER')
+
+  if (providerMessageId) {
+    const existingMessage = await args.client.crmMessage.findFirst({
+      where: {
+        providerMessageId,
+        conversation: {
+          empresaId: args.empresaId,
+          channelConnectionId: args.channelConnectionId,
+        },
+      },
+      include: { conversation: true },
+    })
+
+    if (existingMessage) {
+      return {
+        conversation: existingMessage.conversation,
+        message: existingMessage,
+        dedupe: buildDedupeTrace({
+          matchedRecordId: existingMessage.id,
+          strategy: 'provider_message_reuse',
+          matchedFields: ['providerMessageId'],
+          confidence: 'strong',
+        }),
+        wasCreated: false,
+      }
+    }
+  }
+
+  const orConditions: Array<Record<string, string>> = []
+  if (externalThreadId) orConditions.push({ externalThreadId })
+  if (contactEmail) orConditions.push({ contactEmail })
+  const phoneConditions = buildPhoneWhereClauses('contactPhone', contactPhone)
+
+  const existingConversation = (orConditions.length || phoneConditions.length)
+    ? await args.client.crmConversation.findFirst({
+        where: {
+          empresaId: args.empresaId,
+          channelConnectionId: args.channelConnectionId,
+          status: { not: 'SPAM' },
+          OR: [...orConditions, ...phoneConditions],
+        },
+        orderBy: { lastMessageAt: 'desc' },
+      })
+    : null
+
+  const recentCrmOutbound = args.direction === 'OUTBOUND' && messageOrigin === 'PHONE_APP' && existingConversation
+    ? await args.client.crmMessage.findFirst({
+        where: {
+          conversationId: existingConversation.id,
+          direction: 'OUTBOUND',
+          occurredAt: { gte: new Date(eventAt.getTime() - 5 * 60 * 1000) },
+          payloadJson: {
+            path: ['messageOrigin'],
+            equals: 'CRM_AGENT',
+          },
+        },
+        orderBy: { occurredAt: 'desc' },
+      })
+    : null
+
+  const conversation = existingConversation
+    ? await args.client.crmConversation.update({
+        where: { id: existingConversation.id },
+        data: {
+          assignedToUserId: args.ownerUserId ?? existingConversation.assignedToUserId,
+          contactDisplayName: normalizeString(args.nombre) || existingConversation.contactDisplayName,
+          contactPhone: contactPhone || existingConversation.contactPhone,
+          contactEmail: contactEmail || existingConversation.contactEmail,
+          externalThreadId: externalThreadId || existingConversation.externalThreadId,
+          lastMessageAt: eventAt,
+          directionLastMessage: args.direction,
+          resolvedAt: existingConversation.status === 'SPAM' ? existingConversation.resolvedAt : existingConversation.resolvedAt,
+          source: normalizeString(args.sourceLabel) || existingConversation.source,
+          sourceCampaign: normalizeString(args.sourceCampaign) || existingConversation.sourceCampaign,
+          sourceMedium: normalizeString(args.sourceMedium) || existingConversation.sourceMedium,
+          sourceContent: normalizeString(args.sourceContent) || existingConversation.sourceContent,
+        },
+      })
+    : await args.client.crmConversation.create({
+        data: {
+          empresaId: args.empresaId,
+          sedeId: args.sedeId ?? null,
+          channelConnectionId: args.channelConnectionId,
+          assignedToUserId: args.ownerUserId ?? null,
+          status: args.ownerUserId ? 'HUMAN_ACTIVE' : 'PENDING',
+          directionLastMessage: args.direction,
+          externalThreadId: externalThreadId || null,
+          contactDisplayName: normalizeString(args.nombre) || null,
+          contactPhone: contactPhone || null,
+          contactEmail: contactEmail || null,
+          unreadCount: args.direction === 'INBOUND' ? 1 : 0,
+          firstInboundAt: args.direction === 'INBOUND' ? eventAt : null,
+          lastMessageAt: eventAt,
+          source: normalizeString(args.sourceLabel) || null,
+          sourceCampaign: normalizeString(args.sourceCampaign) || null,
+          sourceMedium: normalizeString(args.sourceMedium) || null,
+          sourceContent: normalizeString(args.sourceContent) || null,
+        },
+      })
+
+  const message = await args.client.crmMessage.create({
+    data: {
+      empresaId: args.empresaId,
+      sedeId: args.sedeId ?? null,
+      conversationId: conversation.id,
+      providerMessageId: providerMessageId || null,
+      direction: args.direction,
+      messageType: args.messageType ?? 'TEXT',
+      status: args.direction === 'OUTBOUND' ? 'SENT' : 'RECEIVED',
+      bodyText: normalizeString(args.messageText) || null,
+      payloadJson: {
+        ...parseJsonObject(args.rawPayloadJson),
+        messageOrigin,
+        ingestionSource: 'WEBHOOK',
+        collisionDetected: Boolean(recentCrmOutbound),
+        collisionWithMessageId: recentCrmOutbound?.id ?? null,
+      },
+      attachmentsJson: Array.isArray(args.attachmentsJson) ? args.attachmentsJson : [],
+      sentByUserId: args.direction === 'OUTBOUND' && messageOrigin === 'CRM_AGENT' ? normalizeString(args.createdById) || null : null,
+      occurredAt: eventAt,
+    },
+  })
+
+  if (args.direction === 'OUTBOUND' && messageOrigin === 'PHONE_APP') {
+    await args.client.crmActivity.create({
+      data: {
+        empresaId: args.empresaId,
+        sedeId: args.sedeId ?? null,
+        type: args.activityType ?? 'OTHER',
+        summary: recentCrmOutbound ? 'Posible colisión: mensaje enviado desde celular tras respuesta en CRM' : 'Mensaje saliente detectado desde celular',
+        details: recentCrmOutbound
+          ? `Meta reportó un mensaje saliente desde celular. Se detectó otra salida reciente desde CRM en la misma conversación. Mensaje CRM relacionado: ${recentCrmOutbound.id}.`
+          : 'Meta reportó un mensaje saliente originado fuera del CRM, probablemente desde la app del celular.',
+        leadId: conversation.leadId,
+        opportunityId: conversation.opportunityId,
+        clienteId: conversation.clienteId,
+        occurredAt: eventAt,
+        createdById: normalizeString(args.createdById) || args.ownerUserId || conversation.assignedToUserId || 'system',
+      },
+    })
+
+    const notificationUserId = conversation.assignedToUserId || args.ownerUserId || null
+    if (notificationUserId && recentCrmOutbound) {
+      await args.client.notification.create({
+        data: {
+          type: 'WARNING',
+          title: 'Posible doble respuesta en WhatsApp',
+          body: 'Se detectó un mensaje enviado desde el celular poco después de una respuesta desde el CRM en la misma conversación.',
+          empresaId: args.empresaId,
+          sedeId: args.sedeId ?? null,
+          userId: notificationUserId,
+          actionUrl: '/dashboard/crm',
+          actionLabel: 'Revisar conversación',
+        },
+      })
+    }
+  }
+
+  return {
+    conversation,
+    message,
+    dedupe: existingConversation
+      ? buildDedupeTrace({
+          matchedRecordId: existingConversation.id,
+          strategy: 'conversation_message_append',
+          matchedFields: [
+            ...(externalThreadId && existingConversation.externalThreadId === externalThreadId ? ['externalThreadId'] : []),
+            ...(contactEmail && existingConversation.contactEmail === contactEmail ? ['contactEmail'] : []),
+            ...(contactPhone && normalizePhoneForMatching(existingConversation.contactPhone) === normalizePhoneForMatching(contactPhone) ? ['contactPhone'] : []),
+          ],
+          confidence: externalThreadId && existingConversation.externalThreadId === externalThreadId ? 'strong' : 'medium',
+        })
+      : null,
+    wasCreated: true,
+  }
 }

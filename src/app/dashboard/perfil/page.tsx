@@ -73,6 +73,7 @@ export default async function PerfilPage() {
       telefono: true,
       cargo: true,
       sedeDefaultId: true,
+      sedeDefault: { select: { id: true, nombre: true, codigo: true } },
       createdAt: true,
       updatedAt: true,
       empresa: { select: { id: true, nombre: true, planTier: true, billingCycle: true, planValidUntil: true } },
@@ -82,6 +83,25 @@ export default async function PerfilPage() {
   })
 
   if (!user) redirect('/auth/login')
+
+  const companySedes = user.empresa?.id
+    ? await prisma.sede.findMany({
+        where: { empresaId: user.empresa.id },
+        orderBy: [{ nombre: 'asc' }],
+        select: { id: true, nombre: true, codigo: true },
+      })
+    : []
+
+  const assignedSedes = Array.from(
+    new Map(
+      [...user.sedeMemberships.map((membership) => membership.sede), ...(user.sedeDefault ? [user.sedeDefault] : [])]
+        .filter((sede): sede is { id: string; nombre: string; codigo: string | null } => Boolean(sede?.id))
+        .map((sede) => [sede.id, sede])
+    ).values()
+  )
+
+  const requestableSedes = companySedes.filter((sede) => !assignedSedes.some((assigned) => assigned.id === sede.id))
+  const assignedSedeRoleById = new Map(user.sedeMemberships.map((membership) => [membership.sede.id, membership.role]))
 
   const [recentPasswordResets, recentEmailVerifications] = await Promise.all([
     prisma.passwordResetToken.findMany({
@@ -122,7 +142,7 @@ export default async function PerfilPage() {
         stats={[
           { label: t('profile.meta.role'), value: roleLabel(user.role), hint: user.empresa?.nombre ?? naText, tone: 'neutral' },
           { label: t('profile.meta.memberSince'), value: fmtDate(user.createdAt, locale, naText), hint: 'Antigüedad en el sistema', tone: 'sky' },
-          { label: 'Accesos', value: user.moduleAccess.length, hint: `${user.sedeMemberships.length} sedes vinculadas`, tone: 'teal' },
+            { label: 'Accesos', value: user.moduleAccess.length, hint: `${assignedSedes.length} sedes vinculadas`, tone: 'teal' },
         ]}
       />
 
@@ -165,10 +185,12 @@ export default async function PerfilPage() {
                 <CardContent className="pt-0">
                   <ProfileBasicsForm
                     initialName={user.name}
+                    initialEmail={user.email}
                     initialTelefono={user.telefono}
                     initialCargo={user.cargo}
                     initialSedeDefaultId={user.sedeDefaultId}
-                    sedes={user.sedeMemberships.map((m) => m.sede)}
+                    sedes={assignedSedes}
+                    requestableSedes={requestableSedes}
                   />
                 </CardContent>
               </Card>
@@ -195,16 +217,16 @@ export default async function PerfilPage() {
               <CardTitle className="text-base">{t('profile.section.sites')}</CardTitle>
             </CardHeader>
             <CardContent className="pt-0 space-y-2 text-sm">
-              {user.sedeMemberships.length ? (
-                user.sedeMemberships.slice(0, 6).map((m) => (
-                  <div key={m.id} className="flex items-center justify-between gap-2">
+              {assignedSedes.length ? (
+                assignedSedes.slice(0, 6).map((sede) => (
+                  <div key={sede.id} className="flex items-center justify-between gap-2">
                     <div className="truncate">
-                      <div className="font-medium truncate">{m.sede.nombre}</div>
+                      <div className="font-medium truncate">{sede.nombre}</div>
                       <div className="text-xs text-muted-foreground truncate">
-                        {m.sede.codigo ? `${t('profile.sites.code')}: ${m.sede.codigo}` : naText}
+                        {sede.codigo ? `${t('profile.sites.code')}: ${sede.codigo}` : naText}
                       </div>
                     </div>
-                    <span className="text-xs rounded-md border px-2 py-1">{sedeRoleLabel(m.role)}</span>
+                    <span className="text-xs rounded-md border px-2 py-1">{assignedSedeRoleById.get(sede.id) ? sedeRoleLabel(assignedSedeRoleById.get(sede.id)) : 'Asignada'}</span>
                   </div>
                 ))
               ) : (

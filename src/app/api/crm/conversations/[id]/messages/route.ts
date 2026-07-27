@@ -34,8 +34,23 @@ function hasOpenMessagingWindow(lastInboundAt: Date | null) {
   return (Date.now() - lastInboundAt.getTime()) <= 24 * 60 * 60 * 1000
 }
 
+function withMessageOrigin(payload: Prisma.InputJsonValue, messageOrigin: 'CRM_AGENT' | 'BOT' | 'SYSTEM') {
+  const base = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? payload as Record<string, unknown>
+    : {}
+
+  return {
+    ...base,
+    messageOrigin,
+  } as Prisma.InputJsonValue
+}
+
 type RouteContext = {
   params: Promise<{ id: string }>
+}
+
+function isForceHybridOverrideEnabled(value: unknown) {
+  return value === true
 }
 
 export async function POST(request: Request, context: RouteContext) {
@@ -83,6 +98,7 @@ export async function POST(request: Request, context: RouteContext) {
     const bodyText = normalizeString(body?.bodyText)
     const messageType = parseMessageType(body?.messageType) ?? 'TEXT'
     const attachment = normalizeAttachment(Array.isArray(body?.attachments) ? body?.attachments[0] : body?.attachment)
+    const forceHybridOverride = isForceHybridOverrideEnabled(body?.forceHybridOverride)
     const lastInboundAt = current.messages[0]?.occurredAt ?? null
     const requiresPolicyWindow = current.channelConnection.provider === 'WHATSAPP_CLOUD' || current.channelConnection.provider === 'WHATSAPP_SANDBOX' || current.channelConnection.provider === 'FACEBOOK_PAGE' || current.channelConnection.provider === 'MESSENGER' || current.channelConnection.provider === 'INSTAGRAM_DM'
     const withinMessagingWindow = !requiresPolicyWindow || hasOpenMessagingWindow(lastInboundAt)
@@ -103,6 +119,35 @@ export async function POST(request: Request, context: RouteContext) {
     const recipientThreadId = normalizeString(current.externalThreadId)
     const outboundLimits = getOutboundMessagingLimitConfig(current.channelConnection.settingsJson)
     const hasCostedProviderDispatch = (isWhatsApp && whatsappConfig.enabled) || (isMetaMessaging && metaConfig.enabled)
+    const recentPhoneOutbound = await prisma.crmMessage.findFirst({
+      where: {
+        conversationId: current.id,
+        direction: 'OUTBOUND',
+        occurredAt: { gte: new Date(Date.now() - 5 * 60 * 1000) },
+        payloadJson: {
+          path: ['messageOrigin'],
+          equals: 'PHONE_APP',
+        },
+      },
+      orderBy: { occurredAt: 'desc' },
+      select: {
+        id: true,
+        occurredAt: true,
+        bodyText: true,
+      },
+    })
+
+    if (recentPhoneOutbound && !forceHybridOverride) {
+      return NextResponse.json({
+        error: 'Se detectó actividad reciente desde el celular en esta conversación. Confirma si aún quieres responder desde el CRM.',
+        code: 'HYBRID_RECENT_PHONE_ACTIVITY',
+        recentPhoneActivity: {
+          id: recentPhoneOutbound.id,
+          occurredAt: recentPhoneOutbound.occurredAt.toISOString(),
+          bodyText: recentPhoneOutbound.bodyText,
+        },
+      }, { status: 409 })
+    }
 
     let providerMessageId: string | null = null
     let providerPayload: Prisma.InputJsonValue = { testing: true, provider: current.channelConnection.provider }
@@ -122,12 +167,12 @@ export async function POST(request: Request, context: RouteContext) {
             messageType,
             status: 'FAILED',
             bodyText: bodyText || null,
-            payloadJson: {
+            payloadJson: withMessageOrigin({
               provider: current.channelConnection.provider,
               dispatch: 'policy-window',
               fallback: isWhatsApp ? 'whatsapp-template-required' : 'wait-for-new-inbound',
               lastInboundAt: lastInboundAt?.toISOString() || null,
-            },
+            }, 'CRM_AGENT'),
             attachmentsJson,
             sentByUserId: access.userId,
             occurredAt: new Date(),
@@ -183,7 +228,7 @@ export async function POST(request: Request, context: RouteContext) {
               messageType,
               status: 'FAILED',
               bodyText: bodyText || null,
-              payloadJson: {
+              payloadJson: withMessageOrigin({
                 provider: current.channelConnection.provider,
                 dispatch: 'operational-limit',
                 scope: violation.scope,
@@ -191,7 +236,7 @@ export async function POST(request: Request, context: RouteContext) {
                 limit: violation.limit,
                 used: violation.used,
                 channelName: current.channelConnection.name,
-              },
+              }, 'CRM_AGENT'),
               attachmentsJson,
               sentByUserId: access.userId,
               occurredAt: new Date(),
@@ -253,19 +298,19 @@ export async function POST(request: Request, context: RouteContext) {
       } catch (error) {
         messageStatus = 'FAILED'
         sendErrorMessage = error instanceof Error ? error.message : 'No se pudo enviar por WhatsApp Cloud.'
-        providerPayload = {
+        providerPayload = withMessageOrigin({
           provider: current.channelConnection.provider,
           dispatch: 'whatsapp-cloud',
           error: sendErrorMessage,
-        }
+        }, 'CRM_AGENT')
       }
     } else if (isWhatsApp) {
-      providerPayload = {
+      providerPayload = withMessageOrigin({
         testing: true,
         provider: current.channelConnection.provider,
         dispatch: 'local-demo',
         reason: 'El canal no tiene access token y phone number id configurados.',
-      }
+      }, 'CRM_AGENT')
     } else if (isMetaMessaging && metaConfig.enabled) {
       if (!recipientThreadId) {
         return NextResponse.json({ error: 'La conversación no tiene externalThreadId para responder por Meta.' }, { status: 400 })
@@ -295,19 +340,19 @@ export async function POST(request: Request, context: RouteContext) {
       } catch (error) {
         messageStatus = 'FAILED'
         sendErrorMessage = error instanceof Error ? error.message : 'No se pudo enviar por Meta.'
-        providerPayload = {
+        providerPayload = withMessageOrigin({
           provider: current.channelConnection.provider,
           dispatch: 'meta-send-api',
           error: sendErrorMessage,
-        }
+        }, 'CRM_AGENT')
       }
     } else if (isMetaMessaging) {
-      providerPayload = {
+      providerPayload = withMessageOrigin({
         testing: true,
         provider: current.channelConnection.provider,
         dispatch: 'local-demo',
         reason: 'El canal no tiene page access token sincronizado desde Meta.',
-      }
+      }, 'CRM_AGENT')
     }
 
     const row = await prisma.$transaction(async (tx) => {
@@ -321,7 +366,7 @@ export async function POST(request: Request, context: RouteContext) {
           messageType,
           status: messageStatus,
           bodyText: bodyText || null,
-          payloadJson: providerPayload,
+          payloadJson: withMessageOrigin(providerPayload, 'CRM_AGENT'),
           attachmentsJson,
           sentByUserId: access.userId,
           occurredAt: new Date(),
@@ -353,7 +398,9 @@ export async function POST(request: Request, context: RouteContext) {
           sedeId: current.sedeId,
           type: current.channelConnection.provider === 'WHATSAPP_CLOUD' || current.channelConnection.provider === 'WHATSAPP_SANDBOX' ? 'WHATSAPP' : 'OTHER',
           summary: messageStatus === 'FAILED' ? 'Intento fallido de mensaje saliente desde CRM' : 'Mensaje saliente desde CRM',
-          details: sendErrorMessage ? `${bodyText || '[Mensaje sin texto]'}\n\nError proveedor: ${sendErrorMessage}` : (bodyText || '[Mensaje multimedia]'),
+            details: sendErrorMessage
+              ? `${bodyText || '[Mensaje sin texto]'}\n\nError proveedor: ${sendErrorMessage}`
+              : `${bodyText || '[Mensaje multimedia]'}${recentPhoneOutbound ? `\n\nOverride híbrido: el asesor respondió desde CRM después de detectar actividad reciente en celular (${recentPhoneOutbound.id}).` : ''}`,
           leadId: current.leadId,
           opportunityId: current.opportunityId,
           clienteId: current.clienteId,
