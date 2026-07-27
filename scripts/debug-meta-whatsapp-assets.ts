@@ -125,6 +125,7 @@ async function main() {
     metaConnectedUserName: rawSettings.metaConnectedUserName,
     metaConnectedAt: rawSettings.metaConnectedAt,
     metaLastSyncAt: rawSettings.metaLastSyncAt,
+    metaGrantedScopes: rawSettings.metaGrantedScopes,
     metaSelectedPhoneNumberId: rawSettings.metaSelectedPhoneNumberId,
     metaWhatsAppAssetsCount: Array.isArray(rawSettings.metaWhatsAppAssets) ? rawSettings.metaWhatsAppAssets.length : 0,
     metaWhatsAppAssets: rawSettings.metaWhatsAppAssets,
@@ -148,7 +149,15 @@ async function main() {
 
     const businessDetail = await fetchGraph<Record<string, unknown>>(`/${businessId}`, accessToken, {
       fields: 'owned_whatsapp_business_accounts{id,name},client_whatsapp_business_accounts{id,name}',
-    })
+    }).catch((error) => ({
+      error: error instanceof Error ? error.message : String(error),
+    }))
+
+    if ('error' in businessDetail) {
+      console.log(`\nWABAs visibles para business ${business.name || businessId}:`)
+      console.log(JSON.stringify({ error: businessDetail.error }, null, 2))
+      continue
+    }
 
     const owned = Array.isArray(businessDetail.owned_whatsapp_business_accounts)
       ? businessDetail.owned_whatsapp_business_accounts as GraphWaba[]
