@@ -5097,10 +5097,17 @@ export function CrmIntegrationsClient() {
                               <p className="text-sm font-semibold text-slate-900">{language === 'en' ? 'Guided onboarding' : 'Onboarding guiado'}</p>
                               <p className="mt-1 text-sm leading-6 text-slate-600">{language === 'en' ? 'Launch the flow in a controlled window, return automatically to the panel, and finish the asset selection right here.' : 'Lanza el flujo en una ventana controlada, vuelve al panel automáticamente y termina aquí mismo la selección del activo.'}</p>
                             </div>
-                            <Button type="button" className="rounded-xl bg-[#1877f2] text-white hover:bg-[#166fe0]" onClick={() => openMetaOnboarding(selectedChannel)}>
-                              <Facebook className="mr-2 h-4 w-4" />
-                              {selectedMeta.hasConnection ? (language === 'en' ? 'Reconnect with Facebook' : 'Reconectar con Facebook') : (language === 'en' ? 'Continue with Facebook' : 'Continuar con Facebook')}
-                            </Button>
+                            <div className="flex flex-wrap items-center gap-2">
+                              {selectedMeta.hasConnection ? (
+                                <Button type="button" variant="outline" className="rounded-xl" onClick={() => void syncMeta(selectedChannel.id)} disabled={updatingChannelId === selectedChannel.id}>
+                                  {language === 'en' ? 'Sync Meta' : 'Sincronizar Meta'}
+                                </Button>
+                              ) : null}
+                              <Button type="button" className="rounded-xl bg-[#1877f2] text-white hover:bg-[#166fe0]" onClick={() => openMetaOnboarding(selectedChannel)}>
+                                <Facebook className="mr-2 h-4 w-4" />
+                                {selectedMeta.hasConnection ? (language === 'en' ? 'Reconnect with Facebook' : 'Reconectar con Facebook') : (language === 'en' ? 'Continue with Facebook' : 'Continuar con Facebook')}
+                              </Button>
+                            </div>
                           </div>
                           <div className="mt-4 grid gap-2">
                             {selectedMetaOnboardingChecklist.map((item) => (

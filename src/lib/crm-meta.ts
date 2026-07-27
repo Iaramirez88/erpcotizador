@@ -426,18 +426,25 @@ async function fetchMetaBusinesses(accessToken: string) {
 
 async function fetchWhatsAppAssetsForBusiness(accessToken: string, businessId: string, businessName: string) {
   const business = await fetchMetaGraph<Record<string, unknown>>(`/${businessId}`, {
-    fields: 'owned_whatsapp_business_accounts{id,name}',
+    fields: 'owned_whatsapp_business_accounts{id,name},client_whatsapp_business_accounts{id,name}',
   }, accessToken)
 
-  const wabas = Array.isArray(business.owned_whatsapp_business_accounts)
+  const ownedWabas = Array.isArray(business.owned_whatsapp_business_accounts)
     ? business.owned_whatsapp_business_accounts.map((item) => parseJsonObject(item))
     : []
+  const clientWabas = Array.isArray(business.client_whatsapp_business_accounts)
+    ? business.client_whatsapp_business_accounts.map((item) => parseJsonObject(item))
+    : []
+  const wabas = [...ownedWabas, ...clientWabas]
+  const seenWabaIds = new Set<string>()
 
   const assets: MetaWhatsAppAsset[] = []
 
   for (const waba of wabas) {
     const wabaId = normalizeString(waba.id)
     if (!wabaId) continue
+    if (seenWabaIds.has(wabaId)) continue
+    seenWabaIds.add(wabaId)
 
     const phoneNumbers = await fetchMetaGraph<{ data?: Array<Record<string, unknown>> }>(`/${wabaId}/phone_numbers`, {
       fields: 'id,display_phone_number,verified_name',
