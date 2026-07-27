@@ -517,9 +517,10 @@ export function buildMetaSettingsPatch(args: {
   selectedPhoneNumberId?: string | null
 }) {
   const settings = parseJsonObject(args.currentSettingsJson)
+  const requestedPhoneNumberId = args.selectedPhoneNumberId || normalizeString(settings.metaSelectedPhoneNumberId)
   const selectedPage = resolveSelectedPage(args.snapshot, args.selectedPageId || normalizeString(settings.metaSelectedPageId))
   const selectedInstagram = resolveSelectedInstagram(args.snapshot, args.selectedInstagramAccountId || normalizeString(settings.metaSelectedInstagramAccountId), args.selectedPageId || selectedPage?.pageId || null)
-  const selectedWhatsApp = resolveSelectedWhatsApp(args.snapshot, args.selectedPhoneNumberId || normalizeString(settings.metaSelectedPhoneNumberId))
+  const selectedWhatsApp = resolveSelectedWhatsApp(args.snapshot, requestedPhoneNumberId)
 
   const selectedPageAccessToken = selectedInstagram?.pageAccessToken || selectedPage?.pageAccessToken || null
   const settingsPatch: Record<string, unknown> = {
@@ -536,7 +537,7 @@ export function buildMetaSettingsPatch(args: {
     metaWhatsAppAssets: args.snapshot.whatsappAssets,
     metaSelectedPageId: selectedPage?.pageId || null,
     metaSelectedInstagramAccountId: selectedInstagram?.instagramAccountId || null,
-    metaSelectedPhoneNumberId: selectedWhatsApp?.phoneNumberId || null,
+    metaSelectedPhoneNumberId: selectedWhatsApp?.phoneNumberId || requestedPhoneNumberId || null,
     metaPageAccessTokenEncrypted: selectedPageAccessToken ? encryptChannelSecret(selectedPageAccessToken) : null,
   }
 

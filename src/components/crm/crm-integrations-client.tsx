@@ -566,6 +566,7 @@ function getInitialChannelForm() {
     externalAccountId: '',
     externalPageId: '',
     externalPhoneNumberId: '',
+    whatsappDisplayPhoneNumber: '',
     whatsappAccessToken: '',
     whatsappApiVersion: 'v23.0',
     outboundLimitPerChannelDay: '',
@@ -1351,6 +1352,10 @@ function getOutgoingWebhookUrl(settingsJson: Record<string, unknown> | null | un
 
 function getWhatsAppAccessToken(settingsJson: Record<string, unknown> | null | undefined) {
   return typeof settingsJson?.whatsappAccessToken === 'string' ? settingsJson.whatsappAccessToken : ''
+}
+
+function getWhatsAppDisplayPhoneNumber(settingsJson: Record<string, unknown> | null | undefined) {
+  return typeof settingsJson?.whatsappDisplayPhoneNumber === 'string' ? settingsJson.whatsappDisplayPhoneNumber : ''
 }
 
 function getWhatsAppApiVersion(settingsJson: Record<string, unknown> | null | undefined) {
@@ -2913,6 +2918,7 @@ export function CrmIntegrationsClient() {
       externalAccountId: channel.externalAccountId || '',
       externalPageId: channel.externalPageId || '',
       externalPhoneNumberId: channel.externalPhoneNumberId || '',
+      whatsappDisplayPhoneNumber: getWhatsAppDisplayPhoneNumber(settings),
       whatsappAccessToken: getWhatsAppAccessToken(settings),
       whatsappApiVersion: getWhatsAppApiVersion(settings),
       outboundLimitPerChannelDay: getOperationalLimitValue(settings, 'outboundLimitPerChannelDay'),
@@ -3264,6 +3270,7 @@ export function CrmIntegrationsClient() {
         googleSheetsRowLimit: createForm.googleSheetsRowLimit,
         googleSheetsImportMode: createForm.googleSheetsImportMode,
         googleSheetsOpportunityStage: createForm.googleSheetsOpportunityStage,
+        whatsappDisplayPhoneNumber: createForm.whatsappDisplayPhoneNumber,
         whatsappAccessToken: createForm.whatsappAccessToken,
         whatsappApiVersion: createForm.whatsappApiVersion,
         outboundLimitPerChannelDay: createForm.outboundLimitPerChannelDay.replace(/[^0-9]/g, ''),
@@ -5205,7 +5212,7 @@ export function CrmIntegrationsClient() {
                               </div>
                             ) : null}
                             {selectedChannel.provider === 'WHATSAPP_CLOUD' || selectedChannel.provider === 'WHATSAPP_SANDBOX' ? (
-                              <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Active number:' : 'Número activo:'}</span> {selectedMeta.whatsappAssets.find((item) => item.phoneNumberId === selectedChannel.externalPhoneNumberId)?.displayPhoneNumber || selectedChannel.externalPhoneNumberId || (language === 'en' ? 'No linked number' : 'Sin número asociado')}</p>
+                              <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Active number:' : 'Número activo:'}</span> {selectedMeta.whatsappAssets.find((item) => item.phoneNumberId === selectedChannel.externalPhoneNumberId)?.displayPhoneNumber || getWhatsAppDisplayPhoneNumber(selectedSettings) || selectedChannel.externalPhoneNumberId || (language === 'en' ? 'No linked number' : 'Sin número asociado')}</p>
                             ) : null}
                             {selectedChannel.provider === 'FACEBOOK_PAGE' || selectedChannel.provider === 'MESSENGER' ? (
                               <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Active page:' : 'Página activa:'}</span> {selectedMeta.pages.find((item) => item.pageId === selectedChannel.externalPageId)?.pageName || selectedChannel.externalPageId || (language === 'en' ? 'No linked page' : 'Sin página asociada')}</p>
@@ -6763,6 +6770,11 @@ export function CrmIntegrationsClient() {
                         </div>
                         {createForm.provider === 'WHATSAPP_CLOUD' || createForm.provider === 'WHATSAPP_SANDBOX' ? (
                           <>
+                            <div className="grid gap-2">
+                              <Label>Número visible de WhatsApp</Label>
+                              <Input value={createForm.whatsappDisplayPhoneNumber} onChange={(e) => setCreateForm((prev) => ({ ...prev, whatsappDisplayPhoneNumber: e.target.value }))} className="h-11 rounded-xl" placeholder="+57 320 2102047" />
+                              <p className="text-xs leading-5 text-slate-500">Opcional. Se usa para mostrar el número legible cuando Meta solo devuelve el Phone Number ID.</p>
+                            </div>
                             <div className="grid gap-2 md:col-span-2">
                               <Label>Access Token Cloud API</Label>
                               <Input value={createForm.whatsappAccessToken} onChange={(e) => setCreateForm((prev) => ({ ...prev, whatsappAccessToken: e.target.value }))} className="h-11 rounded-xl" placeholder="EAAG..." />
