@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { AlertTriangle, BellOff, Bot, Clock3, FileText, Mail, MessageCircle, MoreVertical, PhoneCall } from 'lucide-react'
+import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, FileText, Mail, MessageCircle, MoreVertical, PhoneCall } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { CardInfoHeader } from '@/components/ui/card-info-header'
@@ -241,6 +241,24 @@ function getMessageOriginMeta(origin: MessageOrigin) {
 
 function hasMessageCollision(message: ConversationMessage) {
   return message.payloadJson?.collisionDetected === true
+}
+
+function renderCrmMessageStatusIcon(status: ConversationMessage['status']) {
+  if (status === 'READ') return <CheckCheck className="h-3.5 w-3.5 text-sky-600" />
+  if (status === 'DELIVERED') return <Check className="h-3.5 w-3.5 text-sky-600" />
+  if (status === 'SENT') return <Check className="h-3.5 w-3.5 text-slate-400" />
+  if (status === 'QUEUED') return <Clock3 className="h-3.5 w-3.5 text-slate-400" />
+  if (status === 'FAILED') return <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
+  return null
+}
+
+function getCrmMessageStatusLabel(status: ConversationMessage['status']) {
+  if (status === 'READ') return 'Visto'
+  if (status === 'DELIVERED') return 'Llegó'
+  if (status === 'SENT') return 'Enviado'
+  if (status === 'QUEUED') return 'Enviando'
+  if (status === 'FAILED') return 'Falló'
+  return status || null
 }
 
 function getConversationListSignal(item: ConversationListItem) {
@@ -526,6 +544,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   const [messageTypeDraft, setMessageTypeDraft] = useState<'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT'>('TEXT')
   const [attachmentUrlDraft, setAttachmentUrlDraft] = useState('')
   const [attachmentNameDraft, setAttachmentNameDraft] = useState('')
+  const [hybridOverrideConfirmed, setHybridOverrideConfirmed] = useState(false)
   const [simulateForm, setSimulateForm] = useState({
     channelConnectionId: '',
     nombre: '',
@@ -817,6 +836,10 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
   async function submitMessage() {
     if (!selectedConversation) return
     const requiresAttachment = messageTypeDraft === 'IMAGE' || messageTypeDraft === 'AUDIO' || messageTypeDraft === 'DOCUMENT'
+    if (hybridComposerGuard && !hybridOverrideConfirmed) {
+      alert('Hay actividad reciente desde el celular. Confirma primero en el composer que revisaste esa intervención antes de enviar desde el CRM.')
+      return
+    }
     if (messageTypeDraft === 'TEXT' && !messageDraft.trim()) {
       alert('Escribe un mensaje antes de enviar.')
       return
@@ -837,7 +860,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
           attachments: requiresAttachment
             ? [{ type: messageTypeDraft, url: attachmentUrlDraft, filename: attachmentNameDraft || null }]
             : [],
-          forceHybridOverride,
+          forceHybridOverride: forceHybridOverride || hybridOverrideConfirmed,
         }),
       }) as Promise<SendMessageResponse>
 
@@ -1128,6 +1151,30 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
       hint: `${open ? 'Último inbound' : 'La ventana cerró'}: ${formatDate(latestInbound.toISOString(), locale, naText)}`,
     }
   }, [locale, naText, selectedConversation])
+
+  const hybridComposerGuard = useMemo(() => {
+    if (!selectedConversation) return null
+
+    const recentPhoneOutbound = [...selectedConversation.messages]
+      .filter((message) => message.direction === 'OUTBOUND' && getMessageOrigin(message) === 'PHONE_APP')
+      .sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime())[0] ?? null
+
+    if (!recentPhoneOutbound) return null
+
+    const elapsedMs = Date.now() - new Date(recentPhoneOutbound.occurredAt).getTime()
+    if (Number.isNaN(elapsedMs) || elapsedMs > 5 * 60 * 1000) return null
+
+    return {
+      messageId: recentPhoneOutbound.id,
+      occurredAt: recentPhoneOutbound.occurredAt,
+      bodyText: recentPhoneOutbound.bodyText,
+      hasCollision: hasMessageCollision(recentPhoneOutbound),
+    }
+  }, [selectedConversation])
+
+  useEffect(() => {
+    setHybridOverrideConfirmed(false)
+  }, [selectedConversation?.id, hybridComposerGuard?.messageId])
 
   return (
     <div className="space-y-4.5 pb-4">
@@ -1887,6 +1934,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                           {selectedConversation.messages.map((message: ConversationMessage) => {
                             const originMeta = getMessageOriginMeta(getMessageOrigin(message))
                             const hasCollision = hasMessageCollision(message)
+                            const statusLabel = getCrmMessageStatusLabel(message.status)
 
                             return (
                             <div key={message.id} className={message.direction === 'OUTBOUND' ? 'ml-auto max-w-[88%] rounded-3xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700' : message.direction === 'SYSTEM' ? 'mx-auto max-w-[88%] rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600' : 'mr-auto max-w-[88%] rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700'}>
@@ -1897,7 +1945,6 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                   {hasCollision ? <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold normal-case text-amber-800">Colisión</span> : null}
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  {message.status ? <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{message.status}</span> : null}
                                   <span>{formatDate(message.occurredAt, locale, naText)}</span>
                                 </div>
                               </div>
@@ -1918,6 +1965,12 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                                   ))}
                                 </div>
                               ) : null}
+                              {message.direction === 'OUTBOUND' && statusLabel ? (
+                                <div className="mt-2 flex items-center justify-end gap-1 text-[11px] text-slate-500">
+                                  {renderCrmMessageStatusIcon(message.status)}
+                                  <span>{statusLabel}</span>
+                                </div>
+                              ) : null}
                               {'sentByUser' in message && message.sentByUser ? <p className="mt-2 text-[11px] text-slate-500">{message.sentByUser.name || message.sentByUser.email}</p> : null}
                             </div>
                           )})}
@@ -1927,6 +1980,31 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                           {messagingWindowState ? (
                             <div className={messagingWindowState.open ? 'rounded-2xl border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-xs text-emerald-800' : 'rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-800'}>
                               <span className="font-semibold">{messagingWindowState.label}:</span> {messagingWindowState.hint}
+                            </div>
+                          ) : null}
+                          {hybridComposerGuard ? (
+                            <div className={hybridComposerGuard.hasCollision ? 'rounded-2xl border border-rose-200 bg-rose-50/80 px-3 py-3 text-xs text-rose-800' : 'rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-xs text-amber-900'}>
+                              <div className="flex items-start gap-2">
+                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                                <div className="space-y-2">
+                                  <p className="font-semibold">
+                                    {hybridComposerGuard.hasCollision ? 'Riesgo alto de doble respuesta' : 'Actividad reciente desde celular detectada'}
+                                  </p>
+                                  <p>
+                                    Se detectó un mensaje saliente desde celular el {formatDate(hybridComposerGuard.occurredAt, locale, naText)}. Revisa esa intervención antes de contestar desde el CRM.
+                                  </p>
+                                  {hybridComposerGuard.bodyText ? <p className="rounded-xl bg-white/70 px-2.5 py-2 text-[11px] leading-5 text-slate-700">"{hybridComposerGuard.bodyText}"</p> : null}
+                                  <label className="flex items-start gap-2 text-[11px] text-slate-700">
+                                    <input
+                                      type="checkbox"
+                                      className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                                      checked={hybridOverrideConfirmed}
+                                      onChange={(event) => setHybridOverrideConfirmed(event.target.checked)}
+                                    />
+                                    <span>Confirmo que revisé la actividad del celular y aun así quiero responder desde el CRM.</span>
+                                  </label>
+                                </div>
+                              </div>
                             </div>
                           ) : null}
                           <div className="grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
@@ -1960,7 +2038,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                             </div>
                           ) : null}
                           <div className="flex justify-end">
-                            <Button className="rounded-xl" onClick={() => void submitMessage()} disabled={sending}>
+                            <Button className="rounded-xl" onClick={() => void submitMessage()} disabled={sending || Boolean(hybridComposerGuard && !hybridOverrideConfirmed)}>
                               {sending ? 'Enviando...' : 'Enviar mensaje'}
                             </Button>
                           </div>

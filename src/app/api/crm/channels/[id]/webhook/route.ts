@@ -35,7 +35,7 @@ async function applyMessageStatusUpdate(args: {
         providerMessageId: args.update.providerMessageId,
         conversation: { channelConnectionId: args.channelId },
       },
-      select: { id: true, status: true },
+      select: { id: true, status: true, payloadJson: true },
     })
 
     for (const row of rows) {
@@ -45,6 +45,9 @@ async function applyMessageStatusUpdate(args: {
         data: {
           status: args.update.status,
           payloadJson: {
+            ...(row.payloadJson && typeof row.payloadJson === 'object' && !Array.isArray(row.payloadJson)
+              ? row.payloadJson as Record<string, unknown>
+              : {}),
             statusWebhook: args.update.rawPayloadJson,
             errorMessage: args.update.errorMessage,
           },
@@ -71,7 +74,7 @@ async function applyMessageStatusUpdate(args: {
         direction: 'OUTBOUND',
         occurredAt: { lte: args.update.eventAt },
       },
-      select: { id: true, status: true },
+      select: { id: true, status: true, payloadJson: true },
     })
 
     for (const row of rows) {
@@ -81,6 +84,9 @@ async function applyMessageStatusUpdate(args: {
         data: {
           status: args.update.status,
           payloadJson: {
+            ...(row.payloadJson && typeof row.payloadJson === 'object' && !Array.isArray(row.payloadJson)
+              ? row.payloadJson as Record<string, unknown>
+              : {}),
             statusWebhook: args.update.rawPayloadJson,
             errorMessage: args.update.errorMessage,
           },

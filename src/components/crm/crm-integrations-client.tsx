@@ -1373,6 +1373,64 @@ function getWhatsAppConnectionModeLabel(mode: WhatsAppConnectionMode, language: 
   return language === 'en' ? 'CRM only' : 'Solo CRM'
 }
 
+function getWhatsAppConnectionModeSummary(mode: WhatsAppConnectionMode, language: 'es' | 'en') {
+  if (mode === 'HYBRID_CRM_PHONE') {
+    return {
+      title: language === 'en' ? 'Hybrid CRM + phone' : 'Híbrido CRM + celular',
+      summary: language === 'en'
+        ? 'The same number can still have activity from the phone app while the CRM keeps visibility, controls, and anti-collision rules.'
+        : 'El mismo número puede seguir teniendo actividad desde la app del celular mientras el CRM conserva visibilidad, controles y reglas anti-colisión.',
+      bullets: language === 'en'
+        ? [
+            'Use it when the client still needs WhatsApp Business App.',
+            'Requires official coexistence or compatible Meta behavior.',
+            'There is a higher operational risk of duplicate replies if the team does not follow the alerts.',
+          ]
+        : [
+            'Úsalo cuando el cliente todavía necesita atender también desde WhatsApp Business App.',
+            'Requiere coexistencia oficial o comportamiento compatible de Meta.',
+            'Tiene más riesgo operativo de doble respuesta si el equipo no sigue las alertas.',
+          ],
+    }
+  }
+
+  return {
+    title: language === 'en' ? 'CRM only' : 'Solo CRM',
+    summary: language === 'en'
+      ? 'The number is operated mainly from the CRM inbox, with stronger control, cleaner audit, and lower operational ambiguity.'
+      : 'El número se opera principalmente desde el inbox del CRM, con más control, auditoría más limpia y menor ambigüedad operativa.',
+    bullets: language === 'en'
+      ? [
+          'Use it when the sales team will answer from the CRM.',
+          'It is the recommended mode for multi-agent operation and automation.',
+          'It reduces collisions because the phone is not the main operating surface.',
+        ]
+      : [
+          'Úsalo cuando el equipo comercial va a responder desde el CRM.',
+          'Es el modo recomendado para operación multiagente y automatización.',
+          'Reduce colisiones porque el celular no es la superficie operativa principal.',
+        ],
+  }
+}
+
+function getWhatsAppApproxPricingRows(language: 'es' | 'en') {
+  return language === 'en'
+    ? [
+        { range: '0 - 1,000 utility templates / month', approximate: 'USD 0.01 - 0.03 each', note: 'Utility or transactional templates. Country and Meta billing table may vary.' },
+        { range: '1,001 - 10,000 utility templates / month', approximate: 'USD 0.008 - 0.025 each', note: 'Volume may lower the effective average in some markets.' },
+        { range: 'Authentication templates', approximate: 'USD 0.01 - 0.04 each', note: 'Usually priced differently from utility or marketing.' },
+        { range: 'Marketing templates', approximate: 'USD 0.03 - 0.12 each', note: 'Usually the most expensive category.' },
+        { range: 'Service responses inside allowed window', approximate: 'Low or zero incremental template cost', note: 'Depends on Meta rules, active window, and country.' },
+      ]
+    : [
+        { range: '0 - 1.000 plantillas utilitarias / mes', approximate: 'USD 0,01 - 0,03 c/u', note: 'Plantillas utilitarias o transaccionales. Puede variar por país y tabla vigente de Meta.' },
+        { range: '1.001 - 10.000 plantillas utilitarias / mes', approximate: 'USD 0,008 - 0,025 c/u', note: 'El promedio puede bajar por volumen en algunos mercados.' },
+        { range: 'Plantillas de autenticación', approximate: 'USD 0,01 - 0,04 c/u', note: 'Suelen tener precio distinto a utilitarias o marketing.' },
+        { range: 'Plantillas de marketing', approximate: 'USD 0,03 - 0,12 c/u', note: 'Normalmente es la categoría más costosa.' },
+        { range: 'Respuestas de servicio dentro de ventana permitida', approximate: 'Costo incremental bajo o cero por plantilla', note: 'Depende de reglas vigentes de Meta, ventana activa y país.' },
+      ]
+}
+
 function getWhatsAppApiVersion(settingsJson: Record<string, unknown> | null | undefined) {
   return typeof settingsJson?.whatsappApiVersion === 'string' ? settingsJson.whatsappApiVersion : 'v23.0'
 }
@@ -5230,6 +5288,59 @@ export function CrmIntegrationsClient() {
                             ) : null}
                             {selectedChannel.provider === 'WHATSAPP_CLOUD' || selectedChannel.provider === 'WHATSAPP_SANDBOX' ? (
                               <>
+                                {(() => {
+                                  const mode = getWhatsAppConnectionMode(selectedSettings)
+                                  const modeSummary = getWhatsAppConnectionModeSummary(mode, language)
+                                  const pricingRows = getWhatsAppApproxPricingRows(language)
+                                  return (
+                                    <div className="mb-4 space-y-3 rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+                                      <div>
+                                        <p className="text-sm font-semibold text-slate-900">{language === 'en' ? 'WhatsApp operating model' : 'Modelo operativo de WhatsApp'}</p>
+                                        <p className="mt-1 text-xs leading-5 text-slate-600">{modeSummary.summary}</p>
+                                      </div>
+                                      <div className="grid gap-3 md:grid-cols-2">
+                                        <div className={mode === 'CRM_ONLY' ? 'rounded-2xl border border-emerald-200 bg-emerald-50 p-3' : 'rounded-2xl border border-slate-200 bg-white p-3'}>
+                                          <p className="text-sm font-semibold text-slate-900">{language === 'en' ? 'CRM only' : 'Solo CRM'}</p>
+                                          <p className="mt-1 text-xs leading-5 text-slate-600">{language === 'en' ? 'Recommended when the team will answer from the CRM inbox and wants the cleanest control.' : 'Recomendado cuando el equipo va a responder desde el inbox del CRM y quiere el control más limpio.'}</p>
+                                        </div>
+                                        <div className={mode === 'HYBRID_CRM_PHONE' ? 'rounded-2xl border border-amber-200 bg-amber-50 p-3' : 'rounded-2xl border border-slate-200 bg-white p-3'}>
+                                          <p className="text-sm font-semibold text-slate-900">{language === 'en' ? 'Hybrid CRM + phone' : 'Híbrido CRM + celular'}</p>
+                                          <p className="mt-1 text-xs leading-5 text-slate-600">{language === 'en' ? 'Use it when the client still needs WhatsApp Business App besides the CRM.' : 'Úsalo cuando el cliente todavía necesita WhatsApp Business App además del CRM.'}</p>
+                                        </div>
+                                      </div>
+                                      <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{language === 'en' ? 'What changes in practice' : 'Qué cambia en la práctica'}</p>
+                                        <ul className="mt-2 list-disc space-y-1 pl-4 text-xs leading-5 text-slate-700">
+                                          {modeSummary.bullets.map((bullet) => <li key={bullet}>{bullet}</li>)}
+                                        </ul>
+                                      </div>
+                                      <div className="rounded-2xl border border-sky-200 bg-sky-50/80 p-3">
+                                        <p className="text-sm font-semibold text-slate-900">{language === 'en' ? 'Approximate Meta pricing reference' : 'Referencia aproximada de precios Meta'}</p>
+                                        <p className="mt-1 text-xs leading-5 text-slate-600">{language === 'en' ? 'These values are only a commercial reference. Meta charges vary by country, category, and current pricing table.' : 'Estos valores son solo una referencia comercial. Los cobros de Meta cambian por país, categoría y tabla vigente.'}</p>
+                                        <div className="mt-3 overflow-x-auto">
+                                          <table className="min-w-full text-left text-xs text-slate-700">
+                                            <thead>
+                                              <tr className="border-b border-sky-100 text-slate-500">
+                                                <th className="px-2 py-2 font-semibold">{language === 'en' ? 'Use case / range' : 'Uso / rango'}</th>
+                                                <th className="px-2 py-2 font-semibold">{language === 'en' ? 'Approx. price' : 'Precio aprox.'}</th>
+                                                <th className="px-2 py-2 font-semibold">{language === 'en' ? 'Notes' : 'Notas'}</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {pricingRows.map((row) => (
+                                                <tr key={row.range} className="border-b border-sky-50 align-top last:border-b-0">
+                                                  <td className="px-2 py-2 font-medium text-slate-900">{row.range}</td>
+                                                  <td className="px-2 py-2">{row.approximate}</td>
+                                                  <td className="px-2 py-2 text-slate-600">{row.note}</td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
+                                })()}
                                 <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Active number:' : 'Número activo:'}</span> {selectedMeta.whatsappAssets.find((item) => item.phoneNumberId === selectedChannel.externalPhoneNumberId)?.displayPhoneNumber || getWhatsAppDisplayPhoneNumber(selectedSettings) || selectedChannel.externalPhoneNumberId || (language === 'en' ? 'No linked number' : 'Sin número asociado')}</p>
                                 <p><span className="font-semibold text-slate-900">{language === 'en' ? 'Connection mode:' : 'Modo de conexión:'}</span> {getWhatsAppConnectionModeLabel(getWhatsAppConnectionMode(selectedSettings), language)}</p>
                                 {getWhatsAppConnectionMode(selectedSettings) === 'HYBRID_CRM_PHONE' ? (
@@ -6805,7 +6916,38 @@ export function CrmIntegrationsClient() {
                                   <SelectItem value="HYBRID_CRM_PHONE">Híbrido CRM + celular</SelectItem>
                                 </SelectContent>
                               </Select>
-                              <p className="text-xs leading-5 text-slate-500">Solo CRM mantiene el número operando desde la plataforma. Híbrido CRM + celular deja marcado que este canal debe evolucionar a coexistencia oficial y sincronización bidireccional.</p>
+                              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-700">
+                                <p className="font-semibold text-slate-900">{createForm.whatsappConnectionMode === 'CRM_ONLY' ? 'Solo CRM' : 'Híbrido CRM + celular'}</p>
+                                <p className="mt-1 leading-5">
+                                  {createForm.whatsappConnectionMode === 'CRM_ONLY'
+                                    ? 'El número se atiende principalmente desde el inbox del CRM. Es el modo recomendado cuando quieres multiagente, trazabilidad, automatización y menos riesgo de doble respuesta.'
+                                    : 'El número debe convivir entre CRM y WhatsApp Business App. El CRM refleja actividad y aplica alertas, pero este modo exige más disciplina operativa y compatibilidad real con Meta.'}
+                                </p>
+                                <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+                                  <table className="min-w-full text-left text-[11px] text-slate-700">
+                                    <thead>
+                                      <tr className="border-b border-slate-100 text-slate-500">
+                                        <th className="px-3 py-2 font-semibold">Modo</th>
+                                        <th className="px-3 py-2 font-semibold">Cuándo usarlo</th>
+                                        <th className="px-3 py-2 font-semibold">Riesgo</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      <tr className="border-b border-slate-100 align-top">
+                                        <td className="px-3 py-2 font-medium text-slate-900">Solo CRM</td>
+                                        <td className="px-3 py-2">Cuando el equipo comercial trabajará desde el CRM como canal principal.</td>
+                                        <td className="px-3 py-2">Bajo riesgo de colisión y mejor auditoría.</td>
+                                      </tr>
+                                      <tr className="align-top">
+                                        <td className="px-3 py-2 font-medium text-slate-900">Híbrido CRM + celular</td>
+                                        <td className="px-3 py-2">Cuando el cliente todavía necesita responder desde el celular además del CRM.</td>
+                                        <td className="px-3 py-2">Más riesgo de doble respuesta, exige alertas y disciplina operativa.</td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </div>
+                                <p className="mt-3 leading-5 text-slate-500">Referencia rápida de cobro Meta: utilitarias suelen moverse aprox. entre USD 0,01 y 0,03; autenticación entre USD 0,01 y 0,04; marketing entre USD 0,03 y 0,12 por plantilla, según país y tabla vigente.</p>
+                              </div>
                             </div>
                             <div className="grid gap-2">
                               <Label>Número visible de WhatsApp</Label>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, Bot, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Copy, GitBranch, GripVertical, History, Info, Plus, Redo2, Save, Smile, Trash2, Undo2, Users, Variable, Zap } from 'lucide-react'
+import { AlertTriangle, Bell, Bot, Check, CheckCheck, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock3, Copy, GitBranch, GripVertical, History, Info, Plus, Redo2, Save, Smile, Trash2, Undo2, Users, Variable, Zap } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -147,6 +147,8 @@ type ConversationDetail = Omit<ConversationRow, 'messages'> & {
     direction: string
     bodyText: string | null
     occurredAt: string
+    status?: string | null
+    attachmentsJson?: Array<{ type?: string | null; url?: string | null; name?: string | null }> | null
     sentByUser?: { id: string; name: string | null; email: string | null } | null
     payloadJson?: Record<string, unknown> | null
   }>
@@ -478,6 +480,24 @@ function getConversationMessageOriginMeta(origin: MessageOrigin) {
 
 function hasConversationMessageCollision(payloadJson: Record<string, unknown> | null | undefined) {
   return payloadJson?.collisionDetected === true
+}
+
+function renderConversationMessageStatusIcon(status: string | null | undefined) {
+  if (status === 'READ') return <CheckCheck className="h-3.5 w-3.5 text-sky-600" />
+  if (status === 'DELIVERED') return <Check className="h-3.5 w-3.5 text-sky-600" />
+  if (status === 'SENT') return <Check className="h-3.5 w-3.5 text-slate-400" />
+  if (status === 'QUEUED') return <Clock3 className="h-3.5 w-3.5 text-slate-400" />
+  if (status === 'FAILED') return <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
+  return null
+}
+
+function getConversationMessageStatusLabel(status: string | null | undefined) {
+  if (status === 'READ') return 'Visto'
+  if (status === 'DELIVERED') return 'Llegó'
+  if (status === 'SENT') return 'Enviado'
+  if (status === 'QUEUED') return 'Enviando'
+  if (status === 'FAILED') return 'Falló'
+  return status || null
 }
 
 function isWhatsAppChannelReadyForStudio(channel: WhatsAppChannelConnection) {
@@ -4851,6 +4871,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                     const isOutbound = message.direction === 'OUTBOUND'
                     const originMeta = getConversationMessageOriginMeta(getConversationMessageOrigin(message.payloadJson, message.direction))
                     const hasCollision = hasConversationMessageCollision(message.payloadJson)
+                    const statusLabel = getConversationMessageStatusLabel(message.status)
                     return (
                       <div key={message.id} className={isOutbound ? 'ml-auto max-w-[88%] rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-slate-700' : 'mr-auto max-w-[88%] rounded-[22px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'}>
                         <div className="flex items-center justify-between gap-3 text-[11px] uppercase tracking-wide text-slate-500">
@@ -4864,9 +4885,9 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         {hasCollision ? <div className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Se detectó una posible doble respuesta entre el celular y el CRM.</div> : null}
                         <div className="mt-2 whitespace-pre-wrap break-words leading-6">{message.bodyText || 'Sin texto'}</div>
                         {Array.isArray(message.payloadJson?.attachmentsJson) ? null : null}
-                        {Array.isArray((message as { attachmentsJson?: Array<{ type?: string | null; url?: string | null; name?: string | null }> }).attachmentsJson) && (message as { attachmentsJson?: Array<{ type?: string | null; url?: string | null; name?: string | null }> }).attachmentsJson?.length ? (
+                        {Array.isArray(message.attachmentsJson) && message.attachmentsJson.length ? (
                           <div className="mt-3 space-y-2">
-                            {(message as { attachmentsJson?: Array<{ type?: string | null; url?: string | null; name?: string | null }> }).attachmentsJson?.map((attachment, index) => (
+                            {message.attachmentsJson.map((attachment, index) => (
                               <a
                                 key={`${message.id}-attachment-${index}`}
                                 href={attachment.url || '#'}
@@ -4880,6 +4901,12 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                           </div>
                         ) : null}
                         {message.payloadJson?.chatFlowStageId ? <div className="mt-2 text-[11px] text-slate-500">Etapa: {String(message.payloadJson.chatFlowStageId)}</div> : null}
+                        {isOutbound && statusLabel ? (
+                          <div className="mt-2 flex items-center justify-end gap-1 text-[11px] text-slate-500">
+                            {renderConversationMessageStatusIcon(message.status)}
+                            <span>{statusLabel}</span>
+                          </div>
+                        ) : null}
                       </div>
                     )
                   })}
