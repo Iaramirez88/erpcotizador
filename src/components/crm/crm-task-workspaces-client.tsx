@@ -1311,7 +1311,7 @@ export function CrmTaskWorkspacesClient() {
         breadcrumbs={[{ label: 'Dashboard', href: '/dashboard' }, { label: 'Espacios de trabajo' }]}
         title="Espacios de trabajo y seguimiento interno"
         description="Administra espacios transversales del ERP, organiza tareas colaborativas, adjunta evidencia y centraliza seguimiento con estados más claros y visuales más fuertes."
-        actions={<Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85" onClick={() => setWorkspaceDialogOpen(true)}>Nuevo espacio</Button>}
+        actions={<Button variant="outline" className="rounded-2xl border-slate-200 bg-white/85 dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10" onClick={() => setWorkspaceDialogOpen(true)}>Nuevo espacio</Button>}
         stats={[
           { label: 'Espacios', value: workspaces.length, hint: 'Contextos colaborativos visibles', tone: 'sky' },
           { label: 'No iniciadas', value: filteredTasks.filter((task) => task.status === 'OPEN' && !task.archivedAt).length, hint: 'Pendiente de arrancar', tone: 'amber' },

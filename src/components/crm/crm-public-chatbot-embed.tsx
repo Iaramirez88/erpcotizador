@@ -82,6 +82,7 @@ type PublicChatbotEmbedProps = {
   launcherPosition: 'right' | 'center' | 'left'
   launcherPlacement: 'fixed' | 'absolute'
   launcherSize: 'compact' | 'standard' | 'large'
+  launcherStartsCollapsed: boolean
   launcherOffsetX: string
   launcherOffsetY: string
   launcherZIndex: string
@@ -162,6 +163,7 @@ const identityStorageSuffix = 'identity'
 const sessionStorageSuffix = 'session'
 const stateStorageSuffix = 'state'
 const CHATBOT_EMOJI_CHOICES = ['😀', '😁', '🙂', '😉', '😍', '🤝', '👏', '🔥', '✅', '🙏', '📎', '🚀']
+const AUTO_SCROLL_THRESHOLD_PX = 96
 
 type StoredWidgetState = {
   lastActivityAt: number
@@ -172,6 +174,7 @@ type StoredWidgetState = {
 
 function buildConfigSignature(args: Pick<PublicChatbotEmbedProps,
   'prompt'
+  | 'launcherStartsCollapsed'
   | 'preChatFormEnabled'
   | 'preChatFormTitle'
   | 'preChatFormDescription'
@@ -196,6 +199,7 @@ function buildConfigSignature(args: Pick<PublicChatbotEmbedProps,
   | 'flowStages'>) {
   return JSON.stringify({
     prompt: args.prompt,
+    launcherStartsCollapsed: args.launcherStartsCollapsed,
     preChatFormEnabled: args.preChatFormEnabled,
     preChatFormTitle: args.preChatFormTitle,
     preChatFormDescription: args.preChatFormDescription,
@@ -246,6 +250,23 @@ function normalizeStoredActivityAt(value: unknown) {
     if (Number.isFinite(parsed)) return Math.max(0, parsed)
   }
   return 0
+}
+
+function isMessagesViewportNearBottom(viewport: HTMLDivElement) {
+  return (viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight) <= AUTO_SCROLL_THRESHOLD_PX
+}
+
+function getLatestMessageSignature(messages: PublicChatbotMessage[]) {
+  const latestMessage = messages[messages.length - 1]
+  if (!latestMessage) return ''
+
+  return JSON.stringify({
+    id: latestMessage.id,
+    role: latestMessage.role,
+    at: latestMessage.at,
+    body: latestMessage.body,
+    attachmentCount: latestMessage.attachments?.length || 0,
+  })
 }
 
 function parseStoredWidgetState(rawValue: string | null, defaultPreChatCompleted: boolean): StoredWidgetState {
@@ -636,7 +657,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [messages, setMessages] = useState<PublicChatbotMessage[]>(defaultMessages)
   const [isEmbedded, setIsEmbedded] = useState(false)
-  const [panelOpen, setPanelOpen] = useState(!floatingLauncherActive)
+  const [panelOpen, setPanelOpen] = useState(floatingLauncherActive ? !props.launcherStartsCollapsed : true)
   const [clockTick, setClockTick] = useState(() => Date.now())
   const [preChatCompleted, setPreChatCompleted] = useState(!preChatRequired)
   const [preChatError, setPreChatError] = useState<string | null>(null)
@@ -647,9 +668,11 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [pendingAttachments, setPendingAttachments] = useState<UploadedPublicChatbotAttachment[]>([])
   const lastServerMessageIdRef = useRef('')
+  const shouldAutoScrollRef = useRef(true)
+  const pendingAutoScrollRef = useRef(true)
+  const lastVisibleMessageSignatureRef = useRef('')
   const expiringRef = useRef(false)
   const messagesViewportRef = useRef<HTMLDivElement | null>(null)
-  const messagesBottomRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const fallbackInactivityRule = useMemo(() => resolveFallbackInactivityRule({
     resetConversationAfterMinutes: props.resetConversationAfterMinutes,
@@ -739,6 +762,13 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     return fallbackInactivityRule
   }, [activeAssistantMeta?.inactivityRule, activeInactivityRule, fallbackInactivityRule, props.preChatFormInactivityRule, shouldBlockConversation])
 
+  const scrollMessagesToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    const viewport = messagesViewportRef.current
+    if (!viewport) return
+    viewport.scrollTo({ top: viewport.scrollHeight, behavior })
+    shouldAutoScrollRef.current = true
+  }, [])
+
   const resetConversation = useCallback((options?: { resetPreChat?: boolean }) => {
     if (typeof window === 'undefined') return
 
@@ -756,6 +786,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
 
     setSessionId(nextSessionId)
     setMessages(defaultMessages)
+    pendingAutoScrollRef.current = true
     setDraft('')
     setPendingAttachments([])
     setUploadError(null)
@@ -836,6 +867,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     if (!existingSession) window.localStorage.setItem(sessionKey, nextSession)
     setSessionId(nextSession)
     setMessages(defaultMessages)
+    pendingAutoScrollRef.current = true
     setPreChatCompleted((isExpired || configChanged) ? !preChatRequired : storedState.preChatCompleted)
     setLastActivityAt((isExpired || configChanged) ? now : storedState.lastActivityAt || now)
     setActiveInactivityRule((isExpired || configChanged)
@@ -897,15 +929,30 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   }, [])
 
   useEffect(() => {
-    if (typeof window === 'undefined' || shouldBlockConversation) return
+    if (typeof window === 'undefined' || shouldBlockConversation || !panelOpen) return
+
+    const latestMessageSignature = getLatestMessageSignature(messages)
+    if (latestMessageSignature === lastVisibleMessageSignatureRef.current) return
+    lastVisibleMessageSignatureRef.current = latestMessageSignature
+
+    const shouldScroll = shouldAutoScrollRef.current || pendingAutoScrollRef.current
+    const behavior: ScrollBehavior = pendingAutoScrollRef.current ? 'smooth' : 'auto'
+    pendingAutoScrollRef.current = false
+    if (!shouldScroll) return
+
     window.requestAnimationFrame(() => {
-      messagesBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-      const viewport = messagesViewportRef.current
-      if (viewport) {
-        viewport.scrollTop = viewport.scrollHeight
-      }
+      scrollMessagesToBottom(behavior)
     })
-  }, [messages, shouldBlockConversation, hasSelectableOptions, sending, syncing])
+  }, [messages, panelOpen, scrollMessagesToBottom, shouldBlockConversation])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || shouldBlockConversation || !panelOpen || !pendingAutoScrollRef.current) return
+
+    window.requestAnimationFrame(() => {
+      scrollMessagesToBottom('auto')
+      pendingAutoScrollRef.current = false
+    })
+  }, [panelOpen, scrollMessagesToBottom, shouldBlockConversation])
 
   useEffect(() => {
     if (!ready || !effectiveInactivityRule?.enabled || !lastActivityAt) return
@@ -983,6 +1030,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
       at: nowIso(),
       attachments: attachments.map((item) => ({ type: item.type, url: item.url, alt: item.name, name: item.name })),
     }
+    pendingAutoScrollRef.current = true
     setMessages((current) => [...current, optimisticMessage])
     setDraft('')
     setPendingAttachments([])
@@ -1101,6 +1149,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     setPreChatError(null)
     setLastActivityAt(Date.now())
     setActiveInactivityRule(defaultMessages[0]?.meta?.inactivityRule || fallbackInactivityRule)
+    pendingAutoScrollRef.current = true
   }
 
   function requestHumanSupport() {
@@ -1132,6 +1181,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   }
 
   function openPanel() {
+    pendingAutoScrollRef.current = true
     setPanelOpen(true)
   }
 
@@ -1139,6 +1189,12 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     if (!floatingLauncherActive) return
     setPanelOpen(false)
     setComposerMenuOpen(false)
+  }
+
+  function handleMessagesScroll() {
+    const viewport = messagesViewportRef.current
+    if (!viewport) return
+    shouldAutoScrollRef.current = isMessagesViewportNearBottom(viewport)
   }
 
   function appendEmoji(emoji: string) {
@@ -1301,7 +1357,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
           </div>
         </div>
 
-        <div ref={messagesViewportRef} className="sgd-chatbot-messages flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-4">
+        <div ref={messagesViewportRef} onScroll={handleMessagesScroll} className="sgd-chatbot-messages flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,#ffffff,#f8fbff)] px-4 py-4">
           {connectionError ? (
             <div className="mx-auto max-w-[92%] rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm">
               <p className="font-semibold">Conexion con el chatbot interrumpida</p>
@@ -1458,7 +1514,6 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
                 })}
             </div>
           ) : null}
-          <div ref={messagesBottomRef} />
         </div>
 
         <div className="sgd-chatbot-composer border-t border-slate-100 bg-white px-4 py-4">

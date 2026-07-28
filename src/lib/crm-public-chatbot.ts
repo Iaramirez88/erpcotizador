@@ -191,6 +191,7 @@ export type PublicChatbotSettings = {
   launcherPosition: 'right' | 'center' | 'left'
   launcherPlacement: 'fixed' | 'absolute'
   launcherSize: 'compact' | 'standard' | 'large'
+  launcherStartsCollapsed: boolean
   launcherOffsetX: string
   launcherOffsetY: string
   launcherZIndex: string
@@ -290,6 +291,7 @@ export function getPublicChatbotSettings(settingsJson: unknown): PublicChatbotSe
     launcherPosition: settings.launcherPosition === 'left' ? 'left' : settings.launcherPosition === 'center' ? 'center' : 'right',
     launcherPlacement: settings.launcherPlacement === 'absolute' ? 'absolute' : 'fixed',
     launcherSize: settings.launcherSize === 'compact' ? 'compact' : settings.launcherSize === 'large' ? 'large' : 'standard',
+    launcherStartsCollapsed: getBooleanSetting(settings, 'launcherStartsCollapsed', true),
     launcherOffsetX: typeof settings.launcherOffsetX === 'string' && settings.launcherOffsetX.trim() ? settings.launcherOffsetX.trim() : '60',
     launcherOffsetY: typeof settings.launcherOffsetY === 'string' && settings.launcherOffsetY.trim() ? settings.launcherOffsetY.trim() : '60',
     launcherZIndex: typeof settings.launcherZIndex === 'string' && settings.launcherZIndex.trim() ? settings.launcherZIndex.trim() : '2147483647',

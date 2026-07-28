@@ -262,51 +262,51 @@ export function LitografiaAiImagesModule() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Imágenes IA para litografía</h1>
-          <p className="text-muted-foreground">Módulo independiente para crear imágenes con IA, guardarlas directo en el administrador de archivos y revisar el historial consulta por consulta.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950 dark:text-white">Imágenes IA para litografía</h1>
+          <p className="text-muted-foreground dark:text-white">Módulo independiente para crear imágenes con IA, guardarlas directo en el administrador de archivos y revisar el historial consulta por consulta.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
+          <Button asChild variant="outline" className="dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10">
             <Link href="/dashboard/crm/archivos?path=ia%2Fchatgpt-imagenes">
               <ExternalLink className="mr-2 h-4 w-4" />
               Abrir carpeta guardada
             </Link>
           </Button>
-          <Button type="button" variant="outline" onClick={() => setHistoryOpen(true)}>
+          <Button type="button" variant="outline" className="dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10" onClick={() => setHistoryOpen(true)}>
             <History className="mr-2 h-4 w-4" />
             Ver historial de consultas
           </Button>
         </div>
       </div>
 
-      <Card className="border-slate-200 shadow-sm">
+      <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-[#0f1728] dark:text-white">
         <CardHeader>
-          <div className="flex items-center gap-2 text-slate-700">
+          <div className="flex items-center gap-2 text-slate-700 dark:text-white">
             <ImagePlus className="h-5 w-5" />
-            <CardTitle className="text-lg">Generador de imágenes</CardTitle>
+            <CardTitle className="text-lg dark:text-white">Generador de imágenes</CardTitle>
           </div>
-          <CardDescription>
+          <CardDescription className="dark:text-white">
             Genera primero una vista previa en modal, luego decide si la guardas en el administrador de archivos dentro de IA/chatgpt-imagenes.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="litografia-ai-images-prompt">Prompt para imagen</Label>
+            <Label htmlFor="litografia-ai-images-prompt" className="dark:text-white">Prompt para imagen</Label>
             <Textarea
               id="litografia-ai-images-prompt"
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
-              className="min-h-32"
+              className="min-h-32 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/55"
               placeholder="Ejemplo: mockup fotográfico de brochure corporativo premium sobre escritorio, iluminación natural, estilo realista"
             />
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-white">
               Ejemplo sólido: logo profesional para veterinaria, colores verde y azul, símbolo limpio con huella y cruz médica, tipografía moderna, fondo blanco, estilo corporativo, sin caricatura.
             </p>
           </div>
 
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-start">
             <div className="space-y-2">
-              <Label>Calidad de imagen</Label>
+              <Label className="dark:text-white">Calidad de imagen</Label>
               <Select value={imageQuality} onValueChange={(value) => setImageQuality(value as ImageQuality)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecciona calidad" />
@@ -319,11 +319,11 @@ export function LitografiaAiImagesModule() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-slate-500">{IMAGE_QUALITY_OPTIONS.find((option) => option.value === imageQuality)?.hint}</p>
+              <p className="text-xs text-slate-500 dark:text-white">{IMAGE_QUALITY_OPTIONS.find((option) => option.value === imageQuality)?.hint}</p>
             </div>
 
             <div className="space-y-2">
-              <Label>Tamaño final</Label>
+              <Label className="dark:text-white">Tamaño final</Label>
               <Select value={imageSize} onValueChange={(value) => setImageSize(value as ImageSize)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecciona tamaño" />
@@ -336,11 +336,11 @@ export function LitografiaAiImagesModule() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-slate-500">{IMAGE_SIZE_OPTIONS.find((option) => option.value === imageSize)?.hint}</p>
+              <p className="text-xs text-slate-500 dark:text-white">{IMAGE_SIZE_OPTIONS.find((option) => option.value === imageSize)?.hint}</p>
             </div>
 
             <div className="space-y-2 md:pt-7">
-              <Button type="button" onClick={handleGenerateImage} disabled={loading || prompt.trim().length < 12} className="w-full md:w-auto">
+              <Button type="button" onClick={handleGenerateImage} disabled={loading || prompt.trim().length < 12} className="w-full md:w-auto dark:border dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10">
                 {loading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <ImagePlus className="mr-2 h-4 w-4" />}
                 Generar imagen
               </Button>
@@ -363,8 +363,8 @@ export function LitografiaAiImagesModule() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-              <p className="font-medium text-slate-900">Cómo pedir mejores imágenes y evitar varios intentos</p>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-white">
+              <p className="font-medium text-slate-900 dark:text-white">Cómo pedir mejores imágenes y evitar varios intentos</p>
               <div className="mt-3 space-y-2">
                 {PROMPT_RECOMMENDATIONS.map((recommendation) => (
                   <p key={recommendation}>{recommendation}</p>
@@ -374,7 +374,7 @@ export function LitografiaAiImagesModule() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <p className="text-sm text-muted-foreground">{historyCountLabel}</p>
+            <p className="text-sm text-muted-foreground dark:text-white">{historyCountLabel}</p>
           </div>
 
           {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
@@ -406,14 +406,14 @@ export function LitografiaAiImagesModule() {
         </CardContent>
       </Card>
 
-      <Card className="border-slate-200 shadow-sm">
+      <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-[#0f1728] dark:text-white">
         <CardHeader>
-          <CardTitle className="text-lg">{historyScope === "company" ? "Últimas consultas del equipo" : "Tus últimas consultas"}</CardTitle>
-          <CardDescription>{historyScope === "company" ? "Vista rápida de la actividad reciente del equipo. El botón superior abre el historial completo item por item." : "Vista rápida de tu actividad reciente. El botón superior abre tu historial completo item por item."}</CardDescription>
+          <CardTitle className="text-lg dark:text-white">{historyScope === "company" ? "Últimas consultas del equipo" : "Tus últimas consultas"}</CardTitle>
+          <CardDescription className="dark:text-white">{historyScope === "company" ? "Vista rápida de la actividad reciente del equipo. El botón superior abre el historial completo item por item." : "Vista rápida de tu actividad reciente. El botón superior abre tu historial completo item por item."}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {historyLoading ? <p className="text-sm text-muted-foreground">Cargando historial...</p> : null}
-          {!historyLoading && !history.length ? <p className="text-sm text-muted-foreground">Aún no hay actividad IA registrada.</p> : null}
+          {historyLoading ? <p className="text-sm text-muted-foreground dark:text-white">Cargando historial...</p> : null}
+          {!historyLoading && !history.length ? <p className="text-sm text-muted-foreground dark:text-white">Aún no hay actividad IA registrada.</p> : null}
           {history.slice(0, 5).map((entry) => (
             <button
               key={entry.id}
@@ -422,14 +422,14 @@ export function LitografiaAiImagesModule() {
                 setSelectedHistory(entry)
                 setHistoryOpen(true)
               }}
-              className="w-full rounded-xl border border-slate-200 p-3 text-left text-sm text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+              className="w-full rounded-xl border border-slate-200 p-3 text-left text-sm text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
             >
               <div className="flex items-start justify-between gap-3">
-                <p className="font-medium text-slate-900">{entry.kind === "IMAGE_GENERATION" ? "Imagen" : "Cotización"}</p>
-                <span className="text-xs text-slate-500">{formatDate(entry.createdAt)}</span>
+                <p className="font-medium text-slate-900 dark:text-white">{entry.kind === "IMAGE_GENERATION" ? "Imagen" : "Cotización"}</p>
+                <span className="text-xs text-slate-500 dark:text-white">{formatDate(entry.createdAt)}</span>
               </div>
               <p className="mt-1 line-clamp-2">{entry.prompt}</p>
-              {entry.asset?.path ? <p className="mt-2 text-xs text-slate-500">Archivo: {entry.asset.path}</p> : null}
+              {entry.asset?.path ? <p className="mt-2 text-xs text-slate-500 dark:text-white">Archivo: {entry.asset.path}</p> : null}
             </button>
           ))}
         </CardContent>

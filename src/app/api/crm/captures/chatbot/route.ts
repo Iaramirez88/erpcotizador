@@ -16,6 +16,7 @@ import {
   findChatbotFlowStage,
   getStageQuickActions,
   getStageResponseOptions,
+  isHumanHandoffStage,
   matchChatbotFlowResponseOption,
   type ChatbotFlowNextField,
   type ChatbotQuickActionNotificationConfig,
@@ -1023,6 +1024,21 @@ async function sendChatbotNotificationWhatsApp(tx: Prisma.TransactionClient, arg
   })))
 }
 
+function resolveExternalWhatsAppNotificationTargets(args: {
+  notifyOtherContact: boolean
+  targetContact: string
+  fallbackWhatsapp: string
+  fallbackPhone: string
+}) {
+  if (!args.notifyOtherContact) return [] as string[]
+
+  return uniqueStrings([
+    normalizeWhatsAppRecipient(args.targetContact),
+    normalizeWhatsAppRecipient(args.fallbackWhatsapp),
+    normalizeWhatsAppRecipient(args.fallbackPhone),
+  ])
+}
+
 async function sendChatbotNotificationTelegram(args: { to: string[]; bodyText: string }) {
   if (!args.to.length) return
   await Promise.allSettled(args.to.map((chatId) => sendTelegramMessage({ chatId, message: args.bodyText })))
@@ -1942,6 +1958,13 @@ export async function POST(request: Request) {
           ? buildNotificationRecipientsFromConfig(selectedAutomation.notifications)
           : []
 
+        const externalWhatsAppTargets = resolveExternalWhatsAppNotificationTargets({
+          notifyOtherContact: selectedAutomation.notifications.notifyOtherContact,
+          targetContact: selectedAutomation.notifications.targetContact,
+          fallbackWhatsapp: resolvedIdentity.whatsapp,
+          fallbackPhone: resolvedIdentity.phone,
+        })
+
         if (selectedAutomation.notifications.notifyMe) {
           const resolvedRecipients = await resolveChatbotNotificationRecipients(tx, {
             empresaId: channel.empresaId,
@@ -2014,7 +2037,7 @@ export async function POST(request: Request) {
               empresaId: channel.empresaId,
               sedeId: channel.sedeId,
               channelId: normalizeString(selectedAutomation.notifications.whatsappChannelId) || undefined,
-              to: resolvedRecipients.whatsapp,
+              to: uniqueStrings([...resolvedRecipients.whatsapp, ...externalWhatsAppTargets]),
               bodyText: notificationBodyText,
             })
           }
@@ -2025,6 +2048,25 @@ export async function POST(request: Request) {
               bodyText: notificationBodyText,
             })
           }
+        }
+
+        if (externalWhatsAppTargets.length && !selectedAutomation.notifications.notifyMe) {
+          await sendChatbotNotificationWhatsApp(tx, {
+            empresaId: channel.empresaId,
+            sedeId: channel.sedeId,
+            channelId: normalizeString(selectedAutomation.notifications.whatsappChannelId) || undefined,
+            to: externalWhatsAppTargets,
+            bodyText: buildChatbotNotificationText({
+              actionLabel: selectedQuickAction?.label || 'Acción del chatbot',
+              contactName: resolvedIdentity.nombre,
+              companyName: resolvedIdentity.companyName,
+              requestedProduct: effectiveProduct,
+              quantity: resolvedIdentity.quantity,
+              whatsapp: resolvedIdentity.whatsapp,
+              email: resolvedIdentity.email,
+              summary: richTextToPlainText(assistantReply.body),
+            }),
+          })
         }
 
         if (selectedAutomation.notifications.addNote && selectedAutomation.notifications.noteText) {
@@ -2098,7 +2140,7 @@ export async function POST(request: Request) {
         || selectedQuickAction?.kind === 'human'
         || matchedTrigger.matchedTrigger?.event === 'human_request'
 
-      if (shouldHandoffToHuman) {
+      if (shouldHandoffToHuman || isHumanHandoffStage(resolvedStage)) {
         runtimeState = {
           ...runtimeState,
           botSubscriptionActive: false,

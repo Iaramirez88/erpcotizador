@@ -17,6 +17,7 @@ import {
   getDefaultChatbotFlowStages,
   getDefaultChatbotQuickActionAutomationConfig,
   getDefaultChatbotQuickActions,
+  isHumanHandoffStage,
   type ChatbotQuickActionAutomationConfig,
   type ChatbotFlowNextField,
   type ChatbotFlowResponseMatchMode,
@@ -908,6 +909,14 @@ function getStageCardMeta(stage: ChatbotFlowStage) {
     }
   }
 
+  if (isHumanHandoffStage(stage)) {
+    return {
+      title: stage.title?.trim() || 'Handoff humano',
+      subtitle: 'El bot se detiene aquí',
+      description: 'Esta caja entrega la conversación al equipo humano y no debe seguir respondiendo automáticamente.',
+    }
+  }
+
   return {
     title: stage.title?.trim() || 'Mensaje',
     subtitle: hasCapture ? 'Espera respuesta del usuario' : 'Sin captura',
@@ -969,10 +978,10 @@ function buildStudioGraph(builder: BuilderState, measuredNodeHeights: Record<str
       y: layout?.y ?? laneY.stages,
       width: 232,
       height: getGraphNodeHeight({ kind: 'stage', responseCount: stage.responseOptions.length, actionCount: 0, messageLength: messageText.length }),
-      accentClass: 'border-emerald-200 bg-white text-slate-900',
-      headerClass: 'bg-emerald-50 text-emerald-900',
-      headerBadgeClass: 'bg-white/90 text-emerald-700',
-      toneClass: 'stroke-emerald-400',
+      accentClass: isHumanHandoffStage(stage) ? 'border-amber-200 bg-white text-slate-900' : 'border-emerald-200 bg-white text-slate-900',
+      headerClass: isHumanHandoffStage(stage) ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-900',
+      headerBadgeClass: isHumanHandoffStage(stage) ? 'bg-white/90 text-amber-700' : 'bg-white/90 text-emerald-700',
+      toneClass: isHumanHandoffStage(stage) ? 'stroke-amber-400' : 'stroke-emerald-400',
     })
   })
 
@@ -2765,6 +2774,7 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
         prompt: 'Mensaje del asistente.',
         templateKey: null,
         nextField: 'none',
+        endChatbotSession: false,
         quickActionIds: [],
         responseOptions: [],
         inactivityRule: getDefaultChatbotInactivityRule(),
@@ -4311,10 +4321,20 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                 </SelectContent>
               </Select>
             </div>
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-amber-950">Aquí termina el bot y pasa a humano</div>
+                  <div className="mt-1 text-xs leading-5 text-amber-900">Marca esta caja cuando este mensaje sea el último automático. El runtime dejará de responder y el chat quedará para seguimiento humano.</div>
+                </div>
+                <Switch checked={selectedStage.endChatbotSession} onCheckedChange={(checked) => updateStage(selectedStage.id, { endChatbotSession: checked })} />
+              </div>
+            </div>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-600">
               <div className="font-semibold text-slate-900">Resumen</div>
               <div className="mt-2">{selectedStage.responseOptions.length} rutas configuradas</div>
               <div className="mt-1">{selectedStage.responseOptions.filter((option) => option.targetActionId).length} opciones enlazadas a acciones</div>
+              <div className="mt-1">Corte automático: {selectedStage.endChatbotSession ? 'Sí, pasa a humano' : 'No, el bot sigue activo'}</div>
             </div>
             {renderInactivityRuleFields({
               title: 'Expiración de esta caja',
@@ -6814,6 +6834,15 @@ export function CrmChatbotStudioClient({ initialChannelId }: { initialChannelId?
                         <SelectItem value="quantity">Cantidad</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-amber-950">Fin de automatización</div>
+                      <div className="mt-1 text-xs leading-5 text-amber-900">Activa esta marca si desde esta caja la conversación ya debe quedar en manos de una persona.</div>
+                    </div>
+                    <Switch checked={editingStage.endChatbotSession} onCheckedChange={(checked) => updateStage(editingStage.id, { endChatbotSession: checked })} />
                   </div>
                 </div>
                 <div className="grid gap-1.5">

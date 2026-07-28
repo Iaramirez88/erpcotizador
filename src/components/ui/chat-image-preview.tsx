@@ -23,7 +23,7 @@ export function ChatImagePreview(props: ChatImagePreviewProps) {
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent hideClose className="max-w-5xl overflow-hidden border-slate-200 bg-white p-0">
+        <DialogContent hideClose overlayClassName="z-[180] bg-black/85" className="z-[181] max-w-5xl overflow-hidden border-slate-200 bg-white p-0">
           <DialogHeader className="border-b border-slate-200 px-4 py-3 text-left">
             <DialogTitle className="truncate text-sm text-slate-900">{title}</DialogTitle>
           </DialogHeader>

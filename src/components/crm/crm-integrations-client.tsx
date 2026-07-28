@@ -460,6 +460,7 @@ type ChatbotBuilderState = Pick<ChannelFormState,
   | 'launcherPlacement'
   | 'launcherPosition'
   | 'launcherSize'
+  | 'launcherStartsCollapsed'
   | 'launcherOffsetX'
   | 'launcherOffsetY'
   | 'launcherZIndex'
@@ -616,6 +617,7 @@ function getInitialChannelForm() {
     launcherPosition: 'right' as LauncherPosition,
     launcherPlacement: 'fixed' as LauncherPlacement,
     launcherSize: 'standard' as LauncherSize,
+    launcherStartsCollapsed: true,
     launcherOffsetX: '60',
     launcherOffsetY: '60',
     launcherZIndex: '2147483647',
@@ -1658,6 +1660,10 @@ function getLauncherSize(settingsJson: Record<string, unknown> | null | undefine
   return 'standard'
 }
 
+function getLauncherStartsCollapsed(settingsJson: Record<string, unknown> | null | undefined) {
+  return getBooleanSetting(settingsJson ?? {}, 'launcherStartsCollapsed', true)
+}
+
 function getLauncherOffsetX(settingsJson: Record<string, unknown> | null | undefined) {
   return typeof settingsJson?.launcherOffsetX === 'string' && settingsJson.launcherOffsetX.trim() ? settingsJson.launcherOffsetX : '60'
 }
@@ -1757,6 +1763,11 @@ function getPreviewAnchorStyle(position: LauncherPosition, offsetX: number, offs
     return { bottom: offsetY, left: '50%', transform: 'translateX(-50%)', maxWidth: `calc(100% - ${offsetX * 2}px)` }
   }
   return { bottom: offsetY, right: offsetX, maxWidth: `calc(100% - ${offsetX * 2}px)` }
+}
+
+function getInitialChatbotPreviewMode(builderState: Pick<ChatbotBuilderState, 'floatingLauncherEnabled' | 'launcherStartsCollapsed'>): ChatbotPreviewMode {
+  if (!builderState.floatingLauncherEnabled) return 'expanded'
+  return builderState.launcherStartsCollapsed ? 'floating' : 'expanded'
 }
 
 function getWebFormCustomFieldPlaceholder(field: WebFormCustomField) {
@@ -1887,14 +1898,20 @@ function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
   const catalogStage = builderState.flowStages.find((item) => item.id === 'catalog') ?? builderState.flowStages[1] ?? welcomeStage
   const welcomeActions = builderState.quickActions.filter((item) => welcomeStage?.quickActionIds.includes(item.id) && item.enabled)
   const welcomeResponses = welcomeStage?.responseOptions ?? []
-  const launcherLabelVisible = mode !== 'compact' && launcherMetrics.labelVisible
+  const effectiveMode = mode === 'floating' ? getInitialChatbotPreviewMode(builderState) : mode
+  const panelVisible = !builderState.floatingLauncherEnabled || effectiveMode === 'expanded'
+  const launcherVisible = builderState.floatingLauncherEnabled && !panelVisible
+  const launcherLabelVisible = effectiveMode !== 'compact' && launcherMetrics.labelVisible
+  const previewHeight = launcherVisible
+    ? Math.max(viewport === 'mobile' ? 220 : 200, previewOffsetY + Number.parseInt(launcherMetrics.buttonHeight, 10) + 72)
+    : minHeight
   const preChatDepartmentOptions = builderState.preChatFormDepartmentOptions.split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean)
 
   return (
-    <div className="relative overflow-hidden rounded-[26px] border border-emerald-200 p-3 shadow-sm" style={{ background: `radial-gradient(circle at top, rgba(16,185,129,0.12), transparent 30%), linear-gradient(180deg, ${builderState.pageBackgroundColor} 0%, ${builderState.pageBackgroundColor} 55%, ${builderState.backgroundColor} 100%)`, minHeight }}>
-      <div className="flex h-full px-3 pb-24 pt-4" style={{ justifyContent: getPreviewJustifyContent(builderState.launcherPosition) }}>
+    <div className="relative overflow-hidden rounded-[26px] border border-emerald-200 p-3 shadow-sm" style={{ background: `radial-gradient(circle at top, rgba(16,185,129,0.12), transparent 30%), linear-gradient(180deg, ${builderState.pageBackgroundColor} 0%, ${builderState.pageBackgroundColor} 55%, ${builderState.backgroundColor} 100%)`, minHeight: previewHeight }}>
+      <div className="flex h-full px-3 pt-4" style={{ justifyContent: getPreviewJustifyContent(builderState.launcherPosition), paddingBottom: launcherVisible ? 12 : 96 }}>
         <div className="relative flex min-h-full w-full items-end" style={{ maxWidth: viewport === 'mobile' ? 340 : '100%', fontFamily: builderState.fontFamily }}>
-          <div className="w-full overflow-hidden border border-slate-200 bg-white" style={{ marginTop: 24, marginLeft: builderState.launcherPosition === 'right' ? 'auto' : builderState.launcherPosition === 'center' ? 'auto' : 0, marginRight: builderState.launcherPosition === 'left' ? 'auto' : builderState.launcherPosition === 'center' ? 'auto' : 0, borderRadius: `${normalizePixelValue(builderState.chatShellRadius, '30')}px`, boxShadow: panelShadow }}>
+          {panelVisible ? <div className="w-full overflow-hidden border border-slate-200 bg-white" style={{ marginTop: 24, marginLeft: builderState.launcherPosition === 'right' ? 'auto' : builderState.launcherPosition === 'center' ? 'auto' : 0, marginRight: builderState.launcherPosition === 'left' ? 'auto' : builderState.launcherPosition === 'center' ? 'auto' : 0, borderRadius: `${normalizePixelValue(builderState.chatShellRadius, '30')}px`, boxShadow: panelShadow }}>
             <div className="px-4 py-4 text-white" style={{ background: `linear-gradient(135deg, #0f172a, ${builderState.accentColor})` }}>
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -1967,11 +1984,11 @@ function renderChatbotPreview(builderState: ChatbotBuilderState, options?: {
                 </div>
               </div>
             </div>
-          </div>
+          </div> : null}
 
-          {builderState.floatingLauncherEnabled ? (
+          {launcherVisible ? (
             <div className="absolute" style={{ zIndex: Number.parseInt(normalizeZIndexValue(builderState.launcherZIndex, '2147483647'), 10), ...previewAnchorStyle }}>
-              <div className="flex max-w-full items-center justify-center whitespace-nowrap text-white shadow-[0_18px_44px_-26px_rgba(15,23,42,0.55)]" style={{ backgroundColor: builderState.accentColor, borderRadius: launcherMetrics.buttonRadius, padding: launcherMetrics.buttonPadding, height: launcherMetrics.buttonHeight, gap: mode === 'compact' ? '0' : launcherMetrics.buttonGap, minWidth: mode === 'compact' ? launcherMetrics.buttonHeight : undefined, fontSize: launcherMetrics.fontSize, fontWeight: 700 }}>
+              <div className="flex max-w-full items-center justify-center whitespace-nowrap text-white shadow-[0_18px_44px_-26px_rgba(15,23,42,0.55)]" style={{ backgroundColor: builderState.accentColor, borderRadius: launcherMetrics.buttonRadius, padding: launcherMetrics.buttonPadding, height: launcherMetrics.buttonHeight, gap: effectiveMode === 'compact' ? '0' : launcherMetrics.buttonGap, minWidth: effectiveMode === 'compact' ? launcherMetrics.buttonHeight : undefined, fontSize: launcherMetrics.fontSize, fontWeight: 700 }}>
                 <span style={{ fontSize: launcherMetrics.iconSize, lineHeight: 1 }}>{getLauncherPreviewIcon(builderState.launcherIcon)}</span>
                 {launcherLabelVisible ? <span>{builderState.launcherLabel}</span> : null}
               </div>
@@ -2432,6 +2449,7 @@ function getChatbotBuilderState(settingsJson: Record<string, unknown> | null | u
     launcherPosition: getLauncherPosition(settingsJson),
     launcherPlacement: getLauncherPlacement(settingsJson),
     launcherSize: getLauncherSize(settingsJson),
+    launcherStartsCollapsed: getLauncherStartsCollapsed(settingsJson),
     launcherOffsetX: getLauncherOffsetX(settingsJson),
     launcherOffsetY: getLauncherOffsetY(settingsJson),
     launcherZIndex: getLauncherZIndex(settingsJson),
@@ -2608,7 +2626,7 @@ export function CrmIntegrationsClient() {
   const [chatbotBuilderDraft, setChatbotBuilderDraft] = useState<ChatbotBuilderState>(getChatbotBuilderState(null))
   const [chatbotBuilderModalOpen, setChatbotBuilderModalOpen] = useState(false)
   const [savingChatbotBuilder, setSavingChatbotBuilder] = useState(false)
-  const [chatbotBuilderPreviewMode, setChatbotBuilderPreviewMode] = useState<ChatbotPreviewMode>('expanded')
+  const [chatbotBuilderPreviewMode, setChatbotBuilderPreviewMode] = useState<ChatbotPreviewMode>(getInitialChatbotPreviewMode(getChatbotBuilderState(null)))
   const [chatbotBuilderPreviewViewport, setChatbotBuilderPreviewViewport] = useState<ChatbotPreviewViewport>('desktop')
   const [chatbotBuilderSection, setChatbotBuilderSection] = useState<ChatbotBuilderSection>('flow')
   const [wizardChatbotSection, setWizardChatbotSection] = useState<ChatbotWizardSection>('base')
@@ -2621,7 +2639,7 @@ export function CrmIntegrationsClient() {
   const [wizardWebFormSection, setWizardWebFormSection] = useState<WebFormConfigSection>('base')
   const [metaSelectionDraft, setMetaSelectionDraft] = useState({ selectedPageId: '', selectedInstagramAccountId: '', selectedPhoneNumberId: '' })
   const [floatingPreviewOpen, setFloatingPreviewOpen] = useState(false)
-  const [wizardChatPreviewMode, setWizardChatPreviewMode] = useState<ChatbotPreviewMode>('expanded')
+  const [wizardChatPreviewMode, setWizardChatPreviewMode] = useState<ChatbotPreviewMode>(getInitialChatbotPreviewMode(getInitialChannelForm()))
   const [wizardChatPreviewViewport, setWizardChatPreviewViewport] = useState<ChatbotPreviewViewport>('desktop')
   const [googleSheetsActions, setGoogleSheetsActions] = useState<GoogleSheetsActionState>(getInitialGoogleSheetsActionState())
   const [selectedChannelUsageStats, setSelectedChannelUsageStats] = useState<ChannelConnection['outboundMessagingStats'] | null>(null)
@@ -2995,7 +3013,9 @@ export function CrmIntegrationsClient() {
   }, [selectedChannel?.externalAccountId, selectedChannel?.externalPageId, selectedChannel?.externalPhoneNumberId, selectedMeta.selectedInstagramAccountId, selectedMeta.selectedPageId, selectedMeta.selectedPhoneNumberId])
 
   useEffect(() => {
-    setChatbotBuilderDraft(getChatbotBuilderState(selectedSettings))
+    const nextBuilderState = getChatbotBuilderState(selectedSettings)
+    setChatbotBuilderDraft(nextBuilderState)
+    setChatbotBuilderPreviewMode(getInitialChatbotPreviewMode(nextBuilderState))
   }, [selectedChannelId, selectedSettings])
 
   useEffect(() => {
@@ -3131,9 +3151,10 @@ export function CrmIntegrationsClient() {
 
   function openCreateWizard() {
     setEditingChannelId(null)
-    setCreateForm(getInitialChannelForm())
+    const nextForm = getInitialChannelForm()
+    setCreateForm(nextForm)
     setWizardMetaAdvancedOpen(false)
-    setWizardChatPreviewMode('expanded')
+    setWizardChatPreviewMode(getInitialChatbotPreviewMode(nextForm))
     setWizardChatPreviewViewport('desktop')
     setWizardChatbotSection('base')
     setWizardWebFormSection('base')
@@ -3153,7 +3174,7 @@ export function CrmIntegrationsClient() {
 
     setEditingChannelId(channel.id)
   setWizardMetaAdvancedOpen(Boolean(channel.externalAccountId || channel.externalPageId || channel.externalPhoneNumberId || getWhatsAppAccessToken(settings) || getWhatsAppApiVersion(settings) !== 'v23.0'))
-    setCreateForm({
+    const nextForm: ChannelFormState = {
       ...getInitialChannelForm(),
       templateKey: templateMatch?.key ?? 'web-form',
       name: channel.name,
@@ -3198,6 +3219,7 @@ export function CrmIntegrationsClient() {
       launcherPosition: getLauncherPosition(settings),
       launcherPlacement: getLauncherPlacement(settings),
       launcherSize: getLauncherSize(settings),
+      launcherStartsCollapsed: getLauncherStartsCollapsed(settings),
       launcherOffsetX: getLauncherOffsetX(settings),
       launcherOffsetY: getLauncherOffsetY(settings),
       launcherZIndex: getLauncherZIndex(settings),
@@ -3253,8 +3275,9 @@ export function CrmIntegrationsClient() {
       termsLabel: getSettingText(settings, 'termsLabel', 'Acepto el tratamiento de datos personales.'),
       termsLinkText: getSettingText(settings, 'termsLinkText', 'Leer términos'),
       termsLinkUrl: getSettingText(settings, 'termsLinkUrl', ''),
-    })
-    setWizardChatPreviewMode('expanded')
+    }
+    setCreateForm(nextForm)
+    setWizardChatPreviewMode(getInitialChatbotPreviewMode(nextForm))
     setWizardChatPreviewViewport('desktop')
     setWizardChatbotSection('base')
     setWizardWebFormSection('base')
@@ -3561,6 +3584,7 @@ export function CrmIntegrationsClient() {
         launcherPosition: createForm.launcherPosition,
         launcherPlacement: createForm.launcherPlacement,
         launcherSize: createForm.launcherSize,
+        launcherStartsCollapsed: createForm.launcherStartsCollapsed,
         launcherOffsetX: normalizePixelValue(createForm.launcherOffsetX, '60'),
         launcherOffsetY: normalizePixelValue(createForm.launcherOffsetY, '60'),
         launcherZIndex: normalizeZIndexValue(createForm.launcherZIndex, '2147483647'),
@@ -3648,7 +3672,7 @@ export function CrmIntegrationsClient() {
 
       setCreateOpen(false)
       setWizardStep('template')
-      setWizardChatPreviewMode('expanded')
+      setWizardChatPreviewMode(getInitialChatbotPreviewMode(getInitialChannelForm()))
       setWizardChatPreviewViewport('desktop')
       setActiveAssetTab(json.data.provider === 'WEB_CHATBOT' ? 'chatbot' : json.data.provider === 'WEB_FORM' ? 'form' : 'overview')
       setCreateForm(getInitialChannelForm())
@@ -3715,6 +3739,7 @@ export function CrmIntegrationsClient() {
           prompt: 'Escribe aquí la pregunta o mensaje que activará esta etapa.',
           templateKey: null,
           nextField: 'none',
+          endChatbotSession: false,
           quickActionIds: [],
           responseOptions: [],
           inactivityRule: getDefaultChatbotFlowStages()[0]?.inactivityRule ?? { enabled: false, timeoutValue: 12, timeoutUnit: 'hours', timeoutMinutes: 720, action: 'restart' },
@@ -3744,6 +3769,7 @@ export function CrmIntegrationsClient() {
           prompt: 'Escribe aquí el mensaje que continuará esta ruta del chatbot.',
           templateKey: null,
           nextField: 'none',
+          endChatbotSession: false,
           quickActionIds: [],
           responseOptions: [],
           inactivityRule: getDefaultChatbotFlowStages()[0]?.inactivityRule ?? { enabled: false, timeoutValue: 12, timeoutUnit: 'hours', timeoutMinutes: 720, action: 'restart' },
@@ -4450,6 +4476,13 @@ export function CrmIntegrationsClient() {
                 <p className="text-xs text-slate-500">Controla si se genera y se usa el botón flotante además del iframe público.</p>
               </div>
               <Switch checked={createForm.floatingLauncherEnabled} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, floatingLauncherEnabled: checked }))} />
+            </div>
+            <div className="md:col-span-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Abrir panel al cargar</p>
+                <p className="text-xs text-slate-500">Si se desactiva, el widget inicia colapsado y muestra solo el launcher.</p>
+              </div>
+              <Switch checked={!createForm.launcherStartsCollapsed} onCheckedChange={(checked) => setCreateForm((prev) => ({ ...prev, launcherStartsCollapsed: !checked }))} disabled={!createForm.floatingLauncherEnabled} />
             </div>
             <div className="grid gap-2"><Label>Texto del launcher flotante</Label><Input value={createForm.launcherLabel} onChange={(e) => setCreateForm((prev) => ({ ...prev, launcherLabel: e.target.value }))} className="h-11 rounded-xl" placeholder="Abrir asesor virtual" /></div>
             <div className="grid gap-2"><Label>Icono del launcher</Label><Select value={createForm.launcherIcon} onValueChange={(value) => setCreateForm((prev) => ({ ...prev, launcherIcon: value }))}><SelectTrigger className="h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="bot">bot</SelectItem><SelectItem value="message-circle">message-circle</SelectItem><SelectItem value="sparkles">sparkles</SelectItem></SelectContent></Select></div>
@@ -6598,6 +6631,13 @@ export function CrmIntegrationsClient() {
                     </div>
                     <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
                       <div>
+                        <p className="text-sm font-semibold text-slate-900">Abrir panel al cargar</p>
+                        <p className="text-xs text-slate-500">Si se apaga, el widget inicia colapsado y solo deja visible el launcher</p>
+                      </div>
+                      <Switch checked={!chatbotBuilderDraft.launcherStartsCollapsed} onCheckedChange={(checked) => setChatbotBuilderDraft((current) => ({ ...current, launcherStartsCollapsed: !checked }))} disabled={!chatbotBuilderDraft.floatingLauncherEnabled} />
+                    </div>
+                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <div>
                         <p className="text-sm font-semibold text-slate-900">Solicitar producto</p>
                         <p className="text-xs text-slate-500">Muestra el campo rápido en el composer</p>
                       </div>
@@ -6736,10 +6776,10 @@ export function CrmIntegrationsClient() {
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Preview en vivo</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">Puedes alternar entre launcher compacto, launcher visible o panel abierto, y también entre desktop y mobile.</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">Puedes revisar el estado inicial configurado, forzar solo launcher o abrir el panel, tanto en desktop como en mobile.</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {[{ value: 'floating', label: 'Visible' }, { value: 'compact', label: 'Launcher compacto' }, { value: 'expanded', label: 'Panel abierto' }].map((mode) => (
+                    {[{ value: 'floating', label: 'Estado inicial' }, { value: 'compact', label: 'Solo launcher' }, { value: 'expanded', label: 'Panel abierto' }].map((mode) => (
                       <button key={mode.value} type="button" onClick={() => setChatbotBuilderPreviewMode(mode.value as ChatbotPreviewMode)} className={chatbotBuilderPreviewMode === mode.value ? 'rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-[11px] font-semibold text-emerald-800' : 'rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600'}>{mode.label}</button>
                     ))}
                     {[{ value: 'desktop', label: 'Desktop' }, { value: 'mobile', label: 'Mobile' }].map((viewport) => (
@@ -6752,7 +6792,11 @@ export function CrmIntegrationsClient() {
                 {renderChatbotPreview(chatbotBuilderDraft, { mode: chatbotBuilderPreviewMode, viewport: chatbotBuilderPreviewViewport })}
               </div>
               <DialogFooter className="mt-5 border-t border-slate-100 pt-5">
-                <Button variant="outline" className="rounded-xl" onClick={() => setChatbotBuilderDraft(getChatbotBuilderState(selectedSettings))} disabled={savingChatbotBuilder}>
+                <Button variant="outline" className="rounded-xl" onClick={() => {
+                  const nextBuilderState = getChatbotBuilderState(selectedSettings)
+                  setChatbotBuilderDraft(nextBuilderState)
+                  setChatbotBuilderPreviewMode(getInitialChatbotPreviewMode(nextBuilderState))
+                }} disabled={savingChatbotBuilder}>
                   Revertir
                 </Button>
                 <Button variant="outline" className="rounded-xl" onClick={() => setChatbotBuilderModalOpen(false)} disabled={savingChatbotBuilder}>
@@ -6903,8 +6947,8 @@ export function CrmIntegrationsClient() {
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div className="flex flex-wrap gap-2">
                               {[
-                                { value: 'floating', label: 'Visible' },
-                                { value: 'compact', label: 'Launcher compacto' },
+                                { value: 'floating', label: 'Estado inicial' },
+                                { value: 'compact', label: 'Solo launcher' },
                                 { value: 'expanded', label: 'Panel abierto' },
                               ].map((mode) => (
                                 <button
@@ -6941,7 +6985,7 @@ export function CrmIntegrationsClient() {
                           <div className="mt-3 grid gap-2 text-[11px] text-slate-600 sm:grid-cols-3">
                             <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2">
                               <p className="font-semibold text-slate-900">Launcher</p>
-                              <p className="mt-1">{getLauncherPositionLabel(createForm.launcherPosition)} · {createForm.launcherPlacement} · {createForm.launcherSize}</p>
+                              <p className="mt-1">{getLauncherPositionLabel(createForm.launcherPosition)} · {createForm.launcherPlacement} · {createForm.launcherSize} · {createForm.launcherStartsCollapsed ? 'inicia cerrado' : 'inicia abierto'}</p>
                             </div>
                             <div className="rounded-2xl border border-white/70 bg-white/75 px-3 py-2">
                               <p className="font-semibold text-slate-900">Anclaje</p>

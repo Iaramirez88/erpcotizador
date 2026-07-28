@@ -112,6 +112,7 @@ export type ChatbotFlowStage = {
   prompt: string
   templateKey: ChatbotFlowStageTemplateKey | null
   nextField: ChatbotFlowNextField
+  endChatbotSession: boolean
   quickActionIds: string[]
   responseOptions: ChatbotFlowResponseOption[]
   inactivityRule: ChatbotInactivityRule
@@ -382,6 +383,7 @@ export function getDefaultChatbotFlowStages(): ChatbotFlowStage[] {
       prompt: 'Hola. Soy tu asistente comercial y puedo ayudarte a explorar catálogo, revisar stock o dejar tu solicitud lista para el equipo.',
       templateKey: null,
       nextField: 'name',
+      endChatbotSession: false,
       quickActionIds: ['view-catalog', 'products-in-stock', 'talk-to-advisor'],
       inactivityRule: getDefaultChatbotInactivityRule(),
       responseOptions: [
@@ -421,6 +423,7 @@ export function getDefaultChatbotFlowStages(): ChatbotFlowStage[] {
       prompt: 'Puedo mostrarte referencias activas, disponibilidad aproximada y alternativas cercanas según el producto que busques.',
       templateKey: null,
       nextField: 'product',
+      endChatbotSession: false,
       quickActionIds: ['view-catalog', 'products-in-stock', 'talk-to-advisor'],
       inactivityRule: getDefaultChatbotInactivityRule(),
       responseOptions: [
@@ -451,6 +454,7 @@ export function getDefaultChatbotFlowStages(): ChatbotFlowStage[] {
       prompt: 'Perfecto. Ahora voy a completar los datos necesarios para dejar el lead listo y que el equipo comercial continúe el seguimiento.',
       templateKey: null,
       nextField: 'email',
+      endChatbotSession: false,
       quickActionIds: ['products-in-stock', 'talk-to-advisor'],
       inactivityRule: getDefaultChatbotInactivityRule(),
       responseOptions: [
@@ -472,6 +476,7 @@ export function getDefaultChatbotFlowStages(): ChatbotFlowStage[] {
       prompt: 'Ya dejé el contexto preparado y ahora voy a escalar la conversación al equipo para seguimiento humano.',
       templateKey: null,
       nextField: 'none',
+      endChatbotSession: true,
       quickActionIds: ['talk-to-advisor'],
       inactivityRule: getDefaultChatbotInactivityRule(),
       responseOptions: [],
@@ -554,6 +559,7 @@ export function normalizeChatbotFlowStages(value: unknown): ChatbotFlowStage[] {
         prompt: asText(record.prompt),
         templateKey: asText(record.templateKey) === 'prechat-form' ? 'prechat-form' : null,
         nextField: isFlowNextField(record.nextField) ? record.nextField : 'none',
+        endChatbotSession: asBoolean(record.endChatbotSession, asText(record.id) === 'handoff'),
         quickActionIds: normalizeIds(record.quickActionIds),
         responseOptions: normalizeChatbotFlowResponseOptions(record.responseOptions, asText(record.id)),
         inactivityRule: normalizeChatbotInactivityRule(record.inactivityRule),
@@ -590,6 +596,11 @@ export function findChatbotFlowResponseOption(stage: ChatbotFlowStage | null | u
 
 export function getStageResponseOptions(stage: ChatbotFlowStage | null | undefined) {
   return stage?.responseOptions ?? []
+}
+
+export function isHumanHandoffStage(stage: ChatbotFlowStage | null | undefined) {
+  if (!stage) return false
+  return stage.endChatbotSession || stage.id === 'handoff'
 }
 
 function normalizeMatchTerms(value: string) {

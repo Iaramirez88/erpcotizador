@@ -115,7 +115,7 @@ export default async function DashboardLayout({
           <Header user={user} />
 
           {/* Page Content */}
-          <main className="erp-shell relative flex-1 overflow-y-auto bg-white p-1 pb-14 sm:p-2 sm:pb-14 lg:p-2.5 lg:pb-14">
+          <main className="erp-shell relative flex-1 overflow-y-auto bg-white p-1 pb-14 dark:bg-[#08111f] sm:p-2 sm:pb-14 lg:p-2.5 lg:pb-14">
             <div className="erp-shell__content mx-auto flex w-full max-w-[1600px] flex-col gap-2.5">
               <RouteLoadingIndicator />
               <DashboardPermissionBoundary allowedHrefs={allowedNavHrefs}>
