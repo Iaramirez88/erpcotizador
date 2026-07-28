@@ -290,11 +290,11 @@ export async function POST(request: Request) {
     }
 
     const finalSedeId = explicitSedeId || workspace?.sedeId || lead?.sedeId || opportunity?.sedeId || cliente?.sedeId || ''
-    if (finalSedeId) {
+    if (!workspaceId && finalSedeId) {
       const denied = await assertTaskCapabilitySedeAccess({
         sedeId: finalSedeId,
         action: 'UPDATE',
-        kind: workspaceId ? 'workspace' : 'commercial',
+        kind: 'commercial',
       })
       if (denied) return denied
     }

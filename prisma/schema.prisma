@@ -1674,6 +1674,7 @@ model Sede {
   crmActivities     CrmActivity[]
   crmTasks          CrmTask[]
   crmTaskWorkspaces CrmTaskWorkspace[]
+  crmTaskWorkspaceLinks CrmTaskWorkspaceSede[] @relation("CrmTaskWorkspaceSedeLink")
   crmChannelConnections CrmChannelConnection[]
   crmConversations     CrmConversation[]
   crmMessages          CrmMessage[]
@@ -2732,6 +2733,7 @@ model CrmTaskWorkspace {
   members CrmTaskWorkspaceMember[]
   projects CrmTaskWorkspaceProject[]
   tasks   CrmTask[]
+  workspaceSedes CrmTaskWorkspaceSede[] @relation("CrmTaskWorkspaceSedeLink")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2740,6 +2742,22 @@ model CrmTaskWorkspace {
   @@index([sedeId, createdAt])
   @@index([ownerUserId, createdAt])
   @@map("crm_task_workspaces")
+}
+
+model CrmTaskWorkspaceSede {
+  id String @id @default(cuid())
+
+  workspaceId String
+  workspace   CrmTaskWorkspace @relation("CrmTaskWorkspaceSedeLink", fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  sedeId String
+  sede   Sede @relation("CrmTaskWorkspaceSedeLink", fields: [sedeId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([workspaceId, sedeId])
+  @@index([sedeId, createdAt])
+  @@map("crm_task_workspace_sedes")
 }
 
 model CrmTaskWorkspaceProject {

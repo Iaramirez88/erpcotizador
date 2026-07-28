@@ -8,6 +8,7 @@ import {
   type RbacV2Domain,
   type RbacV2Scope,
 } from '@/lib/rbac-v2-catalog'
+import { isSuperAdminEmail } from '@/lib/super-admin'
 import type { Session } from 'next-auth'
 import { AccessLevel, ModuleKey, SedeRole } from '@prisma/client'
 import { resolveUserIdFromSession } from '@/lib/session-user'
@@ -19,6 +20,7 @@ export type ApiAccessOk = {
   sedeId: string
   empresaId: string
   membershipRole: SedeRole | null
+  isSystemSuperAdmin: boolean
 }
 
 export type ApiAccessFail = {
@@ -165,6 +167,12 @@ async function resolveApiAccessContext(sedeIdOverride?: string): Promise<ApiAcce
     }
   }
 
+  const currentUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true },
+  })
+  const isSystemSuperAdmin = isSuperAdminEmail(currentUser?.email)
+
   const sede = sedeIdOverride
     ? await prisma.sede.findUnique({ where: { id: sedeIdOverride }, select: { id: true, empresaId: true } })
     : await getActiveSedeForUser(userId)
@@ -178,7 +186,7 @@ async function resolveApiAccessContext(sedeIdOverride?: string): Promise<ApiAcce
     select: { sedeId: true, role: true },
   })
 
-  if (!membership) {
+  if (!membership && !isSystemSuperAdmin) {
     return {
       ok: false,
       response: NextResponse.json({ error: buildSedeMembershipDeniedMessage() }, { status: 403 }),
@@ -191,7 +199,8 @@ async function resolveApiAccessContext(sedeIdOverride?: string): Promise<ApiAcce
     userId,
     sedeId: sede.id,
     empresaId: sede.empresaId,
-    membershipRole: membership.role,
+    membershipRole: membership?.role ?? (isSystemSuperAdmin ? 'ADMIN' : null),
+    isSystemSuperAdmin,
   }
 }
 
@@ -413,6 +422,16 @@ export async function canAccessCapability(
 ): Promise<ApiCapabilityAccessOk | ApiAccessFail> {
   const accessContext = await resolveApiAccessContext(args.sedeId)
   if (!accessContext.ok) return accessContext
+
+  if (accessContext.isSystemSuperAdmin) {
+    return {
+      ...accessContext,
+      capability: args,
+      matchedLegacyModule: null,
+      legacyModulesChecked: [],
+      resolvedBy: 'rbac-v2-grant',
+    }
+  }
 
   const accessFromV2 = await resolveCapabilityAccessFromV2(accessContext, args)
   if (accessFromV2) return accessFromV2

@@ -58,11 +58,11 @@ export async function GET(_: Request, context: RouteContext) {
       }
     }
 
-    if (current.sedeId) {
+    if (!current.workspaceId && current.sedeId) {
       const denied = await assertTaskCapabilitySedeAccess({
         sedeId: current.sedeId,
         action: 'READ',
-        kind: current.workspaceId ? 'workspace' : 'commercial',
+        kind: 'commercial',
       })
       if (denied) return denied
     }
@@ -100,11 +100,11 @@ export async function PATCH(request: Request, context: RouteContext) {
       if (!workspace) return NextResponse.json({ error: 'Prohibido' }, { status: 403 })
     }
 
-    if (current.sedeId) {
+    if (!current.workspaceId && current.sedeId) {
       const denied = await assertTaskCapabilitySedeAccess({
         sedeId: current.sedeId,
         action: 'UPDATE',
-        kind: current.workspaceId ? 'workspace' : 'commercial',
+        kind: 'commercial',
       })
       if (denied) return denied
     }
@@ -199,11 +199,11 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
     }
 
-    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeId') && explicitSedeId) {
+    if (!resolvedWorkspaceId && Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeId') && explicitSedeId) {
       const denied = await assertTaskCapabilitySedeAccess({
         sedeId: explicitSedeId,
         action: 'UPDATE',
-        kind: resolvedWorkspaceId ? 'workspace' : 'commercial',
+        kind: 'commercial',
       })
       if (denied) return denied
     }

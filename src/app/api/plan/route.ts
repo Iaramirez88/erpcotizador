@@ -8,6 +8,7 @@ import { getPlanModulePriceRows } from '@/lib/plan-module-prices'
 import { getCommercialPriceRows } from '@/lib/commercial-price-settings'
 import { getManagedPlanByTier, getManagedPlans } from '@/lib/managed-plans'
 import { getCrmStorageUsageSummary } from '@/lib/crm-files'
+import { isSuperAdminEmail } from '@/lib/super-admin'
 
 export const runtime = 'nodejs'
 
@@ -24,8 +25,9 @@ export async function GET() {
     const userId = session.user.id
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { empresaId: true },
+      select: { empresaId: true, email: true },
     })
+    const isSystemSuperAdmin = isSuperAdminEmail(user?.email)
 
     const empresa = user?.empresaId
       ? await prisma.empresa.findUnique({
@@ -73,9 +75,25 @@ export async function GET() {
       getCommercialPriceRows(),
     ])
 
-    const paywall = empresa ? resolvePaywallState(empresa, new Date()) : null
+    const paywall = empresa
+      ? resolvePaywallState(empresa, new Date())
+      : null
+    const effectivePaywall = isSystemSuperAdmin && paywall
+      ? {
+          ...paywall,
+          show: false,
+          blocking: false,
+          reason: 'NONE' as const,
+          trial: {
+            ...paywall.trial,
+            isActive: false,
+            isExpired: false,
+            daysLeft: null,
+          },
+        }
+      : paywall
 
-    const resolvedTier = paywall?.effectiveTier ?? empresa?.planTier ?? getDefaultPlanTier()
+    const resolvedTier = effectivePaywall?.effectiveTier ?? empresa?.planTier ?? getDefaultPlanTier()
     const [plan, allPlans, storageUsage] = await Promise.all([
       getManagedPlanByTier(resolvedTier),
       getManagedPlans(),
@@ -85,21 +103,21 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       current: plan,
-      effective: paywall
+      effective: effectivePaywall
         ? {
-            planTier: paywall.effectiveTier,
+            planTier: effectivePaywall.effectiveTier,
             paywall: {
-              show: paywall.show,
-              blocking: paywall.blocking,
-              reason: paywall.reason,
+              show: effectivePaywall.show,
+              blocking: effectivePaywall.blocking,
+              reason: effectivePaywall.reason,
             },
             trial: {
-              tier: paywall.trial.tier,
-              startedAt: paywall.trial.startedAt ? paywall.trial.startedAt.toISOString() : null,
-              validUntil: paywall.trial.validUntil ? paywall.trial.validUntil.toISOString() : null,
-              isActive: paywall.trial.isActive,
-              isExpired: paywall.trial.isExpired,
-              daysLeft: paywall.trial.daysLeft,
+              tier: effectivePaywall.trial.tier,
+              startedAt: effectivePaywall.trial.startedAt ? effectivePaywall.trial.startedAt.toISOString() : null,
+              validUntil: effectivePaywall.trial.validUntil ? effectivePaywall.trial.validUntil.toISOString() : null,
+              isActive: effectivePaywall.trial.isActive,
+              isExpired: effectivePaywall.trial.isExpired,
+              daysLeft: effectivePaywall.trial.daysLeft,
             },
           }
         : null,

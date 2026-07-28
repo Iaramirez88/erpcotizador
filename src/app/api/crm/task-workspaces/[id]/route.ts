@@ -8,6 +8,7 @@ import {
   getAccessibleTaskWorkspace,
   mapWorkspaceForUser,
   normalizeUserIdList,
+  normalizeWorkspaceSedeIdList,
   type WorkspaceMemberRole,
 } from '@/lib/crm-task-workspaces'
 
@@ -92,7 +93,27 @@ export async function PATCH(request: Request, context: RouteContext) {
     const name = normalizeString(body?.name)
     const description = normalizeString(body?.description)
     const ownerUserId = normalizeString(body?.ownerUserId)
+    const sedeIds = normalizeWorkspaceSedeIdList(body?.sedeIds)
     const memberRoles = normalizeMemberRoles(body?.members)
+    const nextSedeIds = Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeIds')
+      ? Array.from(new Set(sedeIds.filter(Boolean)))
+      : current.workspaceSedes.length
+        ? current.workspaceSedes.map((item) => item.sedeId)
+        : (current.sedeId ? [current.sedeId] : [])
+
+    if (current.scope === 'SEDE' && Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeIds') && !nextSedeIds.length) {
+      return NextResponse.json({ error: 'Selecciona al menos una sede para el espacio.' }, { status: 400 })
+    }
+
+    if (current.scope === 'SEDE' && nextSedeIds.length) {
+      const sedeRows = await prisma.sede.findMany({
+        where: { id: { in: nextSedeIds }, empresaId: access.empresaId },
+        select: { id: true },
+      })
+      if (sedeRows.length !== nextSedeIds.length) {
+        return NextResponse.json({ error: 'Hay sedes inválidas en la actualización.' }, { status: 400 })
+      }
+    }
 
     if (Object.prototype.hasOwnProperty.call(body ?? {}, 'ownerUserId') && ownerUserId) {
       const owner = await prisma.user.findUnique({ where: { id: ownerUserId }, select: { id: true, empresaId: true } })
@@ -135,8 +156,22 @@ export async function PATCH(request: Request, context: RouteContext) {
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'name') ? { name: name || current.name } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'description') ? { description: description || null } : {}),
           ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'ownerUserId') ? { ownerUserId: ownerUserId || null } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeIds') ? { sedeId: nextSedeIds[0] || null } : {}),
         },
       })
+
+      if (Object.prototype.hasOwnProperty.call(body ?? {}, 'sedeIds')) {
+        await tx.crmTaskWorkspaceSede.deleteMany({ where: { workspaceId: current.id } })
+        if (nextSedeIds.length) {
+          await tx.crmTaskWorkspaceSede.createMany({
+            data: nextSedeIds.map((sedeId) => ({
+              workspaceId: current.id,
+              sedeId,
+            })),
+            skipDuplicates: true,
+          })
+        }
+      }
 
       if (Object.prototype.hasOwnProperty.call(body ?? {}, 'members')) {
         await tx.crmTaskWorkspaceMember.deleteMany({

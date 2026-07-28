@@ -98,7 +98,7 @@ async function resolveProtectedUploadPath(parts: string[]) {
       }
     }
 
-    if (task.sedeId) {
+    if (!task.workspaceId && task.sedeId) {
       const denied = await assertCrmSedeAccess({ sedeId: task.sedeId, empresaId: access.empresaId, userId: access.userId, minLevel: AccessLevel.READ })
       if (denied) return denied
     }

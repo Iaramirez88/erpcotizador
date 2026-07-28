@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 import { normalizeString } from '@/lib/crm'
-import { crmTaskWorkspaceInclude, getAccessibleTaskWorkspaceIds, mapWorkspaceForUser, normalizeUserIdList } from '@/lib/crm-task-workspaces'
+import { crmTaskWorkspaceInclude, getAccessibleTaskWorkspaceIds, mapWorkspaceForUser, normalizeUserIdList, normalizeWorkspaceSedeIdList } from '@/lib/crm-task-workspaces'
 
 export const runtime = 'nodejs'
 
@@ -52,24 +52,29 @@ export async function POST(request: Request) {
     const description = normalizeString(body?.description)
     const scope = typeof body?.scope === 'string' ? body.scope.trim().toUpperCase() : ''
     const sedeId = normalizeString(body?.sedeId)
+    const sedeIds = normalizeWorkspaceSedeIdList(body?.sedeIds)
     const ownerUserId = normalizeString(body?.ownerUserId)
     const memberUserIds = normalizeUserIdList(body?.memberUserIds)
+    const normalizedSedeIds = scope === 'SEDE' ? Array.from(new Set([sedeId, ...sedeIds].filter(Boolean))) : []
 
     if (!name) return NextResponse.json({ error: 'name es requerido' }, { status: 400 })
     if (scope !== 'SEDE' && scope !== 'USER') {
       return NextResponse.json({ error: 'scope inválido' }, { status: 400 })
     }
-    if (scope === 'SEDE' && !sedeId) {
+    if (scope === 'SEDE' && !normalizedSedeIds.length) {
       return NextResponse.json({ error: 'sedeId es requerido para espacios por sede' }, { status: 400 })
     }
     if (scope === 'USER' && !ownerUserId) {
       return NextResponse.json({ error: 'ownerUserId es requerido para espacios por usuario' }, { status: 400 })
     }
 
-    if (sedeId) {
-      const sede = await prisma.sede.findUnique({ where: { id: sedeId }, select: { id: true, empresaId: true } })
-      if (!sede || sede.empresaId !== access.empresaId) {
-        return NextResponse.json({ error: 'sedeId inválido' }, { status: 400 })
+    if (normalizedSedeIds.length) {
+      const sedeRows = await prisma.sede.findMany({
+        where: { id: { in: normalizedSedeIds }, empresaId: access.empresaId },
+        select: { id: true },
+      })
+      if (sedeRows.length !== normalizedSedeIds.length) {
+        return NextResponse.json({ error: 'Hay sedes inválidas en el espacio de trabajo' }, { status: 400 })
       }
     }
 
@@ -97,9 +102,16 @@ export async function POST(request: Request) {
         scope: scope as 'SEDE' | 'USER',
         name,
         description: description || null,
-        sedeId: sedeId || null,
+        sedeId: normalizedSedeIds[0] || null,
         ownerUserId: ownerUserId || null,
         createdById: access.userId,
+        workspaceSedes: normalizedSedeIds.length
+          ? {
+              create: normalizedSedeIds.map((currentSedeId) => ({
+                sedeId: currentSedeId,
+              })),
+            }
+          : undefined,
         members: {
           create: allMemberIds.map((userId) => ({
             userId,

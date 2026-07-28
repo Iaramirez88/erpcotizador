@@ -100,11 +100,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       }
     }
 
-    if (task.sedeId) {
+    if (!task.workspaceId && task.sedeId) {
       const denied = await assertTaskCapabilitySedeAccess({
         sedeId: task.sedeId,
         action: 'UPDATE',
-        kind: task.workspaceId ? 'workspace' : 'commercial',
+        kind: 'commercial',
       })
       if (denied) return denied
     }

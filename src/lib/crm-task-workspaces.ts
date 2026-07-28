@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from '@prisma/client'
+import { isSuperAdminEmail } from '@/lib/super-admin'
 
 type DbClient = PrismaClient | Prisma.TransactionClient
 export type WorkspaceMemberRole = 'VIEWER' | 'EDITOR' | 'MANAGER'
@@ -116,6 +117,12 @@ export const crmTaskWorkspaceInclude = {
   createdBy: { select: { id: true, name: true, email: true } },
   ownerUser: { select: { id: true, name: true, email: true } },
   sede: { select: { id: true, nombre: true, codigo: true } },
+  workspaceSedes: {
+    orderBy: [{ createdAt: 'asc' as const }],
+    include: {
+      sede: { select: { id: true, nombre: true, codigo: true } },
+    },
+  },
   projects: {
     orderBy: [{ updatedAt: 'desc' as const }, { createdAt: 'desc' as const }],
     select: {
@@ -140,6 +147,15 @@ export const crmTaskWorkspaceInclude = {
 export type CrmTaskWorkspaceWithAccess = Prisma.CrmTaskWorkspaceGetPayload<{
   include: typeof crmTaskWorkspaceInclude
 }>
+
+async function isWorkspaceSystemSuperAdmin(client: DbClient, userId: string) {
+  const user = await client.user.findUnique({
+    where: { id: userId },
+    select: { email: true },
+  })
+
+  return isSuperAdminEmail(user?.email)
+}
 
 export const crmTaskInclude = {
   workspace: {
@@ -192,14 +208,19 @@ export const crmTaskInclude = {
 } satisfies Prisma.CrmTaskInclude
 
 export async function getAccessibleTaskWorkspaceIds(client: DbClient, args: { empresaId: string; userId: string }) {
+  const canAccessAll = await isWorkspaceSystemSuperAdmin(client, args.userId)
   const rows = await client.crmTaskWorkspace.findMany({
     where: {
       empresaId: args.empresaId,
-      OR: [
-        { createdById: args.userId },
-        { ownerUserId: args.userId },
-        { members: { some: { userId: args.userId } } },
-      ],
+      ...(canAccessAll
+        ? {}
+        : {
+            OR: [
+              { createdById: args.userId },
+              { ownerUserId: args.userId },
+              { members: { some: { userId: args.userId } } },
+            ],
+          }),
     },
     select: { id: true },
   })
@@ -208,15 +229,20 @@ export async function getAccessibleTaskWorkspaceIds(client: DbClient, args: { em
 }
 
 export async function getAccessibleTaskWorkspace(client: DbClient, args: { workspaceId: string; empresaId: string; userId: string }) {
+  const canAccessAll = await isWorkspaceSystemSuperAdmin(client, args.userId)
   return client.crmTaskWorkspace.findFirst({
     where: {
       id: args.workspaceId,
       empresaId: args.empresaId,
-      OR: [
-        { createdById: args.userId },
-        { ownerUserId: args.userId },
-        { members: { some: { userId: args.userId } } },
-      ],
+      ...(canAccessAll
+        ? {}
+        : {
+            OR: [
+              { createdById: args.userId },
+              { ownerUserId: args.userId },
+              { members: { some: { userId: args.userId } } },
+            ],
+          }),
     },
     include: crmTaskWorkspaceInclude,
   })
@@ -238,8 +264,13 @@ export function canUserAccessWorkspace(workspace: Pick<CrmTaskWorkspaceWithAcces
 
 export function mapWorkspaceForUser(workspace: CrmTaskWorkspaceWithAccess, userId: string) {
   const currentUserRole = getWorkspaceRoleForUser(workspace, userId)
+  const sedes = workspace.workspaceSedes.length
+    ? workspace.workspaceSedes.map((item) => item.sede)
+    : (workspace.sede ? [workspace.sede] : [])
+
   return {
     ...workspace,
+    sedes,
     currentUserId: userId,
     currentUserRole,
     permissions: {
@@ -324,4 +355,11 @@ export function normalizeUserIdList(value: unknown): string[] {
     .map((item) => (typeof item === 'string' ? item.trim() : ''))
     .filter(Boolean)
   return Array.from(new Set(ids))
+}
+
+export function normalizeWorkspaceSedeIdList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return Array.from(new Set(value
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean)))
 }
