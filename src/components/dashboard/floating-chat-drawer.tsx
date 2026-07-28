@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, BellOff, Check, CheckCheck, ChevronDown, Clock3, Copy, FileAudio, Image as ImageIcon, Info, LogOut, MoreVertical, Paperclip, Plus, Search, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
+import { AlertTriangle, BellOff, Check, CheckCheck, ChevronDown, Clock3, Copy, FileAudio, Image as ImageIcon, Info, LogOut, MoreVertical, Paperclip, Plus, Search, SendHorizontal, Trash2, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ChatImagePreview } from '@/components/ui/chat-image-preview'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -293,7 +293,6 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
   const [selectedThread, setSelectedThread] = useState<InternalThreadDetail | null>(null)
   const [crmMessageDraft, setCrmMessageDraft] = useState('')
   const [teamMessageDraft, setTeamMessageDraft] = useState('')
-  const [showCrmEmojiPicker, setShowCrmEmojiPicker] = useState(false)
   const [pendingCrmAttachments, setPendingCrmAttachments] = useState<ChatAttachment[]>([])
   const [crmAttachmentUpload, setCrmAttachmentUpload] = useState<UploadProgressState | null>(null)
   const [crmLibraryPickerOpen, setCrmLibraryPickerOpen] = useState(false)
@@ -556,7 +555,6 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
 
   useEffect(() => {
     setPendingCrmAttachments([])
-    setShowCrmEmojiPicker(false)
     if (!selectedConversationId) {
       setCrmMessageDraft('')
     }
@@ -567,7 +565,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
     if (!textarea) return
     textarea.style.height = '0px'
     const nextHeight = Math.min(textarea.scrollHeight, 140)
-    textarea.style.height = `${Math.max(nextHeight, 44)}px`
+    textarea.style.height = `${Math.max(nextHeight, 52)}px`
   }, [teamMessageDraft, selectedThreadId])
 
   useEffect(() => {
@@ -875,7 +873,6 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
       }
       setCrmMessageDraft('')
       setPendingCrmAttachments([])
-      setShowCrmEmojiPicker(false)
       await Promise.all([loadBase(), loadConversationDetail(selectedConversationId)])
       jumpCrmToBottom()
       return true
@@ -1468,29 +1465,6 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                           if (file) void handleUploadCrmAttachment(file)
                         }}
                       />
-                      <div className="flex items-center gap-2">
-                        <Button type="button" variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => setShowCrmEmojiPicker((current) => !current)} disabled={!selectedConversationId}>
-                          <Smile className="h-4 w-4" />
-                        </Button>
-                        <Button type="button" variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => openCrmAttachmentPicker('image')} disabled={!selectedConversationId || uploadingCrmAttachment}>
-                          <ImageIcon className="h-4 w-4" />
-                        </Button>
-                        <Button type="button" variant="outline" size="icon" className="h-9 w-9 rounded-xl" onClick={() => openCrmAttachmentPicker('document')} disabled={!selectedConversationId || uploadingCrmAttachment}>
-                          <Paperclip className="h-4 w-4" />
-                        </Button>
-                        <Button type="button" variant="outline" className="h-9 rounded-xl px-3 text-[11px]" onClick={() => setCrmLibraryPickerOpen(true)} disabled={!selectedConversationId || uploadingCrmAttachment}>
-                          Biblioteca
-                        </Button>
-                      </div>
-                      {showCrmEmojiPicker ? (
-                        <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-3">
-                          {EMOJI_CHOICES.map((emoji) => (
-                            <button key={emoji} type="button" onClick={() => setCrmMessageDraft((current) => `${current}${emoji}`)} className="rounded-xl border border-slate-200 px-2.5 py-2 text-lg hover:bg-slate-50">
-                              {emoji}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
                       {crmAttachmentUpload ? (
                         <div className="rounded-2xl border border-slate-200 bg-white p-3">
                           <div className="flex items-center justify-between gap-3 text-sm text-slate-700">
@@ -1514,16 +1488,57 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                           ))}
                         </div>
                       ) : null}
-                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
+                      <div className="flex items-end gap-2 rounded-[22px] border border-slate-200 bg-slate-50/80 p-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button type="button" variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-2xl" disabled={!selectedConversationId || uploadingCrmAttachment} aria-label="Agregar emoji o adjunto para el cliente">
+                              <Plus className="h-4.5 w-4.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" side="top" className="w-64 rounded-2xl p-2">
+                            <DropdownMenuLabel>Agregar al mensaje</DropdownMenuLabel>
+                            <div className="grid grid-cols-6 gap-1.5 px-1 py-1">
+                              {EMOJI_CHOICES.map((emoji) => (
+                                <button
+                                  key={emoji}
+                                  type="button"
+                                  onClick={() => setCrmMessageDraft((current) => `${current}${emoji}`)}
+                                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-base hover:bg-slate-50"
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onSelect={(event) => {
+                              event.preventDefault()
+                              openCrmAttachmentPicker('image')
+                            }}>
+                              <ImageIcon className="mr-2 h-4 w-4" />
+                              Imagen
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={(event) => {
+                              event.preventDefault()
+                              openCrmAttachmentPicker('document')
+                            }}>
+                              <Paperclip className="mr-2 h-4 w-4" />
+                              Documento
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => setCrmLibraryPickerOpen(true)}>
+                              <Paperclip className="mr-2 h-4 w-4" />
+                              Biblioteca
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                         <Textarea
                           value={crmMessageDraft}
                           onChange={(event) => setCrmMessageDraft(event.target.value)}
                           onKeyDown={handleCrmMessageKeyDown}
                           rows={2}
-                          placeholder="Escribe una respuesta, agrega emojis o adjunta imagen/documento..."
-                          className="min-h-[52px] resize-none rounded-2xl bg-white text-sm leading-5 sm:min-h-[64px]"
+                          placeholder="Escribe una respuesta al cliente..."
+                          className="min-h-[52px] flex-1 resize-none rounded-2xl bg-white text-sm leading-5 shadow-none"
                         />
-                        <Button size="sm" className="h-10 rounded-xl px-4 text-[10px]" onClick={() => void handleSendCrmMessage()} disabled={sendingCrm || uploadingCrmAttachment || !selectedConversationId || (!crmMessageDraft.trim() && pendingCrmAttachments.length === 0)}>
+                        <Button size="sm" className="h-11 shrink-0 rounded-2xl px-4 text-[10px]" onClick={() => void handleSendCrmMessage()} disabled={sendingCrm || uploadingCrmAttachment || !selectedConversationId || (!crmMessageDraft.trim() && pendingCrmAttachments.length === 0)}>
                           {sendingCrm ? 'Enviando...' : 'Enviar'}
                         </Button>
                       </div>
@@ -1878,7 +1893,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <Textarea ref={teamTextareaRef} value={teamMessageDraft} onChange={(event) => setTeamMessageDraft(event.target.value)} onKeyDown={handleTeamMessageKeyDown} rows={1} placeholder={selectedThread?.type === 'GROUP' ? 'Escribe un mensaje para el grupo...' : 'Escribe un mensaje para tu compañero...'} disabled={!selectedThreadId} className="min-h-[44px] max-h-[140px] flex-1 overflow-hidden rounded-2xl bg-white px-3 py-2.5 text-sm leading-5" />
+                        <Textarea ref={teamTextareaRef} value={teamMessageDraft} onChange={(event) => setTeamMessageDraft(event.target.value)} onKeyDown={handleTeamMessageKeyDown} rows={1} placeholder={selectedThread?.type === 'GROUP' ? 'Mensaje para el grupo...' : 'Mensaje para tu compañero...'} disabled={!selectedThreadId} className="min-h-[52px] max-h-[140px] flex-1 overflow-hidden rounded-2xl bg-white px-3 py-3 text-[13px] leading-4 sm:text-sm sm:leading-5" />
                         <Button size="icon" className="h-11 w-11 shrink-0 rounded-2xl" onClick={() => void handleSendTeamMessage()} disabled={sendingTeam || !selectedThreadId || uploadingTeamAttachment} aria-label={sendingTeam ? 'Enviando mensaje' : 'Enviar mensaje'}>
                           <SendHorizontal className="h-4.5 w-4.5" />
                         </Button>

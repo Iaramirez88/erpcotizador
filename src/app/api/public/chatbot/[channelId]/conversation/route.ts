@@ -77,34 +77,38 @@ export async function GET(request: Request, context: RouteContext) {
         status: conversation?.status || 'OPEN',
         unreadCount: conversation?.unreadCount || 0,
         lastMessageAt: conversation?.lastMessageAt || null,
-        messages: (conversation?.messages || []).map((message) => ({
-          id: message.id,
-          role: message.direction === 'OUTBOUND' ? 'assistant' : message.direction === 'SYSTEM' ? 'system' : 'user',
-          body: message.bodyText || '',
-          bodyHtml: message.payloadJson && typeof message.payloadJson === 'object' && !Array.isArray(message.payloadJson) && typeof message.payloadJson.chatRenderedHtml === 'string'
-            ? message.payloadJson.chatRenderedHtml
-            : plainTextToRichTextHtml(message.bodyText || ''),
-          at: message.occurredAt,
-          author: message.sentByUser?.name || message.sentByUser?.email || null,
-          attachments: Array.isArray(message.attachmentsJson) ? message.attachmentsJson : [],
-          meta: message.payloadJson && typeof message.payloadJson === 'object' && !Array.isArray(message.payloadJson)
-            ? {
-                nextField: typeof message.payloadJson.chatFlowNextField === 'string' ? message.payloadJson.chatFlowNextField : null,
-                stageId: typeof message.payloadJson.chatFlowStageId === 'string' ? message.payloadJson.chatFlowStageId : null,
-                quickActionIds: Array.isArray(message.payloadJson.chatQuickActionIds)
-                  ? message.payloadJson.chatQuickActionIds.filter((item): item is string => typeof item === 'string')
-                  : [],
-                responseOptionIds: Array.isArray(message.payloadJson.chatFlowResponseOptionIds)
-                  ? message.payloadJson.chatFlowResponseOptionIds.filter((item): item is string => typeof item === 'string')
-                  : [],
-                pauseNodeId: typeof message.payloadJson.chatPauseNodeId === 'string' ? message.payloadJson.chatPauseNodeId : null,
-                pauseDurationMinutes: typeof message.payloadJson.chatPauseDurationMinutes === 'number' ? message.payloadJson.chatPauseDurationMinutes : null,
-                pauseDescription: typeof message.payloadJson.chatPauseDescription === 'string' ? message.payloadJson.chatPauseDescription : null,
-                pauseUntil: typeof message.payloadJson.chatPauseUntil === 'string' ? message.payloadJson.chatPauseUntil : null,
-                inactivityRule: message.payloadJson.chatInactivityRule ? normalizeChatbotInactivityRule(message.payloadJson.chatInactivityRule) : null,
-              }
-            : undefined,
-        })),
+        messages: (conversation?.messages || []).map((message) => {
+          const attachments = Array.isArray(message.attachmentsJson) ? message.attachmentsJson : []
+
+          return {
+            id: message.id,
+            role: message.direction === 'OUTBOUND' ? 'assistant' : message.direction === 'SYSTEM' ? 'system' : 'user',
+            body: message.bodyText || '',
+            bodyHtml: message.payloadJson && typeof message.payloadJson === 'object' && !Array.isArray(message.payloadJson) && typeof message.payloadJson.chatRenderedHtml === 'string'
+              ? message.payloadJson.chatRenderedHtml
+              : plainTextToRichTextHtml(message.bodyText || ''),
+            at: message.occurredAt,
+            author: message.sentByUser?.name || message.sentByUser?.email || null,
+            attachments,
+            meta: message.payloadJson && typeof message.payloadJson === 'object' && !Array.isArray(message.payloadJson)
+              ? {
+                  nextField: typeof message.payloadJson.chatFlowNextField === 'string' ? message.payloadJson.chatFlowNextField : null,
+                  stageId: typeof message.payloadJson.chatFlowStageId === 'string' ? message.payloadJson.chatFlowStageId : null,
+                  quickActionIds: Array.isArray(message.payloadJson.chatQuickActionIds)
+                    ? message.payloadJson.chatQuickActionIds.filter((item): item is string => typeof item === 'string')
+                    : [],
+                  responseOptionIds: Array.isArray(message.payloadJson.chatFlowResponseOptionIds)
+                    ? message.payloadJson.chatFlowResponseOptionIds.filter((item): item is string => typeof item === 'string')
+                    : [],
+                  pauseNodeId: typeof message.payloadJson.chatPauseNodeId === 'string' ? message.payloadJson.chatPauseNodeId : null,
+                  pauseDurationMinutes: typeof message.payloadJson.chatPauseDurationMinutes === 'number' ? message.payloadJson.chatPauseDurationMinutes : null,
+                  pauseDescription: typeof message.payloadJson.chatPauseDescription === 'string' ? message.payloadJson.chatPauseDescription : null,
+                  pauseUntil: typeof message.payloadJson.chatPauseUntil === 'string' ? message.payloadJson.chatPauseUntil : null,
+                  inactivityRule: message.payloadJson.chatInactivityRule ? normalizeChatbotInactivityRule(message.payloadJson.chatInactivityRule) : null,
+                }
+              : undefined,
+          }
+        }),
       },
     })
   } catch (error) {

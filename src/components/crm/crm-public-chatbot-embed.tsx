@@ -1006,7 +1006,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
 
       const json = await response.json().catch(() => ({})) as ConversationSyncResponse
       const serverMessages = Array.isArray(json.data?.messages)
-        ? json.data?.messages.filter((item) => item.body || item.meta?.responseOptionIds?.length || item.meta?.quickActionIds?.length)
+        ? json.data?.messages.filter((item) => item.body || item.attachments?.length || item.meta?.responseOptionIds?.length || item.meta?.quickActionIds?.length)
         : []
 
       const welcomeMessage = buildWelcomeMessage(props.prompt, initialStage, props.quickActions)
