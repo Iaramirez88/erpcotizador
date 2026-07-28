@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { AccessLevel, SedeRole } from '@prisma/client'
+import { AccessLevel } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireCapabilityAccess } from '@/lib/api-rbac'
 
@@ -10,20 +10,6 @@ const ACCESS_LEVEL_ORDER: Record<AccessLevel, number> = {
   READ: 1,
   WRITE: 2,
   ADMIN: 3,
-}
-
-function sedeRoleToBaseAccess(role: SedeRole): AccessLevel {
-  switch (role) {
-    case 'ADMIN':
-      return 'ADMIN'
-    case 'MANAGER':
-      return 'WRITE'
-    case 'MEMBER':
-      return 'WRITE'
-    case 'READER':
-    default:
-      return 'READ'
-  }
 }
 
 export async function GET() {
@@ -69,12 +55,7 @@ export async function GET() {
       }),
     ])
 
-    const eligibleRows = rows.filter((row) => {
-      const globalBase = row.globalAccess?.level ?? 'NONE'
-      const membership = row.sedeMemberships.find((item) => item.sedeId === access.sedeId)
-      const effective = membership ? sedeRoleToBaseAccess(membership.role) : globalBase
-      return ACCESS_LEVEL_ORDER[effective] >= ACCESS_LEVEL_ORDER.WRITE
-    })
+    const eligibleRows = rows.filter((row) => ACCESS_LEVEL_ORDER[row.globalAccess?.level ?? 'NONE'] >= ACCESS_LEVEL_ORDER.READ)
 
     const conversationBuckets = new Map<string, { activeCount: number; immediateCount: number; waitingCustomerCount: number; unreadCount: number }>()
     for (const row of activeConversations) {

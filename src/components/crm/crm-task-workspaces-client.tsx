@@ -348,6 +348,7 @@ export function CrmTaskWorkspacesClient() {
   const [showArchived, setShowArchived] = useState(false)
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false)
   const [workspaceSettingsOpen, setWorkspaceSettingsOpen] = useState(false)
+  const [workspaceListSearch, setWorkspaceListSearch] = useState('')
   const [projectDialogOpen, setProjectDialogOpen] = useState(false)
   const [taskDialogOpen, setTaskDialogOpen] = useState(false)
   const [taskMoveDialogOpen, setTaskMoveDialogOpen] = useState(false)
@@ -652,34 +653,31 @@ export function CrmTaskWorkspacesClient() {
     setSelectedProjectId('')
   }
 
-  function userBelongsToSede(user: TeamUser, sedeId: string) {
-    return user.sedeDefaultId === sedeId || Boolean(user.sedeMembershipIds?.includes(sedeId))
-  }
-
-  const workspaceScopeUsers = useMemo(() => {
-    if (workspaceForm.scope !== 'SEDE' || !workspaceForm.sedeId) return users
-    return users.filter((user) => userBelongsToSede(user, workspaceForm.sedeId))
-  }, [users, workspaceForm.scope, workspaceForm.sedeId])
-
-  const workspaceSettingsScopeUsers = useMemo(() => {
-    const selectedSedeId = selectedWorkspace?.scope === 'SEDE' ? selectedWorkspace.sede?.id || '' : ''
-    if (!selectedSedeId) return users
-    return users.filter((user) => userBelongsToSede(user, selectedSedeId))
-  }, [selectedWorkspace, users])
-
   const workspaceCandidates = useMemo(() => {
     const term = workspaceSearch.trim().toLowerCase()
-    return workspaceScopeUsers.filter((user) => !term || (user.name || '').toLowerCase().includes(term) || (user.email || '').toLowerCase().includes(term))
-  }, [workspaceScopeUsers, workspaceSearch])
+    return users.filter((user) => !term || (user.name || '').toLowerCase().includes(term) || (user.email || '').toLowerCase().includes(term))
+  }, [users, workspaceSearch])
 
   const workspaceMemberCandidates = useMemo(() => {
     const term = workspaceMemberSearch.trim().toLowerCase()
     const selectedIds = new Set(workspaceSettingsForm.members.map((member) => member.userId))
-    return workspaceSettingsScopeUsers.filter((user) => {
+    return users.filter((user) => {
       if (selectedIds.has(user.id)) return false
       return !term || (user.name || '').toLowerCase().includes(term) || (user.email || '').toLowerCase().includes(term)
     })
-  }, [workspaceMemberSearch, workspaceSettingsForm.members, workspaceSettingsScopeUsers])
+  }, [users, workspaceMemberSearch, workspaceSettingsForm.members])
+
+  const filteredWorkspaces = useMemo(() => {
+    const term = workspaceListSearch.trim().toLowerCase()
+    if (!term) return workspaces
+
+    return workspaces.filter((workspace) => {
+      const description = workspace.description || (workspace.scope === 'SEDE' ? workspace.sede?.nombre || '' : workspace.ownerUser?.name || workspace.ownerUser?.email || '')
+      return workspace.name.toLowerCase().includes(term)
+        || description.toLowerCase().includes(term)
+        || workspace.scope.toLowerCase().includes(term)
+    })
+  }, [workspaceListSearch, workspaces])
 
   const taskAssigneeCandidates = useMemo(() => {
     const term = assigneeSearch.trim().toLowerCase()
@@ -1322,15 +1320,25 @@ export function CrmTaskWorkspacesClient() {
 
       <div className={`grid gap-4 xl:items-start ${workspacePanelCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[320px_minmax(0,1fr)]'}`}>
         {!workspacePanelCollapsed ? (
-          <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)] xl:max-h-[calc(100vh-12rem)] xl:overflow-hidden">
+          <Card className="rounded-[26px] border-slate-200 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.32)] xl:flex xl:max-h-[calc(100vh-12rem)] xl:flex-col xl:overflow-hidden">
             <CardHeader className="border-b border-slate-100 pb-5">
               <CardTitle className="text-xl">Espacios de trabajo</CardTitle>
               <CardDescription>Selecciona un espacio, ajusta sus opciones desde el menú y crea tareas solo dentro de un proyecto.</CardDescription>
+              <div className="relative mt-4">
+                <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={workspaceListSearch}
+                  onChange={(event) => setWorkspaceListSearch(event.target.value)}
+                  placeholder="Buscar espacio por nombre o descripción"
+                  className="h-11 rounded-2xl border-slate-200 pl-10"
+                />
+              </div>
             </CardHeader>
-            <CardContent className="space-y-3 p-4 md:p-5 xl:overflow-y-auto">
+            <CardContent className="min-h-0 space-y-3 p-4 md:p-5 xl:flex-1 xl:overflow-y-auto">
               {loading ? <p className="text-sm text-muted-foreground">Cargando espacios...</p> : null}
               {!loading && workspaces.length === 0 ? <p className="text-sm text-muted-foreground">No tienes espacios de trabajo todavía.</p> : null}
-              {workspaces.map((workspace) => {
+              {!loading && workspaces.length > 0 && filteredWorkspaces.length === 0 ? <p className="text-sm text-muted-foreground">No encontré espacios con ese criterio.</p> : null}
+              {filteredWorkspaces.map((workspace) => {
                 const isSelected = !showAllTasks && selectedWorkspaceId === workspace.id
                 const canManageCurrentWorkspace = Boolean(workspace.permissions?.canManage)
 
