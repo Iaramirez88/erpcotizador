@@ -23,6 +23,7 @@ export type NormalizedWebhookInboundEvent = {
   sourceContent: string | null
   rawPayloadJson: Prisma.InputJsonValue
   normalizedDataJson: Prisma.InputJsonValue
+  attachmentsJson?: Prisma.InputJsonValue
 }
 
 export type WebhookInboundMapping = {

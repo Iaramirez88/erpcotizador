@@ -3,6 +3,7 @@ import { Prisma, type CrmChannelConnection, type CrmChannelProvider, type CrmMes
 import { prisma } from '@/lib/prisma'
 import { createConversationMessageEvent, createInboundArtifacts, getConnectionToken, parseJsonObject, parseMaybeDate } from '@/lib/crm-omnichannel'
 import { normalizeString } from '@/lib/crm'
+import { enrichWebhookInboundEventsWithAttachments } from '@/lib/crm-webhook-media'
 import { getWebhookInboundMapping, normalizeWebhookInboundPayload } from '@/lib/crm-webhook-normalizer'
 import { fetchMetaLeadgenRecord, getMetaAccessToken, type MetaLeadgenRecord } from '@/lib/crm-meta'
 
@@ -433,13 +434,14 @@ async function processMetaWebhookForChannel(channel: MetaChannelRecord, body: Re
   if (nativeLeadgenResult) return nativeLeadgenResult
 
   const normalized = normalizeWebhookInboundPayload({ provider: channel.provider, body })
+  const events = await enrichWebhookInboundEventsWithAttachments({ channel, events: normalized.events })
   const mapping = getWebhookInboundMapping(channel.provider)
   const latestEventAt = [
-    ...normalized.events.map((item) => item.eventAt),
+    ...events.map((item) => item.eventAt),
     ...normalized.statusUpdates.map((item) => item.eventAt),
   ].sort((left, right) => left.getTime() - right.getTime()).at(-1) ?? new Date()
 
-  if (!normalized.events.length && !normalized.statusUpdates.length) {
+  if (!events.length && !normalized.statusUpdates.length) {
     await prisma.crmChannelConnection.update({
       where: { id: channel.id },
       data: { lastWebhookAt: latestEventAt, lastErrorAt: null, lastErrorMessage: null },
@@ -471,7 +473,7 @@ async function processMetaWebhookForChannel(channel: MetaChannelRecord, body: Re
       })
     }
 
-    for (const event of normalized.events) {
+    for (const event of events) {
       const artifacts = event.eventDirection === 'OUTBOUND'
         ? await createConversationMessageEvent({
             client: tx,
@@ -525,6 +527,7 @@ async function processMetaWebhookForChannel(channel: MetaChannelRecord, body: Re
             sourceContent: event.sourceContent,
             rawPayloadJson: event.rawPayloadJson,
             normalizedDataJson: event.normalizedDataJson,
+            attachmentsJson: event.attachmentsJson,
           })
 
       processed.push(artifacts)

@@ -3,11 +3,12 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, FileText, Mail, MessageCircle, MoreVertical, PhoneCall } from 'lucide-react'
+import { AlertTriangle, BellOff, Bot, Check, CheckCheck, Clock3, FileAudio, FileText, Image as ImageIcon, Mail, MessageCircle, MoreVertical, PhoneCall } from 'lucide-react'
 import { ErpPageHero } from '@/components/dashboard/erp-page-chrome'
 import { Button } from '@/components/ui/button'
 import { CardInfoHeader } from '@/components/ui/card-info-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ChatImagePreview } from '@/components/ui/chat-image-preview'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -60,6 +61,7 @@ type ConversationMessage = {
     url?: string | null
     name?: string | null
     alt?: string | null
+    mimeType?: string | null
   }> | null
   occurredAt: string
   sentByUser?: Assignee | null
@@ -237,6 +239,69 @@ function getMessageOriginMeta(origin: MessageOrigin) {
     default:
       return { label: 'Cliente', className: 'bg-white/80 text-slate-700' }
   }
+}
+
+function renderConversationAttachments(attachments: ConversationMessage['attachmentsJson']) {
+  if (!Array.isArray(attachments) || attachments.length === 0) return null
+
+  return (
+    <div className="mt-3 space-y-2">
+      {attachments.map((attachment, index) => {
+        const attachmentType = String(attachment.type || '').trim().toLowerCase()
+        const attachmentUrl = String(attachment.url || '').trim()
+        if (!attachmentUrl) return null
+
+        const attachmentLabel = attachment.name || attachment.alt || attachmentUrl || 'Adjunto'
+
+        if (attachmentType === 'image') {
+          return (
+            <ChatImagePreview
+              key={`${attachmentUrl}-${index}`}
+              src={attachmentUrl}
+              alt={attachment.alt || attachmentLabel}
+              title={attachmentLabel}
+            >
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white/90">
+                <img src={attachmentUrl} alt={attachment.alt || attachmentLabel} className="max-h-80 w-full object-cover" />
+                <div className="flex items-center gap-2 border-t border-slate-100 px-3 py-2 text-xs text-slate-600">
+                  <ImageIcon className="h-3.5 w-3.5" />
+                  <span className="truncate">{attachmentLabel}</span>
+                </div>
+              </div>
+            </ChatImagePreview>
+          )
+        }
+
+        if (attachmentType === 'audio') {
+          return (
+            <div key={`${attachmentUrl}-${index}`} className="rounded-2xl border border-slate-200 bg-white/90 px-3 py-3">
+              <div className="mb-2 flex items-center gap-2 text-xs text-slate-600">
+                <FileAudio className="h-3.5 w-3.5" />
+                <span className="truncate">{attachmentLabel}</span>
+              </div>
+              <audio controls preload="none" className="w-full" src={attachmentUrl}>
+                Tu navegador no soporta audio embebido.
+              </audio>
+            </div>
+          )
+        }
+
+        return (
+          <a
+            key={`${attachmentUrl}-${index}`}
+            href={attachmentUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 text-xs text-sky-700 hover:underline"
+          >
+            <FileText className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{attachmentLabel}</span>
+            <span className="ml-auto text-[10px] uppercase tracking-wide text-slate-500">{attachment.mimeType || 'Archivo'}</span>
+          </a>
+        )
+      })}
+    </div>
+  )
 }
 
 function hasMessageCollision(message: ConversationMessage) {
@@ -1950,21 +2015,7 @@ export function CrmConversationsClient(props: CrmConversationsClientProps) {
                               </div>
                               {hasCollision ? <p className="mt-2 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs leading-5 text-amber-900">Se detectó una posible doble respuesta entre el celular y el CRM en esta conversación.</p> : null}
                               <p className="mt-2 whitespace-pre-wrap leading-6">{renderHighlightedText(message.bodyText || 'Sin contenido textual', search)}</p>
-                              {Array.isArray(message.attachmentsJson) && message.attachmentsJson.length > 0 ? (
-                                <div className="mt-3 space-y-2">
-                                  {message.attachmentsJson.map((attachment, index) => (
-                                    <a
-                                      key={`${message.id}-${index}`}
-                                      href={attachment.url || '#'}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="block rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 text-xs text-sky-700 hover:underline"
-                                    >
-                                      {(attachment.type || 'archivo').toUpperCase()} · {attachment.name || attachment.url || 'Adjunto'}
-                                    </a>
-                                  ))}
-                                </div>
-                              ) : null}
+                              {renderConversationAttachments(message.attachmentsJson)}
                               {message.direction === 'OUTBOUND' && statusLabel ? (
                                 <div className="mt-2 flex items-center justify-end gap-1 text-[11px] text-slate-500">
                                   {renderCrmMessageStatusIcon(message.status)}

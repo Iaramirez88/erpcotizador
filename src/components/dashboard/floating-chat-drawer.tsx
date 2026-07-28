@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, BellOff, Check, CheckCheck, ChevronDown, Clock3, Copy, Image as ImageIcon, Info, LogOut, MoreVertical, Paperclip, Plus, Search, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ChatImagePreview } from '@/components/ui/chat-image-preview'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -212,10 +213,12 @@ function renderAttachments(attachments: ChatAttachment[] | undefined, onImageLoa
     <div className="mt-3 space-y-2">
       {attachments.map((attachment) => (
         attachment.type === 'image' ? (
-          <a key={`${attachment.url}-${attachment.name}`} href={attachment.url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            <img src={attachment.url} alt={attachment.name} className="max-h-60 w-full object-cover" onLoad={onImageLoad} />
-            <div className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">{attachment.name}</div>
-          </a>
+          <ChatImagePreview key={`${attachment.url}-${attachment.name}`} src={attachment.url} alt={attachment.name} title={attachment.name}>
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <img src={attachment.url} alt={attachment.name} className="max-h-60 w-full object-cover" onLoad={onImageLoad} />
+              <div className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">{attachment.name}</div>
+            </div>
+          </ChatImagePreview>
         ) : (
           <a key={`${attachment.url}-${attachment.name}`} href={attachment.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
             <div className="min-w-0">

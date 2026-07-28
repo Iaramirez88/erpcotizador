@@ -3,6 +3,7 @@ import { Prisma, type CrmMessageStatus } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { createConversationMessageEvent, createInboundArtifacts, getConnectionToken } from '@/lib/crm-omnichannel'
 import { normalizeString } from '@/lib/crm'
+import { enrichWebhookInboundEventsWithAttachments } from '@/lib/crm-webhook-media'
 import { getWebhookInboundMapping, normalizeWebhookInboundPayload } from '@/lib/crm-webhook-normalizer'
 
 export const runtime = 'nodejs'
@@ -158,13 +159,14 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     const normalized = normalizeWebhookInboundPayload({ provider: channel.provider, body })
+    const events = await enrichWebhookInboundEventsWithAttachments({ channel, events: normalized.events })
     const mapping = getWebhookInboundMapping(channel.provider)
     const latestEventAt = [
-      ...normalized.events.map((item) => item.eventAt),
+      ...events.map((item) => item.eventAt),
       ...normalized.statusUpdates.map((item) => item.eventAt),
     ].sort((left, right) => left.getTime() - right.getTime()).at(-1) ?? new Date()
 
-    if (!normalized.events.length && !normalized.statusUpdates.length) {
+    if (!events.length && !normalized.statusUpdates.length) {
       await prisma.crmChannelConnection.update({
         where: { id: channel.id },
         data: { lastWebhookAt: latestEventAt, lastErrorAt: null, lastErrorMessage: null },
@@ -196,7 +198,7 @@ export async function POST(request: Request, context: RouteContext) {
         })
       }
 
-      for (const event of normalized.events) {
+      for (const event of events) {
         const artifacts = event.eventDirection === 'OUTBOUND'
           ? await createConversationMessageEvent({
               client: tx,
@@ -250,6 +252,7 @@ export async function POST(request: Request, context: RouteContext) {
               sourceContent: event.sourceContent,
               rawPayloadJson: event.rawPayloadJson,
               normalizedDataJson: event.normalizedDataJson,
+              attachmentsJson: event.attachmentsJson,
             })
 
         processed.push(artifacts)

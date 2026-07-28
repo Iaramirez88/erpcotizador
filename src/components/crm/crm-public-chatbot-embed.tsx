@@ -3,6 +3,7 @@
 import { type ChangeEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronRight, Paperclip, Plus, Smile } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ChatImagePreview } from '@/components/ui/chat-image-preview'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
@@ -1325,7 +1326,9 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
               {attachments.length > 0 ? (
                 <div className="mt-3 space-y-2">
                   {attachments.filter((item) => item?.type === 'image' && item?.url).map((item, index) => (
-                    <img key={`${message.id}-attachment-${index}`} src={item.url || ''} alt={item.alt || 'Imagen del producto'} className="w-full rounded-2xl border border-slate-200 object-cover" />
+                    <ChatImagePreview key={`${message.id}-attachment-${index}`} src={item.url || ''} alt={item.alt || 'Imagen del producto'} title={item.alt || 'Imagen del chat'}>
+                      <img src={item.url || ''} alt={item.alt || 'Imagen del producto'} className="w-full rounded-2xl border border-slate-200 object-cover" />
+                    </ChatImagePreview>
                   ))}
                   {attachments.filter((item) => item?.type === 'document' && item?.url).map((item, index) => (
                     <a
