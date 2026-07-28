@@ -1640,6 +1640,12 @@ export async function POST(request: Request) {
       }
 
       if (!selectedAutomation?.chat.openChat && (priorRuntimeState.botSubscriptionActive === false || hasFuturePause(priorRuntimeState.pauseUntil))) {
+        const blockedConversationStatus = priorRuntimeState.botSubscriptionActive === false
+          ? (existingConversation?.status === 'HUMAN_ACTIVE' || existingConversation?.status === 'PENDING'
+              ? existingConversation.status
+              : 'RESOLVED')
+          : 'PENDING'
+
         await tx.crmLeadCapture.update({
           where: { id: artifacts.capture.id },
           data: {
@@ -1653,10 +1659,10 @@ export async function POST(request: Request) {
         await tx.crmConversation.update({
           where: { id: artifacts.conversation.id },
           data: {
-            status: priorRuntimeState.botSubscriptionActive === false ? 'RESOLVED' : 'PENDING',
+            status: blockedConversationStatus,
             directionLastMessage: 'INBOUND',
             lastMessageAt: new Date(),
-            resolvedAt: priorRuntimeState.botSubscriptionActive === false ? new Date() : null,
+            resolvedAt: blockedConversationStatus === 'RESOLVED' ? new Date() : null,
           },
         })
 
@@ -2086,6 +2092,20 @@ export async function POST(request: Request) {
             },
           })
         }
+      }
+
+      const shouldHandoffToHuman = requestHuman
+        || selectedQuickAction?.kind === 'human'
+        || matchedTrigger.matchedTrigger?.event === 'human_request'
+
+      if (shouldHandoffToHuman) {
+        runtimeState = {
+          ...runtimeState,
+          botSubscriptionActive: false,
+          pauseUntil: null,
+        }
+        conversationStatus = 'HUMAN_ACTIVE'
+        conversationResolvedAt = null
       }
 
       const assistantBodyTemplate = matchedTrigger.matchedTrigger?.assistantReply || assistantReply.body

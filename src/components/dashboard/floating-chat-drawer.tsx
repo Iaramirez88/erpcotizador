@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, BellOff, Check, CheckCheck, ChevronDown, Clock3, Copy, Image as ImageIcon, Info, LogOut, MoreVertical, Paperclip, Plus, Search, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
+import { AlertTriangle, BellOff, Check, CheckCheck, ChevronDown, Clock3, Copy, FileAudio, Image as ImageIcon, Info, LogOut, MoreVertical, Paperclip, Plus, Search, SendHorizontal, Smile, Trash2, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ChatImagePreview } from '@/components/ui/chat-image-preview'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -26,7 +26,7 @@ type TeamUser = {
 type ChatAttachment = {
   name: string
   url: string
-  type: 'image' | 'document'
+  type: 'image' | 'audio' | 'document'
   mimeType?: string | null
   sizeBytes?: number | null
 }
@@ -76,6 +76,7 @@ type ConversationMessage = {
   status?: 'PENDING' | 'QUEUED' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED' | null
   occurredAt: string
   sentByUser?: { id: string; name?: string | null; email?: string | null } | null
+  attachmentsJson?: ChatAttachment[] | null
 }
 
 type ConversationListItem = {
@@ -219,6 +220,16 @@ function renderAttachments(attachments: ChatAttachment[] | undefined, onImageLoa
               <div className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">{attachment.name}</div>
             </div>
           </ChatImagePreview>
+        ) : attachment.type === 'audio' ? (
+          <div key={`${attachment.url}-${attachment.name}`} className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+            <div className="mb-2 flex items-center gap-2 text-xs text-slate-500">
+              <FileAudio className="h-3.5 w-3.5" />
+              <span className="truncate">{attachment.name}</span>
+            </div>
+            <audio controls preload="none" className="w-full" src={attachment.url}>
+              Tu navegador no soporta audio embebido.
+            </audio>
+          </div>
         ) : (
           <a key={`${attachment.url}-${attachment.name}`} href={attachment.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
             <div className="min-w-0">
@@ -610,7 +621,8 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
       if (!term) return true
       const name = item.contactDisplayName?.toLowerCase() ?? item.lead?.nombre?.toLowerCase() ?? item.cliente?.nombre?.toLowerCase() ?? ''
       const preview = item.messages?.[0]?.bodyText?.toLowerCase() ?? ''
-      return name.includes(term) || preview.includes(term)
+      const attachments = (item.messages?.[0]?.attachmentsJson ?? []).map((attachment) => `${attachment.name} ${attachment.mimeType ?? ''}`.toLowerCase()).join(' ')
+      return name.includes(term) || preview.includes(term) || attachments.includes(term)
     })
   }, [search, visibleCrmConversations])
 
@@ -655,7 +667,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
         kind: 'crm' as const,
         title: item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || 'Contacto CRM',
         subtitle: formatChannel(item.channelConnection.provider),
-        preview: item.messages?.[0]?.bodyText || item.contactEmail || item.contactPhone || 'Mensaje nuevo',
+        preview: item.messages?.[0]?.bodyText || (item.messages?.[0]?.attachmentsJson?.length ? 'Adjunto nuevo' : '') || item.contactEmail || item.contactPhone || 'Mensaje nuevo',
         occurredAt: item.lastMessageAt,
         unreadCount: item.unreadCount,
         senderLabel: item.contactDisplayName || item.lead?.nombre || item.cliente?.nombre || item.contactEmail || item.contactPhone || 'Contacto CRM',
@@ -1285,6 +1297,7 @@ export default function FloatingChatDrawer({ canAccessTeamChat, canAccessCrmChat
                               <span>{formatDate(message.occurredAt, 'Sin fecha')}</span>
                             </div>
                             <p className="mt-1 whitespace-pre-wrap break-words leading-5">{renderHighlightedText(message.bodyText || 'Sin texto', search)}</p>
+                            {renderAttachments(message.attachmentsJson ?? undefined)}
                             {message.direction === 'OUTBOUND' && getCrmMessageStatusLabel(message.status) ? (
                               <div className="mt-2 flex items-center justify-end gap-1 text-[11px] text-slate-500">
                                 {renderCrmMessageStatusIcon(message.status)}

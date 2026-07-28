@@ -72,6 +72,7 @@ export async function GET(request: Request) {
             messageType: true,
             status: true,
             bodyText: true,
+            attachmentsJson: true,
             payloadJson: true,
             occurredAt: true,
             sentByUser: { select: { id: true, name: true, email: true } },

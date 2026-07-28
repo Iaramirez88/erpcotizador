@@ -167,6 +167,58 @@ type StoredWidgetState = {
   lastActivityAt: number
   preChatCompleted: boolean
   inactivityRule: ChatbotInactivityRule | null
+  configSignature?: string
+}
+
+function buildConfigSignature(args: Pick<PublicChatbotEmbedProps,
+  'prompt'
+  | 'preChatFormEnabled'
+  | 'preChatFormTitle'
+  | 'preChatFormDescription'
+  | 'preChatFormSubmitLabel'
+  | 'preChatFormShowNameField'
+  | 'preChatFormShowEmailField'
+  | 'preChatFormShowPhoneField'
+  | 'preChatFormRequireName'
+  | 'preChatFormRequireEmail'
+  | 'preChatFormRequirePhone'
+  | 'preChatFormRequireContactMethod'
+  | 'preChatFormShowDepartmentField'
+  | 'preChatFormDepartmentLabel'
+  | 'preChatFormDepartmentPlaceholder'
+  | 'preChatFormDepartmentOptions'
+  | 'termsEnabled'
+  | 'termsLabel'
+  | 'termsLinkText'
+  | 'termsLinkUrl'
+  | 'startStageId'
+  | 'quickActions'
+  | 'flowStages'>) {
+  return JSON.stringify({
+    prompt: args.prompt,
+    preChatFormEnabled: args.preChatFormEnabled,
+    preChatFormTitle: args.preChatFormTitle,
+    preChatFormDescription: args.preChatFormDescription,
+    preChatFormSubmitLabel: args.preChatFormSubmitLabel,
+    preChatFormShowNameField: args.preChatFormShowNameField,
+    preChatFormShowEmailField: args.preChatFormShowEmailField,
+    preChatFormShowPhoneField: args.preChatFormShowPhoneField,
+    preChatFormRequireName: args.preChatFormRequireName,
+    preChatFormRequireEmail: args.preChatFormRequireEmail,
+    preChatFormRequirePhone: args.preChatFormRequirePhone,
+    preChatFormRequireContactMethod: args.preChatFormRequireContactMethod,
+    preChatFormShowDepartmentField: args.preChatFormShowDepartmentField,
+    preChatFormDepartmentLabel: args.preChatFormDepartmentLabel,
+    preChatFormDepartmentPlaceholder: args.preChatFormDepartmentPlaceholder,
+    preChatFormDepartmentOptions: args.preChatFormDepartmentOptions,
+    termsEnabled: args.termsEnabled,
+    termsLabel: args.termsLabel,
+    termsLinkText: args.termsLinkText,
+    termsLinkUrl: args.termsLinkUrl,
+    startStageId: args.startStageId,
+    quickActions: args.quickActions,
+    flowStages: args.flowStages,
+  })
 }
 
 function makeSessionId(channelId: string) {
@@ -207,6 +259,7 @@ function parseStoredWidgetState(rawValue: string | null, defaultPreChatCompleted
       lastActivityAt: normalizeStoredActivityAt(parsed.lastActivityAt),
       preChatCompleted: typeof parsed.preChatCompleted === 'boolean' ? parsed.preChatCompleted : defaultPreChatCompleted,
       inactivityRule: parsed.inactivityRule ? normalizeChatbotInactivityRule(parsed.inactivityRule, { enabled: false }) : null,
+      configSignature: typeof parsed.configSignature === 'string' ? parsed.configSignature : '',
     }
   } catch {
     return { lastActivityAt: 0, preChatCompleted: defaultPreChatCompleted, inactivityRule: null }
@@ -602,6 +655,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     resetConversationAfterMinutes: props.resetConversationAfterMinutes,
     resetConversationAfterAction: props.resetConversationAfterAction,
   }), [props.resetConversationAfterAction, props.resetConversationAfterMinutes])
+  const configSignature = useMemo(() => buildConfigSignature(props), [props])
 
   const accentStyle = useMemo(() => ({ ['--chat-accent' as string]: props.accentColor, ['--chat-background' as string]: props.backgroundColor, ['--chat-page-background' as string]: props.pageBackgroundColor, fontFamily: props.fontFamily }), [props.accentColor, props.backgroundColor, props.pageBackgroundColor, props.fontFamily])
   const launcherMetrics = useMemo(() => getLauncherMetrics(props.launcherSize), [props.launcherSize])
@@ -698,7 +752,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
       : (props.preChatFormInactivityRule.enabled ? props.preChatFormInactivityRule : fallbackInactivityRule)
 
     window.localStorage.setItem(sessionKey, nextSessionId)
-    window.localStorage.setItem(stateKey, JSON.stringify({ lastActivityAt: nextActivityAt, preChatCompleted: nextPreChatCompleted, inactivityRule: nextInactivityRule }))
+    window.localStorage.setItem(stateKey, JSON.stringify({ lastActivityAt: nextActivityAt, preChatCompleted: nextPreChatCompleted, inactivityRule: nextInactivityRule, configSignature }))
 
     setSessionId(nextSessionId)
     setMessages(defaultMessages)
@@ -714,7 +768,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     setLastActivityAt(nextActivityAt)
     setActiveInactivityRule(nextInactivityRule)
     lastServerMessageIdRef.current = ''
-  }, [defaultMessages, fallbackInactivityRule, preChatCompleted, preChatRequired, props.channelId, props.preChatFormInactivityRule])
+  }, [configSignature, defaultMessages, fallbackInactivityRule, preChatCompleted, preChatRequired, props.channelId, props.preChatFormInactivityRule])
 
   const applyConversationExpiration = useCallback(async (rule: ChatbotInactivityRule | null) => {
     if (expiringRef.current) return
@@ -753,14 +807,15 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     const stateKey = `sgd-crm-chatbot:${props.channelId}:${stateStorageSuffix}`
 
     const storedState = parseStoredWidgetState(window.localStorage.getItem(stateKey), !preChatRequired)
+    const configChanged = storedState.configSignature !== configSignature
     const now = Date.now()
-    const initialRule = storedState.inactivityRule?.enabled
+    const initialRule = !configChanged && storedState.inactivityRule?.enabled
       ? storedState.inactivityRule
-      : (storedState.preChatCompleted
+      : ((!configChanged && storedState.preChatCompleted)
           ? defaultMessages[0]?.meta?.inactivityRule || fallbackInactivityRule
           : (props.preChatFormInactivityRule.enabled ? props.preChatFormInactivityRule : fallbackInactivityRule))
     const expirationWindowMs = initialRule.timeoutMinutes * 60 * 1000
-    const isExpired = storedState.lastActivityAt > 0 && (now - storedState.lastActivityAt) >= expirationWindowMs
+    const isExpired = !configChanged && storedState.lastActivityAt > 0 && (now - storedState.lastActivityAt) >= expirationWindowMs
     const previousSessionId = window.localStorage.getItem(sessionKey)
 
     if (isExpired && initialRule.action === 'close' && previousSessionId) {
@@ -776,23 +831,24 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
       })
     }
 
-    const existingSession = !isExpired ? window.localStorage.getItem(sessionKey) : null
+    const existingSession = !isExpired && !configChanged ? window.localStorage.getItem(sessionKey) : null
     const nextSession = existingSession || makeSessionId(props.channelId)
     if (!existingSession) window.localStorage.setItem(sessionKey, nextSession)
     setSessionId(nextSession)
     setMessages(defaultMessages)
-    setPreChatCompleted(isExpired ? !preChatRequired : storedState.preChatCompleted)
-    setLastActivityAt(isExpired ? now : storedState.lastActivityAt || now)
-    setActiveInactivityRule(isExpired
+    setPreChatCompleted((isExpired || configChanged) ? !preChatRequired : storedState.preChatCompleted)
+    setLastActivityAt((isExpired || configChanged) ? now : storedState.lastActivityAt || now)
+    setActiveInactivityRule((isExpired || configChanged)
       ? (preChatRequired ? (props.preChatFormInactivityRule.enabled ? props.preChatFormInactivityRule : fallbackInactivityRule) : (defaultMessages[0]?.meta?.inactivityRule || fallbackInactivityRule))
       : initialRule)
-    if (isExpired || !window.localStorage.getItem(stateKey)) {
+    if (isExpired || configChanged || !window.localStorage.getItem(stateKey)) {
       window.localStorage.setItem(stateKey, JSON.stringify({
         lastActivityAt: now,
-        preChatCompleted: isExpired ? !preChatRequired : storedState.preChatCompleted,
-        inactivityRule: isExpired
+        preChatCompleted: (isExpired || configChanged) ? !preChatRequired : storedState.preChatCompleted,
+        inactivityRule: (isExpired || configChanged)
           ? (preChatRequired ? (props.preChatFormInactivityRule.enabled ? props.preChatFormInactivityRule : fallbackInactivityRule) : (defaultMessages[0]?.meta?.inactivityRule || fallbackInactivityRule))
           : initialRule,
+        configSignature,
       }))
     }
 
@@ -818,7 +874,7 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
     }
 
     setReady(true)
-  }, [defaultMessages, fallbackInactivityRule, preChatRequired, props.channelId, props.preChatFormInactivityRule])
+  }, [configSignature, defaultMessages, fallbackInactivityRule, preChatRequired, props.channelId, props.preChatFormInactivityRule])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !ready) return
@@ -829,8 +885,8 @@ function CrmPublicChatbotEmbedLive(props: PublicChatbotEmbedProps) {
   useEffect(() => {
     if (typeof window === 'undefined' || !ready) return
     const stateKey = `sgd-crm-chatbot:${props.channelId}:${stateStorageSuffix}`
-    window.localStorage.setItem(stateKey, JSON.stringify({ lastActivityAt, preChatCompleted, inactivityRule: activeInactivityRule }))
-  }, [activeInactivityRule, lastActivityAt, preChatCompleted, props.channelId, ready])
+    window.localStorage.setItem(stateKey, JSON.stringify({ lastActivityAt, preChatCompleted, inactivityRule: activeInactivityRule, configSignature }))
+  }, [activeInactivityRule, configSignature, lastActivityAt, preChatCompleted, props.channelId, ready])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
